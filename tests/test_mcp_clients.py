@@ -125,6 +125,46 @@ def test_minimal_client_defaults_and_sanitize():
     assert clean == {"x": 1}
 
 
+@pytest.mark.asyncio
+async def test_stdio_env_inheritance_with_minimal_server(monkeypatch, tmp_path):
+    # Ensure parent env has sentinel
+    monkeypatch.setenv("TEST_ENV_PROP", "sentinel_value")
+
+    # Write a minimal stdio MCP server script that echoes env back
+    server_code = (
+        "import os\n"
+        "from dataclasses import dataclass\n"
+        "from typing import Annotated\n"
+        "from mcp.server.fastmcp import FastMCP\n"
+        "from pydantic import Field\n"
+        "\n"
+        "@dataclass\n"
+        "class EnvResult:\n"
+        "    value: str | None\n"
+        "\n"
+        "mcp = FastMCP(name='env_echo_tool')\n"
+        "\n"
+        "@mcp.tool()\n"
+        "async def echo_env(var_name: Annotated[str, Field(description='Environment variable name to read')]) -> EnvResult:\n"
+        "    return {'value': os.environ.get(var_name)}\n"
+        "\n"
+        "if __name__ == '__main__':\n"
+        "    mcp.run(transport='stdio')\n"
+    )
+    script_path = tmp_path / "env_echo_tool_tmp.py"
+    script_path.write_text(server_code)
+
+    # Launch the temporary stdio server via MCP client
+    client = MCPStdioClient(command="python", args=[str(script_path)])
+
+    # Call tool to read env var from server process
+    result = await client.call_tool("echo_env", {"var_name": "TEST_ENV_PROP"})
+
+    assert isinstance(result, dict)
+    # Structured content passthrough returns dict with value
+    assert result.get("value") == "sentinel_value"
+
+
 class DummyTool(Tool):
     def __init__(self) -> None:
         self._cfg = {}
