@@ -265,6 +265,9 @@ class GenerationTask:
         else:
             self.tokenizer = None
 
+        if self.cfg.use_completions_api and self.cfg.inference.tokens_to_generate is None:
+            raise ValueError("When using completions API, tokens_to_generate must be specified!")
+
         # Setup prompt formatter and LLM
         self.prompt = self.setup_prompt()
         self.llm = self.setup_llm()
@@ -298,7 +301,7 @@ class GenerationTask:
 
         prompt = get_prompt(
             prompt_config=self.cfg.prompt_config,
-            tokenizer=self.tokenizer,
+            tokenizer=self.tokenizer if self.cfg.use_completions_api else None,
             code_tags=self.cfg.code_tags,
             examples_type=self.cfg.examples_type,
             system_message=self.cfg.system_message,
