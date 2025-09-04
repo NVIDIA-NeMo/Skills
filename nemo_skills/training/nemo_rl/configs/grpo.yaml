@@ -8,7 +8,7 @@ grpo:
   max_num_steps: 1000000
   normalize_rewards: true
   use_leave_one_out_baseline: true
-  val_period: ${checkpointing.save_period}
+  val_period: 0
   val_at_start: false
   max_val_samples: 256
   val_batch_size: 256
@@ -185,6 +185,7 @@ policy:
       pipeline_parallel_size: 1
       gpu_memory_utilization: 0.6
       max_model_len: ${policy.max_total_sequence_length}
+      enable_expert_parallel: false
       enforce_eager: True # Set as True to avoid vllm bug
       # For most cases, use "dummy" to load the initial weights, since they will be overwritten during refit
       # For Gemma models, we need to use "auto" due to a vllm bug
@@ -206,8 +207,8 @@ data:
     examples_type: null
     config_dir: null
     template_dir: null
-  train_data_path: ???
-  val_data_path: ???
+  train_data_path: null
+  val_data_path: null
 
 env:
   math:

@@ -88,6 +88,8 @@ def load_jsonl_as_dataset(
 
 
 def extract_dataset(split, dataset_path):
+    if dataset_path is None:
+        return None
     if not dataset_path.startswith("/"):
         original_ds = load_dataset(dataset_path, split=split)
     else:
@@ -106,7 +108,8 @@ def format_passthrough(data):
 def prepare_math_dataset(split_ds):
     # Format the examples, removing original columns
     train_formatted = split_ds["train"].map(format_passthrough)
-    val_formatted = split_ds["validation"].map(format_passthrough)
+    val_raw = split_ds.get("validation", None)
+    val_formatted = None if val_raw is None else val_raw.map(format_passthrough)
 
     return {
         "train": train_formatted,

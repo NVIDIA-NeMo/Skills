@@ -6,7 +6,7 @@ sft:
   max_num_epochs: 100000000
   max_num_steps: 100000000
 
-  val_period: ${checkpointing.save_period}
+  val_period: 0
   val_batches: 1
   val_global_batch_size: 32
   val_micro_batch_size: 1

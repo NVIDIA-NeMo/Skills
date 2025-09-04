@@ -15,7 +15,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -80,7 +80,9 @@ class NemoRLTask:
         return cmd
 
     def format_data_args(self):
-        cmd = f"+data.train_data_path={self.prompt_data} +data.val_data_path={self.eval_data} "
+        cmd = f"+data.train_data_path={self.prompt_data} "
+        if self.eval_data is not None:
+            cmd += f"+data.val_data_path={self.eval_data} "
         return cmd
 
     def format_wandb_args(self):
@@ -191,7 +193,7 @@ def sft_nemo_rl(
     expname: str = typer.Option("openrlhf-ppo", help="Nemo run experiment name"),
     hf_model: str = typer.Option(..., help="Path to the HF model"),
     training_data: str = typer.Option(None, help="Path to the training data"),
-    validation_data: str = typer.Option(None, help="Path to the validation data"),
+    validation_data: Optional[str] = typer.Option(None, help="Path to the validation data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs"),
     num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
@@ -293,9 +295,7 @@ def sft_nemo_rl(
             raise ValueError("training_data is required when num_training_jobs > 0")
         if training_data.startswith("/"):  # could ask to download from HF
             training_data = get_mounted_path(cluster_config, training_data)
-        if validation_data is None:
-            validation_data = training_data
-        else:
+        if validation_data is not None:
             validation_data = get_mounted_path(cluster_config, validation_data)
 
     train_cmd = get_training_cmd(
