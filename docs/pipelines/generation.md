@@ -386,7 +386,7 @@ We also support automatic trimming of generation budget or context when using vl
     ```
     To specify this setting for the generation or eval pipeline use
     ```bash
-        ++enable_soft_fail=True
+        ++server.enable_soft_fail=True
         ++server.context_limit_retry_strategy=reduce_generation
     ```
 
@@ -417,7 +417,7 @@ We also support automatic trimming of generation budget or context when using vl
     ```
     To specify this setting for the generation or eval pipeline use
     ```bash
-        ++enable_soft_fail=True
+        ++server.enable_soft_fail=True
         ++server.context_limit_retry_strategy=reduce_prompt_from_start
     ```
 
@@ -449,6 +449,6 @@ We also support automatic trimming of generation budget or context when using vl
     ```
     To specify this setting for the generation or eval pipeline use
     ```bash
-        ++enable_soft_fail=True
+        ++server.enable_soft_fail=True
         ++server.context_limit_retry_strategy=reduce_prompt_from_end
     ```
