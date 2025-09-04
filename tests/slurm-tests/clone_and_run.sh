@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# schedule with chron on a machine with corresponding cluster config setup, e.g. to run each Friday at 5pm
-# 0 17 * * 5 NEMO_SKILLS_CONFIG_DIR=<path to the configs dir> <path to a copy of this script> <cluster name> > /tmp/nemo-skills-slurm-cron.log 2>&1
+# schedule with chron on a machine with corresponding cluster config setup, e.g. to run each Sunday at 5am
+# 0 5 * * 0 HF_TOKEN=<> WANDB_API_KEY=<> NEMO_SKILLS_CONFIG_DIR=<path to the configs dir> <path to a copy of this script> <cluster name> > /tmp/nemo-skills-slurm-cron.log 2>&1
 # the metrics will be logged in w&b and you will get emails on failure as long as it's configured in your config
 
 LOCAL_WORKSPACE=/tmp/nemo-skills-slurm-ci
