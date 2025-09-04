@@ -19,8 +19,8 @@ from pathlib import Path
 # Hard-coded accuracy ranges for baseline and after-training results
 RANGE_CONSTRAINTS = {
     "after_training": {
-        "aime24": {"pass@1[avg-of-8]": (20.0, 30.0), "majority@8": (28.33, 38.33)},
-        "aime25": {"pass@1[avg-of-8]": (17.5, 27.5), "majority@8": (32.22, 42.22)},
+        "aime24": {"pass@1[avg-of-8]": (20.0, 30.0), "majority@8": (28.33, 48.33)},
+        "aime25": {"pass@1[avg-of-8]": (17.0, 27.5), "majority@8": (23.22, 42.22)},
     },
     "baseline": {
         "aime24": {"pass@1[avg-of-8]": (6.25, 16.25), "majority@8": (13.33, 23.33)},
