@@ -101,7 +101,7 @@ class GenerateSolutionsConfig:
 
     # maximum number of concurrent requests to the server for the async loop
     # if sync loop is used, this is the batch size
-    max_concurrent_requests: int = 1024
+    max_concurrent_requests: int = 512
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
     chunk_id: int | None = None  # if specified, will index the specified chunk only
