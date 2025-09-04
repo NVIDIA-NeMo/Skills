@@ -1,15 +1,10 @@
 import types
 
 import pytest
-from omegaconf import OmegaConf
 
 # Dummy client to exercise MCPClientMeta behavior without real I/O
-from nemo_skills.mcp.clients import (
-    MCPClient,
-    MCPClientManager,
-    MCPStdioClient,
-    MCPStreamableHttpClient,
-)
+from nemo_skills.mcp.clients import MCPClient, MCPStdioClient, MCPStreamableHttpClient
+from nemo_skills.mcp.tool_manager import Tool, ToolManager
 
 
 class DummyClient(MCPClient):
@@ -130,56 +125,85 @@ def test_minimal_client_defaults_and_sanitize():
     assert clean == {"x": 1}
 
 
+class DummyTool(Tool):
+    def __init__(self) -> None:
+        self._cfg = {}
+
+    def default_config(self):
+        return {}
+
+    def configure(self, overrides=None, context=None):
+        return None
+
+    async def list_tools(self):
+        return [
+            {
+                "name": "execute",
+                "description": "Run code",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"code": {"type": "string"}},
+                    "required": ["code"],
+                },
+            },
+            {
+                "name": "echo",
+                "description": "Echo input",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"text": {"type": "string"}},
+                    "required": ["text"],
+                },
+            },
+        ]
+
+    async def execute(self, tool_name: str, arguments: dict, extra_args: dict | None = None):
+        if tool_name == "execute":
+            return {"ran": True, "code": arguments.get("code")}
+        if tool_name == "echo":
+            return {"echo": arguments.get("text")}
+        return {"unknown": tool_name, "args": arguments}
+
+
 @pytest.mark.asyncio
-async def test_manager_register_and_tool_map_and_execute():
-    c1 = DummyClient()
-    c2 = DummyClient()
-
-    # Pre-populate tool listings so register builds initial tool_map entries
-    manager = MCPClientManager()
-    manager.register("c1", c1)
-    manager.register("c2", c2)
-
-    # Initial tool_map should include pre-populated tools
-    assert any(k.startswith("c1.") for k in manager.tool_map)
-    assert any(k.startswith("c2.") for k in manager.tool_map)
-
-    tools = await manager.list_all_tools(use_cache=False)
+async def test_tool_manager_list_and_execute_with_class_locator():
+    # Register this test module's DummyTool via module locator
+    tm = ToolManager(module_specs=["tests.test_mcp_clients::DummyTool"], overrides={}, context={})
+    tools = await tm.list_all_tools(use_cache=False)
     names = sorted(t["name"] for t in tools)
-    # Each client contributes two tools
-    assert names == ["c1.echo", "c1.execute", "c2.echo", "c2.execute"]
+    assert names == ["DummyTool.echo", "DummyTool.execute"]
 
-    # Execute should route to underlying client with bare tool name
-    result = await manager.execute_tool("c1.execute", {"code": "x=1"})
+    result = await tm.execute_tool("DummyTool.execute", {"code": "x=1"})
     assert result == {"ran": True, "code": "x=1"}
 
 
 @pytest.mark.asyncio
-async def test_manager_list_all_tools_uses_cache_and_duplicate_detection():
-    calls = {"c": 0}
+async def test_tool_manager_cache_and_duplicate_detection():
+    calls = {"n": 0}
 
-    class CountingClient(DummyClient):
+    class CountingTool(DummyTool):
         async def list_tools(self):
-            calls["c"] += 1
+            calls["n"] += 1
             return await super().list_tools()
 
-    manager = MCPClientManager()
-    c = CountingClient()
-    manager.register("c", c)
+    # Expose CountingTool from this module for locate
+    globals()["CountingTool"] = CountingTool
+    tm = ToolManager(module_specs=["tests.test_mcp_clients::CountingTool"], overrides={}, context={})
+    _ = await tm.list_all_tools(use_cache=True)
+    _ = await tm.list_all_tools(use_cache=True)
+    assert calls["n"] == 1
+    _ = await tm.list_all_tools(use_cache=False)
+    assert calls["n"] == 2
 
-    _ = await manager.list_all_tools(use_cache=True)
-    _ = await manager.list_all_tools(use_cache=True)
-    # Only first call should trigger underlying list_tools due to cache
-    assert calls["c"] == 1
+    class DupTool(DummyTool):
+        async def list_tools(self):
+            lst = await super().list_tools()
+            return [lst[0], lst[0]]  # duplicate names within same tool
 
-    # Duplicate detection: same client returns duplicate raw tool names
-    dup = DummyClient()
-    # Force duplicate name entries inside a single client's tool list
-    dup.tools = [dup.tools[0], dup.tools[0]]
-    manager2 = MCPClientManager()
-    manager2.register("d", dup)
+    globals()["DupTool"] = DupTool
+    tm2 = ToolManager(module_specs=["tests.test_mcp_clients::DupTool"], overrides={}, context={})
     with pytest.raises(ValueError):
-        await manager2.list_all_tools(use_cache=False)
+        await tm2.list_all_tools(use_cache=False)
 
 
 @pytest.mark.asyncio
@@ -457,75 +481,3 @@ async def test_streamable_http_client_enforcement(monkeypatch):
     client = MCPStreamableHttpClient(base_url="https://example.com/mcp", enabled_tools=["only_t2"])  # not including t1
     with pytest.raises(PermissionError):
         await client.call_tool("t1", {})
-
-
-@pytest.mark.asyncio
-async def test_build_manager_resolves_output_formatter_and_init_hook_locate_hydra(monkeypatch):
-    # Build config with $locate for init_hook and string locate for output_formatter
-    cfg = OmegaConf.create(
-        {
-            "tools": [
-                {
-                    "id": "py",
-                    "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                    "params": {
-                        "command": "python",
-                        "args": ["-m", "nemo_skills.mcp.servers.python_tool"],
-                        "init_hook": {
-                            "$locate": "nemo_skills.mcp.utils.hydra_config_connector_factory",
-                            "kwargs": {"config_obj": "@@full_config"},
-                        },
-                        "output_formatter": "nemo_skills.mcp.utils.exa_output_formatter",
-                    },
-                }
-            ]
-        }
-    )
-
-    import nemo_skills.mcp.utils as utils_mod
-    from nemo_skills.mcp.config import build_client_manager
-
-    manager = build_client_manager(cfg)
-    client = manager.get_client("py")
-    assert isinstance(client, MCPStdioClient)
-
-    # init_hook should have executed and appended hydra args
-    args_list = list(client.server_params.args)
-    assert "--config-dir" in args_list and "--config-name" in args_list
-
-    # output formatter should be resolved callable
-    assert client.output_formatter is utils_mod.exa_output_formatter
-
-
-@pytest.mark.asyncio
-async def test_build_manager_locate_string_for_output_formatter_and_init_hook_string(monkeypatch):
-    # Ensure env var is present for exa_auth_connector side-effect
-    monkeypatch.setenv("EXA_API_KEY", "KEY123")
-
-    cfg = OmegaConf.create(
-        {
-            "tools": [
-                {
-                    "id": "http",
-                    "client": "nemo_skills.mcp.clients.MCPStreamableHttpClient",
-                    "params": {
-                        "base_url": "https://host/mcp",
-                        "output_formatter": "nemo_skills.mcp.utils.exa_output_formatter",
-                        "init_hook": "nemo_skills.mcp.utils.exa_auth_connector",
-                    },
-                }
-            ]
-        }
-    )
-
-    import nemo_skills.mcp.utils as utils_mod
-    from nemo_skills.mcp.config import build_client_manager
-
-    manager = build_client_manager(cfg)
-    client = manager.get_client("http")
-    assert isinstance(client, MCPStreamableHttpClient)
-
-    # init_hook should have modified base_url to include API key
-    assert client.base_url.endswith("?exaApiKey=KEY123")
-    # output formatter should be resolved callable
-    assert client.output_formatter is utils_mod.exa_output_formatter

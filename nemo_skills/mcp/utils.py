@@ -34,13 +34,17 @@ def locate(path):
     if not isinstance(path, str):
         return path
 
-    # Handle file path with ::attribute syntax
+    # Double-colon syntax for both modules and files: module::Class or path.py::Class
     if "::" in path:
-        file_path, attr_name = path.split("::", 1)
-        module_name = os.path.splitext(os.path.basename(file_path))[0]
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        left, attr_name = path.split("::", 1)
+        # If it's a file path (endswith .py or exists), load from file; otherwise import module
+        if left.endswith(".py") or os.path.exists(left):
+            module_name = os.path.splitext(os.path.basename(left))[0]
+            spec = importlib.util.spec_from_file_location(module_name, left)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return getattr(module, attr_name)
+        module = importlib.import_module(left)
         return getattr(module, attr_name)
 
     # Handle standard dotted module path

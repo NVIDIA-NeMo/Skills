@@ -72,10 +72,22 @@ def get_online_genselect_model(model, tokenizer=None, online_genselect_config=No
     return OnlineGenSelectWrapper(model=model, cfg=online_genselect_config or OnlineGenSelectConfig())
 
 
-def get_tool_calling_model(model, tool_config, tokenizer=None, additional_config=None, **kwargs):
+def get_tool_calling_model(
+    model,
+    tokenizer=None,
+    additional_config=None,
+    tool_modules: list[str] | None = None,
+    tool_overrides: dict | None = None,
+    **kwargs,
+):
     if isinstance(model, str):
         model = get_model(model=model, tokenizer=tokenizer, **kwargs)
-    return ToolCallingWrapper(model, tool_config_yaml=tool_config, additional_config=additional_config)
+    return ToolCallingWrapper(
+        model,
+        tool_modules=tool_modules,
+        tool_overrides=tool_overrides,
+        additional_config=additional_config,
+    )
 
 
 def server_params():

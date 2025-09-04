@@ -21,6 +21,8 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from nemo_skills.mcp.tool_providers import MCPClientTool
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +76,48 @@ def main():
 
     # Initialize and run the server
     mcp.run(transport="stdio")
+
+
+# ==============================
+# Module-based tool implementation
+# ==============================
+
+
+class ExaTool(MCPClientTool):
+    def __init__(self) -> None:
+        super().__init__()
+        # Defaults for stdio Exa server launch using explicit client class
+        self.apply_config_updates(
+            {
+                "client": "nemo_skills.mcp.clients.MCPStdioClient",
+                "client_params": {
+                    "command": "python",
+                    "args": ["-m", "nemo_skills.mcp.servers.exa_tool"],
+                },
+                "hide_args": {},
+                "init_hook": "nemo_skills.mcp.utils.exa_stdio_connector",
+            }
+        )
+
+
+class ExaMCPTool(MCPClientTool):
+    def __init__(self) -> None:
+        super().__init__()
+        # Defaults for Exa hosted MCP over HTTP using explicit client class
+        self.apply_config_updates(
+            {
+                "client": "nemo_skills.mcp.clients.MCPStreamableHttpClient",
+                "client_params": {
+                    "base_url": "https://mcp.exa.ai/mcp",
+                },
+                # Add API key via query param using the helper
+                "init_hook": "nemo_skills.mcp.utils.exa_auth_connector",
+                # Optional: limit to specific tools
+                # "enabled_tools": ["web_search_exa"],
+                # Parse structured output conveniently
+                "output_formatter": "nemo_skills.mcp.utils.exa_output_formatter",
+            }
+        )
 
 
 if __name__ == "__main__":

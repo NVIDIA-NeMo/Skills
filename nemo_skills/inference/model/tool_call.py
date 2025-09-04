@@ -19,10 +19,12 @@ import logging
 from collections import defaultdict
 from typing import Dict, List
 
-import yaml
-from omegaconf import OmegaConf
-
-from nemo_skills.mcp.config import build_client_manager, resolve_adapters
+from nemo_skills.mcp.adapters import (
+    ChatCompletionCallInterpreter,
+    ChatCompletionResponseFormatter,
+    OpenAISchemaAdapter,
+)
+from nemo_skills.mcp.tool_manager import ToolManager
 from nemo_skills.utils import get_logger_name
 
 from .base import BaseModel
@@ -37,18 +39,29 @@ class ToolCallingWrapper:
     TODO(sanyamk): Supports only Chat Completions API for now.
     """
 
-    def __init__(self, model: BaseModel, tool_config_yaml: str, additional_config: dict):
+    def __init__(
+        self,
+        model: BaseModel,
+        tool_modules: list[str] | None = None,
+        tool_overrides: dict | None = None,
+        additional_config: dict | None = None,
+    ):
         self.model = model
+        additional_config = additional_config or {}
 
-        ## FIXME(sanyamk): redo configuration specification.
-        with open(tool_config_yaml) as f:
-            tool_cfg = yaml.safe_load(f)
-        tool_cfg.update(additional_config)
-        tool_cfg = OmegaConf.create(tool_cfg)
+        self.tool_manager = None
 
-        self.client_manager = build_client_manager(tool_cfg)
-        ## FIXME(sanyamk): All these need to be cohesive, so might as well be a single class.
-        self.schema_adapter, self.call_interpreter, self.response_formatter = resolve_adapters(tool_cfg)
+        # Module-based tool loading only
+        assert tool_modules, "tool_modules must be provided for tool calling"
+        self.tool_manager = ToolManager(
+            module_specs=tool_modules,
+            overrides=tool_overrides or {},
+            context=additional_config,
+        )
+        # Use sensible defaults for adapters in module-based mode
+        self.schema_adapter = OpenAISchemaAdapter()
+        self.call_interpreter = ChatCompletionCallInterpreter()
+        self.response_formatter = ChatCompletionResponseFormatter()
 
     async def _execute_tool_call(self, tool_call):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
@@ -66,7 +79,8 @@ class ToolCallingWrapper:
 
         ## TODO(sanyamk): Only exceptions related to tool execution here, all others must fail.
         try:
-            result = await self.client_manager.execute_tool(tool_name, tool_args)
+            # Allow providers to specify extra_args behavior internally if needed in the future
+            result = await self.tool_manager.execute_tool(tool_name, tool_args, extra_args=None)
         except Exception as e:
             LOG.exception(e)
             return {"error": "Tool execution failed."}
@@ -90,9 +104,10 @@ class ToolCallingWrapper:
     ) -> Dict:
         assert isinstance(prompt, list), "Only use ChatCompletion API for now."
 
-        assert tools is None, "Specify ++tool_config=</path/to/file.yaml> only."
+        assert tools is None, "Do not pass 'tools'; they are derived from tool_modules."
 
-        tools = self.schema_adapter.convert(await self.client_manager.list_all_tools())
+        raw_tools = await self.tool_manager.list_all_tools()
+        tools = self.schema_adapter.convert(raw_tools)
 
         result_steps = defaultdict(list)
         conversation = copy.deepcopy(prompt)

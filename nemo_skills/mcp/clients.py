@@ -13,6 +13,7 @@
 # limitations under the License.
 import copy
 import functools
+import json
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List
 
@@ -104,6 +105,7 @@ def _wrap_call_tool_output_formatter(method):
         # Normalize to keyword-style and sanitize before delegating.
         tool_name = kwargs.get("tool") if "tool" in kwargs else (args[0] if len(args) >= 1 else None)
         provided_args = kwargs.get("args") if "args" in kwargs else (args[1] if len(args) >= 2 else None)
+        extra_args = kwargs.pop("extra_args", None)
 
         if tool_name is None:
             raise TypeError("call_tool requires 'tool' as first positional or keyword argument")
@@ -111,9 +113,14 @@ def _wrap_call_tool_output_formatter(method):
             raise TypeError("call_tool requires 'args' dict as second positional or keyword argument")
 
         sanitized_args = self.sanitize(tool_name, provided_args)
+        # Merge in extra_args AFTER sanitization so hidden/internal keys can be sent intentionally
+        if isinstance(extra_args, dict) and extra_args:
+            merged_args = {**sanitized_args, **extra_args}
+        else:
+            merged_args = sanitized_args
 
         # Delegate with normalized kwargs only to avoid leaking unexpected kwargs
-        result = await method(self, tool=tool_name, args=sanitized_args)
+        result = await method(self, tool=tool_name, args=merged_args)
         output_formatter = getattr(self, "output_formatter", None)
         if callable(output_formatter):
             return output_formatter(result)
@@ -488,102 +495,17 @@ class MCPStdioClient(MCPClient):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(tool, arguments=args)
-                return result.structuredContent
-
-
-class MCPClientManager:
-    """Registry and orchestrator for multiple MCP clients.
-
-    Responsibilities:
-    - register(name, client): Add a client under a unique name.
-    - list_all_tools(): Merge tool listings across clients; names are qualified
-      as "{client}.{tool}" to avoid collisions.
-    - execute_tool(tool_name, args): Route a qualified tool call to the owning
-      client (stripping the client prefix automatically).
-
-    Example (using config loader, like in mcp_demo.py):
-    ```python
-    from omegaconf import OmegaConf
-    from nemo_skills.mcp.config import build_client_manager
-
-    cfg = OmegaConf.create({
-        "tools": [
-            {"id": "python", "client": "nemo_skills.mcp.clients.MCPStdioClient", "params": {"command": "python", "args": ["-m", "nemo_skills.mcp.servers.python_tool"]}},
-            {"id": "exa_mcp", "client": "nemo_skills.mcp.clients.MCPStreamableHttpClient", "params": {"base_url": "https://mcp.exa.ai/mcp"}},
-        ]
-    })
-    manager = build_client_manager(cfg)
-    tools = await manager.list_all_tools()
-    out = await manager.execute_tool("python.execute", {"code": "print('ok')"})
-    ```
-
-    Example (manual registration):
-    ```python
-    manager = MCPClientManager()
-    manager.register("python", MCPStdioClient(command="python", args=["-m", "nemo_skills.mcp.servers.python_tool"]))
-    tools = await manager.list_all_tools()
-    out = await manager.execute_tool("python.execute", {"code": "print('ok')"})
-    ```
-    """
-
-    def __init__(self):
-        self.clients = {}
-        self.tool_map: dict[str, str] = {}  # maps "client.tool" -> client_name
-        self._tools_cache: list[dict[str, Any]] | None = None
-
-    def register(self, name: str, client: MCPClient):
-        # Enforce uniqueness of client (top-level) ids
-        if name in self.clients:
-            raise ValueError(f"Client name already registered: {name}")
-        self.clients[name] = client
-        for tool in client.tools:
-            raw_tool_name = tool.get("name")
-            if raw_tool_name is None:
-                continue
-            full_tool_name = f"{name}.{raw_tool_name}"
-            self.tool_map[full_tool_name] = name
-
-    def get_client(self, name: str):
-        return self.clients.get(name)
-
-    async def list_all_tools(self, use_cache: bool = True) -> list[dict[str, Any]]:
-        """
-        Return merged tool list from all clients.
-        Most recently registered clients override earlier ones for tool name collisions.
-        """
-        if use_cache and self._tools_cache is not None:
-            return self._tools_cache
-
-        all_tools: dict[str, dict[str, Any]] = {}
-        for client_name, client in self.clients.items():
-            tools = await client.list_tools()
-            for t in tools:
-                raw_name = t["name"]
-                full_name = f"{client_name}.{raw_name}"
-                # Use full name in the merged listing
-                if full_name in all_tools:
-                    raise ValueError(f"Duplicate fully-qualified tool id detected: '{full_name}'")
-                merged_tool = {"server": client_name, **t, "name": full_name}
-                all_tools[full_name] = merged_tool
-
-        self._tools_cache = list(all_tools.values())
-
-        # Update tool_map for fast resolution
-        self.tool_map = {t["name"]: t["server"] for t in self._tools_cache}
-
-        return self._tools_cache
-
-    def get_client_for_tool(self, tool_name: str) -> MCPClient:
-        if "." not in tool_name:
-            raise ValueError(f"Tool name must be in 'client.tool' format. Received: '{tool_name}'")
-        client_name, _ = tool_name.split(".", 1)
-        client = self.clients.get(client_name)
-        if client is None:
-            raise ValueError(f"No client registered with name {client_name}")
-        return client
-
-    async def execute_tool(self, tool_name: str, args: dict):
-        client = self.get_client_for_tool(tool_name)
-        # Strip client prefix before delegating to the underlying client
-        bare_tool_name = tool_name.split(".", 1)[1] if "." in tool_name else tool_name
-        return await client.call_tool(bare_tool_name, args)
+                struct = getattr(result, "structuredContent", None)
+                if struct is not None:
+                    return struct
+                # Fallback: try to parse first content item as JSON, else return text
+                content = getattr(result, "content", None)
+                if content:
+                    first = content[0]
+                    text = getattr(first, "text", None)
+                    if isinstance(text, str):
+                        try:
+                            return json.loads(text)
+                        except Exception:
+                            return text
+                return result
