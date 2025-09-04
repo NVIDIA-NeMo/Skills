@@ -6,14 +6,6 @@ We assume you have `/workspace` defined in your [cluster config](../../basics/cl
 executing all commands from that folder locally. Change all commands accordingly
 if running on slurm or using different paths.
 
-## Download models
-
-Get the model from HF. E.g.
-
-```bash
-pip install -U "huggingface_hub[cli]"
-huggingface-cli download nvidia/OpenMath2-Llama3.1-8B --local-dir OpenMath2-Llama3.1-8B
-```
 
 ## Prepare evaluation data
 
@@ -26,7 +18,7 @@ ns prepare_data gsm8k math amc23 aime24 omni-math
 ```bash
 ns eval \
     --cluster=local \
-    --model=/workspace/OpenMath2-Llama3.1-8B \
+    --model=nvidia/OpenMath2-Llama3.1-8B \
     --server_type=trtllm \
     --output_dir=/workspace/openmath2-llama3.1-8b-eval \
     --benchmarks=aime24,amc23,math,gsm8k,omni-math \
@@ -97,7 +89,7 @@ The numbers may vary by 1-2% depending on the server type, number of GPUs and ba
 ```bash
 ns eval \
     --cluster=local \
-    --model=/workspace/OpenMath2-Llama3.1-8B \
+    --model=nvidia/OpenMath2-Llama3.1-8B \
     --server_type=trtllm \
     --output_dir=/workspace/openmath2-llama3.1-8b-eval \
     --benchmarks=aime24:256,amc23:256,math:256,gsm8k:256,omni-math:256 \

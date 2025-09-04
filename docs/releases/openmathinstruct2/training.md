@@ -51,16 +51,12 @@ python -m nemo_skills.training.prepare_data \
 
 ## Prepare base model
 
-Download the base model and convert it to NeMo format.
 The instructions below are for Llama3.1-8B, but the same commands should work for 70B model as well.
 
 ```bash
-pip install -U "huggingface_hub[cli]"
-huggingface-cli download meta-llama/Llama-3.1-8B --local-dir Llama-3.1-8B
-
 ns convert \
     --cluster=local \
-    --input_model=/workspace/Llama-3.1-8B \
+    --input_model=meta-llama/Llama-3.1-8B \
     --output_model=/workspace/llama3.1-8b-nemo \
     --convert_from=hf \
     --convert_to=nemo \

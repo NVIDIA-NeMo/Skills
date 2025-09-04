@@ -58,6 +58,7 @@ def get_args():
     parser.add_argument("--override", action="store_true", help="Override existing output directory if it exists.")
     parser.add_argument("--nemo-format", choices=["zarr", "torch_dist"], default="zarr", help="NeMo checkpoint format")
     args = parser.parse_args()
+
     return args
 
 
@@ -135,8 +136,6 @@ def load_state_dict_helper(cls, cfg, trainer: Trainer, state_dict):
 
 
 def convert(args):
-    args.in_path = os.path.abspath(args.in_path)
-    args.out_path = os.path.abspath(args.out_path)
     logging.info(f"loading checkpoint {args.in_path}")
 
     model = LlamaForCausalLM.from_pretrained(args.in_path)

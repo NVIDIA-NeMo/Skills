@@ -39,12 +39,9 @@ Here we assume that model is hosted on 16 H100 GPUs, but other GPU configuration
 modifications to commands.
 
 To download the model you can run the following from `/workspace` folder on Slurm.
-We will also need [Qwen2.5-32B-Instruct](https://huggingface.co/Qwen/Qwen2.5-32B-Instruct) to use as the judge
-for answer correctness.
 
 ```bash
-huggingface-cli download deepseek-ai/DeepSeek-R1-0528 --local-dir DeepSeek-R1-0528
-huggingface-cli download Qwen/Qwen2.5-32B-Instruct --local-dir Qwen2.5-32B-Instruct
+hf download deepseek-ai/DeepSeek-R1-0528 --local-dir DeepSeek-R1-0528
 ```
 
 The next step is optional, but we recommend sharding the checkpoint to avoid very long loading time.
@@ -117,7 +114,7 @@ generate(
     output_dir=f"/workspace/open-reasoning/sdg/solutions-judged",
     expname="r1-0528-math-solutions-judge",
     run_after="r1-0528-math-solutions",
-    model="/workspace/Qwen2.5-32B-Instruct",
+    model="Qwen/Qwen2.5-32B-Instruct",
     server_type="sglang",
     server_gpus=8,
     num_random_seeds=num_solutions,
@@ -150,7 +147,7 @@ generate(
     output_dir=f"/workspace/open-reasoning/sdg/maj-if-no-correct-judged",
     expname="r1-0528-math-solutions-judge-after-majority",
     run_after="change-to-majority-if-no-correct",
-    model="/workspace/Qwen2.5-32B-Instruct",
+    model="Qwen/Qwen2.5-32B-Instruct",
     server_type="sglang",
     server_gpus=8,
     num_random_seeds=num_solutions,

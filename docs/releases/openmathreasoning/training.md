@@ -144,7 +144,7 @@ Here is an example of commands for Qwen2.5-Math-1.5B
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-huggingface-cli download Qwen/Qwen2.5-Math-1.5B --local-dir Qwen2.5-Math-1.5B
+hf download Qwen/Qwen2.5-Math-1.5B --local-dir Qwen2.5-Math-1.5B
 ```
 
 For 1.5B and 7B models we use "Math" models, so we also need to update their rope base and max positional embeddings.

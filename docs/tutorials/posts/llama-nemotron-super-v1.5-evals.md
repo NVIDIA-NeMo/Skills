@@ -21,7 +21,7 @@ executing all commands from that folder locally. Change all commands accordingly
 Get the model from HF.
 ```bash
 pip install -U "huggingface_hub[cli]"
-huggingface-cli download nvidia/Llama-3_3-Nemotron-Super-49B-v1_5 --local-dir /workspace/Llama-3_3-Nemotron-Super-49B-v1_5
+hf download nvidia/Llama-3_3-Nemotron-Super-49B-v1_5 --local-dir /workspace/Llama-3_3-Nemotron-Super-49B-v1_5
 ```
 
 !!!note
@@ -164,7 +164,7 @@ Tool-calling benchmarks require tool-call parsing and execution. NeMo-Skills sup
 ns eval \
     --cluster=local \
     --benchmarks=bfcl_v3 \
-    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5/ \
+    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
     --server_gpus=2 \
     --server_type=vllm \
     --output_dir=/workspace/llama_nemotron_49b_1_5_tool_calling/ \
@@ -385,7 +385,7 @@ ns eval \
 ns eval \
     --cluster=local \
     --benchmarks=bfcl_v3 \
-    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5/ \
+    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
     --server_gpus=2 \
     --server_type=vllm \
     --output_dir=/workspace/llama_nemotron_49b_1_5_reasoning_off_tool_calling/ \

@@ -48,9 +48,7 @@ Here are the steps to download/convert all models that we used to create this da
 Download the models by running this on cluster from the path that is mounted as `/hf_models` in your cluster config.
 ```
 pip install -U "huggingface_hub[cli]"
-huggingface-cli download Qwen/Qwen2.5-32B-Instruct --local-dir Qwen2.5-32B-Instruct
-huggingface-cli download Qwen/QwQ-32B --local-dir QwQ-32B
-huggingface-cli download deepseek-ai/DeepSeek-R1 --local-dir DeepSeek-R1
+hf download deepseek-ai/DeepSeek-R1 --local-dir DeepSeek-R1
 ```
 
 At the time of our experiments serving DeepSeek-R1 model with sglang was faster than with TensorRT-LLM, so

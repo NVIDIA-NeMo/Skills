@@ -18,7 +18,7 @@ max_solutions: 16
 # Define judge model server parameters
 generate_kwargs: &generate_kwargs
   # Model to be used for GenSelect output generation
-  model: /hf_models/QwQ-32B-24k-input
+  model: Qwen/QwQ-32B
   # Server type to launch the model
   server_type: trtllm
   # Server parameters
@@ -29,7 +29,7 @@ generate_kwargs: &generate_kwargs
 generate_new_summaries_kwargs:
   <<: *generate_kwargs
   # Summarization model
-  model: /hf_models/Qwen2.5-32B-Instruct
+  model: Qwen/Qwen2.5-32B-Instruct
   # Generate 4 new summaries for each solution
   num_random_seeds: 4
 

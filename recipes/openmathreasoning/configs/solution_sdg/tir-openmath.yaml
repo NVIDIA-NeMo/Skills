@@ -17,7 +17,7 @@ initial_dependency: ${expname}-merge-data-qwen-instruct
 # Define judge model server parameters
 generate_kwargs: &generate_kwargs
   # Model to be used for answer judgement
-  model: /hf_models/Qwen2.5-32B-Instruct
+  model: Qwen/Qwen2.5-32B-Instruct
   # Server type to launch the model
   server_type: trtllm
   # Server parameters
@@ -72,7 +72,7 @@ stages:
     stage_kwargs:
       # you can take our published model from HF and use it as data generator
       # https://huggingface.co/nvidia/OpenMath-Nemotron-14B
-      model: /trt_models/openmath-nemotron-14b
+      model: nvidia/OpenMath-Nemotron-14B
       with_sandbox: true
       server_type: trtllm
       server_gpus: 8

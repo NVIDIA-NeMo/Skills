@@ -17,7 +17,7 @@ initial_dependency: ${expname}-merge-data-qwen-instruct
 # Define judge model server parameters
 generate_kwargs: &generate_kwargs
   # Model to be used for answer judgement
-  model: /hf_models/Qwen2.5-32B-Instruct
+  model: Qwen/Qwen2.5-32B-Instruct
   # Server type to launch the model
   server_type: trtllm
   # Server parameters
@@ -61,7 +61,7 @@ stages:
     inline_args: "++inference.tokens_to_generate=16384"
     # Arguments passed as kwargs to the pipeline function (e.g. generate())
     stage_kwargs:
-      model: /hf_models/QwQ-32B
+      model: Qwen/QwQ-32B
       server_type: trtllm
       server_gpus: 8
       server_nodes: 1

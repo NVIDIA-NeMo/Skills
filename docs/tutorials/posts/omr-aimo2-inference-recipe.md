@@ -64,10 +64,10 @@ export HF_TOKEN=hf_YOUR_HUGGING_FACE_TOKEN # Replace with your actual token
 pip install -U "huggingface_hub[cli]"
 
 # Download the 14B parameter main model
-huggingface-cli download nvidia/OpenMath-Nemotron-14B-kaggle --local-dir OpenMath-Nemotron-14B-kaggle
+hf download nvidia/OpenMath-Nemotron-14B-kaggle --local-dir OpenMath-Nemotron-14B-kaggle
 
 # Download the OpenMathReasoning dataset for calibration
-huggingface-cli download nvidia/OpenMathReasoning --repo-type dataset --local-dir OpenMathReasoning
+hf download nvidia/OpenMathReasoning --repo-type dataset --local-dir OpenMathReasoning
 ```
 
 ### Preparing the Calibration Dataset for FP8 Quantization

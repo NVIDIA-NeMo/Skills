@@ -298,12 +298,22 @@ def convert(
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
 
-    input_model, output_model, log_dir = check_mounts(
-        cluster_config,
-        log_dir=log_dir,
-        mount_map={input_model: "/input_model", output_model: "/output_model"},
-        check_mounted_paths=check_mounted_paths,
-    )
+    if convert_from == "hf" and not input_model.startswith("/"):
+        # For HF, we don't need to check the input_model path if the huggingface model name is used
+        output_model, log_dir = check_mounts(
+            cluster_config,
+            log_dir=log_dir,
+            mount_map={output_model: "/output_model"},
+            check_mounted_paths=check_mounted_paths,
+        )
+
+    else:
+        input_model, output_model, log_dir = check_mounts(
+            cluster_config,
+            log_dir=log_dir,
+            mount_map={input_model: "/input_model", output_model: "/output_model"},
+            check_mounted_paths=check_mounted_paths,
+        )
 
     if log_dir is None:
         log_dir = str(Path(output_model) / "conversion-logs")

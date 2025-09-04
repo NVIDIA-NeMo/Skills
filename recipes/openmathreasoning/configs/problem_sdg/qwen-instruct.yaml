@@ -10,7 +10,7 @@ input_file: ${base_output_dir}/raw_aops_data.jsonl
 # Define judge model server parameters
 generate_kwargs:
   # Model to be used for data processing stages
-  model: /hf_models/Qwen2.5-32B-Instruct
+  model: Qwen/Qwen2.5-32B-Instruct
   # Server type to launch the model
   server_type: trtllm
   # Server parameters

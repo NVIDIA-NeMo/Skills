@@ -19,14 +19,6 @@ if running on slurm or using different paths.
     across 64 generations. So please don't expect to see exactly the same numbers as presented in our paper, but
     they should be within 3-6% of reported results.
 
-## Download models
-
-Get the model from HF. E.g.
-
-```bash
-pip install -U "huggingface_hub[cli]"
-huggingface-cli download nvidia/OpenMath-Nemotron-1.5B --local-dir OpenMath-Nemotron-1.5B
-```
 
 ## Prepare evaluation data
 
@@ -39,75 +31,59 @@ ns prepare_data comp-math-24-25 hle
 ```bash
 ns eval \
     --cluster=local \
-    --model=/workspace/OpenMath-Nemotron-1.5B \
+    --model=nvidia/OpenMath-Nemotron-1.5B \
     --server_type=sglang \
+    --server_gpus=1 \
     --output_dir=/workspace/openmath-nemotron-1.5b-eval-cot \
     --benchmarks=comp-math-24-25:64 \
-    --server_gpus=1 \
-    --num_jobs=1 \
-    ++prompt_config=generic/math \
-    ++inference.tokens_to_generate=32768 \
-    ++inference.temperature=0.6
-
-ns eval \
-    --cluster=local \
-    --model=/workspace/OpenMath-Nemotron-1.5B \
-    --server_type=sglang \
-    --output_dir=/workspace/openmath-nemotron-1.5b-eval-cot \
-    --benchmarks=hle:64 \
-    --server_gpus=1 \
-    --num_jobs=1 \
-    --split=math \
     ++prompt_config=generic/math \
     ++inference.tokens_to_generate=32768 \
     ++inference.temperature=0.6
 ```
 
-This will take a very long time unless you run on slurm cluster.
-If running on slurm, you can set `--num_jobs` to a bigger number of -1 to run
-each benchmark in a separate node. The number of GPUs need to match what you used
-in the conversion command.
+For hle-math it's necessary to run LLM-as-a-judge step to get accurate evaluation results.
+We use the [Qwen2.5-32B-Instruct](https://huggingface.co/Qwen/Qwen2.5-32B-Instruct) model as the judge which can be specified as follows.
 
-For comp-math-24-25 our symbolic checker is good enough, so we can see the results right away by running
+```bash
+ns eval \
+    --cluster=local \
+    --model=nvidia/OpenMath-Nemotron-1.5B \
+    --server_type=sglang \
+    --server_gpus=1 \
+    --output_dir=/workspace/openmath-nemotron-1.5b-eval-cot \
+    --benchmarks=hle:64 \
+    --split=math \
+    ++prompt_config=generic/math \
+    ++inference.tokens_to_generate=32768 \
+    ++inference.temperature=0.6 \
+    --judge_generation_type=math_judge \
+    --judge_model=Qwen/Qwen2.5-32B-Instruct \
+    --judge_server_gpus=4 \
+    --judge_server_type=sglang
+```
+
+Alternatively, you can use an API model like gpt-4o, but the results might be different.
+You need to define `OPENAI_API_KEY` to use the model.
+To use OpenAI models, such as, gpt-4o, make the following changes in the last three lines of the above command:
+
+```bash
+    --judge_model=gpt-4o \
+    --judge_server_type=openai \
+    --judge_server_address=https://api.openai.com/v1
+```
+
+
+This evaluation will take a very long time unless you run on slurm cluster.
+
+
+To print the metrics run:
 
 ```bash
 ns summarize_results /workspace/openmath-nemotron-1.5b-eval-cot/eval-results/comp-math-24-25 --metric_type math --cluster local
 ```
 
-For hle-math it's necessary to run LLM-as-a-judge step to get accurate evaluation results.
-We used [Qwen2.5-32B-Instruct](https://huggingface.co/Qwen/Qwen2.5-32B-Instruct) which you
-can run with the following command, assuming you have the model downloaded and converted locally
-or on cluster.
-
 ```bash
-ns generate \
-    --generation_type=math_judge \
-    --cluster=local \
-    --model=/hf_models/Qwen2.5-32B-Instruct \
-    --server_type=sglang \
-    --server_gpus=4 \
-    --output_dir=/workspace/openmath-nemotron-1.5b-eval-cot/eval-results-judged/hle \
-    --input_dir=/workspace/openmath-nemotron-1.5b-eval-cot/eval-results/hle
-```
-
-Alternatively, you can use an API model like gpt-4o, but the results might be different.
-You need to define `OPENAI_API_KEY` for the command below to work.
-
-```bash
-ns generate \
-    --generation_type=math_judge \
-    --cluster=local \
-    --model=gpt-4o \
-    --server_type=openai \
-    --server_address=https://api.openai.com/v1 \
-    --output_dir=/workspace/openmath-nemotron-1.5b-eval-cot/eval-results-judged/hle \
-    --input_dir=/workspace/openmath-nemotron-1.5b-eval-cot/eval-results/hle
-```
-
-To print the metrics run
-
-```bash
-ns summarize_results /workspace/openmath-nemotron-1.5b-eval-cot/eval-results-judged/hle --metric_type math --cluster local
+ns summarize_results /workspace/openmath-nemotron-1.5b-eval-cot/eval-results/hle --metric_type math --cluster local
 ```
 
 This should print the metrics including both symbolic and judge evaluation.
@@ -119,7 +95,7 @@ To get TIR evaluation numbers, replace the generation commands like this
 ```bash
 ns eval \
     --cluster=local \
-    --model=/workspace/OpenMath-Nemotron-1.5B \
+    --model=nvidia/OpenMath-Nemotron-1.5B \
     --server_type=sglang \
     --output_dir=/workspace/openmath-nemotron-1.5b-eval-tir \
     --benchmarks=comp-math-24-25:64 \
@@ -142,7 +118,7 @@ you should use the following options instead
 ```bash
 ns eval \
     --cluster=local \
-    --model=/workspace/OpenMath-Nemotron-14B-Kaggle \
+    --model=nvidia/OpenMath-Nemotron-14B-Kaggle \
     --server_type=sglang \
     --output_dir=/workspace/openmath-nemotron-14b-kaggle-eval-tir \
     --benchmarks=comp-math-24-25:64 \
@@ -167,7 +143,7 @@ Here is a sample command to run GenSelect evaluation:
 ```bash
 ns genselect \
     --preprocess_args="++input_dir=/workspace/openmath-nemotron-1.5b-eval-cot/eval-results-judged/hle" \
-    --model=/workspace/OpenMath-Nemotron-1.5B \
+    --model=nvidia/OpenMath-Nemotron-1.5B \
     --output_dir=/workspace/openmath-nemotron-1.5b-eval-cot/self_genselect_hle \
     --cluster=local \
     --server_type=sglang \

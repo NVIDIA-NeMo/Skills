@@ -32,8 +32,6 @@ def prepare(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
 
     # download the models and prepare the data
     cmd = (
-        f"huggingface-cli download Qwen/Qwen2.5-14B-Instruct --local-dir {workspace}/Qwen2.5-14B-Instruct && "
-        f"huggingface-cli download Qwen/QwQ-32B --local-dir {workspace}/QwQ-32B && "
         f"cd {workspace} && "
         f"export DOWNLOAD_PREFIX=https://raw.githubusercontent.com/NVIDIA/NeMo-Skills/refs/heads/main/recipes/openmathreasoning && "
         f"wget $DOWNLOAD_PREFIX/scripts/prepare_raw_data.py && "
@@ -54,7 +52,7 @@ def prepare(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
         convert(
             ctx=wrap_arguments(""),
             cluster=cluster,
-            input_model=f"{workspace}/Qwen2.5-14B-Instruct",
+            input_model="Qwen/Qwen2.5-14B-Instruct",
             output_model=f"{workspace}/qwen2.5-14b-instruct-nemo",
             convert_from="hf",
             convert_to="nemo",
@@ -81,7 +79,7 @@ def run_sdg(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
         postprocess_cmd=postprocess_cmd,
         expname=f"{expname_prefix}-problem-extraction",
         run_after=f"{expname_prefix}-download-assets",
-        model=f"{workspace}/Qwen2.5-14B-Instruct",
+        model="Qwen/Qwen2.5-14B-Instruct",
         server_type="vllm",
         server_gpus=num_gpus,
         log_samples=not wandb_params["disable_wandb"],
@@ -99,7 +97,7 @@ def run_sdg(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
         output_dir=f"{workspace}/sdg/solutions",
         expname=f"{expname_prefix}-solution-generation",
         run_after=f"{expname_prefix}-problem-extraction",
-        model=f"{workspace}/QwQ-32B",
+        model="Qwen/QwQ-32B",
         server_type="trtllm",
         server_gpus=num_gpus,
         log_samples=not wandb_params["disable_wandb"],
@@ -163,7 +161,7 @@ def run_training(workspace, cluster, num_gpus, training_backend, expname_prefix,
             ),
             cluster=cluster,
             output_dir=f"{workspace}/training",
-            hf_model=f"{workspace}/Qwen2.5-14B-Instruct",
+            hf_model="Qwen/Qwen2.5-14B-Instruct",
             backend="megatron",
             num_gpus=num_gpus,
             num_nodes=1,
@@ -217,7 +215,7 @@ def initial_eval(workspace, cluster, num_gpus, training_backend, expname_prefix,
     eval(
         ctx=wrap_arguments(""),
         cluster=cluster,
-        model=f"{workspace}/Qwen2.5-14B-Instruct",
+        model="Qwen/Qwen2.5-14B-Instruct",
         server_type="vllm",
         server_gpus=num_gpus,
         benchmarks="aime24:8,aime25:8",

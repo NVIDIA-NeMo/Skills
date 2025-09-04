@@ -21,7 +21,7 @@ executing all commands from that folder locally. Change all commands accordingly
 Get the model from HF.
 ```bash
 pip install -U "huggingface_hub[cli]"
-huggingface-cli download nvidia/NVIDIA-Nemotron-Nano-9B-v2 --local-dir /workspace/NVIDIA-Nemotron-Nano-9B-v2
+hf download nvidia/NVIDIA-Nemotron-Nano-9B-v2 --local-dir /workspace/NVIDIA-Nemotron-Nano-9B-v2
 ```
 
 !!!note
@@ -202,7 +202,7 @@ Tool-calling benchmarks require tool-call parsing and execution. NeMo-Skills sup
 ns eval \
     --cluster=local \
     --benchmarks=bfcl_v3 \
-    --model=/workspace/NVIDIA-Nemotron-Nano-9B-v2/ \
+    --model=/workspace/NVIDIA-Nemotron-Nano-9B-v2 \
     --output_dir=/workspace/nvidia_nemotron_nano_9b_v2_tool_calling/ \
     --server_gpus=1 \
     --server_type=vllm \
