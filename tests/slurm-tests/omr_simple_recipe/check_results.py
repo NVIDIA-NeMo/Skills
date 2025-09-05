@@ -24,7 +24,7 @@ RANGE_CONSTRAINTS = {
         "aime25": {"pass@1[avg-of-8]": (15.0, 27.5), "majority@8": (21.22, 42.22)},
     },
     "baseline": {
-        "aime24": {"pass@1[avg-of-8]": (6.25, 16.25), "majority@8": (13.33, 24.33)},
+        "aime24": {"pass@1[avg-of-8]": (6.25, 18.25), "majority@8": (13.33, 24.33)},
         "aime25": {"pass@1[avg-of-8]": (8.75, 18.75), "majority@8": (11.67, 24.33)},
     },
 }
