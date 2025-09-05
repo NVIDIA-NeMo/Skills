@@ -86,6 +86,10 @@ def setup_logging(disable_hydra_logs: bool = True, log_level: int = logging.INFO
     logger = logging.getLogger("nemo_skills")
     logger.setLevel(log_level)
 
+    # Remove all existing handlers
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
     if use_rich:
         handler = RichHandler(
             rich_tracebacks=True,
@@ -99,12 +103,11 @@ def setup_logging(disable_hydra_logs: bool = True, log_level: int = logging.INFO
                 datefmt="[%X]",
             )
         )
-        for hdlr in logger.handlers[:]:
-            logger.removeHandler(hdlr)
     else:
         handler = logging.StreamHandler()
         formatter = logging.Formatter("%(asctime)s %(levelname)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         handler.setFormatter(formatter)
+
     logger.addHandler(handler)
     logging.getLogger("sshtunnel_requests.cache").setLevel(logging.ERROR)
     logging.getLogger("httpx").setLevel(logging.WARNING)
