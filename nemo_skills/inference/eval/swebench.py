@@ -393,6 +393,8 @@ class SweBenchGenerationTask(GenerationTask):
         patch = out_dict["test_result"]["git_patch"]
         if not patch:
             patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
 
         # Create file in the SWE-bench evaluation format
         pred_file = out_file.replace("output.jsonl", "output_for_eval.jsonl")

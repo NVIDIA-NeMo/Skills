@@ -138,8 +138,30 @@ ns eval \
 ```
 replacing <...> with your desired parameters.
 
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/swe-bench/metrics.json`. They should look something like this:
+```
+{
+  "swe-bench": {
+    "pass@1": {
+      "num_entries": 500,
+      "gen_seconds": 7172,
+      "issues_resolved": 50.0,
+      "no_patch": 0.2,
+      "patch_cant_apply": 2.0
+    }
+  }
+}
+```
+Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate.
+
 To evaluate the same model with SWE-agent,
 all you need to do is replace `openhands` with `swe_agent` in the command above.
+
+!!! note
+    There are some instances where the gold (ground truth) patches do not pass the evaluation tests. Therefore, it's likely that on those instances even patches that resolve the issue will be incorrectly evaluated as "unresolved". We have observed 11 such instances in SWE-bench Verified: `astropy__astropy-7606`, `astropy__astropy-8707`, `astropy__astropy-8872`, `django__django-10097`, `psf__requests-1724`, `psf__requests-1766`, `psf__requests-1921`, `psf__requests-2317`, `pylint-dev__pylint-6528`, `pylint-dev__pylint-7080`, `pylint-dev__pylint-7277`. Depending on your setup, this set of instances may be different.
+
+!!! note
+    For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
 ### ioi24
 
