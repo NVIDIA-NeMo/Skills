@@ -192,12 +192,23 @@ async def handle_context_retries_async(
         result = await func(self, *args, **kwargs)
         return result
     except (litellm.exceptions.ContextWindowExceededError, litellm.BadRequestError) as error:
-        if isinstance(error, litellm.exceptions.ContextWindowExceededError) or "Requested token count exceeds" in str(
-            error
+        if (
+            isinstance(error, litellm.exceptions.ContextWindowExceededError)
+            or "Requested token count exceeds" in str(error)
+            or "exceeds maximum input length" in str(error)
+            or "should not exceed max_seq_len" in str(error)
         ):
             if not config.enable_soft_fail:
                 raise error
 
+            # Soft fail is enabled
+            LOG.info(f"Soft fail is enabled. Caught context window exceeded error: {error}")
+
+            # No strategy configured
+            if config.strategy is None:
+                return return_empty_generation_with_error(f"No strategy configured. {error}")
+
+            # Try to apply the prompt/generation budget reduction strategy
             modified_kwargs = _prepare_context_error_retry(kwargs, config, self.tokenizer, error)
             if modified_kwargs is None:
                 return return_empty_generation_with_error(f"Could not apply strategy. {error}")
@@ -215,12 +226,23 @@ def handle_context_retries_sync(
         result = func(self, *args, **kwargs)
         return result
     except (litellm.exceptions.ContextWindowExceededError, litellm.BadRequestError) as error:
-        if isinstance(error, litellm.exceptions.ContextWindowExceededError) or "Requested token count exceeds" in str(
-            error
+        if (
+            isinstance(error, litellm.exceptions.ContextWindowExceededError)
+            or "Requested token count exceeds" in str(error)
+            or "exceeds maximum input length" in str(error)
+            or "should not exceed max_seq_len" in str(error)
         ):
             if not config.enable_soft_fail:
                 raise error
 
+            # Soft fail is enabled
+            LOG.info(f"Soft fail is enabled. Caught context window exceeded error: {error}")
+
+            # No strategy configured
+            if config.strategy is None:
+                return return_empty_generation_with_error(f"No strategy configured. {error}")
+
+            # Try to apply the prompt/generation budget reduction strategy
             modified_kwargs = _prepare_context_error_retry(kwargs, config, self.tokenizer, error)
             if modified_kwargs is None:
                 return return_empty_generation_with_error(f"Could not apply strategy. {error}")

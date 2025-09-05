@@ -53,6 +53,9 @@ models = {
 def get_model(server_type, tokenizer=None, **kwargs):
     """A helper function to make it easier to set server through cmd."""
     model_class = models[server_type.lower()]
+    if server_type == "trtllm" and kwargs.get("enable_soft_fail", False):
+        if kwargs.get("context_limit_retry_strategy", None) is not None:
+            raise ValueError("context_limit_retry_strategy is not supported for trtllm")
     return model_class(tokenizer=tokenizer, **kwargs)
 
 

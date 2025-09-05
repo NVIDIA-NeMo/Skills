@@ -240,7 +240,7 @@ test_suite = ContextRetryTestSuite()
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("server_type", ["sglang", "vllm"])
+@pytest.mark.parametrize("server_type", ["trtllm", "sglang", "vllm"])
 def test_context_retry_no_strategy(server_type):
     """Test that the generation finishes successfully if soft fail is enabled and the strategy is reduce_generation."""
     test_suite.run_no_strategy_test(
@@ -264,7 +264,7 @@ def test_context_retry_reduce_generation_enabled(server_type):
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("server_type", ["sglang", "vllm"])
+@pytest.mark.parametrize("server_type", ["trtllm", "sglang", "vllm"])
 def test_context_retry_disabled(server_type):
     """Test that the generation doesn't finish successfully if soft fail is disabled."""
     result = test_suite.run_reduce_generation_test(
