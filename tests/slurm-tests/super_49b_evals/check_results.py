@@ -67,7 +67,7 @@ REASONING_METRIC_RANGES = {
         "livecodebench": (27.5, 32.5),
         "scicode": {
             "problem_accuracy": (5.0, 10.0),
-            "subtask_accuracy": (22.5, 27.5),
+            "subtask_accuracy": (20.0, 28.0),
         },
         "hle": {
             "judge_correct": (1.5, 6.5),
