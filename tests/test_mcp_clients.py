@@ -242,8 +242,10 @@ async def test_tool_manager_cache_and_duplicate_detection():
 
     globals()["DupTool"] = DupTool
     tm2 = ToolManager(module_specs=["tests.test_mcp_clients::DupTool"], overrides={}, context={})
-    with pytest.raises(ValueError):
-        await tm2.list_all_tools(use_cache=False)
+    # Duplicates within a single provider should be deduplicated, not raise
+    tools2 = await tm2.list_all_tools(use_cache=False)
+    names2 = sorted(t["name"] for t in tools2)
+    assert names2 == ["DupTool.execute"]
 
 
 @pytest.mark.asyncio

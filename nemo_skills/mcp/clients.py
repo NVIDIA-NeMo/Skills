@@ -275,27 +275,6 @@ class MCPClient(metaclass=MCPClientMeta):
     result = await client.call_tool("execute", {"code": "print(1)", "timeout": 999})
     ```
 
-    Example (configured via OmegaConf, similar to mcp_demo.py):
-    ```python
-    from omegaconf import OmegaConf
-    from nemo_skills.mcp.config import build_client_manager
-
-    cfg = OmegaConf.create({
-        "tools": [
-            {
-                "id": "python",
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.python_tool"],
-                    "hide_args": {"execute": ["session_id", "timeout"]},
-                },
-            },
-        ]
-    })
-    manager = build_client_manager(cfg)
-    tools = await manager.list_all_tools()
-    ```
     """
 
     # Manual sanitization helpers (input-only; optional, as call_tool auto-sanitizes)
@@ -335,30 +314,6 @@ class MCPStreamableHttpClient(MCPClient):
     The following optional configurables can be supplied (injected by the
     metaclass): hide_args, disabled_tools, enabled_tools, output_formatter,
     init_hook.
-
-    Example (OmegaConf config, like in mcp_demo.py):
-    ```python
-    from omegaconf import OmegaConf
-    from nemo_skills.mcp.config import build_client_manager
-
-    cfg = OmegaConf.create({
-        "tools": [
-            {
-                "id": "exa_mcp",
-                "client": "nemo_skills.mcp.clients.MCPStreamableHttpClient",
-                "params": {
-                    "base_url": "https://mcp.exa.ai/mcp",
-                    "enabled_tools": ["web_search_exa"],
-                    "output_formatter": "nemo_skills.mcp.utils.exa_output_formatter",
-                    "init_hook": "nemo_skills.mcp.utils.exa_auth_connector",
-                },
-            }
-        ]
-    })
-    manager = build_client_manager(cfg)
-    tools = await manager.list_all_tools()
-    result = await manager.execute_tool("exa_mcp.web_search_exa", {"query": "nemo skills"})
-    ```
 
     Example (manual usage):
     ```python
@@ -418,43 +373,6 @@ class MCPStdioClient(MCPClient):
     The following optional configurables can be supplied (injected by the
     metaclass): hide_args, disabled_tools, enabled_tools, output_formatter,
     init_hook.
-
-    Example (OmegaConf config, like in mcp_demo.py):
-    ```python
-    from omegaconf import OmegaConf
-    from nemo_skills.mcp.config import build_client_manager
-
-    cfg = OmegaConf.create({
-        "tools": [
-            {
-                "id": "python",
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.python_tool"],
-                    "hide_args": {"execute": ["session_id", "timeout"]},
-                    "init_hook": {
-                        "$locate": "nemo_skills.mcp.utils.hydra_config_connector_factory",
-                        "kwargs": {"config_obj": "@@full_config"},
-                    },
-                },
-            },
-            {
-                "id": "exa",
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.exa_tool"],
-                    "init_hook": "nemo_skills.mcp.utils.exa_stdio_connector",
-                },
-            },
-        ]
-    })
-    manager = build_client_manager(cfg)
-    tools = await manager.list_all_tools()
-    # Example tool call
-    result = await manager.execute_tool("python.execute", {"code": "print(1)"})
-    ```
 
     Example (manual usage):
     ```python

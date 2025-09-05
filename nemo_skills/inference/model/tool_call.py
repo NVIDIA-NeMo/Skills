@@ -106,7 +106,8 @@ class ToolCallingWrapper:
 
         assert tools is None, "Do not pass 'tools'; they are derived from tool_modules."
 
-        raw_tools = await self.tool_manager.list_all_tools()
+        # This assumes that the available tools do not change during the generation.
+        raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
         tools = self.schema_adapter.convert(raw_tools)
 
         result_steps = defaultdict(list)
