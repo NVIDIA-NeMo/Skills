@@ -32,10 +32,10 @@ from tqdm import tqdm
 
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
 from nemo_skills.inference.model import (
-    OnlineGenSelectConfig,
+    GenSelectConfig,
     get_code_execution_model,
+    get_genselect_model,
     get_model,
-    get_online_genselect_model,
     get_tool_calling_model,
     server_params,
 )
@@ -133,10 +133,10 @@ class GenerateSolutionsConfig:
 
     # stop phrase for llms
     stop_phrase: str | None = None  # if None, will not add any extra stop phrase
-    # set to True if online genselect is used
-    online_genselect: bool = False
+    # set to True if genselect is used
+    genselect: bool = False
     # genselect config
-    online_genselect_config: OnlineGenSelectConfig = field(default_factory=OnlineGenSelectConfig)
+    genselect_config: GenSelectConfig = field(default_factory=GenSelectConfig)
 
     # Module-based tool configuration
     #   List of tool provider locators using double-colon syntax for the tool class.
@@ -298,10 +298,10 @@ class GenerationTask:
         )
 
         # Initialize semaphore for controlling concurrent requests
-        if self.cfg.online_genselect:
+        if self.cfg.genselect:
             # Each request will generate multiple solutions, so we need to divide the semaphore by the parallel requests
             self.semaphore = asyncio.Semaphore(
-                self.cfg.max_concurrent_requests // self.cfg.online_genselect_config.max_concurrent_requests
+                self.cfg.max_concurrent_requests // self.llm.cfg.max_concurrent_requests
             )
         else:
             self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
@@ -339,16 +339,24 @@ class GenerationTask:
         else:
             llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
 
-        if self.cfg.online_genselect:
-            # Use the same prompt parameters for genselect as the one used for generation
-            self.cfg.online_genselect_config.use_completions_api = self.cfg.use_completions_api
-            self.cfg.online_genselect_config.tokenizer = self.cfg.tokenizer
-            self.cfg.online_genselect_config.chat_template_kwargs = self.cfg.chat_template_kwargs
-            self.cfg.online_genselect_config.thinking_begin = self.cfg.thinking_begin
-            self.cfg.online_genselect_config.thinking_end = self.cfg.thinking_end
-            llm = get_online_genselect_model(
-                **{**self.cfg.server, "model": llm, "tokenizer": self.tokenizer},
-                online_genselect_config=self.cfg.online_genselect_config,
+        if self.cfg.genselect:
+            # Allow for overriding the temperature and tokens_to_generate for genselect
+            genselect_config = self.cfg.genselect_config
+
+            # We don't want to override these key variables which overlap with self.cfg
+            inference_override_config = {
+                "remove_thinking": self.cfg.genselect_config.remove_thinking,  # Removing thinking from solutions is important for genselect. We don't want to override this with the main generation config
+                "prompt_config": self.cfg.genselect_config.prompt_config,
+                "temperature": self.cfg.genselect_config.temperature,
+                "tokens_to_generate": self.cfg.genselect_config.tokens_to_generate,
+            }
+
+            llm = get_genselect_model(
+                model=llm,
+                orig_prompt_filler=self.fill_prompt,  # Needed for prompt fillling
+                genselect_config=genselect_config,
+                main_config=self.cfg,
+                inference_override_config=inference_override_config,
             )
 
         return llm

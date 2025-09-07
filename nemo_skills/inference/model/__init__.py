@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
+
 from nemo_skills.utils import python_doc_to_cmd_help
 
 from .azure import AzureOpenAIModel
@@ -23,10 +25,10 @@ from .base import BaseModel
 from .code_execution import CodeExecutionConfig, CodeExecutionWrapper
 from .context_retry import ContextLimitRetryConfig
 from .gemini import GeminiModel
-from .megatron import MegatronModel
 
-# Online GenSelect
-from .online_genselect import OnlineGenSelectConfig, OnlineGenSelectWrapper
+# GenSelect
+from .genselect import GenSelectConfig, GenSelectWrapper
+from .megatron import MegatronModel
 from .openai import OpenAIModel
 
 # Tool Calling
@@ -68,11 +70,29 @@ def get_code_execution_model(server_type, tokenizer=None, code_execution=None, s
     return CodeExecutionWrapper(model=model, sandbox=sandbox, config=code_execution_config)
 
 
-def get_online_genselect_model(model, tokenizer=None, online_genselect_config=None, **kwargs):
-    """A helper function to create OnlineGenSelect model."""
-    if isinstance(model, str):
-        model = get_model(model=model, tokenizer=tokenizer, **kwargs)
-    return OnlineGenSelectWrapper(model=model, cfg=online_genselect_config or OnlineGenSelectConfig())
+def get_genselect_model(
+    model,
+    orig_prompt_filler,
+    genselect_config=None,
+    main_config=None,
+    inference_override_config=None,
+):
+    """A helper function to create GenSelect model."""
+    # Merging priority: genselect_config, main config, main inference config, any overrides from inference_override_config
+    merge_config = {
+        **genselect_config.__dict__,
+        **main_config.__dict__,
+        **main_config.inference.__dict__,
+        **(inference_override_config if inference_override_config is not None else {}),
+    }
+
+    # Filter to only include valid parameters
+    valid_params = {field.name for field in dataclasses.fields(GenSelectConfig)}
+    filtered_config = {key: value for key, value in merge_config.items() if key in valid_params}
+
+    genselect_config = GenSelectConfig(**filtered_config)
+
+    return GenSelectWrapper(model=model, orig_prompt_filler=orig_prompt_filler, cfg=genselect_config)
 
 
 def get_tool_calling_model(
