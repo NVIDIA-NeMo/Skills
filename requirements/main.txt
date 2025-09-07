@@ -26,7 +26,7 @@ huggingface_hub
 hydra-core
 ipython
 iso639-lang
-litellm < 1.75.0  # some bug with asyncio.run hanging forever
+litellm[caching] < 1.75.0  # some bug with asyncio.run hanging forever
 math-verify[antlr4_9_3]
 mcp
 nemo_run @ git+https://github.com/NVIDIA/NeMo-Run

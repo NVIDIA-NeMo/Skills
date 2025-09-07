@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import random
+import shutil
 import subprocess
 import sys
 import time
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import hydra
+import litellm
 from omegaconf import ListConfig
 from tqdm import tqdm
 
@@ -162,6 +164,9 @@ class GenerateSolutionsConfig:
     thinking_begin: str = "<think>"
     thinking_end: str = "</think>"
 
+    # If True, will enable litellm disk cache (useful for keeping intermediate results in case of job timelimit failures)
+    enable_litellm_cache: bool = False
+
     def __post_init__(self):
         self._post_init_validate_data()
         self._post_init_validate_server()
@@ -264,6 +269,15 @@ class GenerationTask:
             self.tokenizer = self.cfg.tokenizer or self.cfg.server["model"]
         else:
             self.tokenizer = None
+
+        # Setup litellm cache
+        if self.cfg.enable_litellm_cache:
+            # One cache per (output_file_name, chunk_id) pair
+            output_file_name = Path(self.cfg.output_file).name
+            self.litellm_cache_dir = (
+                Path(self.cfg.output_file).parent / "litellm_cache" / f"{output_file_name}_{self.cfg.chunk_id or 0}"
+            )
+            litellm.cache = litellm.Cache(type="disk", disk_cache_dir=self.litellm_cache_dir)
 
         if self.cfg.use_completions_api and self.cfg.inference.tokens_to_generate is None:
             raise ValueError("When using completions API, tokens_to_generate must be specified!")
@@ -565,6 +579,8 @@ class GenerationTask:
                 fout.write(json.dumps(gen_dict) + "\n")
 
         Path(self.cfg.output_file + "-async").unlink()
+        if self.cfg.enable_litellm_cache:
+            shutil.rmtree(self.litellm_cache_dir)
 
     def wait_for_server(self):
         server_address = self.cfg.server.get("base_url") or f"{self.cfg.server['host']}:{self.cfg.server['port']}"
