@@ -90,6 +90,7 @@ class ArenaMetrics(BaseMetrics):
         metrics.update(get_aggregate_score(self.scores))
         metrics_dict = {self.agg_mode: metrics}
         self.update_common_metrics(metrics_dict[self.agg_mode])
+        # arena metrics have their own confidence estimation, so not doing std metrics here
         return metrics_dict
 
     def reset(self):

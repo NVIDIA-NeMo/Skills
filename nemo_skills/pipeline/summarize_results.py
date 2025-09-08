@@ -328,7 +328,6 @@ def summarize_results(
     # grouping benchmarks that have a "." e.g ruler.niah_single_1, ruler.niah_single_2 -> ruler
     # to report average numbers
     add_benchmark_groups(results, metrics_to_print, evaluations_to_print)
-
     printed_max_seq_len = False
     for benchmark, benchmark_results in results.items():
         if not benchmark_results:
@@ -348,11 +347,28 @@ def summarize_results(
 
             for metric_key, format_fn in metrics_to_print[benchmark].items():
                 metric_value = metrics[metric_key]
-                max_widths[metric_key] = max(
-                    max_widths.get(metric_key, len(metric_key)),
-                    len(str(format_fn(metric_value))),
-                )
+                formatted_value = format_fn(metric_key, metric_value, metrics)
+                if formatted_value is not None:
+                    max_widths[metric_key] = max(
+                        max_widths.get(metric_key, len(metric_key)),
+                        len(str(formatted_value)),
+                    )
             max_widths["evaluation_mode"] = max(max_widths["evaluation_mode"], len(eval_mode))
+
+        # Filter out metrics that would return None for any evaluation mode
+        valid_metrics = {}
+        for metric_key, format_fn in metrics_to_print[benchmark].items():
+            is_valid = True
+            for eval_mode in evaluations_to_print[benchmark]:
+                if eval_mode not in benchmark_results:
+                    continue
+                metrics = benchmark_results[eval_mode]
+                if metric_key in metrics and format_fn(metric_key, metrics[metric_key], metrics) is None:
+                    is_valid = False
+                    break
+            if is_valid:
+                valid_metrics[metric_key] = format_fn
+        metrics_to_print[benchmark] = valid_metrics
 
         total_width = sum(max_widths.values()) + (len(max_widths) - 1) * 3
         if max_seq_len is not None and not printed_max_seq_len:
@@ -369,7 +385,9 @@ def summarize_results(
             values = [f"{eval_mode:<{max_widths['evaluation_mode']}}"]
             for metric_key, format_fn in metrics_to_print[benchmark].items():
                 metric_value = metrics[metric_key]
-                values.append(f"{str(format_fn(metric_value)):<{max_widths[metric_key]}}")
+                formatted_value = format_fn(metric_key, metric_value, metrics)
+                if formatted_value is not None:
+                    values.append(f"{str(formatted_value):<{max_widths[metric_key]}}")
             print(" | ".join(values))
 
         print("\n")

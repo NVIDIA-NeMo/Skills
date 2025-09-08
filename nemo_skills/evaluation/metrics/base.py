@@ -16,6 +16,8 @@ import abc
 import math
 from collections import Counter, defaultdict
 
+import numpy as np
+
 
 # Base class for metrics computation
 class BaseMetrics(abc.ABC):
@@ -41,7 +43,83 @@ class BaseMetrics(abc.ABC):
                     metrics_dict[agg_mode][metric_key] = 100.0 * metric_value / self.total
                 else:
                     metrics_dict[agg_mode][metric_key] = metric_value
+        self._add_std_metrics(metrics_dict)
         return metrics_dict
+
+    def _add_std_metrics(self, metrics_dict):
+        """Add average, standard deviation and standard error metrics.
+
+        Only processes data when self.max_k > 1 and sample data is available in self.all_scores.
+
+        Adds four statistical metrics:
+        - {score_method}_avg: Average of metric values
+        - {score_method}_std_dev_across_runs: Standard deviation of average metric values across runs
+        - {score_method}_std_err_across_runs: Standard error of average metric values across runs
+        - {score_method}_avg_sample_std_dev: Average of per-sample standard deviations
+
+        Computes two complementary variance measures:
+
+        1. std_dev_across_runs: Standard deviation of average metric values across runs
+           - Each "run" uses attempt i from each sample (transpose of data)
+           - Measures: "How much does the average metric value vary between different runs?"
+           - std_err_across_runs: std_dev_across_runs / sqrt(k) where k is number of runs
+
+        2. avg_sample_std_dev: Average of per-sample standard deviations
+           - For each sample, calculates standard deviation across its k attempts, then averages
+           - Measures: "What's the average within-sample variance?"
+
+        Only adds columns to pass@1[avg-of-{k}] that must exist in the passed metrics_dict.
+
+        Example (max_k=4):
+            3 samples × 4 attempts = [[1,0,1,0], [1,1,0,0], [0,1,1,1]]
+
+            Standard deviation and error of average metric values across runs (transpose):
+            - Run 1: [1,1,0] → avg 0.6667
+            - Run 2: [0,1,1] → avg 0.6667
+            - Run 3: [1,0,1] → avg 0.6667
+            - Run 4: [0,0,1] → avg 0.3333
+            → std_dev_across_runs = stdev([0.6667, 0.6667, 0.6667, 0.3333]) ≈ 0.1925
+            → std_err_across_runs = 0.1925 / sqrt(4) ≈ 0.096
+
+            Average of per-sample standard deviations:
+            - Sample 1: stdev([1,0,1,0]) ≈ 0.5773
+            - Sample 2: stdev([1,1,0,0]) ≈ 0.5773
+            - Sample 3: stdev([0,1,1,1]) ≈ 0.5000
+            → avg_sample_std_dev = (0.5773 + 0.5773 + 0.5000) / 3 ≈ 0.5515
+        """
+        for score_method, scores_list in self.all_scores.items():
+            for scores in scores_list:
+                assert len(scores) == self.max_k, f"Sample has {len(scores)} scores but expected {self.max_k}"
+
+            for k in range(2, self.max_k + 1):
+                # Average of metric values across runs
+                avg = np.mean([np.mean(scores[:k]) for scores in scores_list])
+
+                # Standard deviation and error of average metric values across runs
+                run_scores = [[] for _ in range(k)]
+                for scores in scores_list:
+                    for i, score in enumerate(scores[:k]):
+                        run_scores[i].append(score)
+                run_averages = [np.mean(scores) for scores in run_scores]
+                std_dev_across_runs = np.std(run_averages, ddof=1)
+                std_err_across_runs = std_dev_across_runs / math.sqrt(k)
+
+                # Average of per-sample standard deviations
+                sample_std_devs = []
+                for scores in scores_list:
+                    sample_std_devs.append(np.std(scores[:k], ddof=1))
+                avg_sample_std_dev = sum(sample_std_devs) / len(sample_std_devs)
+
+                # Update metrics dictionary
+                std_metrics = {
+                    f"{score_method}_statistics": {
+                        "avg": avg,
+                        "std_dev_across_runs": std_dev_across_runs,
+                        "avg_sample_std_dev": avg_sample_std_dev,
+                        "std_err_across_runs": std_err_across_runs,
+                    },
+                }
+                metrics_dict[f"pass@1[avg-of-{k}]"].update(std_metrics)
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         """
@@ -95,6 +173,7 @@ class BaseMetrics(abc.ABC):
         self.min_start_time = float("inf")
         self.max_end_time = float("-inf")
         self.eval_dict = defaultdict(lambda: defaultdict(float))
+        self.all_scores: dict[str, list[list[bool | int | float]]] = defaultdict(list)
 
     def get_incorrect_sample(self, predictions: list[dict]) -> list[dict]:
         """Needs to replace predictions with something that evaluates as incorrect.
@@ -267,13 +346,14 @@ class BaseMetrics(abc.ABC):
 
         for score_method in score_dicts[0].keys():
             scores_list = [correctness_dict[score_method] for correctness_dict in score_dicts]
+            self.all_scores[score_method].append(scores_list)
 
             # Check if the task/instance has binary scores
             # For tasks like IF, the probabilistic logic for pass@k is not applicable
-            is_binary_score = (max(scores_list) == 1) and (min(scores_list) == 0)
+            is_binary_score = all([score in (0, 1, True, False) for score in scores_list])
 
             if is_binary_score:
-                total_correct = sum(scores_list)
+                total_correct = int(sum(scores_list))
                 total = len(scores_list)
                 total_incorrect = total - total_correct
 
@@ -332,20 +412,28 @@ class BaseMetrics(abc.ABC):
         return [f"pass@1[avg-of-{self.max_k}]", f"majority@{self.max_k}", f"pass@{self.max_k}"]
 
 
-def as_percentage(metric_value):
+def as_percentage(metric_key: str, metric_value: float, all_metrics: dict):
+    if (metric_std := all_metrics.get(f"{metric_key}_statistics", {}).get("std_dev_across_runs")) is not None:
+        return f"{metric_value:.2f}% ± {(100.0 * metric_std):.2f}%"
     return f"{metric_value:.2f}%"
 
 
-def as_int(metric_value):
+def as_int(metric_key: str, metric_value: float, all_metrics: dict):
+    if (metric_std := all_metrics.get(f"{metric_key}_statistics", {}).get("std_dev_across_runs")) is not None:
+        return f"{int(metric_value)} ± {metric_std:.2f}"
     return f"{int(metric_value)}"
 
 
-def as_float(metric_value):
+def as_float(metric_key: str, metric_value: float, all_metrics: dict):
+    if (metric_std := all_metrics.get(f"{metric_key}_statistics", {}).get("std_dev_across_runs")) is not None:
+        return f"{float(metric_value):.2f} ± {metric_std:.2f}"
     return f"{float(metric_value):.2f}"
 
 
-def default_formatting(metric_value):
-    """Assumes floats are percentage and rest without changes."""
+def default_formatting(metric_key: str, metric_value, all_metrics: dict) -> str | None:
+    """Assumes floats are percentage, dicts shouldn't be printed and rest without changes."""
     if isinstance(metric_value, float):
-        return as_percentage(metric_value)
+        return as_percentage(metric_key, metric_value, all_metrics)
+    if isinstance(metric_value, dict):
+        return None
     return str(metric_value)
