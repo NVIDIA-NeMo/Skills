@@ -23,6 +23,7 @@ from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.nemo_rl import nemo_rl_app
 from nemo_skills.pipeline.utils import (
     add_task,
+    check_if_mounted,
     check_mounts,
     get_cluster_config,
     get_env_variables,
@@ -275,12 +276,14 @@ def sft_nemo_rl(
     if log_dir is None:
         log_dir = output_dir
 
-    hf_model, output_dir, log_dir = check_mounts(
+    output_dir, log_dir = check_mounts(
         cluster_config,
         log_dir=log_dir,
-        mount_map={hf_model: None, output_dir: None},
+        mount_map={output_dir: None},
         check_mounted_paths=check_mounted_paths,
     )
+    if hf_model.startswith("/"):  # could ask to download from HF
+        hf_model = check_if_mounted(cluster_config, hf_model)
     env_variables = get_env_variables(cluster_config)
 
     if backend == "megatron":

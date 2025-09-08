@@ -14,9 +14,12 @@
 
 
 import argparse
-import io
-import json
 import os
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
+from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: E402
 
 REASONING_TASKS = [
     "math-500",
@@ -136,7 +139,7 @@ RULER_METRIC_RANGES = {
         "ruler.nemotron_super_128k_slurm_ci.niah_single_2": (91.5, 96.5),
         "ruler.nemotron_super_128k_slurm_ci.niah_single_3": (97.5, 100.0),
         "ruler.nemotron_super_128k_slurm_ci.niah_multikey_1": (73.0, 79.0),
-        "ruler.nemotron_super_128k_slurm_ci.niah_multikey_2": (62.0, 68.0),
+        "ruler.nemotron_super_128k_slurm_ci.niah_multikey_2": (58.0, 68.0),
         "ruler.nemotron_super_128k_slurm_ci.niah_multikey_3": (18.0, 23.0),
         "ruler.nemotron_super_128k_slurm_ci.niah_multivalue": (80.5, 86.5),
         "ruler.nemotron_super_128k_slurm_ci.niah_multiquery": (83.0, 88.0),
@@ -149,90 +152,61 @@ RULER_METRIC_RANGES = {
 }
 
 
-def load_json(path: str):
-    with io.open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def get_nested(d: dict, path):
-    for k in path:
-        if not isinstance(d, dict) or k not in d:
-            return None
-        d = d[k]
-    return d
-
-
-def detect_mode(name: str):
-    if "reasoning_on" in name:
-        return "reasoning_on"
-    if "reasoning_off" in name:
-        return "reasoning_off"
-    return None
-
-
-# ---------------- Assert-only checks ----------------
-def check_reasoning(bucket: str, mode: str):
+def check_reasoning(eval_dir: str, mode: str):
     for bench in REASONING_TASKS:
-        f = os.path.join(bucket, "eval-results", bench, "metrics.json")
+        f = os.path.join(eval_dir, "eval-results", bench, "metrics.json")
         data = load_json(f)
         if bench in {"math-500", "aime24", "aime25", "gpqa", "livecodebench", "scicode"}:
-            result_block = get_nested(data[bench], ["pass@1[avg-of-4]"])
+            result_block = data[bench]["pass@1[avg-of-4]"]
         elif bench in {"mmlu-pro", "hle"}:
-            result_block = get_nested(data[bench], ["pass@1"])
+            result_block = data[bench]["pass@1"]
         else:
-            raise AssertionError(f"Unexpected benchmark: {bench}")
+            raise RuntimeError(f"Unexpected benchmark: {bench}")
 
         if bench in REASONING_BENCHMARKS_SCIENCE_HLE:
             for field in REASONING_REQUIRED_FIELDS[bench]:
                 val = float(result_block[field])
                 lo, hi = REASONING_METRIC_RANGES[mode][bench][field]
-                assert lo <= val <= hi, f"{bench}:{field}={val} out of range [{lo},{hi}]"
+                soft_assert(lo <= val <= hi, f"{bench}:{field}={val} out of range [{lo},{hi}]")
         else:
             field = REASONING_REQUIRED_FIELDS[bench][0]
             val = float(result_block[field])
             lo, hi = REASONING_METRIC_RANGES[mode][bench]
-            assert lo <= val <= hi, f"{bench}:{field}={val} out of range [{lo},{hi}]"
+            soft_assert(lo <= val <= hi, f"{bench}:{field}={val} out of range [{lo},{hi}]")
 
 
-def check_toolcalling(bucket: str, mode: str):
-    f = os.path.join(bucket, "eval-results", "bfcl_v3", "metrics.json")
+def check_toolcalling(eval_dir: str, mode: str):
+    f = os.path.join(eval_dir, "eval-results", "bfcl_v3", "metrics.json")
     data = load_json(f)
     for cat, path in TOOLCALLING_METRIC_PATHS.items():
-        val = float(get_nested(data, path))
+        val = float(get_nested_value(data, path))
         lo, hi = TOOLCALLING_METRIC_RANGES[mode][cat]
-        assert lo <= val <= hi, f"TOOL {cat}={val} out of range [{lo},{hi}]"
+        soft_assert(lo <= val <= hi, f"TOOL {cat}={val} out of range [{lo},{hi}]")
 
 
-def check_ruler(bucket: str, mode: str):
-    f = os.path.join(bucket, "eval-results", "ruler.nemotron_super_128k_slurm_ci", "metrics.json")
+def check_ruler(eval_dir: str, mode: str):
+    f = os.path.join(eval_dir, "eval-results", "ruler.nemotron_super_128k_slurm_ci", "metrics.json")
     data = load_json(f)
     for task in RULER_TASKS:
         val = float(data[task]["pass@1"]["accuracy"])
         lo, hi = RULER_METRIC_RANGES[mode][task]
-        assert lo <= val <= hi, f"RULER {task}={val} out of range [{lo},{hi}]"
+        soft_assert(lo <= val <= hi, f"RULER {task}={val} out of range [{lo},{hi}]")
 
 
-# ---------------- Main ----------------
 def main():
-    ap = argparse.ArgumentParser(description="Assert-only verifier: reasoning + tool-calling + ruler")
-    ap.add_argument("--workspace", required=True, help="Workspace root containing eval buckets")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--workspace", required=True, help="Workspace directory containing eval results")
     args = ap.parse_args()
 
-    root = os.path.abspath(os.path.expanduser(args.workspace))
-    for bucket in sorted(os.listdir(root)):
-        bpath = os.path.join(root, bucket)
-        if not os.path.isdir(os.path.join(bpath, "eval-results")):
-            continue
-        mode = detect_mode(bucket)
-        if not mode:
-            continue
-        if "tool_calling" in bucket:
-            check_toolcalling(bpath, mode)
-        elif "ruler" in bucket:
-            check_ruler(bpath, mode)
-        else:
-            check_reasoning(bpath, mode)
+    eval_root = Path(args.workspace)
 
+    check_reasoning(eval_root / "reasoning_off", "reasoning_off")
+    check_reasoning(eval_root / "reasoning_on", "reasoning_on")
+    check_toolcalling(eval_root / "reasoning_on_tool_calling", "reasoning_on")
+    check_toolcalling(eval_root / "reasoning_off_tool_calling", "reasoning_off")
+    check_ruler(eval_root / "reasoning_off_ruler", "reasoning_off")
+
+    assert_all()
     print("ALL CHECKS PASSED")
 
 

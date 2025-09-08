@@ -13,8 +13,11 @@
 # limitations under the License.
 
 import argparse
-import json
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
+from utils import assert_all, load_json, soft_assert  # noqa: E402
 
 # Hard-coded accuracy ranges for baseline and after-training results
 # TODO: should we train for longer / generate more data? Variance is really high
@@ -30,24 +33,6 @@ RANGE_CONSTRAINTS = {
 }
 
 
-def load_json(path: Path):
-    """Load a JSON file from the given path."""
-    if not path.is_file():
-        raise FileNotFoundError(f"File not found: {path}")
-    with path.open("r") as f:
-        return json.load(f)
-
-
-def get_aime_symbolic(d: dict, bench_key: str, metric_key: str) -> float:
-    """Extract the value of a specific metric and convert to float."""
-    return float(d[bench_key][metric_key]["symbolic_correct"])
-
-
-def in_range(value: float, lo: float, hi: float) -> bool:
-    """Return True if value is within [lo, hi] inclusive."""
-    return lo <= value <= hi
-
-
 def check_benchmark(benchmark: str, baseline_results: dict, after_training_results: dict):
     """
     Validate one benchmark:
@@ -55,24 +40,24 @@ def check_benchmark(benchmark: str, baseline_results: dict, after_training_resul
       - after-training accuracy must be within its allowed range
     """
     for metric in ["pass@1[avg-of-8]", "majority@8"]:
-        baseline_acc = get_aime_symbolic(baseline_results, benchmark, metric)
-        after_acc = get_aime_symbolic(after_training_results, benchmark, metric)
+        baseline_acc = baseline_results[benchmark][metric]["symbolic_correct"]
+        after_acc = after_training_results[benchmark][metric]["symbolic_correct"]
 
         lo_b, hi_b = RANGE_CONSTRAINTS["baseline"][benchmark][metric]
         lo_a, hi_a = RANGE_CONSTRAINTS["after_training"][benchmark][metric]
 
-        assert in_range(baseline_acc, lo_b, hi_b), (
-            f"{benchmark}: baseline {baseline_acc}% out of range [{lo_b}%, {hi_b}%] for metric {metric}"
+        soft_assert(
+            lo_b <= baseline_acc <= hi_b,
+            f"{benchmark}: baseline {baseline_acc}% out of range [{lo_b}%, {hi_b}%] for metric {metric}",
         )
-        assert in_range(after_acc, lo_a, hi_a), (
-            f"{benchmark}: after_training {after_acc}% out of range [{lo_a}%, {hi_a}%] for metric {metric}"
+        soft_assert(
+            lo_a <= after_acc <= hi_a,
+            f"{benchmark}: after_training {after_acc}% out of range [{lo_a}%, {hi_a}%] for metric {metric}",
         )
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Compare after-training vs baseline on AIME24/25 (metric: pass@1[avg-of-8].symbolic_correct)."
-    )
+    ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", required=True, help="Workspace directory containing eval results.")
     args = ap.parse_args()
 
@@ -84,6 +69,8 @@ def main():
         )
         check_benchmark(benchmark, baseline_results, after_training_results)
 
+    # Report any aggregated failures (exits non-zero if present)
+    assert_all()
     print("All checks passed.")
 
 
