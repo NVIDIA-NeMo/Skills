@@ -32,10 +32,10 @@ from tqdm import tqdm
 
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
 from nemo_skills.inference.model import (
-    GenSelectConfig,
+    ParallelThinkingConfig,
     get_code_execution_model,
-    get_genselect_model,
     get_model,
+    get_parallel_thinking_model,
     get_tool_calling_model,
     server_params,
 )
@@ -133,10 +133,9 @@ class GenerateSolutionsConfig:
 
     # stop phrase for llms
     stop_phrase: str | None = None  # if None, will not add any extra stop phrase
-    # set to True if genselect is used
-    genselect: bool = False
-    # genselect config
-    genselect_config: GenSelectConfig = field(default_factory=GenSelectConfig)
+
+    # parallel_thinking config
+    parallel_thinking: ParallelThinkingConfig = field(default_factory=ParallelThinkingConfig)
 
     # Module-based tool configuration
     #   List of tool provider locators using double-colon syntax for the tool class.
@@ -298,7 +297,7 @@ class GenerationTask:
         )
 
         # Initialize semaphore for controlling concurrent requests
-        if self.cfg.genselect:
+        if self.cfg.parallel_thinking.mode is not None:
             # Each request will generate multiple solutions, so we need to divide the semaphore by the parallel requests
             self.semaphore = asyncio.Semaphore(
                 self.cfg.max_concurrent_requests // self.llm.cfg.max_concurrent_requests
@@ -339,22 +338,16 @@ class GenerationTask:
         else:
             llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
 
-        if self.cfg.genselect:
-            # Allow for overriding the temperature and tokens_to_generate for genselect
-            genselect_config = self.cfg.genselect_config
-
+        if self.cfg.parallel_thinking.mode is not None:
             # We don't want to override these key variables which overlap with self.cfg
             inference_override_config = {
-                "remove_thinking": self.cfg.genselect_config.remove_thinking,  # Removing thinking from solutions is important for genselect. We don't want to override this with the main generation config
-                "prompt_config": self.cfg.genselect_config.prompt_config,
-                "temperature": self.cfg.genselect_config.temperature,
-                "tokens_to_generate": self.cfg.genselect_config.tokens_to_generate,
+                "remove_thinking": self.cfg.parallel_thinking.remove_thinking,  # Removing thinking from solutions is important for parallel_thinking. We don't want to override this with the main generation config
             }
 
-            llm = get_genselect_model(
+            llm = get_parallel_thinking_model(
                 model=llm,
                 orig_prompt_filler=self.fill_prompt,  # Needed for prompt fillling
-                genselect_config=genselect_config,
+                parallel_thinking=self.cfg.parallel_thinking,
                 main_config=self.cfg,
                 inference_override_config=inference_override_config,
             )

@@ -1,0 +1,17 @@
+# Prompt for synthesizing a new solution from a list of candidate solutions
+# TODO:
+
+user: |-
+  You will be given a problem followed by an enumerated list of {num_solutions} candidate solutions that serve as input seeds. Your task is to systematically synthesize a new, improved solution by combining the strongest elements from these candidates while addressing their individual weaknesses.
+
+  Problem: {problem}
+
+  Solutions:
+  {solutions}
+
+
+  End your response with exactly:
+  <NEW_SOLUTION>
+  NEW_SYNTHESIZED_SOLUTION
+  </NEW_SOLUTION>
+  where NEW_SYNTHESIZED_SOLUTION is your complete improved solution.
