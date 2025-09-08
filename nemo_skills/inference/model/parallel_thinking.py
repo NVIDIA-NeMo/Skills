@@ -48,7 +48,7 @@ class ParallelThinkingConfig:
     temperature: float = 0.6
     tokens_to_generate: int | None = None
 
-    remove_thinking: bool = True  # Remove thinking tokens from the comparison key
+    remove_thinking: bool = True  # Remove thinking tokens from the solution key
     thinking_begin: str = "<think>"
     thinking_end: str = "</think>"
     use_completions_api: bool = False
@@ -63,7 +63,7 @@ class ParallelThinkingConfig:
 
     # Solution related parameters
     window_size: int = 8  # Number of solutions compared in a single request
-    comparison_key: str = "generation"  # Key used for comparing the different solutions
+    solution_key: str = "generation"  # Key used for identifying the solution content
     filter_incomplete_solutions: bool = True  # Filter out incomplete solutions
 
     # Parameters specifically for Offline GenSelect/GenSynthesis
@@ -144,14 +144,14 @@ class ParallelThinkingTask:
             if self.cfg.remove_thinking:
                 remove_thinking(
                     generation_result,
-                    generation_key=self.cfg.comparison_key,
+                    generation_key=self.cfg.solution_key,
                     thinking_begin=self.cfg.thinking_begin,
                     thinking_end=self.cfg.thinking_end,
                 )
 
             solutions.append(
                 {
-                    self.cfg.comparison_key: generation_result[self.cfg.comparison_key],
+                    self.cfg.solution_key: generation_result[self.cfg.solution_key],
                     "output_dict": generation_result,
                 }
             )
@@ -182,7 +182,7 @@ class ParallelThinkingTask:
                     prompt = self.hash_prompt(self.orig_prompt_filler(data_point, data=None))
                     prompt_to_solutions_dict[prompt].append(
                         {
-                            self.cfg.comparison_key: data_point[self.cfg.comparison_key],
+                            self.cfg.solution_key: data_point[self.cfg.solution_key],
                             "output_dict": data_point,
                         }
                     )
@@ -202,7 +202,7 @@ class ParallelThinkingTask:
 
         formatted_solutions = []
         for i, solution in enumerate(solutions):
-            formatted_solutions.append(f"Solution {i}: {solution[self.cfg.comparison_key]}")
+            formatted_solutions.append(f"Solution {i}: {solution[self.cfg.solution_key]}")
         solutions_text = "\n\n".join(formatted_solutions)
 
         parallel_thinking_input = {
@@ -267,7 +267,7 @@ class ParallelThinkingTask:
             genselect_result["selection_successful"] = True
 
         return {
-            self.cfg.comparison_key: solutions[sel_solution_idx][self.cfg.comparison_key],
+            self.cfg.solution_key: solutions[sel_solution_idx][self.cfg.solution_key],
             "parallel_thinking_result": genselect_result,
         }
 
@@ -284,14 +284,14 @@ class ParallelThinkingTask:
         synthesized_solution = self._extract_synthesized_solution(gensynthesis_result["generation"])
         if synthesized_solution is None:
             LOG.warning("GenSynthesis failed to produce valid solution, falling back to random selection")
-            synthesized_solution = local_random.choice(solutions)[self.cfg.comparison_key]
+            synthesized_solution = local_random.choice(solutions)[self.cfg.solution_key]
             # Add the boolean flag to aid analysis and debugging
             gensynthesis_result["synthesis_successful"] = False
         else:
             gensynthesis_result["synthesis_successful"] = True
 
         return {
-            self.cfg.comparison_key: synthesized_solution,
+            self.cfg.solution_key: synthesized_solution,
             "parallel_thinking_result": gensynthesis_result,
         }
 
@@ -317,8 +317,8 @@ class ParallelThinkingTask:
             for solution in solutions:
                 # Check if thinking_begin is in the solution and thinking_end is not in the solution
                 if (
-                    self.cfg.thinking_begin in solution[self.cfg.comparison_key]
-                    and self.cfg.thinking_end not in solution[self.cfg.comparison_key]
+                    self.cfg.thinking_begin in solution[self.cfg.solution_key]
+                    and self.cfg.thinking_end not in solution[self.cfg.solution_key]
                 ):
                     continue
                 else:
@@ -347,7 +347,7 @@ class ParallelThinkingTask:
 
         if not solutions:
             return {
-                self.cfg.comparison_key: "",
+                self.cfg.solution_key: "",
                 "solution_list": [],
                 f"{self.cfg.mode}_comparison": "",
                 f"{self.cfg.mode}_num_generated_tokens": 0,
@@ -379,12 +379,12 @@ class ParallelThinkingTask:
         # Current implementation returns the total number of generated tokens
         result["num_generated_tokens"] = total_gen_tokens
 
-        result[self.cfg.comparison_key] = output_dict[self.cfg.comparison_key]
-        result["solution_list"] = [solution[self.cfg.comparison_key] for solution in solutions]
+        result[self.cfg.solution_key] = output_dict[self.cfg.solution_key]
+        result["solution_list"] = [solution[self.cfg.solution_key] for solution in solutions]
 
-        if self.cfg.comparison_key != "generation":
+        if self.cfg.solution_key != "generation":
             # Add the generation key to the result since it's required by inference/generate.py
-            # We're just copying the comparison key to the generation key to avoid errors
-            result["generation"] = result[self.cfg.comparison_key]
+            # We're just copying the solution key to the generation key to avoid errors
+            result["generation"] = result[self.cfg.solution_key]
 
         return result

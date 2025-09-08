@@ -81,6 +81,9 @@ nav:
     - evaluation/tool-calling.md
     - evaluation/multilingual.md
     - evaluation/other-benchmarks.md
+  - Agentic Inference:
+    - agentic_inference/parallel_thinking.md
+    - agentic_inference/tool_calling.md
   - Tutorials:
     - tutorials/index.md
   - Papers & Releases:
