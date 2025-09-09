@@ -21,6 +21,7 @@ import os
 import random
 import re
 from collections import defaultdict
+from dataclasses import field
 from typing import Dict, List, Optional, Union
 
 from nemo_skills.prompt.utils import get_prompt
@@ -58,8 +59,8 @@ class ParallelThinkingConfig:
     # GenSelect vs GenSynthesis
     mode: str | None = None  # genselect or gensynthesis
 
-    genselect: GenSelectSpecificConfig = GenSelectSpecificConfig()
-    gensynthesis: GenSynthesisSpecificConfig = GenSynthesisSpecificConfig()
+    genselect: GenSelectSpecificConfig = field(default_factory=GenSelectSpecificConfig)
+    gensynthesis: GenSynthesisSpecificConfig = field(default_factory=GenSynthesisSpecificConfig)
 
     # Solution related parameters
     window_size: int = 8  # Number of solutions compared in a single request
