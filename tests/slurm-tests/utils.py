@@ -43,15 +43,16 @@ def soft_assert(condition: bool, message: str):
         _soft_assert_failures.append(str(message))
 
 
-def assert_all(header: str = "TEST FAILURES"):
+def assert_all():
     """If any soft assertions failed, print them and exit with non-zero status.
 
     Does nothing if there are no failures. Intended to be called once at the end
     of a check script, before printing a success message.
     """
     if not _soft_assert_failures:
+        print("ALL TESTS PASSED")
         return
-    print(f"\n{header} ({len(_soft_assert_failures)})\n")
+    print(f"\nTEST FAILURES ({len(_soft_assert_failures)})\n")
     for i, msg in enumerate(_soft_assert_failures, 1):
         print(f"{i:3d}. {msg}")
     raise SystemExit(1)

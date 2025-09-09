@@ -27,6 +27,8 @@ from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 #     --data_dir /workspace/ns-data
 # """
 
+# TODO: we should probably switch to another model as this one is quite heavy to run
+
 
 def setup(workspace, cluster, expname_prefix):
     # download models
@@ -276,9 +278,9 @@ def eval_reasoning_off(workspace, cluster, expname_prefix, wandb_project):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Nemotron eval pipeline")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True, help="Workspace directory containing all experiment data")
-    parser.add_argument("--cluster", required=True, help="Cluster name, e.g. oci")
+    parser.add_argument("--cluster", required=True, help="Cluster name")
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
     parser.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
 
@@ -303,15 +305,12 @@ def main():
     )
 
     # schedule a dependent check job on the cluster and check if the results are as expected
-
-    checker = (
-        f"cd /nemo_run/code/tests/slurm-tests/super_49b_evals && python check_results.py --workspace {args.workspace} "
-    )
+    checker_cmd = f"python tests/slurm-tests/super_49b_evals/check_results.py --workspace {args.workspace}"
 
     run_cmd(
-        ctx=wrap_arguments(checker),
+        ctx=wrap_arguments(checker_cmd),
         cluster=args.cluster,
-        expname="check-eval-results-for-llama-49b",
+        expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
         run_after=reasoning_on_expnames + reasoning_off_expnames,
     )

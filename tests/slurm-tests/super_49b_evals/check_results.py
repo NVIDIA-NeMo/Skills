@@ -207,7 +207,6 @@ def main():
     check_ruler(eval_root / "reasoning_off_ruler", "reasoning_off")
 
     assert_all()
-    print("ALL CHECKS PASSED")
 
 
 if __name__ == "__main__":

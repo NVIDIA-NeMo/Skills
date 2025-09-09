@@ -21,6 +21,7 @@ import pytest
 from tests.conftest import docker_rm
 
 
+@pytest.mark.gpu
 def test_run_cmd_llm_infer():
     """
     Uses (if available) VLLM servers, then sends the same prompt

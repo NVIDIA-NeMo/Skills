@@ -18,9 +18,7 @@ from nemo_skills.pipeline.cli import run_cmd, wrap_arguments
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Run OpenMathReasoning and then schedule an on-cluster SFT results check."
-    )
+    ap = argparse.ArgumentParser()
     ap.add_argument("--cluster", required=True)
     ap.add_argument("--backend", required=True, choices=["nemo-aligner", "nemo-rl"], help="Training backend")
     ap.add_argument("--workspace", required=True, help="Workspace path")
@@ -44,17 +42,14 @@ def main():
 
     subprocess.run(cmd, shell=True, check=True)
 
-    checker_cmd = (
-        f"cd /nemo_run/code/tests/slurm-tests/omr_simple_recipe && "
-        f"python check_results.py --workspace {args.workspace} "
-    )
+    checker_cmd = f"python tests/slurm-tests/omr_simple_recipe/check_results.py --workspace {args.workspace}"
 
     run_cmd(
         ctx=wrap_arguments(checker_cmd),
         cluster=args.cluster,
-        expname=f"check-sft-results-for-{args.backend}",
+        expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
-        run_after=[  # this are launched in simplified recipe
+        run_after=[  # these are launched in simplified recipe
             f"{args.expname_prefix}-final-eval",
             f"{args.expname_prefix}-baseline-eval",
         ],

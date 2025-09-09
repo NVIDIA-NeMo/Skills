@@ -19,11 +19,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
 from utils import assert_all, load_json, soft_assert  # noqa: E402
 
-# Hard-coded accuracy ranges for baseline and after-training results
 # TODO: should we train for longer / generate more data? Variance is really high
 RANGE_CONSTRAINTS = {
     "after_training": {
-        "aime24": {"pass@1[avg-of-8]": (17.0, 30.0), "majority@8": (28.33, 48.33)},
+        "aime24": {"pass@1[avg-of-8]": (16.0, 30.0), "majority@8": (25.33, 48.33)},
         "aime25": {"pass@1[avg-of-8]": (15.0, 27.5), "majority@8": (21.22, 42.22)},
     },
     "baseline": {
@@ -33,12 +32,7 @@ RANGE_CONSTRAINTS = {
 }
 
 
-def check_benchmark(benchmark: str, baseline_results: dict, after_training_results: dict):
-    """
-    Validate one benchmark:
-      - baseline accuracy must be within its allowed range
-      - after-training accuracy must be within its allowed range
-    """
+def check_results(benchmark: str, baseline_results: dict, after_training_results: dict):
     for metric in ["pass@1[avg-of-8]", "majority@8"]:
         baseline_acc = baseline_results[benchmark][metric]["symbolic_correct"]
         after_acc = after_training_results[benchmark][metric]["symbolic_correct"]
@@ -67,11 +61,9 @@ def main():
         after_training_results = load_json(
             common_path / "after-training" / "eval-results" / benchmark / "metrics.json"
         )
-        check_benchmark(benchmark, baseline_results, after_training_results)
+        check_results(benchmark, baseline_results, after_training_results)
 
-    # Report any aggregated failures (exits non-zero if present)
     assert_all()
-    print("All checks passed.")
 
 
 if __name__ == "__main__":

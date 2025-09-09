@@ -34,8 +34,8 @@ TOOLCALLING_METRIC_RANGES = {
 }
 
 
-def check_toolcalling(bucket: str):
-    f = os.path.join(bucket, "eval-results", "bfcl_v3", "metrics.json")
+def check_results(eval_dir: str):
+    f = os.path.join(eval_dir, "eval-results", "bfcl_v3", "metrics.json")
     data = load_json(f)
     for category_tuple, expected_range in TOOLCALLING_METRIC_RANGES.items():
         val = float(get_nested_value(data, category_tuple))
@@ -48,10 +48,9 @@ def main():
     ap.add_argument("--workspace", required=True, help="Workspace directory containing eval results")
     args = ap.parse_args()
 
-    check_toolcalling(os.path.join(args.workspace, "reasoning_on_tool_calling"))
+    check_results(args.workspace)
 
     assert_all()
-    print("ALL CHECKS PASSED")
 
 
 if __name__ == "__main__":

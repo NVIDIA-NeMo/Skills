@@ -17,23 +17,29 @@ import argparse
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 
 
-def eval_qwen3_bfcl(workspace, cluster, expname_prefix, wandb_project):
-    model = "Qwen/Qwen3-4B"
-
+def eval_gpt_oss_python(workspace, cluster, expname_prefix, wandb_project):
     eval(
         ctx=wrap_arguments(
-            f"++inference.temperature=0.6 "
-            f"++inference.top_p=0.95 "
-            f"++inference.tokens_to_generate=8192 "
-            f"++model_name={model} "
+            "++inference.tokens_to_generate=120000 "
+            "++inference.temperature=1.0 "
+            "++inference.top_p=1.0 "
+            "++prompt_config=gpt-oss/math "
+            "++use_completions_api=true "
+            "++code_tags=gpt-oss "
+            "++code_execution=true "
+            "++server.code_execution.max_code_executions=100 "
+            "++chat_template_kwargs.reasoning_effort=high "
+            "++chat_template_kwargs.builtin_tools=[python] "
         ),
         cluster=cluster,
-        benchmarks="bfcl_v3",
-        model=model,
-        server_gpus=2,
+        benchmarks="aime25:16",
+        model="openai/gpt-oss-120b",
+        server_gpus=8,
         num_jobs=1,
         server_type="vllm",
         output_dir=workspace,
+        server_args="--async-scheduling",
+        with_sandbox=True,
         expname=expname_prefix,
         wandb_project=wandb_project,
         wandb_name=expname_prefix,
@@ -45,15 +51,15 @@ def eval_qwen3_bfcl(workspace, cluster, expname_prefix, wandb_project):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True, help="Workspace directory containing all experiment data")
-    parser.add_argument("--cluster", required=True, help="Cluster name, e.g. oci")
+    parser.add_argument("--cluster", required=True, help="Cluster name")
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
     parser.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
 
     args = parser.parse_args()
 
-    prepare_data(ctx=wrap_arguments("bfcl_v3"))
+    prepare_data(ctx=wrap_arguments("aime25"))
 
-    eval_expname = eval_qwen3_bfcl(
+    eval_expname = eval_gpt_oss_python(
         workspace=args.workspace,
         cluster=args.cluster,
         expname_prefix=args.expname_prefix,
@@ -61,7 +67,7 @@ def main():
     )
 
     # schedule a dependent check job on the cluster and check if the results are as expected
-    checker_cmd = f"python tests/slurm-tests/qwen3_4b_evals/check_results.py --workspace {args.workspace} "
+    checker_cmd = f"python tests/slurm-tests/gpt_oss_python_aime25/check_results.py --workspace {args.workspace} "
 
     run_cmd(
         ctx=wrap_arguments(checker_cmd),
