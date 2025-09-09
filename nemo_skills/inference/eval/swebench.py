@@ -160,6 +160,12 @@ class SweBenchGenerationTask(GenerationTask):
     def setup_llm(self):
         return
 
+    def setup_litellm_cache(self):
+        return
+
+    def cleanup_litellm_cache(self):
+        return
+
     async def _execute_container_command(
         self, data_point, command, expected_file_pattern, mode, max_retries=3, timeout=100000
     ):
@@ -171,8 +177,6 @@ class SweBenchGenerationTask(GenerationTask):
         # Create logs directory if it doesn't exist
         logs_dir = self.output_dir / "apptainer_logs"
         logs_dir.mkdir(exist_ok=True)
-        log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}.log"
-        LOG.info("Starting execution of an apptainer command. Logs are available at %s", log_file_path)
 
         # Fix localhost URLs not working sometimes
         command = f"echo '127.0.0.1 localhost' >/etc/hosts && {command}"
@@ -187,6 +191,14 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Retry apptainer command up to max_retries times
         for attempt in range(max_retries):
+            log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
+            LOG.info(
+                "Starting execution of an apptainer command (attempt %d of %d). Logs are available at %s",
+                attempt + 1,
+                max_retries,
+                log_file_path,
+            )
+
             try:
                 # Stream output to log file as it appears
                 with open(log_file_path, "w") as log_file:
@@ -413,6 +425,9 @@ class SweBenchGenerationTask(GenerationTask):
     async def process_single_datapoint(self, data_point, data):
         """Will do all necessary generations to get a single answer for the data point."""
         self.output_dir = Path(self.cfg.output_file).parent
+        if self.cfg.inference.random_seed is not None:
+            self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
+            self.output_dir.mkdir(exist_ok=True)
 
         # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
         # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?

@@ -270,13 +270,7 @@ class GenerationTask:
             self.tokenizer = None
 
         # Setup litellm cache
-        if self.cfg.enable_litellm_cache:
-            # One cache per (output_file_name, chunk_id) pair
-            output_file_name = Path(self.cfg.output_file).name
-            self.litellm_cache_dir = (
-                Path(self.cfg.output_file).parent / "litellm_cache" / f"{output_file_name}_{self.cfg.chunk_id or 0}"
-            )
-            litellm.cache = litellm.Cache(type="disk", disk_cache_dir=self.litellm_cache_dir)
+        self.setup_litellm_cache()
 
         if self.cfg.use_completions_api and self.cfg.inference.tokens_to_generate is None:
             raise ValueError("When using completions API, tokens_to_generate must be specified!")
@@ -580,8 +574,7 @@ class GenerationTask:
                 fout.write(json.dumps(gen_dict) + "\n")
 
         Path(self.cfg.output_file + "-async").unlink()
-        if self.cfg.enable_litellm_cache:
-            shutil.rmtree(self.litellm_cache_dir)
+        self.cleanup_litellm_cache()
 
     def wait_for_server(self):
         server_address = self.cfg.server.get("base_url") or f"{self.cfg.server['host']}:{self.cfg.server['port']}"
@@ -590,6 +583,19 @@ class GenerationTask:
             return
         server_start_cmd = get_server_wait_cmd(server_address)
         subprocess.run(server_start_cmd, shell=True, check=True)
+
+    def setup_litellm_cache(self):
+        if self.cfg.enable_litellm_cache:
+            # One cache per (output_file_name, chunk_id) pair
+            output_file_name = Path(self.cfg.output_file).name
+            self.litellm_cache_dir = (
+                Path(self.cfg.output_file).parent / "litellm_cache" / f"{output_file_name}_{self.cfg.chunk_id or 0}"
+            )
+            litellm.cache = litellm.Cache(type="disk", disk_cache_dir=self.litellm_cache_dir)
+
+    def cleanup_litellm_cache(self):
+        if self.cfg.enable_litellm_cache:
+            shutil.rmtree(self.litellm_cache_dir)
 
     def generate(self):
         Path(self.cfg.output_file).absolute().parent.mkdir(parents=True, exist_ok=True)
