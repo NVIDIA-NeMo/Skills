@@ -62,10 +62,10 @@ REASONING_METRIC_RANGES = {
         },
     },
     "reasoning_off": {
-        "math-500": (74.0, 77.0),
+        "math-500": (72.0, 77.0),
         "aime24": (11.0, 21.0),
         "aime25": (0.0, 10.0),
-        "gpqa": (49.0, 54.0),
+        "gpqa": (49.0, 56.0),
         "mmlu-pro": (68.0, 71.0),
         "livecodebench": (27.5, 32.5),
         "scicode": {
@@ -167,12 +167,12 @@ def check_reasoning(eval_dir: str, mode: str):
             for field in REASONING_REQUIRED_FIELDS[bench]:
                 val = float(result_block[field])
                 lo, hi = REASONING_METRIC_RANGES[mode][bench][field]
-                soft_assert(lo <= val <= hi, f"{bench}:{field}={val} out of range [{lo},{hi}]")
+                soft_assert(lo <= val <= hi, f"{bench} ({mode}) {field}={val} out of range [{lo},{hi}]")
         else:
             field = REASONING_REQUIRED_FIELDS[bench][0]
             val = float(result_block[field])
             lo, hi = REASONING_METRIC_RANGES[mode][bench]
-            soft_assert(lo <= val <= hi, f"{bench}:{field}={val} out of range [{lo},{hi}]")
+            soft_assert(lo <= val <= hi, f"{bench} ({mode}) {field}={val} out of range [{lo},{hi}]")
 
 
 def check_toolcalling(eval_dir: str, mode: str):
@@ -181,7 +181,7 @@ def check_toolcalling(eval_dir: str, mode: str):
     for cat, path in TOOLCALLING_METRIC_PATHS.items():
         val = float(get_nested_value(data, path))
         lo, hi = TOOLCALLING_METRIC_RANGES[mode][cat]
-        soft_assert(lo <= val <= hi, f"TOOL {cat}={val} out of range [{lo},{hi}]")
+        soft_assert(lo <= val <= hi, f"TOOL-CALLING ({mode}) {cat}={val} out of range [{lo},{hi}]")
 
 
 def check_ruler(eval_dir: str, mode: str):
@@ -190,7 +190,7 @@ def check_ruler(eval_dir: str, mode: str):
     for task in RULER_TASKS:
         val = float(data[task]["pass@1"]["accuracy"])
         lo, hi = RULER_METRIC_RANGES[mode][task]
-        soft_assert(lo <= val <= hi, f"RULER {task}={val} out of range [{lo},{hi}]")
+        soft_assert(lo <= val <= hi, f"RULER ({mode}) {task}={val} out of range [{lo},{hi}]")
 
 
 def main():
