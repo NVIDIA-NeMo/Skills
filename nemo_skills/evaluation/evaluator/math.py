@@ -53,6 +53,7 @@ class LeanEvaluatorConfig:
     timeout: float = 30.0
     final_answer_key: str = "**FINAL ANSWER**"
     restate_formal_statement: bool = True
+    strip_theorem_from_proof: bool = True
 
 
 def eval_lean4_proof(cfg):
