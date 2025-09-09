@@ -10,10 +10,8 @@ exclude_optional_keys: true # exclude keys other than input, output and expected
 metadata: null  # can provide additional metadata to store (e.g. dataset or generation_type)
 skip_first: 0  # useful for skipping validation set from train_full generation (it's always first)
 
-downsampling_method: null  # fair, random or null
 random_seed: 42
 do_shuffle: true
-num_output_samples: null
 
 prompt_config: null
 # Needed to format the data and also for length-based filtering
@@ -24,11 +22,22 @@ assistant_end: null  # can be used to not use jinja and just add this suffix
 
 code_tags: null
 
+# input params
+min_input_length: null
+max_input_length: null
+
+# output params
+min_output_length: null
+max_output_length: null
+use_chars_for_min_length: false
+
 input_key: input  # key to group samples by before code_text_filter
 output_key: output  # key to filter solutions by
 
 filters:
   drop_incorrect_code_blocks: false
+  remove_len_outlier_inputs: false
+  remove_len_outlier_outputs: false
 
 processors:
   - _target_: nemo_skills.training.data_preparation_utils.preprocessing.ReadData
@@ -42,9 +51,31 @@ processors:
     should_run: ${filters.drop_incorrect_code_blocks}
     output_key: ${output_key}
     test_cases:
-      - {input: {output: "Solution ```python\ndef hello()``` Second code ```python\n"}, output: null}
-      - {input: {output: "Solution ```python\ndef hello()```"}, output: {output: "Solution ```python\ndef hello()```"}}
-      - {input: {output: "She had python\ndef hello()```"}, output: null}
+      - { input: { output: "Solution ```python\ndef hello()``` Second code ```python\n" }, output: null }
+      - { input: { output: "Solution ```python\ndef hello()```" }, output: { output: "Solution ```python\ndef hello()```" } }
+      - { input: { output: "She had python\ndef hello()```" }, output: null }
+
+  - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveLenOutliers
+    should_run: ${filters.remove_len_outlier_inputs}
+    property_key: ${input_key}
+    min_length: ${min_input_length}
+    max_length: ${max_input_length}
+    tokenizer: ${tokenizer}
+
+  - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveLenOutliers
+    should_run: ${filters.remove_len_outlier_outputs}
+    property_key: ${output_key}
+    min_length: ${min_output_length}
+    max_length: ${max_output_length}
+    tokenizer: ${tokenizer}
+    use_chars_for_min_length: ${use_chars_for_min_length}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.GroupSamples
+    group_key: ${input_key}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.ShuffleAndDownsampleData
+    random_seed: ${random_seed}
+    do_shuffle: ${do_shuffle}
 
   - _target_: sdp.processors.RenameFields
     rename_fields:

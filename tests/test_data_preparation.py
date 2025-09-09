@@ -108,6 +108,7 @@ def test_code_sft_data():
             f"    ++tokenizer=Qwen/Qwen2.5-32B-Instruct "
             f"    ++exclude_optional_keys=false "
             f"    ++filters.drop_incorrect_code_blocks=false "
+            f"    ++do_shuffle=false "
         ),
     )
 

@@ -21,8 +21,8 @@ chat_template_kwargs: null
 system_message: null  # can be used to override default from the tokenizer
 
 # Problem params
-min_problem_length: 0
-max_problem_length: 1024
+min_problem_length: null
+max_problem_length: null
 
 input_key: problem
 
@@ -49,7 +49,7 @@ processors:
     input_key: ${input_key}
     skip_first: ${skip_first}
     deduplicate: ${deduplicate}
-    keys_to_keep:  # input/output/symbolic_correct/judgement are automatically added
+    keys_to_keep: # input/output/symbolic_correct/judgement are automatically added
       - "expected_answer"
       - "total_votes"
       - "majority_votes"
@@ -61,7 +61,7 @@ processors:
       - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfEqual
         should_run: ${filters.drop_none_answers}
         key: expected_answer
-        values: [null, ""]
+        values: [ null, "" ]
 
       - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveContaminated
         should_run: ${filters.remove_contaminated}
