@@ -158,6 +158,7 @@ def get_server_command(
             f"python3 {server_entrypoint} "
             f"    --model {model_path} "
             f"    --num_gpus {num_gpus} "
+            f"    --num_nodes {num_nodes} "
             f"    --port {server_port} "
             f"    {server_args} "
         )

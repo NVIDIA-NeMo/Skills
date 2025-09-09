@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="Serve vLLM model")
     parser.add_argument("--model", help="Path to the model or a model name to pull from HF")
     parser.add_argument("--num_gpus", type=int, required=True)
+    parser.add_argument("--num_nodes", type=int, required=False, default=1)
     parser.add_argument("--port", type=int, default=5000, help="Server port")
     parser.add_argument("--no_verbose", action="store_true", help="Print verbose logs")
     args, unknown = parser.parse_known_args()
@@ -41,7 +42,7 @@ def main():
         f"    --trust-remote-code "
         f'    --host="0.0.0.0" '
         f"    --port={args.port} "
-        f"    --tensor-parallel-size={args.num_gpus} "
+        f"    --tensor-parallel-size={args.num_gpus * args.num_nodes} "  # TODO: is this a good default for multinode setup?
         f"    {logging_args} "
         f"    {extra_arguments} " + (' | grep -v "200 OK"' if args.no_verbose else "")
     )
