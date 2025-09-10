@@ -53,6 +53,8 @@ class LeanEvaluatorConfig:
     timeout: float = 30.0
     final_answer_key: str = "**FINAL ANSWER**"
     restate_formal_statement: bool = True
+    # Which code block to extract when multiple are present: "first" or "last"
+    extract_code_mode: str = "last"
 
 
 def eval_lean4_proof(cfg):

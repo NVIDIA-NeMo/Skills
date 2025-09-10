@@ -87,23 +87,28 @@ def extract_code_output(generation: str, code_output_begin: str, code_output_end
     return _extract_between_separators(generation, [code_output_begin, code_output_end], extract_all)
 
 
-def extract_code_block(text: str, languages=None) -> str:
+def extract_code_block(text: str, languages=None, extract_code_mode: str = "last") -> str:
     if languages is None:
         languages = [""]
     for language in languages:
-        match = re.search(rf"```{language}\s*\n?(.*?)\n?```", text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
+        matches = re.findall(rf"```{language}\s*\n?(.*?)\n?```", text, re.DOTALL)
+        if matches:
+            idx = 0 if extract_code_mode == "first" else -1
+            return matches[idx].strip()
     return ""
 
 
-def clean_formal_generation(generation: str, final_answer_key: str = "**FINAL ANSWER**") -> str:
+def clean_formal_generation(
+    generation: str,
+    final_answer_key: str = "**FINAL ANSWER**",
+    extract_code_mode: str = "last",
+) -> str:
     # Extract part after **FINAL ANSWER** if present
     if final_answer_key in generation:
         generation = generation.split(final_answer_key, 1)[1].strip()
 
     languages = ["lean4", "lean3", "lean", ""]
-    extracted_code = extract_code_block(generation, languages)
+    extracted_code = extract_code_block(generation, languages, extract_code_mode=extract_code_mode)
     if extracted_code:
         return extracted_code
 

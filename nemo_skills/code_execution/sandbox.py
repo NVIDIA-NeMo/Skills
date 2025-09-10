@@ -245,8 +245,13 @@ class Sandbox(abc.ABC):
             output = await self._send_request(request, timeout)
         except httpx.TimeoutException:
             return "timeout"
-        if output["process_status"] == "completed" and output["stdout"] != "":
-            return "has_sorry"
+        if output["process_status"] == "completed":
+            stdout = output["stdout"].lower()
+            stderr = output["stderr"].lower()
+            combined = stdout + "\n" + stderr
+            if re.search(r"\bsorry\b", combined) is not None:
+                return "has_sorry"
+            return "completed"
         return output["process_status"]
 
     async def batch_evaluate_results(
@@ -259,6 +264,7 @@ class Sandbox(abc.ABC):
         final_answer_key: str = "**FINAL ANSWER**",
         restate_formal_statement: bool = True,
         strip_theorem_from_proof: bool = True,
+        extract_code_mode: str = "last",
     ):
         """Evaluate results and write back to original files."""
 
@@ -276,7 +282,9 @@ class Sandbox(abc.ABC):
             # Prepare predicted_proof based on format
             if answer_format == "lean4-proof":
                 if not use_predicted_proof_key:
-                    generation = clean_formal_generation(line_dict["generation"], final_answer_key=final_answer_key)
+                    generation = clean_formal_generation(
+                        line_dict["generation"], final_answer_key=final_answer_key, extract_code_mode=extract_code_mode
+                    )
                     line_dict["predicted_proof"] = (
                         line_dict["header"]
                         + (line_dict["formal_statement"] if restate_formal_statement else "")
@@ -292,7 +300,7 @@ class Sandbox(abc.ABC):
                         )
             elif answer_format == "lean4-statement":
                 if not use_predicted_proof_key:
-                    generation = clean_formal_generation(line_dict["generation"])
+                    generation = clean_formal_generation(line_dict["generation"], extract_code_mode=extract_code_mode)
                     header = get_lean4_header()
                     line_dict["predicted_proof"] = header + generation + "\n sorry"
                 else:
