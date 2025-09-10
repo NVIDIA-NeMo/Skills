@@ -74,7 +74,7 @@ class OpenAIModel(BaseModel):
         )
         if "tokens_to_generate" in kwargs:
             tokens_to_generate = kwargs.pop("tokens_to_generate")
-            kwargs["max_tokens"] = tokens_to_generate
+            kwargs["max_completion_tokens"] = tokens_to_generate
         if "random_seed" in kwargs:
             kwargs["seed"] = kwargs.pop("random_seed")
         if "stop_phrases" in kwargs:
@@ -146,7 +146,7 @@ class OpenAIModel(BaseModel):
             params["presence_penalty"] = repetition_penalty
             params["logprobs"] = top_logprobs is not None
             params["top_logprobs"] = top_logprobs
-            params["max_tokens"] = tokens_to_generate
+            params["max_completion_tokens"] = tokens_to_generate
             params["temperature"] = temperature
             params["top_p"] = top_p
 
