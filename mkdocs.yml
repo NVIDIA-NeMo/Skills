@@ -3,6 +3,7 @@ site_url: https://nvidia.github.io/NeMo-Skills
 extra_css:
   - css/extra.css
 plugins:
+  - search
   - blog:
       blog_dir: tutorials
       post_dir: tutorials/posts
