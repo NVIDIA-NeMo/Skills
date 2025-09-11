@@ -88,21 +88,23 @@ class PromptResponseDataset:
 
         # Re-process dataset
         print(f"[Map] Processing {split_name} dataset from: {path}")
-        raw_dataset = load_dataset("json", data_files=str(path))["train"]
+        dataset = load_dataset("json", data_files=str(path))["train"]
 
-        mapped_dataset = raw_dataset.map(
-            self.add_messages_key,
-            batched=True,
-            num_proc=self.num_proc,
-        )
+        if "messages" not in dataset.column_names:
+            dataset = dataset.map(
+                self.add_messages_key,
+                batched=True,
+                num_proc=self.num_proc,
+            )
+
         # Save dataset + new size signature
         cache_dir.mkdir(parents=True, exist_ok=True)
-        mapped_dataset.save_to_disk(str(cache_dir))
+        dataset.save_to_disk(str(cache_dir))
         with open(sig_file, "w") as f:
             json.dump({"size": file_size}, f)
 
         print(f"[Cache] Saved {split_name} dataset to: {cache_dir}")
-        return mapped_dataset
+        return dataset
 
     def add_messages_key(self, examples: dict[str, list[Any]]) -> dict[str, list[list[dict[str, Any]]]]:
         return {
