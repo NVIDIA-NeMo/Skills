@@ -220,6 +220,9 @@ class Sandbox(abc.ABC):
 
         # Rebuild state by executing concatenated history
         if session_id is not None and new_session_created:
+            # TODO: this history restoration is not ideal, we are returning output that is not the actual output of the new code
+            # and the execution of the concatenation may not be the same as the execution of the respective cells
+            # see details in this thread: https://github.com/NVIDIA/NeMo-Skills/pull/803#discussion_r2338240505
             history = self.session_histories.get(session_id, [])
             combined_code = "\n".join(history) + ("\n" if history else "") + generated_code
             request = self._prepare_request(
@@ -234,6 +237,8 @@ class Sandbox(abc.ABC):
         # Append to history if successful execution (process_status == 'completed')
         if output.get("process_status") == "completed":
             self.session_histories[request_session_id].append(generated_code)
+
+        output.pop("new_session_created", None)
 
         return output, request_session_id
 

@@ -501,6 +501,385 @@ except NameError:
                 assert "last_used" in session_info
                 assert "alive" in session_info
 
+    def test_infinite_loop_timeout_then_simple_job(self, tester):
+        """
+        Test that an infinite loop times out properly and doesn't affect subsequent jobs.
+        Verifies timeout handling and session cleanup work correctly.
+        """
+        session_id = f"test_timeout_recovery_{uuid.uuid4()}"
+
+        # First: Run an infinite loop that should timeout and be unkillable by SIGINT
+        infinite_loop_code = """
+import time
+import signal
+# Ignore SIGINT to force timeout_killed scenario
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+counter = 0
+while True:
+    counter += 1
+    time.sleep(0.1)  # Small sleep to make it less CPU intensive
+    if counter % 10 == 0:
+        print(f"Still running... counter={counter}")
+"""
+
+        print(f"Running infinite loop with session {session_id}")
+        result1 = tester.execute_code(infinite_loop_code, session_id, timeout=3)
+
+        # The result should indicate a timeout
+        print(f"Infinite loop result: {result1['process_status']}, time: {result1['response_time']:.2f}s")
+        print(f"Infinite loop stderr: {result1.get('stderr', 'No stderr')}")
+        print(f"Infinite loop stdout: {result1.get('stdout', 'No stdout')}")
+
+        # Should timeout properly
+        assert result1["process_status"] == "timeout", f"Expected timeout, got {result1['process_status']}"
+        assert result1["response_time"] >= 3, (
+            f"Should have taken at least 3 seconds, took {result1['response_time']:.2f}s"
+        )
+
+        # Second: Run a simple job in the same session - this should work if cleanup was proper
+        simple_code = """
+# This should execute quickly and independently
+result = 2 + 2
+print(f"Simple calculation result: {result}")
+"""
+
+        print(f"Running simple job with same session {session_id}")
+        result2 = tester.execute_code(simple_code, session_id, timeout=10)
+
+        print(f"Simple job result: {result2['process_status']}, time: {result2['response_time']:.2f}s")
+
+        # This should complete successfully and quickly
+        assert result2["process_status"] == "completed", f"Simple job failed: {result2.get('stderr', 'Unknown error')}"
+        assert "Simple calculation result: 4" in result2["stdout"], "Simple job didn't produce expected output"
+        assert result2["response_time"] < 5, f"Simple job took too long: {result2['response_time']:.2f}s"
+
+    def test_multiple_timeouts_different_sessions(self, tester):
+        """
+        Test that multiple concurrent timeout scenarios don't interfere with each other
+        """
+        num_sessions = 3
+
+        def run_timeout_then_simple(session_num):
+            session_id = f"test_multi_timeout_{session_num}_{uuid.uuid4()}"
+
+            # Run infinite loop that ignores SIGINT to force timeout_killed scenario
+            infinite_code = f"""
+import time
+import signal
+# Ignore SIGINT to test timeout_killed scenario
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+session_num = {session_num}
+counter = 0
+while True:
+    counter += 1
+    time.sleep(0.05)
+    if counter % 20 == 0:
+        print(f"Session {{session_num}} counter={{counter}}")
+"""
+
+            result1 = tester.execute_code(infinite_code, session_id, timeout=2)
+
+            # Run simple job
+            simple_code = f"""
+session_result = "session_{session_num}_completed"
+print(f"Session {session_num} simple job: {{session_result}}")
+"""
+
+            result2 = tester.execute_code(simple_code, session_id, timeout=10)
+
+            return {
+                "session_num": session_num,
+                "timeout_result": result1,
+                "simple_result": result2,
+                "timeout_success": result1["process_status"] == "timeout",
+                "simple_success": result2["process_status"] == "completed"
+                and f"session_{session_num}_completed" in result2["stdout"],
+            }
+
+        # Run multiple sessions concurrently
+        with ThreadPoolExecutor(max_workers=num_sessions) as executor:
+            futures = [executor.submit(run_timeout_then_simple, i) for i in range(num_sessions)]
+            results = [future.result() for future in as_completed(futures)]
+
+        # Analyze results
+        timeout_successes = sum(1 for r in results if r["timeout_success"])
+        simple_successes = sum(1 for r in results if r["simple_success"])
+
+        print(f"Timeout handling: {timeout_successes}/{num_sessions} sessions timed out properly")
+        print(f"Simple job recovery: {simple_successes}/{num_sessions} sessions recovered properly")
+
+        # All timeouts should be handled properly
+        assert timeout_successes == num_sessions, (
+            f"Only {timeout_successes}/{num_sessions} sessions timed out properly"
+        )
+
+        # All simple jobs should complete after timeout cleanup
+        assert simple_successes == num_sessions, f"Only {simple_successes}/{num_sessions} sessions recovered properly"
+
+    def test_timeout_with_resource_intensive_code(self, tester):
+        """
+        Test timeout handling with resource-intensive code that might be harder to interrupt
+        """
+        session_id = f"test_resource_timeout_{uuid.uuid4()}"
+
+        # CPU and memory intensive code that ignores SIGINT
+        resource_intensive_code = """
+import time
+import signal
+# Ignore SIGINT to force timeout_killed scenario
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+# CPU intensive infinite loop with memory allocation
+data_list = []
+counter = 0
+while True:
+    # Allocate some memory each iteration
+    data_list.append([i for i in range(1000)])
+
+    # CPU intensive calculation
+    for i in range(10000):
+        result = i ** 2 + i ** 3
+
+    counter += 1
+    if counter % 10 == 0:
+        print(f"Resource intensive loop: {counter}, memory items: {len(data_list)}")
+
+    # Small sleep to not completely overwhelm the system
+    time.sleep(0.01)
+"""
+
+        result1 = tester.execute_code(resource_intensive_code, session_id, timeout=3)
+
+        # Should timeout
+        assert result1["process_status"] == "timeout", f"Expected timeout, got {result1['process_status']}"
+        assert result1["response_time"] >= 3, (
+            f"Should have taken at least 3 seconds, took {result1['response_time']:.2f}s"
+        )
+
+        # Follow up with simple code to ensure session is clean
+        simple_code = """
+import gc
+# Check memory usage and run simple calculation
+gc.collect()  # Force garbage collection
+simple_result = sum(range(10))
+print(f"Simple calculation after resource cleanup: {simple_result}")
+"""
+
+        result2 = tester.execute_code(simple_code, session_id, timeout=10)
+
+        assert result2["process_status"] == "completed", (
+            f"Cleanup verification failed: {result2.get('stderr', 'Unknown error')}"
+        )
+        assert "Simple calculation after resource cleanup: 45" in result2["stdout"], (
+            "Session not properly cleaned up after resource-intensive timeout"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sandbox_session_history_after_timeout(self):
+        """
+        Test that session history re-execution works after timeout using LocalSandbox.
+        The client should maintain history and re-execute it when the server creates a new session.
+        """
+        import asyncio
+
+        from nemo_skills.code_execution.sandbox import LocalSandbox
+
+        # Create sandbox instance
+        sandbox = LocalSandbox()
+        session_id = f"test_sandbox_timeout_{uuid.uuid4()}"
+
+        try:
+            print(f"Testing sandbox session history with session {session_id}")
+
+            # Step 1: Execute some code to build up session history
+            setup_code1 = """
+# First piece of session state
+session_var_1 = "first_value"
+session_list = [1, 2, 3]
+print(f"Setup 1: {session_var_1}, list length: {len(session_list)}")
+"""
+
+            result1, returned_session_id = await sandbox.execute_code(setup_code1, session_id=session_id, timeout=10)
+
+            assert result1["process_status"] == "completed", (
+                f"Setup 1 failed: {result1.get('stderr', 'Unknown error')}"
+            )
+            assert "Setup 1: first_value, list length: 3" in result1["stdout"]
+            print("Step 1: Initial session state created")
+
+            # Step 2: Add more to the session history
+            setup_code2 = """
+# Second piece of session state
+session_var_2 = "second_value"
+session_list.append(4)
+def session_function(x):
+    return x * 2 + len(session_var_1)
+print(f"Setup 2: {session_var_2}, list: {session_list}")
+"""
+
+            result2, _ = await sandbox.execute_code(setup_code2, session_id=session_id, timeout=10)
+
+            assert result2["process_status"] == "completed", (
+                f"Setup 2 failed: {result2.get('stderr', 'Unknown error')}"
+            )
+            assert "Setup 2: second_value, list: [1, 2, 3, 4]" in result2["stdout"]
+            print("Step 2: Session history built up")
+
+            # Step 3: Execute code that will timeout and cause session cleanup
+            timeout_code = """
+# This will timeout and cause session cleanup
+import time
+import signal
+# Ignore SIGINT to force timeout_killed scenario
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+print("Starting timeout operation...")
+counter = 0
+while True:
+    counter += 1
+    time.sleep(0.1)
+    if counter % 10 == 0:
+        print(f"Timeout test counter: {counter}")
+"""
+
+            result3, _ = await sandbox.execute_code(
+                timeout_code,
+                session_id=session_id,
+                timeout=3,  # Short timeout to trigger cleanup
+            )
+
+            assert result3["process_status"] == "timeout", f"Expected timeout, got {result3['process_status']}"
+            print("Step 3: Timeout occurred and session was cleaned up")
+
+            # Wait a moment for server-side cleanup to complete
+            # The ShellManager will have killed and restarted the shell process
+            await asyncio.sleep(1)
+
+            # Step 4: Execute new code in the same session - should trigger history re-execution
+            test_history_code = """
+# This should work if history was properly re-executed
+try:
+    # Test that all previous state exists
+    print(f"Var 1: {session_var_1}")
+    print(f"Var 2: {session_var_2}")
+    print(f"List: {session_list}")
+    print(f"Function result: {session_function(5)}")
+    print("History re-execution successful!")
+except NameError as e:
+    print(f"History re-execution failed: {e}")
+    raise e
+"""
+
+            result4, _ = await sandbox.execute_code(test_history_code, session_id=session_id, timeout=10)
+
+            assert result4["process_status"] == "completed", (
+                f"History re-execution failed: {result4.get('stderr', 'Unknown error')}"
+            )
+
+            # Verify the history was properly re-executed
+            assert "Var 1: first_value" in result4["stdout"], "session_var_1 not restored"
+            assert "Var 2: second_value" in result4["stdout"], "session_var_2 not restored"
+            assert "List: [1, 2, 3, 4]" in result4["stdout"], "session_list not restored"
+            assert "Function result: 21" in result4["stdout"], (
+                "session_function not restored"
+            )  # 5*2 + len("first_value") = 10 + 11 = 21
+            assert "History re-execution successful!" in result4["stdout"], "History re-execution check failed"
+
+            print("Step 4: Session history properly re-executed after timeout")
+
+            # Step 5: Verify continued session state works
+            continue_code = """
+# Add to the restored session
+session_var_3 = "third_value"
+session_list.append(5)
+print(f"Continued: {session_var_3}, final list: {session_list}")
+"""
+
+            result5, _ = await sandbox.execute_code(continue_code, session_id=session_id, timeout=10)
+
+            assert result5["process_status"] == "completed", (
+                f"Continue failed: {result5.get('stderr', 'Unknown error')}"
+            )
+            assert "Continued: third_value, final list: [1, 2, 3, 4, 5]" in result5["stdout"], (
+                "Session continuation failed"
+            )
+            print("Step 5: Session continues to work after history re-execution")
+
+            # Step 6: Test overlapping requests - start a long job but don't wait for it
+            long_running_code = """
+# This will run for a long time but we won't wait for it to complete
+import time
+import signal
+# Ignore SIGINT to make it harder to interrupt
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+print("Starting long-running background operation...")
+for i in range(1000):
+    # CPU intensive work
+    for j in range(100000):
+        result = j ** 2 + j ** 3
+    time.sleep(0.1)
+    if i % 10 == 0:
+        print(f"Long job progress: {i}/1000")
+print("Long job completed (this shouldn't be seen)")
+"""
+
+            # Start the long job but don't wait for it (use a short timeout to trigger cancellation)
+            print("Step 6a: Starting long-running job that will be canceled...")
+
+            # Start the long job in the background (it will timeout and be canceled)
+            import asyncio
+
+            long_job_task = asyncio.create_task(
+                sandbox.execute_code(long_running_code, session_id=session_id, timeout=2)  # Short timeout to cancel
+            )
+
+            # Wait a moment for the long job to start
+            await asyncio.sleep(0.5)
+
+            # Step 6b: While long job is running, execute a quick job in the same session
+            quick_code = """
+# This should work even while the long job is running (and should cancel the long job)
+quick_var = "quick_execution"
+print(f"Quick job executed: {quick_var}")
+# Test that previous session state still exists after reconstruction
+print(f"Previous state check - Var 1: {session_var_1}")
+print(f"Previous state check - List: {session_list}")
+"""
+
+            print("Step 6b: Executing quick job while long job is running...")
+            result6, _ = await sandbox.execute_code(quick_code, session_id=session_id, timeout=10)
+
+            # Wait for the long job to complete (should be canceled/timeout)
+            long_result, _ = await long_job_task
+
+            print(f"Long job result: {long_result['process_status']}")
+            print(f"Quick job result: {result6['process_status']}")
+
+            # The long job should have been canceled/timed out
+            assert long_result["process_status"] == "timeout", (
+                f"Expected long job to timeout, got {long_result['process_status']}"
+            )
+
+            # The quick job should have succeeded with reconstructed session state
+            assert result6["process_status"] == "completed", (
+                f"Quick job failed: {result6.get('stderr', 'Unknown error')}"
+            )
+            assert "Quick job executed: quick_execution" in result6["stdout"], "Quick job didn't execute"
+            assert "Previous state check - Var 1: first_value" in result6["stdout"], "Session state not reconstructed"
+            assert "Previous state check - List: [1, 2, 3, 4, 5]" in result6["stdout"], (
+                "Session list not reconstructed"
+            )
+
+            print(
+                "Step 6: Overlapping request handling successful - long job canceled, quick job succeeded with reconstructed state"
+            )
+
+        finally:
+            # Clean up
+            try:
+                await sandbox.delete_session(session_id)
+                await sandbox.close()
+            except Exception as e:
+                print(f"Cleanup error: {e}")
+
 
 if __name__ == "__main__":
     # Allow running as script for quick testing
