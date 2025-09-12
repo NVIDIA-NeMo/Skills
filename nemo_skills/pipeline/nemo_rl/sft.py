@@ -282,8 +282,9 @@ def sft_nemo_rl(
         mount_map={output_dir: None},
         check_mounted_paths=check_mounted_paths,
     )
+
     if hf_model.startswith("/"):  # could ask to download from HF
-        hf_model = check_if_mounted(cluster_config, hf_model)
+        check_if_mounted(cluster_config, hf_model)
     env_variables = get_env_variables(cluster_config)
 
     if backend == "megatron":
