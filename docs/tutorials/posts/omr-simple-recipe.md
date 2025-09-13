@@ -246,7 +246,7 @@ ns nemo_rl sft \
     ++policy.train_global_batch_size=32 \
     ++policy.megatron_cfg.tensor_model_parallel_size=4 \
     ++policy.megatron_cfg.context_parallel_size=2 \
-    ++policy.megatron_cfg.optimizer.lr=1e-4 \
+    ++policy.lr=1e-5 \
     ++sft.max_num_epochs=2
 ```
 

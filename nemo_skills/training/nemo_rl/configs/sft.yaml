@@ -37,6 +37,9 @@ policy:
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
+  lr: 1e-6
+  weight_decay: 0.01
+  min_lr: 1e-6
 
 
   dtensor_cfg:
@@ -72,9 +75,9 @@ policy:
 
     optimizer:
       optimizer: "adam"
-      lr: 5.0e-6
-      min_lr: ${policy.megatron_cfg.optimizer.lr}
-      weight_decay: 0.01
+      lr: ${policy.lr}
+      min_lr: ${policy.min_lr}
+      weight_decay: ${policy.weight_decay}
       bf16: true  # must be true to avoid checkpoint load error
       fp16: false
       params_dtype: "float32"
@@ -98,9 +101,9 @@ policy:
       end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       weight_decay_incr_style: "constant"
       lr_decay_style: "cosine"
-      lr_decay_iters: null
+      lr_decay_iters: ${sft.max_num_steps}
       lr_warmup_iters: 0
-      lr_warmup_init: 1e-7
+      lr_warmup_init: 1.0e-6
 
     distributed_data_parallel_config:
       grad_reduce_in_fp32: false
@@ -127,14 +130,27 @@ policy:
   optimizer:
     name: "torch.optim.AdamW"
     kwargs:
-      lr: 5.0e-6
-      weight_decay: 0.01
+      lr: ${policy.lr}
+      weight_decay: ${policy.weight_decay}
       betas: [0.9, 0.98]
       eps: 1e-8
       # when using Dtensor, we need to set foreach
       # and fused to False
       foreach: False
       fused: False
+
+  scheduler:
+  - name: "torch.optim.lr_scheduler.LinearLR"
+    kwargs:
+      start_factor: 1.0
+      end_factor: 1.0
+      total_iters: 1   # must be >=1, here it keeps LR constant
+  - name: "torch.optim.lr_scheduler.CosineAnnealingLR"
+    kwargs:
+      T_max: ${sft.max_num_steps}      # total training steps
+      eta_min: ${policy.lr}   # set min_lr = initial_lr -> constant schedule
+  - milestones: [0]  # required to avoid config errors
+
 
 data:
   max_input_seq_length: ${policy.max_total_sequence_length}
