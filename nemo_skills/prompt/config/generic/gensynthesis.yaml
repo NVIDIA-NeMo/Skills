@@ -2,16 +2,16 @@
 # TODO:
 
 user: |-
-  You will be given a problem followed by an enumerated list of {num_solutions} candidate solutions that serve as input seeds. Your task is to systematically synthesize a new, improved solution by combining the strongest elements from these candidates while addressing their individual weaknesses.
+  You will be given a problem followed by {num_solutions} candidate solutions. Synthesize a new, improved solution by combining the best elements from these candidates.
 
   Problem: {problem}
 
   Solutions:
   {solutions}
 
-
   End your response with exactly:
   <NEW_SOLUTION>
-  NEW_SYNTHESIZED_SOLUTION
+  [your complete solution here]
   </NEW_SOLUTION>
-  where NEW_SYNTHESIZED_SOLUTION is your complete improved solution.
+
+  CRITICAL: Your solution inside the tags MUST follow the exact format requirements specified in the problem description above. Do NOT write anything after the closing </NEW_SOLUTION> tag.
