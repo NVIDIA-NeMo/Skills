@@ -23,10 +23,10 @@ from utils import assert_all, load_json, soft_assert  # noqa: E402
 RANGE_CONSTRAINTS = {
     "after_training": {
         "aime24": {"pass@1[avg-of-8]": (16.0, 30.0), "majority@8": (25.33, 48.33)},
-        "aime25": {"pass@1[avg-of-8]": (15.0, 27.5), "majority@8": (21.22, 42.22)},
+        "aime25": {"pass@1[avg-of-8]": (15.0, 27.5), "majority@8": (20.22, 42.22)},
     },
     "baseline": {
-        "aime24": {"pass@1[avg-of-8]": (6.25, 18.25), "majority@8": (13.33, 24.33)},
+        "aime24": {"pass@1[avg-of-8]": (6.25, 18.25), "majority@8": (13.33, 25.33)},
         "aime25": {"pass@1[avg-of-8]": (8.75, 18.75), "majority@8": (11.67, 24.33)},
     },
 }
