@@ -351,6 +351,11 @@ class SweBenchGenerationTask(GenerationTask):
 
         config_str = tomlkit.dumps(config)
 
+        # Folder to copy the dataset into.
+        # It's important that the name includes the original HF dataset name,
+        # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
+        data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
+
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -373,6 +378,9 @@ class SweBenchGenerationTask(GenerationTask):
             "export INSTALL_DOCKER=0 && "
             "make build && "
             "poetry run python -m pip install datasets && "
+            # copy dataset
+            f"mkdir {data_dir} && "
+            f"cp {self.cfg.input_file} {data_dir} && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
             f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/swe_bench/config.toml && "
@@ -388,8 +396,8 @@ class SweBenchGenerationTask(GenerationTask):
             f"    1 "  # number of instances
             f"    {self.cfg.agent_max_turns} "  # max agent iterations
             f"    1 "  # number of workers
-            f"    {data_point['dataset_name']} "  # dataset name
-            f"    {data_point['split']} && "  # dataset split
+            f"    {data_dir} "  # dataset path
+            f"    train && "  # dataset split (always "train" for local datasets)
             # move outputs to the mounted directory
             f"mkdir -p /trajectories_mount/trajectories && "
             f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
