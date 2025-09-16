@@ -20,11 +20,9 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Dict, Union
 
-import litellm
-
 from nemo_skills.utils import get_logger_name
 
-from .utils import ServerTokenizer, WrapperAutoTokenizer
+from .utils import ServerTokenizer, WrapperAutoTokenizer, is_context_window_exceeded_error
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -191,13 +189,8 @@ async def handle_context_retries_async(
     try:
         result = await func(self, *args, **kwargs)
         return result
-    except (litellm.exceptions.ContextWindowExceededError, litellm.BadRequestError) as error:
-        if (
-            isinstance(error, litellm.exceptions.ContextWindowExceededError)
-            or "Requested token count exceeds" in str(error)
-            or "exceeds maximum input length" in str(error)
-            or "should not exceed max_seq_len" in str(error)
-        ):
+    except Exception as error:
+        if is_context_window_exceeded_error(error):
             if not config.enable_soft_fail:
                 raise error
 
@@ -225,13 +218,8 @@ def handle_context_retries_sync(
     try:
         result = func(self, *args, **kwargs)
         return result
-    except (litellm.exceptions.ContextWindowExceededError, litellm.BadRequestError) as error:
-        if (
-            isinstance(error, litellm.exceptions.ContextWindowExceededError)
-            or "Requested token count exceeds" in str(error)
-            or "exceeds maximum input length" in str(error)
-            or "should not exceed max_seq_len" in str(error)
-        ):
+    except Exception as error:
+        if is_context_window_exceeded_error(error):
             if not config.enable_soft_fail:
                 raise error
 

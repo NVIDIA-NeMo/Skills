@@ -19,7 +19,6 @@ from dataclasses import asdict, field
 from functools import partial
 
 import hydra
-import litellm
 from transformers import AutoTokenizer
 
 from nemo_skills.dataset.bfcl_v3.utils import convert_to_tool, func_doc_language_specific_pre_processing
@@ -32,6 +31,7 @@ from nemo_skills.inference.eval.bfcl_utils import (
 )
 from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
 from nemo_skills.inference.model import server_params
+from nemo_skills.inference.model.utils import is_context_window_exceeded_error
 from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -230,11 +230,14 @@ class BFCLGenerationTask(GenerationTask):
         # Step 2: Query the LLM server
         try:
             output = await self.llm.generate_async(**input_dict)
-        except litellm.exceptions.ContextWindowExceededError as e:
-            # Enable soft-fail when the models run out of context
-            error_str = str(e)
-            LOG.warning(f"BFCL generation failed due to running out of context. {error_str}")
-            return {"message": None, "generation": ""}
+        except Exception as error:
+            if is_context_window_exceeded_error(error):
+                # Enable soft-fail when the models run out of context
+                error_str = str(error)
+                LOG.warning(f"BFCL generation failed due to running out of context. {error_str}")
+                return {"message": None, "generation": ""}
+            else:
+                raise error
 
         # Step 3: Parse the generated output
         parsed_response = self.message_parser.parse_output_dict(output)

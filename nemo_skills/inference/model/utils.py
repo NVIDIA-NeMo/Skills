@@ -15,6 +15,7 @@
 import logging
 import re
 
+import litellm
 import requests
 from transformers import AutoTokenizer
 
@@ -30,6 +31,23 @@ def trim_after_stop_phrases(text: str, stop_phrases: list[str]) -> str:
     # Escape all special characters in stop phrases
     escaped_stop_phrases = [re.escape(sp) for sp in stop_phrases]
     return re.split("|".join(escaped_stop_phrases), text, maxsplit=1)[0]
+
+
+def is_context_window_exceeded_error(error: Exception) -> bool:
+    """Check if the error is a context window exceeded error."""
+    # TODO: Ideally there should be a consistent error type for this. But litellm also throws BadRequestError for this.
+    # TODO: Add more error messages to check for.
+    if (
+        isinstance(error, litellm.exceptions.ContextWindowExceededError)
+        or "Requested token count exceeds" in str(error)
+        or "exceeds maximum input length" in str(error)
+        or "should not exceed max_seq_len" in str(error)
+        or "reduce the length of the input messages" in str(error)
+        or "'max_completion_tokens' is too large" in str(error)
+    ):
+        return True
+    else:
+        return False
 
 
 class ServerTokenizer:
