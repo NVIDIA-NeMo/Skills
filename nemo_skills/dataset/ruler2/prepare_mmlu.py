@@ -36,8 +36,13 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 # Basic Configurations
 parser.add_argument("--output_folder",  type=str)
+<<<<<<< HEAD
 parser.add_argument("--tokenizer_type",  type=str, default='hf', help='[Options] nemo, hf, openai.')
 parser.add_argument("--tokenizer_path", type=str, required=True, help='path to the tokenizer model')
+=======
+parser.add_argument("--tokenizer_path", type=str, required=True, help='path to the tokenizer model')
+parser.add_argument("--tokenizer_type",  type=str, default='nemo', help='[Options] nemo, hf, openai.')
+>>>>>>> fc830c89 (add initial ruler2)
 parser.add_argument("--max_seq_length", type=int, required=True, help='max sequence length including all input tokens and generated tokens.')
 parser.add_argument("--random_seed", type=int, default=42)
 parser.add_argument("--insert_position", type=float, default=-1, help='insert position of the true context in the context.')
@@ -168,7 +173,11 @@ elif args.dataset == "mmlu":
         choices = d["choices"]
         item = {
             "Question": d['question'] + f'\nA. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}',
+<<<<<<< HEAD
             "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}',
+=======
+            "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}'
+>>>>>>> fc830c89 (add initial ruler2)
             "Answer": options[d['answer']],
         }
         needle.append(item)
@@ -177,7 +186,11 @@ elif args.dataset == "mmlu":
         choices = d["choices"]
         item = {
             "Question": d['question'] + f'\nA. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}',
+<<<<<<< HEAD
             "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}',
+=======
+            "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}'
+>>>>>>> fc830c89 (add initial ruler2)
             "Answer": options[d['answer']],
         }
         haystack.append(item)
