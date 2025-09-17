@@ -177,7 +177,7 @@ elif args.dataset == "mmlu":
         choices = d["choices"]
         item = {
             "Question": d['question'] + f'\nA. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}',
-            "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}'
+            "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}',
             "Answer": options[d['answer']],
         }
         haystack.append(item)
