@@ -351,7 +351,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tokenizer_type",
         type=str,
-        default="hf"
+        default="hf",
         help="Type of the tokenizer to use.",
     )
     parser.add_argument(
