@@ -66,6 +66,7 @@ def eval_ruler(cfg):
         "part": string_match_part_single,
     }
 
+<<<<<<< HEAD
     jsonl_file = eval_config.input_file
     with open(jsonl_file, "rt", encoding="utf-8") as fin:
         data = [json.loads(line) for line in fin]
@@ -81,3 +82,87 @@ def eval_ruler(cfg):
             fout.write(json.dumps(sample) + "\n")
 
     os.replace(jsonl_file + "-tmp", jsonl_file)
+=======
+    for file in unroll_files(cfg.input_files):
+        with open(file, "rt", encoding="utf-8") as fin:
+            data = [json.loads(line) for line in fin]
+        with open(file, "wt", encoding="utf-8") as fout:
+            for sample in tqdm(data):
+                parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
+                sample["is_correct"] = match_type_funcs[eval_config.match_type](
+                    sample["generation"], sample["expected_answer"]
+                )
+                sample["predicted_answer"] = parse_result
+                fout.write(json.dumps(sample) + "\n")
+
+
+def eval_ruler2(cfg):
+    def default_parse(prediction):
+        prediction = prediction.strip()
+        # Remove all non-printable characters
+        np_pattern = re.compile(r"[\x00-\x1f]")
+        pp_predict = np_pattern.sub("\n", prediction).strip()
+        return pp_predict
+
+    def post_process_preds(preds):
+        if "</think>" in preds:
+            preds = preds.split("</think>")[-1]
+
+        if "Answer:" in preds:
+            preds = preds.split("Answer:")[-1]
+        return preds
+
+    def string_match_all_single(preds, refs):
+        """the metric function with input (predictions: [str], references: [[str]]) to compute score."""
+        preds = post_process_preds(preds)
+        preds = [preds]
+        refs = [refs]
+        score = [
+            sum([1.0 if r.lower() in pred.lower() else 0.0 for r in ref]) / len(ref) for pred, ref in zip(preds, refs)
+        ][0]
+        return score
+
+    def string_match_2steps_single(preds, refs):
+        preds = post_process_preds(preds)
+        preds = preds.split("\n\n")[-1]
+        preds = [preds]
+        refs = [refs]
+        score = [
+            sum([1.0 if r.lower() in pred.lower() else 0.0 for r in ref]) / len(ref) for pred, ref in zip(preds, refs)
+        ][0]
+        return score
+
+    def string_match_part_single(preds, refs):
+        preds = post_process_preds(preds)
+        preds = re.sub(r'Document \d+:(?:.*\n)+?\n', '', preds)
+
+        preds = [preds]
+        refs = [refs]
+        score = [
+            sum([max([1.0 if r.lower() in pred.lower() else 0.0 for r in ref]) for pred, ref in zip(preds, refs)])
+        ][0]
+        return score
+
+    eval_config = RulerEvaluatorConfig(**cfg.eval_config)
+
+    parse_funcs = {
+        "default": default_parse,
+    }
+    match_type_funcs = {
+        "all": string_match_all_single,
+        "part": string_match_part_single,
+        "2steps": string_match_2steps_single,
+    }
+
+    for file in unroll_files(cfg.input_files):
+        with open(file, "rt", encoding="utf-8") as fin:
+            data = [json.loads(line) for line in fin]
+        with open(file, "wt", encoding="utf-8") as fout:
+            for sample in tqdm(data):
+                parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
+                sample["is_correct"] = match_type_funcs[eval_config.match_type](
+                    sample["generation"], sample["expected_answer"]
+                )
+                sample["predicted_answer"] = parse_result
+                fout.write(json.dumps(sample) + "\n")
+>>>>>>> 2f7a3a33 (add initial ruler2)
