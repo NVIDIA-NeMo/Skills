@@ -108,7 +108,7 @@ def prepare_mk_niah_hard(output_folder, tokenizer_type, tokenizer_path, length, 
 
 def prepare_mv_niah_basic(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m prepare.py nemo_skills.dataset.ruler2.prepare_niah "
+        f"python -m nemo_skills.dataset.ruler2.prepare_niah "
         f"--output_folder {output_folder} "
         f"--tokenizer_type {tokenizer_type} "
         f"--tokenizer_path {tokenizer_path} "
