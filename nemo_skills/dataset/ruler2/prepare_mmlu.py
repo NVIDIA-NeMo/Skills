@@ -401,7 +401,7 @@ def generate_samples(max_seq_length: int, incremental: int = 10):
 
 
 def main():
-    output_file = str(args.output_folder / "test.jsonl")
+    output_file = Path(args.output_folder) / "test.jsonl"
 
     write_jsons = generate_samples(
         max_seq_length=args.max_seq_length,
