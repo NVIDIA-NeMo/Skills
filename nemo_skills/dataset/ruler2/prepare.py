@@ -259,8 +259,9 @@ def prepare_qa_hard(output_folder, tokenizer_type, tokenizer_path, length, datas
 
 
 
-def prepare_task_for_ns(output_folder):
+def prepare_task_for_ns(output_folder, task):
     """Adding proper __init__.py"""
+    output_folder = Path(output_folder) / task
     Path(output_folder).mkdir(parents=True, exist_ok=True)
     with open(output_folder / "__init__.py", "w", encoding="utf-8") as init_file:
         if task in ["mk_niah_medium", "mk_niah_hard"]:
@@ -297,7 +298,7 @@ def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path
     subprocess.run(["pip install wonderwords html2text tenacity"], check=True, shell=True)
 
     for task in tasks:
-        prepare_task_for_ns(output_folder / task)
+        prepare_task_for_ns(output_folder, task)
 
     # preparing the datasets based on user options, in parallel
     with concurrent.futures.ThreadPoolExecutor() as executor:
