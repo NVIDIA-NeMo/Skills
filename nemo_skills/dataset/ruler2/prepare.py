@@ -302,7 +302,8 @@ def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path
 
     # preparing the datasets based on user options, in parallel
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(prepare_task[task], 
+        futures = [executor.submit(
+            prepare_task[task], 
             str(output_folder / task), 
             tokenizer_type, 
             tokenizer_path, 

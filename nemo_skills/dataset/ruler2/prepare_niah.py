@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--output_folder",  type=str)
-parser.add_argument("--tokenizer_type",  type=str, default='nemo', help='[Options] nemo, hf, openai.')
+parser.add_argument("--tokenizer_type",  type=str, default='hf', help='[Options] nemo, hf, openai.')
 parser.add_argument("--tokenizer_path", type=str, required=True, help='path to the tokenizer model')
 parser.add_argument("--max_seq_length", type=int, required=True, help='max sequence length including all input tokens and generated tokens.')
 parser.add_argument("--num_samples", type=int, required=True, help='number of samples to generate')
