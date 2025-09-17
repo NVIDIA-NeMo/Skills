@@ -28,21 +28,6 @@ GENERATION_ARGS = (
 )
 """
 
-prepare_task = {
-    "mk_niah_basic": prepare_mk_niah_basic,
-    "mk_niah_easy": prepare_mk_niah_easy,
-    "mk_niah_medium": prepare_mk_niah_medium,
-    "mk_niah_hard": prepare_mk_niah_hard,
-    "mv_niah_basic": prepare_mv_niah_basic,
-    "mv_niah_easy": prepare_mv_niah_easy,
-    "mv_niah_medium": prepare_mv_niah_medium,
-    "mv_niah_hard": prepare_mv_niah_hard,
-    "qa_basic": prepare_qa_basic,
-    "qa_easy": prepare_qa_easy,
-    "qa_medium": prepare_qa_medium,
-    "qa_hard": prepare_qa_hard,
-}
-
 
 def prepare_mk_niah_basic(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
@@ -272,6 +257,8 @@ def prepare_qa_hard(output_folder, tokenizer_type, tokenizer_path, length, datas
         check=True,
     )
 
+
+
 def prepare_task_for_ns(output_folder):
     """Adding proper __init__.py"""
     Path(output_folder).mkdir(parents=True, exist_ok=True)
@@ -288,6 +275,22 @@ def prepare_task_for_ns(output_folder):
         init_file.write(DEFAULT_SETTINGS.format(eval_args=eval_args))
 
 def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path, dataset_size):
+    prepare_task = {
+        "mk_niah_basic": prepare_mk_niah_basic,
+        "mk_niah_easy": prepare_mk_niah_easy,
+        "mk_niah_medium": prepare_mk_niah_medium,
+        "mk_niah_hard": prepare_mk_niah_hard,
+        "mv_niah_basic": prepare_mv_niah_basic,
+        "mv_niah_easy": prepare_mv_niah_easy,
+        "mv_niah_medium": prepare_mv_niah_medium,
+        "mv_niah_hard": prepare_mv_niah_hard,
+        "qa_basic": prepare_qa_basic,
+        "qa_easy": prepare_qa_easy,
+        "qa_medium": prepare_qa_medium,
+        "qa_hard": prepare_qa_hard,
+    }
+
+
     output_folder = Path(__file__).parent / setup
 
     # 1. installing necessary packages
