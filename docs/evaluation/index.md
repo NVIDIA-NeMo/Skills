@@ -20,18 +20,18 @@ Make sure that `/workspace` is mounted inside of your
 
 ## Preparing data
 
-You need to run the following commands to prepare the data.
+You need to run the following command to prepare the data.
 
 ```bash
-ns prepare_data
+ns prepare_data <benchmarks1> <benchmark2> ...
 ```
 
-If you're only interested in a subset of datasets (e.g. only math-related or code-related), run with
-`--dataset_groups ...` and if you only need a couple of specific datasets, list them directly e.g.
+e.g.
 
 ```bash
 ns prepare_data aime24 aime25 gpqa livecodebench
 ```
+
 
 !!! note
     If you have the repo cloned locally, the data files will be available inside `nemo_skills/dataset/<benchmark>/<split>.jsonl`
@@ -41,8 +41,8 @@ ns prepare_data aime24 aime25 gpqa livecodebench
     python -c "import nemo_skills; print(nemo_skills.__path__)"
     ```
 
-Some benchmarks (e.g. ruler) require extra parameters to be passed to the prepare_data script. Thus you'd need to explicitly
-call `ns prepare_data <benchmark name>` for them, e.g. for ruler you can use
+Some benchmarks (e.g. ruler) require extra parameters to be passed to the prepare_data script which you can list directly
+as arguments.
 
 ```bash
 ns prepare_data ruler --setup=llama_128k --tokenizer_path=meta-llama/Llama-3.1-8B-Instruct --max_seq_length=131072

@@ -57,13 +57,13 @@ def prepare_datasets(datasets=None, dataset_groups=None, add_lean4_header=False,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare all datasets")
-    parser.add_argument("datasets", default=[], nargs="*", help="Can specify a subset here")
+    parser.add_argument("datasets", nargs="+", help="Specify one or more datasets to prepare")
     parser.add_argument(
         "--dataset_groups",
         default=[],
         nargs="*",
         choices=["math", "code", "chat", "multichoice", "long-context", "tool"],
-        help="Can specify a dataset groups here",
+        help="Can specify a dataset group here",
     )
     parser.add_argument(
         "--add_lean4_header", action="store_true", help="Add Lean4 header to JSONL files during preparation"
