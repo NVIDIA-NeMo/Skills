@@ -32,9 +32,10 @@ BIGCODEBENCH_REQUIREMENTS_URL = (
 )
 
 
-def preprocess_code(generation_dict: dict, language="python"):
+def preprocess_code(generation_dict: dict, language="python", strip_whitespace=True):
     completion = generation_dict["generation"]
-    completion = completion.strip()
+    if strip_whitespace:
+        completion = completion.strip()
     completion = completion.replace("\r", "")
 
     ##### To handle code generation by reasoning models
@@ -57,25 +58,33 @@ def preprocess_code(generation_dict: dict, language="python"):
 
     if start_with_lang_tag in completion:
         def_line = completion.index(start_with_lang_tag) + len(start_with_lang_tag)
-        completion = completion[def_line:].strip()
+        completion = completion[def_line:]
+        if strip_whitespace:
+            completion = completion.strip()
         try:
             next_line = completion.index(generic_start_end_tag)
-            completion = completion[:next_line].strip()
+            completion = completion[:next_line]
+            if strip_whitespace:
+                completion = completion.strip()
         except Exception:
             print(completion)
             print("================\n")
 
     elif generic_start_end_tag in completion:
         def_line = completion.index(generic_start_end_tag) + len(generic_start_end_tag)
-        completion = completion[def_line:].strip()
+        completion = completion[def_line:]
+        if strip_whitespace:
+            completion = completion.strip()
         try:
             next_line = completion.index(generic_start_end_tag)
-            completion = completion[:next_line].strip()
+            completion = completion[:next_line]
+            if strip_whitespace:
+                completion = completion.strip()
         except Exception:
             print(completion)
             print("================\n")
 
-    if completion.startswith(" "):
+    if completion.startswith(" ") and strip_whitespace:
         completion = completion.strip()
 
     generation_dict["completion"] = completion
@@ -217,6 +226,57 @@ def install_requirements(url):
         print("Requirements installed successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Error during installation: {e}")
+
+
+def eval_livebench_coding(cfg):
+    try:
+        from livecodebench.evaluate import evaluate
+    except ImportError:
+        LOG.info("Package 'livecodebench' not found. Attempting to install...")
+        install_from_git("git+https://github.com/wasiahmad/livecodebench.git@livebench")
+        try:
+            from livecodebench.evaluate import evaluate
+        except ImportError:
+            LOG.info("Failed to install 'livecodebench'. Please install it manually.")
+            raise
+
+    for jsonl_file in unroll_files(cfg.input_files):
+        samples = []
+        with open(jsonl_file) as f:
+            for line in f:
+                sample = json.loads(line)
+                if sample["task"] == "coding_completion":
+                    assert len(sample["partial_solution"]) > 0
+                    sample = preprocess_code(sample, strip_whitespace=False)
+                    sample["completion"] = sample["completion"].replace("\t", "    ")
+                    full_solution = sample["partial_solution"] + "\n" + sample["completion"]
+                    sample["code_list"] = [full_solution]
+                else:
+                    sample = preprocess_code(sample, strip_whitespace=True)
+                    sample["code_list"] = [sample["completion"]]
+
+                samples.append(sample)
+
+        with open(jsonl_file, "wt", encoding="utf-8") as f:
+            for sample in samples:
+                f.write(json.dumps(sample) + "\n")
+
+        evaluate(
+            custom_output_file=jsonl_file,
+            k_list=[1],
+            num_process_evaluate=12,
+            timeout=6,
+        )
+
+        with open(jsonl_file[:-6] + "_eval_results.json", "rt", encoding="utf-8") as fin:
+            eval_grades = json.load(fin)
+        with open(jsonl_file, "wt", encoding="utf-8") as f:
+            for sample in samples:
+                sample["graded_list"] = eval_grades["eval"][sample["question_id"]]["graded_list"]
+                f.write(json.dumps(sample) + "\n")
+
+        # moving eval file to ensure metrics are recomputed
+        shutil.move(jsonl_file[:-6] + "_eval_results.json", jsonl_file[:-6] + "_eval_results-saved.json")
 
 
 def install_or_upgrade_package(package_name):

@@ -48,6 +48,7 @@ METRICS_MAP = {
     "scicode": SciCodeMetrics,
     "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,
+    "livebench_coding": LiveCodeBenchMetrics,
 }
 
 
