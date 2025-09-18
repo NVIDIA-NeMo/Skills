@@ -255,7 +255,7 @@ def eval_bigcodebench(cfg):
                 f.write(json.dumps(sample) + "\n")
                 if data_split is None:
                     data_split = sample["split"]
-                if data_split != sample["release_version"]:
+                elif data_split != sample["split"]:
                     raise ValueError(
                         f"All samples should have the same split, but got {data_split} and {sample['split']}"
                     )
