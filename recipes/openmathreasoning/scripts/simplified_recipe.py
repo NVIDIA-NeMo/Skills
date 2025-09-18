@@ -119,7 +119,6 @@ def run_training(workspace, cluster, num_gpus, training_backend, expname_prefix,
             f"    ++filters.remove_contaminated=false "
             f"    ++add_unlabeled=true "
             f"    ++filters.remove_no_think_tags=true "
-            f"    ++filters.trim_solutions=false"
         ),
         cluster=cluster,
         expname=f"{expname_prefix}-prepare-training-data",

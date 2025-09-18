@@ -167,6 +167,7 @@ cmd = (
     "    ++filters.remove_contaminated=false "  # OpenMathReasoning is already decontaminated
     "    ++filters.remove_len_outlier_solutions=false "
     "    ++filters.remove_len_outlier_problems=false "
+    "    ++filters.trim_solutions=true "
     "    ++use_judgement=true "
 )
 run_cmd(

@@ -271,6 +271,7 @@ python -m nemo_skills.training.prepare_data \
     ++input_files=\'/workspace/solution-augmentation/**/output-rs*.jsonl,/workspace/new-problems-solution-augmentation/**/output-rs*.jsonl\' \
     ++output_path=/workspace/sft_data.jsonl \
     ++filters.remove_len_outlier_problems=true \
+    ++filters.trim_solutions=true \
     ++max_problem_length=1024 \
     ++filters.remove_len_outlier_solutions=true \
     ++use_chars_for_min_length=true \

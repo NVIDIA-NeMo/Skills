@@ -55,7 +55,7 @@ filters:
   drop_multi_boxed: false
   remove_contaminated: true
   majority_filter: false
-  trim_solutions: true
+  trim_solutions: false
   trim_prefix: false
   drop_incorrect_arithmetic: false
   split_arithmetic: false

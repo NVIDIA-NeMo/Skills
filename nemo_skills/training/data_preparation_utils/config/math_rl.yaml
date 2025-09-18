@@ -36,7 +36,7 @@ majority_filter:
 
 filters:
   remove_contaminated: true
-  remove_len_outlier_problems: true
+  remove_len_outlier_problems: false
   majority_filter: false
   drop_none_answers: true
 
