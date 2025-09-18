@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict
 
 from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
 from nemo_skills.evaluation.evaluator.code import (
+    eval_bigcodebench,
     eval_evalplus,
     eval_livecodebench,
     eval_livecodebench_pro,
@@ -54,6 +55,7 @@ EVALUATOR_MAP = {
     "scicode": eval_scicode,
     "mrcr": eval_mrcr,
     "ioi": eval_ioi,
+    "bigcodebench": eval_bigcodebench,
 }
 
 

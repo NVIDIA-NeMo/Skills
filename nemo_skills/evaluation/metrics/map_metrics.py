@@ -17,6 +17,7 @@ from nemo_skills.evaluation.metrics.answer_judgement_metrics import AnswerJudgem
 from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
+    BigCodeBenchMetrics,
     EvalPlusMetrics,
     LiveCodeBenchMetrics,
     SciCodeMetrics,
@@ -45,6 +46,7 @@ METRICS_MAP = {
     "livecodebench": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
     "scicode": SciCodeMetrics,
+    "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,
 }
 

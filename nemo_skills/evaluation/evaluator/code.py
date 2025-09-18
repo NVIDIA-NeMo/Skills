@@ -27,6 +27,10 @@ from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+BIGCODEBENCH_REQUIREMENTS_URL = (
+    "https://raw.githubusercontent.com/bigcode-project/bigcodebench/main/Requirements/requirements-eval.txt"
+)
+
 
 def preprocess_code(generation_dict: dict, language="python"):
     completion = generation_dict["generation"]
@@ -204,4 +208,79 @@ def eval_evalplus(cfg):
                 f.write(json.dumps(sample) + "\n")
 
         # moving eval file as otherwise evalplus does not want to recompute metrics if it's present..
+        shutil.move(jsonl_file[:-6] + "_eval_results.json", jsonl_file[:-6] + "_eval_results-saved.json")
+
+
+def install_requirements(url):
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", url])
+        print("Requirements installed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during installation: {e}")
+
+
+def install_or_upgrade_package(package_name):
+    try:
+        # Run the pip command to install or upgrade the package
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
+        print(f"{package_name} has been successfully installed or upgraded.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while installing/upgrading {package_name}: {e}")
+
+
+def eval_bigcodebench(cfg):
+    try:
+        from bigcodebench.evaluate import evaluate
+    except ImportError:
+        LOG.info("Package 'bigcodebench' not found. Attempting to install...")
+        install_requirements(BIGCODEBENCH_REQUIREMENTS_URL)
+        install_or_upgrade_package("bigcodebench")
+        install_or_upgrade_package("numpy==1.26.4")  # <= needed to work with scikit-learn version 1.3.1
+        try:
+            from bigcodebench.evaluate import evaluate
+        except ImportError:
+            LOG.error("Failed to install 'bigcodebench'. Please install it manually.")
+            raise
+
+    data_split = None
+    for jsonl_file in unroll_files(cfg.input_files):
+        samples = []
+        with open(jsonl_file) as f:
+            for line in f:
+                generation_dict = preprocess_code(json.loads(line))
+                generation_dict["solution"] = generation_dict.pop("completion")
+                samples.append(generation_dict)
+        with open(jsonl_file, "wt", encoding="utf-8") as f:
+            for sample in samples:
+                f.write(json.dumps(sample) + "\n")
+                if data_split is None:
+                    data_split = sample["split"]
+                if data_split != sample["release_version"]:
+                    raise ValueError(
+                        f"All samples should have the same split, but got {data_split} and {sample['split']}"
+                    )
+
+        # https://github.com/bigcode-project/bigcodebench/blob/main/bigcodebench/evaluate.py#L117
+        # if the input filename is "output.jsonl"
+        # then there will be two output files (generated) after evaluation:
+        # "output_eval_results-saved.json"
+        # "output_pass_at_k.json"
+        evaluate(
+            "instruct",
+            data_split,  # full, hard
+            samples=jsonl_file,
+            execution="local",
+            pass_k="1",
+            calibrated=True,
+            save_pass_rate=True,  # saves pass_at_k results in file: "output_pass_at_k.json"
+        )
+
+        with open(jsonl_file[:-6] + "_eval_results.json", "rt", encoding="utf-8") as fin:
+            eval_grades = json.load(fin)
+        with open(jsonl_file, "wt", encoding="utf-8") as f:
+            for sample in samples:
+                sample["status"] = eval_grades["eval"][sample["task_id"]][0]["status"]
+                f.write(json.dumps(sample) + "\n")
+
+        # moving eval file to ensure metrics are recomputed
         shutil.move(jsonl_file[:-6] + "_eval_results.json", jsonl_file[:-6] + "_eval_results-saved.json")
