@@ -282,7 +282,7 @@ def grpo_nemo_rl(
     output_dir, log_dir = check_mounts(
         cluster_config,
         log_dir=log_dir,
-        mount_map={hf_model: None, output_dir: None},
+        mount_map={output_dir: None},
         check_mounted_paths=check_mounted_paths,
     )
     if hf_model.startswith("/"):  # could ask to download from HF
