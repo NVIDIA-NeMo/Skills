@@ -65,6 +65,7 @@ class ToolManager:
         self._tools: Dict[str, Tool] = {}
         self._qualified_tool_map: Dict[str, str] = {}  # qualified name -> tool_class_name
         self._tool_list_cache: List[Dict[str, Any]] | None = None
+        self._raw_to_qualified_map: Dict[str, str] = {}  # raw name -> qualified name
         self._list_lock = asyncio.Lock()
 
         overrides = overrides or {}
@@ -104,8 +105,8 @@ class ToolManager:
             async def load_provider(provider_id: str, tool: Tool) -> List[Dict[str, Any]]:
                 entries = await tool.list_tools()
                 out: List[Dict[str, Any]] = []
-                # Be defensive: handle None and deduplicate within the same provider by raw tool name
                 local_seen: set[str] = set()
+
                 for entry in entries or []:
                     raw_name = entry.get("name")
                     if not raw_name or raw_name in local_seen:
@@ -113,10 +114,17 @@ class ToolManager:
                     local_seen.add(raw_name)
                     qualified_name = f"{provider_id}.{raw_name}"
                     if qualified_name in local_qualified_map:
-                        # Skip duplicates instead of failing hard; keep first occurrence
-                        continue
+                        raise ValueError(f"Duplicate qualified tool name: '{qualified_name}'")
+                    if raw_name in self._raw_to_qualified_map:
+                        raise ValueError(f"Duplicate raw tool name across providers: '{raw_name}'")
+                    self._raw_to_qualified_map[raw_name] = qualified_name
                     local_qualified_map[qualified_name] = provider_id
-                    out.append({**entry, "name": qualified_name, "server": provider_id})
+                    # dropping title (recursively) as it's meant to be shown to users, not model
+                    entry.get("input_schema", {}).pop("title", None)
+                    for parameter in entry.get("input_schema", {}).get("properties", {}).values():
+                        parameter.pop("title", None)
+
+                    out.append({**entry, "name": raw_name, "server": provider_id})
                 return out
 
             tasks = [load_provider(pid, tool) for pid, tool in self._tools.items()]
@@ -137,6 +145,6 @@ class ToolManager:
             raise ValueError(f"No tool registered for class '{provider_id}'")
         return tool, bare_name
 
-    async def execute_tool(self, qualified_name: str, args: Dict[str, Any], extra_args: Dict[str, Any] | None = None):
-        tool, bare = self._resolve(qualified_name)
+    async def execute_tool(self, raw_name: str, args: Dict[str, Any], extra_args: Dict[str, Any] | None = None):
+        tool, bare = self._resolve(self._raw_to_qualified_map[raw_name])
         return await tool.execute(bare, args, extra_args=extra_args)

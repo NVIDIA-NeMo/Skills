@@ -114,5 +114,5 @@ class ChatCompletionResponseFormatter(ToolResponseFormatter):
             "role": "tool",
             "name": tool_call["function"]["name"],
             "tool_call_id": tool_call["id"],
-            "content": json.dumps(result),
+            "content": json.dumps(result) if not isinstance(result, str) else result,
         }

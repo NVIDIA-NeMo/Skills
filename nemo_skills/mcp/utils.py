@@ -86,6 +86,7 @@ def hydra_config_connector_factory(config_obj):
         client.server_params = StdioServerParameters(
             command=client.server_params.command,
             args=list(client.server_params.args) + ["--config-dir", temp_dir, "--config-name", "config"],
+            env=client.server_params.env,
         )
 
     return connector

@@ -211,9 +211,9 @@ async def test_tool_manager_list_and_execute_with_class_locator():
     tm = ToolManager(module_specs=["tests.test_mcp_clients::DummyTool"], overrides={}, context={})
     tools = await tm.list_all_tools(use_cache=False)
     names = sorted(t["name"] for t in tools)
-    assert names == ["DummyTool.echo", "DummyTool.execute"]
+    assert names == ["echo", "execute"]
 
-    result = await tm.execute_tool("DummyTool.execute", {"code": "x=1"})
+    result = await tm.execute_tool("execute", {"code": "x=1"})
     assert result == {"ran": True, "code": "x=1"}
 
 
@@ -232,7 +232,9 @@ async def test_tool_manager_cache_and_duplicate_detection():
     _ = await tm.list_all_tools(use_cache=True)
     _ = await tm.list_all_tools(use_cache=True)
     assert calls["n"] == 1
-    _ = await tm.list_all_tools(use_cache=False)
+    with pytest.raises(ValueError) as excinfo:
+        _ = await tm.list_all_tools(use_cache=False)
+    assert "Duplicate raw tool name across providers: 'execute'" in str(excinfo.value)
     assert calls["n"] == 2
 
     class DupTool(DummyTool):
@@ -242,10 +244,9 @@ async def test_tool_manager_cache_and_duplicate_detection():
 
     globals()["DupTool"] = DupTool
     tm2 = ToolManager(module_specs=["tests.test_mcp_clients::DupTool"], overrides={}, context={})
-    # Duplicates within a single provider should be deduplicated, not raise
     tools2 = await tm2.list_all_tools(use_cache=False)
     names2 = sorted(t["name"] for t in tools2)
-    assert names2 == ["DupTool.execute"]
+    assert names2 == ["execute"]
 
 
 @pytest.mark.asyncio

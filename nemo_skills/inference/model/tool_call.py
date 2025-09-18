@@ -16,6 +16,7 @@ import asyncio
 import copy
 import json
 import logging
+import uuid
 from collections import defaultdict
 from typing import Dict, List
 
@@ -63,7 +64,7 @@ class ToolCallingWrapper:
         self.call_interpreter = ChatCompletionCallInterpreter()
         self.response_formatter = ChatCompletionResponseFormatter()
 
-    async def _execute_tool_call(self, tool_call):
+    async def _execute_tool_call(self, tool_call, request_id: str):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
         tool_name = tool_call["function"]["name"]
         tool_args = tool_call["function"]["arguments"]
@@ -80,15 +81,15 @@ class ToolCallingWrapper:
         ## TODO(sanyamk): Only exceptions related to tool execution here, all others must fail.
         try:
             # Allow providers to specify extra_args behavior internally if needed in the future
-            result = await self.tool_manager.execute_tool(tool_name, tool_args, extra_args=None)
+            result = await self.tool_manager.execute_tool(tool_name, tool_args, extra_args={"request_id": request_id})
         except Exception as e:
             LOG.exception(e)
             return {"error": "Tool execution failed."}
 
         return result
 
-    async def _execute_tool_calls(self, tool_calls: List):
-        tasks = [self._execute_tool_call(tool_call) for tool_call in tool_calls]
+    async def _execute_tool_calls(self, tool_calls: List, request_id: str):
+        tasks = [self._execute_tool_call(tool_call, request_id=request_id) for tool_call in tool_calls]
         tool_results = await asyncio.gather(*tasks)
         return [
             self.response_formatter.format(tool_call, tool_result)
@@ -113,17 +114,18 @@ class ToolCallingWrapper:
         result_steps = defaultdict(list)
         conversation = copy.deepcopy(prompt)
 
+        # assigning a unique request id to pass to tool calls if they need to be stateful
+        request_id = str(uuid.uuid4())
+
         while True:
             if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
                 break
-
             generation = await self.model.generate_async(
                 prompt=conversation,
                 tools=tools,
                 tokens_to_generate=tokens_to_generate,
                 **generation_kwargs,
             )
-
             if isinstance(tokens_to_generate, int):
                 tokens_to_generate -= generation["num_generated_tokens"]
 
@@ -131,15 +133,18 @@ class ToolCallingWrapper:
                 if k in generation:
                     result_steps[k].append(generation[k])
 
-            conversation.append({"role": "assistant", "content": result_steps["generation"][-1]})
+            conversation.append({"role": "assistant", "content": generation["generation"]})
+            if "reasoning_content" in generation:
+                conversation[-1]["reasoning_content"] = generation["reasoning_content"]
 
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
                 tool_calls_message = self.call_interpreter.parse(tool_calls)
-                conversation.append(tool_calls_message)
+                conversation[-1].update(tool_calls_message)
 
-                ## TODO(sanyamk): refactor to not rely on hardcoded dict keys.
-                tool_calls_output_messages = await self._execute_tool_calls(tool_calls_message["tool_calls"])
+                tool_calls_output_messages = await self._execute_tool_calls(
+                    tool_calls_message["tool_calls"], request_id=request_id
+                )
                 conversation.extend(tool_calls_output_messages)
 
                 result_steps["num_tool_calls"].append(len(tool_calls))
