@@ -16,4 +16,9 @@
 DATASET_GROUP = "code"
 METRICS_TYPE = "livecodebench"
 EVAL_SPLIT = "test"
+<<<<<<< HEAD
 GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=livebench_coding"
+=======
+EVAL_ARGS = "++eval_type=livebench_coding"
+GENERATION_ARGS = "++prompt_config=generic/default"
+>>>>>>> 0b6e9d4b (Evaluation on LiveBench-Coding (#821))
