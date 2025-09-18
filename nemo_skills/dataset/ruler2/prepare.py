@@ -21,7 +21,7 @@ from pathlib import Path
 
 DEFAULT_SETTINGS = """
 DATASET_GROUP = "long-context"
-METRICS_TYPE = "ruler2"
+METRICS_TYPE = "{metrics_type}"
 EVAL_ARGS = "{eval_args}"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
@@ -265,15 +265,19 @@ def prepare_task_for_ns(output_folder, task):
     Path(output_folder).mkdir(parents=True, exist_ok=True)
     with open(output_folder / "__init__.py", "w", encoding="utf-8") as init_file:
         if task in ["mk_niah_medium", "mk_niah_hard"]:
+            metrics_type = "multichoice"
             eval_args = "++eval_type=multichoice"
         elif task in ["mv_niah_medium"]:
+            metrics_type = "ruler2"
             eval_args = "++eval_type=ruler2 ++eval_config.match_type=2steps"
         elif "qa" in task:
+            metrics_type = "ruler2"
             eval_args = "++eval_type=ruler2 ++eval_config.match_type=part"
         else:
+            metrics_type = "ruler2"
             eval_args = "++eval_type=ruler2 ++eval_config.match_type=all"
 
-        init_file.write(DEFAULT_SETTINGS.format(eval_args=eval_args))
+        init_file.write(DEFAULT_SETTINGS.format(metrics_type=metrics_type, eval_args=eval_args))
 
 def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path, dataset_size):
     prepare_task = {
