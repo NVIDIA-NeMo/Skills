@@ -37,6 +37,7 @@ policy:
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
+  sequence_parallel: false
   lr: 1e-6
   weight_decay: 0.01
   min_lr: 1e-6
@@ -45,7 +46,7 @@ policy:
   dtensor_cfg:
     enabled: true
     cpu_offload: False
-    sequence_parallel: false
+    sequence_parallel: ${policy.sequence_parallel}
     activation_checkpointing: false
     tensor_parallel_size: ${policy.tensor_model_parallel_size}
     context_parallel_size: ${policy.context_parallel_size}
@@ -64,7 +65,7 @@ policy:
     pipeline_dtype: ${policy.precision}
     num_layers_in_first_pipeline_stage: null
     num_layers_in_last_pipeline_stage: null
-    sequence_parallel: false
+    sequence_parallel: ${policy.sequence_parallel}
     freeze_moe_router: false
     moe_router_dtype: null
     moe_router_load_balancing_type: "aux_loss"
