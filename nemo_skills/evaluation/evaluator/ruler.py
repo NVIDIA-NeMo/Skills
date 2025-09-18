@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import editdistance
 
 from tqdm import tqdm
 
@@ -112,6 +113,27 @@ def eval_ruler2(cfg):
             preds = preds.split("Answer:")[-1]
         return preds
 
+
+    def wer(hypotheses: list[str], references: list[str]) -> float:
+        scores = 0
+        words = 0
+        if len(hypotheses) != len(references):
+            raise ValueError(
+                "In word error rate calculation, hypotheses and reference"
+                " lists must have the same number of elements. But I got:"
+                "{0} and {1} correspondingly".format(len(hypotheses), len(references))
+            )
+        for h, r in zip(hypotheses, references):
+            h_list = h.split()
+            r_list = r.split()
+            words += len(r_list)
+            scores += editdistance.eval(h_list, r_list)
+        if words != 0:
+            wer = 1.0 * scores / words
+        else:
+            wer = float('inf')
+        return wer
+
     def string_match_all_single(preds, refs):
         """the metric function with input (predictions: [str], references: [[str]]) to compute score."""
         preds = post_process_preds(preds)
@@ -128,7 +150,7 @@ def eval_ruler2(cfg):
         preds = [preds]
         refs = [refs]
         score = [
-            sum([1.0 if r.lower() in pred.lower() else 0.0 for r in ref]) / len(ref) for pred, ref in zip(preds, refs)
+            sum([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred], [r])) for r in ref]) / len(ref) for pred, ref in zip(preds, refs)
         ][0]
         return score
 
@@ -139,7 +161,7 @@ def eval_ruler2(cfg):
         preds = [preds]
         refs = [refs]
         score = [
-            sum([max([1.0 if r.lower() in pred.lower() else 0.0 for r in ref]) for pred, ref in zip(preds, refs)])
+            sum([max([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred], [r])) for r in ref]) for pred, ref in zip(preds, refs)])
         ][0]
         return score
 
