@@ -54,6 +54,7 @@ METRICS_MAP = {
     "icpc": ICPCMetrics,
     "multichoice": MathMetrics,
     "ruler": RulerMetrics,
+    "ruler2": RulerMetrics,
     "livecodebench": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
     "scicode": SciCodeMetrics,
