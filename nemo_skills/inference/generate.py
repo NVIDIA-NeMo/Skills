@@ -63,6 +63,7 @@ class InferenceConfig:
     tokens_to_generate: int | None = None
     repetition_penalty: float = 1.0
     top_logprobs: int | None = None
+    timeout: int | None = 14400  # Timeout for each individual LLM call in seconds
 
     extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
 
