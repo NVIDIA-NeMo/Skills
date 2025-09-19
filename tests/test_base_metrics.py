@@ -151,7 +151,7 @@ class MockMetrics(BaseMetrics):
         ),
     ],
 )
-def test_add_std_metrics(
+def test_base_metrics_add_std_metrics(
     max_k: int, scores_list: list[list[bool | int | float]], expected_result: dict[str, dict[str, float]]
 ) -> None:
     metrics = MockMetrics()
@@ -162,3 +162,33 @@ def test_add_std_metrics(
         metrics_dict[f"pass@1[avg-of-{i}]"] = {}
     metrics._add_std_metrics(metrics_dict)
     assert metrics_dict == expected_result
+
+
+@pytest.mark.parametrize(
+    "predictions,expected_all_scores",
+    [
+        (
+            [
+                {"num_reasoning_tokens": 80, "num_answer_tokens": 20, "is_correct": True},
+                {"num_reasoning_tokens": 90, "num_answer_tokens": 30, "is_correct": False},
+            ],
+            {"reasoning_tokens": [[80, 90]], "answer_tokens": [[20, 30]]},
+        ),
+        (
+            [{"num_generated_tokens": 50, "is_correct": True}, {"num_generated_tokens": 60, "is_correct": False}],
+            {"reasoning_tokens": [[0, 0]], "answer_tokens": [[50, 60]]},
+        ),
+        (
+            [
+                {"num_reasoning_tokens": 100, "num_answer_tokens": 40, "is_correct": True},
+                {"num_generated_tokens": 80, "is_correct": False},
+            ],
+            {"reasoning_tokens": [[100, 0]], "answer_tokens": [[40, 80]]},
+        ),
+    ],
+)
+def test_base_metrics_update(predictions, expected_all_scores):
+    """Test the base update method's token handling (scores are handled by subclasses)."""
+    metrics = MockMetrics()
+    metrics.update(predictions)
+    assert metrics.all_scores == expected_all_scores

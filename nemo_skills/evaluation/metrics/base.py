@@ -154,6 +154,28 @@ class BaseMetrics(abc.ABC):
         self.avg_tokens += sum(
             pred["num_generated_tokens"] for pred in predictions if "num_generated_tokens" in pred
         ) / len(predictions)
+
+        # Handle token data
+        reasoning_tokens = []
+        answer_tokens = []
+
+        for pred in predictions:
+            reasoning_count = pred.get("num_reasoning_tokens", 0)
+            answer_count = pred.get("num_answer_tokens", 0)
+
+            # Fallback: if no separate breakdown available, count all as answer tokens
+            if reasoning_count == 0 and answer_count == 0 and "num_generated_tokens" in pred:
+                answer_count = pred["num_generated_tokens"]
+
+            reasoning_tokens.append(reasoning_count)
+            answer_tokens.append(answer_count)
+
+        if reasoning_tokens:
+            self.all_scores["reasoning_tokens"].append(reasoning_tokens)
+
+        if answer_tokens:
+            self.all_scores["answer_tokens"].append(answer_tokens)
+
         try:
             self.min_start_time = min(
                 self.min_start_time,

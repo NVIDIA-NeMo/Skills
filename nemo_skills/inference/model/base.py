@@ -395,6 +395,13 @@ class BaseModel:
         if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
             result["reasoning_content"] = choice.message.reasoning_content
 
+        # Extract detailed token breakdown for reasoning models if available
+        if hasattr(response.usage, "completion_tokens_details") and response.usage.completion_tokens_details:
+            details = response.usage.completion_tokens_details
+            if hasattr(details, "reasoning_tokens") and details.reasoning_tokens is not None:
+                result["num_reasoning_tokens"] = details.reasoning_tokens
+                result["num_answer_tokens"] = response.usage.completion_tokens - details.reasoning_tokens
+
         if getattr(choice, "logprobs", None) and choice.logprobs.content:
             result["logprobs"] = [tok.logprob for tok in choice.logprobs.content]
             result["tokens"] = [tok.token for tok in choice.logprobs.content]
