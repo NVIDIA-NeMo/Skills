@@ -13,6 +13,7 @@
 
 import functools
 
+from nemo_skills.evaluation.metrics.aalcr_metrics import AALCRMetrics
 from nemo_skills.evaluation.metrics.answer_judgement_metrics import AnswerJudgementMetrics
 from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
@@ -48,6 +49,7 @@ METRICS_MAP = {
     "scicode": SciCodeMetrics,
     "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,
+    "aalcr": AALCRMetrics,
     "livebench_coding": LiveCodeBenchMetrics,
 }
 
