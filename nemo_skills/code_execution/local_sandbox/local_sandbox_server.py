@@ -443,7 +443,7 @@ def _after_log_session_count(response):
     return response
 
 
-MEM_LIMIT_BYTES = int(os.environ.get("NEMO_SKILLS_SANDBOX_MEM_LIMIT", 10 * 1024**3))  # 10 GiB default
+MEM_LIMIT_BYTES = int(os.environ.get("NEMO_SKILLS_SANDBOX_MEM_LIMIT", 50 * 1024**3))  # 50 GiB default
 
 # Set per-worker memory limit for ipython session
 resource.setrlimit(resource.RLIMIT_AS, (2 * MEM_LIMIT_BYTES, 2 * MEM_LIMIT_BYTES))

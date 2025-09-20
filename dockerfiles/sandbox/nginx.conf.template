@@ -46,9 +46,9 @@ ${UPSTREAM_SERVERS}
             proxy_set_header X-Session-ID $http_x_session_id;
 
             # Timeouts for long-running code execution
-            proxy_connect_timeout 60s;
-            proxy_send_timeout 300s;
-            proxy_read_timeout 300s;
+            proxy_connect_timeout 1200s;
+            proxy_send_timeout 1200s;
+            proxy_read_timeout 1200s;
 
             # Don't buffer response for streaming
             proxy_buffering off;
