@@ -56,5 +56,9 @@ BENCHMARKS = {
         "EVAL_SPLIT": "test",
         "NUM_SAMPLES": 5,
     },
-    # TODO: Add AA-LCR https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR
+    # Long context reasoning benchmarks. To fully match the AA-LCR setting, you need to use judge with Qwen3-235B-A22B-Instruct-2507 in aalcr/__init__.py
+    "aalcr": {
+        "GENERATION_ARGS": "++inference.temperature=0.0",
+        "NUM_SAMPLES": 4,
+    },
 }

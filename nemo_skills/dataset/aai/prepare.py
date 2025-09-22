@@ -15,5 +15,5 @@
 import subprocess
 
 if __name__ == "__main__":
-    benchmarks = ["mmlu-pro", "hle", "gpqa", "math-500", "aime24", "scicode", "livecodebench"]
+    benchmarks = ["mmlu-pro", "hle", "gpqa", "math-500", "aime24", "scicode", "livecodebench", "aalcr"]
     subprocess.run(f"python -m nemo_skills.dataset.prepare {' '.join(benchmarks)}", shell=True, check=True)
