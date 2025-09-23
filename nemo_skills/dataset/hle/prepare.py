@@ -19,6 +19,20 @@ from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
+HLE_CATEGORIES_MAP = {
+    "Other": "other",
+    "Humanities/Social Science": "human",
+    "Math": "math",
+    "Physics": "phy",
+    "Computer Science/AI": "cs",
+    "Biology/Medicine": "bio",
+    "Chemistry": "chem",
+    "Engineering": "eng",
+}
+
+# Reverse mapping for filtering
+HLE_REVERSE_MAP = {v: k for k, v in HLE_CATEGORIES_MAP.items()}
+
 
 def format_entry(entry):
     return {
@@ -37,7 +51,8 @@ def format_entry(entry):
 def write_data_to_file(output_file, data, split):
     with open(output_file, "wt", encoding="utf-8") as fout:
         for entry in tqdm(data, desc=f"Writing {output_file.name}"):
-            if split == "math" and entry["category"] != "Math":
+            # Filter by category for specific splits
+            if split in HLE_REVERSE_MAP and entry["category"] != HLE_REVERSE_MAP[split]:
                 continue
             if entry["image"]:
                 continue
@@ -50,8 +65,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--split",
         default="all",
-        choices=("all", "text", "math"),
-        help="Dataset split to process (math/text).",
+        choices=("all", "text") + tuple(HLE_CATEGORIES_MAP.values()),
+        help="Dataset split to process (all/text/math/other/human/phy/cs/bio/chem/eng).",
     )
     args = parser.parse_args()
     dataset = load_dataset("cais/hle", split="test")
@@ -71,7 +86,7 @@ if __name__ == "__main__":
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
     if args.split == "all":
-        for split in ["text", "math"]:
+        for split in ["text"] + list(HLE_CATEGORIES_MAP.values()):
             output_file = data_dir / f"{split}.jsonl"
             write_data_to_file(output_file, dataset, split)
     else:

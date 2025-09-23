@@ -8,6 +8,8 @@ More details are coming soon!
 
 - Benchmark is defined in [`nemo_skills/dataset/hle/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/hle/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/cais/hle).
+- The `text` split includes all non-image examples. It is further divided into `eng`, `chem`, `bio`, `cs`, `phy`, `math`, `human`, `other`. Currently, **all** of these splits contain only text data.
+
 ### SimpleQA
 
 - Benchmark is defined in [`nemo_skills/dataset/simpleqa/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/simpleqa/__init__.py)
