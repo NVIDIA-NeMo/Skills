@@ -13,12 +13,9 @@
 # limitations under the License.
 
 import glob
-import json
 import logging
-import os
 import re
 
-import tqdm
 from latex2sympy2_extended import NormalizationConfig, normalize_latex
 from math_verify import LatexExtractionConfig, StringExtractionConfig, parse, verify
 
@@ -102,8 +99,8 @@ def math_equal(gt_answer, predicted_answer, take_modulo: int | None = None, **kw
     return verify(parsed_gt, parsed_pred, **kwargs)
 
 
-def batch_evaluate_results(
-    input_files: list[str],
+def evaluate_result(
+    line_dict: dict,
     numeric_precision=15,
     timeout=10,
     take_modulo=None,
@@ -111,46 +108,32 @@ def batch_evaluate_results(
     extract_from_boxed: bool = True,
     extract_regex: str = r"The final answer is (.+)$",
 ):
-    for input_file in tqdm.tqdm(unroll_files(input_files), desc="Processing files"):
-        # assume that input_file is small enough to entirely fit in the memory
-        input_data = []
-        with open(input_file, "rt", encoding="utf-8") as f:
-            num_lines = sum(1 for _ in f)
+    if not line_dict:  # can be empty for incomplete generations
+        return {}
 
-        with open(input_file, "rt", encoding="utf-8") as fin:
-            for file_line in tqdm.tqdm(fin, total=num_lines, desc=f"Evaluating {os.path.basename(input_file)}"):
-                line_dict = json.loads(file_line)
-                if not line_dict:  # can be empty for incomplete generations
-                    input_data.append({})
-                    continue
+    if not use_predicted_answer_key:
+        line_dict["predicted_answer"] = extract_answer(
+            line_dict["generation"],
+            extract_from_boxed=extract_from_boxed,
+            extract_regex=extract_regex,
+        )
+    else:
+        if "predicted_answer" not in line_dict:
+            raise ValueError(
+                "predicted_answer key not found in the line_dict. Set use_predicted_answer_key=False to re-extract"
+            )
 
-                if not use_predicted_answer_key:
-                    line_dict["predicted_answer"] = extract_answer(
-                        line_dict["generation"],
-                        extract_from_boxed=extract_from_boxed,
-                        extract_regex=extract_regex,
-                    )
-                else:
-                    if "predicted_answer" not in line_dict:
-                        raise ValueError(
-                            "predicted_answer key not found in the line_dict. "
-                            "Set use_predicted_answer_key=False to re-extract"
-                        )
+    gt_answer = line_dict["expected_answer"]
+    predicted_answer = line_dict["predicted_answer"]
 
-                gt_answer = line_dict["expected_answer"]
-                predicted_answer = line_dict["predicted_answer"]
-
-                line_dict["symbolic_correct"] = math_equal(
-                    gt_answer,
-                    predicted_answer,
-                    take_modulo=take_modulo,
-                    numeric_precision=numeric_precision,
-                    timeout_seconds=timeout,
-                )
-                input_data.append(line_dict)
-        with open(input_file, "wt", encoding="utf-8", buffering=1) as fout:
-            for line_dict in input_data:
-                fout.write(json.dumps(line_dict) + "\n")
+    line_dict["symbolic_correct"] = math_equal(
+        gt_answer,
+        predicted_answer,
+        take_modulo=take_modulo,
+        numeric_precision=numeric_precision,
+        timeout_seconds=timeout,
+    )
+    return line_dict
 
 
 def extract_answer(string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$"):

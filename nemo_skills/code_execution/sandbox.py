@@ -18,7 +18,6 @@ import glob
 import json
 import logging
 import os
-import re
 import traceback
 import uuid
 from collections import defaultdict
@@ -27,8 +26,11 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 import tqdm
 
-from nemo_skills.code_execution.utils import clean_formal_generation
-from nemo_skills.dataset.utils import get_lean4_header
+from nemo_skills.code_execution.proof_utils import (
+    ProofBuildConfig,
+    determine_proof_status,
+    prepare_predicted_proof_from_line_dict,
+)
 from nemo_skills.utils import get_logger_name, python_doc_to_cmd_help
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -38,54 +40,6 @@ def unroll_files(input_files):
     for manifest_pattern in input_files:
         for manifest in sorted(glob.glob(manifest_pattern, recursive=True)):
             yield manifest
-
-
-def extract_proof_only(lean_code: str) -> str:
-    lines = lean_code.strip().splitlines()
-    if not lines:
-        return ""
-
-    header_start_pattern = re.compile(r"^\s*(theorem|example)\b")
-    header_start_idx = None
-
-    # 1. Find where the theorem starts
-    for i, line in enumerate(lines):
-        if header_start_pattern.match(line):
-            header_start_idx = i
-            break
-
-    if header_start_idx is None:
-        return lean_code.strip()
-
-    # 2. Find where ':=' occurs, starting from the header
-    header_end_idx = None
-    for i in range(header_start_idx, len(lines)):
-        if ":=" in lines[i]:
-            header_end_idx = i
-            break
-
-    if header_end_idx is None:
-        return lean_code.strip()
-
-    # 3. Extract the line after ':='
-    header_line, after = lines[header_end_idx].split(":=", 1)
-    proof_first_line = after.strip()
-
-    # 4. Collect proof lines
-    if proof_first_line:
-        proof_lines = [proof_first_line] + lines[header_end_idx + 1 :]
-    else:
-        proof_lines = lines[header_end_idx + 1 :]
-
-    # 5. Remove leading 'by' (with or without indentation)
-    if proof_lines:
-        first = proof_lines[0].lstrip()
-        if first == "by":
-            proof_lines = proof_lines[1:]
-        elif first.startswith("by "):
-            proof_lines[0] = first[3:]  # Strip 'by '
-
-    return "\n".join(proof_lines).rstrip()
 
 
 class Sandbox(abc.ABC):
@@ -250,14 +204,7 @@ class Sandbox(abc.ABC):
             output = await self._send_request(request, timeout)
         except httpx.TimeoutException:
             return "timeout"
-        if output["process_status"] == "completed":
-            stdout = output["stdout"].lower()
-            stderr = output["stderr"].lower()
-            combined = stdout + "\n" + stderr
-            if re.search(r"\bsorry\b", combined) is not None:
-                return "has_sorry"
-            return "completed"
-        return output["process_status"]
+        return determine_proof_status(output)
 
     async def batch_evaluate_results(
         self,
@@ -284,38 +231,20 @@ class Sandbox(abc.ABC):
             if not line_dict:
                 return line_data
 
-            # Prepare predicted_proof based on format
-            if answer_format == "lean4-proof":
-                if not use_predicted_proof_key:
-                    generation = clean_formal_generation(
-                        line_dict["generation"], final_answer_key=final_answer_key, extract_code_mode=extract_code_mode
-                    )
-                    line_dict["predicted_proof"] = (
-                        line_dict["header"]
-                        + (line_dict["formal_statement"] if restate_formal_statement else "")
-                        + extract_proof_only(generation)
-                        if strip_theorem_from_proof
-                        else generation
-                    )
-                else:
-                    if "predicted_proof" not in line_dict:
-                        raise ValueError(
-                            "predicted_proof key not found in the line_dict. "
-                            "Set use_predicted_proof_key=False to re-combine"
-                        )
-            elif answer_format == "lean4-statement":
-                if not use_predicted_proof_key:
-                    generation = clean_formal_generation(line_dict["generation"], extract_code_mode=extract_code_mode)
-                    header = get_lean4_header()
-                    line_dict["predicted_proof"] = header + generation + "\n sorry"
-                else:
-                    if "predicted_proof" not in line_dict:
-                        raise ValueError(
-                            "predicted_proof key not found in the line_dict. "
-                            "Set use_predicted_proof_key=False to re-combine"
-                        )
-            else:
-                raise ValueError(f"Unknown answer_format: {answer_format}")
+            # Prepare predicted_proof using shared utility
+            config = ProofBuildConfig(
+                final_answer_key=final_answer_key,
+                extract_code_mode=extract_code_mode,
+                restate_formal_statement=restate_formal_statement,
+                strip_theorem_from_proof=strip_theorem_from_proof,
+            )
+
+            line_dict["predicted_proof"] = prepare_predicted_proof_from_line_dict(
+                line_dict=line_dict,
+                config=config,
+                answer_format=answer_format,
+                use_predicted_proof_key=use_predicted_proof_key,
+            )
 
             # Evaluate proof with concurrency control
             async with semaphore:
@@ -333,9 +262,10 @@ class Sandbox(abc.ABC):
             # Process lines concurrently with progress bar
             print(f"Processing {input_file}...")
             processed_lines = []
-            for line in tqdm.tqdm(lines):
-                result = await process_line(line.rstrip("\n"))
-                processed_lines.append(result)
+            tasks = [asyncio.create_task(process_line(line.rstrip("\n"))) for line in lines]
+            processed_lines = []
+            for coro in tqdm.tqdm(tasks, total=len(tasks)):
+                processed_lines.append(await coro)
 
             # Write to temp file then replace original
             temp_file = input_file + "-tmp"

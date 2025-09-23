@@ -167,6 +167,10 @@ class GenerateSolutionsConfig:
     # If True, will enable litellm disk cache (useful for keeping intermediate results in case of job timelimit failures)
     enable_litellm_cache: bool = False
 
+    # Evaluation during generation
+    eval_type: str | None = None  # "lean4-proof", "math", etc.
+    eval_config: dict = field(default_factory=dict)  # Config for the evaluator
+
     def __post_init__(self):
         self._post_init_validate_data()
         self._post_init_validate_server()
@@ -284,6 +288,19 @@ class GenerationTask:
             self.extra_generate_params = self.prompt.get_code_execution_args()
         else:
             self.extra_generate_params = {}
+
+        # Setup evaluator if specified
+        self.evaluator = None
+        if self.cfg.eval_type:
+            from nemo_skills.evaluation.evaluator import get_evaluator_class, supports_single_eval
+
+            if not supports_single_eval(self.cfg.eval_type, self.cfg.eval_config):
+                raise ValueError(
+                    f"Evaluator '{self.cfg.eval_type}' does not support single evaluation during generation. "
+                    f"Use the evaluation pipeline instead."
+                )
+
+            self.evaluator = get_evaluator_class(self.cfg.eval_type, self.cfg.eval_config)
 
         LOG.info(
             "Async loop is maintaining %d generations in parallel. "
@@ -503,7 +520,18 @@ class GenerationTask:
             if self.cfg.override_max_code_executions and self.cfg.total_code_executions_in_prompt is not None:
                 generation_params["max_code_executions"] = data_point["total_code_executions"]
 
-        return await self.llm.generate_async(**generation_params)
+        result = await self.llm.generate_async(**generation_params)
+
+        return result
+
+    async def apply_evaluation_hook(self, data_point):
+        if self.evaluator:
+            eval_start_time = time.time()
+            eval_results = await self.evaluator.eval_single(data_point)
+            eval_end_time = time.time()
+            data_point["interleaved_eval_single_time_s"] = eval_end_time - eval_start_time
+            data_point.update(eval_results)
+        return data_point
 
     async def _process_single_datapoint_with_semaphore(self, data_point, all_data, fout, pbar):
         """Process a single data point with semaphore control."""
@@ -513,6 +541,12 @@ class GenerationTask:
 
             # Generate output for this single data point
             output = await self.process_single_datapoint(data_point, all_data)
+            # Apply evaluation hook if configured
+            # TODO: note that this currently only evaluates independently--if there
+            # is any post-processing that needs to be done on the full set of
+            # generations, this will not work correctly, and we might need another
+            # hook at the end of generation to make it work properly
+            output = await self.apply_evaluation_hook({**data_point, **output})
 
             # Thread-safe output writing
             async with self.output_lock:

@@ -15,17 +15,73 @@
 import importlib
 import logging
 import os
+import re
+import shlex
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.dataset.utils import get_dataset_module, import_from_path
+from nemo_skills.evaluation.evaluator import supports_single_eval
 from nemo_skills.inference import GENERATION_MODULE_MAP
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.utils import compute_chunk_ids, get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+
+def parse_eval_args(eval_args: str) -> tuple[str | None, dict]:
+    # TODO we ideally don't want to rely on custom parsing of the command, but
+    # some major refactoring or clever ideas might be needed
+    """Parse eval_args string to extract eval_type and eval_config.
+
+    Handles Hydra argument formats:
+    - ++eval_type=value (override)
+    - +eval_type=value (new)
+    - eval_type=value (config)
+    """
+    if not eval_args:
+        return None, {}
+
+    eval_type = None
+    eval_config = {}
+
+    # Parse eval_args to extract eval_type and eval_config
+    eval_arg_parts = shlex.split(eval_args)
+    for part in eval_arg_parts:
+        # Match eval_type with any Hydra prefix
+        eval_type_match = re.match(r"^(\+{0,2})eval_type=(.+)$", part)
+        if eval_type_match:
+            eval_type = eval_type_match.group(2)
+            continue
+
+        # Match eval_config with any Hydra prefix
+        eval_config_match = re.match(r"^(\+{0,2})eval_config\.(.+)$", part)
+        if eval_config_match:
+            config_part = eval_config_match.group(2)
+            if "=" in config_part:
+                key, value = config_part.split("=", 1)
+                # Handle nested keys like sandbox.timeout
+                if "." in key:
+                    main_key, sub_key = key.split(".", 1)
+                    if main_key not in eval_config:
+                        eval_config[main_key] = {}
+                    eval_config[main_key][sub_key] = value
+                else:
+                    eval_config[key] = value
+
+    return eval_type, eval_config
+
+
+def should_use_single_eval(eval_args: str) -> bool:
+    """Determine if evaluation should be done during generation (single) vs after (batch)."""
+    eval_type, eval_config = parse_eval_args(eval_args)
+
+    if not eval_type:
+        return False
+
+    return supports_single_eval(eval_type, eval_config)
 
 
 @dataclass
@@ -399,17 +455,46 @@ def prepare_eval_commands(
                         f"Class {generation_task} overrides get_server_command_fn, "
                         "which is not supported for evaluation when grouping jobs."
                     )
-                full_extra_arguments = (
-                    f"{generation_task.get_generation_default_args()} "
-                    f"{benchmark_args.generation_args} "
-                    f"{job_extra_arguments} "
-                )
+                # Determine evaluation strategy
+                combined_eval_args = f"{benchmark_args.eval_args} {extra_eval_args}".strip()
+
+                if should_use_single_eval(combined_eval_args):
+                    # Add evaluation to generation arguments (single eval)
+                    eval_type, eval_config = parse_eval_args(combined_eval_args)
+                    eval_extra_args = f" ++eval_type={eval_type} "
+
+                    # Add eval_config parameters
+                    for key, value in eval_config.items():
+                        if isinstance(value, dict):
+                            for nested_key, nested_value in value.items():
+                                eval_extra_args += f" ++eval_config.{key}.{nested_key}={nested_value} "
+                        else:
+                            eval_extra_args += f" ++eval_config.{key}={value} "
+
+                    full_extra_arguments = (
+                        f"{generation_task.get_generation_default_args()} "
+                        f"{benchmark_args.generation_args} "
+                        f"{job_extra_arguments} "
+                        f"{eval_extra_args} "
+                    )
+
+                    # No separate eval command
+                    eval_args_for_cmd = None
+                else:
+                    # Use batch evaluation (separate command)
+                    full_extra_arguments = (
+                        f"{generation_task.get_generation_default_args()} "
+                        f"{benchmark_args.generation_args} "
+                        f"{job_extra_arguments} "
+                    )
+                    eval_args_for_cmd = combined_eval_args
+
                 cmd = pipeline_utils.get_generation_cmd(
                     input_file=benchmark_args.input_file,
                     output_dir=benchmark_output_dir,
                     extra_arguments=full_extra_arguments,
                     random_seed=seed,
-                    eval_args=f"{benchmark_args.eval_args} {extra_eval_args}",
+                    eval_args=eval_args_for_cmd,
                     chunk_id=chunk_id,
                     num_chunks=benchmark_args.num_chunks,
                     script=generation_module or benchmark_args.generation_module,
