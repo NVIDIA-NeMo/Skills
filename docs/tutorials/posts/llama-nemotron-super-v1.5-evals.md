@@ -101,8 +101,37 @@ ns eval \
     --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
     --server_type=vllm \
     --output_dir=/workspace/llama_nemotron_49b_1_5/ \
-    --benchmarks=gpqa:16,mmlu-pro:16,scicode:16,math-500:16,aime24:16,aime25:16 \
+    --benchmarks=scicode:16,math-500:16,aime24:16,aime25:16 \
     --server_gpus=2 \
+    ++inference.tokens_to_generate=65536 \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++system_message=''
+```
+
+For GPQA and MMLU-Pro, we additionally specify the exact prompt on which we evaluate the benchmark:
+```bash hl_lines="7"
+ns eval \
+    --cluster=local \
+    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
+    --server_type=vllm \
+    --output_dir=/workspace/llama_nemotron_49b_1_5/ \
+    --benchmarks=mmlu-pro:16 \
+    --server_gpus=2 \
+    ++prompt_config=eval/aai/mcq-10choices-boxed \
+    ++inference.tokens_to_generate=65536 \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++system_message=''
+
+ns eval \
+    --cluster=local \
+    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
+    --server_type=vllm \
+    --output_dir=/workspace/llama_nemotron_49b_1_5/ \
+    --benchmarks=gpqa:16 \
+    --server_gpus=2 \
+    ++prompt_config=eval/aai/mcq-4choices-boxed \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
     ++inference.top_p=0.95 \
@@ -335,8 +364,42 @@ ns eval \
     --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
     --server_type=vllm \
     --output_dir=/workspace/llama_nemotron_49b_1_5_reasoning_off/ \
-    --benchmarks=gpqa:16,mmlu-pro:16,scicode:16,math-500:16,aime24:16,aime25:16 \
+    --benchmarks=scicode:16,math-500:16,aime24:16,aime25:16 \
     --server_gpus=2 \
+    ++inference.tokens_to_generate=65536 \
+    ++inference.temperature=0.0 \
+    ++inference.top_p=1.0 \
+    ++system_message='/no_think'
+```
+
+For GPQA, the command is:
+
+```bash
+ns eval \
+    --cluster=local \
+    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
+    --server_type=vllm \
+    --output_dir=/workspace/llama_nemotron_49b_1_5_reasoning_off/ \
+    --benchmarks=gpqa:16 \
+    --server_gpus=2 \
+    ++prompt_config=eval/aai/mcq-4choices-boxed \
+    ++inference.tokens_to_generate=65536 \
+    ++inference.temperature=0.0 \
+    ++inference.top_p=1.0 \
+    ++system_message='/no_think'
+```
+
+For MMLU-Pro, the command is:
+
+```bash
+ns eval \
+    --cluster=local \
+    --model=/workspace/Llama-3_3-Nemotron-Super-49B-v1_5 \
+    --server_type=vllm \
+    --output_dir=/workspace/llama_nemotron_49b_1_5_reasoning_off/ \
+    --benchmarks=mmlu-pro:16 \
+    --server_gpus=2 \
+    ++prompt_config=eval/aai/mcq-10choices-boxed \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.0 \
     ++inference.top_p=1.0 \

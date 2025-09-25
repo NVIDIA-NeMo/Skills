@@ -59,7 +59,7 @@ def eval_reasoning_on(workspace, cluster, expname_prefix, wandb_project):
         model=base_model,
         server_type="vllm",
         output_dir=f"{workspace}/reasoning_on",
-        benchmarks="gpqa:4,scicode:4,math-500:4,aime24:4,aime25:4",
+        benchmarks="scicode:4,math-500:4,aime24:4,aime25:4",
         server_gpus=8,
         server_args="--max-num-seqs=1024",
         num_jobs=4,
@@ -69,9 +69,26 @@ def eval_reasoning_on(workspace, cluster, expname_prefix, wandb_project):
         wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-on",
     )
 
-    # MMLU (Reasoning ON)
+    # GPQA (Reasoning ON)
     eval(
-        ctx=wrap_arguments(f"{common_params} {tokens_to_generate}"),
+        ctx=wrap_arguments(f"{common_params} {tokens_to_generate} ++prompt_config=eval/aai/mcq-4choices-boxed"),
+        cluster=cluster,
+        model=base_model,
+        server_type="vllm",
+        output_dir=f"{workspace}/reasoning_on",
+        benchmarks="gpqa:4",
+        server_gpus=8,
+        server_args="--max-num-seqs=1024",
+        num_chunks=4,
+        run_after=f"{expname_prefix}-download-models",
+        expname=f"{expname_prefix}-math-code-science-on",
+        wandb_project=wandb_project,
+        wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-on",
+    )
+
+    # MMLU-Pro (Reasoning ON)
+    eval(
+        ctx=wrap_arguments(f"{common_params} {tokens_to_generate} ++prompt_config=eval/aai/mcq-10choices-boxed"),
         cluster=cluster,
         model=base_model,
         server_type="vllm",
@@ -168,7 +185,7 @@ def eval_reasoning_off(workspace, cluster, expname_prefix, wandb_project):
         model=base_model,
         server_type="vllm",
         output_dir=f"{workspace}/reasoning_off",
-        benchmarks="gpqa:4,scicode:4,math-500:4,aime24:4,aime25:4",
+        benchmarks="scicode:4,math-500:4,aime24:4,aime25:4",
         num_jobs=1,
         server_gpus=8,
         server_args="--max-num-seqs=1024",
@@ -178,9 +195,25 @@ def eval_reasoning_off(workspace, cluster, expname_prefix, wandb_project):
         wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-off",
     )
 
-    # MMLU (Reasoning OFF)
+    # GPQA (Reasoning OFF)
     eval(
-        ctx=wrap_arguments(f"{common_params} {tokens_to_generate}"),
+        ctx=wrap_arguments(f"{common_params} {tokens_to_generate} ++prompt_config=eval/aai/mcq-4choices-boxed"),
+        cluster=cluster,
+        model=base_model,
+        server_type="vllm",
+        output_dir=f"{workspace}/reasoning_off",
+        benchmarks="gpqa:4",
+        server_gpus=8,
+        server_args="--max-num-seqs=1024",
+        run_after=f"{expname_prefix}-download-models",
+        expname=f"{expname_prefix}-math-code-science-off",
+        wandb_project=wandb_project,
+        wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-off",
+    )
+
+    # MMLU-Pro (Reasoning OFF)
+    eval(
+        ctx=wrap_arguments(f"{common_params} {tokens_to_generate} ++prompt_config=eval/aai/mcq-10choices-boxed"),
         cluster=cluster,
         model=base_model,
         server_type="vllm",

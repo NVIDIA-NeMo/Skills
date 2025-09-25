@@ -117,7 +117,7 @@ ns eval \
     --cluster=local \
     --model=/workspace/NVIDIA-Nemotron-Nano-9B-v2 \
     --output_dir=/workspace/nvidia_nemotron_nano_9b_v2/ \
-    --benchmarks=mmlu-pro:8,scicode:8,math-500:8,aime24:8,aime25:8 \
+    --benchmarks=scicode:8,math-500:8,aime24:8,aime25:8 \
     --server_type=vllm \
     --server_gpus=1 \
     --server_args="--mamba_ssm_cache_dtype float32 " \
@@ -143,6 +143,24 @@ ns eval \
     ++inference.top_p=0.95 \
     ++system_message='/think' \
     ++prompt_config=generic/general-boxed
+```
+
+For MMLU-Pro, we use the [eval/aai/mcq-10choices-boxed](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/eval/aai/mcq-10choices-boxed.yaml) prompt which can be specified as follows:
+
+```bash hl_lines="13"
+ns eval \
+    --cluster=local \
+    --model=/workspace/NVIDIA-Nemotron-Nano-9B-v2 \
+    --output_dir=/workspace/nvidia_nemotron_nano_9b_v2/ \
+    --benchmarks=mmlu-pro:8 \
+    --server_type=vllm \
+    --server_gpus=1 \
+    --server_args="--mamba_ssm_cache_dtype float32 " \
+    ++inference.tokens_to_generate=32768 \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++system_message='/think' \
+    ++prompt_config=eval/aai/mcq-10choices-boxed
 ```
 
 For LiveCodeBench, we evaluate the model on the Artificial Analysis Index (AAI) split which has 315 problems from the 1 July 2024 to 31 December 2024 subset from release_v5, referred to as `test_v5_2407_2412`:

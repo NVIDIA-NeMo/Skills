@@ -103,7 +103,9 @@ def eval_code(model_size):
 
 def eval_science(model_size):
     eval(
-        ctx=wrap_arguments(f"++inference.tokens_to_generate={eval_tokens} ++inference.temperature=0.6 "),
+        ctx=wrap_arguments(
+            f"++inference.tokens_to_generate={eval_tokens} ++inference.temperature=0.6 ++prompt_config=eval/aai/mcq-4choices-boxed "
+        ),
         cluster=cluster,
         expname=f"eval-gpqa-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
@@ -113,7 +115,9 @@ def eval_science(model_size):
         benchmarks=f"gpqa:{science_seeds}",
     )
     eval(
-        ctx=wrap_arguments(f"++inference.tokens_to_generate={eval_tokens} ++inference.temperature=0.6 "),
+        ctx=wrap_arguments(
+            f"++inference.tokens_to_generate={eval_tokens} ++inference.temperature=0.6 ++prompt_config=eval/aai/mcq-10choices-boxed "
+        ),
         cluster=cluster,
         expname=f"eval-mmlu-pro-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
