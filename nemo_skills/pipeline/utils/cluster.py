@@ -264,7 +264,7 @@ def update_ssh_tunnel_config(cluster_config: dict):
                 cluster_config["ssh_tunnel"][key] = os.path.expandvars(cluster_config["ssh_tunnel"][key])
                 LOG.info(f"Resolved `{key}` to `{cluster_config['ssh_tunnel'][key]}`")
 
-    if "$" in cluster_config["ssh_tunnel"]["identity"]:
+    if "$" in (cluster_config["ssh_tunnel"].get("identity") or ""):
         raise ValueError(
             "SSH identity cannot be resolved from environment variables. "
             "Please provide a valid path to the identity file."
