@@ -14,6 +14,7 @@
 
 import os
 import re
+from copy import deepcopy
 
 import pytest
 
@@ -374,6 +375,41 @@ async def test_lean4_code_execution_failure():
     assert "unexpected token '#eval" in error_output["stdout"].lower(), (
         "Expected the error output to mention an unexpected token '#eval"
     )
+
+
+@pytest.mark.asyncio
+async def test_state_restoration():
+    sandbox = _get_sandbox()
+
+    # Build history with visible outputs
+    out1, sid = await sandbox.execute_code('print("H1"); a = 41', language="ipython")
+    assert out1["process_status"] == "completed"
+
+    out2, sid = await sandbox.execute_code('print("H2"); a += 1', session_id=sid, language="ipython")
+    assert out2["process_status"] == "completed"
+
+    # Run a cell that errors after mutating state; it should not be replayed during restoration
+    err_out, sid = await sandbox.execute_code(
+        'print("ERR"); a = 0; raise ValueError()', session_id=sid, language="ipython"
+    )
+    assert err_out["process_status"] == "error"
+    assert "ValueError" in err_out["stdout"]
+
+    # Force a new backend shell for the same session to trigger client-side restoration by deleting the session
+    assert str(sid) in sandbox.session_histories
+    # Make a copy of the history
+    history = deepcopy(sandbox.session_histories[str(sid)])
+    await sandbox.delete_session(str(sid))
+    # Restore the history
+    sandbox.session_histories[str(sid)] = history
+
+    # Execute code that relies on restored state; stdout should be ONLY from this new execution
+    out3, sid = await sandbox.execute_code("print(a)", session_id=sid, language="ipython")
+    assert out3["process_status"] == "completed"
+    assert out3["stdout"] == "42\n"
+    assert "H1" not in out3["stdout"]
+    assert "H2" not in out3["stdout"]
+    assert "ERR" not in out3["stdout"]
 
 
 @pytest.mark.asyncio
