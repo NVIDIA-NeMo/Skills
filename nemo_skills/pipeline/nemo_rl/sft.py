@@ -30,7 +30,7 @@ from nemo_skills.pipeline.utils import (
     get_exp,
     get_mounted_path,
     get_nsight_cmd,
-    get_timeout,
+    get_timeout_str,
     resolve_mount_paths,
     run_exp,
     temporary_env_update,
@@ -134,7 +134,7 @@ def get_training_cmd(
     backend,
     profile_step_range,
 ):
-    timeout = get_timeout(cluster_config, partition)
+    timeout = get_timeout_str(cluster_config, partition)
 
     task = NemoRLTask(
         model=hf_model,

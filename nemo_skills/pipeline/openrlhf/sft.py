@@ -26,7 +26,7 @@ from nemo_skills.pipeline.utils import (
     check_if_mounted,
     get_cluster_config,
     get_exp,
-    get_timeout,
+    get_timeout_str,
     run_exp,
 )
 from nemo_skills.utils import get_logger_name, setup_logging
@@ -174,7 +174,7 @@ def get_training_cmd(
     if validation_data is None:
         validation_data = training_data
 
-    timeout = get_timeout(cluster_config, partition)
+    timeout = get_timeout_str(cluster_config, partition)
 
     logging_params = format_wandb_args(cluster_config, disable_wandb, wandb_project, expname)
 

@@ -185,7 +185,7 @@ def get_training_cmd(
     verl_config_name=None,
 ):
     # TODO: use those
-    timeout = pipeline_utils.get_timeout(cluster_config, partition)
+    timeout = pipeline_utils.get_timeout_str(cluster_config, partition)
 
     if task is None:
         task = PPOVerlTask(

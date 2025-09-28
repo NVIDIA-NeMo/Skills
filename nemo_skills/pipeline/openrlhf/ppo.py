@@ -197,7 +197,7 @@ def get_training_cmd(
     extra_arguments,
 ):
     # TODO: use those
-    timeout = pipeline_utils.get_timeout(cluster_config, partition)
+    timeout = pipeline_utils.get_timeout_str(cluster_config, partition)
 
     if task is None:
         task = PPOOpenRLHFTask(
