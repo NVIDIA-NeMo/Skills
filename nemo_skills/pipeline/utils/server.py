@@ -57,8 +57,8 @@ def get_free_port(exclude: list[int] | None = None, strategy: int | str = 5000) 
         raise ValueError(f"Strategy {strategy} not supported.")
 
 
-def should_get_random_port(server_gpus, exclusive, server_type):
-    return server_gpus != 8 and not exclusive and server_type != "megatron"
+def should_get_random_port(server_gpus, exclusive):
+    return server_gpus != 8 and not exclusive
 
 
 def wrap_python_path(cmd):
@@ -149,6 +149,7 @@ def get_server_command(
             f"    --pipeline-model-parallel-size {num_nodes} "
             f"    --use-checkpoint-args "
             f"    --max-tokens-to-oom 12000000 "
+            f"    --port {server_port} "
             f"    --micro-batch-size 1 "  # that's a training argument, ignored here, but required to specify..
             f"    {server_args} "
         )

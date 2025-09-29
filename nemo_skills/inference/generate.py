@@ -195,7 +195,7 @@ class GenerateSolutionsConfig:
                     "Megatron server doesn't support chat completions and we can't infer tokenizer from model name. "
                     "Please provide it with an explicit `tokenizer` parameter."
                 )
-            self.cfg.use_completions_api = True
+            self.use_completions_api = True
             LOG.warning("Megatron inference is extremely slow. It's highly recommended to use other server types!")
 
     def _post_init_validate_params(self):

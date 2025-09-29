@@ -404,9 +404,7 @@ def prepare_eval_commands(
         eval_to_job_map.extend([i] * count)
 
     cur_job_idx = 0
-    get_random_port = pipeline_utils.should_get_random_port(
-        server_parameters["server_gpus"], exclusive, server_parameters["server_type"]
-    )
+    get_random_port = pipeline_utils.should_get_random_port(server_parameters["server_gpus"], exclusive)
     job_server_config, job_server_address, job_extra_arguments = pipeline_utils.configure_client(
         **server_parameters,
         extra_arguments=extra_arguments,

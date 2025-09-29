@@ -309,7 +309,7 @@ def eval(
         generation_type=generation_type,
         generation_module=generation_module,
     )
-    get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive, server_type)
+    get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
     should_package_extra_datasets = extra_datasets and extra_datasets_type == ExtraDatasetType.local
     has_tasks = False
     job_id_to_tasks = {}

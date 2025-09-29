@@ -185,7 +185,7 @@ def generate(
     else:
         wandb_parameters = None
 
-    get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive, server_type)
+    get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
 
     if random_seeds and num_random_seeds:
         raise ValueError("Cannot specify both random_seeds and num_random_seeds")
