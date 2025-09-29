@@ -151,47 +151,52 @@ def get_env_variables(cluster_config):
     # It is fine to have these as always optional even if they are required for some configs
     # Assume it is required, then this will override the value set above with the same
     # value, assuming it has not been updated externally between these two calls
-    always_optional_env_vars = [
+    optional_env_vars_to_add = {
         "WANDB_API_KEY",
         "NVIDIA_API_KEY",
         "AZURE_OPENAI_API_KEY",
         "OPENAI_API_KEY",
         "HF_TOKEN",
-    ]
-    default_factories = {
-        "HF_TOKEN": lambda: str(get_token()),
     }
-    # Add optional env variables
-    optional_env_vars = cluster_config.get("env_vars", [])
-    for env_var in optional_env_vars + always_optional_env_vars:
-        env_var_name = env_var.split("=")[0].strip() if "=" in env_var else env_var
-
+    default_factories = {
+        "HF_TOKEN": lambda: str(token) if (token := get_token()) else "",
+    }
+    # Add optional env variables defined in cluster config
+    cfg_optional_env_vars = cluster_config.get("env_vars", [])
+    for env_var in cfg_optional_env_vars:
         if "=" in env_var:
             if env_var.count("=") == 1:
                 env_var_name, value = env_var.split("=")
-                env_var_name = env_var_name.strip()
-                value = value.strip()
+                env_var_name, value = env_var_name.strip(), value.strip()
             else:
                 raise ValueError(f"Invalid optional environment variable format: {env_var}")
             env_vars[env_var_name] = value
             if env_var_name not in _logged_optional_env_vars:
-                LOG.info(f"Adding optional environment variable {env_var_name} from config")
+                LOG.info(f"Adding optional environment variable {env_var_name} from cluster config")
                 _logged_optional_env_vars.add(env_var_name)
-        elif env_var in os.environ:
-            env_vars[env_var] = os.environ[env_var]
-            if env_var not in _logged_optional_env_vars:
-                LOG.info(f"Adding optional environment variable {env_var} from environment")
-                _logged_optional_env_vars.add(env_var)
-        elif env_var in default_factories:
-            env_vars[env_var] = default_factories[env_var]()
-            if env_var not in _logged_optional_env_vars:
-                LOG.info(f"Adding optional environment variable {env_var} from environment")
-                _logged_optional_env_vars.add(env_var)
+            # no need to request this variable later
+            if env_var_name in optional_env_vars_to_add:
+                optional_env_vars_to_add.remove(env_var_name)
         else:
-            if env_var not in _logged_optional_env_vars:
-                LOG.info(f"Optional environment variable {env_var} not found in user environment; skipping.")
-                _logged_optional_env_vars.add(env_var)
-
+            # request variable from environment later
+            optional_env_vars_to_add.add(env_var.strip())
+    # iterate over rest optional env vars to add, add from environment or default factory
+    for env_var_name in optional_env_vars_to_add:
+        if env_var_name in os.environ:
+            env_vars[env_var_name] = os.environ[env_var_name]
+            if env_var_name not in _logged_optional_env_vars:
+                LOG.info(f"Adding optional environment variable {env_var_name} from environment")
+                _logged_optional_env_vars.add(env_var_name)
+        elif env_var_name in default_factories and (value := default_factories[env_var_name]()):
+            # assign only non-empty value from default factory
+            env_vars[env_var_name] = value
+            if env_var_name not in _logged_optional_env_vars:
+                LOG.info(f"Adding optional environment variable {env_var_name} from default factory")
+                _logged_optional_env_vars.add(env_var_name)
+        else:
+            if env_var_name not in _logged_optional_env_vars:
+                LOG.info(f"Optional environment variable {env_var_name} not found in user environment; skipping.")
+                _logged_optional_env_vars.add(env_var_name)
     return env_vars
 
 
