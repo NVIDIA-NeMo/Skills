@@ -1,0 +1,4 @@
+user: |-
+ What is the correct answer to this question:
+ {problem}
+ Let's think step by step, and put the final answer into a \boxed{{}}

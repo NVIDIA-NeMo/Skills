@@ -229,8 +229,9 @@ def save_data_from_qwen(dataset, split="test"):
 def get_mcq_fields(question, choices):
     options_dict = {chr(ord("A") + i): option for i, option in enumerate(choices)}
     options_text = "\n".join(f"{letter}) {option}" for letter, option in options_dict.items())
+    question = question.strip("\n")
     return {
-        "problem": f"{question}\n{options_text}",
+        "problem": f"{question}\n\n{options_text}",
         "options": options_text,
         **options_dict,
     }

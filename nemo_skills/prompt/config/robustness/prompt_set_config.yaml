@@ -1,0 +1,46 @@
+gpqa:
+  - nemo_skills/prompt/config/robustness/mcq_prompts/1.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/2.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/3.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/4.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/5.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/6.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/7.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/8.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/9.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/10.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/11.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/12.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/13.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/14.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/15.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/16.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/17.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/18.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/19.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/20.yaml
+  - nemo_skills/prompt/config/robustness/mcq_prompts/21.yaml
+
+
+comp-math-24-25:
+  - nemo_skills/prompt/config/robustness/math_prompts/1.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/2.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/3.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/4.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/5.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/6.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/7.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/8.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/9.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/10.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/11.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/12.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/13.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/14.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/15.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/16.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/17.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/18.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/19.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/20.yaml
+  - nemo_skills/prompt/config/robustness/math_prompts/21.yaml

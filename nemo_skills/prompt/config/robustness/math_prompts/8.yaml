@@ -1,0 +1,6 @@
+user: |-
+ Can you solve this for me?
+
+ {problem}
+
+ Provide your answer in the following format: Final Answer: \boxed{{}}
