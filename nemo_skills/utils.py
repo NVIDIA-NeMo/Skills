@@ -187,6 +187,34 @@ def init_wandb(project, name, exp_dir=None, verbose=False):
         return False
 
 
+def validate_wandb_project_name(wandb_project=None, wandb_name=None, wandb_group=None, wandb_id=None):
+    """
+    Validate Weights & Biases (W&B) identifiers.
+
+    Rules (based on W&B conventions):
+      - Only validate non-None fields.
+      - Must be <= 128 characters (W&B safe upper limit).
+    """
+
+    # Helper function for length validation
+    def _validate_length(value, field_name):
+        if len(value) > 128:
+            raise ValueError(f"{field_name} exceeds the 128-character limit.")
+
+    # Only check if not None
+    if wandb_project is not None:
+        _validate_length(wandb_project, "wandb_project")
+
+    if wandb_name is not None:
+        _validate_length(wandb_name, "wandb_name")
+
+    if wandb_group is not None:
+        _validate_length(wandb_group, "wandb_group")
+
+    if wandb_id is not None:
+        _validate_length(wandb_id, "wandb_id")
+
+
 def extract_comments(code: str):
     """Extract a list of comments from the given Python code."""
     comments = []

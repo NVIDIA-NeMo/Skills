@@ -31,7 +31,7 @@ from nemo_skills.pipeline.utils import (
     resolve_mount_paths,
     run_exp,
 )
-from nemo_skills.utils import get_logger_name, setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -186,6 +186,13 @@ def get_logging_params(expname, disable_wandb, wandb_project, wandb_group):
         )
         if wandb_group:
             logging_params += f"++exp_manager.wandb_logger_kwargs.group={wandb_group} "
+
+        validate_wandb_project_name(
+            wandb_project=wandb_project,
+            wandb_name=expname,
+            wandb_group=wandb_group,
+            wandb_id=wandb_id,
+        )
     else:
         logging_params = "exp_manager.create_wandb_logger=False +exp_manager.create_tensorboard_logger=True"
     return logging_params

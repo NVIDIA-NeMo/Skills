@@ -35,7 +35,7 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     temporary_env_update,
 )
-from nemo_skills.utils import get_logger_name, setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -98,6 +98,15 @@ class NemoRLTask:
         )
         if self.wandb_group:
             cmd += f"++logger.wandb.group={self.wandb_group} "
+
+        if not self.disable_wandb:
+            validate_wandb_project_name(
+                wandb_project=self.wandb_project,
+                wandb_name=self.expname,
+                wandb_group=self.wandb_group,
+                wandb_id=wandb_id,
+            )
+
         return cmd
 
     def get_cmd(self):

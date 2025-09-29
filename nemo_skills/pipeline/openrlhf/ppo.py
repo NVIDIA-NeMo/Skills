@@ -25,7 +25,7 @@ import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.openrlhf import openrlhf_app
 from nemo_skills.pipeline.utils.server import get_free_port
-from nemo_skills.utils import get_logger_name, setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -132,6 +132,11 @@ class PPOOpenRLHFTask:
                 f" --wandb_run_name {expname} "
                 f" --wandb_id {expname} "
                 f" --wandb_resume auto"
+            )
+            validate_wandb_project_name(
+                wandb_project=wandb_project,
+                wandb_name=expname,
+                wandb_id=expname,
             )
         else:
             cmd = ""

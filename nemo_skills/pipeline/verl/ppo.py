@@ -24,7 +24,7 @@ import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.utils.server import get_free_port
 from nemo_skills.pipeline.verl import verl_app
-from nemo_skills.utils import get_logger_name, setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -124,6 +124,10 @@ class PPOVerlTask:
             cmd = f"{cmd} trainer.logger=['console'] "
         else:
             cmd = f"{cmd} trainer.logger=['console','wandb'] "
+            validate_wandb_project_name(
+                wandb_project=wandb_project,
+                wandb_name=expname,
+            )
 
         return cmd
 

@@ -29,7 +29,7 @@ from nemo_skills.pipeline.utils import (
     get_timeout_str,
     run_exp,
 )
-from nemo_skills.utils import get_logger_name, setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -131,6 +131,11 @@ def format_wandb_args(cluster_config, disable_wandb, wandb_project, expname):
             f" --wandb_run_name {expname} "
             f" --wandb_id {expname} "
             f" --wandb_resume auto"
+        )
+        validate_wandb_project_name(
+            wandb_project=wandb_project,
+            wandb_name=expname,
+            wandb_id=expname,
         )
     else:
         cmd = ""

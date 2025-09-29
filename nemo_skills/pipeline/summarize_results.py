@@ -36,7 +36,7 @@ from nemo_skills.pipeline.utils import (
     get_unmounted_path,
     resolve_mount_paths,
 )
-from nemo_skills.utils import get_logger_name, setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -414,6 +414,12 @@ def summarize_results(
     if wandb_name is not None:
         import wandb
 
+        validate_wandb_project_name(
+            wandb_project=wandb_project,
+            wandb_name=wandb_name,
+            wandb_group=wandb_group,
+            wandb_id=wandb_name + ("-" + wandb_group if wandb_group else "") + "-" + wandb_project,
+        )
         run = wandb.init(
             project=wandb_project,
             name=wandb_name,
