@@ -29,6 +29,7 @@ import hydra
 import litellm
 from omegaconf import ListConfig
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
 from nemo_skills.inference.model import (
@@ -39,7 +40,7 @@ from nemo_skills.inference.model import (
     get_tool_calling_model,
     server_params,
 )
-from nemo_skills.prompt.utils import get_prompt
+from nemo_skills.prompt.utils import get_prompt, get_token_count
 from nemo_skills.utils import (
     chunk_data,
     get_help_message,
@@ -112,6 +113,9 @@ class GenerateSolutionsConfig:
     # if False, will not add num_generated_tokens and generation_time values.
     # Useful when running judge jobs to keep the original generation statistics
     add_generation_stats: bool = True
+
+    # Count the number of tokens in the prompt
+    count_prompt_tokens: bool = False
 
     generation_key: str = "generation"
 
@@ -268,7 +272,11 @@ class GenerationTask:
                 self.cfg.chat_template_kwargs = None
 
         # Setup tokenizer
-        if self.cfg.use_completions_api or self.cfg.server.get("enable_soft_fail", False):
+        if (
+            self.cfg.use_completions_api
+            or self.cfg.server.get("enable_soft_fail", False)
+            or self.cfg.count_prompt_tokens
+        ):
             # These are the only cases where we need a tokenizer
             self.tokenizer = self.cfg.tokenizer or self.cfg.server["model"]
         else:
@@ -283,6 +291,17 @@ class GenerationTask:
         # Setup prompt formatter and LLM
         self.prompt = self.setup_prompt()
         self.llm = self.setup_llm()
+
+        # Setup hf_tokenizer for counting prompt tokens
+        self.hf_tokenizer = None
+        if self.cfg.count_prompt_tokens:
+            if self.prompt is not None:
+                self.hf_tokenizer = self.prompt.tokenizer
+            else:
+                self.hf_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer)
+
+            if self.hf_tokenizer is None:
+                raise ValueError("Tokenizer could not be initialized. Needed for counting prompt tokens.")
 
         if self.cfg.code_execution:
             self.extra_generate_params = self.prompt.get_code_execution_args()
@@ -331,6 +350,7 @@ class GenerationTask:
             examples_type=self.cfg.examples_type,
             system_message=self.cfg.system_message,
         )
+
         LOG.info("Prompt used: %s", prompt)
         return prompt
 
@@ -471,23 +491,12 @@ class GenerationTask:
             # all of the ground-truth data to the output file alongside the generated solutions
             output[self.cfg.generation_key] = output.pop("generation")
 
-            # calculating total generation time
-            if self.cfg.add_generation_stats:
-                output["generation_end_time"] = time.time()
-                # TODO: start time is saved in data_point, not output, need to fix that
-                output["generation_time"] = (
-                    output["generation_end_time"] - original_data_point["generation_start_time"]
-                )
-            else:
-                # generation_start_time was overriden, so restoring it from end and total
-                # TODO: this is a bit hacky, need a rewrite
-                if "generation_end_time" in original_data_point and "generation_time" in original_data_point:
-                    output["generation_start_time"] = (
-                        original_data_point["generation_end_time"] - original_data_point["generation_time"]
-                    )
-                else:
-                    output.pop("generation_start_time", None)
+            if not self.cfg.add_generation_stats:
+                output.pop("generation_start_time", None)
+                output.pop("generation_end_time", None)
+                output.pop("generation_time", None)
                 output.pop("num_generated_tokens", None)
+                output.pop("input_sequence_length", None)
 
             for key in output:
                 original_data_point.pop(key, None)
@@ -522,6 +531,9 @@ class GenerationTask:
 
         result = await self.llm.generate_async(**generation_params)
 
+        if self.cfg.count_prompt_tokens:
+            input_sequence_length = get_token_count(self.hf_tokenizer, generation_params["prompt"])
+            result["input_sequence_length"] = input_sequence_length
         return result
 
     async def apply_evaluation_hook(self, data_point):
@@ -536,11 +548,16 @@ class GenerationTask:
     async def _process_single_datapoint_with_semaphore(self, data_point, all_data, fout, pbar):
         """Process a single data point with semaphore control."""
         async with self.semaphore:
-            # registering current time to calculate total generation time
-            data_point["generation_start_time"] = time.time()
-
             # Generate output for this single data point
+            start_time = time.time()
             output = await self.process_single_datapoint(data_point, all_data)
+            end_time = time.time()
+
+            if self.cfg.add_generation_stats:
+                output["generation_start_time"] = start_time
+                output["generation_end_time"] = end_time
+                output["generation_time"] = end_time - start_time
+
             # Apply evaluation hook if configured
             # TODO: note that this currently only evaluates independently--if there
             # is any post-processing that needs to be done on the full set of

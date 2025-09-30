@@ -18,7 +18,7 @@ import random
 import re
 from dataclasses import asdict, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 from transformers import AutoTokenizer
@@ -304,6 +304,33 @@ class Prompt:
 
     def __str__(self):
         return str(self.config)
+
+
+def get_token_count(tokenizer, messages: Union[str, list[dict]]) -> int | None:
+    """
+    Count the number of tokens in a string or chat message list.
+
+    Args:
+        messages (str | list[dict]): Input text or chat messages.
+
+    Returns:
+        int | None: Token count, or None if no tokenizer is set.
+    """
+    if tokenizer is None:
+        return None
+
+    if messages is None:
+        return None
+
+    if isinstance(messages, str):
+        return len(tokenizer.encode(messages, add_special_tokens=False))
+    elif isinstance(messages, list):
+        try:
+            return len(tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True))
+        except Exception as e:
+            raise ValueError(f"Invalid chat message format: {e}")
+    else:
+        raise ValueError("messages must be a string or a list of dictionaries")
 
 
 def get_config_path(config: str, config_dir: str | None = None, config_extension: str = "yaml") -> Path:
