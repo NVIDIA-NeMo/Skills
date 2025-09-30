@@ -345,7 +345,7 @@ class GenerationTask:
 
         prompt = get_prompt(
             prompt_config=self.cfg.prompt_config,
-            tokenizer=self.tokenizer if self.cfg.use_completions_api else None,
+            tokenizer=self.tokenizer,
             code_tags=self.cfg.code_tags,
             examples_type=self.cfg.examples_type,
             system_message=self.cfg.system_message,
