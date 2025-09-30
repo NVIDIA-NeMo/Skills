@@ -354,9 +354,11 @@ def prepare_eval_commands(
             benchmarks_dict[benchmark] = benchmark_args
             if rs_num != -1:
                 if len(cur_benchmarks) > 1:
-                    raise ValueError(
-                        f"Cannot specify number of samples ({rs_num}) for benchmark group {benchmark_or_group}. "
-                        f"Use '{benchmark_or_group}' instead of '{benchmark_or_group}:{rs_num}'."
+                    LOG.warning(
+                        "Number of samples > 1 (%d) is specified for a benchmark group %s, "
+                        "overriding for all benchmarks in the group.",
+                        rs_num,
+                        benchmark_or_group,
                     )
                 benchmarks_dict[benchmark].num_samples = rs_num
 

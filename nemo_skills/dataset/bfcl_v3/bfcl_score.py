@@ -13,6 +13,9 @@
 # limitations under the License.
 
 
+# TODO: refactor this to expose all metrics properly, currently for k>1 the reporting is partial
+
+
 SIMPLE_AST = [
     "simple",
     "java",
@@ -45,6 +48,9 @@ MULTI_TURN_AST = [
     "multi_turn_long_context",
 ]
 
+# Global to track the expected max k across all subsets (None until set)
+GLOBAL_MAX_K = None
+
 
 def calculate_combined_accuracy(accuracy_dict_list: list[dict], weighted=False):
     total_count = 0
@@ -72,8 +78,41 @@ def calculate_combined_accuracy(accuracy_dict_list: list[dict], weighted=False):
 
 
 def get_accuracy_dict(metrics, category):
+    # reporting aggregation for pass@1[avg-of-k] (for highest k) if available
     category_dict = metrics[f"bfcl_v3.{category}"]
-    return category_dict["pass@1"]
+
+    # Find all keys that match "pass@1[avg-of-{k}]"
+    avg_keys = [key for key in category_dict.keys() if key.startswith("pass@1[avg-of-") and key.endswith("]")]
+
+    # Determine k for this category: max k if avg keys present, else treat as k=1 (pass@1)
+    k_for_category = 1
+    selected_key = "pass@1"
+    if avg_keys:
+        ks = []
+        for key in avg_keys:
+            try:
+                k_str = key.split("pass@1[avg-of-")[1].rstrip("]")
+                k = int(k_str)
+                ks.append((k, key))
+            except ValueError:
+                continue
+        if ks:
+            max_k, max_key = max(ks)
+            k_for_category = max_k
+            selected_key = max_key
+
+    # Enforce global consistency of max k across subsets
+    global GLOBAL_MAX_K
+    if GLOBAL_MAX_K is None:
+        GLOBAL_MAX_K = k_for_category
+    elif GLOBAL_MAX_K != k_for_category:
+        raise ValueError(
+            f"Inconsistent max k across subsets: expected {GLOBAL_MAX_K}, "
+            f"got {k_for_category} for category '{category}'. "
+            "Check if all jobs have finished successfully. "
+        )
+
+    return category_dict[selected_key]
 
 
 def calculate_non_live_single_turn_accuracy(metrics):
