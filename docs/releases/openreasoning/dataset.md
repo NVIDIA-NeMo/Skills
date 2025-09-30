@@ -44,33 +44,6 @@ To download the model you can run the following from `/workspace` folder on Slur
 hf download deepseek-ai/DeepSeek-R1-0528 --local-dir DeepSeek-R1-0528
 ```
 
-The next step is optional, but we recommend sharding the checkpoint to avoid very long loading time.
-
-```python
-from nemo_skills.pipeline.cli import run_cmd, wrap_arguments
-
-cmd = (
-    "python3 nemo_skills/conversion/save_sharded_state.py "
-    "    --model-path=/workspace/DeepSeek-R1-0528 "
-    "    --output=/workspace/DeepSeek-R1-0528-tp16 "
-    "    --tensor-parallel-size=16 "
-    "    --context-len=8192 "
-    "    --trust-remote-code "
-    "    --nnodes 2 "
-    "    --dist-init-addr $SLURM_MASTER_NODE:20000 "
-    "    --node-rank $SLURM_PROCID "
-)
-
-run_cmd(
-    ctx=wrap_arguments(cmd),
-    cluster="slurm",
-    num_gpus=8,
-    num_nodes=2,
-    container="sglang",
-    log_dir="/workspace/DeepSeek-R1-0528-tp16",
-)
-```
-
 Finally, launch the data generation command. You can adjust `num_chunks` (how many jobs to launch in parallel) and
 `dependent_jobs` (how many jobs to launch sequentially in case there is a fixed timeout on cluster) to fit your setup.
 
@@ -93,11 +66,11 @@ generate(
     input_file="/workspace/open-reasoning/sdg/math-problems.jsonl",
     output_dir="/workspace/open-reasoning/sdg/solutions",
     expname="r1-0528-math-solutions",
-    model="/workspace/DeepSeek-R1-0528-tp16",
+    model="/workspace/DeepSeek-R1-0528",
     server_type="sglang",
     server_gpus=8,
     server_nodes=2,
-    server_args=f"--load-format sharded_state --context-length {tokens_to_generate + 2000}",
+    server_args=f"--ep-size 16 --context-length {tokens_to_generate + 2000}",
     num_random_seeds=num_solutions,
     # set these according to your cluster configuration
     # num_chunks=N,

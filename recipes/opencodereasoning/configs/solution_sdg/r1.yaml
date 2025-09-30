@@ -33,11 +33,11 @@ stages:
     # Arguments passed as kwargs to the pipeline function (e.g. generate())
     stage_kwargs:
       # assuming the model is in fp8 and running on H100 GPUs
-      model: /hf_models/DeepSeek-R1-tp16  # checkpoint is pre-sharded to tp16 for faster loading
+      model: /hf_models/DeepSeek-R1
       server_type: sglang
       server_gpus: 8
       server_nodes: 2
-      server_args: "--load-format sharded_state --context-length 32768"
+      server_args: "--ep-size 16 --context-length 32768"
       num_random_seeds: ${num_random_seeds_to_generate}
       num_chunks: 10  # since data is big, we are parallelizing it 10x (for each seed, so in total 80 jobs are scheduled)
       # if your slurm cluster has a mandatory job timeout, you can schedule multiple dependent jobs with
