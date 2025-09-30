@@ -315,7 +315,7 @@ async def test_lean4_mathlib_code_execution():
     """
     expected_output = "7\n"
 
-    output, session_id = await sandbox.execute_code(correct_code_mathlib, language="lean4")
+    output, session_id = await sandbox.execute_code(correct_code_mathlib, language="lean4", timeout=60)
 
     # Assertions for the mathlib code
     assert session_id is None

@@ -52,7 +52,7 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker run --rm -v /tmp:/tmp -v /home:/home igitman/nemo-skills:0.7.0 bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
+        docker run --rm -v /tmp:/tmp -v /home:/home igitman/nemo-skills:0.7.1 bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
         docker ps -a -q | xargs -r docker stop
 
   gpu-tests-qwen:
@@ -91,5 +91,5 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker run --rm -v /tmp:/tmp -v /home:/home igitman/nemo-skills:0.7.0 bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
+        docker run --rm -v /tmp:/tmp -v /home:/home igitman/nemo-skills:0.7.1 bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
         docker ps -a -q | xargs -r docker stop

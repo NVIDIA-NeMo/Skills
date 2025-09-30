@@ -1,5 +1,0 @@
-FROM lmsysorg/sglang:v0.4.10.post2-cu126
-
-# patching for sharding states support for DeepSeek-R1
-COPY dockerfiles/sglang.patch /sgl-workspace/sglang.patch
-RUN cd /sgl-workspace/sglang && git apply /sgl-workspace/sglang.patch

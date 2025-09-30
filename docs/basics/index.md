@@ -98,7 +98,7 @@ config might look like
 executor: local
 
 containers:
-  trtllm: nvcr.io/nvidia/tensorrt-llm/release:0.21.0
+  trtllm: nvcr.io/nvidia/tensorrt-llm/release:1.0.0
   vllm: vllm/vllm-openai:v0.10.1.1
   nemo: igitman/nemo-skills-nemo:0.7.0
   # ... there are some more containers defined here

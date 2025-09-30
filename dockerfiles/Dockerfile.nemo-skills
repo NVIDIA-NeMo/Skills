@@ -1,12 +1,29 @@
-FROM python:3.10-bookworm
+# using ubuntu instead of debian for easier apptainer installation on arm64
+FROM ubuntu:22.04
 
-RUN apt-get update && apt-get -y install curl git git-lfs
+# Install Python and other dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    python3.10 \
+    python3-pip \
+    curl \
+    wget \
+    git \
+    git-lfs && \
+    ln -s /usr/bin/python3 /usr/bin/python && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-# installing apptainer
-RUN apt install -y wget && \
-    cd /tmp && \
-    wget https://github.com/apptainer/apptainer/releases/download/v1.4.1/apptainer_1.4.1_amd64.deb && \
-    apt install -y ./apptainer_1.4.1_amd64.deb
+RUN pip install --upgrade pip setuptools
+
+# Update package lists and install apptainer for arm64
+# https://apptainer.org/docs/admin/1.1/installation.html
+RUN apt update && \
+    apt install -y software-properties-common && \
+    add-apt-repository -y ppa:apptainer/ppa && \
+    apt update && apt -y install apptainer && \
+    add-apt-repository -y ppa:apptainer/ppa && \
+    apt update && apt install -y apptainer-suid && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 # for ifeval benchmark
 # TODO: can we get just a single dir?
@@ -25,6 +42,7 @@ RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
 RUN cd /opt/gorilla && git checkout d2177992bbba9aa228b53c0645bf8f5613a5a7c6
 RUN cd /opt/gorilla/berkeley-function-call-leaderboard && pip install -e .
 
+RUN apt remove -y python3-blinker
 
 RUN mkdir -p /opt/NeMo-Skills/requirements
 COPY pyproject.toml README.md /opt/NeMo-Skills/

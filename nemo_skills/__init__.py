@@ -16,13 +16,13 @@ from nemo_skills.version import __version__
 
 # only used in ns setup command to initialize with defaults
 _containers = {
-    "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:0.21.0",
+    "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:1.0.0",
     "vllm": "vllm/vllm-openai:v0.10.1.1",
-    "sglang": "igitman/nemo-skills-sglang:0.7.0",
+    "sglang": "lmsysorg/sglang:v0.5.3rc1-cu126",
     "nemo": "igitman/nemo-skills-nemo:0.7.0",
     "megatron": "igitman/nemo-skills-megatron:0.7.0",
     "sandbox": "igitman/nemo-skills-sandbox:0.7.1",
-    "nemo-skills": "igitman/nemo-skills:0.7.0",
+    "nemo-skills": "igitman/nemo-skills:0.7.1",
     "verl": "igitman/nemo-skills-verl:0.7.0",
     "nemo-rl": "igitman/nemo-skills-nemo-rl:0.7.0",
 }

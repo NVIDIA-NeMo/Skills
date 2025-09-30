@@ -43,12 +43,12 @@ jobs:
       if: steps.changes.outputs.docker == 'true'
       run: |
         # these tags need to match the ones in tests/gpu-tests/test-local.yaml
-        docker build -t igitman/nemo-skills:0.7.0 -f dockerfiles/Dockerfile.nemo-skills .
+        docker build -t igitman/nemo-skills:0.7.1 -f dockerfiles/Dockerfile.nemo-skills .
         docker build -t igitman/nemo-skills-sandbox:0.7.1 -f dockerfiles/Dockerfile.sandbox .
     - name: Pull Images
       if: steps.changes.outputs.docker != 'true'
       run: |
-        docker pull igitman/nemo-skills:0.7.0
+        docker pull igitman/nemo-skills:0.7.1
         docker pull igitman/nemo-skills-sandbox:0.7.1
     - name: Run all tests
       env:
