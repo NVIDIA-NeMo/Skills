@@ -166,6 +166,10 @@ class SweBenchGenerationTask(GenerationTask):
     def cleanup_litellm_cache(self):
         return
 
+    async def apply_evaluation_hook(self, data_point):
+        # currently evaluation is done directly after generation already
+        return data_point
+
     async def _execute_container_command(
         self, data_point, command, expected_file_pattern, mode, max_retries=3, timeout=100000
     ):
