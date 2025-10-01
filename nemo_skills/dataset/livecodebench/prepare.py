@@ -18,7 +18,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from datasets import load_dataset
+from datasets import Value, load_dataset
 from dateutil.relativedelta import relativedelta
 
 
@@ -66,7 +66,7 @@ def parse_month_range(start_date, end_date):
         raise ValueError(str(e))
 
 
-def clean_data(dataset):
+def clean_data(dataset, keep_all_columns=False):
     def map_fn(data):
         question = data["question_content"] + "\n\n"
         if data["starter_code"]:
@@ -80,22 +80,26 @@ def clean_data(dataset):
         data["question"] = question.replace("    ", "\t")
         return data
 
-    remove_columns = [
-        "question_title",
-        "contest_id",
-        "public_test_cases",
-        "private_test_cases",
-        "metadata",
-        "question_content",
-        "platform",
-        "question_id",
-        "starter_code",
-    ]
+    remove_columns = []
+    if not keep_all_columns:
+        remove_columns = [
+            "question_title",
+            "contest_id",
+            "metadata",
+            "question_content",
+            "platform",
+            "question_id",
+            "starter_code",
+            "public_test_cases",
+            "private_test_cases",
+        ]
+    dataset = dataset.cast_column("public_test_cases", Value("large_string"))
+    dataset = dataset.cast_column("private_test_cases", Value("large_string"))
     dataset = dataset.map(map_fn, remove_columns=remove_columns)
     return dataset
 
 
-def prepare(start_date, end_date, release_version, output_dir):
+def prepare(start_date, end_date, release_version, output_dir, keep_all_columns=False):
     start_date, end_date = parse_month_range(start_date, end_date)
     start_yymm = start_date.strftime("%y%m")
     end_yymm = end_date.strftime("%y%m")
@@ -104,7 +108,7 @@ def prepare(start_date, end_date, release_version, output_dir):
     assert release_version in ["v1", "v2", "v3", "v4", "v5", "v6"]
 
     data = parse_data(release_version=f"release_{release_version}")
-    data = clean_data(data)
+    data = clean_data(data, keep_all_columns)
     print("Len of data: ", len(data))
 
     print("Writing to file...")
@@ -115,16 +119,10 @@ def prepare(start_date, end_date, release_version, output_dir):
         for problem in data:
             input_date = datetime.strptime(problem["contest_date"], "%Y-%m-%dT%H:%M:%S").date()
             if start_date <= input_date <= end_date:
-                json.dump(
-                    {
-                        "task_id": problem["task_id"],
-                        "question": problem["question"],
-                        "difficulty": problem["difficulty"],
-                        "subset_for_metrics": problem["difficulty"],
-                        "release_version": release_version,
-                    },
-                    f,
-                )
+                output_record = {**problem}
+                output_record["subset_for_metrics"] = problem["difficulty"]
+                output_record["release_version"] = release_version
+                json.dump(output_record, f)
                 f.write("\n")
 
 
@@ -135,7 +133,6 @@ DEFAULT_SPLITS = [
     ("v6", "2024-08", "2025-05"),  # current default in lb
 ]
 
-
 if __name__ == "__main__":
     # Write an argparse to a json file, read it in and parse it
     parser = argparse.ArgumentParser()
@@ -143,6 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--release_version", type=str, default="all")
     parser.add_argument("--start_date", type=str, default="all", help="End date in YYYY-MM format")
     parser.add_argument("--end_date", type=str, default="all", help="End date in YYYY-MM format")
+    parser.add_argument("--keep_all_columns", action="store_true", help="keep all columns in the output jsonl file")
 
     args = parser.parse_args()
 
@@ -150,14 +148,14 @@ if __name__ == "__main__":
         # Prepare all splits
         for release_version, start_date, end_date in DEFAULT_SPLITS:
             print(f"Processing data for {release_version} from {start_date} to {end_date}")
-            prepare(start_date, end_date, release_version, args.output_dir)
+            prepare(start_date, end_date, release_version, args.output_dir, args.keep_all_columns)
     else:
         if args.release_version == "all" or args.start_date == "all" or args.end_date == "all":
             raise ValueError(
                 "If preparing a custom split, you must specify all "
                 "--release_version, --start_date, and --end_date arguments."
             )
-        prepare(args.start_date, args.end_date, args.release_version, args.output_dir)
+        prepare(args.start_date, args.end_date, args.release_version, args.output_dir, args.keep_all_columns)
 
     # test_v5_2408_2502.jsonl: 279 samples
     # test_v5_2410_2502.jsonl: 166 samples
