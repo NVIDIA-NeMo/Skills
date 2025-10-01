@@ -15,14 +15,19 @@
 # Use the base image with Python 3.10 and Flask
 FROM tiangolo/uwsgi-nginx-flask:python3.10
 
-# Install dependencies required for Lean 4 and other tools
+# Install dependencies required for Lean 4, pypy3, and other tools
 RUN apt-get update && \
-    apt-get install -y curl git net-tools bzip2 && \
+    apt-get install -y curl git net-tools bzip2 build-essential libseccomp-dev && \
     curl -L https://downloads.python.org/pypy/pypy3.10-v7.3.17-linux64.tar.bz2 -o /tmp/pypy.tar.bz2 && \
     tar -xjf /tmp/pypy.tar.bz2 -C /opt/ && \
-    ln -s /opt/pypy3.10-v7.3.17-linux64/bin/pypy3 /usr/local/bin/pypy3 && \
+    ln -s /opt/pypy3.10-v7.3.17-linux64/bin/pypy3 /usr/bin/pypy3 && \
+    /usr/bin/pypy3 -m ensurepip && \
     rm /tmp/pypy.tar.bz2
 
+# Install the DMOJ judge-server using pip (OJBench eval requirement)
+RUN pip install git+https://github.com/DMOJ/judge-server.git@11bf2cd03df83f0df5970a08e98b4cec2dfaecd5
+
+# Install Lean 4 toolchain
 RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y && \
     /root/.elan/bin/elan toolchain install leanprover/lean4:v4.12.0 && \
     /root/.elan/bin/elan default leanprover/lean4:v4.12.0 && \

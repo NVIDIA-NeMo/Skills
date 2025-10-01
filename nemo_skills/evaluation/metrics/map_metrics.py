@@ -21,6 +21,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
     EvalPlusMetrics,
     LiveCodeBenchMetrics,
+    OJBenchMetrics,
     SciCodeMetrics,
     SweBenchMetrics,
 )
@@ -53,6 +54,7 @@ METRICS_MAP = {
     "mrcr": MRCRMetrics,
     "aalcr": AALCRMetrics,
     "livebench_coding": LiveCodeBenchMetrics,
+    "ojbench": OJBenchMetrics,
 }
 
 

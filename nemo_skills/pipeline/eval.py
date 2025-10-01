@@ -171,6 +171,10 @@ def eval(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
     ),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
+    keep_mounts_for_sandbox: bool = typer.Option(
+        False,
+        help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     log_samples: bool = typer.Option(
         False,
@@ -308,6 +312,7 @@ def eval(
         extra_datasets_type,
         exclusive,
         with_sandbox,
+        keep_mounts_for_sandbox,
         wandb_parameters,
         extra_eval_args,
         eval_requires_judge=eval_requires_judge,
@@ -325,9 +330,15 @@ def eval(
     with pipeline_utils.get_exp(expname, cluster_config, _reuse_exp) as exp:
         # scheduling main eval jobs
         for idx, job_args in enumerate(job_batches):
-            cmds, job_benchmarks, job_needs_sandbox, job_server_config, job_server_address, job_server_command = (
-                job_args
-            )
+            (
+                cmds,
+                job_benchmarks,
+                job_needs_sandbox,
+                job_needs_sandbox_to_keep_mounts,
+                job_server_config,
+                job_server_address,
+                job_server_command,
+            ) = job_args
             prev_tasks = _task_dependencies
 
             for _ in range(dependent_jobs + 1):
@@ -343,6 +354,7 @@ def eval(
                     time_min=time_min,
                     server_config=job_server_config,
                     with_sandbox=job_needs_sandbox or with_sandbox,
+                    keep_mounts_for_sandbox=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
                     sandbox_port=None if get_random_port else 6000,
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
@@ -409,6 +421,7 @@ def eval(
                 partition=partition,
                 time_min=time_min,
                 with_sandbox=with_sandbox,
+                keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                 run_after=run_after,
                 reuse_code_exp=reuse_code_exp,
                 reuse_code=reuse_code,

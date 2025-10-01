@@ -93,6 +93,7 @@ class BenchmarkArgs:
     judge_args: str
     judge_pipeline_args: dict
     requires_sandbox: bool
+    keep_mounts_for_sandbox: bool
     generation_module: str
     num_samples: int
     num_chunks: int | None
@@ -180,6 +181,9 @@ def get_benchmark_args_from_module(
     if prompt_config:
         generation_args = f"++prompt_config={prompt_config} {generation_args}"
     requires_sandbox = get_arg_from_module_or_dict(benchmark_module, "REQUIRES_SANDBOX", False, override_dict)
+    keep_mounts_for_sandbox = get_arg_from_module_or_dict(
+        benchmark_module, "KEEP_MOUNTS_FOR_SANDBOX", False, override_dict
+    )
 
     generation_module = get_arg_from_module_or_dict(
         benchmark_module, "GENERATION_MODULE", "nemo_skills.inference.generate", override_dict
@@ -221,6 +225,7 @@ def get_benchmark_args_from_module(
         judge_args=judge_args,
         judge_pipeline_args=judge_pipeline_args,
         requires_sandbox=requires_sandbox,
+        keep_mounts_for_sandbox=keep_mounts_for_sandbox,
         generation_module=generation_module,
         num_samples=num_samples,
         num_chunks=num_chunks,
@@ -304,6 +309,7 @@ def prepare_eval_commands(
     extra_datasets_type,
     exclusive,
     with_sandbox,
+    keep_mounts_for_sandbox,
     wandb_parameters,
     extra_eval_args,
     eval_requires_judge,
@@ -364,6 +370,9 @@ def prepare_eval_commands(
 
             if benchmark_args.requires_sandbox and not with_sandbox:
                 LOG.warning("Found benchmark (%s) which requires sandbox, enabled sandbox for it.", benchmark)
+
+            if benchmark_args.requires_sandbox and not keep_mounts_for_sandbox:
+                LOG.warning("Found benchmark (%s) which requires sandbox to keep mounts, enabling it.", benchmark)
 
     total_evals = 0
     for benchmark, benchmark_args in benchmarks_dict.items():
@@ -505,12 +514,16 @@ def prepare_eval_commands(
 
                 if cur_eval == total_evals - 1 or cur_job_idx != eval_to_job_map[cur_eval + 1]:
                     job_needs_sandbox = any(benchmarks_dict[b].requires_sandbox for b in job_benchmarks)
+                    job_needs_sandbox_to_keep_mounts = any(
+                        benchmarks_dict[b].keep_mounts_for_sandbox for b in job_benchmarks
+                    )
                     # TODO: move to a dataclass
                     job_batches.append(
                         (
                             job_cmds,
                             job_benchmarks,
                             job_needs_sandbox,
+                            job_needs_sandbox_to_keep_mounts,
                             job_server_config,
                             job_server_address,
                             # a check above guarantees that this is the same for all tasks in a job
