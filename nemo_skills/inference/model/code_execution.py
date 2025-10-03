@@ -126,6 +126,7 @@ class CodeExecutionWrapper:
         generation_time = 0
         code_execution_time = 0
         stopped_on_repetition = False
+        num_code_timeouts = 0
         # adding plus one to make sure there is always some completion after the last requested code block
         try:
             for generation_index in range(effective_max_code_executions + 1):
@@ -185,6 +186,9 @@ class CodeExecutionWrapper:
                         remaining_code_executions,
                     )
 
+                    if "process_status" in execution_dict and execution_dict["process_status"] == "timeout":
+                        num_code_timeouts += 1
+
                     if is_openai_format:
                         request["prompt"][-2]["content"] += code_output
                     else:
@@ -208,6 +212,7 @@ class CodeExecutionWrapper:
                 "generation_time": generation_time,
                 "code_execution_time": code_execution_time,
                 "stopped_on_repetition": stopped_on_repetition,
+                "num_code_timeouts": num_code_timeouts,
             }
         finally:
             # Clean up session if we created one and configured to do so
