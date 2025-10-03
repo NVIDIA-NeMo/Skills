@@ -378,6 +378,7 @@ class GenerationTask:
                 orig_prompt_filler=self.fill_prompt,  # Needed for prompt fillling
                 parallel_thinking=self.cfg.parallel_thinking,
                 main_config=self.cfg,
+                tokenizer=self.tokenizer,
                 inference_override_config=inference_override_config,
             )
 

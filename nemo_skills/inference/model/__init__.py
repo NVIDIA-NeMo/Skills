@@ -72,6 +72,7 @@ def get_parallel_thinking_model(
     model,
     orig_prompt_filler,
     parallel_thinking: ParallelThinkingConfig = None,
+    tokenizer=None,
     main_config=None,
     inference_override_config=None,
 ):
@@ -89,7 +90,9 @@ def get_parallel_thinking_model(
 
     parallel_thinking_config = ParallelThinkingConfig(**filtered_config)
 
-    return ParallelThinkingTask(model=model, orig_prompt_filler=orig_prompt_filler, cfg=parallel_thinking_config)
+    return ParallelThinkingTask(
+        model=model, tokenizer=tokenizer, orig_prompt_filler=orig_prompt_filler, cfg=parallel_thinking_config
+    )
 
 
 def get_tool_calling_model(
