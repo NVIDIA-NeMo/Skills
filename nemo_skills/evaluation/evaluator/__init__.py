@@ -20,6 +20,7 @@ from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
 from nemo_skills.evaluation.evaluator.code import (
     eval_bigcodebench,
     eval_evalplus,
+    eval_human_eval_infilling,
     eval_livebench_coding,
     eval_livecodebench_pro,
 )
@@ -60,6 +61,7 @@ EVALUATOR_MAP = {
     "ioi": eval_ioi,
     "bigcodebench": eval_bigcodebench,
     "ojbench": eval_ojbench,
+    "human_eval_infilling": eval_human_eval_infilling,
 }
 
 # Evaluator class mapping
