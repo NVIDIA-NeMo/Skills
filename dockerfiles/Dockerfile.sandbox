@@ -16,13 +16,22 @@
 FROM tiangolo/uwsgi-nginx-flask:python3.10
 
 # Install dependencies required for Lean 4, pypy3, and other tools
+ARG TARGETARCH
 RUN apt-get update && \
     apt-get install -y curl git net-tools bzip2 build-essential libseccomp-dev && \
-    curl -L https://downloads.python.org/pypy/pypy3.10-v7.3.17-linux64.tar.bz2 -o /tmp/pypy.tar.bz2 && \
+    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+    case "$ARCH" in \
+        amd64) PYPY_ARCH=linux64 ;; \
+        arm64|aarch64) PYPY_ARCH=aarch64 ;; \
+        x86_64) PYPY_ARCH=linux64 ;; \
+    *) echo "Unsupported TARGETARCH '$ARCH'" >&2; exit 1 ;; \
+    esac && \
+    curl -L https://downloads.python.org/pypy/pypy3.10-v7.3.17-$PYPY_ARCH.tar.bz2 -o /tmp/pypy.tar.bz2 && \
     tar -xjf /tmp/pypy.tar.bz2 -C /opt/ && \
-    ln -s /opt/pypy3.10-v7.3.17-linux64/bin/pypy3 /usr/bin/pypy3 && \
+    ln -s /opt/pypy3.10-v7.3.17-$PYPY_ARCH/bin/pypy3 /usr/bin/pypy3 && \
     /usr/bin/pypy3 -m ensurepip && \
-    rm /tmp/pypy.tar.bz2
+    rm /tmp/pypy.tar.bz2 && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Install the DMOJ judge-server using pip (OJBench eval requirement)
 RUN pip install git+https://github.com/DMOJ/judge-server.git@11bf2cd03df83f0df5970a08e98b4cec2dfaecd5
