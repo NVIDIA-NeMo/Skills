@@ -108,7 +108,7 @@ which outputs
 
 #### Example 2 - Prompt formatted as a string
 
-If you want to use completions API, you can set `++use_completions_api=True`. This will use model's tokenizer to format
+If you want to use completions API, you can set `++inference.endpoint_type=text`. This will use model's tokenizer to format
 messages as a string (you can specify a custom tokenizer with `++tokenizer=...` argument).
 
 Here is an example of the input to completions api

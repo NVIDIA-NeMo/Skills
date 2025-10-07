@@ -24,7 +24,7 @@ def eval_gpt_oss_python(workspace, cluster, expname_prefix, wandb_project):
             "++inference.temperature=1.0 "
             "++inference.top_p=1.0 "
             "++prompt_config=gpt-oss/math "
-            "++use_completions_api=true "
+            "++inference.endpoint_type=text "
             "++code_tags=gpt-oss "
             "++code_execution=true "
             "++server.code_execution.max_code_executions=100 "

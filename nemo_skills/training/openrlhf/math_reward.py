@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import json
 import os
 
@@ -57,7 +58,9 @@ def reward_func(queries: list[str], prompts: list[str], prompt_metadata: list[di
     judge_prompts = [prompt.fill(dp) for dp in data_points]
     if len(judge_prompts) > 0:
         # Too slow, but we are no longer supporting openrlhf anyways.
-        outputs = [llm.generate_sync(prompt=jp, stop_phrases=prompt.stop_phrases) for jp in judge_prompts]
+        outputs = [
+            asyncio.run(llm.generate_async(prompt=jp, stop_phrases=prompt.stop_phrases)) for jp in judge_prompts
+        ]
     else:
         outputs = []
     judgements = []

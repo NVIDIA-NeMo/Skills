@@ -126,7 +126,7 @@ ns generate \
        --input_file=/nemo_run/code/nemo_skills/dataset/math/train.jsonl \
        ++prompt_config=generic/math-base \
        ++examples_type=math_text_detailed \
-       ++use_completions_api=True \
+       ++inference.endpoint_type=text \
        ++tokenizer=meta-llama/Llama-3.1-405B \
        ++stop_phrase='\\n\\n\\n\\n\\n\\n'
 ```
@@ -366,6 +366,7 @@ We also support automatic trimming of generation budget or context when using vl
 
     from nemo_skills.prompt.utils import get_prompt
     from nemo_skills.inference.model import get_model
+    import asyncio
 
     prompt = get_prompt(
         "generic/math",
@@ -382,7 +383,7 @@ We also support automatic trimming of generation budget or context when using vl
 
     # The 1M generation budget is well beyond the 40960 context window size of Qwen/Qwen3-0.6B
     # We will automatically reduce the generation budget to fit in the context window
-    output_dict = llm.generate_sync(input_prompt, tokens_to_generate=1_000_000)
+    output_dict = asyncio.run(llm.generate_async(input_prompt, tokens_to_generate=1_000_000))
     ```
     To specify this setting for the generation or eval pipeline use
     ```bash
@@ -395,6 +396,7 @@ We also support automatic trimming of generation budget or context when using vl
     ```python hl_lines="15-16"
     from nemo_skills.prompt.utils import get_prompt
     from nemo_skills.inference.model import get_model
+    import asyncio
 
     prompt = get_prompt(
         "generic/math",
@@ -413,7 +415,7 @@ We also support automatic trimming of generation budget or context when using vl
 
     # We will automatically reduce the prompt from the start to fit in the context window
     # Note that this requires the `tokens_to_generate` budget to be specified
-    output_dict = llm.generate_sync(prompt=input_prompt, tokens_to_generate=1024)
+    output_dict = asyncio.run(llm.generate_async(prompt=input_prompt, tokens_to_generate=1024))
     ```
     To specify this setting for the generation or eval pipeline use
     ```bash
@@ -427,6 +429,7 @@ We also support automatic trimming of generation budget or context when using vl
 
     from nemo_skills.prompt.utils import get_prompt
     from nemo_skills.inference.model import get_model
+    import asyncio
 
     prompt = get_prompt(
         "generic/math",
@@ -445,7 +448,7 @@ We also support automatic trimming of generation budget or context when using vl
 
     # We will automatically reduce the prompt from the end to fit in the context window
     # Note that this requires the `tokens_to_generate` budget to be specified
-    output_dict = llm.generate_sync(prompt=input_prompt, tokens_to_generate=1024)
+    output_dict = asyncio.run(llm.generate_async(prompt=input_prompt, tokens_to_generate=1024))
     ```
     To specify this setting for the generation or eval pipeline use
     ```bash

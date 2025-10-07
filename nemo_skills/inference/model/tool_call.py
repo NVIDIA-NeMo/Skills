@@ -21,14 +21,14 @@ from collections import defaultdict
 from typing import Dict, List
 
 from nemo_skills.mcp.adapters import (
-    ChatCompletionCallInterpreter,
-    ChatCompletionResponseFormatter,
-    OpenAISchemaAdapter,
+    format_tool_list_by_endpoint_type,
+    format_tool_response_by_endpoint_type,
+    get_tool_details_by_endpoint_type,
 )
 from nemo_skills.mcp.tool_manager import ToolManager
 from nemo_skills.utils import get_logger_name
 
-from .base import BaseModel
+from .base import BaseModel, EndpointType
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -59,15 +59,10 @@ class ToolCallingWrapper:
             overrides=tool_overrides or {},
             context=additional_config,
         )
-        # Use sensible defaults for adapters in module-based mode
-        self.schema_adapter = OpenAISchemaAdapter()
-        self.call_interpreter = ChatCompletionCallInterpreter()
-        self.response_formatter = ChatCompletionResponseFormatter()
 
-    async def _execute_tool_call(self, tool_call, request_id: str):
+    async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
-        tool_name = tool_call["function"]["name"]
-        tool_args = tool_call["function"]["arguments"]
+        tool_name, tool_args = get_tool_details_by_endpoint_type(tool_call, endpoint_type)
 
         ##
         # TODO(sanyamk): Not all tool arguments might necessarily be in JSON format.
@@ -75,6 +70,7 @@ class ToolCallingWrapper:
         try:
             tool_args = json.loads(tool_args)
         except json.decoder.JSONDecodeError as e:
+            LOG.error(f"Tool arguments are not in JSON format: {tool_args}")
             LOG.exception(e)
             return {"error": "Tool argument parsing failed."}
 
@@ -88,17 +84,21 @@ class ToolCallingWrapper:
 
         return result
 
-    async def _execute_tool_calls(self, tool_calls: List, request_id: str):
-        tasks = [self._execute_tool_call(tool_call, request_id=request_id) for tool_call in tool_calls]
+    async def _execute_tool_calls(self, tool_calls: List, request_id: str, endpoint_type: EndpointType):
+        tasks = [
+            self._execute_tool_call(tool_call, request_id=request_id, endpoint_type=endpoint_type)
+            for tool_call in tool_calls
+        ]
         tool_results = await asyncio.gather(*tasks)
         return [
-            self.response_formatter.format(tool_call, tool_result)
+            format_tool_response_by_endpoint_type(tool_call, tool_result, endpoint_type)
             for tool_call, tool_result in zip(tool_calls, tool_results)
         ]
 
     async def generate_async(
         self,
         prompt: List,
+        endpoint_type: EndpointType,
         tools: List[dict] = None,
         tokens_to_generate: int = None,
         **generation_kwargs,
@@ -109,7 +109,8 @@ class ToolCallingWrapper:
 
         # This assumes that the available tools do not change during the generation.
         raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
-        tools = self.schema_adapter.convert(raw_tools)
+        tools = format_tool_list_by_endpoint_type(raw_tools, endpoint_type)
+        LOG.info("Available Tools: %s", tools)
 
         result_steps = defaultdict(list)
         conversation = copy.deepcopy(prompt)
@@ -124,6 +125,7 @@ class ToolCallingWrapper:
                 prompt=conversation,
                 tools=tools,
                 tokens_to_generate=tokens_to_generate,
+                endpoint_type=endpoint_type,
                 **generation_kwargs,
             )
             if isinstance(tokens_to_generate, int):
@@ -133,18 +135,15 @@ class ToolCallingWrapper:
                 if k in generation:
                     result_steps[k].append(generation[k])
 
-            conversation.append({"role": "assistant", "content": generation["generation"]})
-            if "reasoning_content" in generation:
-                conversation[-1]["reasoning_content"] = generation["reasoning_content"]
+            conversation.extend(generation["serialized_output"])
 
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
-                tool_calls_message = self.call_interpreter.parse(tool_calls)
-                conversation[-1].update(tool_calls_message)
-
+                tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
                 tool_calls_output_messages = await self._execute_tool_calls(
-                    tool_calls_message["tool_calls"], request_id=request_id
+                    tool_calls, request_id=request_id, endpoint_type=endpoint_type
                 )
+                LOG.info("Sending tool calls: %s", tool_calls_output_messages)
                 conversation.extend(tool_calls_output_messages)
 
                 result_steps["num_tool_calls"].append(len(tool_calls))

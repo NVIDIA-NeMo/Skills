@@ -38,6 +38,7 @@ from nemo_skills.inference.generate import (
     InferenceConfig,
 )
 from nemo_skills.inference.model import server_params
+from nemo_skills.inference.model.base import EndpointType
 from nemo_skills.inference.model.utils import is_context_window_exceeded_error
 from nemo_skills.prompt.utils import get_token_count
 from nemo_skills.utils import (
@@ -129,11 +130,21 @@ class ClientMessageParser:
         self.message_formatter = partial(tokenizer.apply_chat_template, tokenize=False, add_generation_prompt=True)
 
     def construct_input_dict(self, messages: list[dict], tools: list[dict]):
-        fmted_prompt = self.message_formatter(messages, tools=tools)
+        try:
+            fmted_prompt = self.message_formatter(messages, tools=tools)
+        except Exception as e:
+            # Sometimes the parsed tool-call is a string, which is not JSON serializable
+            # Putting a debugging here in case it happens in the future and we need to address it.
+            LOG.info(f"Messages: {messages}, Tools: {tools}")
+            LOG.error(f"Error formatting prompt: {e}")
+            raise e
+        kwargs = asdict(self.cfg.inference)
+        # Replace the completion type with text
+        kwargs["endpoint_type"] = EndpointType.text
         return {
             "prompt": fmted_prompt,
             "include_response": True,
-            **asdict(self.cfg.inference),
+            **kwargs,
         }
 
     def parse_output_dict(self, output_dict: dict):

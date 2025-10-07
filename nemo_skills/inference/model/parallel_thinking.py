@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Union
 from nemo_skills.prompt.utils import get_prompt
 from nemo_skills.utils import get_logger_name, nested_dataclass, remove_thinking
 
-from .base import BaseModel
+from .base import BaseModel, EndpointType
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -52,7 +52,7 @@ class ParallelThinkingConfig:
     remove_thinking: bool = True  # Remove thinking tokens from the solution key
     thinking_begin: str = "<think>"
     thinking_end: str = "</think>"
-    use_completions_api: bool = False
+    endpoint_type: EndpointType = EndpointType.chat
     tokenizer: str | None = None
     chat_template_kwargs: dict | None = None  # extra parameters to pass to the tokenizer's apply_chat_template method
     start_assistant_response_key: str | None = None  # whether to start assistant response with this key

@@ -31,7 +31,7 @@ GENERATION_ARGS = (
     "++inference.tokens_to_generate={tokens_to_generate} "
     # ruler is adding prefix for assistant response, so it has to go through completions api
     "++start_assistant_response_key=generation "
-    "++use_completions_api=True "
+    "++inference.endpoint_type=text "
 )
 """
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}

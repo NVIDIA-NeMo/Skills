@@ -104,7 +104,7 @@ ns eval \
     --with_sandbox \
     ++code_tags=openmath \
     ++prompt_config=openmath/tir \
-    ++use_completions_api=True \
+    ++inference.endpoint_type=text \
     ++inference.tokens_to_generate=32768 \
     ++inference.temperature=0.6 \
     ++code_execution=true \
@@ -127,7 +127,7 @@ ns eval \
     --with_sandbox \
     ++code_tags=openmath \
     ++prompt_config=generic/math \
-    ++use_completions_api=True \
+    ++inference.endpoint_type=text \
     ++inference.tokens_to_generate=32768 \
     ++inference.temperature=0.6 \
     ++code_execution=true

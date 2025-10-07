@@ -34,12 +34,13 @@ Click on :material-plus-circle: symbols in the snippet below to learn more detai
     ```python
     from nemo_skills.inference.model import get_model
     from nemo_skills.prompt.utils import get_prompt
+    import asyncio
 
     llm = get_model(model="meta-llama/Llama-3.1-8B-Instruct", server_type="vllm")  # localhost by default
     prompt_obj = get_prompt('generic/default') # (1)!
     prompt = prompt_obj.fill({'question': "What's 2 + 2?"})
     print(prompt) # (2)!
-    output = llm.generate_sync(prompt=prompt)
+    output = asyncio.run(llm.generate_async(prompt=prompt))
     print(output["generation"]) # (3)!
     ```
 
@@ -69,6 +70,7 @@ Click on :material-plus-circle: symbols in the snippet below to learn more detai
     ```python
     from nemo_skills.inference.model import get_model
     from nemo_skills.prompt.utils import get_prompt
+    import asyncio
 
     llm = get_model( # (1)!
         server_type="openai",  # NIM models are using OpenAI API
@@ -80,7 +82,7 @@ Click on :material-plus-circle: symbols in the snippet below to learn more detai
     prompt = prompt_obj.fill({'question': "What's 2 + 2?"})
 
     print(prompt) # (3)!
-    output = llm.generate_sync(prompt=prompt)
+    output = asyncio.run(llm.generate_async(prompt=prompt))
     print(output["generation"]) # (4)!
     ```
 

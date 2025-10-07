@@ -151,3 +151,10 @@ class OpenAIModel(BaseModel):
             params["top_p"] = top_p
 
         return params
+
+    def _build_responses_request_params(self, input, **kwargs) -> dict:
+        # Remapping variables to match responses API
+        responses_params = self._build_chat_request_params(messages=input, **kwargs)
+        responses_params["input"] = responses_params.pop("messages")
+        responses_params["max_output_tokens"] = responses_params.pop("max_completion_tokens")
+        return responses_params

@@ -11,22 +11,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import abc
 import logging
 import os
+from enum import Enum
 from typing import Union
 
 import httpx
 import litellm
 import openai
 
+from nemo_skills.inference.patch_litellm_logging import patch_litellm_logging_worker
 from nemo_skills.utils import get_logger_name
 
 from .context_retry import ContextLimitRetryConfig, with_context_retry
 from .utils import ServerTokenizer, WrapperAutoTokenizer, trim_after_stop_phrases
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+# The logging worker sometimes does not stop. We patch it to disable its functionality.
+# TODO: Remove this once LiteLLM fixes it.
+patch_litellm_logging_worker()
+
+
+class EndpointType(str, Enum):
+    text = "text"
+    chat = "chat"
+    responses = "responses"
 
 
 class BaseModel:
@@ -124,6 +135,7 @@ class BaseModel:
             max_retries=max_retries,
             api_key=api_key,
             base_url=self.base_url,
+            api_base=self.base_url,  # Used in later versions with responses API
         )
         httpx_limits = httpx.Limits(max_keepalive_connections=2048, max_connections=2048)
         litellm.client_session = httpx.Client(limits=httpx_limits)
@@ -190,19 +202,14 @@ class BaseModel:
     def _build_completion_request_params(self, **kwargs) -> dict:
         pass
 
-    def _build_request_params(self, prompt: str | list[dict], stream: bool, **kwargs) -> dict:
-        if isinstance(prompt, str):
-            return self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
-        elif isinstance(prompt, list):
-            request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
-            return request_params
-        else:
-            raise ValueError("Either prompt or messages must be provided")
+    def _build_responses_request_params(self, **kwargs) -> dict:
+        raise NotImplementedError("Responses completion is not not supported or implemented for this model.")
 
     @with_context_retry
     async def generate_async(
         self,
         prompt: str | list[dict],
+        endpoint_type: EndpointType = None,
         tokens_to_generate: int | None = None,
         temperature: float = 0.0,
         top_p: float = 0.95,
@@ -220,8 +227,9 @@ class BaseModel:
         include_response: bool = False,
         extra_body: dict = None,
     ) -> dict:
-        """Native async version of generate for single prompt."""
-
+        if endpoint_type is None:
+            # Infering completion type from prompt
+            endpoint_type = EndpointType.chat if isinstance(prompt, list) else EndpointType.text
         # Check tool calls are a list of dict
         if tools is not None:
             for tool in tools:
@@ -251,7 +259,8 @@ class BaseModel:
 
         while retry_count <= max_retries:
             try:
-                if isinstance(prompt, list):
+                if endpoint_type == EndpointType.chat:
+                    assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                     request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
                     response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
                     if stream:
@@ -260,16 +269,26 @@ class BaseModel:
                         result = self._parse_chat_completion_response(
                             response, include_response=include_response, **kwargs
                         )
-
-                elif isinstance(prompt, str):
+                elif endpoint_type == EndpointType.text:
+                    assert isinstance(prompt, str), "Text completion requests must be a string."
                     request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
                     response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
                     if stream:
                         result = self._stream_completion_chunks_async(response)
                     else:
                         result = self._parse_completion_response(response, include_response=include_response, **kwargs)
+                elif endpoint_type == EndpointType.responses:
+                    assert isinstance(prompt, list), "Responses completion requests must be a list."
+                    request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
+                    response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
+                    if stream:
+                        raise NotImplementedError("Streaming responses is not supported yet.")
+                    else:
+                        result = self._parse_responses_completion_response(
+                            response, include_response=include_response, **kwargs
+                        )
                 else:
-                    raise TypeError(f"Unsupported prompt type: {type(prompt)}")
+                    raise TypeError(f"Unsupported completion type: {endpoint_type}")
                 if not stream:
                     self._maybe_apply_stop_phrase_removal(result, remove_stop_phrases, stop_phrases)
                 return result
@@ -286,73 +305,6 @@ class BaseModel:
                 else:
                     raise e
 
-        return result
-
-    @with_context_retry
-    def generate_sync(
-        self,
-        prompt: str | list[dict],
-        tokens_to_generate: int | None = None,
-        temperature: float = 0.0,
-        top_p: float = 0.95,
-        top_k: int = -1,
-        min_p: float = 0.0,
-        repetition_penalty: float = 1.0,
-        random_seed: int = None,
-        stop_phrases: list[str] | None = None,
-        top_logprobs: int | None = None,
-        timeout: float | int | None = 14400,  # None is 10min
-        remove_stop_phrases: bool = True,
-        stream: bool = False,
-        reasoning_effort: str | None = None,
-        tools: list[dict] | None = None,
-        include_response: bool = False,
-        extra_body: dict = None,
-    ) -> dict:
-        """
-        Synchronous version of generate for single prompt.
-        See generate_async for full list of parameters.
-        """
-        # Check tool calls are a list of dict
-        if tools is not None:
-            for tool in tools:
-                # TODO: We may want to add additional checks for tools in the future
-                if not isinstance(tool, dict):
-                    raise ValueError(f"Tool must be a dictionary, got {type(tool)}")
-
-        kwargs = {
-            "tokens_to_generate": tokens_to_generate,
-            "temperature": temperature,
-            "top_p": top_p,
-            "top_k": top_k,
-            "min_p": min_p,
-            "repetition_penalty": repetition_penalty,
-            "random_seed": random_seed,
-            "stop_phrases": stop_phrases,
-            "top_logprobs": top_logprobs,
-            "timeout": timeout,
-            "reasoning_effort": reasoning_effort,
-            "tools": tools,
-            "extra_body": extra_body,
-        }
-        request_params = self._build_request_params(prompt=prompt, stream=stream, **kwargs)
-        if isinstance(prompt, list):
-            response = litellm.completion(**request_params, **self.litellm_kwargs)
-            if stream:
-                result = self._stream_chat_chunks_sync(response)
-            else:
-                result = self._parse_chat_completion_response(response, include_response=include_response, **kwargs)
-
-        elif isinstance(prompt, str):
-            response = litellm.text_completion(**request_params, **self.litellm_kwargs)
-            if stream:
-                result = self._stream_completion_chunks_sync(response)
-            else:
-                result = self._parse_completion_response(response, include_response=include_response, **kwargs)
-        else:
-            raise TypeError(f"Unsupported prompt type: {type(prompt)}")
-
-        self._maybe_apply_stop_phrase_removal(result, remove_stop_phrases, stop_phrases)
         return result
 
     def _parse_completion_response(
@@ -415,6 +367,7 @@ class BaseModel:
             result["finish_reason"] = choice.finish_reason
         if hasattr(choice.message, "tool_calls") and choice.message.tool_calls:
             result["tool_calls"] = choice.message.tool_calls
+        result["serialized_output"] = self._serialize_output(response)
         if include_response:
             result["response"] = response
 
@@ -482,31 +435,74 @@ class BaseModel:
 
         return [result]
 
-    def _stream_completion_chunks_sync(self, response):
-        """Synchronous version of stream completion chunks."""
-        emitted_so_far = []
-        for chunk in response:
-            results = self._process_completion_chunk(chunk, emitted_so_far)
-            for result in results:
-                yield result
-
-    def _stream_chat_chunks_sync(self, response):
-        """Synchronous version of stream chat chunks."""
-        for chunk in response:
-            results = self._process_chat_chunk(chunk)
-            for result in results:
-                yield result
-
     async def _stream_completion_chunks_async(self, response):
-        """Async version of stream completion chunks."""
         emitted_so_far = []
         async for chunk in response:
             results = self._process_completion_chunk(chunk, emitted_so_far)
             for result in results:
                 yield result
 
+    def _parse_responses_completion_response(self, response, include_response: bool = False, **kwargs) -> dict:
+        """Public method for parsing responses API responses"""
+        result = {"generation": "", "num_generated_tokens": 0}
+
+        if hasattr(response, "usage"):
+            result["num_generated_tokens"] = response.usage.output_tokens
+
+        tool_calls = []
+        reasoning_content = ""
+        generation_text = ""
+
+        if hasattr(response, "output") and response.output:
+            for output_item in response.output:
+                # Handle reasoning content
+                if output_item.type == "reasoning":
+                    if output_item.content:
+                        for content_item in output_item.content:
+                            if content_item.text:
+                                reasoning_content += content_item.text + "\n"
+
+                # Handle function calls
+                elif output_item.type == "function_call":
+                    tool_calls.append(output_item)
+
+                # Handle message content
+                elif output_item.type == "message":
+                    if output_item.content:
+                        for content_item in output_item.content:
+                            if content_item.text:
+                                generation_text += content_item.text
+
+        if tool_calls:
+            result["tool_calls"] = tool_calls
+            result["generation"] = ""  # No text generation when there are tool calls
+        else:
+            result["generation"] = generation_text
+        if reasoning_content:
+            result["reasoning_content"] = reasoning_content.strip()
+
+        result["finish_reason"] = response.status
+        result["serialized_output"] = self._serialize_output(response)
+        if include_response:
+            result["response"] = response
+
+        return result
+
+    def _serialize_output(self, response):
+        """Serialize response output objects using model_dump() for conversation history."""
+        serialized_output = []
+
+        if hasattr(response, "output") and response.output:
+            for output_item in response.output:
+                serialized_output.append(output_item.model_dump())
+        elif hasattr(response, "choices") and response.choices:
+            for choice in response.choices:
+                serialized_output.append(choice.model_dump()["message"])
+        else:
+            raise ValueError(f"Unsupported response type: {type(response)}")
+        return serialized_output
+
     async def _stream_chat_chunks_async(self, response):
-        """Async version of stream chat chunks."""
         async for chunk in response:
             results = self._process_chat_chunk(chunk)
             for result in results:

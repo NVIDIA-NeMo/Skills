@@ -68,7 +68,7 @@ eval(
         # we currently implement native Python code tool through text completions API
         # as we found alternative implementations to have issues.
         # We will switch to the official responses API when the support is added
-        "++use_completions_api=true "
+        "++inference.endpoint_type=text "
         "++code_tags=gpt-oss "
         # gpt-oss generates a lot of code, so need to set max_code_executions high!
         # you can also add ++server.code_execution.code_execution_timeout=120 to match
@@ -219,7 +219,7 @@ generate(
         # we currently implement native Python code tool through text completions API
         # as we found alternative implementations to have issues.
         # We will switch to the official responses API when the support is added
-        "++use_completions_api=true "
+        "++inference.endpoint_type=text "
         "++code_tags=gpt-oss "
         # gpt-oss generates a lot of code, so need to set max_code_executions high!
         # you can also add ++server.code_execution.code_execution_timeout=120 to match

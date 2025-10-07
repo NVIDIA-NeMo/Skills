@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import json
 from abc import ABC, abstractmethod
-from typing import List
 
 from litellm.types.utils import ChatCompletionMessageToolCall
+
+from nemo_skills.inference.model.base import EndpointType
 
 
 # ==============================
@@ -48,9 +48,8 @@ class ToolResponseFormatter(ABC):
 # ==============================
 
 
-class OpenAISchemaAdapter(ToolSchemaAdapter):
-    # https://platform.openai.com/docs/guides/function-calling#defining-functions
-    def convert(self, tools):
+def format_tool_list_by_endpoint_type(tools, endpoint_type: EndpointType):
+    if endpoint_type == EndpointType.chat:
         return [
             {
                 "type": "function",
@@ -62,6 +61,19 @@ class OpenAISchemaAdapter(ToolSchemaAdapter):
             }
             for t in tools
         ]
+    elif endpoint_type == EndpointType.responses:
+        return [
+            {
+                "type": "function",
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+                "strict": True,  # Less vllm errors through structured output
+            }
+            for t in tools
+        ]
+    else:
+        raise ValueError(f"Unsupported completion type for tool list: {endpoint_type}")
 
 
 class OpenAICallInterpreter(ToolCallInterpreter):
@@ -81,38 +93,32 @@ class CompletionResponseFormatter(ToolResponseFormatter):
         }
 
 
-class ChatCompletionCallInterpreter(ToolCallInterpreter):
-    """Convert tool calls to a chat message item.
-
-    Should be broadly compatible with any OpenAI-like APIs,
-    and HuggingFace Chat templates.
-
-    NOTE(sanyamk): For error handling, delay JSON parsing of arguments to the model class.
-    """
-
-    def parse(self, tool_calls: List[ChatCompletionMessageToolCall]):
-        tool_calls = [
-            {
-                "type": tool_call.type,
-                "id": tool_call.id,
-                "function": {"name": tool_call.function.name, "arguments": tool_call.function.arguments},
-            }
-            for tool_call in tool_calls
-        ]
-
-        return {"role": "assistant", "tool_calls": tool_calls}
-
-
-class ChatCompletionResponseFormatter(ToolResponseFormatter):
-    """Convert tool call result to chat message item.
-
-    Use in conjunction with `ChatCompletionCallInterpreter`.
-    """
-
-    def format(self, tool_call, result):
+def format_tool_response_by_endpoint_type(tool_call, result, endpoint_type: EndpointType):
+    if endpoint_type == EndpointType.chat:
         return {
             "role": "tool",
             "name": tool_call["function"]["name"],
             "tool_call_id": tool_call["id"],
             "content": json.dumps(result) if not isinstance(result, str) else result,
         }
+    elif endpoint_type == EndpointType.responses:
+        return {
+            "type": "function_call_output",
+            "call_id": tool_call["call_id"],
+            "output": json.dumps(result) if not isinstance(result, str) else result,
+        }
+    else:
+        raise ValueError(f"Unsupported completion type for tool call: {endpoint_type}")
+
+
+def get_tool_details_by_endpoint_type(tool_call, endpoint_type: EndpointType):
+    if endpoint_type == EndpointType.chat:
+        tool_name = tool_call["function"]["name"]
+        tool_args = tool_call["function"]["arguments"]
+    elif endpoint_type == EndpointType.responses:
+        assert tool_call["type"] == "function_call", "Tool call must be a function call"
+        tool_name = tool_call["name"]
+        tool_args = tool_call["arguments"]
+    else:
+        raise ValueError(f"Unsupported completion type for tool call: {endpoint_type}")
+    return tool_name, tool_args

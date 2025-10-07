@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Iterator
 
@@ -56,13 +57,15 @@ class ChatService:
             raise RuntimeError(f"Error preparing prompt: {e}") from e
 
         extra_params = prompt_obj.get_code_execution_args() if use_code else {}
-        stream_iter_list = llm.generate_sync(
-            prompt=prompt_filled,
-            tokens_to_generate=int(tokens_to_generate),
-            temperature=float(temperature),
-            stream=True,
-            stop_phrases=prompt_obj.stop_phrases or [],
-            **extra_params,
+        stream_iter_list = asyncio.run(
+            llm.generate_async(
+                prompt=prompt_filled,
+                tokens_to_generate=int(tokens_to_generate),
+                temperature=float(temperature),
+                stream=True,
+                stop_phrases=prompt_obj.stop_phrases or [],
+                **extra_params,
+            )
         )
         if not stream_iter_list:
             raise RuntimeError("LLM did not return a stream iterator.")
