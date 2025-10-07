@@ -110,7 +110,7 @@ async def test_timeout_error(language):
     code = """import time\ntime.sleep(1)\nprint("done")"""
 
     output, session_id = await sandbox.execute_code(code, timeout=1, language=language)
-    assert output == {"process_status": "timeout", "stdout": "", "stderr": "Timed out\n"}
+    assert output == {"process_status": "timeout", "stdout": "", "stderr": "Execution timed out after 1 seconds\n"}
 
     output, session_id = await sandbox.execute_code(code, timeout=2, session_id=session_id, language=language)
     assert output == {"process_status": "completed", "stderr": "", "stdout": "done\n"}

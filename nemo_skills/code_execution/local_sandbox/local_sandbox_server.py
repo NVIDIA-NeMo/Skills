@@ -409,7 +409,7 @@ def execute_ipython_session(generated_code, session_id, timeout=30, traceback_ve
                 "process_status": "timeout",
                 "stdout": postprocess_output(result.get("stdout", ""), traceback_verbosity),
                 "stderr": postprocess_output(
-                    result.get("stderr", "") + f"\nExecution timed out after {timeout} seconds\n", traceback_verbosity
+                    result.get("stderr", "") + f"Execution timed out after {timeout} seconds\n", traceback_verbosity
                 ),
                 "new_session_created": new_session_created,
             }
@@ -519,7 +519,7 @@ def execute_python(generated_code, std_input, timeout, language):
         except ProcessLookupError:
             pass
         process.wait(timeout=1)  # reap, no extra timeout needed
-        return {"process_status": "timeout", "stdout": "", "stderr": "Timed out\n"}
+        return {"process_status": "timeout", "stdout": "", "stderr": f"Execution timed out after {timeout} seconds\n"}
 
 
 def execute_lean4(generated_code, timeout):
@@ -563,7 +563,7 @@ def execute_lean4(generated_code, timeout):
         # Now we can safely get any output that was generated before the kill.
         stdout, stderr = proc.communicate()
 
-        final_stderr = stderr.decode("utf-8") + "Timed out\n"
+        final_stderr = stderr.decode("utf-8") + f"Execution timed out after {timeout} seconds\n"
         return {
             "process_status": "timeout",
             "stdout": stdout.decode("utf-8"),
@@ -599,7 +599,7 @@ def execute_shell(command, timeout):
         process_status = "completed" if result.returncode == 0 else "error"
         return {"process_status": process_status, "stdout": result.stdout, "stderr": result.stderr}
     except subprocess.TimeoutExpired:
-        return {"process_status": "timeout", "stdout": "", "stderr": "Timed out\n"}
+        return {"process_status": "timeout", "stdout": "", "stderr": f"Execution timed out after {timeout} seconds\n"}
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)

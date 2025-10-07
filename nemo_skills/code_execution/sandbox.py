@@ -93,7 +93,7 @@ class Sandbox(abc.ABC):
                 return sshtunnel_request.post(
                     url=self._get_execute_url(),
                     data=json.dumps(request),
-                    timeout=timeout,
+                    timeout=timeout + 5.0,
                     headers={"Content-Type": "application/json", **extra_headers},
                 )
 
@@ -104,7 +104,7 @@ class Sandbox(abc.ABC):
             output = await self.http_session.post(
                 url=self._get_execute_url(),
                 content=json.dumps(request),
-                timeout=timeout,
+                timeout=timeout + 5.0,
                 headers={"Content-Type": "application/json", **extra_headers},
             )
         # retrying 502 errors
@@ -173,14 +173,14 @@ class Sandbox(abc.ABC):
         try:
             output = await self._send_request(request, timeout)
         except httpx.TimeoutException:
-            output = {"process_status": "timeout", "stdout": "", "stderr": "Timed out\n"}
+            output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
         new_session_created = output.pop("new_session_created", False)
 
         # Rebuild state by re-executing history first, then execute the new code.
         # NOTE: Only cells that completed successfully are stored, so we intentionally omit re-running cells that errored
         # or timed out. This means restoration **can diverge** from the original interactive session in those cases, but
         # avoids re-triggering side effects from failing cells while keeping the replay simple.
-        if session_id is not None and new_session_created:
+        if session_id is not None and new_session_created and output.get("process_status") != "timeout":
             history = list(self.session_histories.get(session_id_str, []))
             if request_session_id_str is not None:
                 try:
@@ -202,7 +202,7 @@ class Sandbox(abc.ABC):
                     try:
                         restore_output = await self._send_request(restore_request, timeout)
                     except httpx.TimeoutException:
-                        restore_output = {"process_status": "timeout", "stdout": "", "stderr": "Timed out\n"}
+                        restore_output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
 
                     if restore_output.get("process_status") != "completed":
                         LOG.error(
@@ -243,7 +243,7 @@ class Sandbox(abc.ABC):
             try:
                 output = await self._send_request(exec_request, timeout)
             except httpx.TimeoutException:
-                output = {"process_status": "timeout", "stdout": "", "stderr": "Timed out\n"}
+                output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
 
         # Append to history if successful execution (process_status == 'completed')
         if output.get("process_status") == "completed" and request_session_id_str is not None:
