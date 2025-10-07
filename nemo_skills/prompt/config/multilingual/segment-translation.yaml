@@ -1,0 +1,3 @@
+# Default prompt for text translation.
+
+user: "Translate the following segment into {target_lang_name}, without additional explanation.\n\n{text}"

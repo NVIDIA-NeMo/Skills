@@ -1,6 +1,6 @@
 # Multilingual
 
-Our multilingual benchmarks cover things like multilingual reasoning as well as machine translation (to be added).
+Our multilingual benchmarks cover things like multilingual reasoning as well as machine translation.
 
 All benchmarks in this category will have an extra `--language` argument with its associated `ns prepare` command, which allows you to choose which language(s) of the benchmark to run.
 Once prepared, the `ns eval` command will run on all languages prepared, and the summarized results generated with `ns eval` will include per-language breakdowns.
@@ -9,7 +9,7 @@ Once prepared, the `ns eval` command will run on all languages prepared, and the
 
 ### mmlu-prox
 
-- Benchmark is defined in [`nemo_skills/dataset/mmlu-pro/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/mmlu-prox/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/li-lab/MMLU-ProX).
 
 Our evaluation template and answer extraction mechanism tries to match the configration in [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks/mmlu_prox).
@@ -68,4 +68,150 @@ Some reference numbers for reference and commands for reproduction:
         ++inference.temperature=0.6 \
         ++inference.top_k=20 \
         ++inference.tokens_to_generate=38912
+    ```
+
+### FLORES-200
+
+- Benchmark is defined in [`nemo_skills/dataset/flores200/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/flores200/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/openlanguagedata/flores_plus).
+
+Some reference numbers for devtest split (xx corresponds to average over 5 languages: de, es, fr, it, ja):
+
+| Model                  | en->xx | xx->en | xx->xx |
+|:-----------------------|------:|------:|------:|
+| Nemotron-NanoV2-9B-v2  | 32.5 |  34  | 25.9 |
+| Qwen3-8B               | 31.5 | 34.6 | 25.7 |
+| Qwen3-30B-A3B          | 33.3 | 35.5 | 27.1 |
+| gpt-oss-20B            | 32.4 | 34.1 |  25  |
+
+=== "Nemotron-NanoV2-9B-v2"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=NVIDIA/Nemotron-Nano-9B-v2 \
+        --benchmarks flores200 \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=devtest \
+        ++inference.tokens_to_generate=512
+        ++system_message='/no_think'
+    ```
+
+=== "Qwen3-8B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=Qwen/Qwen3-8B \
+        --benchmarks flores200 \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=devtest \
+        ++inference.tokens_to_generate=512
+        ++prompt_suffix='/no_think'
+    ```
+
+=== "Qwen3-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=Qwen/Qwen3-30B-A3B \
+        --benchmarks flores200 \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=devtest \
+        ++inference.tokens_to_generate=512
+        ++prompt_suffix='/no_think'
+    ```
+
+=== "gpt-oss-20B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=openai/gpt-oss-20b \
+        --benchmarks flores200 \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=devtest \
+        ++inference.tokens_to_generate=2048
+    ```
+
+### wmt24pp
+
+- Benchmark is defined in [`nemo_skills/dataset/wmt24pp/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/wmt24pp/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/google/wmt24pp).
+
+Some reference numbers for test split (xx corresponds to average over 5 languages: de, es, fr, it, ja):
+
+| Model                  | en->de | en->es | en->fr | en->it | en->ja | en->xx |
+|:-----------------------|------:|------:|------:|------:|------:|------:|
+| Nemotron-NanoV2-9B-v2  | 25.3 | 37.7 | 33.4 | 33.8 | 20.9 |  30.2  |
+| Qwen3-8B               | 26.2 | 38.5 | 33.1 | 33.1 | 21.7 | 30.5 |
+| Qwen3-30B-A3B          | 28.5 |  40  | 35.1 |  36  | 23.2 | 32.5 |
+| gpt-oss-20B            | 27.3 | 42.3 | 32.8 | 34.9 | 25.2 | 32.5 |
+
+=== "Nemotron-NanoV2-9B-v2"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=NVIDIA/Nemotron-Nano-9B-v2 \
+        --benchmarks wmt24pp \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=test \
+        ++inference.tokens_to_generate=512
+        ++system_message='/no_think'
+    ```
+
+=== "Qwen3-8B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=Qwen/Qwen3-8B \
+        --benchmarks wmt24pp \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=test \
+        ++inference.tokens_to_generate=512
+        ++prompt_suffix='/no_think'
+    ```
+
+=== "Qwen3-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=Qwen/Qwen3-30B-A3B \
+        --benchmarks wmt24pp \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=test \
+        ++inference.tokens_to_generate=512
+        ++prompt_suffix='/no_think'
+    ```
+
+=== "gpt-oss-20B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=openai/gpt-oss-20b \
+        --benchmarks wmt24pp \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --split=test \
+        ++inference.tokens_to_generate=2048
     ```
