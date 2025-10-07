@@ -39,6 +39,7 @@ from nemo_skills.inference.generate import (
 )
 from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.utils import is_context_window_exceeded_error
+from nemo_skills.prompt.utils import get_token_count
 from nemo_skills.utils import (
     get_help_message,
     get_logger_name,
@@ -239,6 +240,13 @@ class BFCLGenerationTask(GenerationTask):
 
         input_dict = self.message_parser.construct_input_dict(messages, tools)
 
+        return_dict = {}
+        if self.cfg.count_prompt_tokens:
+            num_input_tokens = get_token_count(
+                self.hf_tokenizer, messages=input_dict["prompt"], tools=input_dict.get("tools", None)
+            )
+            return_dict["num_input_tokens"] = num_input_tokens
+
         # Step 2: Query the LLM server
         try:
             output = await self.generate_with_semaphore(**input_dict)
@@ -247,13 +255,15 @@ class BFCLGenerationTask(GenerationTask):
                 # Enable soft-fail when the models run out of context
                 error_str = str(error)
                 LOG.warning(f"BFCL generation failed due to running out of context. {error_str}")
-                return {"message": None, "generation": ""}
+                return_dict.update({"message": None, "generation": ""})
+                return return_dict
             else:
                 raise error
 
         # Step 3: Parse the generated output
         parsed_response = self.message_parser.parse_output_dict(output)
-        return parsed_response
+        return_dict.update(parsed_response)
+        return return_dict
 
     async def _generate_single_data_point_single_turn(self, data_point):
         """Generate for a single data point with a single turn."""
@@ -263,12 +273,16 @@ class BFCLGenerationTask(GenerationTask):
 
         if model_response["message"] is None:
             # Ran out of context
-            return {"generation": "", "num_generated_tokens": 0, "error": "_ran_out_of_context_"}
+            return_dict = {"generation": "", "num_generated_tokens": 0, "error": "_ran_out_of_context_"}
         else:
-            return {
+            return_dict = {
                 "generation": model_response["generation"],
                 "num_generated_tokens": model_response.get("num_generated_tokens", 0),
             }
+
+        if self.cfg.count_prompt_tokens:
+            return_dict["num_input_tokens"] = model_response["num_input_tokens"]
+        return return_dict
 
     async def _generate_single_data_point_multi_turn(self, data_point):
         """Generate for a single data point with multiple turns."""
@@ -286,7 +300,11 @@ class BFCLGenerationTask(GenerationTask):
 
         all_multi_turn_messages: list[list[dict]] = data_point["question"]
         state_dict = {"messages": [], "tools": data_point["tools"]}
-        output_dict = {"num_generated_tokens": 0}
+
+        output_dict = {"num_generated_tokens_list": []}
+        if self.cfg.count_prompt_tokens:
+            output_dict["num_input_tokens_list"] = []
+
         out_of_context = False
 
         for turn_idx, current_turn_message in enumerate(all_multi_turn_messages):
@@ -318,7 +336,9 @@ class BFCLGenerationTask(GenerationTask):
                     LOG.info("Quitting the multi-turn generation due to running out of context.")
                     break
 
-                output_dict["num_generated_tokens"] += model_response.get("num_generated_tokens", 0)
+                output_dict["num_generated_tokens_list"].append(model_response.get("num_generated_tokens", 0))
+                if self.cfg.count_prompt_tokens:
+                    output_dict["num_input_tokens_list"].append(model_response.get("num_input_tokens", 0))
 
                 if self.cfg.remove_thinking:
                     trimmed_response_text = self._remove_thinking_from_message_content(
@@ -379,6 +399,10 @@ class BFCLGenerationTask(GenerationTask):
 
         if out_of_context:
             output_dict["error"] = "_ran_out_of_context_"
+
+        output_dict["num_generated_tokens"] = sum(output_dict["num_generated_tokens_list"])
+        if self.cfg.count_prompt_tokens:
+            output_dict["num_input_tokens"] = sum(output_dict["num_input_tokens_list"])
 
         return output_dict
 

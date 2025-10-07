@@ -497,7 +497,7 @@ class GenerationTask:
                 output.pop("generation_end_time", None)
                 output.pop("generation_time", None)
                 output.pop("num_generated_tokens", None)
-                output.pop("input_sequence_length", None)
+                output.pop("num_input_tokens", None)
 
             for key in output:
                 original_data_point.pop(key, None)
@@ -533,8 +533,8 @@ class GenerationTask:
         result = await self.generate_with_semaphore(**generation_params)
 
         if self.cfg.count_prompt_tokens:
-            input_sequence_length = get_token_count(self.hf_tokenizer, generation_params["prompt"])
-            result["input_sequence_length"] = input_sequence_length
+            num_input_tokens = get_token_count(self.hf_tokenizer, generation_params["prompt"])
+            result["num_input_tokens"] = num_input_tokens
         return result
 
     async def generate_with_semaphore(self, **generation_params):
