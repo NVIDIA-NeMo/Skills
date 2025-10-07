@@ -57,6 +57,7 @@ def start_server(
     ),
     server_container: str = typer.Option(None, help="Override container image for the hosted server"),
     partition: str = typer.Option(None, help="Cluster partition to use"),
+    qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     with_sandbox: bool = typer.Option(
@@ -120,6 +121,7 @@ def start_server(
             container=cluster_config["containers"]["nemo-skills"],
             cluster_config=cluster_config,
             partition=partition,
+            qos=qos,
             time_min=time_min,
             server_config=server_config,
             with_sandbox=with_sandbox,
