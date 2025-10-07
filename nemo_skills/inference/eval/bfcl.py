@@ -21,7 +21,10 @@ from functools import partial
 import hydra
 from transformers import AutoTokenizer
 
-from nemo_skills.dataset.bfcl_v3.utils import convert_to_tool, func_doc_language_specific_pre_processing
+from nemo_skills.dataset.bfcl_v3.utils import (
+    convert_to_tool,
+    func_doc_language_specific_pre_processing,
+)
 from nemo_skills.inference.eval.bfcl_utils import (
     DEFAULT_USER_PROMPT_FOR_ADDITIONAL_FUNCTION_FC,
     MAXIMUM_STEP_LIMIT,
@@ -29,10 +32,19 @@ from nemo_skills.inference.eval.bfcl_utils import (
     execute_multi_turn_func_call,
     is_empty_execute_response,
 )
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerateSolutionsConfig,
+    GenerationTask,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.utils import is_context_window_exceeded_error
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    setup_logging,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -229,7 +241,7 @@ class BFCLGenerationTask(GenerationTask):
 
         # Step 2: Query the LLM server
         try:
-            output = await self.llm.generate_async(**input_dict)
+            output = await self.generate_with_semaphore(**input_dict)
         except Exception as error:
             if is_context_window_exceeded_error(error):
                 # Enable soft-fail when the models run out of context

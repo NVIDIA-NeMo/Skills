@@ -80,13 +80,13 @@ class SciCodeGenerationTask(GenerationTask):
             previous_code = (
                 f"{dependencies}\n{previous_code_str}\n" if previous_code_str else f"{dependencies}\n"
             )  # Otherwise subtask.step[0] has extra newline
-            prepare_data_point = {
+            prepared_data_point = {
                 "problem_steps_str": problem_steps_str,
                 "next_step_str": next_step_str,
                 "dependencies": dependencies,
             }
             try:
-                llm_output = await super().process_single_datapoint(prepare_data_point, all_data)
+                llm_output = await super().process_single_datapoint(prepared_data_point, all_data)
             # TODO: this is a hack (as not all servers return that),
             # but eventually we should support handling errors like this globally for all generations
             except Exception as error:
