@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
+import asyncio
 import logging
 import os
 from enum import Enum
@@ -137,9 +138,12 @@ class BaseModel:
             base_url=self.base_url,
             api_base=self.base_url,  # Used in later versions with responses API
         )
-        httpx_limits = httpx.Limits(max_keepalive_connections=2048, max_connections=2048)
+        httpx_limits = httpx.Limits(max_keepalive_connections=None, max_connections=None)
         litellm.client_session = httpx.Client(limits=httpx_limits)
         litellm.aclient_session = httpx.AsyncClient(limits=httpx_limits)
+        # Controlling concurrent requests using semaphore since large
+        # concurrent requests result into httpx hanging
+        self.concurrent_semaphore = asyncio.Semaphore(2048)
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         if api_key:  # explicit cmd argument always takes precedence
@@ -257,53 +261,56 @@ class BaseModel:
         max_retries = 2
         retry_count = 0
 
-        while retry_count <= max_retries:
-            try:
-                if endpoint_type == EndpointType.chat:
-                    assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
-                    request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
-                    response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
-                    if stream:
-                        result = self._stream_chat_chunks_async(response)
+        async with self.concurrent_semaphore:
+            while retry_count <= max_retries:
+                try:
+                    if endpoint_type == EndpointType.chat:
+                        assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
+                        request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
+                        response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
+                        if stream:
+                            result = self._stream_chat_chunks_async(response)
+                        else:
+                            result = self._parse_chat_completion_response(
+                                response, include_response=include_response, **kwargs
+                            )
+                    elif endpoint_type == EndpointType.text:
+                        assert isinstance(prompt, str), "Text completion requests must be a string."
+                        request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
+                        response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
+                        if stream:
+                            result = self._stream_completion_chunks_async(response)
+                        else:
+                            result = self._parse_completion_response(
+                                response, include_response=include_response, **kwargs
+                            )
+                    elif endpoint_type == EndpointType.responses:
+                        assert isinstance(prompt, list), "Responses completion requests must be a list."
+                        request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
+                        response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
+                        if stream:
+                            raise NotImplementedError("Streaming responses is not supported yet.")
+                        else:
+                            result = self._parse_responses_completion_response(
+                                response, include_response=include_response, **kwargs
+                            )
                     else:
-                        result = self._parse_chat_completion_response(
-                            response, include_response=include_response, **kwargs
-                        )
-                elif endpoint_type == EndpointType.text:
-                    assert isinstance(prompt, str), "Text completion requests must be a string."
-                    request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
-                    response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
-                    if stream:
-                        result = self._stream_completion_chunks_async(response)
-                    else:
-                        result = self._parse_completion_response(response, include_response=include_response, **kwargs)
-                elif endpoint_type == EndpointType.responses:
-                    assert isinstance(prompt, list), "Responses completion requests must be a list."
-                    request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
-                    response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
-                    if stream:
-                        raise NotImplementedError("Streaming responses is not supported yet.")
-                    else:
-                        result = self._parse_responses_completion_response(
-                            response, include_response=include_response, **kwargs
-                        )
-                else:
-                    raise TypeError(f"Unsupported completion type: {endpoint_type}")
-                if not stream:
-                    self._maybe_apply_stop_phrase_removal(result, remove_stop_phrases, stop_phrases)
-                return result
+                        raise TypeError(f"Unsupported completion type: {endpoint_type}")
+                    if not stream:
+                        self._maybe_apply_stop_phrase_removal(result, remove_stop_phrases, stop_phrases)
+                    return result
 
-            except openai.BadRequestError as e:
-                if "output messages (reasoning and final)" in str(e):
-                    if retry_count < max_retries:
-                        retry_count += 1
-                        LOG.warning(f"BadRequestError, retrying {retry_count}/{max_retries}: {e}")
-                        continue
+                except openai.BadRequestError as e:
+                    if "output messages (reasoning and final)" in str(e):
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            LOG.warning(f"BadRequestError, retrying {retry_count}/{max_retries}: {e}")
+                            continue
 
-                    LOG.error(f"BadRequestError after {max_retries} retries, returning empty response: {e}")
-                    return {"generation": "", "reasoning_content": "", "num_generated_tokens": 0}
-                else:
-                    raise e
+                        LOG.error(f"BadRequestError after {max_retries} retries, returning empty response: {e}")
+                        return {"generation": "", "reasoning_content": "", "num_generated_tokens": 0}
+                    else:
+                        raise e
 
         return result
 
