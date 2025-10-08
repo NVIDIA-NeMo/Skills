@@ -168,11 +168,7 @@ elif args.dataset == "mmlu":
         choices = d["choices"]
         item = {
             "Question": d['question'] + f'\nA. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}',
-<<<<<<< HEAD
             "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}',
-=======
-            "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}'
->>>>>>> fc830c89 (add initial ruler2)
             "Answer": options[d['answer']],
         }
         needle.append(item)
@@ -181,11 +177,7 @@ elif args.dataset == "mmlu":
         choices = d["choices"]
         item = {
             "Question": d['question'] + f'\nA. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}',
-<<<<<<< HEAD
             "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}',
-=======
-            "Solution": " " + f'\\boxed{{{options[d["answer"]]}}}'
->>>>>>> fc830c89 (add initial ruler2)
             "Answer": options[d['answer']],
         }
         haystack.append(item)
