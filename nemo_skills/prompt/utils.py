@@ -308,7 +308,9 @@ class Prompt:
 
 
 def get_token_count(
-    tokenizer, messages: Union[str, list[Union[dict, Any]]], tools=Union[list[dict], None]
+    tokenizer,
+    messages: Union[str, list[Union[dict, Any]]],
+    tools: Union[list[dict], None] = None,
 ) -> int | None:
     """
     Count the number of tokens in a string or chat message list.
