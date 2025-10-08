@@ -17,6 +17,4 @@ DATASET_GROUP = "code"
 METRICS_TYPE = "livecodebench"
 EVAL_SPLIT = "test_v6_2408_2505"
 EVAL_ARGS = "++eval_type=livecodebench"
-REQUIRES_SANDBOX = True
-KEEP_MOUNTS_FOR_SANDBOX = True
 GENERATION_ARGS = "++prompt_config=eval/livecodebench/python_codegen"
