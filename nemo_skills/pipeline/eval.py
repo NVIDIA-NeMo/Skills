@@ -195,8 +195,8 @@ def eval(
         "nemo-skills",
         help="Name of the wandb project to sync samples to.",
     ),
-    skip_hf_home_check: bool = typer.Option(
-        False,
+    skip_hf_home_check: bool | None = typer.Option(
+        None,
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
     installation_command: str | None = typer.Option(

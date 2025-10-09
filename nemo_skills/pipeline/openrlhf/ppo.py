@@ -300,8 +300,8 @@ def ppo_openrlhf(
         False,
         help="If True, will use the sandbox to run the training job",
     ),
-    skip_hf_home_check: bool = typer.Option(
-        False,
+    skip_hf_home_check: bool | None = typer.Option(
+        None,
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
     installation_command: str | None = typer.Option(

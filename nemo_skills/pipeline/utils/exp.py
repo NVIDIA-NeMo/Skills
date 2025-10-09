@@ -34,7 +34,12 @@ from nemo_skills.pipeline.utils.cluster import (
     temporary_env_update,
     tunnel_hash,
 )
-from nemo_skills.pipeline.utils.mounts import get_mounts_from_config, get_unmounted_path, is_mounted_filepath
+from nemo_skills.pipeline.utils.mounts import (
+    check_remote_mount_directories,
+    get_mounts_from_config,
+    get_unmounted_path,
+    is_mounted_filepath,
+)
 from nemo_skills.pipeline.utils.packager import (
     get_packager,
     get_registered_external_repo,
@@ -359,7 +364,7 @@ def add_task(
     heterogeneous: bool = False,
     with_ray: bool = False,
     installation_command: str | None = None,
-    skip_hf_home_check: bool = False,
+    skip_hf_home_check: bool | None = None,
     dry_run: bool = False,
 ):
     """Wrapper for nemo-run exp.add to help setting up executors and dependencies.
@@ -415,6 +420,10 @@ def add_task(
         sandbox_port = get_free_port(strategy="random")
 
     env_vars = get_env_variables(cluster_config)
+    # If not explicitly set, resolve from cluster config
+    if skip_hf_home_check is None:
+        skip_hf_home_check = cluster_config.get("skip_hf_home_check", False)
+
     if cluster_config["executor"] != "none" and not skip_hf_home_check:
         if "HF_HOME" not in env_vars:
             raise RuntimeError(
@@ -625,6 +634,20 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
     if dry_run:
         LOG.info("Dry run mode is enabled, not running the experiment.")
         return
+
+    if "mounts" in cluster_config:
+        # Can only check cluster mounts here, not those added to add_task
+        mounts = get_mounts_from_config(cluster_config)
+        mount_sources = [m.split(":")[0] for m in mounts]
+
+        LOG.info("Checking mount paths: %s", mount_sources)
+        exit_if_failure = os.environ.get("NEMO_SKILLS_DISABLE_MOUNT_CHECK", "False").lower() not in (
+            "1",
+            "true",
+            "yes",
+        )
+        check_remote_mount_directories(mount_sources, cluster_config, exit_on_failure=exit_if_failure)
+
     if cluster_config["executor"] != "slurm":
         exp.run(detach=False, tail_logs=True, sequential=sequential)
     else:
