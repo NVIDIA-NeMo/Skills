@@ -219,10 +219,34 @@ class DummyTool(Tool):
         return {"unknown": tool_name, "args": arguments}
 
 
+# Helper class for test_tool_manager_cache_and_duplicate_detection
+# Defined at module level so it can be imported via locate()
+class CountingTool(DummyTool):
+    # Use a class variable that's mutable to track calls
+    # This will be shared across all instances
+    call_count = 0
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    async def list_tools(self):
+        # Increment the class variable
+        CountingTool.call_count += 1
+        return await super().list_tools()
+
+
+# Helper class for duplicate tool detection test
+class DupTool(DummyTool):
+    async def list_tools(self):
+        lst = await super().list_tools()
+        return [lst[0], lst[0]]  # duplicate names within same tool
+
+
 @pytest.mark.asyncio
 async def test_tool_manager_list_and_execute_with_class_locator():
     # Register this test module's DummyTool via module locator
-    tm = ToolManager(module_specs=["tests.test_mcp_clients::DummyTool"], overrides={}, context={})
+    # Use __name__ to get actual module path (works in both local and CI)
+    tm = ToolManager(module_specs=[f"{__name__}::DummyTool"], overrides={}, context={})
     tools = await tm.list_all_tools(use_cache=False)
     names = sorted(t["name"] for t in tools)
     assert names == ["echo", "execute"]
@@ -233,31 +257,25 @@ async def test_tool_manager_list_and_execute_with_class_locator():
 
 @pytest.mark.asyncio
 async def test_tool_manager_cache_and_duplicate_detection():
-    calls = {"n": 0}
+    import sys
 
-    class CountingTool(DummyTool):
-        async def list_tools(self):
-            calls["n"] += 1
-            return await super().list_tools()
+    # Reset counter before test - access via sys.modules to ensure we get the right class
+    this_module = sys.modules[__name__]
+    CountingToolClass = getattr(this_module, "CountingTool")
+    CountingToolClass.call_count = 0
 
-    # Expose CountingTool from this module for locate
-    globals()["CountingTool"] = CountingTool
-    tm = ToolManager(module_specs=["tests.test_mcp_clients::CountingTool"], overrides={}, context={})
+    # Use __name__ to get the actual module path (works in both local and CI environments)
+    module_path = __name__
+    tm = ToolManager(module_specs=[f"{module_path}::CountingTool"], overrides={}, context={})
     _ = await tm.list_all_tools(use_cache=True)
     _ = await tm.list_all_tools(use_cache=True)
-    assert calls["n"] == 1
+    assert CountingToolClass.call_count == 1, f"Expected 1 call, got {CountingToolClass.call_count}"
     with pytest.raises(ValueError) as excinfo:
         _ = await tm.list_all_tools(use_cache=False)
     assert "Duplicate raw tool name across providers: 'execute'" in str(excinfo.value)
-    assert calls["n"] == 2
+    assert CountingToolClass.call_count == 2, f"Expected 2 calls, got {CountingToolClass.call_count}"
 
-    class DupTool(DummyTool):
-        async def list_tools(self):
-            lst = await super().list_tools()
-            return [lst[0], lst[0]]  # duplicate names within same tool
-
-    globals()["DupTool"] = DupTool
-    tm2 = ToolManager(module_specs=["tests.test_mcp_clients::DupTool"], overrides={}, context={})
+    tm2 = ToolManager(module_specs=[f"{module_path}::DupTool"], overrides={}, context={})
     tools2 = await tm2.list_all_tools(use_cache=False)
     names2 = sorted(t["name"] for t in tools2)
     assert names2 == ["execute"]
