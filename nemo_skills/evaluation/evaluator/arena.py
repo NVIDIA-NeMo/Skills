@@ -186,8 +186,8 @@ def get_aggregate_score(scores, weight=3):
 
     candidate_stats = stats[stats["model"] == "candidate"]
     interval = (
-        round((candidate_stats["lower"] - candidate_stats["score"]).iloc[0], 2),
-        round((candidate_stats["upper"] - candidate_stats["score"]).iloc[0], 2),
+        float(round((candidate_stats["lower"] - candidate_stats["score"]).iloc[0], 2)),
+        float(round((candidate_stats["upper"] - candidate_stats["score"]).iloc[0], 2)),
     )
     metrics = {
         "score": candidate_stats["score"].iloc[0],
