@@ -30,7 +30,8 @@ class AzureOpenAIModel(OpenAIModel):
         self.litellm_kwargs["api_version"] = api_version
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
-        api_key = super()._get_api_key(api_key, api_key_env_var, base_url)
+        # OPENAI_API_KEY is used by non-Azure OpenAI models
+        api_key = super(OpenAIModel, self)._get_api_key(api_key, api_key_env_var, base_url)
 
         if api_key is None:
             api_key = os.getenv("AZURE_OPENAI_API_KEY")

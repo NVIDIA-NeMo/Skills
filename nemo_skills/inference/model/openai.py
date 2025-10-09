@@ -59,6 +59,8 @@ class OpenAIModel(BaseModel):
         return api_key
 
     def _is_reasoning_model(self, model_name: str) -> bool:
+        if "gpt-5" in model_name:
+            return True
         return re.match(r"^o\d", model_name)
 
     def _build_completion_request_params(self, **kwargs) -> dict:
@@ -139,6 +141,7 @@ class OpenAIModel(BaseModel):
             ]
             if reasoning_effort:
                 params["reasoning_effort"] = reasoning_effort
+                params["allowed_openai_params"] = ["reasoning_effort"]
         else:
             # Standard model parameters
             if reasoning_effort is not None:
