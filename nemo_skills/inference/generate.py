@@ -271,6 +271,7 @@ class GenerationTask:
             cfg: GenerateSolutionsConfig object with the configuration parameters or subclass.
         """
         self.cfg = cfg
+        self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
 
         # chat template kwargs goes either into extra body of inference or as a prompt parameter
         if self.cfg.chat_template_kwargs:
@@ -280,9 +281,18 @@ class GenerationTask:
                         "chat_template_kwargs is provided in both inference.extra_body and as a separate argument. "
                         "You can only use one of them!"
                     )
-                self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
+
                 self.cfg.inference.extra_body["chat_template_kwargs"] = dict(self.cfg.chat_template_kwargs)
                 self.cfg.chat_template_kwargs = None
+
+        if self.cfg.inference.extra_body.get("chat_template_kwargs"):
+            if self.cfg.chat_template_kwargs:
+                raise ValueError(
+                    "chat_template_kwargs is provided in both inference.extra_body and as a separate argument. "
+                    "You can only use one of them!"
+                )
+            if self.cfg.inference.endpoint_type == EndpointType.text:
+                self.cfg.chat_template_kwargs = self.cfg.inference.extra_body.pop("chat_template_kwargs")
 
         # Setup tokenizer
         if (
