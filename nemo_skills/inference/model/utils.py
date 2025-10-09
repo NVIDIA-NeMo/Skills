@@ -44,6 +44,7 @@ def is_context_window_exceeded_error(error: Exception) -> bool:
         or "should not exceed max_seq_len" in str(error)
         or "reduce the length of the input messages" in str(error)
         or "'max_completion_tokens' is too large" in str(error)
+        or "max_tokens must be at least 1, got -" in str(error)
     ):
         return True
     else:
@@ -57,12 +58,14 @@ class ServerTokenizer:
         self.tokenizer_url = url
         self.detokenizer_url = url.replace("/tokenize", "/detokenize")
 
-    def encode(self, prompt: str | list[dict]) -> list[int]:
+    def encode(self, prompt: str | list[dict], tools=None) -> list[int]:
         """Encode the prompt using the tokenizer endpoint."""
         if isinstance(prompt, str):
             payload = {"prompt": prompt}
         elif isinstance(prompt, list):
             payload = {"messages": prompt}
+            if tools is not None:
+                payload["tools"] = tools
 
         response = requests.post(self.tokenizer_url, json=payload, timeout=30)
         response.raise_for_status()
@@ -87,12 +90,12 @@ class WrapperAutoTokenizer:
         LOG.info(f"Initializing tokenizer from string: {model_name}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    def encode(self, prompt: str | list[dict]) -> list[int]:
+    def encode(self, prompt: str | list[dict], tools=None) -> list[int]:
         """Encode the prompt using the tokenizer."""
         if isinstance(prompt, str):
             return self.tokenizer.encode(prompt)
         elif isinstance(prompt, list):
-            return self.tokenizer.apply_chat_template(prompt, add_generation_prompt=True)
+            return self.tokenizer.apply_chat_template(prompt, add_generation_prompt=True, tools=tools)
 
     def decode(self, tokens: list[int]) -> str:
         """Decode a list of tokens using the tokenizer."""

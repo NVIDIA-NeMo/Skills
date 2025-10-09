@@ -32,70 +32,38 @@ def parse_context_window_exceeded_error(error) -> Union[Dict[str, int], None]:
     Extract token information from LiteLLM context window error messages.
 
     Returns:
-        Dict with keys: max_context_length, message_tokens, completion_tokens
+        Dict with keys: max_context_length, message_tokens or message_tokens_overflow if the prompt tokens overflow the context limit
         None if parsing fails
     """
 
     error_str = str(error)
 
-    # "maximum context length is 40960 tokens and your request has 142 input tokens (1000000 > 40960 - 142)"
+    # Pattern 1
+    # - maximum context length is 40960 tokens and your request has 142 input tokens (1000000 > 40960 - 142)"
+    # - This model's maximum context length is 40960 tokens. However, your request has 3000009 input tokens.
     pattern1 = re.compile(
         r"maximum context length is (\d+) tokens.*?"
-        r"request has (\d+) input tokens.*?"
-        r"\((\d+) > \d+ - \d+\)",
+        r"request has (\d+) input tokens",
         re.IGNORECASE | re.DOTALL,
     )
 
-    # Pattern 2: Handle format like "45008 in the messages, 2048 in the completion"
+    # Check pattern 1
+    match = pattern1.search(error_str)
+    if match:
+        max_context = int(match.group(1))
+        message_tokens = int(match.group(2))
+        return {
+            "max_context_length": max_context,
+            "message_tokens": message_tokens,
+        }
+
+    # Pattern 2: "The input (187537 tokens) is longer than the model's context length (131072 tokens)."
     pattern2 = re.compile(
-        r"maximum context length is (\d+) tokens.*?"
-        r"you requested (\d+) tokens.*?"
-        r"(\d+) in the messages, (\d+) in the completion",
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    # Pattern 3: This model's maximum context length is 40960 tokens. However, your request has 3000009 input tokens.
-    pattern3 = re.compile(
-        r"maximum context length is (\d+) tokens.*?"
-        r"your request has (\d+) input tokens",
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    # Pattern 4: "The input (187537 tokens) is longer than the model's context length (131072 tokens)."
-    pattern4 = re.compile(
         r"The input \((\d+) tokens\) is longer than the model's context length \((\d+) tokens\)", re.IGNORECASE
     )
 
-    # Pattern 5: "Requested token count exceeds the model's maximum context length of 131072 tokens. You requested a total of 1000159 tokens: 159 tokens from the input messages and 1000000 tokens for the completion."
-    pattern5 = re.compile(
-        r"maximum context length of (\d+) tokens.*?"
-        r"total of (\d+) tokens.*?"
-        r"(\d+) tokens from the input messages.*?"
-        r"(\d+) tokens for the completion",
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    # Try patterns 1, 3, and 4
-    for pattern in [pattern1, pattern3]:
-        match = pattern.search(error_str)
-        if match:
-            max_context = int(match.group(1))
-            message_tokens = int(match.group(2))
-            return {
-                "max_context_length": max_context,
-                "message_tokens": message_tokens,
-            }
-
-    # Try pattern 2
+    # Check pattern 2
     match = pattern2.search(error_str)
-    if match:
-        return {
-            "max_context_length": int(match.group(1)),
-            "message_tokens": int(match.group(3)),
-        }
-
-    # Try pattern 4
-    match = pattern4.search(error_str)
     if match:
         return {
             # Context length is the second group
@@ -103,12 +71,40 @@ def parse_context_window_exceeded_error(error) -> Union[Dict[str, int], None]:
             "message_tokens": int(match.group(1)),
         }
 
+    # Pattern 3: Handle format like "45008 in the messages, 2048 in the completion"
+    pattern3 = re.compile(
+        r"maximum context length is (\d+) tokens.*?"
+        r"you requested (\d+) tokens.*?"
+        r"(\d+) in the messages, (\d+) in the completion",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    # Pattern 4: "Requested token count exceeds the model's maximum context length of 131072 tokens. You requested a total of 1000159 tokens: 159 tokens from the input messages and 1000000 tokens for the completion."
+    pattern4 = re.compile(
+        r"maximum context length of (\d+) tokens.*?"
+        r"total of (\d+) tokens.*?"
+        r"(\d+) tokens from the input messages.*?"
+        r"(\d+) tokens for the completion",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    # Try patterns 3 and 4
+    for pattern in [pattern3, pattern4]:
+        match = pattern.search(error_str)
+        if match:
+            return {
+                "max_context_length": int(match.group(1)),
+                "message_tokens": int(match.group(3)),
+            }
+
+    # Pattern 5: "max_tokens must be at least 1, got -37673"
+    pattern5 = re.compile(r"max_tokens must be at least 1, got (-\d+)", re.IGNORECASE)
+
     # Try pattern 5
     match = pattern5.search(error_str)
     if match:
         return {
-            "max_context_length": int(match.group(1)),
-            "message_tokens": int(match.group(3)),
+            "message_tokens_overflow": abs(int(match.group(1))),
         }
 
     return None
@@ -119,8 +115,10 @@ class ContextLimitRetryConfig:
     """Configuration for context limit retry behavior, i.e., when the context limit is exceeded."""
 
     enable_soft_fail: bool = False  # If True, will enable soft fail or try to reduce the context by reducing the number of tokens to generate/prompt and perform the task
-    strategy: str = None  # Strategy to use when reducing the context - reduce_generation, reduce_prompt_from_start, reduce_prompt_from_end
-    num_special_tokens_budget: int = 100  # To account for the discrepancy when tokenizing a message content standalone and when tokenizing it as part of a message list. Keep it high to be safe.
+    strategy: str | None = (
+        None  # Strategy to use when reducing the context - reduce_generation, reduce_prompt_from_start, reduce_prompt_from_end
+    )
+    num_special_tokens_budget: int = 50  # To account for the discrepancy when tokenizing a message content standalone and when tokenizing it as part of a message list. Keep it high to be safe.
 
     def __post_init__(self):
         """Validate configuration."""
@@ -190,25 +188,30 @@ async def handle_context_retries_async(
         result = await func(self, *args, **kwargs)
         return result
     except Exception as error:
-        if is_context_window_exceeded_error(error):
-            if not config.enable_soft_fail:
-                raise error
-
-            # Soft fail is enabled
-            LOG.info(f"Soft fail is enabled. Caught context window exceeded error: {error}")
-
-            # No strategy configured
-            if config.strategy is None:
-                return return_empty_generation_with_error(f"No strategy configured. {error}")
-
-            # Try to apply the prompt/generation budget reduction strategy
-            modified_kwargs = _prepare_context_error_retry(kwargs, config, self.tokenizer, error)
-            if modified_kwargs is None:
-                return return_empty_generation_with_error(f"Could not apply strategy. {error}")
-
-            return await func(self, *args, **modified_kwargs)
-        else:
+        if not config.enable_soft_fail:
             raise error
+        else:
+            LOG.info("Soft fail is enabled.")
+            if is_context_window_exceeded_error(error):
+                LOG.info(f"Caught context window exceeded error: {error}")
+                if config.strategy is None:
+                    return return_empty_generation_with_error(
+                        f"No strategy configured. {error}", error_reason="context_window_exceeded"
+                    )
+                modified_kwargs = _prepare_context_error_retry(kwargs, config, self.tokenizer, error)
+                if modified_kwargs is None:
+                    return return_empty_generation_with_error(f"Could not apply strategy. {error}")
+
+                try:
+                    result = await func(self, *args, **modified_kwargs)
+                    return result
+                except Exception as error:
+                    LOG.warning(f"Caught an error. Returning empty generation. {error}")
+                    # This error most likely is not related to the context window exceeded error.
+                    return return_empty_generation_with_error(f"{error}")
+            else:
+                LOG.warning(f"Caught an error. Returning empty generation. {error}")
+                return return_empty_generation_with_error(f"{error}")
 
 
 def handle_context_retries_sync(
@@ -219,25 +222,30 @@ def handle_context_retries_sync(
         result = func(self, *args, **kwargs)
         return result
     except Exception as error:
-        if is_context_window_exceeded_error(error):
-            if not config.enable_soft_fail:
-                raise error
-
-            # Soft fail is enabled
-            LOG.info(f"Soft fail is enabled. Caught context window exceeded error: {error}")
-
-            # No strategy configured
-            if config.strategy is None:
-                return return_empty_generation_with_error(f"No strategy configured. {error}")
-
-            # Try to apply the prompt/generation budget reduction strategy
-            modified_kwargs = _prepare_context_error_retry(kwargs, config, self.tokenizer, error)
-            if modified_kwargs is None:
-                return return_empty_generation_with_error(f"Could not apply strategy. {error}")
-
-            return func(self, *args, **modified_kwargs)
-        else:
+        if not config.enable_soft_fail:
             raise error
+        else:
+            LOG.info("Soft fail is enabled.")
+            if is_context_window_exceeded_error(error):
+                LOG.info(f"Caught context window exceeded error: {error}")
+                if config.strategy is None:
+                    return return_empty_generation_with_error(
+                        f"No strategy configured. {error}", error_reason="context_window_exceeded"
+                    )
+                modified_kwargs = _prepare_context_error_retry(kwargs, config, self.tokenizer, error)
+                if modified_kwargs is None:
+                    return return_empty_generation_with_error(f"Could not apply strategy. {error}")
+
+                try:
+                    result = func(self, *args, **modified_kwargs)
+                    return result
+                except Exception as error:
+                    LOG.warning(f"Caught an error. Returning empty generation. {error}")
+                    # This error most likely is not related to the context window exceeded error.
+                    return return_empty_generation_with_error(f"{error}")
+            else:
+                LOG.warning(f"Caught an error. Returning empty generation. {error}")
+                return return_empty_generation_with_error(f"{error}")
 
 
 def _prepare_context_error_retry(
@@ -260,7 +268,13 @@ def _prepare_context_error_retry(
 
     # Apply the configured strategy
     if config.reduce_generate_tokens:
+        if "message_tokens_overflow" in parsed_error:
+            detailed_error = f"Prompt tokens overflow. Reducing generation tokens will not help. Returning empty generation.\n\n{error}"
+            LOG.warning(detailed_error)
+            return None
+
         return _try_reduce_generation_tokens(kwargs, parsed_error, config, error)
+
     elif config.reduce_prompt_from_start or config.reduce_prompt_from_end:
         if tokenizer is None:
             # Without tokenizer, we can't trim the prompt.
@@ -282,13 +296,14 @@ def _try_reduce_generation_tokens(
     max_context_length = parsed_error["max_context_length"]
     message_tokens = parsed_error["message_tokens"]
 
-    if message_tokens >= max_context_length:
+    # Assume the num_special_tokens_budget to be part of the calculation for safety
+    safe_remaining_budget = max_context_length - config.num_special_tokens_budget
+    if message_tokens >= safe_remaining_budget:
         detailed_error = f"Messages tokens are already at the max context length. Cannot reduce generate tokens.\n\n{original_error}"
         LOG.warning(detailed_error)
         return None
 
-    # Reduce the generation budget by further accounting for certain special tokens to be safe
-    reduced_generation_budget = (max_context_length - message_tokens) - config.num_special_tokens_budget
+    reduced_generation_budget = safe_remaining_budget - message_tokens
     # This min operation is probably not needed but just in case
     if original_budget is not None:
         reduced_tokens = min(original_budget, reduced_generation_budget)
@@ -310,27 +325,38 @@ def _try_reduce_prompt_tokens(
     original_error: Exception,
 ) -> dict:
     """Try to reduce the number of tokens in the prompt."""
-    max_context_length = parsed_error["max_context_length"]
-    completion_tokens = kwargs["tokens_to_generate"]
+    if "message_tokens_overflow" in parsed_error:
+        # We can just use this information to reduce the prompt tokens
+        orig_prompt_num_tokens = len(tokenizer.encode(kwargs["prompt"], tools=kwargs.get("tools", None)))
+        num_prompt_tokens_to_keep = orig_prompt_num_tokens - (
+            parsed_error["message_tokens_overflow"] + kwargs["tokens_to_generate"] + config.num_special_tokens_budget
+        )
+        LOG.warning(f"Prompt tokens overflow. Reducing prompt tokens to {num_prompt_tokens_to_keep}.")
 
-    if completion_tokens is None:
-        detailed_error = f"tokens_to_generate is not set. Cannot reduce prompt tokens.\n\n{original_error}"
-        raise ValueError(detailed_error)
+    else:
+        max_context_length = parsed_error["max_context_length"]
+        completion_tokens = kwargs["tokens_to_generate"]
 
-    if completion_tokens >= max_context_length:
-        detailed_error = f"Completion tokens are already at the max context length. Cannot reduce prompt tokens.\n\n{original_error}"
-        raise ValueError(detailed_error)
+        if completion_tokens is None:
+            detailed_error = f"tokens_to_generate is not set. Cannot reduce prompt tokens.\n\n{original_error}"
+            raise ValueError(detailed_error)
 
-    # SGLang has thrown error for exact equality. Subtracting the num_special_tokens_budget to be safe.
-    num_prompt_tokens_to_keep = (max_context_length - completion_tokens) - config.num_special_tokens_budget
+        # Assume the num_special_tokens_budget to be part of the calculation for safety. SGLang has thrown error for exact equality.
+        safe_remaining_budget = max_context_length - config.num_special_tokens_budget
+        if completion_tokens >= safe_remaining_budget:
+            detailed_error = f"Completion tokens are already at the max context length. Cannot reduce prompt tokens.\n\n{original_error}"
+            raise ValueError(detailed_error)
+
+        num_prompt_tokens_to_keep = safe_remaining_budget - completion_tokens
+
     prompt = kwargs["prompt"]
 
     LOG.info(f"Num tokens to keep: {num_prompt_tokens_to_keep}")
 
     if isinstance(prompt, str):
-        return _trim_string_prompt(kwargs, prompt, num_prompt_tokens_to_keep, config, tokenizer)
+        return _trim_string_prompt(kwargs, num_prompt_tokens_to_keep, config, tokenizer)
     elif isinstance(prompt, list):
-        return _trim_list_prompt(kwargs, prompt, num_prompt_tokens_to_keep, config, tokenizer, original_error)
+        return _trim_list_prompt(kwargs, num_prompt_tokens_to_keep, config, tokenizer, original_error)
     else:
         LOG.warning(f"Unsupported prompt type: {type(prompt)}")
         return None
@@ -338,13 +364,12 @@ def _try_reduce_prompt_tokens(
 
 def _trim_string_prompt(
     kwargs: dict,
-    prompt: str,
     num_tokens_to_keep: int,
     config: ContextLimitRetryConfig,
     tokenizer: Union[ServerTokenizer, WrapperAutoTokenizer],
 ) -> dict:
     """Trim a string prompt to fit within token limits."""
-    encoded_prompt = tokenizer.encode(prompt)
+    encoded_prompt = tokenizer.encode(kwargs["prompt"])
 
     if config.reduce_prompt_from_start:
         trimmed_encoded = encoded_prompt[-num_tokens_to_keep:]
@@ -359,19 +384,19 @@ def _trim_string_prompt(
 
 def _trim_list_prompt(
     kwargs: dict,
-    prompt_list: list,
     num_tokens_to_keep: int,
     config: ContextLimitRetryConfig,
     tokenizer: Union[ServerTokenizer, WrapperAutoTokenizer],
     original_error: Exception,
 ) -> dict:
     """Trim a list-based prompt to fit within token limits."""
-    prompt_copy = copy.deepcopy(prompt_list)
+    prompt_copy = copy.deepcopy(kwargs["prompt"])
+    tools = kwargs.get("tools", None)
 
     if config.reduce_prompt_from_start:
-        trimmed_messages = _trim_messages_from_start(prompt_copy, num_tokens_to_keep, tokenizer)
+        trimmed_messages = _trim_messages_from_start(prompt_copy, tools, num_tokens_to_keep, tokenizer)
     else:  # reduce_prompt_from_end
-        trimmed_messages = _trim_messages_from_end(prompt_copy, num_tokens_to_keep, tokenizer)
+        trimmed_messages = _trim_messages_from_end(prompt_copy, tools, num_tokens_to_keep, tokenizer)
 
     if not trimmed_messages:
         detailed_error = f"Not able to trim the prompt. Returning empty generation.\n\n{original_error}"
@@ -385,6 +410,7 @@ def _trim_list_prompt(
 
 def _trim_messages_from_end(
     messages: list,
+    tools: Union[list[dict], None],
     remaining_token_budget: int,
     tokenizer: Union[ServerTokenizer, WrapperAutoTokenizer],
 ) -> list:
@@ -395,7 +421,7 @@ def _trim_messages_from_end(
     for idx, message in enumerate(messages):
         # Check if adding this full message would exceed the limit
         test_messages = messages[: idx + 1]
-        encoded = tokenizer.encode(test_messages)
+        encoded = tokenizer.encode(test_messages, tools=tools)
         if encoded is None:
             continue
 
@@ -426,6 +452,7 @@ def _trim_messages_from_end(
 
 def _trim_messages_from_start(
     messages: list,
+    tools: Union[list[dict], None],
     remaining_token_budget: int,
     tokenizer: Union[ServerTokenizer, WrapperAutoTokenizer],
 ) -> list:
@@ -438,7 +465,7 @@ def _trim_messages_from_start(
         # Test messages from this index to the end
         suffix_start_idx = -(idx + 1)
         test_messages = messages[suffix_start_idx:]
-        encoded = tokenizer.encode(test_messages)
+        encoded = tokenizer.encode(test_messages, tools=tools)
 
         if encoded is None:
             continue
@@ -495,10 +522,10 @@ def get_trimmed_content(
         return None
 
 
-def return_empty_generation_with_error(detailed_error: str):
+def return_empty_generation_with_error(detailed_error: str, error_reason: str = "See detailed_error"):
     return {
         "generation": "",
         "num_generated_tokens": 0,
-        "error": "context_window_exceeded",
+        "error": error_reason,
         "detailed_error": detailed_error,
     }

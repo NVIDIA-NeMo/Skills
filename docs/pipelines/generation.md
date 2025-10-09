@@ -339,25 +339,38 @@ a dependent [run_cmd command](./run-cmd.md).
 !!! warning
     Currently preprocess_cmd doesn't work correctly with `num_chunks>1`
 
-### Context-Window Limits
+### Soft Failure + Context-Limit Recovery
 
-Certain input-output combinations can exceed a model's context window limits. By default, such generation/evaluation jobs will fail.
+Generation/Evaluation jobs can fail due to server-side errors, such as exceeding context limits. By default, jobs crash immediately at the point of failure, forcing users to diagnose the issue before restarting. This is particularly annoying for synthetic data generation where jobs are scheduled at scale—a single point of failure can become a bottleneck for the entire process.
 
-By passing in `++server.enable_soft_fail=True`, any context length errors will be caught during the generation, and the output dictionary would have an
+#### Basic Soft Failure Mode
 
+To allow jobs to continue despite failures, enable soft failure mode with `++server.enable_soft_fail=True`. Examples that encounter errors will produce output with empty generation and error information:
 ```python
-{"generation": "", "error": "context_window_exceeded"}
+{
+    "generation": "",
+    "error": "context_window_exceeded",
+    "detailed_error": "<full error message and traceback>"
+}
 ```
-and a `"detailed_error"` field which has the detailed reason for the context.
 
-We also support automatic trimming of generation budget or context when using vllm or sglang using the following three methods:
+Users can inspect the errors at the end of the job without blocking non-problematic instances.
 
+#### Automatic Context-Limit Recovery
+
+For context window errors specifically, users can enable automatic recovery strategies that attempt to fit inputs within the model's limits.
+
+We support three methods for automatic trimming of generation budget or context:
 
 1. `reduce_generation`: Reduces the generation budget (if specified). For example, if a prompt is 40K tokens long, and the requested generation budget for the job is 2048, and the context window is 41K, we will dynamically reduce the generation budget for this instance so that the prompt and the output fit in the context window.
 
 2. `reduce_prompt_from_start`: Removes tokens from the start of the prompt to accommodate the requested `tokens_to_generate`. Note that for this strategy we require the generation budget, i.e., `++inference.tokens_to_generate` to be specified for the job.
 
 3. `reduce_prompt_from_end`: Same as `reduce_prompt_from_start` except that tokens are removed from the end of the input prompt.
+
+
+!!!note
+    These strategies are primarily tested with vllm and sglang servers and may not work reliably with other server types.
 
 
 === "reduce_generation"

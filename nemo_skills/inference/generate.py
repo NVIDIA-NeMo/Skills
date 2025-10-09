@@ -548,6 +548,7 @@ class GenerationTask:
         if self.cfg.count_prompt_tokens:
             num_input_tokens = get_token_count(self.hf_tokenizer, generation_params["prompt"])
             result["num_input_tokens"] = num_input_tokens
+
         return result
 
     async def generate_with_semaphore(self, **generation_params):
