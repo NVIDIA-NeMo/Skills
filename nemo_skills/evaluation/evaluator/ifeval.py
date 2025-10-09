@@ -14,6 +14,7 @@
 
 import json
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -24,24 +25,26 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 def eval_if(cfg):
     for jsonl_file in unroll_files(cfg.input_files):
-        parent_dir = Path(jsonl_file).absolute().parent
+        jsonl_path = Path(jsonl_file).resolve()
+        output_dir = jsonl_path.parent / f"{jsonl_path.stem}_metrics_tmp"
+        output_dir.mkdir(parents=True, exist_ok=True)
         cmd = (
             "cd /opt/benchmarks/google-research && python -m instruction_following_eval.evaluation_main "
             f"--input_data={jsonl_file} "
             f"--input_response_data={jsonl_file} "
-            f"--output_dir={parent_dir} "
+            f"--output_dir={output_dir} "
         )
         subprocess.run(cmd, shell=True, check=True)
         # fusing eval metrics back into the generation file
         with open(jsonl_file, "rt", encoding="utf-8") as f:
             samples = [json.loads(line) for line in f]
 
-        with open(parent_dir / "eval_results_loose.jsonl", "rt", encoding="utf-8") as f:
+        with open(output_dir / "eval_results_loose.jsonl", "rt", encoding="utf-8") as f:
             eval_results = [json.loads(line) for line in f]
         for sample, eval_result in zip(samples, eval_results):
             sample["loose_eval"] = eval_result
 
-        with open(parent_dir / "eval_results_strict.jsonl", "rt", encoding="utf-8") as f:
+        with open(output_dir / "eval_results_strict.jsonl", "rt", encoding="utf-8") as f:
             eval_results = [json.loads(line) for line in f]
         for sample, eval_result in zip(samples, eval_results):
             sample["strict_eval"] = eval_result
@@ -50,6 +53,5 @@ def eval_if(cfg):
             for sample in samples:
                 f.write(json.dumps(sample) + "\n")
 
-        # removing metric files to avoid reusing them
-        (parent_dir / "eval_results_loose.jsonl").unlink()
-        (parent_dir / "eval_results_strict.jsonl").unlink()
+        # removing temporary metric directory to avoid reusing it
+        shutil.rmtree(output_dir)

@@ -33,10 +33,6 @@ RUN git clone https://github.com/google-research/google-research.git /opt/benchm
 # ifbench
 RUN git clone https://github.com/allenai/IFBench.git /opt/benchmarks/IFBench --depth=1
 RUN cd /opt/benchmarks/IFBench && sed -i '/^unicodedata[=<>]*.*$/d' requirements.txt && pip install -r requirements.txt
-RUN cd /opt/benchmarks
-
-RUN pip install langdetect absl-py immutabledict nltk ipython && \
-    python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 
 RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
 RUN cd /opt/gorilla && git checkout d2177992bbba9aa228b53c0645bf8f5613a5a7c6
@@ -49,3 +45,10 @@ COPY pyproject.toml README.md /opt/NeMo-Skills/
 COPY nemo_skills /opt/NeMo-Skills/nemo_skills/
 COPY requirements /opt/NeMo-Skills/requirements/
 RUN cd /opt/NeMo-Skills && pip install -e .
+
+# patching a bug in ifbench
+COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
+RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
+
+RUN pip install langdetect absl-py immutabledict nltk ipython && \
+    python -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); download('en_core_web_sm')"
