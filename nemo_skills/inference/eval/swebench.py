@@ -17,6 +17,7 @@ import glob
 import json
 import logging
 import os
+import random
 import shlex
 import sys
 from dataclasses import field
@@ -101,7 +102,20 @@ class SweBenchGenerationConfig:
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max iterations for the agent
 
+    # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
+    eval_harness_repo: str = "https://github.com/Kipok/SWE-bench.git"
+    eval_harness_commit: str = "HEAD"  # Which commit to use when cloning the eval harness repo
+
     swebench_tests_timeout: int = 60 * 30  # Timeout for the tests after applying the patch, in seconds
+
+    # How many times to try running inference & evaluation commands until they produce a valid output file
+    max_retries: int = 3
+
+    # Interval between retries, in seconds.
+    # Selected randomly between min_retry_interval and max_retry_interval every time an instance is retried,
+    # in order to avoid too many instances making network requests at the same time.
+    min_retry_interval: int = 60
+    max_retry_interval: int = 180
 
     inference: SweBenchInferenceConfig = field(default_factory=SweBenchInferenceConfig)  # LLM call parameters
     # Inference server configuration {server_params}
@@ -170,9 +184,7 @@ class SweBenchGenerationTask(GenerationTask):
         # currently evaluation is done directly after generation already
         return data_point
 
-    async def _execute_container_command(
-        self, data_point, command, expected_file_pattern, mode, max_retries=3, timeout=100000
-    ):
+    async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
         container_name = data_point["container_formatter"].format(
             instance_id=data_point["instance_id"].replace("__", "_1776_")
@@ -194,12 +206,12 @@ class SweBenchGenerationTask(GenerationTask):
         )
 
         # Retry apptainer command up to max_retries times
-        for attempt in range(max_retries):
+        for attempt in range(self.cfg.max_retries):
             log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
             LOG.info(
                 "Starting execution of an apptainer command (attempt %d of %d). Logs are available at %s",
                 attempt + 1,
-                max_retries,
+                self.cfg.max_retries,
                 log_file_path,
             )
 
@@ -222,7 +234,7 @@ class SweBenchGenerationTask(GenerationTask):
                         if process.returncode is None:
                             process.kill()
                             await process.wait()
-                        attempt = max_retries  # Force exit the loop on timeout
+                        attempt = self.cfg.max_retries  # Force exit the loop on timeout
                         raise ValueError("Command timed out")
 
                 # Look for the expected file
@@ -237,15 +249,21 @@ class SweBenchGenerationTask(GenerationTask):
                         f"found {len(pred_files)}."
                     )
             except Exception:
-                if attempt < max_retries - 1:
+                if attempt < self.cfg.max_retries - 1:
+                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
                     LOG.warning(
-                        "Attempt %d failed for instance %s. Retrying...",
+                        "Attempt %d failed for instance %s. Retrying in %d seconds...",
                         attempt + 1,
                         data_point["instance_id"],
+                        retry_interval,
                     )
+                    if retry_interval > 0:
+                        await asyncio.sleep(retry_interval)
                     continue
                 else:
-                    LOG.error("All %d attempts failed for instance %s", max_retries, data_point["instance_id"])
+                    LOG.error(
+                        "All %d attempts failed for instance %s", self.cfg.max_retries, data_point["instance_id"]
+                    )
                     LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
                     raise ValueError(
                         f"Job failed for {data_point['instance_id']}. Check logs at: {log_file_path}. "
@@ -303,7 +321,9 @@ class SweBenchGenerationTask(GenerationTask):
         )
 
         # Execute SWE-agent command
-        search_path = os.path.join(self.output_dir / "trajectories", "**", f"{data_point['instance_id']}.pred")
+        search_path = os.path.join(
+            self.output_dir, "trajectories", "*", "*", data_point["instance_id"], f"{data_point['instance_id']}.pred"
+        )
         pred_file = await self._execute_container_command(data_point, swe_agent_cmd, search_path, mode="agent")
 
         with open(pred_file, "r") as f:
@@ -408,7 +428,7 @@ class SweBenchGenerationTask(GenerationTask):
         )
 
         # Execute OpenHands command
-        search_path = os.path.join(self.output_dir / "trajectories", "**", data_point["instance_id"], "output.jsonl")
+        search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
         out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
 
         with open(out_file, "r") as f:
@@ -480,9 +500,10 @@ class SweBenchGenerationTask(GenerationTask):
                 # first installing SWE-bench repo
                 "curl -LsSf https://astral.sh/uv/install.sh | sh && "
                 "source /root/.local/bin/env && "
-                "cd /root && "
-                "git clone https://github.com/Kipok/SWE-bench.git && "
-                "cd SWE-bench && "
+                "mkdir /root/SWE-bench && "
+                "cd /root/SWE-bench && "
+                f"git clone {self.cfg.eval_harness_repo} . && "
+                f"git checkout {self.cfg.eval_harness_commit} && "
                 "uv venv --python 3.12 venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e . && "
@@ -492,15 +513,12 @@ class SweBenchGenerationTask(GenerationTask):
                 f"    --instance_ids {data_point['instance_id']} "
                 f"    --run_id eval-outputs "
                 f"    --timeout {self.cfg.swebench_tests_timeout} "
-                f"    --dataset_name {data_point['dataset_name']} "
-                f"    --split {data_point['split']} && "
+                f"    --dataset_name {self.cfg.input_file} && "
                 f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
             )
 
             # Execute SWE-bench evaluation command
-            search_path = os.path.join(
-                self.output_dir, "eval-outputs", "**", f"{data_point['instance_id']}/report.json"
-            )
+            search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
             # TODO: should we fail on errors here? Seems that json isn't always generated
             try:
                 report_file = await self._execute_container_command(

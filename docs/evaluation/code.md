@@ -70,7 +70,7 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++agent_framework_repo:** URL of the repository to use for SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands.
 
-- **++agent_framework_commit:** The commit hash to use when cloning agent_framework_repo. Allows you to pin SWE-agent/OpenHands to a specific version. Defaults to `HEAD`, i.e. the latest commit.
+- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/OpenHands to a specific version. Defaults to `HEAD`, i.e. the latest commit.
 
 - **++agent_config:** The config file to use for SWE-agent/OpenHands.
     - For SWE-agent, this is a YAML file. See the [SWE-agent docs](https://swe-agent.com/latest/config/config/).
@@ -80,7 +80,15 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++agent_max_turns:** The maximum number of turns the agent is allowed to take before the trajectory is forcibly terminated. Defaults to 100 for both SWE-agent and OpenHands.
 
+- **++eval_harness_repo:** URL of the repository to use for the evaluation harness. This is passed directly as an argument to `git clone`. Defaults to [`https://github.com/Kipok/SWE-bench.git`](https://github.com/Kipok/SWE-bench), our fork of SWE-bench that supports local evaluation.
+
+- **++eval_harness_commit:** The commit hash, branch or tag to checkout after cloning agent_harness_repo. Defaults to `HEAD`, i.e. the latest commit.
+
 - **++swebench_tests_timeout:** The timeout for tests after applying the generated patch during evaluation, in seconds. Defaults to 1800, i.e. 30 minutes.
+
+- **++max_retries:** How many times to try running inference and evaluation until a valid output file is produced. Defaults to 3.
+
+- **++min_retry_interval, ++max_retry_interval:** The interval between retries, in seconds. Selected randomly between min and max on each retry. Defaults to 60 and 180 respectively.
 
 #### Inference parameters
 
@@ -150,9 +158,9 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
     "pass@1": {
       "num_entries": 500,
       "gen_seconds": 7172,
-      "issues_resolved": 50.0,
-      "no_patch": 0.2,
-      "patch_cant_apply": 2.0
+      "issues_resolved": 45.0,
+      "no_patch": 0.4,
+      "patch_cant_apply": 0.8
     }
   }
 }

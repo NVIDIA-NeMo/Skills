@@ -17,3 +17,5 @@ You can change CURRENT_DATE to any value there to ensure you don't
 accidentally override results of existing pipeline.
 
 See [./clone_and_run.sh](./clone_and_run.sh) for how to register tests to run on schedule with cron.
+
+**Note on SWE-bench tests ([qwen3coder_30b_swebench](qwen3coder_30b_swebench)):** by default, run_all.sh assumes your cluster config has a mount called `/swe-bench-images` where the SWE-bench Verified images are downloaded. See the [SWE-bench docs](https://nvidia.github.io/NeMo-Skills/evaluation/code/#data-preparation) for more details. To use a different path, you can modify the test's --container_formatter parameter, or you can remove it entirely to pull the images from Dockerhub every time the test is run (not recommended).
