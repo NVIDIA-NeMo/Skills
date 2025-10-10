@@ -123,8 +123,6 @@ class PythonTool(MCPClientTool):
         merged_extra.setdefault("timeout", self._config.get("exec_timeout_s", 10))
         merged_extra["session_id"] = self.requests_to_sessions[request_id]
         result = await self._client.call_tool(tool=tool_name, args=arguments, extra_args=merged_extra)
-        print("!!!", result)
-        print("@@@", self.requests_to_sessions)
         self.requests_to_sessions[request_id] = result["session_id"]
         output = f"{result['output_dict']['stdout']}{result['output_dict']['stderr']}"
         if output.endswith("\n"):  # there is always a trailing newline, removing it
