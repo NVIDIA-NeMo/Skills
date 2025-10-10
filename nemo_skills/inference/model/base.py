@@ -116,7 +116,7 @@ class BaseModel:
             self.base_url = f"http://{self.server_host}:{self.server_port}{v1_suffix}"
         elif base_url == "":
             # We don't want to use base_url if it is an empty string
-            base_url = None
+            self.base_url = None
         else:
             self.base_url = base_url
 
