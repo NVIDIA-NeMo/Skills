@@ -55,7 +55,6 @@ policy:
 
   megatron_cfg:
     enabled: false
-    empty_unused_memory_level: 1
     activation_checkpointing: false
     tensor_model_parallel_size: ${policy.tensor_model_parallel_size}
     expert_tensor_parallel_size: 1
@@ -72,8 +71,10 @@ policy:
     moe_router_bias_update_rate: 1e-3
     moe_permute_fusion: false
     #gives ~20% training perf speedup with sequence packing
-    apply_rope_fusion: False  # Only used if position_embedding_type=rope
+    bias_activation_fusion: True
+    apply_rope_fusion: True  # Only used if position_embedding_type=rope
     layernorm_epsilon: 1e-6
+    empty_unused_memory_level: 0 # setting it to 0 will maximize performance, but it might lead to OOMs, while setting it to 2 to minimize the peak memory usage to avoid OOMs
 
     optimizer:
       optimizer: "adam"
@@ -164,12 +165,14 @@ data:
   output_key: output
   force_reprocess: false
   shuffle: true
+  num_workers: 10
 
 logger:
   log_dir: "logs"  # Base directory for all logs
   wandb_enabled: true # Make sure you do a ``wandb login [Your API key]'' before running
   tensorboard_enabled: true
   mlflow_enabled: false
+  swanlab_enabled: false # Disable SwanLab logging
   monitor_gpus: true  # If true, will monitor GPU usage and log to wandb and/or tensorboard
   num_val_samples_to_print: 0  # Number of validation samples to pretty print on terminal
   wandb:
