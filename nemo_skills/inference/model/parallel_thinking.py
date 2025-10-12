@@ -186,6 +186,13 @@ class ParallelThinkingTask:
             with open(input_file, "r") as f:
                 for line in f:
                     data_point = json.loads(line)
+                    if self.cfg.remove_thinking:
+                        remove_thinking(
+                            data_point,
+                            generation_key=self.cfg.solution_key,
+                            thinking_begin=self.cfg.thinking_begin,
+                            thinking_end=self.cfg.thinking_end,
+                        )
                     # TODO: Making an assumption that the prompt doesn't require all the data for few-shot prompting
                     # Hashing the prompt to get the key for the solutions
                     prompt = self.hash_prompt(self.orig_prompt_filler(data_point, data=None))
