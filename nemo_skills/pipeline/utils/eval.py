@@ -379,7 +379,11 @@ def prepare_eval_commands(
             if benchmark_args.requires_sandbox and not with_sandbox:
                 LOG.warning("Found benchmark (%s) which requires sandbox, enabled sandbox for it.", benchmark)
 
-            if benchmark_args.requires_sandbox and not keep_mounts_for_sandbox:
+            if (
+                benchmark_args.requires_sandbox
+                and benchmark_args.keep_mounts_for_sandbox
+                and not keep_mounts_for_sandbox
+            ):
                 LOG.warning("Found benchmark (%s) which requires sandbox to keep mounts, enabling it.", benchmark)
 
     total_evals = 0

@@ -18,12 +18,16 @@ import json
 import logging
 import shlex
 import textwrap
-from contextlib import asynccontextmanager
 from dataclasses import field
 from pathlib import Path
 
-from nemo_skills.code_execution.sandbox import get_sandbox
+from nemo_skills.code_execution.sandbox import Sandbox
 from nemo_skills.evaluation.evaluator.code import preprocess_code
+from nemo_skills.evaluation.evaluator.livecodebench import (
+    execute_in_sandbox_with_retries,
+    is_sandbox_available,
+    sandbox_context,
+)
 from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -33,49 +37,46 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class OJBenchConfig:
     sandbox: dict = field(default_factory=lambda: {"sandbox_type": "local"})
     timeout: int = 6
+    timeout_buffer: int = 60
+    num_retries: int = 3
 
 
-@asynccontextmanager
-async def sandbox_context(config: dict):
-    sandbox = get_sandbox(**config)
-    try:
-        yield sandbox
-    finally:
-        LOG.info("Closing sandbox...")
-        await sandbox.close()
-
-
-async def install_packages(eval_config: OJBenchConfig) -> bool:
+async def install_packages(sandbox: Sandbox, eval_config: OJBenchConfig) -> bool:
     """Helper to install packages inside the sandbox."""
+    LOG.info("Installing required packages for ojbench evaluation...")
 
-    async with sandbox_context(eval_config.sandbox) as sandbox:
-        LOG.info("Installing required packages for ojbench evaluation...")
+    clone_cmd = "git clone https://github.com/He-Ren/OJBench.git"
+    result, _ = await execute_in_sandbox_with_retries(
+        sandbox, eval_config.num_retries, clone_cmd, language="shell", timeout=300
+    )
+    if result["process_status"] != "completed":
+        stderr = result.get("stderr", "Unknown error")
+        LOG.warning(f"Failed to clone OJBench repo: {stderr}")
+        return False
 
-        clone_cmd = "git clone https://github.com/He-Ren/OJBench.git"
-        result, _ = await sandbox.execute_code(clone_cmd, language="shell", timeout=300)
-        if result["process_status"] != "completed":
-            stderr = result.get("stderr", "Unknown error")
-            raise RuntimeError(f"Failed to clone OJBench repo: {stderr}")
+    install_cmd = "pip install -e OJBench"
+    result, _ = await execute_in_sandbox_with_retries(
+        sandbox, eval_config.num_retries, install_cmd, language="shell", timeout=300
+    )
+    if result["process_status"] != "completed":
+        stderr = result.get("stderr", "Unknown error")
+        LOG.warning(f"Failed to install ojbench: {result.get('stderr', 'Unknown error')}")
+        return False
 
-        install_cmd = "pip install -e OJBench"
-        result, _ = await sandbox.execute_code(install_cmd, language="shell", timeout=300)
-        if result["process_status"] != "completed":
-            stderr = result.get("stderr", "Unknown error")
-            raise RuntimeError(f"Failed to install ojbench. Stderr: {stderr}")
-
-        LOG.info("Successfully installed ojbench.")
+    LOG.info("Successfully installed ojbench.")
+    return True
 
 
-async def eval_ojbench_async(cfg):
-    eval_config = OJBenchConfig(**cfg.eval_config)
+async def eval_ojbench_async(cfg, eval_config: OJBenchConfig):
     problem_dirs = [
         Path(cfg.data_dir, "ojbench/OJBench_testdata/NOI"),
         Path(cfg.data_dir, "ojbench/OJBench_testdata/ICPC"),
     ]
 
-    await install_packages(eval_config)
-
     async with sandbox_context(eval_config.sandbox) as sandbox:
+        if not await install_packages(sandbox, eval_config):
+            return
+
         for jsonl_file_str in unroll_files(cfg.input_files):
             jsonl_file = Path(jsonl_file_str)
             with open(jsonl_file, encoding="utf-8") as f_in:
@@ -107,10 +108,12 @@ async def eval_ojbench_async(cfg):
             """)
 
             cmd = f'env -i PATH="/usr/local/bin:/usr/bin:/bin" python3 -c {shlex.quote(eval_code)}'
-            output, _ = await sandbox.execute_code(
+            output, _ = await execute_in_sandbox_with_retries(
+                sandbox,
+                eval_config.num_retries,
                 cmd,
                 language="shell",
-                timeout=eval_config.timeout * len(samples) + 60,
+                timeout=eval_config.timeout * len(samples) + eval_config.timeout_buffer,
                 max_output_characters=100_000,
             )
 
@@ -135,4 +138,9 @@ async def eval_ojbench_async(cfg):
 
 def eval_ojbench(cfg):
     """Synchronous wrapper to run the async evaluation."""
-    asyncio.run(eval_ojbench_async(cfg))
+    eval_config = OJBenchConfig(**cfg.eval_config)
+    sandbox_is_ready = asyncio.run(is_sandbox_available(eval_config.sandbox))
+    if sandbox_is_ready:
+        asyncio.run(eval_ojbench_async(cfg, eval_config))
+    else:
+        raise RuntimeError("The OJBench evaluation requires a running sandbox, but the service was unreachable.")
