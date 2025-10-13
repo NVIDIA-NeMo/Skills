@@ -111,6 +111,31 @@ def sandbox_command(cluster_config: Dict, port: int, **kwargs) -> Tuple[str, Dic
     return cmd, metadata
 
 
+def search_command(cluster_config: Dict, port: Optional[int] = None, **kwargs) -> Tuple[str, Dict]:
+    """Build search command.
+
+    Args:
+        cluster_config: Cluster configuration dictionary
+        port: Port to use for search server
+
+    Returns:
+        Tuple of (command_string, metadata_dict)
+    """
+    if port is None:
+        port = get_free_port(strategy="random")
+
+    cmd = "/entrypoint"
+    if cluster_config["executor"] == "none":
+        cmd = "python nemo_tir/dockerfiles/search/server.py"
+
+    metadata = {
+        "port": port,
+        "log_prefix": "search",
+    }
+
+    return cmd, metadata
+
+
 def wrap_command(command: str, working_dir: str = "/nemo_run/code", env_vars: Optional[Dict[str, str]] = None) -> str:
     """Wrap command with working directory and environment variable setup.
 
