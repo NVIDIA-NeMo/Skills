@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.pipeline.cli import eval, genselect, wrap_arguments
+from nemo_skills.pipeline.cli import eval, wrap_arguments
 
 size_to_eval_gpus = {
-    "1.5b": 1,
-    "7b": 2,
-    "14b": 4,
-    "32b": 8,
+    "1.5B": 1,
+    "7B": 2,
+    "14B": 4,
+    "32B": 8,
 }
 
 eval_tokens = 65536
@@ -42,7 +42,7 @@ def eval_aai(model_size):
         cluster=cluster,
         expname=f"eval-aai-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
-        model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+        model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
         server_type="sglang",
         server_gpus=size_to_eval_gpus[model_size],
         benchmarks="aai",
@@ -64,7 +64,7 @@ def eval_math(model_size):
         cluster=cluster,
         expname=f"eval-math-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
-        model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+        model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
         server_type="sglang",
         server_gpus=size_to_eval_gpus[model_size],
         benchmarks=",".join([f"{bench}:{math_seeds}" for bench in math_benchmarks]),
@@ -73,17 +73,21 @@ def eval_math(model_size):
 
     if run_genselect:
         for bench in math_benchmarks:
-            genselect(
-                ctx=wrap_arguments(f"++inference.tokens_to_generate={eval_tokens} ++inference.temperature=0.6 "),
+            eval(
+                ctx=wrap_arguments(
+                    f"++inference.tokens_to_generate={eval_tokens} "
+                    "++inference.temperature=0.6 "
+                    "++parallel_thinking.mode=genselect "
+                    f"++parallel_thinking.generation_dir={output_dir}/{model_size}/eval-results/{bench} "
+                ),
                 cluster=cluster,
                 expname=f"genselect-{bench}-{model_size}",
                 run_after=f"eval-math-{model_size}",
-                output_dir=f"{output_dir}/{model_size}-genselect/{bench}",
-                model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+                output_dir=f"{output_dir}/{model_size}-genselect/",
+                model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
                 server_type="sglang",
                 server_gpus=size_to_eval_gpus[model_size],
-                preprocess_args=f"++input_dir={output_dir}/{model_size}/eval-results/{bench}",
-                num_random_seeds=math_seeds,
+                benchmarks=f"{bench}:{math_seeds}",
             )
 
 
@@ -93,7 +97,7 @@ def eval_code(model_size):
         cluster=cluster,
         expname=f"eval-code-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
-        model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+        model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
         server_type="sglang",
         server_gpus=size_to_eval_gpus[model_size],
         split="test_v6_2408_2505",
@@ -109,7 +113,7 @@ def eval_science(model_size):
         cluster=cluster,
         expname=f"eval-gpqa-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
-        model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+        model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
         server_type="sglang",
         server_gpus=size_to_eval_gpus[model_size],
         benchmarks=f"gpqa:{science_seeds}",
@@ -121,7 +125,7 @@ def eval_science(model_size):
         cluster=cluster,
         expname=f"eval-mmlu-pro-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
-        model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+        model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
         server_type="sglang",
         server_gpus=size_to_eval_gpus[model_size],
         benchmarks=f"mmlu-pro:{science_seeds}",
@@ -132,12 +136,12 @@ def eval_science(model_size):
         cluster=cluster,
         expname=f"eval-hle-{model_size}",
         output_dir=f"{output_dir}/{model_size}",
-        model=f"/workspace/OpenReasoning-Nemotron-{model_size}",
+        model=f"nvidia/OpenReasoning-Nemotron-{model_size}",
         server_type="sglang",
         server_gpus=size_to_eval_gpus[model_size],
         benchmarks=f"hle:{science_seeds}",
         # num_chunks=4,  # parallelize 4x for faster eval on slurm
-        judge_model="/workspace/Qwen2.5-32B-Instruct",
+        judge_model="Qwen/Qwen2.5-32B-Instruct",
         judge_server_type="sglang",
         judge_server_gpus=8,
         judge_server_args="--context-length 64000",
