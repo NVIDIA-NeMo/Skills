@@ -12,12 +12,21 @@ echo "Workers: $NUM_WORKERS, Nginx port: $NGINX_PORT"
 # Override nginx config for multi-worker mode (single mode uses original config)
 echo "Configuring nginx for multi-worker load balancing..."
 
-# Force session affinity settings: 1 process per worker with minimal cheaper
-UWSGI_PROCESSES=1
-UWSGI_CHEAPER=1
-export UWSGI_PROCESSES
-export UWSGI_CHEAPER
-echo "Forced UWSGI settings for session affinity: PROCESSES=$UWSGI_PROCESSES, CHEAPER=$UWSGI_CHEAPER"
+
+# Allow callers to opt-out of single-process state-preserving mode where each worker is given one process
+: "${STATEFUL_SANDBOX:=1}"
+if [ "$STATEFUL_SANDBOX" -eq 1 ]; then
+    UWSGI_PROCESSES=1
+    UWSGI_CHEAPER=1
+else
+    # In stateless mode, honour caller-supplied values
+    : "${UWSGI_PROCESSES:=1}"
+    : "${UWSGI_CHEAPER:=1}"
+fi
+
+export UWSGI_PROCESSES UWSGI_CHEAPER
+
+echo "UWSGI settings: PROCESSES=$UWSGI_PROCESSES, CHEAPER=$UWSGI_CHEAPER"
 
 # Validate and fix uwsgi configuration
 if [ -z "$UWSGI_PROCESSES" ]; then

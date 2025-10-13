@@ -42,14 +42,11 @@ if __name__ == "__main__":
             entries.append(
                 {
                     "id": x,
-                    "run": run_code,
-                    "compile": compile_code,
                     "name": item["name"],
                     "ioi_id": item["id"],
                     "subtask": item["subtask"],
                     "question": item["problem"],
-                    "score": item["score"],
-                    "grader_files": item["grader_files"],
+                    "subtask_score": item["score"],
                 }
             )
 
@@ -78,8 +75,11 @@ if __name__ == "__main__":
             tests[test_name] = test_cases[problem_id][test_name]
         final_structure[problem_id][subtask] = {
             "tests": tests,
-            "score": entry["score"],
+            "subtask_score": entry["score"],
             "score_precision": entry["score_precision"],
+            "run": run_code,
+            "compile": compile_code,
+            "grader_files": entry["grader_files"],
         }
 
     with open(os.path.join(data_dir, f"{args.split}_metadata.json"), "w") as f:

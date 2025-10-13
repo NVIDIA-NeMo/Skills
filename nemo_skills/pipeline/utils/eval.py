@@ -20,6 +20,7 @@ import shlex
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict
 
 import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.dataset.utils import get_dataset_module, import_from_path
@@ -102,6 +103,8 @@ class BenchmarkArgs:
     score_module: str | None = None
     job_ids: list[int] = field(default_factory=list)
     remaining_jobs: list[dict] = field(default_factory=list)
+    # Per-benchmark sandbox environment overrides in KEY=VALUE form
+    sandbox_env_overrides: list[str] = field(default_factory=list)
 
     @property
     def requires_judge(self):
@@ -185,6 +188,10 @@ def get_benchmark_args_from_module(
         benchmark_module, "KEEP_MOUNTS_FOR_SANDBOX", False, override_dict
     )
 
+    # Collect any benchmark-specific environment variables
+    env_vars_from_module = getattr(benchmark_module, "SANDBOX_ENV_VARS", [])
+    sandbox_env_overrides = list(env_vars_from_module) if env_vars_from_module else []
+
     generation_module = get_arg_from_module_or_dict(
         benchmark_module, "GENERATION_MODULE", "nemo_skills.inference.generate", override_dict
     )
@@ -231,6 +238,7 @@ def get_benchmark_args_from_module(
         num_chunks=num_chunks,
         eval_subfolder=eval_subfolder,
         benchmark_group=benchmark_group,
+        sandbox_env_overrides=sandbox_env_overrides,
     )
 
 
@@ -517,6 +525,23 @@ def prepare_eval_commands(
                     job_needs_sandbox_to_keep_mounts = any(
                         benchmarks_dict[b].keep_mounts_for_sandbox for b in job_benchmarks
                     )
+                    # Aggregate per-job sandbox env overrides from participating benchmarks (first key wins)
+                    ordered_benchmarks = [b for b in benchmarks_dict.keys() if b in job_benchmarks]
+                    env_map: Dict[str, str] = {}
+                    env_source: Dict[str, str] = {}
+                    for b in ordered_benchmarks:
+                        for override in benchmarks_dict[b].sandbox_env_overrides:
+                            key, value = override.split("=", 1)
+                            if key in env_map and env_map[key] != value:
+                                raise ValueError(
+                                    f"Conflicting sandbox environment overrides for key '{key}': "
+                                    f"'{env_map[key]}' (from {env_source[key]}) vs '{value}' (from {b}). "
+                                    "Please submit the benchmarks as separate jobs or increase num_jobs so they do not share a job."
+                                )
+                            env_map[key] = value
+                            env_source[key] = b
+                    job_sandbox_env_overrides = [f"{k}={v}" for k, v in env_map.items()]
+
                     # TODO: move to a dataclass
                     job_batches.append(
                         (
@@ -528,6 +553,7 @@ def prepare_eval_commands(
                             job_server_address,
                             # a check above guarantees that this is the same for all tasks in a job
                             generation_task.get_server_command_fn(),
+                            job_sandbox_env_overrides,
                         )
                     )
                     job_server_config, job_server_address, job_extra_arguments = pipeline_utils.configure_client(

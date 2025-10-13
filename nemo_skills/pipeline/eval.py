@@ -342,6 +342,7 @@ def eval(
                 job_server_config,
                 job_server_address,
                 job_server_command,
+                job_sandbox_env_overrides,
             ) = job_args
             prev_tasks = _task_dependencies
 
@@ -361,6 +362,7 @@ def eval(
                     with_sandbox=job_needs_sandbox or with_sandbox,
                     keep_mounts_for_sandbox=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
                     sandbox_port=None if get_random_port else 6000,
+                    sandbox_env_overrides=job_sandbox_env_overrides,
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,

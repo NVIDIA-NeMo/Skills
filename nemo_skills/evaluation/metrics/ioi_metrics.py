@@ -38,13 +38,11 @@ class IOIMetrics(BaseMetrics):
         """
         if not submissions:
             return 0.0
-        subtasks = list(submissions[0]["test_case_results"].keys())
-        subtask_scores = {subtask: 0 for subtask in subtasks}
+        subtask_scores = {}
 
         for submission in submissions:
-            test_case_results = submission["test_case_results"]
-            for subtask, result in test_case_results.items():
-                subtask_scores[subtask] = max(subtask_scores[subtask], result["score"])
+            for subtask, result in submission["test_case_results"].items():
+                subtask_scores[subtask] = max(subtask_scores.get(subtask, 0), result["score"])
         return sum(subtask_scores.values()), subtask_scores
 
     def simulate_round_robin_score(self, submissions) -> float:
@@ -71,27 +69,21 @@ class IOIMetrics(BaseMetrics):
         selected = sorted_submissions[:50]
 
         # for each subtask, take the maximum score among the selected submissions
-        subtasks = list(submissions[0]["test_case_results"].keys())
-        subtask_scores = {subtask: 0 for subtask in subtasks}
+        subtask_scores = {}
         for submission in selected:
             for subtask, result in submission["test_case_results"].items():
-                subtask_scores[subtask] = max(subtask_scores[subtask], result["score"])
+                subtask_scores[subtask] = max(subtask_scores.get(subtask, 0), result["score"])
         return sum(subtask_scores.values())
 
     def get_metrics(self):
-        """
-        Computes two metrics across all problems:
-          1. total_score: For each problem, compute the score by summing, for each subtask,
-             the maximum score over all submissions.
-          2. round_robin_score: For each problem, compute the round robin score as described
-             in simulate_round_robin_score (which limits the submissions to 50 per problem).
-        Returns a dict with both metrics.
-        """
         total_score = total_round_robin = 0.0
-        for _, submissions in self.predictions_by_problem.items():
-            score, _ = self.get_problem_score(submissions)
+        self.problem_scores = {}
+        for name, submissions in self.predictions_by_problem.items():
+            score, subtasks = self.get_problem_score(submissions)
+            self.problem_scores[name] = (score, subtasks)
             total_score += score
             total_round_robin += self.simulate_round_robin_score(submissions)
+        self.print_problem_scores()
         metrics_dict = super().get_metrics()
         for m in metrics_dict.values():
             m["total_score"], m["round_robin_score"] = str(total_score), str(total_round_robin)
@@ -100,3 +92,16 @@ class IOIMetrics(BaseMetrics):
     def reset(self):
         super().reset()
         self.predictions_by_problem = defaultdict(list)
+        self.problem_scores = {}
+
+    def print_problem_scores(self):
+        print("---------------------------------Problem and subtask scores---------------------------------")
+        for name, (achieved_total, achieved_subtasks) in self.problem_scores.items():
+            submissions = self.predictions_by_problem[name]
+            max_subtasks = {}
+            for sub in submissions:
+                max_subtasks[sub["subtask"]] = sub["subtask_score"]
+            max_total = sum(max_subtasks.values())
+            print(f"# {name}: {achieved_total}/{max_total}")
+            for subtask, achieved in achieved_subtasks.items():
+                print(f"  {subtask}: {achieved}/{max_subtasks[subtask]}")
