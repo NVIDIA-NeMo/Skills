@@ -1,6 +1,6 @@
 
 user: |-
-  You will be given a problem followed by an enumerated list of {num_solutions} candidate solutions. Your task is to systematically analyze these solutions to identify the best approach.
+  You will be given a problem followed by an enumerated list of {num_solutions} candidate solutions. Your task is to systematically analyze these solutions to identify the best solution among them.
 
   Problem: {problem}
 
@@ -10,3 +10,7 @@ user: |-
   End your evaluation with exactly:
   Judgment: [IDX]
   where IDX is the index 0-{max_idx} of the best solution.
+
+  Example: If Solution 2 (index 2) is best, write: "Judgment: 2" at the end.
+
+  Important: Use only the format "Judgment: 2" with no special formatting, quotes, or additional characters.
