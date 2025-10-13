@@ -61,7 +61,10 @@ class AALCRMetrics(BaseMetrics):
 
         # Primary evaluation method: LLM-based equality checker
         if "judgement" in prediction:
-            correctness_dict["judge_correct"] = self.is_aalcr_correct(prediction["judgement"])
+            is_valid_generation = len(prediction["generation"].strip()) > 0
+            correctness_dict["judge_correct"] = (
+                self.is_aalcr_correct(prediction["judgement"]) if is_valid_generation else False
+            )
 
         return correctness_dict
 
