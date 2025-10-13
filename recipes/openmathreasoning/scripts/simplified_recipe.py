@@ -100,6 +100,7 @@ def run_sdg(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
         model="Qwen/QwQ-32B",
         server_type="trtllm",
         server_gpus=num_gpus,
+        server_args="--max_num_tokens 10000",  # to account for prompt tokens
         log_samples=not wandb_params["disable_wandb"],
         # using prefix as group to make it easier to see all sdg steps together
         wandb_group=f"{expname_prefix}-sdg",

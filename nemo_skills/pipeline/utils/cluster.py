@@ -233,10 +233,16 @@ def read_config(config_file):
     # resolve ssh tunnel config
     if "ssh_tunnel" in cluster_config:
         cluster_config = update_ssh_tunnel_config(cluster_config)
+        if "job_dir" not in cluster_config["ssh_tunnel"]:
+            raise ValueError("job_dir must be provided in the ssh_tunnel config.")
+        if not Path(cluster_config["ssh_tunnel"]["job_dir"]).is_absolute():
+            raise ValueError("job_dir in ssh_tunnel must be an absolute path.")
 
     if cluster_config["executor"] == "slurm" and "ssh_tunnel" not in cluster_config:
         if "job_dir" not in cluster_config:
             raise ValueError("job_dir must be provided in the cluster config if ssh_tunnel is not provided.")
+        if not Path(cluster_config["job_dir"]).is_absolute():
+            raise ValueError("job_dir must be an absolute path.")
         set_nemorun_home(cluster_config["job_dir"])
 
     return cluster_config
