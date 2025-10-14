@@ -2,9 +2,9 @@
 
 !!! info
 
-    This pipeline starting script is [nemo_skills/pipeline/train.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/train.py)
+    This pipeline starting script is [nemo_skills/pipeline/train.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/train.py)
 
-    All extra parameters are passed to either [nemo_skills/training/start_sft.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/training/start_sft.py) or [nemo_skills/training/start_dpo.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/training/start_dpo.py)
+    All extra parameters are passed to either [nemo_skills/training/start_sft.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/start_sft.py) or [nemo_skills/training/start_dpo.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/start_dpo.py)
 
 
 ## Preparing the data
@@ -28,7 +28,7 @@ If you want to run that command inside container or on cluster, add `ns run_cmd 
 
 You need to pass in the config and tokenizer so that we can format the data accordingly. There are many more parameters
 that data preparation script supports which you can see
-[here](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/training/data_preparation_utils/config/math_sft.yaml).
+[here](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/data_preparation_utils/config/math_sft.yaml).
 We are using [SDP library](https://github.com/NVIDIA/NeMo-speech-data-processor) for preparing the data, so it's
 a good idea to check their documentation to understand how this config is structured.
 
@@ -229,7 +229,7 @@ train(
 
 If your data size is very large (i.e. >1M samples), you might run out of memory when doing packing on full data.
 If that's the case, it's recommended to split data into smaller chunks and then merge them using
-[nemo_skills/training/merge_packed_data.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/training/merge_packed_data.py)
+[nemo_skills/training/merge_packed_data.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/merge_packed_data.py)
 
 Example command:
 

@@ -2,9 +2,9 @@
 
 !!! info
 
-    This pipeline starting script is [nemo_skills/pipeline/generate.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/generate.py)
+    This pipeline starting script is [nemo_skills/pipeline/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/generate.py)
 
-    All extra parameters are passed to [nemo_skills/inference/generate.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/generate.py)
+    All extra parameters are passed to [nemo_skills/inference/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/generate.py)
 
 Generation pipeline can be used for large-scale data generation
 using LLMs. You provide an input jsonl file as well as the prompt config and we run LLM for each line
@@ -87,7 +87,7 @@ Both of those calls should produce roughly the same result inside `/workspace/te
 ```
 
 You can customize batch size, temperature, number of generation tokens and many more things.
-See [nemo_skills/inference/generate.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/generate.py) for all supported parameters.
+See [nemo_skills/inference/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/generate.py) for all supported parameters.
 
 
 !!! tip
@@ -137,11 +137,11 @@ See [checkpoint conversion](../pipelines/checkpoint-conversion.md) to learn more
 models to different formats.
 
 Note that in this case we use a path to one the train set of the "math" dataset which we prepared with previous command.
-We are using a [generic/math](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/generic/math.yaml) config
+We are using a [generic/math](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/generic/math.yaml) config
 and a tokenizer for the base model
 (we found Llama 3.1 follows few-shots much better without chat tokens).
 Finally, we are specifying few shot examples which come from
-[here](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/few_shot_examples/math.py)
+[here](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/few_shot_examples/math.py)
 and asking the script to evaluate the generated solutions by providing `--eval_args`.
 
 An example prompt (printed by the generate script) for that job is below.
@@ -296,7 +296,7 @@ After the jobs are finished, you will see `/workspace/synthetic-math-solutions/g
 files with X ranging from 0 to 31. Each of them will have the `generation` key (LLM solution), `predicted_answer`
 key (extracted answer from `\boxed{}` field) and `symbolic_correct` key which is a True/False evaluation of whether
 the `predicted_answer` is matching the `expected_answer` done via a
-[symbolic comparison](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/evaluation/math_grader.py).
+[symbolic comparison](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/math_grader.py).
 
 To get a more robust assessment of whether the solutions are correct you can follow up with an
 [LLM-as-a-judge evaluation](../pipelines/llm-as-a-judge.md) and then

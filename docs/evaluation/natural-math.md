@@ -5,7 +5,7 @@ This section details how to evaluate natural language math benchmarks. For all b
 ## How we extract answers
 
 After inference from the `model`, by default we will extract the answer from the last `\boxed{}` field in the generated solution. This is consistent
-with our default [generic/math](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/generic/math.yaml) prompt config.
+with our default [generic/math](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/generic/math.yaml) prompt config.
 
 We also support arbitrary regex based extraction. E.g., if you use a custom prompt that asks an LLM to put an answer after `Final answer:`
 at the end of the solution, you can use these parameters to match the extraction logic to that prompt
@@ -21,7 +21,7 @@ at the end of the solution, you can use these parameters to match the extraction
 
 ## Using LLM-as-a-judge
 
-While most answers can be compared using a [symbolic checker](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/evaluation/math_grader.py#L47), some require an LLM-as-a-judge to evaluate the equivalence of expressions.
+While most answers can be compared using a [symbolic checker](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/math_grader.py#L47), some require an LLM-as-a-judge to evaluate the equivalence of expressions.
 
 We enable LLM-as-a-judge by default for the following benchmarks
 
@@ -94,7 +94,7 @@ You can see the full list of supported judge parameters by running `ns eval --he
 !!! note
     The judge task is fairly simple, it only needs to compare expected and predicted answers in the context of the problem.
     It **does not** need to check the full solution for correctness. By default we use
-    [judge/math](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/judge/math.yaml) prompt for the judge.
+    [judge/math](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/judge/math.yaml) prompt for the judge.
 
 ### Setting default judge parameters
 
@@ -111,17 +111,17 @@ JUDGE_PIPELINE_ARGS = {
 JUDGE_ARGS = "++prompt_config=judge/hle ++generation_key=judgement ++add_generation_stats=False"
 ```
 
-You can take a look at [hle benchmark](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/hle/__init__.py)
-or [omni-math benchmark](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/omni-math/__init__.py) as an example.
+You can take a look at [hle benchmark](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hle/__init__.py)
+or [omni-math benchmark](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/omni-math/__init__.py) as an example.
 
 The hle example is using a regular generation module, while omni-math is using a special `math_judge` generation type.
-The [math judge generation](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/llm_math_judge.py) module
-is almost the same as the [main generation module](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/generate.py)
+The [math judge generation](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/llm_math_judge.py) module
+is almost the same as the [main generation module](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/generate.py)
 except that it changes the default prompt config, generation key and adds prefill functionality to not run the judge if the
 answer cannot be extracted or the answers match exactly.
 
 Generally, you should always use `math_judge` if the model is expected to put the answer in the `\boxed{}` field. Since
-this is not the case for our default [hle prompt](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/generic/hle.yaml),
+this is not the case for our default [hle prompt](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/generic/hle.yaml),
 we have to use a regular generation module there.
 
 In either case you can always customize the judge prompt by setting a new `++prompt_config` or any other judge inference parameters
@@ -131,105 +131,105 @@ In either case you can always customize the judge prompt by setting a new `++pro
 
 ### aime25
 
-- Benchmark is defined in [`nemo_skills/dataset/aime25/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/aime25/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/aime25/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/aime25/__init__.py)
 - Original benchmark source is [here](https://artofproblemsolving.com/wiki/index.php/AIME_Problems_and_Solutions).
 
 ### aime24
 
-- Benchmark is defined in [`nemo_skills/dataset/aime24/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/aime24/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/aime24/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/aime24/__init__.py)
 - Original benchmark source is [here](https://artofproblemsolving.com/wiki/index.php/AIME_Problems_and_Solutions).
 
 ### hmmt_feb25
 
-- Benchmark is defined in [`nemo_skills/dataset/hmmt_feb25/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/hmmt_feb25/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/hmmt_feb25/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hmmt_feb25/__init__.py)
 - Original benchmark source is [here](https://www.hmmt.org/www/archive/282).
 
 ### brumo25
 
-- Benchmark is defined in [`nemo_skills/dataset/brumo25/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/brumo25/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/brumo25/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/brumo25/__init__.py)
 - Original benchmark source is [here](https://www.brumo.org/archive).
 
 ### comp-math-24-25
 
-- Benchmark is defined in [`nemo_skills/dataset/comp-math-24-25/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/comp-math-24-25/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/comp-math-24-25/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/comp-math-24-25/__init__.py)
 - This benchmark is created by us! See [https://arxiv.org/abs/2504.16891](https://arxiv.org/abs/2504.16891) for more details.
 
 ### omni-math
 
-- Benchmark is defined in [`nemo_skills/dataset/omni-math/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/omni-math/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/omni-math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/omni-math/__init__.py)
 - Original benchmark source is [here](https://omni-math.github.io/).
 
 ### math
 
-- Benchmark is defined in [`nemo_skills/dataset/math/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/math/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/math/__init__.py)
 - Original benchmark source is [here](https://github.com/hendrycks/math).
 
 ### math-500
 
-- Benchmark is defined in [`nemo_skills/dataset/math-500/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/math-500/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/math-500/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/math-500/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/HuggingFaceH4/MATH-500).
 
 ### gsm8k
 
-- Benchmark is defined in [`nemo_skills/dataset/gsm8k/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/gsm8k/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/gsm8k/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/gsm8k/__init__.py)
 - Original benchmark source is [here](https://github.com/openai/grade-school-math).
 
 ### amc23
 
-- Benchmark is defined in [`nemo_skills/dataset/amc23/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/amc23/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/amc23/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/amc23/__init__.py)
 - Original benchmark source is [here](https://artofproblemsolving.com/wiki/index.php/2023_AMC_12A).
 
 ### college_math
 
-- Benchmark is defined in [`nemo_skills/dataset/college_math/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/college_math/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/college_math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/college_math/__init__.py)
 - Original benchmark source is [here](https://github.com/XylonFu/MathScale).
 
 ### gaokao2023en
 
-- Benchmark is defined in [`nemo_skills/dataset/gaokao2023en/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/gaokao2023en/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/gaokao2023en/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/gaokao2023en/__init__.py)
 - Original benchmark source is [here](https://github.com/OpenLMLab/GAOKAO-Bench).
 
 ### math-odyssey
 
-- Benchmark is defined in [`nemo_skills/dataset/math-odyssey/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/math-odyssey/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/math-odyssey/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/math-odyssey/__init__.py)
 - Original benchmark source is [here](https://github.com/protagolabs/odyssey-math).
 
 ### minerva_math
 
-- Benchmark is defined in [`nemo_skills/dataset/minerva_math/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/minerva_math/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/minerva_math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/minerva_math/__init__.py)
 - Original benchmark source is [here](https://github.com/QwenLM/Qwen2.5-Math/tree/main/evaluation/data/minerva_math).
 
 ### olympiadbench
 
-- Benchmark is defined in [`nemo_skills/dataset/olympiadbench/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/olympiadbench/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/olympiadbench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/olympiadbench/__init__.py)
 - Original benchmark source is [here](https://github.com/OpenBMB/OlympiadBench).
 
 ### algebra222
 
-- Benchmark is defined in [`nemo_skills/dataset/algebra222/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/algebra222/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/algebra222/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/algebra222/__init__.py)
 - Original benchmark source is [here](https://github.com/joyheyueya/declarative-math-word-problem).
 
 ### asdiv
 
-- Benchmark is defined in [`nemo_skills/dataset/asdiv/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/asdiv/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/asdiv/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/asdiv/__init__.py)
 - Original benchmark source is [here](https://github.com/chaochun/nlu-asdiv-dataset).
 
 ### gsm-plus
 
-- Benchmark is defined in [`nemo_skills/dataset/gsm-plus/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/gsm-plus/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/gsm-plus/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/gsm-plus/__init__.py)
 - Original benchmark source is [here](https://github.com/qtli/GSM-Plus).
 
 ### mawps
 
-- Benchmark is defined in [`nemo_skills/dataset/mawps/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/mawps/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/mawps/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mawps/__init__.py)
 - Original benchmark source is [here](https://github.com/sroy9/mawps).
 
 ### svamp
 
-- Benchmark is defined in [`nemo_skills/dataset/svamp/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/svamp/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/svamp/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/svamp/__init__.py)
 - Original benchmark source is [here](https://github.com/arkilpatel/SVAMP).
 
 ### beyond-aime
 
-- Benchmark is defined in [`nemo_skills/dataset/beyond-aime/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/beyond-aime/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/beyond-aime/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/beyond-aime/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/ByteDance-Seed/BeyondAIME).

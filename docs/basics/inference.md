@@ -44,9 +44,9 @@ Click on :material-plus-circle: symbols in the snippet below to learn more detai
     print(output["generation"]) # (3)!
     ```
 
-    1.   Here we use [generic/default](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config/generic/default.yaml) config.
+    1.   Here we use [generic/default](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config/generic/default.yaml) config.
 
-         See [nemo_skills/prompt/config](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config) for more config options
+         See [nemo_skills/prompt/config](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config) for more config options
          or [create your own prompts](prompt-format.md)
 
 
@@ -90,9 +90,9 @@ Click on :material-plus-circle: symbols in the snippet below to learn more detai
 
          To use OpenAI models, use `OPENAI_API_KEY` and set `base_url=https://api.openai.com/v1`.
 
-    2.   Here we use [generic/default](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config/generic/default.yaml) config.
+    2.   Here we use [generic/default](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config/generic/default.yaml) config.
 
-         See [nemo_skills/prompt/config](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config) for more config options
+         See [nemo_skills/prompt/config](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config) for more config options
          or [create your own prompts](prompt-format.md)
 
 
@@ -144,11 +144,11 @@ Click on :material-plus-circle: symbols in the snippet below to learn more detai
 
     1.   8B model doesn't always follow these instructions, so using 70B or 405B for code execution is recommended.
 
-    2.   Here we use [generic/default](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config/generic/default.yaml) config.
+    2.   Here we use [generic/default](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config/generic/default.yaml) config.
 
          Note how we are updating system message on the previous line (you can also include it in the config directly).
 
-         See [nemo_skills/prompt/config](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config) for more config options
+         See [nemo_skills/prompt/config](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config) for more config options
          or [create your own prompts](prompt-format.md)
 
     3.   This should print

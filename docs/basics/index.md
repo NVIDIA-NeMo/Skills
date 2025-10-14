@@ -11,7 +11,7 @@ locally and on slurm cluster). This will help you understand some important conc
 First, let's install nemo-skills
 
 ```bash
-pip install git+https://github.com/NVIDIA/NeMo-Skills.git
+pip install git+https://github.com/NVIDIA-NeMo/Skills.git
 ```
 
 or if you have the repo cloned locally, you can run `pip install -e .` instead.
@@ -175,7 +175,7 @@ This time pick `slurm` for the config type and fill out all other required infor
 Now that we have a slurm config setup, we can try running some jobs. Generally, you will need to upload models / data
 on cluster manually and then reference a proper mounted path. But for small-scale things we can also leverage the
 [code packaging](./code-packaging.md) functionality that nemo-skills provide. Whenever you run any of the ns commands
-from a git repository (whether that's [NeMo-Skills](https://github.com/NVIDIA/NeMo-Skills) itself or any other repo),
+from a git repository (whether that's [NeMo-Skills](https://github.com/NVIDIA-NeMo/Skills) itself or any other repo),
 we will package your code and upload it on cluster. You can then reference it with `/nemo_run/code` in your commands.
 Let's give it a try by putting our prompt/data into a new git repository
 
@@ -259,7 +259,7 @@ eval(
      [Important details](#important-details) section at the end of this document.
 3.   `run_after` and `expname` arguments can be used to schedule jobs to run one after the other
      (we will set proper slurm dependencies). These parameters have no effect when you're not running slurm jobs.
-4.   You can find all supported benchmarks in the [nemo_skills/dataset](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/dataset)
+4.   You can find all supported benchmarks in the [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/dataset)
      folder. `:64` means that we are asking for 64 samples for each example so that we can compute majority@64 and pass@64 metrics.
 
 After all evaluation jobs are finished (you'd need to check your slurm queue to know that) you can summarize the results

@@ -127,7 +127,7 @@ ns eval \
     ++system_message='/think'
 ```
 
-For GPQA, we use the [generic/general-boxed](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/generic/general-boxed.yaml) prompt which can be specified as follows:
+For GPQA, we use the [generic/general-boxed](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/generic/general-boxed.yaml) prompt which can be specified as follows:
 
 ```bash hl_lines="13"
 ns eval \
@@ -145,7 +145,7 @@ ns eval \
     ++prompt_config=generic/general-boxed
 ```
 
-For MMLU-Pro, we use the [eval/aai/mcq-10choices-boxed](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/eval/aai/mcq-10choices-boxed.yaml) prompt which can be specified as follows:
+For MMLU-Pro, we use the [eval/aai/mcq-10choices-boxed](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/aai/mcq-10choices-boxed.yaml) prompt which can be specified as follows:
 
 ```bash hl_lines="13"
 ns eval \

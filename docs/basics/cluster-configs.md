@@ -3,7 +3,7 @@
 All of the [pipeline scripts](../pipelines/index.md) accept `--cluster` argument which you can use
 to control where the job gets executed (you need a "local" cluster config to run jobs locally as well).
 That argument picks up one of the configs inside your local
-[cluster_configs](https://github.com/NVIDIA/NeMo-Skills/tree/main/cluster_configs)
+[cluster_configs](https://github.com/NVIDIA-NeMo/Skills/tree/main/cluster_configs)
 folder by default, but you can specify another location with `--config_dir` or set it in `NEMO_SKILLS_CONFIG_DIR` env variable.
 You can also use `NEMO_SKILLS_CONFIG` env variable instead of the `--cluster` parameter.
 The cluster config defines an executor (local or slurm), mounts for data/model access and (slurm-only) various parameters
@@ -14,7 +14,7 @@ to let [NeMo-Run](https://github.com/NVIDIA/NeMo-Run) know how to connect there.
 But if you prefer to run from the cluster directly, you can install NeMo-Skills there
 and then only specify `job_dir` parameter without using `ssh_tunnel` section in the config.
 
-You can see example configs in [cluster_configs](https://github.com/NVIDIA/NeMo-Skills/tree/main/cluster_configs) folder.
+You can see example configs in [cluster_configs](https://github.com/NVIDIA-NeMo/Skills/tree/main/cluster_configs) folder.
 To create a new config you can either rename and modify one of the examples or run
 
 ```bash
@@ -74,8 +74,8 @@ Here are some suggestions on what can be defined in cluster configs for differen
    versions of inference libraries (e.g. [vLLM](https://github.com/vllm-project/vllm)) or training libraries
    (e.g. [NeMo](https://github.com/NVIDIA/NeMo)). If you get some errors, you might also need to modify the entry-point
    scripts we use, e.g.
-   [nemo_skills/inference/server/serve_vllm.py](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/inference/server/serve_vllm.py)
-   or [nemo_skills/training/start_sft.py](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/training/start_sft.py)
+   [nemo_skills/inference/server/serve_vllm.py](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/inference/server/serve_vllm.py)
+   or [nemo_skills/training/start_sft.py](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/training/start_sft.py)
 
 4. For slurm clusters it's recommended to [build .sqsh files](https://github.com/NVIDIA/enroot/blob/master/doc/cmd/import.md#example)
    for all containers and reference the cluster path

@@ -2,9 +2,9 @@
 
 !!! info
 
-    This pipeline starting script is [nemo_skills/pipeline/generate.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/generate.py)
+    This pipeline starting script is [nemo_skills/pipeline/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/generate.py)
 
-    All extra parameters are passed to [nemo_skills/inference/llm_math_judge.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/llm_math_judge.py)
+    All extra parameters are passed to [nemo_skills/inference/llm_math_judge.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/llm_math_judge.py)
 
 When evaluating complex mathematical questions, it's very hard to have a rule-based symbolic comparison system.
 While we do perform such comparison by default, for most accurate results it's best to use LLM-as-a-judge pipeline.
@@ -64,5 +64,5 @@ pass@1          | 40          | 47.50            | 47.50         | 47.50        
 
 If you want to see where symbolic comparison differs from judge comparison, run with `--debug` option.
 
-We use the following [judge prompt](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config/judge/math.yaml)
+We use the following [judge prompt](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/judge/math.yaml)
 by default, but you can customize it the same way as you [customize any other prompt](../basics/prompt-format.md).

@@ -34,11 +34,11 @@ To orchestrate complex jobs, NeMo-Skills uses Docker containers. You’ll need t
 Run the following commands locally to complete the setup:
 
 ```shell
-pip install git+https://github.com/NVIDIA/NeMo-Skills.git
+pip install git+https://github.com/NVIDIA-NeMo/Skills.git
 ns setup
 ```
 
-When prompted to add mounts, define a folder as `/workspace`. This folder will be used in subsequent commands. For more details, see the [NeMo-Skills configs](https://nvidia.github.io/NeMo-Skills/basics/cluster-configs/) documentation.
+When prompted to add mounts, define a folder as `/workspace`. This folder will be used in subsequent commands. For more details, see the [NeMo-Skills configs](https://nvidia-nemo.github.io/Skills/basics/cluster-configs/) documentation.
 
 In the following sections, we will always use commands with `--cluster=local` argument which you’d need to change to `--cluster=slurm` (or whatever you named the config during the setup process) if running on Slurm. When using Slurm, all commands will finish immediately and schedule jobs in the cluster queue.
 
@@ -83,11 +83,11 @@ majority@8       | 30          | 871        | 20.00%           | 0.00%
 pass@8           | 30          | 871        | 33.33%           | 0.00%
 ```
 
-Note that you might not get exactly the same numbers because of the stochastic nature of LLM generations. You can read more about `ns eval` pipeline options in the [evaluation](https://nvidia.github.io/NeMo-Skills/pipelines/evaluation/) documentation.
+Note that you might not get exactly the same numbers because of the stochastic nature of LLM generations. You can read more about `ns eval` pipeline options in the [evaluation](https://nvidia-nemo.github.io/Skills/pipelines/evaluation/) documentation.
 
 ## Synthetic Data Generation
 
-To improve on the established baseline, let's generate some synthetic mathematical data. Following the [OpenMathReasoning recipe](https://nvidia.github.io/NeMo-Skills/openmathreasoning1/), we will use a small set of [AoPS forum discussions](https://artofproblemsolving.com/community) and extract problems from them using the same Qwen2.5-14B-Instruct model. We will then generation the new "long reasoning" solutions using [QwQ-32B](https://huggingface.co/Qwen/QwQ-32B). These problem-solution pairs will be used for training.
+To improve on the established baseline, let's generate some synthetic mathematical data. Following the [OpenMathReasoning recipe](https://nvidia-nemo.github.io/Skills/openmathreasoning1/), we will use a small set of [AoPS forum discussions](https://artofproblemsolving.com/community) and extract problems from them using the same Qwen2.5-14B-Instruct model. We will then generation the new "long reasoning" solutions using [QwQ-32B](https://huggingface.co/Qwen/QwQ-32B). These problem-solution pairs will be used for training.
 
 This simplified pipeline is very basic and misses multiple important steps (extracting ground-truth answers and filtering for correctness, for example). However, it should be enough to teach the 14B model how to use long reasoning and significantly improve the baseline results.
 
@@ -104,9 +104,9 @@ ns run_cmd --expname=prepare-data --log_dir=/workspace/prepare-data --cluster=lo
     head -n 1000 raw_aops_data.jsonl > data.jsonl'
 ```
 
-The fields from the data.jsonl will be used to fill the prompt in [extract-problems.yaml](https://github.com/NVIDIA/NeMo-Skills/blob/main/recipes/openmathreasoning/prompts/extract-problems.yaml), and this final prompt will be passed to an LLM. To learn more, you can inspect the data file and prompt script. For more details about prompt format, see the [prompts](https://nvidia.github.io/NeMo-Skills/basics/prompt-format/) documentation.
+The fields from the data.jsonl will be used to fill the prompt in [extract-problems.yaml](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/openmathreasoning/prompts/extract-problems.yaml), and this final prompt will be passed to an LLM. To learn more, you can inspect the data file and prompt script. For more details about prompt format, see the [prompts](https://nvidia-nemo.github.io/Skills/basics/prompt-format/) documentation.
 
-Next, run the [generation pipeline](https://nvidia.github.io/NeMo-Skills/pipelines/generation/) using the [Python API](https://nvidia.github.io/NeMo-Skills/pipelines/#python-interface):
+Next, run the [generation pipeline](https://nvidia-nemo.github.io/Skills/pipelines/generation/) using the [Python API](https://nvidia-nemo.github.io/Skills/pipelines/#python-interface):
 
 ```py
 # run_sdg.py
@@ -165,7 +165,7 @@ generate(
 )
 ```
 
-It might take a few hours for this job to complete. If you’re able to run on multiple nodes in a Slurm cluster, you can parallelize it across N independent jobs by adding `num_chunks=N`. You can learn more about this and other parameters in the [generation](https://nvidia.github.io/NeMo-Skills/pipelines/generation/) documentation.
+It might take a few hours for this job to complete. If you’re able to run on multiple nodes in a Slurm cluster, you can parallelize it across N independent jobs by adding `num_chunks=N`. You can learn more about this and other parameters in the [generation](https://nvidia-nemo.github.io/Skills/pipelines/generation/) documentation.
 
 If you have W&B logging enabled, you can inspect generations there as shown on the picture below.
 
@@ -191,7 +191,7 @@ ns run_cmd --log_dir=/workspace/prepare-sft-data --expname=prepare-sft-data --ru
       ++filters.remove_no_think_tags=true
 ```
 
-Next, [convert the model](https://nvidia.github.io/NeMo-Skills/pipelines/checkpoint-conversion/) to NeMo format. You can skip this step for NeMo-RL training.
+Next, [convert the model](https://nvidia-nemo.github.io/Skills/pipelines/checkpoint-conversion/) to NeMo format. You can skip this step for NeMo-RL training.
 
 ```shell
 ns convert \
@@ -249,7 +249,7 @@ ns nemo_rl sft \
     ++sft.max_num_epochs=2
 ```
 
-To learn more about SFT configuration, see the [NeMo-Skills training](https://nvidia.github.io/NeMo-Skills/pipelines/training/) documentation. If you have W\&B logging enabled, you can inspect the training metrics there.
+To learn more about SFT configuration, see the [NeMo-Skills training](https://nvidia-nemo.github.io/Skills/pipelines/training/) documentation. If you have W\&B logging enabled, you can inspect the training metrics there.
 
 ![Training metrics in the W&B dashboard](../images/omr-simple-recipe/figure2.png)
 
@@ -310,6 +310,6 @@ You can also see it in the W&B dashboard. Switch to the Runs panel and click on 
 
 ## What's next?
 
-With NeMo-Skills, you can easily build sophisticated pipelines by connecting the various stages needed to improve LLM abilities. This enables you to seamlessly switch between different training and inference frameworks. All the commands used in this tutorial can be combined into a [single script](https://github.com/NVIDIA/NeMo-Skills/blob/main/recipes/openmathreasoning/scripts/simplified_recipe.py) that schedules the entire job. With just one line change, you can transition from quick prototyping on your local workstation to large-scale experiments on a Slurm cluster.
+With NeMo-Skills, you can easily build sophisticated pipelines by connecting the various stages needed to improve LLM abilities. This enables you to seamlessly switch between different training and inference frameworks. All the commands used in this tutorial can be combined into a [single script](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/openmathreasoning/scripts/simplified_recipe.py) that schedules the entire job. With just one line change, you can transition from quick prototyping on your local workstation to large-scale experiments on a Slurm cluster.
 
-As an exercise, try adding the extra filtering steps mentioned in the [OpenMathReasoning documentation](https://nvidia.github.io/NeMo-Skills/releases/openmathreasoning/dataset/). You can also try generating multiple solutions per problem and check how this affects final evaluation results. As you will see, having a single script that runs everything—from data generation to model training to evaluation—makes it very easy to iterate on changes to any part of the pipeline.
+As an exercise, try adding the extra filtering steps mentioned in the [OpenMathReasoning documentation](https://nvidia-nemo.github.io/Skills/releases/openmathreasoning/dataset/). You can also try generating multiple solutions per problem and check how this affects final evaluation results. As you will see, having a single script that runs everything—from data generation to model training to evaluation—makes it very easy to iterate on changes to any part of the pipeline.

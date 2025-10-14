@@ -14,7 +14,7 @@ To add a new Slurm test follow this process:
 Before running tests you need to ensure your cluster config has a few specific mounts and run a few data preparation commands.
 
 - Define `/workspace` mount in your cluster config.
-- Define `/swe-bench-images` mount in your cluster config with [swe-bench images downloaded](https://nvidia.github.io/NeMo-Skills/evaluation/code/#data-preparation).
+- Define `/swe-bench-images` mount in your cluster config with [swe-bench images downloaded](https://nvidia-nemo.github.io/Skills/evaluation/code/#data-preparation).
 - Run the following data preparation command for RULER.
 
 ```bash
@@ -37,4 +37,4 @@ accidentally override results of existing pipeline.
 
 See [./clone_and_run.sh](./clone_and_run.sh) for how to register tests to run on schedule with cron.
 
-**Note on SWE-bench tests ([qwen3coder_30b_swebench](qwen3coder_30b_swebench)):** by default, run_all.sh assumes your cluster config has a mount called `/swe-bench-images` where the SWE-bench Verified images are downloaded. See the [SWE-bench docs](https://nvidia.github.io/NeMo-Skills/evaluation/code/#data-preparation) for more details. To use a different path, you can modify the test's --container_formatter parameter, or you can remove it entirely to pull the images from Dockerhub every time the test is run (not recommended).
+**Note on SWE-bench tests ([qwen3coder_30b_swebench](qwen3coder_30b_swebench)):** by default, run_all.sh assumes your cluster config has a mount called `/swe-bench-images` where the SWE-bench Verified images are downloaded. See the [SWE-bench docs](https://nvidia-nemo.github.io/Skills/evaluation/code/#data-preparation) for more details. To use a different path, you can modify the test's --container_formatter parameter, or you can remove it entirely to pull the images from Dockerhub every time the test is run (not recommended).

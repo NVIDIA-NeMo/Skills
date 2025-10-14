@@ -6,16 +6,16 @@ More details are coming soon!
 
 ### ruler
 
-- Benchmark is defined in [`nemo_skills/dataset/ruler/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/ruler/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/ruler/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ruler/__init__.py)
 - Original benchmark source is [here](https://github.com/NVIDIA/RULER).
 
 ### mrcr
 
-- Benchmark is defined in [`nemo_skills/dataset/mrcr/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/mrcr/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/mrcr/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mrcr/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/openai/mrcr).
 
 ### aalcr
-- Benchmark is defined in [`nemo_skills/dataset/aalcr/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/aalcr/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/aalcr/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/aalcr/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR) and the reported scores by AA is here [here](https://artificialanalysis.ai/evaluations/artificial-analysis-long-context-reasoning).
 
 #### Data preparation.

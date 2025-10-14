@@ -11,9 +11,9 @@ Our prompts are configured via two yaml files:
 The prompt config contains user and system messages with placeholders for keys from a data file.
 The configs are model independent (any model can be used with any config).
 All of the configs that we support by default are available in
-[nemo_skills/prompt/config](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config)
+[nemo_skills/prompt/config](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config)
 folder. Here is an example prompt for
-[math evaluations](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/config/generic/math.yaml):
+[math evaluations](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/config/generic/math.yaml):
 
 ```yaml
 # default prompt for all math benchmarks (e.g. gsm8k, math)
@@ -43,16 +43,16 @@ All other keys will need to be specified when you call `prompt.fill`
 (more on that in the [prompt-api section](#prompt-api)) so that we can replace placeholders with actual input.
 
 The input for few shot examples always comes from one of the available example types in
-[here](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/few_shot_examples/__init__.py).
+[here](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/few_shot_examples/__init__.py).
 
 
 ## Code tags
 
 Code tags define the special tokens that models use to mark executable code blocks and their output. Code tags are required when using code execution.
 All code tags that we support by default are available in
-[nemo_skills/prompt/code_tags](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/code_tags).
+[nemo_skills/prompt/code_tags](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/code_tags).
 
-Here is an example code tags file for the [llama3](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/prompt/code_tags/llama3.yaml) family:
+Here is an example code tags file for the [llama3](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/prompt/code_tags/llama3.yaml) family:
 
 ```yaml
 # Code tags for llama3 family models
@@ -183,7 +183,7 @@ which outputs
 The answer is 4<|im_end|>
 ```
 
-This example illustrates how the prompt API is used under the hood in [the SFT data preparation script](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/training/prepare_data.py).
+This example illustrates how the prompt API is used under the hood in [the SFT data preparation script](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/prepare_data.py).
 
 
 #### Example 5 - Formatting the Assistant Response (Reasoning)
@@ -219,4 +219,4 @@ which outputs
     We suggest adding the thinking part to the `content` field as part of preprocessing in such cases.
 
 
-You can also have a look at the [tests](https://github.com/NVIDIA/NeMo-Skills/tree/main/tests/test_prompts.py) to see more examples of using our prompt API.
+You can also have a look at the [tests](https://github.com/NVIDIA-NeMo/Skills/tree/main/tests/test_prompts.py) to see more examples of using our prompt API.

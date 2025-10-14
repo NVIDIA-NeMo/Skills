@@ -208,7 +208,7 @@ def setup():
             f"\nCreated {config_type} config file at {config_file}.\n"
             f"The containers section was initialized with default values, but you can always change them manually.\n"
             f"You can find more information on what containers we use in "
-            f"https://github.com/NVIDIA/NeMo-Skills/tree/main/dockerfiles"
+            f"https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles"
         )
 
         if config_type == "local":

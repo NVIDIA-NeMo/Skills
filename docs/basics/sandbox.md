@@ -7,7 +7,7 @@ we provide a basic sandbox that we use to execute code and validate the correctn
 ## Local sandbox
 
 The default sandbox option used in our pipeline is a local docker container.
-Check out [nemo_skills/code_execution/local_sandbox](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/code_execution/local_sandbox)
+Check out [nemo_skills/code_execution/local_sandbox](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/code_execution/local_sandbox)
 for implementation details.
 
 Please note that our provided sandbox is not fully secure and you are strongly encouraged to

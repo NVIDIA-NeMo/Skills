@@ -4,11 +4,11 @@
 
     Depending on the algorithm/framework, this pipeline starting script is
 
-    * [nemo_skills/pipeline/openrlhf/sft.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/openrlhf/sft.py)
+    * [nemo_skills/pipeline/openrlhf/sft.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/openrlhf/sft.py)
 
-    * [nemo_skills/pipeline/openrlhf/ppo.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/openrlhf/sft.py)
+    * [nemo_skills/pipeline/openrlhf/ppo.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/openrlhf/sft.py)
 
-    * [nemo_skills/pipeline/verl/ppo.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/verl/ppo.py)
+    * [nemo_skills/pipeline/verl/ppo.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/verl/ppo.py)
 
     All extra parameters are passed to
 
@@ -91,7 +91,7 @@ ppo_openrlhf(
 ## PPO with verl
 
 Here is an example of running PPO job with verl.
-You can use [nemo_skills/training/verl/prepare_data.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/training/verl/prepare_data.py) to convert
+You can use [nemo_skills/training/verl/prepare_data.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/verl/prepare_data.py) to convert
 our standard [SFT data format](./training.md#preparing-the-data) into parquet.
 
 ```python

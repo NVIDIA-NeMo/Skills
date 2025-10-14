@@ -3,7 +3,7 @@
 ## Basics
 
 NeMo-Skills has a large collection of building blocks that you can use to construct various pipelines to improve LLMs.
-All of the "pipeline" scripts are located in the [nemo_skills/pipeline](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/pipeline)
+All of the "pipeline" scripts are located in the [nemo_skills/pipeline](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/pipeline)
 folder and have a unified interface that help us connect them together.
 
 Each pipeline script is a wrapper that accepts *wrapper* arguments that tell us how to orchestrate the job. These
@@ -57,7 +57,7 @@ to check its arguments
 ```
 
 You can also open that script's code in
-[nemo_skills/inference/generate.py](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo_skills/inference/generate.py)
+[nemo_skills/inference/generate.py](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/inference/generate.py)
 and see all arguments and logic there.
 
 You can chain multiple pipelines together to set proper slurm dependencies using `--run_after` parameter.

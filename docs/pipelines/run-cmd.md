@@ -2,7 +2,7 @@
 
 !!! info
 
-    This pipeline starting script is [nemo_skills/pipeline/run_cmd.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/run_cmd.py)
+    This pipeline starting script is [nemo_skills/pipeline/run_cmd.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/run_cmd.py)
 
     All extra parameters are directly executed as a shell command.
 

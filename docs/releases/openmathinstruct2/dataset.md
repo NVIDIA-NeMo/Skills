@@ -284,4 +284,4 @@ python -m nemo_skills.training.prepare_data \
 
 ## Dataset contamination explorer
 
-To reproduce our dataset contamination explorer demo refer to [dataset_explorer_demo/README.md](https://github.com/NVIDIA/NeMo-Skills/blob/main/dataset_explorer_demo/README.md)
+To reproduce our dataset contamination explorer demo refer to [dataset_explorer_demo/README.md](https://github.com/NVIDIA-NeMo/Skills/blob/main/dataset_explorer_demo/README.md)

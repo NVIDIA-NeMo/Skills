@@ -1,5 +1,5 @@
 site_name: NeMo-Skills
-site_url: https://nvidia.github.io/NeMo-Skills
+site_url: https://nvidia-nemo.github.io/Skills
 extra_css:
   - css/extra.css
 plugins:

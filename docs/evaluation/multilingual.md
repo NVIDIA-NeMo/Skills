@@ -9,7 +9,7 @@ Once prepared, the `ns eval` command will run on all languages prepared, and the
 
 ### mmlu-prox
 
-- Benchmark is defined in [`nemo_skills/dataset/mmlu-prox/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/mmlu-prox/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/li-lab/MMLU-ProX).
 
 Our evaluation template and answer extraction mechanism tries to match the configration in [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks/mmlu_prox).
@@ -72,7 +72,7 @@ Some reference numbers for reference and commands for reproduction:
 
 ### FLORES-200
 
-- Benchmark is defined in [`nemo_skills/dataset/flores200/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/flores200/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/flores200/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/flores200/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/openlanguagedata/flores_plus).
 
 Some reference numbers for devtest split (xx corresponds to average over 5 languages: de, es, fr, it, ja):
@@ -145,7 +145,7 @@ Some reference numbers for devtest split (xx corresponds to average over 5 langu
 
 ### wmt24pp
 
-- Benchmark is defined in [`nemo_skills/dataset/wmt24pp/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/wmt24pp/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/wmt24pp/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/wmt24pp/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/google/wmt24pp).
 
 Some reference numbers for test split (xx corresponds to average over 5 languages: de, es, fr, it, ja):

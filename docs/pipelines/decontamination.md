@@ -2,9 +2,9 @@
 
 !!! info
 
-    This pipeline starting script is [nemo_skills/pipeline/generate.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/pipeline/generate.py)
+    This pipeline starting script is [nemo_skills/pipeline/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/generate.py)
 
-    All extra parameters are passed to [nemo_skills/inference/check_contamination.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/check_contamination.py)
+    All extra parameters are passed to [nemo_skills/inference/check_contamination.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/check_contamination.py)
 
 We implemented an LLM-based data decontamination pipeline following
 [lmsys methodology](https://lmsys.org/blog/2023-11-14-llm-decontaminator/).

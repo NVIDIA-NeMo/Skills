@@ -9,7 +9,7 @@ Parallel thinking encompasses methods that scale inference time via parallel sam
 
 ## Usage
 
-We support *parallel thinking* via the [generation pipeline](https://nvidia.github.io/NeMo-Skills/pipelines/generation/).
+We support *parallel thinking* via the [generation pipeline](https://nvidia-nemo.github.io/Skills/pipelines/generation/).
 Pass in the following params for the different parallel thinking modes:
 
 - For GenSelect, `++parallel_thinking.mode=genselect`
@@ -29,7 +29,7 @@ We support both offline and online parallel thinking:
 
 
 ### Common Parameters
-- `window_size`: Number of solutions processed in a single parallel thinking input (set to 8 by default). Consider your model's context window size when setting this value (or [allow for soft failure](https://nvidia.github.io/NeMo-Skills/pipelines/generation/#context-window-limits) via `++server.enable_soft_fail=True`).
+- `window_size`: Number of solutions processed in a single parallel thinking input (set to 8 by default). Consider your model's context window size when setting this value (or [allow for soft failure](https://nvidia-nemo.github.io/Skills/pipelines/generation/#context-window-limits) via `++server.enable_soft_fail=True`).
 - `solution_key`: The key from the generation output used to identify the solution content (default: `generation`)
 
 #### Offline Parallel Thinking Parameters
@@ -47,7 +47,7 @@ To specify any of the above variables, say `window_size=16`, pass `++parallel_th
 
 ### Online Parallel Thinking (via GenSynthesis)
 
-In this example, we show how to use GenSynthesis for [aime25](https://nvidia.github.io/NeMo-Skills/evaluation/natural-math/) with [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B).
+In this example, we show how to use GenSynthesis for [aime25](https://nvidia-nemo.github.io/Skills/evaluation/natural-math/) with [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B).
 
 ```bash hl_lines="9-10"
 ns eval \
@@ -69,7 +69,7 @@ Note that the same model is being used for both solution generation and synthesi
 !!!tip
     Parallel Thinking inputs can consume a lot of tokens, especially for large `window_size` values.
     To avoid running into context length issues, we recommend running these pipelines with `++server.enable_soft_fail=True`, as in the above command.
-    To use methods for retrying generation with reduced prompt/length, we recommend trying out [the context reduction strategies](https://nvidia.github.io/NeMo-Skills/pipelines/generation/#context-window-limits) supported.
+    To use methods for retrying generation with reduced prompt/length, we recommend trying out [the context reduction strategies](https://nvidia-nemo.github.io/Skills/pipelines/generation/#context-window-limits) supported.
     In the above example, we use:
     ```++server.enable_soft_fail=True ++server.context_limit_retry_strategy=reduce_generation```
     which reduces the generation budget when context limit exceeds.

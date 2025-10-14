@@ -18,7 +18,7 @@ ns prepare_data aai aime24 aime25 hmmt_feb25 brumo25 livecodebench gpqa mmlu-pro
     The current script only supports GenSelect evaluation for math benchmarks.
     We will add instructions and commands for GenSelect for code and science in the next few days.
 
-We provide an evaluation script in [recipes/openreasoning/eval.py](https://github.com/NVIDIA/NeMo-Skills/tree/main/recipes/openreasoning/eval.py).
+We provide an evaluation script in [recipes/openreasoning/eval.py](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/openreasoning/eval.py).
 It will run evaluation on all benchmarks and for all 4 model sizes. You can modify it directly to change evaluation settings
 or to only evaluate a subset of models / benchmarks.
 

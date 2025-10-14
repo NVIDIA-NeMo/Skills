@@ -6,7 +6,7 @@
 
 BFCL v3 consists of seventeen distinct evaluation subsets that comprehensively test various aspects of function calling capabilities, from simple function calls to complex multi-turn interactions.
 
-- Benchmark is defined in [`nemo_skills/dataset/bfcl_v3/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/bfcl_v3/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/bfcl_v3/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/bfcl_v3/__init__.py)
 - Original benchmark source is [here](https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard).
 
 ### Data Preparation
@@ -134,4 +134,4 @@ ns eval \
     To evaluate individual splits of `bfcl_v3`, such as `simple`, use `benchmarks=bfcl_v3.simple`.
 
 !!!note
-    Currently, ns summarize_results does not support benchmarks with custom aggregation requirements like BFCL v3. To handle this, the evaluation pipeline automatically launches a dependent job that processes the individual subset scores using [our scoring script](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/bfcl_v3/bfcl_score.py).
+    Currently, ns summarize_results does not support benchmarks with custom aggregation requirements like BFCL v3. To handle this, the evaluation pipeline automatically launches a dependent job that processes the individual subset scores using [our scoring script](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/bfcl_v3/bfcl_score.py).

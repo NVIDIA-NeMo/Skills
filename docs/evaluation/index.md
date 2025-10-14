@@ -11,7 +11,7 @@ We support many popular benchmarks and it's easy to add new in the future. The f
 - [**Tool-calling**](./tool-calling.md): e.g. [bfcl_v3](./tool-calling.md#bfcl_v3)
 - [**Multilingual**](./multilingual.md): e.g. [mmlu-prox](./multilingual.md#mmlu-prox), [flores-200](./multilingual.md#FLORES-200), [wmt24pp](./multilingual.md#wmt24pp)
 
-See [nemo_skills/dataset](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset) where each folder is a benchmark we support.
+See [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset) where each folder is a benchmark we support.
 
 Here is how to run evaluation (using API model as an example,
 but same command works with self-hosted models both locally and on slurm).
@@ -149,7 +149,7 @@ You can customize any part of the evaluation. Here are a few examples
 
 ### Customize prompt
 
-You can reference any prompt from [nemo_skills/prompt/config](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config) without .yaml extension, e.g. to reference [nemo_skills/prompt/config/generic/math.yaml](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/prompt/config) use
+You can reference any prompt from [nemo_skills/prompt/config](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config) without .yaml extension, e.g. to reference [nemo_skills/prompt/config/generic/math.yaml](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config) use
 ```bash
     ++prompt_config=generic/math
 ```
@@ -206,7 +206,7 @@ eval(
 ## How the benchmarks are defined
 
 Each benchmark exists as a separate folder inside
-[nemo_skills/dataset](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset). Inside
+[nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset). Inside
 those folders there needs to be `prepare.py` script which can be run to download and format benchmark
 data into a .jsonl input file (or files if it supports multiple splits) that
 our scripts can understand. There also needs to be an `__init__.py` that defines some default variables
@@ -217,7 +217,7 @@ be changed from the command line).
 
 Let's look at gsm8k to understand a bit more how each part of the evaluation works.
 
-Inside [`nemo_skills/dataset/gsm8k/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/gsm8k/__init__.py) we see the following
+Inside [`nemo_skills/dataset/gsm8k/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/gsm8k/__init__.py) we see the following
 
 ```python
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
@@ -228,22 +228,22 @@ GENERATION_ARGS = "++prompt_config=generic/math"
 ```
 
 The prompt config and default generation arguments are passed to the
-[nemo_skills/inference/generate.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/inference/generate.py) and
+[nemo_skills/inference/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/generate.py) and
 the default eval args are passed to the
-[nemo_skills/evaluation/evaluate_results.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/evaluation/evaluate_results.py).
-The dataset group is used by [nemo_skills/dataset/prepare.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/prepare.py)
+[nemo_skills/evaluation/evaluate_results.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/evaluate_results.py).
+The dataset group is used by [nemo_skills/dataset/prepare.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/prepare.py)
 to help download only benchmarks from a particular group if `--dataset_groups` parameter is used.
-Finally, the metrics type is used to pick a metrics class from [nemo_skills/evaluation/metrics/map_metrics.py](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py)
+Finally, the metrics type is used to pick a metrics class from [nemo_skills/evaluation/metrics/map_metrics.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py)
 which is called at the end of the evaluation to compute final scores.
 
 ## Adding new benchmarks
 
 To create a new benchmark follow this process:
 
-1. Create a new folder inside [nemo_skills/dataset](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset).
+1. Create a new folder inside [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset).
 2. Create `prepare.py` file that will outputs `<split>.jsonl` input file(s) in the same folder when run. It can take extra arguments if required.
 3. Create `__init__.py` file in that folder that container *default* configuration for that benchmark. You typically need to specify only default
    prompt config in `GENERATION_ARGS` and evaluation / metric parameters. But if extra customization is needed for the generation, you can provide
-   a fully custom generation module. See [scicode](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/scicode/__init__.py) or [swe-bench](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/swe-bench/__init__.py) for examples of this.
-4. Create a new [evaluation class](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/evaluation/evaluator/__init__.py) (if cannot re-use existing one).
-5. Create a new [metrics class](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py) ( if cannot re-use existing one).
+   a fully custom generation module. See [scicode](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/scicode/__init__.py) or [swe-bench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench/__init__.py) for examples of this.
+4. Create a new [evaluation class](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/evaluator/__init__.py) (if cannot re-use existing one).
+5. Create a new [metrics class](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py) ( if cannot re-use existing one).

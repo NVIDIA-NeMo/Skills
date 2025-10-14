@@ -1,6 +1,6 @@
 # Code packaging
 
-We use [NeMo-Run](https://github.com/NVIDIA/NeMo-Run) for managing our experiments with local and slurm-based
+We use [NeMo-Run](https://github.com/NVIDIA-NeMo/Run) for managing our experiments with local and slurm-based
 execution supported (please open an issue if you need to run our code on other kinds of clusters).
 This means that even if you need to submit jobs on slurm, you can do it from your local machine by defining an
 appropriate cluster config and nemo-run will package and upload your code, data and manage
