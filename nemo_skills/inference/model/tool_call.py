@@ -110,7 +110,6 @@ class ToolCallingWrapper:
         # This assumes that the available tools do not change during the generation.
         raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
         tools = format_tool_list_by_endpoint_type(raw_tools, endpoint_type)
-        LOG.info("Available Tools: %s", tools)
 
         result_steps = defaultdict(list)
         conversation = copy.deepcopy(prompt)
