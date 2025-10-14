@@ -217,7 +217,7 @@ def sft_openrlhf(
     validation_data: str = typer.Option(None, help="Path to the validation data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs"),
-    num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
+    dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
     wandb_project: str = typer.Option("nemo-skills", help="Weights & Biases project name"),
     disable_wandb: bool = typer.Option(False, help="Disable wandb logging"),
     partition: str = typer.Option(
@@ -280,9 +280,9 @@ def sft_openrlhf(
     else:
         log_dir = output_dir
 
-    if num_training_jobs > 0:
+    if dependent_jobs >= 0:
         if training_data is None:
-            raise ValueError("training_data is required when num_training_jobs > 0")
+            raise ValueError("training_data is required when dependent_jobs >= 0")
         if training_data.startswith("/"):  # could ask to download from HF
             check_if_mounted(cluster_config, training_data)
 
@@ -306,7 +306,7 @@ def sft_openrlhf(
 
     with get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
-        for job_id in range(num_training_jobs):
+        for job_id in range(dependent_jobs + 1):
             prev_task = add_task(
                 exp,
                 cmd=train_cmd,

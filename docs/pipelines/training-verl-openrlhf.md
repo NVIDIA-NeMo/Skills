@@ -48,7 +48,6 @@ sft_openrlhf(
     training_data="/data/sft-data.jsonl",
     num_gpus=8,
     num_nodes=2,
-    num_training_jobs=1,
 )
 ```
 
@@ -84,7 +83,6 @@ ppo_openrlhf(
     server_gpus=8,
     server_type='trtllm',
     server_model='/hf_models/Qwen2.5-32B-Instruct',
-    num_training_jobs=1,
 )
 ```
 
@@ -120,6 +118,5 @@ ppo_verl(
     server_gpus=8,
     server_type='trtllm',
     server_model='/hf_models/Qwen2.5-32B-Instruct',
-    num_training_jobs=1,
 )
 ```

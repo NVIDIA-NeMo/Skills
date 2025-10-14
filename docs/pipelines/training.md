@@ -54,7 +54,7 @@ ns train \
     --nemo_model=/nemo_models/llama3.1-8b-base \
     --num_nodes=8 \
     --num_gpus=8 \
-    --num_training_jobs=4 \
+    --dependent_jobs=3 \
     --training_data=/data/sft-data.jsonl
 ```
 
@@ -83,7 +83,7 @@ The training script will average all of your generated checkpoints upon completi
 (we found this to consistently increase the downstream accuracy). If you want to
 only average a subset of checkpoint, add `--average_steps` parameter (e.g. if you
 want to disable averaging, set it to the last training step). If you only want
-to average the checkpoints of the finished job, set `--num_training_jobs=0`.
+to average the checkpoints of the finished job, set `--dependent_jobs=-1`.
 
 ## Chaining pipelines with Python
 
@@ -108,7 +108,7 @@ train(
     nemo_model="/nemo_models/llama3.1-8b-base",
     num_nodes=8,
     num_gpus=8,
-    num_training_jobs=4,
+    dependent_jobs=3,
     training_data="/data/sft-data.jsonl",
 )
 
@@ -220,7 +220,7 @@ train(
     nemo_model="/nemo_models/llama3.1-8b-base",
     num_nodes=8,
     num_gpus=8,
-    num_training_jobs=4,
+    dependent_jobs=3,
     training_data=f"/data/packed_{pack_seq_length}_seed0.npy",
 )
 

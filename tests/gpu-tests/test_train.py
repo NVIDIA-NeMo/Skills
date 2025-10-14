@@ -54,7 +54,6 @@ def test_sft_nemo_rl(backend):
         hf_model=model_path,
         num_nodes=1,
         num_gpus=1,
-        num_training_jobs=1,
         training_data="/nemo_run/code/tests/data/small-sft-data.test",
         disable_wandb=True,
     )
@@ -171,7 +170,6 @@ def test_grpo_nemo_rl(backend):
         hf_model=model_path,
         num_nodes=1,
         num_gpus=1,
-        num_training_jobs=1,
         training_data="/nemo_run/code/tests/data/small-grpo-data.test",
         backend=backend,
         disable_wandb=True,

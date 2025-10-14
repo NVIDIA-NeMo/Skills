@@ -239,7 +239,7 @@ def train(
     validation_data: str = typer.Option(None, help="Path to the validation data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs"),
-    num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
+    dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
     training_algo: TrainingAlgo = typer.Option(TrainingAlgo.sft, help="Training algorithm"),
     config_name: str = typer.Option(None, help="Config name"),
     config_path: str = typer.Option("/nemo_run/code/nemo_skills/training/", help="Config path"),
@@ -326,9 +326,9 @@ def train(
         check_mounted_paths=check_mounted_paths,
     )
 
-    if num_training_jobs > 0:
+    if dependent_jobs >= 0:
         if training_data is None:
-            raise ValueError("training_data is required when num_training_jobs > 0")
+            raise ValueError("training_data is required when dependent_jobs >= 0")
         training_data = get_mounted_path(cluster_config, training_data)
 
     if not final_nemo_path:
@@ -367,7 +367,7 @@ def train(
 
     with get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
-        for job_id in range(num_training_jobs):
+        for job_id in range(dependent_jobs + 1):
             prev_task = add_task(
                 exp,
                 cmd=train_cmd,

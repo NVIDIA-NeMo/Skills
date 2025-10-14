@@ -255,7 +255,7 @@ def ppo_openrlhf(
     input_key: str = typer.Option("input", help="Input key for the prompt data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs"),
-    num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
+    dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
     server_model: str = typer.Option(None, help="Path to the model or model name in API"),
     server_address: str = typer.Option(
         None, help="Use ip:port for self-hosted models or the API url if using model providers"
@@ -330,9 +330,9 @@ def ppo_openrlhf(
     else:
         log_dir = output_dir
 
-    if num_training_jobs > 0:
+    if dependent_jobs >= 0:
         if prompt_data is None:
-            raise ValueError("prompt_data is required when num_training_jobs > 0")
+            raise ValueError("prompt_data is required when dependent_jobs >= 0")
         if prompt_data.startswith("/"):  # could ask to download from HF
             pipeline_utils.check_if_mounted(cluster_config, prompt_data)
 
@@ -394,7 +394,7 @@ def ppo_openrlhf(
 
     with pipeline_utils.get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
-        for job_id in range(num_training_jobs):
+        for job_id in range(dependent_jobs + 1):
             prev_task = pipeline_utils.add_task(
                 exp,
                 cmd=train_cmd,
