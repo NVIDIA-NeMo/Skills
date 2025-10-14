@@ -441,8 +441,11 @@ def eval(
                 ),
                 **judge_pipeline_args,
             )
-            benchmark_to_judge_tasks[benchmark] = judge_tasks
-            all_tasks.extend(judge_tasks)
+            # _generate can return None when there are no jobs to run (e.g., outputs already exist)
+            # Only record and extend when tasks are present to avoid NoneType errors
+            if judge_tasks:
+                benchmark_to_judge_tasks[benchmark] = judge_tasks
+                all_tasks.extend(judge_tasks)
 
         group_metric_files = defaultdict(list)
         group_tasks = defaultdict(list)
