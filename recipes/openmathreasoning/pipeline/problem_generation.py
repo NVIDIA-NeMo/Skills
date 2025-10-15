@@ -180,7 +180,7 @@ def decontaminate(cluster, expname, run_after, stage_config, **kwargs):
     run_cmd(
         ctx=wrap_arguments(retrieval_cmd),
         cluster=cluster,
-        container="nemo",  # just need pytorch
+        container="nemo-rl",  # just need pytorch
         log_dir=f"{output_dir}/logs",
         expname=retrieval_expname,
         run_after=run_after,

@@ -35,7 +35,7 @@ Note that you can follow the steps below irrespective of whether you're running 
 Here's how you can use it to download all images for SWE-bench Verified:
 
 1. Start by preparing the data with the default command: `ns prepare_data swe-bench`
-2. Determine the folder you want to download the images into. Make sure it is accessible from inside the NeMo-Skills container, e.g. mounted in your cluster config.
+2. Determine the folder you want to download the images into. Make sure it is accessible from inside the Nemo-Skills container, e.g. mounted in your cluster config.
 3. Run the download script on the cluster:
    ```
    ns run_cmd \
@@ -75,8 +75,8 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 - **++agent_config:** The config file to use for SWE-agent/OpenHands.
     - For SWE-agent, this is a YAML file. See the [SWE-agent docs](https://swe-agent.com/latest/config/config/).
     - For OpenHands, this is a TOML file. Nemo-Skills runs OpenHands via their SWE-bench evaluation script, so the only settings you can set are the LLM settings under the `[llm.model]` section. For more details, see the [OpenHands evaluation README](https://github.com/All-Hands-AI/OpenHands/blob/main/evaluation/README.md). Note that Nemo-Skills always uses the `[llm.model]` config section and therefore does not support multiple LLM configurations in one TOML file.
-    - NeMo-Skills overrides certain parameters, even if they are specified in the config file. These parameters are listed in a comment in the default config files below.
-    - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands. Note that if you store your configs in your local NeMo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
+    - Nemo-Skills overrides certain parameters, even if they are specified in the config file. These parameters are listed in a comment in the default config files below.
+    - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands. Note that if you store your configs in your local Nemo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
 
 - **++agent_max_turns:** The maximum number of turns the agent is allowed to take before the trajectory is forcibly terminated. Defaults to 100 for both SWE-agent and OpenHands.
 
@@ -96,16 +96,16 @@ For this benchmark, inference parameters work a bit differently. This is because
 
 In order for a parameter to work, it needs to be supported in 2 places: by the agentic framework and by the LLM server itself. For framework support, see the following table:
 
-| NeMo-Skills inference parameter | Behavior when using SWE-agent | Behavior when using OpenHands |
-| :- | :- | :- |
-| temperature | ✅ Always passed to LLM. Default: 0 | ✅ Always passed to LLM. Default: 0 |
-| top_p | ✅ Always passed to LLM. Default: 0.95 | ✅ Always passed to LLM. Default: 0.95 |
-| top_k | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| tokens_to_generate | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| random_seed | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| min_p | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set |
-| repetition_penalty | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set |
-| top_logprobs | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set |
+| Nemo-Skills inference parameter | Behavior when using SWE-agent          | Behavior when using OpenHands          |
+| :------------------------------ | :------------------------------------- | :------------------------------------- |
+| temperature                     | ✅ Always passed to LLM. Default: 0     | ✅ Always passed to LLM. Default: 0     |
+| top_p                           | ✅ Always passed to LLM. Default: 0.95  | ✅ Always passed to LLM. Default: 0.95  |
+| top_k                           | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
+| tokens_to_generate              | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
+| random_seed                     | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
+| min_p                           | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
+| repetition_penalty              | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
+| top_logprobs                    | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
 
 In addition, keep in mind certain parameters may not be supported by your LLM server, because not all of them are part of the official [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). However, VLLM and SGLang do support all of these parameters.
 

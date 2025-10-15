@@ -92,7 +92,7 @@ class GenerateSolutionsConfig:
     tokenizer: str | None = None
     # extra parameters to pass to the tokenizer's apply_chat_template method
     chat_template_kwargs: dict = field(default_factory=dict)
-    # to specify the format of the prompt, "ns" for NeMo-Skills format or "openai" for OpenAI chat format
+    # to specify the format of the prompt, "ns" for Nemo-Skills format or "openai" for OpenAI chat format
     prompt_format: str = "ns"
     prompt_suffix: str = ""  # suffix to add to the prompt, e.g. " /no_think"
     system_message: str | None = None  # can override the default system message in the config

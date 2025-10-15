@@ -96,7 +96,7 @@ class ClientMessageParser:
         self._validate_and_setup_client_parsing()
 
     def _validate_and_setup_client_parsing(self):
-        # Importing here since bfcl_eval is not a main dependency of NeMo-Skills
+        # Importing here since bfcl_eval is not a main dependency of Nemo-Skills
         from bfcl_eval.constants.model_config import local_inference_model_map
 
         if self.cfg.model_name is None:

@@ -31,7 +31,7 @@ pass@16           | 30          | 14463      | 1717        | 100.00%          | 
 <!-- more -->
 
 !!! note
-    If you're not familiar with NeMo-Skills, we recommend that you start by reading through our
+    If you're not familiar with Nemo-Skills, we recommend that you start by reading through our
     [Getting Started](../../basics/index.md) tutorial.
 
 We assume you have `/workspace` mount defined in your [cluster config](../../basics/cluster-configs.md). You can run either

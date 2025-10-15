@@ -1,4 +1,4 @@
-site_name: NeMo-Skills
+site_name: Nemo-Skills
 site_url: https://nvidia-nemo.github.io/Skills
 extra_css:
   - css/extra.css
@@ -52,7 +52,7 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - footnotes
 nav:
-  - NeMo-Skills: index.md
+  - Nemo-Skills: index.md
   - Getting started:
     - basics/index.md
     - Cluster configs: basics/cluster-configs.md
@@ -65,11 +65,10 @@ nav:
     - pipelines/index.md
     - Generation: pipelines/generation.md
     - Evaluation: pipelines/evaluation.md
-    - Checkpoint conversion: pipelines/checkpoint-conversion.md
     - LLM-as-a-judge: pipelines/llm-as-a-judge.md
     - Decontamination: pipelines/decontamination.md
-    - Training (NeMo-Aligner): pipelines/training.md
-    - Training (verl, OpenRLHF): pipelines/training-verl-openrlhf.md
+    - Training (NeMo-RL): pipelines/training.md
+    - Training (verl): pipelines/training-verl.md
     - Arbitrary commands: pipelines/run-cmd.md
   - Evaluation:
     - evaluation/index.md

@@ -1,6 +1,6 @@
-# NeMo Skills
+# Nemo Skills
 
-NeMo-Skills is a collection of pipelines to improve "skills" of large language models (LLMs). We support everything needed for LLM development, from synthetic data generation, to model training, to evaluation on a wide range of benchmarks. Start developing on a local workstation and move to a large-scale Slurm cluster with just a one-line change.
+Nemo-Skills is a collection of pipelines to improve "skills" of large language models (LLMs). We support everything needed for LLM development, from synthetic data generation, to model training, to evaluation on a wide range of benchmarks. Start developing on a local workstation and move to a large-scale Slurm cluster with just a one-line change.
 
 Here are some of the features we support:
 
@@ -54,16 +54,16 @@ To get started, follow these [steps](https://nvidia-nemo.github.io/Skills/basics
 browse available [pipelines](https://nvidia-nemo.github.io/Skills/pipelines) or run `ns --help` to see all available
 commands and their options.
 
-You can find more examples of how to use NeMo-Skills in the [tutorials](https://nvidia-nemo.github.io/Skills/tutorials) page.
+You can find more examples of how to use Nemo-Skills in the [tutorials](https://nvidia-nemo.github.io/Skills/tutorials) page.
 
-We've built and released many popular models and datasets using NeMo-Skills. See all of them in the [Papers & Releases](./releases/index.md) documentation.
+We've built and released many popular models and datasets using Nemo-Skills. See all of them in the [Papers & Releases](./releases/index.md) documentation.
 
 You can find the full documentation [here](https://nvidia-nemo.github.io/Skills/).
 
 
 ## Contributing
 
-We welcome contributions to NeMo-Skills! Please see our [Contributing Guidelines](./CONTRIBUTING.md) for more information on how to get involved.
+We welcome contributions to Nemo-Skills! Please see our [Contributing Guidelines](./CONTRIBUTING.md) for more information on how to get involved.
 
 
 Disclaimer: This project is strictly for research purposes, and not an official product from NVIDIA.

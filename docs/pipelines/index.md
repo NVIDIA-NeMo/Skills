@@ -2,7 +2,7 @@
 
 ## Basics
 
-NeMo-Skills has a large collection of building blocks that you can use to construct various pipelines to improve LLMs.
+Nemo-Skills has a large collection of building blocks that you can use to construct various pipelines to improve LLMs.
 All of the "pipeline" scripts are located in the [nemo_skills/pipeline](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/pipeline)
 folder and have a unified interface that help us connect them together.
 

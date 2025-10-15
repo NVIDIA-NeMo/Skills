@@ -7,8 +7,8 @@ hide:
 
 # Reproducing Llama-Nemotron-Super-49B-V1.5 Evals
 
-In this tutorial, we will reproduce the evals for the [Llama-3.3-Nemotron-Super-49B-v1.5](https://huggingface.co/nvidia/Llama-3_3-Nemotron-Super-49B-v1_5){target="_blank"} model using NeMo-Skills.
-For an introduction to the NeMo-Skills framework, we recommend going over [our introductory tutorial](../../basics/index.md).
+In this tutorial, we will reproduce the evals for the [Llama-3.3-Nemotron-Super-49B-v1.5](https://huggingface.co/nvidia/Llama-3_3-Nemotron-Super-49B-v1_5){target="_blank"} model using Nemo-Skills.
+For an introduction to the Nemo-Skills framework, we recommend going over [our introductory tutorial](../../basics/index.md).
 
 
 We assume you have `/workspace` defined in your [cluster config](../../basics/cluster-configs.md) and are
@@ -51,7 +51,7 @@ We will evaluate the model on the following:
 - Long-context:
     - RULER
 
-Here are the commands to prepare these datasets using NeMo-Skills:
+Here are the commands to prepare these datasets using Nemo-Skills:
 
 ```bash
 ns prepare_data gpqa mmlu-pro hle livecodebench scicode bfcl_v3 math-500 aime24 aime25
@@ -158,7 +158,7 @@ ns eval \
 #### Command for HLE Eval (Reasoning on)
 
 
-For HLE, because symbolic comparison is not sufficient to determine the correctness of the output, we use the recommended `o3-mini-20250131` model as the judge. Note that this model is the default in NeMo-Skills, and we have just added this argument for illustration purposes. To evaluate for the [Artificial Analysis Index (AAI) setting, please use the gpt-4o-20240806 model as the judge](https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview){target="_blank"}.
+For HLE, because symbolic comparison is not sufficient to determine the correctness of the output, we use the recommended `o3-mini-20250131` model as the judge. Note that this model is the default in Nemo-Skills, and we have just added this argument for illustration purposes. To evaluate for the [Artificial Analysis Index (AAI) setting, please use the gpt-4o-20240806 model as the judge](https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview){target="_blank"}.
 
 Note that using any of the OpenAI hosted models requires `OPENAI_API_KEY`. Alternatively, a self-hosted judge model can also be used for judgement. For example, `--judge_model="/workspace/Llama-3_3-Nemotron-Super-49B-v1_5"`  in tandem with `--judge_server_type="vllm" --judge_server_gpus 2` will use the `Llama-3_3-Nemotron-Super-49B-v1_5` itself as a judge.
 
@@ -188,7 +188,7 @@ ns eval \
 
 #### Command for BFCL Eval (Reasoning on)
 
-Tool-calling benchmarks require tool-call parsing and execution. NeMo-Skills supports both client-side parsing (default) and server-side parsing. For server-side parsing, the vLLM server requires the parsing details as highlighted in the below command:
+Tool-calling benchmarks require tool-call parsing and execution. Nemo-Skills supports both client-side parsing (default) and server-side parsing. For server-side parsing, the vLLM server requires the parsing details as highlighted in the below command:
 ```bash hl_lines="12-16"
 ns eval \
     --cluster=local \
@@ -305,17 +305,17 @@ pass@16           | 30          | 23366      | 832         | 93.33%           | 
 
 ```
 ----------------------- bfcl_v3 ------------------------
-| Category                    | num_entries | accuracy |
-|-----------------------------|-------------|----------|
-| overall_accuracy            | 4441        | 72.64%   |
-| overall_non_live            | 1390        | 88.20%   |
-| non_live_ast                | 1150        | 88.58%   |
-| irrelevance                 | 240         | 86.67%   |
-| overall_live                | 2251        | 83.34%   |
-| live_ast                    | 1351        | 82.68%   |
-| live_irrelevance            | 882         | 84.47%   |
-| live_relevance              | 18          | 77.78%   |
-| overall_multi_turn          | 800         | 46.38%   |
+| Category           | num_entries | accuracy |
+| ------------------ | ----------- | -------- |
+| overall_accuracy   | 4441        | 72.64%   |
+| overall_non_live   | 1390        | 88.20%   |
+| non_live_ast       | 1150        | 88.58%   |
+| irrelevance        | 240         | 86.67%   |
+| overall_live       | 2251        | 83.34%   |
+| live_ast           | 1351        | 82.68%   |
+| live_irrelevance   | 882         | 84.47%   |
+| live_relevance     | 18          | 77.78%   |
+| overall_multi_turn | 800         | 46.38%   |
 
 ```
 
@@ -326,7 +326,7 @@ pass@16           | 30          | 23366      | 832         | 93.33%           | 
 
 ```
 | Task                                | Accuracy |
-|-------------------------------------|----------|
+| ----------------------------------- | -------- |
 | ruler.nemotron_128k                 | 66.7     |
 | ruler.nemotron_128k.niah_single_1   | 100.0    |
 | ruler.nemotron_128k.niah_single_2   | 96.4     |
@@ -552,24 +552,24 @@ pass@16           | 30          | 1720       | 1149        | 10.00%           | 
 
 ```
 ----------------------- bfcl_v3 ------------------------
-| Category                    | num_entries | accuracy |
-|-----------------------------|-------------|----------|
-| overall_accuracy            | 4441        | 68.52%   |
-| overall_non_live            | 1390        | 87.55%   |
-| non_live_ast                | 1150        | 87.35%   |
-| irrelevance                 | 240         | 88.33%   |
-| overall_live                | 2251        | 81.87%   |
-| live_ast                    | 1351        | 79.79%   |
-| live_irrelevance            | 882         | 85.60%   |
-| live_relevance              | 18          | 55.56%   |
-| overall_multi_turn          | 800         | 36.13%   |
+| Category           | num_entries | accuracy |
+| ------------------ | ----------- | -------- |
+| overall_accuracy   | 4441        | 68.52%   |
+| overall_non_live   | 1390        | 87.55%   |
+| non_live_ast       | 1150        | 87.35%   |
+| irrelevance        | 240         | 88.33%   |
+| overall_live       | 2251        | 81.87%   |
+| live_ast           | 1351        | 79.79%   |
+| live_irrelevance   | 882         | 85.60%   |
+| live_relevance     | 18          | 55.56%   |
+| overall_multi_turn | 800         | 36.13%   |
 ```
 
 #### Results for RULER (Reasoning off)
 
 ```
 | Task                                | Accuracy |
-|-------------------------------------|----------|
+| ----------------------------------- | -------- |
 | ruler.nemotron_128k                 | 66.1     |
 | ruler.nemotron_128k.niah_single_1   | 100.0    |
 | ruler.nemotron_128k.niah_single_2   | 94.0     |

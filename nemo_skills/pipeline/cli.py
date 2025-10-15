@@ -27,8 +27,6 @@ from nemo_skills.pipeline.generate import generate
 from nemo_skills.pipeline.megatron_lm.train import train_megatron_lm
 from nemo_skills.pipeline.nemo_rl.grpo import grpo_nemo_rl
 from nemo_skills.pipeline.nemo_rl.sft import sft_nemo_rl
-from nemo_skills.pipeline.openrlhf.ppo import ppo_openrlhf
-from nemo_skills.pipeline.openrlhf.sft import sft_openrlhf
 from nemo_skills.pipeline.prepare_data import prepare_data
 from nemo_skills.pipeline.robust_eval import robust_eval
 from nemo_skills.pipeline.run_cmd import run_cmd
@@ -36,7 +34,6 @@ from nemo_skills.pipeline.setup import setup
 from nemo_skills.pipeline.start_server import start_server
 from nemo_skills.pipeline.summarize_results import summarize_results
 from nemo_skills.pipeline.summarize_robustness import summarize_robustness
-from nemo_skills.pipeline.train import train
 from nemo_skills.pipeline.verl.ppo import ppo_verl
 
 typer.main.get_command_name = lambda name: name

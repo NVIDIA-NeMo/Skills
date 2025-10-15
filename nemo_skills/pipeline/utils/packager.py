@@ -128,7 +128,7 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
         # Do we have nemo_skills package in this repo? If no, we need to pick it up from installed location
         if not (Path(repo_path) / "nemo_skills").is_dir():
             LOG.info(
-                "Not running from NeMo-Skills repo, trying to upload installed package. "
+                "Not running from Nemo-Skills repo, trying to upload installed package. "
                 "Make sure there are no extra files in %s",
                 str(nemo_skills_dir / "*"),
             )

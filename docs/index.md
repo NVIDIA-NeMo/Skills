@@ -4,7 +4,7 @@ hide:
   - toc
 ---
 
-[NeMo-Skills](https://github.com/NVIDIA-NeMo/Skills) is a collection of pipelines to improve "skills" of large language models (LLMs). We support everything needed for LLM development, from synthetic data generation, to model training, to evaluation on a wide range of benchmarks. Start developing on a local workstation and move to a large-scale Slurm cluster with just a one-line change.
+[Nemo-Skills](https://github.com/NVIDIA-NeMo/Skills) is a collection of pipelines to improve "skills" of large language models (LLMs). We support everything needed for LLM development, from synthetic data generation, to model training, to evaluation on a wide range of benchmarks. Start developing on a local workstation and move to a large-scale Slurm cluster with just a one-line change.
 
 Here are some of the features we support:
 
@@ -24,15 +24,15 @@ Here are some of the features we support:
         - [**Multilingual capabilities**](./evaluation/multilingual.md): e.g. [mmlu-prox](./evaluation/multilingual.md#mmlu-prox), [flores-200](./evaluation/multilingual.md#FLORES-200), [wmt24pp](./evaluation/multilingual.md#wmt24pp)
         - [**Robustness evaluation**](./evaluation/robustness.md): Evaluate model sensitvity against changes in prompt.
     - Easily parallelize each evaluation across many Slurm jobs, self-host LLM judges, bring your own prompts or change benchmark configuration in any other way.
-- [Model training](pipelines/training.md): Train models using [NeMo-Aligner](https://github.com/NVIDIA/NeMo-Aligner/), [NeMo-RL](https://github.com/NVIDIA/NeMo-RL/) or [verl](https://github.com/volcengine/verl).
+- [Model training](pipelines/training.md): Train models using [NeMo-RL](https://github.com/NVIDIA-NeMo/RL/) or [verl](https://github.com/volcengine/verl).
 
 
 To get started, follow these [steps](basics/index.md), browse available [pipelines](./pipelines/index.md) or run `ns --help` to see all available
 commands and their options.
 
-You can find more examples of how to use NeMo-Skills in the [tutorials](./tutorials/index.md) page.
+You can find more examples of how to use Nemo-Skills in the [tutorials](./tutorials/index.md) page.
 
-We've built and released many popular models and datasets using NeMo-Skills. See all of them in the [Papers & Releases](./releases/index.md) documentation.
+We've built and released many popular models and datasets using Nemo-Skills. See all of them in the [Papers & Releases](./releases/index.md) documentation.
 
 We support many popular benchmarks and it's easy to add new in the future. The following categories of benchmarks are supported
 

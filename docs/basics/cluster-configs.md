@@ -11,7 +11,7 @@ such as account, partition, ssh-tunnel arguments and so on.
 
 The recommended way to launch jobs on slurm is by running all commands locally and specifying `ssh_tunnel` portion in cluster config
 to let [NeMo-Run](https://github.com/NVIDIA/NeMo-Run) know how to connect there.
-But if you prefer to run from the cluster directly, you can install NeMo-Skills there
+But if you prefer to run from the cluster directly, you can install Nemo-Skills there
 and then only specify `job_dir` parameter without using `ssh_tunnel` section in the config.
 
 You can see example configs in [cluster_configs](https://github.com/NVIDIA-NeMo/Skills/tree/main/cluster_configs) folder.

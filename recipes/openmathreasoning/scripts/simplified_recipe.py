@@ -16,17 +16,15 @@ import argparse
 
 from nemo_skills.dataset.prepare import prepare_datasets
 from nemo_skills.pipeline.cli import (
-    convert,
     eval,
     generate,
     run_cmd,
     sft_nemo_rl,
-    train,
     wrap_arguments,
 )
 
 
-def prepare(workspace, cluster, num_gpus, training_backend, expname_prefix, wandb_params):
+def prepare(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     # data preparation needs to run locally without container, so not wrapping with run_cmd
     prepare_datasets(["aime24", "aime25"])
 
@@ -47,24 +45,8 @@ def prepare(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
         log_dir=f"{workspace}/download-assets",
     )
 
-    if training_backend == "nemo-aligner":
-        # convert Qwen2.5-14B-Instruct to nemo format
-        convert(
-            ctx=wrap_arguments(""),
-            cluster=cluster,
-            input_model="Qwen/Qwen2.5-14B-Instruct",
-            output_model=f"{workspace}/qwen2.5-14b-instruct-nemo",
-            convert_from="hf",
-            convert_to="nemo",
-            num_gpus=num_gpus,
-            model_type="qwen",
-            hf_model_name="Qwen/Qwen2.5-14B-Instruct",
-            expname=f"{expname_prefix}-convert-14b-nemo",
-            run_after=f"{expname_prefix}-download-assets",
-        )
 
-
-def run_sdg(workspace, cluster, num_gpus, training_backend, expname_prefix, wandb_params):
+def run_sdg(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     postprocess_cmd = (
         f"python {workspace}/postprocess_problem_extraction.py "
         f"    {workspace}/sdg/problems/output.jsonl "
@@ -108,7 +90,7 @@ def run_sdg(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
     )
 
 
-def run_training(workspace, cluster, num_gpus, training_backend, expname_prefix, wandb_params):
+def run_training(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     # convert the generated solutions to a format that can be used for training
     run_cmd(
         ctx=wrap_arguments(
@@ -128,71 +110,32 @@ def run_training(workspace, cluster, num_gpus, training_backend, expname_prefix,
     )
 
     # train the model
-    if training_backend == "nemo-aligner":
-        train(
-            ctx=wrap_arguments(
-                "++model.data.train_ds.max_seq_length=8192 "
-                "++model.data.train_ds.global_batch_size=32 "
-                "++model.tensor_model_parallel_size=4 "
-                "++model.context_parallel_size=2 "
-                "++model.optim.lr=1e-5 "
-                "++trainer.sft.max_epochs=2 "
-            ),
-            cluster=cluster,
-            output_dir=f"{workspace}/training",
-            nemo_model=f"{workspace}/qwen2.5-14b-instruct-nemo",
-            num_gpus=num_gpus,
-            num_nodes=1,
-            disable_wandb=wandb_params["disable_wandb"],
-            wandb_project=wandb_params["wandb_project"],
-            training_data=f"{workspace}/sft-data.jsonl",
-            expname=f"{expname_prefix}-training",
-            run_after=[f"{expname_prefix}-prepare-training-data", f"{expname_prefix}-convert-14b-nemo"],
-        )
-    elif training_backend == "nemo-rl":
-        sft_nemo_rl(
-            ctx=wrap_arguments(
-                "++policy.max_total_sequence_length=8192 "
-                "++policy.train_global_batch_size=32 "
-                "++policy.megatron_cfg.tensor_model_parallel_size=4 "
-                "++policy.megatron_cfg.context_parallel_size=2 "
-                "++policy.lr=1e-5 "
-                "++sft.max_num_epochs=2 "
-            ),
-            cluster=cluster,
-            output_dir=f"{workspace}/training",
-            hf_model="Qwen/Qwen2.5-14B-Instruct",
-            backend="megatron",
-            num_gpus=num_gpus,
-            num_nodes=1,
-            disable_wandb=wandb_params["disable_wandb"],
-            wandb_project=wandb_params["wandb_project"],
-            training_data=f"{workspace}/sft-data.jsonl",
-            expname=f"{expname_prefix}-training",
-            run_after=f"{expname_prefix}-prepare-training-data",
-            final_hf_path=f"{workspace}/training/qwen2.5-14b-improved-hf",
-        )
-    else:
-        raise ValueError(f"Unknown training backend: {training_backend}")
+
+    sft_nemo_rl(
+        ctx=wrap_arguments(
+            "++policy.max_total_sequence_length=8192 "
+            "++policy.train_global_batch_size=32 "
+            "++policy.tensor_model_parallel_size=4 "
+            "++policy.context_parallel_size=2 "
+            "++policy.lr=1e-5 "
+            "++sft.max_num_epochs=2 "
+        ),
+        cluster=cluster,
+        output_dir=f"{workspace}/training",
+        hf_model="Qwen/Qwen2.5-14B-Instruct",
+        backend="megatron",
+        num_gpus=num_gpus,
+        num_nodes=1,
+        disable_wandb=wandb_params["disable_wandb"],
+        wandb_project=wandb_params["wandb_project"],
+        training_data=f"{workspace}/sft-data.jsonl",
+        expname=f"{expname_prefix}-training",
+        run_after=f"{expname_prefix}-prepare-training-data",
+        final_hf_path=f"{workspace}/training/qwen2.5-14b-improved-hf",
+    )
 
 
-def final_eval(workspace, cluster, num_gpus, training_backend, expname_prefix, wandb_params):
-    if training_backend == "nemo-aligner":
-        # converting back to HF format
-        convert(
-            ctx=wrap_arguments(""),
-            cluster=cluster,
-            input_model=f"{workspace}/training/model-averaged-nemo",
-            output_model=f"{workspace}/training/qwen2.5-14b-improved-hf",
-            convert_from="nemo",
-            convert_to="hf",
-            num_gpus=num_gpus,
-            model_type="qwen",
-            hf_model_name="Qwen/Qwen2.5-14B-Instruct",
-            expname=f"{expname_prefix}-convert-back-to-hf",
-            run_after=f"{expname_prefix}-training",
-        )
-
+def final_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     # launching evaluation
     eval(
         ctx=wrap_arguments("++inference.tokens_to_generate=16384 "),
@@ -204,13 +147,13 @@ def final_eval(workspace, cluster, num_gpus, training_backend, expname_prefix, w
         output_dir=f"{workspace}/evals/after-training",
         num_jobs=1,
         expname=f"{expname_prefix}-final-eval",
-        run_after=[f"{expname_prefix}-convert-back-to-hf", f"{expname_prefix}-training"],
+        run_after=f"{expname_prefix}-training",
         wandb_name=f"{expname_prefix}-final-eval" if not wandb_params["disable_wandb"] else None,
         wandb_project=wandb_params["wandb_project"],
     )
 
 
-def initial_eval(workspace, cluster, num_gpus, training_backend, expname_prefix, wandb_params):
+def initial_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     # launching evaluation
     eval(
         ctx=wrap_arguments(""),
@@ -223,7 +166,7 @@ def initial_eval(workspace, cluster, num_gpus, training_backend, expname_prefix,
         num_jobs=1,
         expname=f"{expname_prefix}-baseline-eval",
         run_after=f"{expname_prefix}-download-assets",
-        wandb_name=f"{expname_prefix}-final-eval" if not wandb_params["disable_wandb"] else None,
+        wandb_name=f"{expname_prefix}-baseline-eval" if not wandb_params["disable_wandb"] else None,
         wandb_project=wandb_params["wandb_project"],
     )
 
@@ -242,13 +185,6 @@ if __name__ == "__main__":
         type=int,
         default=8,
         help="Number of GPUs to use for the job.",
-    )
-    parser.add_argument(
-        "--training_backend",
-        type=str,
-        default="nemo-aligner",
-        choices=["nemo-aligner", "nemo-rl"],
-        help="Training backend to use.",
     )
     parser.add_argument(
         "--expname_prefix",
@@ -277,7 +213,6 @@ if __name__ == "__main__":
         args.workspace,
         args.cluster,
         args.num_gpus,
-        args.training_backend,
         args.expname_prefix,
         wandb_params,
     )

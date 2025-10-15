@@ -220,7 +220,6 @@ def get_training_cmd(
 class SupportedServers(str, Enum):
     trtllm = "trtllm"
     vllm = "vllm"
-    nemo = "nemo"
     openai = "openai"
     sglang = "sglang"
 

@@ -34,7 +34,7 @@ def eval_bfcl(cfg):
     """BFCL (Berkeley Function Calling Leaderboard) evaluation wrapper.
 
     This function wraps the external BFCL evaluation tool, converting between
-    NeMo-Skills format and BFCL format, then merging results back.
+    Nemo-Skills format and BFCL format, then merging results back.
     """
     eval_config = BFCLEvaluatorConfig(**cfg.eval_config)
     model_name = eval_config.model.replace("/", "_")
@@ -43,7 +43,7 @@ def eval_bfcl(cfg):
         # Output files are structures as bfcl_v3/TEST_CATEGORY/jsonl_file
         test_category = str(Path(jsonl_file).absolute().parent.name).removeprefix("bfcl_v3.")
 
-        # Convert NeMo-Skills output file to BFCL format
+        # Convert Nemo-Skills output file to BFCL format
         output_dir = Path("/opt/gorilla/berkeley-function-call-leaderboard") / f"result/{model_name}"
         score_file = (
             Path("/opt/gorilla/berkeley-function-call-leaderboard")
@@ -71,7 +71,7 @@ def eval_bfcl(cfg):
 
 
 def _convert_to_bfcl_format(jsonl_file, output_dir, test_category):
-    """Convert NeMo-Skills JSONL format to BFCL expected format."""
+    """Convert Nemo-Skills JSONL format to BFCL expected format."""
 
     if not Path(output_dir).exists():
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -89,7 +89,7 @@ def _convert_to_bfcl_format(jsonl_file, output_dir, test_category):
 
 
 def _merge_bfcl_results(generation_file, bfcl_fmted_file, score_file):
-    """Merge BFCL evaluation results back into the original NeMo-Skills file."""
+    """Merge BFCL evaluation results back into the original Nemo-Skills file."""
 
     # Load the score file has the format that it stores the aggregate scores at the top,
     # and the wrong instances after that

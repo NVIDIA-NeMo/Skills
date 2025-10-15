@@ -117,7 +117,7 @@ def run_cmd(
         None, help="Internal option to specify task dependencies.", hidden=True
     ),
 ):
-    """Run a pre-defined module or script in the NeMo-Skills container."""
+    """Run a pre-defined module or script in the Nemo-Skills container."""
     setup_logging(disable_hydra_logs=False, use_rich=True)
     extra_arguments = f"{' '.join(ctx.args)}"
 

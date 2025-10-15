@@ -33,23 +33,6 @@ from nemo_skills.utils import get_logger_name, setup_logging
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
-def get_nemo_to_hf_cmd(
-    input_model, output_model, model_type, hf_model_name, dtype, num_gpus, num_nodes, extra_arguments
-):
-    cmd = (
-        f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code && "
-        f"cd /nemo_run/code && "
-        f"python -m nemo_skills.conversion.nemo_to_hf_{model_type} "
-        f"    --in-path {input_model} "
-        f"    --out-path {output_model} "
-        f"    --hf-model-name {hf_model_name} "
-        f"    --precision {dtype} "
-        f"    --max-shard-size 10GB "
-        f"    {extra_arguments} "
-    )
-    return cmd
-
-
 def get_hf_to_trtllm_cmd(
     input_model,
     output_model,
@@ -112,23 +95,6 @@ def get_hf_to_trtllm_cmd(
     return cmd
 
 
-def get_hf_to_nemo_cmd(
-    input_model, output_model, model_type, hf_model_name, dtype, num_gpus, num_nodes, extra_arguments
-):
-    cmd = (
-        f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code && "
-        f"cd /nemo_run/code && "
-        f"python -m nemo_skills.conversion.hf_to_nemo_{model_type} "
-        f"    --in-path {input_model} "
-        f"    --out-path {output_model} "
-        f"    --hf-model-name {hf_model_name} "
-        f"    --precision {dtype} "
-        f"    {extra_arguments} "
-    )
-
-    return cmd
-
-
 def get_hf_to_megatron_cmd(
     input_model, output_model, model_type, hf_model_name, dtype, num_gpus, num_nodes, extra_arguments
 ):
@@ -163,14 +129,12 @@ class SupportedTypes(str, Enum):
 
 
 class SupportedFormatsTo(str, Enum):
-    nemo = "nemo"
     hf = "hf"
     trtllm = "trtllm"
     megatron = "megatron"
 
 
 class SupportedFormatsFrom(str, Enum):
-    nemo = "nemo"
     hf = "hf"
 
 
@@ -282,8 +246,8 @@ def convert(
     if convert_to != "trtllm" and hf_model_name is None:
         raise ValueError("--hf_model_name is required")
 
-    if convert_to in ["hf", "nemo"] and model_type == "deepseek_v3":
-        raise ValueError("Conversion to HF/Nemo is not yet supported for DeepSeek v3 models")
+    if convert_to in ["hf"] and model_type == "deepseek_v3":
+        raise ValueError("Conversion to HF is not yet supported for DeepSeek v3 models")
 
     if convert_to == "megatron":
         if convert_from != "hf":
@@ -319,9 +283,7 @@ def convert(
         log_dir = str(Path(output_model) / "conversion-logs")
 
     conversion_cmd_map = {
-        ("nemo", "hf"): get_nemo_to_hf_cmd,
         ("hf", "megatron"): get_hf_to_megatron_cmd,
-        ("hf", "nemo"): get_hf_to_nemo_cmd,
         ("hf", "trtllm"): partial(
             get_hf_to_trtllm_cmd,
             calib_dataset=calib_dataset,
@@ -331,9 +293,7 @@ def convert(
         ),
     }
     container_map = {
-        ("nemo", "hf"): cluster_config["containers"]["nemo"],
         ("hf", "megatron"): cluster_config["containers"]["megatron"],
-        ("hf", "nemo"): cluster_config["containers"]["nemo"],
         ("hf", "trtllm"): cluster_config["containers"]["trtllm"],
     }
     conversion_cmd = conversion_cmd_map[(convert_from, convert_to)](
