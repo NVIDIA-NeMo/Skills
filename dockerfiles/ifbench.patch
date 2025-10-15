@@ -1,3 +1,67 @@
+diff --git a/evaluation_lib.py b/evaluation_lib.py
+index 8fe7e45..49f193b 100644
+--- a/evaluation_lib.py
++++ b/evaluation_lib.py
+@@ -18,6 +18,7 @@
+ import collections
+ import dataclasses
+ import json
++import logging
+ from typing import Dict, Optional, Sequence, Union
+
+ import instructions_registry
+@@ -90,10 +91,18 @@ def test_instruction_following_strict(
+     if args and "prompt" in args:
+       instruction.build_description(prompt=inp.prompt)
+
+-    if response.strip() and instruction.check_following(response):
+-      is_following_list.append(True)
+-    else:
+-      is_following_list.append(False)
++    response_has_content = bool(response.strip())
++    follows_instruction = False
++    if response_has_content:
++      try:
++        follows_instruction = instruction.check_following(response)
++      except Exception:  # pylint: disable=broad-except
++        logging.exception(
++            "check_following failed for instruction %s (prompt key %s)",
++            instruction_id,
++            inp.key,
++        )
++    is_following_list.append(response_has_content and follows_instruction)
+
+   return OutputExample(
+       instruction_id_list=inp.instruction_id_list,
+@@ -142,9 +151,18 @@ def test_instruction_following_loose(
+
+     is_following = False
+     for r in all_responses:
+-      if r.strip() and instruction.check_following(r):
+-        is_following = True
+-        break
++      if not r.strip():
++        continue
++      try:
++        if instruction.check_following(r):
++          is_following = True
++          break
++      except Exception:  # pylint: disable=broad-except
++        logging.exception(
++            "check_following failed for instruction %s (prompt key %s)",
++            instruction_id,
++            inp.key,
++        )
+
+     is_following_list.append(is_following)
+
+@@ -216,4 +234,4 @@ def print_report(outputs):
+   print()
+   for instruction_id in sorted(tier1_total.keys()):
+     accuracy = tier1_correct[instruction_id] / tier1_total[instruction_id]
+-    print(f"{instruction_id} {accuracy}")
+\ No newline at end of file
++    print(f"{instruction_id} {accuracy}")
 diff --git a/instructions.py b/instructions.py
 index 0195010..d57b7d1 100644
 --- a/instructions.py
