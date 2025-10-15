@@ -6,13 +6,19 @@ grpo:
   num_generations_per_prompt: 16
   max_rollout_turns: 1 # for multi-turn rollouts. Math Environments just have 1 turn (answering the question)
   max_num_steps: 1000000
+  max_num_epochs: 1
   normalize_rewards: true
   use_leave_one_out_baseline: true
   val_period: 0
   val_at_start: false
   max_val_samples: 256
   val_batch_size: 256
+  overlong_filtering: false
   seed: 42
+  async_grpo:
+    enabled: false # Set to true to enable async training mode
+    # Max age (in training steps) for trajectories used in training
+    max_trajectory_age_steps: 1
 
 loss_fn:
   reference_policy_kl_penalty: 0.01
@@ -115,7 +121,7 @@ policy:
 
   megatron_cfg:
     enabled: true
-    empty_unused_memory_level: 0
+    empty_unused_memory_level: 0 # setting it to 0 will maximize performance, but it might lead to OOMs, while setting it to 2 to minimize the peak memory usage to avoid OOMs
     activation_checkpointing: false
     converter_type: "Qwen2ForCausalLM"
     tensor_model_parallel_size: ${policy.tensor_model_parallel_size}
@@ -132,6 +138,7 @@ policy:
     moe_router_load_balancing_type: "none" # "seq_aux_loss" causes logprob error divergence for grpo
     moe_router_bias_update_rate: 0.0 # by default, disable bias updates for grpo
     moe_permute_fusion: false
+    bias_activation_fusion: True
     #gives ~20% training perf speedup with sequence packing
     apply_rope_fusion: True
 
@@ -194,6 +201,7 @@ policy:
       precision: ${policy.precision}
       tensor_parallel_size: 1
       pipeline_parallel_size: 1
+      expert_parallel_size: 1  # When EP > 1, EP must be a multiple of TP since vLLM's EP = DP * TP
       gpu_memory_utilization: 0.6
       max_model_len: ${policy.max_total_sequence_length}
       enable_expert_parallel: false
@@ -232,6 +240,7 @@ logger:
   wandb_enabled: false
   tensorboard_enabled: false
   mlflow_enabled: false
+  swanlab_enabled: false # Disable SwanLab logging
   monitor_gpus: false  # If true, will monitor GPU usage and log to wandb and/or tensorboard
   wandb:
     project: "grpo-dev"
