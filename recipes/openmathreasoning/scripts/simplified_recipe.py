@@ -33,7 +33,7 @@ def prepare(workspace, cluster, num_gpus, training_backend, expname_prefix, wand
     # download the models and prepare the data
     cmd = (
         f"cd {workspace} && "
-        f"export DOWNLOAD_PREFIX=https://raw.githubusercontent.com/NVIDIA/NeMo-Skills/refs/heads/main/recipes/openmathreasoning && "
+        f"export DOWNLOAD_PREFIX=https://raw.githubusercontent.com/NVIDIA-NeMo/Skills/refs/heads/main/recipes/openmathreasoning && "
         f"wget $DOWNLOAD_PREFIX/scripts/prepare_raw_data.py && "
         f"wget $DOWNLOAD_PREFIX/prompts/extract-problems.yaml && "
         f"wget $DOWNLOAD_PREFIX/scripts/postprocess_problem_extraction.py && "

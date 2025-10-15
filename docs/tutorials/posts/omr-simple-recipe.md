@@ -96,7 +96,7 @@ Let's start by downloading the data, as well as the problem extraction prompt an
 ```shell
 ns run_cmd --expname=prepare-data --log_dir=/workspace/prepare-data --cluster=local \
     'cd /workspace && \
-    export DOWNLOAD_PREFIX=https://raw.githubusercontent.com/NVIDIA/NeMo-Skills/refs/heads/main/recipes/openmathreasoning && \
+    export DOWNLOAD_PREFIX=https://raw.githubusercontent.com/NVIDIA-NeMo/Skills/refs/heads/main/recipes/openmathreasoning && \
     wget $DOWNLOAD_PREFIX/scripts/prepare_raw_data.py && \
     wget $DOWNLOAD_PREFIX/prompts/extract-problems.yaml && \
     wget $DOWNLOAD_PREFIX/scripts/postprocess_problem_extraction.py && \
