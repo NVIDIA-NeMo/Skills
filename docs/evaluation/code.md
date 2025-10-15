@@ -398,7 +398,7 @@ ns eval \
     --split=test \
     --data_dir=<DATA_DIR> \
     --output_dir=<OUTPUT_DIR> \
-    --extra_eval_args="++eval_config.test_file=<PATH_TO_METDATA_TEST_FILE>" \
+    --extra_eval_args="++eval_config.test_file=<PATH_TO_METADATA_TEST_FILE>" \
     ++inference.temperature=0.6 \
     ++inference.top_p=0.95 \
     ++inference.tokens_to_generate=65536
