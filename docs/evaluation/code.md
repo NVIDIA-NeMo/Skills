@@ -395,6 +395,7 @@ ns eval \
     --server_nodes=1 \
     --server_gpus=8 \
     --benchmarks=ioi24:50 \
+    --with_sandbox \
     --split=test \
     --data_dir=<DATA_DIR> \
     --output_dir=<OUTPUT_DIR> \
