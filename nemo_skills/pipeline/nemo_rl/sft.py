@@ -175,8 +175,8 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend):
     else:
         raise ValueError("Invalid backend: must be 'fsdp' or 'megatron'")
 
-    cmd += f"   --training-folder={output_dir} "
-    cmd += f"   --hf-ckpt-path={final_hf_path} "
+    cmd += f" --training-folder={output_dir} "
+    cmd += f" --hf-ckpt-path={final_hf_path} "
     if step != "last":
         try:
             step = int(step)
@@ -200,11 +200,11 @@ def get_checkpoint_average_cmd(output_dir, average_steps, backend, remove_checkp
     steps = [int(x.strip()) for x in average_steps.split(",") if x.strip()]
     steps_str = " ".join(map(str, steps))
 
-    cmd += f"--checkpoint_dir {output_dir} "
-    cmd += f"--steps {steps_str} "
-    cmd += f"   --backend={backend} "
+    cmd += f" --checkpoint_dir {output_dir} "
+    cmd += f" --steps {steps_str} "
+    cmd += f" --backend={backend} "
     if remove_checkpoints_after_average:
-        cmd += "--remove_checkpoints_after_average "
+        cmd += " --remove_checkpoints_after_average "
 
     return cmd
 
