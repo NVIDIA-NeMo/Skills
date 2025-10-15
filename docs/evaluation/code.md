@@ -365,3 +365,45 @@ Keep in mind there is some variance between runs, so we recommend running evalua
 
 - Benchmark is defined in [`nemo_skills/dataset/human-eval-infilling/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/human-eval-infilling/__init__.py)
 - Original benchmark source is [here](https://github.com/openai/human-eval-infilling).
+
+### IOI
+
+We currently support IOI24 and are working to support IOI25 for evaluation. The original data for IOI24 can be seen [here](https://huggingface.co/datasets/open-r1/ioi).
+
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `test.jsonl` and `test_metadata.json`.
+
+```
+ns prepare_data ioi24
+```
+
+#### Running the Evaluation
+
+Once the data is prepared, you can run the evaluation. Replace `<...>` placeholders with your cluster and directory paths.
+Note you have to provide the path to the metadata test file generated from preparing the data. To follow IOI submission rules, we generate 50 solutions per sub-task.
+
+This command runs an evaluation of [OpenReasoning-Nemotron-32B](https://huggingface.co/nvidia/OpenReasoning-Nemotron-32B) on a Slurm cluster.
+
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=ioi24:50 \
+    --split=test \
+    --data_dir=<DATA_DIR> \
+    --output_dir=<OUTPUT_DIR> \
+    --extra_eval_args="++eval_config.test_file=<PATH_TO_METDATA_TEST_FILE>" \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=65536
+```
+
+##### Verifying Results
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/summarized-results/main_*`.
