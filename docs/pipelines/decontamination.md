@@ -78,6 +78,6 @@ since we now want to make a check for each training set example and find closest
 
 After you get `/workspace/math-contamination-results/output.jsonl`,
 you can pass it into [prepare_data command](training.md#preparing-the-data)
-with `++contamination_file=...` option.
+with `++filters.remove_contaminated=true ++contamination_file=...` option.
 
 See a more detailed example in [OpenMathInstruct-2 dataset construction pipeline](../releases/openmathinstruct2/dataset.md#decontamination).

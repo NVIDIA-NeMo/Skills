@@ -35,7 +35,7 @@ majority_filter:
   min_majority_percentage: 0.0
 
 filters:
-  remove_contaminated: true
+  remove_contaminated: false
   remove_len_outlier_problems: false
   majority_filter: false
   drop_none_answers: true
