@@ -869,5 +869,98 @@ class TestJobDependencies:
             assert handles[0] == "slurm_job_123"
 
 
+class TestGenerateEnvironmentVariables:
+    """Test that environment variables are properly passed through generate() with sandbox."""
+
+    @patch("nemo_skills.pipeline.utils.declarative.get_executor")
+    @patch("nemo_skills.pipeline.utils.declarative.temporary_env_update")
+    def test_generate_with_sandbox_passes_env_vars_correctly(self, mock_temp_env_update, mock_get_executor, tmp_path):
+        """Integration test: verify generate() with sandbox passes NEMO_SKILLS_SANDBOX_PORT to client,
+        and LISTEN_PORT/NGINX_PORT/PYTHONPATH to sandbox, matching old generate_v0.py behavior."""
+
+        # Track what environment variables were passed to each command via temporary_env_update
+        env_updates_captured = []
+
+        def capture_env_update(cluster_config, updates):
+            """Mock temporary_env_update to capture what env vars are being set."""
+            env_updates_captured.append(updates.copy())
+            # Return a context manager that does nothing
+            from contextlib import nullcontext
+
+            return nullcontext()
+
+        mock_temp_env_update.side_effect = capture_env_update
+
+        # Mock get_executor to return a mock executor
+        mock_executor = MagicMock()
+        mock_executor.packager = MagicMock()
+        mock_get_executor.return_value = mock_executor
+
+        # Create test input file
+        input_file = str(tmp_path / "input.jsonl")
+        with open(input_file, "w") as f:
+            f.write('{"problem": "test"}\n')
+
+        output_dir = str(tmp_path / "output")
+
+        # Mock get_exp to avoid actual experiment creation
+        with patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp:
+            with patch("nemo_skills.pipeline.utils.declarative.get_env_variables") as mock_get_env:
+                with patch("nemo_skills.pipeline.utils.declarative.run_exp"):
+                    mock_exp = MagicMock()
+                    mock_exp.add.return_value = "task_handle"
+                    mock_get_exp.return_value.__enter__.return_value = mock_exp
+                    mock_get_exp.return_value.__exit__ = MagicMock(return_value=False)
+                    mock_get_env.return_value = {"HF_HOME": "/hf"}
+
+                    # Call generate with sandbox enabled
+                    generate(
+                        ctx=wrap_arguments("++max_samples=1"),
+                        cluster=None,  # Will use executor="none"
+                        input_file=input_file,
+                        output_dir=output_dir,
+                        expname="test_env_vars",
+                        model="test-model",
+                        server_type="openai",
+                        server_address="http://localhost:5000",
+                        with_sandbox=True,  # Enable sandbox
+                        skip_hf_home_check=True,
+                        dry_run=True,
+                    )
+
+                    # Debug: print what we captured
+                    print(f"Captured env updates: {env_updates_captured}")
+
+                    # Find the client and sandbox environment updates
+                    client_env = None
+                    sandbox_env = None
+
+                    for env_update in env_updates_captured:
+                        if "NEMO_SKILLS_SANDBOX_PORT" in env_update:
+                            client_env = env_update
+                        elif "LISTEN_PORT" in env_update and "NGINX_PORT" in env_update:
+                            sandbox_env = env_update
+
+                    # Verify client got NEMO_SKILLS_SANDBOX_PORT (old behavior: exp.py line 493)
+                    # This is the key fix - ensuring sandbox port is passed to client
+                    assert client_env is not None, (
+                        f"Client environment update not found. Captured updates: {env_updates_captured}\n"
+                        f"This means NEMO_SKILLS_SANDBOX_PORT was not set for the client command, "
+                        f"so the Sandbox class cannot connect to the sandbox server."
+                    )
+                    assert "NEMO_SKILLS_SANDBOX_PORT" in client_env, (
+                        "NEMO_SKILLS_SANDBOX_PORT not set for client command"
+                    )
+
+                    # Verify sandbox got its environment vars (old behavior: exp.py lines 525-538)
+                    assert sandbox_env is not None, (
+                        f"Sandbox environment update not found. Captured: {env_updates_captured}"
+                    )
+                    assert "LISTEN_PORT" in sandbox_env, "LISTEN_PORT not set for sandbox"
+                    assert "NGINX_PORT" in sandbox_env, "NGINX_PORT not set for sandbox"
+
+                    # This test verifies the fix works end-to-end through the actual generate() function
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

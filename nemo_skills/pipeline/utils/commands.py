@@ -74,19 +74,20 @@ def vllm_server_command(
     return cmd, metadata
 
 
-def sandbox_command(cluster_config: Dict, port: Optional[int] = None, **kwargs) -> Tuple[str, Dict]:
+def sandbox_command(cluster_config: Dict, port: int, **kwargs) -> Tuple[str, Dict]:
     """Build sandbox command.
 
     Args:
         cluster_config: Cluster configuration dictionary
-        port: Port to use for sandbox
+        port: Port to use for sandbox (required - must be coordinated with client)
 
     Returns:
         Tuple of (command_string, metadata_dict)
-    """
-    if port is None:
-        port = get_free_port(strategy="random")
 
+    Note:
+        The port must be passed to both sandbox_command() and set as NEMO_SKILLS_SANDBOX_PORT
+        for the client command so they can communicate.
+    """
     cmd = get_sandbox_command(cluster_config)
 
     # Build PYTHONPATH from cluster config
