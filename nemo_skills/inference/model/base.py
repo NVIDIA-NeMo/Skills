@@ -39,7 +39,8 @@ class EndpointType(str, Enum):
     text = "text"
     chat = "chat"
     responses = "responses"
-
+    audio_url = "audio_url"
+    
 
 class BaseModel:
     """Base model class for handling requests to the inference server.
@@ -206,6 +207,38 @@ class BaseModel:
     def _build_completion_request_params(self, **kwargs) -> dict:
         pass
 
+    @abc.abstractmethod
+    def _build_audio_url_request_params(self, **kwargs) -> dict:
+        """
+        request example
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Analyze the two audio files. Tell me what happens in each, and if there are any similarities or differences between them."
+                },
+                {
+                    "type": "audio_url",
+                    "audio_url": {
+                        "url": f"data:audio/wav;base64,{base64_audio_1}"
+                    }
+                },
+                {
+                    "type": "audio_url",
+                    "audio_url": {
+                        "url": f"data:audio/wav;base64,{base64_audio_2}"
+                    }
+                }
+            ]
+        }
+        """
+        pass
+
+    @abc.abstractmethod
+    def _parse_audio_url_completion_response(self, response, include_response: bool = False, **kwargs) -> dict:
+        pass
+
     def _build_responses_request_params(self, **kwargs) -> dict:
         raise NotImplementedError("Responses completion is not not supported or implemented for this model.")
 
@@ -292,6 +325,16 @@ class BaseModel:
                             raise NotImplementedError("Streaming responses is not supported yet.")
                         else:
                             result = self._parse_responses_completion_response(
+                                response, include_response=include_response, **kwargs
+                            )
+                    elif endpoint_type == EndpointType.audio_url:
+                        assert isinstance(prompt, list), "Responses completion requests must be a list."
+                        request_params = self._build_audio_url_request_params(input=prompt, stream=stream, **kwargs)
+                        response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
+                        if stream:
+                            raise NotImplementedError("Streaming responses is not supported yet.")
+                        else:
+                            result = self._parse_audio_url_completion_response(
                                 response, include_response=include_response, **kwargs
                             )
                     else:
