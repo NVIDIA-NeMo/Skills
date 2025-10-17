@@ -26,6 +26,7 @@ class SupportedServersSelfHosted(str, Enum):
     vllm = "vllm"
     sglang = "sglang"
     megatron = "megatron"
+    generic = "generic"
 
 
 class SupportedServers(str, Enum):
@@ -36,6 +37,7 @@ class SupportedServers(str, Enum):
     openai = "openai"
     azureopenai = "azureopenai"
     gemini = "gemini"
+    generic = "generic"
 
 
 def get_free_port(exclude: list[int] | None = None, strategy: int | str = 5000) -> int:
@@ -123,7 +125,7 @@ def get_server_command(
 
     # check if the model path is mounted if not vllm, sglang, or trtllm;
     # vllm, sglang, and trtllm can also pass model name as "model_path" so we need special processing
-    if server_type not in ["vllm", "sglang", "trtllm"]:
+    if server_type not in ["vllm", "sglang", "trtllm", "generic"]:
         check_if_mounted(cluster_config, model_path)
 
     # the model path will be mounted, so generally it will start with /
@@ -201,6 +203,18 @@ def get_server_command(
             num_tasks = 1
         else:
             num_tasks = num_gpus
+    elif server_type == "generic":
+        if not server_entrypoint:
+            raise ValueError("For 'generic' server type, 'server_entrypoint' must be specified.")
+        server_start_cmd = (
+            f"{server_entrypoint} "
+            f"    --model {model_path} "
+            f"    --num_gpus {num_gpus} "
+            f"    --num_nodes {num_nodes} "
+            f"    --port {server_port} "
+            f"    {server_args} "
+        )
+        num_tasks = 1
     else:
         raise ValueError(f"Server type '{server_type}' not supported for model inference.")
 

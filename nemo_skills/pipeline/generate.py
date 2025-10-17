@@ -67,7 +67,11 @@ def _create_commandgroup_from_config(
     # 1. Add server if server_config is provided
     if server_config is not None and int(server_config["num_gpus"]) > 0:
         server_type = server_config["server_type"]
-        server_container = server_config.pop("container", cluster_config["containers"][server_type])
+        # Get container from server_config if provided, otherwise fall back to cluster config
+        if "container" in server_config:
+            server_container = server_config.pop("container")
+        else:
+            server_container = cluster_config["containers"][server_type]
 
         # Call server command builder directly with cluster_config
         cmd, num_tasks = get_server_command_fn(**server_config, cluster_config=cluster_config)

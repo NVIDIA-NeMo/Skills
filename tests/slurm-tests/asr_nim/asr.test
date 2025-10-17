@@ -1,0 +1,2 @@
+{"audio_path": "/nemo_run/code/tests/slurm-tests/asr_nim/wavs/t2_16.wav", "_reference": "sample 2 this is a test of text to speech synthesis"}
+{"audio_path": "/nemo_run/code/tests/slurm-tests/asr_nim/wavs/t3_16.wav", "_reference": "sample 3 hello how are you today"}

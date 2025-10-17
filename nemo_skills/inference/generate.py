@@ -353,9 +353,12 @@ class GenerationTask:
         # Initialize semaphore for controlling concurrent requests
         if self.cfg.parallel_thinking.mode is not None:
             # Each request will generate multiple solutions, so we need to divide the semaphore by the parallel requests
-            self.semaphore = asyncio.Semaphore(
-                self.cfg.max_concurrent_requests // self.llm.cfg.max_concurrent_requests
-            )
+            # Some models (like NIM speech models) don't have cfg attribute
+            if hasattr(self.llm, "cfg"):
+                divisor = self.llm.cfg.max_concurrent_requests
+            else:
+                divisor = 1
+            self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests // divisor)
         else:
             self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
 
