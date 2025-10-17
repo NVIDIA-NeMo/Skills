@@ -304,14 +304,6 @@ def create_remote_directory(directory: str | list, cluster_config: dict):
         tunnel.cleanup()
 
     elif cluster_config.get("executor") == "slurm":
-        ssh_tunnel_config = cluster_config.get("ssh_tunnel", None)
-        if ssh_tunnel_config is None:
-            raise ValueError("`ssh_tunnel` sub-config is not provided in cluster_config.")
-
-        # Check for pre-existing job_dir in the ssh_tunnel_config
-        if "job_dir" not in ssh_tunnel_config:
-            ssh_tunnel_config["job_dir"] = directory[0]
-
         tunnel = get_tunnel(cluster_config)
         for dir_path in directory:
             tunnel.run(f"mkdir -p {dir_path}", hide=False, warn=True)
@@ -398,12 +390,6 @@ def check_remote_mount_directories(directories: list, cluster_config: dict, exit
                 f"{missing_source_locations}"
             )
     elif cluster_config.get("executor") == "slurm":
-        ssh_tunnel_config = cluster_config.get("ssh_tunnel", None)
-        if ssh_tunnel_config is None:
-            raise ValueError("`ssh_tunnel` sub-config is not provided in cluster_config.")
-        # Check for pre-existing job_dir in the ssh_tunnel_config
-        if "job_dir" not in ssh_tunnel_config:
-            ssh_tunnel_config["job_dir"] = os.getcwd()
         tunnel = get_tunnel(cluster_config)
         missing_source_locations = []
         for directory in directories:
