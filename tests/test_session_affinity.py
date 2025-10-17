@@ -48,12 +48,50 @@ class SessionAffinityTester:
             headers = {
                 "Content-Type": "application/json",
             }
-            if session_id:
-                headers["X-Session-ID"] = session_id
+            affinity_id = session_id if session_id is not None else f"affinity-{uuid.uuid4()}"
+            headers["X-Session-ID"] = affinity_id
 
             # HTTP timeout should be longer than execution timeout + buffer for IPython session creation
             http_timeout = max(timeout + 10, 30)  # IPython sessions start much faster than Jupyter kernels
             response = requests.post(f"{self.base_url}/execute", json=payload, headers=headers, timeout=http_timeout)
+
+            if response.status_code == 202:
+                submission = response.json()
+
+                job_id = submission.get("job_id")
+                if not job_id:
+                    raise RuntimeError("Job submission response missing job_id")
+
+                poll_headers = {"X-Session-ID": affinity_id}
+                poll_url = f"{self.base_url}/jobs/{job_id}"
+                poll_deadline = time.time() + max(timeout + 10, 120)
+
+                while True:
+                    if time.time() > poll_deadline:
+                        raise RuntimeError(f"Polling for job {job_id} timed out after {time.time() - start_time:.2f}s")
+
+                    job_response = requests.get(poll_url, headers=poll_headers, timeout=http_timeout)
+
+                    if job_response.status_code != 200:
+                        time.sleep(0.1)
+                        continue
+
+                    job_data = job_response.json()
+
+                    status = job_data.get("status")
+                    if status in {"queued", "running"}:
+                        time.sleep(0.1)
+                        continue
+
+                    result = job_data.get("result", {}) or {}
+                    if "process_status" not in result:
+                        result["process_status"] = status or "error"
+
+                    end_time = time.time()
+                    result["response_time"] = end_time - start_time
+                    result["timestamp"] = end_time
+                    return result
+
             end_time = time.time()
 
             if response.status_code != 200:

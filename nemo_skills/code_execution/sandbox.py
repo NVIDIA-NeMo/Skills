@@ -18,6 +18,7 @@ import glob
 import json
 import logging
 import os
+import time
 import traceback
 import uuid
 from collections import defaultdict
@@ -78,39 +79,81 @@ class Sandbox(abc.ABC):
         """Close the HTTP session."""
         await self.http_session.aclose()
 
-    async def _send_request(self, request, timeout):
-        session_id = request.pop("session_id", None)
-        extra_headers = {}
-        if session_id is not None:
-            extra_headers["X-Session-ID"] = str(session_id)
-
+    async def _request(self, method: str, url: str, **kwargs):
         if self.ssh_server and self.ssh_key_path:
-            # For SSH tunneling, use threads since there's no async version
             import sshtunnel_requests
 
-            def ssh_request():
-                sshtunnel_request = sshtunnel_requests.from_url(f"ssh://{self.ssh_server}:22", self.ssh_key_path)
-                return sshtunnel_request.post(
-                    url=self._get_execute_url(),
-                    data=json.dumps(request),
-                    timeout=timeout + 5.0,
-                    headers={"Content-Type": "application/json", **extra_headers},
-                )
+            def ssh_call():
+                session = sshtunnel_requests.from_url(f"ssh://{self.ssh_server}:22", self.ssh_key_path)
+                call_kwargs = dict(kwargs)
+                data_value = call_kwargs.pop("content", None)
+                if data_value is not None:
+                    call_kwargs["data"] = data_value
+                http_method = getattr(session, method)
+                return http_method(url, **call_kwargs)
 
-            # Native async requires more lines of code, so we use to_thread
-            # Should be ok since this is a debug mode
-            output = await asyncio.to_thread(ssh_request)
-        else:
-            output = await self.http_session.post(
-                url=self._get_execute_url(),
-                content=json.dumps(request),
-                timeout=timeout + 5.0,
-                headers={"Content-Type": "application/json", **extra_headers},
-            )
-        # retrying 502 errors
-        if output.status_code == 502:
-            raise httpx.TimeoutException("502 error")
-        return self._parse_request_output(output)
+            return await asyncio.to_thread(ssh_call)
+
+        http_method = getattr(self.http_session, method)
+        return await http_method(url, **kwargs)
+
+    async def _send_request(self, request, timeout):
+        extra_headers = {}
+        affinity_header = request.pop("session_id", None)
+        # We always need X-Session-ID header to route polling requests to the correct worker
+        if affinity_header is None:
+            affinity_header = str(uuid.uuid4())
+        extra_headers["X-Session-ID"] = affinity_header
+
+        payload = json.dumps(request)
+        output = await self._request(
+            "post",
+            self._get_execute_url(),
+            content=payload,
+            timeout=10.0,
+            headers={"Content-Type": "application/json", **extra_headers},
+        )
+        try:
+            response_json = output.json()
+        except json.JSONDecodeError:
+            raise RuntimeError(f"Error during parsing output: {output.text}")
+        if "job_id" not in response_json:
+            return self._parse_request_output(output)
+        job_id = response_json["job_id"]
+
+        # Estimate the deadline based on the queued ahead jobs; cut it off at 1200 seconds
+        # Add extra overhead for ipython to account for interrupt/kill/restart latency
+        overhead = 5.0 if request.get("language") == "ipython" else 2.0
+        deadline_seconds = min(1200, (float(response_json.get("queued_ahead", 0)) + 1) * (timeout + overhead))
+        deadline = time.monotonic() + deadline_seconds
+        while True:
+            # This should never happen under normal circumstances
+            if time.monotonic() > deadline:
+                # TODO: if the worker is healthy, instead of resetting it, we should try to restart the job
+                # maybe reset the deadline and log retry attempt
+                LOG.error(
+                    "Client timed out polling job %s; issuing hard worker reset (session_id=%s)",
+                    job_id,
+                    affinity_header,
+                )
+                _ = await self._request("post", self._get_reset_worker_url(), timeout=5.0, headers=extra_headers)
+                raise httpx.TimeoutException("Client poll deadline exceeded")
+
+            resp = await self._request("get", self._get_jobs_url(job_id), timeout=2.0, headers=extra_headers)
+            # This should never happen under normal circumstances
+            if getattr(resp, "status_code", 200) != 200:
+                LOG.error("Polling job %s failed with status %d: %s", job_id, resp.status_code, resp.text)
+                raise RuntimeError(f"Error during polling job {job_id} (status {resp.status_code}): {resp.text}")
+
+            job_data = resp.json()
+            if job_data.get("status") in {"completed", "timeout", "error", "failed", "canceled"}:
+                result = job_data.get("result") or {}
+                return (
+                    result
+                    if "process_status" in result
+                    else {**result, "process_status": job_data.get("status", "error")}
+                )
+            await asyncio.sleep(0.5)
 
     @abc.abstractmethod
     def _parse_request_output(self, output):
@@ -118,6 +161,18 @@ class Sandbox(abc.ABC):
 
     @abc.abstractmethod
     def _get_execute_url(self):
+        pass
+
+    @abc.abstractmethod
+    def _get_jobs_url(self, job_id):
+        pass
+
+    @abc.abstractmethod
+    def _get_reset_worker_url(self):
+        pass
+
+    @abc.abstractmethod
+    def _get_cancel_job_url(self, job_id):
         pass
 
     @abc.abstractmethod
@@ -340,6 +395,15 @@ class LocalSandbox(Sandbox):
     def _get_execute_url(self):
         return f"http://{self.host}:{self.port}/execute"
 
+    def _get_jobs_url(self, job_id):
+        return f"http://{self.host}:{self.port}/jobs/{job_id}"
+
+    def _get_reset_worker_url(self):
+        return f"http://{self.host}:{self.port}/admin/reset_worker"
+
+    def _get_cancel_job_url(self, job_id):
+        return f"http://{self.host}:{self.port}/jobs/{job_id}/cancel"
+
     def _parse_request_output(self, output):
         try:
             return output.json()
@@ -372,8 +436,9 @@ class LocalSandbox(Sandbox):
 
         for attempt in range(max_retries):
             try:
-                response = await self.http_session.delete(
-                    url=f"http://{self.host}:{self.port}/sessions/{session_id}",
+                response = await self._request(
+                    "delete",
+                    f"http://{self.host}:{self.port}/sessions/{session_id}",
                     timeout=10.0,
                     headers={"X-Session-ID": session_id},
                 )
