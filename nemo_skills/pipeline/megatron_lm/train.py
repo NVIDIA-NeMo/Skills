@@ -113,7 +113,7 @@ def train_megatron_lm(
         ..., help="Path to the json file containing information about per-split training data"
     ),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
-    num_gpus: int = typer.Option(..., help="Number of GPUs"),
+    num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
     num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
     wandb_project: str = typer.Option("nemo-skills", help="Weights & Biases project name"),
     wandb_group: str = typer.Option(None, help="Weights & Biases group name."),

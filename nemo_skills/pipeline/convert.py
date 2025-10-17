@@ -174,8 +174,8 @@ def convert(
         help="Optional number of samples to use from the calibration dataset (if dtype=fp8)",
     ),
     expname: str = typer.Option("conversion", help="NeMo-Run experiment name"),
-    num_nodes: int = typer.Option(1),
-    num_gpus: int = typer.Option(...),
+    num_nodes: int = typer.Option(1, help="Number of nodes to use"),
+    num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),

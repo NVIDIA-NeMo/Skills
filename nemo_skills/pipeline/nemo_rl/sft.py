@@ -229,7 +229,7 @@ def sft_nemo_rl(
     training_data: str = typer.Option(None, help="Path to the training data"),
     validation_data: Optional[str] = typer.Option(None, help="Path to the validation data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
-    num_gpus: int = typer.Option(..., help="Number of GPUs"),
+    num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
     num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
     conversion_step: str = typer.Option(
         default="last",
