@@ -36,6 +36,8 @@ from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
+from nemo_skills.prompt.utils import load_config as load_prompt_config
+
 TokenizerType = PreTrainedTokenizerBase
 _call_counter = 0
 
@@ -86,6 +88,7 @@ class PromptResponseDataset:
         output_key: str = "output",
         num_proc: int | None = None,
         force_reprocess: bool = False,
+        input_template_path: str | None = None,
     ):
         self.input_key = input_key
         self.output_key = output_key
@@ -97,6 +100,13 @@ class PromptResponseDataset:
             self.num_proc = min(8, cpu_count)
         else:
             self.num_proc = num_proc
+
+        self.input_template = None
+        if input_template_path:
+            input_template_config = load_prompt_config(input_template_path)
+            if "user" not in input_template_config:
+                raise KeyError(f"'user' key is missing in the YAML file: {input_template_path}")
+            self.input_template = input_template_config["user"]
 
         # Train split
         self.formatted_ds = {
@@ -128,11 +138,22 @@ class PromptResponseDataset:
         print(f"[Map] Processing {split_name} dataset from: {path}")
         dataset = load_dataset("json", data_files=str(path))["train"]
 
+        current_input_key = self.input_key
+        if self.input_template:
+            assert "messages" not in dataset.column_names
+            dataset = dataset.map(
+                self.apply_input_template,
+                batched=True,
+                num_proc=self.num_proc,
+            )
+            current_input_key = "formatted_input"
+
         if "messages" not in dataset.column_names:
             dataset = dataset.map(
                 self.add_messages_key,
                 batched=True,
                 num_proc=self.num_proc,
+                fn_kwargs={"input_key": current_input_key},
             )
 
         # Save dataset + new size signature
@@ -144,16 +165,25 @@ class PromptResponseDataset:
         print(f"[Cache] Saved {split_name} dataset to: {cache_dir}")
         return dataset
 
-    def add_messages_key(self, examples: dict[str, list[Any]]) -> dict[str, list[list[dict[str, Any]]]]:
+    def add_messages_key(
+        self, examples: dict[str, list[Any]], input_key: str
+    ) -> dict[str, list[list[dict[str, Any]]]]:
         return {
             "messages": [
                 [
                     {"role": "user", "content": input_},
                     {"role": "assistant", "content": output},
                 ]
-                for input_, output in zip(examples[self.input_key], examples[self.output_key])
+                for input_, output in zip(examples[input_key], examples[self.output_key])
             ]
         }
+
+    def apply_input_template(self, examples: dict[str, list[Any]]) -> dict[str, list[str]]:
+        keys = [k.strip() for k in self.input_key.split(";")]
+        examples["formatted_input"] = [
+            self.input_template.format(**{k: examples[k][i] for k in keys}) for i in range(len(examples[keys[0]]))
+        ]
+        return examples
 
 
 def parse_args():
@@ -233,6 +263,7 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
         data_config["input_key"],
         data_config["output_key"],
         force_reprocess=data_config.get("force_reprocess", False),
+        input_template_path=data_config.get("input_template_path", None),
     )
     print(f"  ✓ Training dataset loaded with {len(data.formatted_ds['train'])} samples.")
     if data.formatted_ds["validation"] is not None:
