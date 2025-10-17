@@ -35,7 +35,7 @@ RUN git clone https://github.com/allenai/IFBench.git /opt/benchmarks/IFBench --d
 RUN cd /opt/benchmarks/IFBench && sed -i '/^unicodedata[=<>]*.*$/d' requirements.txt && pip install -r requirements.txt
 
 RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
-RUN cd /opt/gorilla && git checkout d2177992bbba9aa228b53c0645bf8f5613a5a7c6
+RUN cd /opt/gorilla && git checkout d85e9ad3a3009be3d609c5550799389a16599f88
 RUN cd /opt/gorilla/berkeley-function-call-leaderboard && pip install -e .
 
 RUN apt remove -y python3-blinker

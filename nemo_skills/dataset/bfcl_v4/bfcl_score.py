@@ -13,6 +13,9 @@
 # limitations under the License.
 
 
+# TODO: refactor this to expose all metrics properly, currently for k>1 the reporting is partial
+
+
 SIMPLE_AST = [
     "simple_python",
     "simple_java",
@@ -25,8 +28,6 @@ OTHER_SINGLE_TURN_AST = [
     "parallel_multiple",
 ]
 
-SINGLE_TURN_IRRELEVANCE = "irrelevance"
-
 LIVE_SINGLE_TURN_AST = [
     "live_simple",
     "live_multiple",
@@ -36,7 +37,10 @@ LIVE_SINGLE_TURN_AST = [
 
 LIVE_SINGLE_TURN_RELEVANCE = "live_relevance"
 
-LIVE_SINGLE_TURN_IRRELEVANCE = "live_irrelevance"
+HALLUCINATION = [
+    "irrelevance",
+    "live_irrelevance",
+]
 
 MULTI_TURN_AST = [
     "multi_turn_base",
@@ -44,6 +48,20 @@ MULTI_TURN_AST = [
     "multi_turn_miss_param",
     "multi_turn_long_context",
 ]
+
+MEMORY = [
+    "memory_kv",
+    "memory_vector",
+    "memory_rec_sum",
+]
+
+WEB_SEARCH = [
+    "web_search_base",
+    "web_search_no_snippet",
+]
+
+FORMAT_SENSITIVITY = "format_sensitivity"
+
 
 # Global to track the expected max k across all subsets (None until set)
 GLOBAL_MAX_K = None
@@ -74,9 +92,11 @@ def calculate_combined_accuracy(accuracy_dict_list: list[dict], weighted=False):
         return {"accuracy": total_accuracy / total_div_count, "num_entries": total_count}
 
 
-def get_accuracy_dict(metrics, category):
+def get_accuracy_dict(metrics, category, optional=False):
     # reporting aggregation for pass@1[avg-of-k] (for highest k) if available
-    category_dict = metrics[f"bfcl_v3.{category}"]
+    if optional and f"bfcl_v4.{category}" not in metrics:
+        category_dict = {}
+    category_dict = metrics[f"bfcl_v4.{category}"]
 
     # Find all keys that match "pass@1[avg-of-{k}]"
     avg_keys = [key for key in category_dict.keys() if key.startswith("pass@1[avg-of-") and key.endswith("]")]
@@ -124,16 +144,8 @@ def calculate_non_live_single_turn_accuracy(metrics):
 
     non_live_ast_accuracy = calculate_combined_accuracy(non_live_ast_accuracy_list, weighted=False)
 
-    non_live_irrelevance_accuracy = get_accuracy_dict(metrics, SINGLE_TURN_IRRELEVANCE)
-
-    overall_accuracy_non_live = calculate_combined_accuracy(
-        non_live_ast_accuracy_list + [non_live_irrelevance_accuracy], weighted=False
-    )
-
     return {
-        "overall_non_live": overall_accuracy_non_live,
-        "non_live_ast": non_live_ast_accuracy,
-        "non_live_irrelevance": non_live_irrelevance_accuracy,
+        "overall_non_live": non_live_ast_accuracy,
     }
 
 
@@ -141,18 +153,11 @@ def calculate_live_single_turn_accuracy(metrics):
     live_ast_accuracy_list = [get_accuracy_dict(metrics, category) for category in LIVE_SINGLE_TURN_AST]
     live_ast_accuracy = calculate_combined_accuracy(live_ast_accuracy_list, weighted=True)
 
-    live_irrelevance_accuracy = get_accuracy_dict(metrics, LIVE_SINGLE_TURN_IRRELEVANCE)
     live_relevance_accuracy = get_accuracy_dict(metrics, LIVE_SINGLE_TURN_RELEVANCE)
 
-    overall_accuracy_live = calculate_combined_accuracy(
-        live_ast_accuracy_list + [live_irrelevance_accuracy, live_relevance_accuracy], weighted=True
-    )
-
     return {
-        "overall_live": overall_accuracy_live,
-        "live_ast": live_ast_accuracy,
-        "live_irrelevance": live_irrelevance_accuracy,
-        "live_relevance": live_relevance_accuracy,
+        "overall_live": live_ast_accuracy,
+        "relevance": live_relevance_accuracy,
     }
 
 
@@ -164,27 +169,56 @@ def calculate_multi_turn_accuracy(metrics):
         "overall_multi_turn": overall_accuracy_multi_turn,
     }
 
+def calculate_agentic_accuracy(metrics):
+    memory_accuracy_list = [get_accuracy_dict(metrics, category) for category in MEMORY]
+    overall_accuracy_memory = calculate_combined_accuracy(memory_accuracy_list, weighted=False)
+    web_search_accuracy_list = [get_accuracy_dict(metrics, category) for category in WEB_SEARCH]
+    overall_accuracy_web_search = calculate_combined_accuracy(web_search_accuracy_list, weighted=False)
+
+    result_dict = {
+        "overall_agentic": calculate_combined_accuracy([overall_accuracy_memory, overall_accuracy_web_search], weighted=False),
+        "overall_memory": overall_accuracy_memory,
+        "overall_web_search": overall_accuracy_web_search,
+    }
+
+
+    return result_dict
+
+
+def calculate_hallucination_measurement(metrics):
+    hallucination_accuracy_list = [get_accuracy_dict(metrics, category) for category in HALLUCINATION]
+    overall_hallucination_accuracy = calculate_combined_accuracy(hallucination_accuracy_list, weighted=False)
+
+    result_dict = {
+        "overall_hallucination": overall_hallucination_accuracy
+    }
+
+    return result_dict
+
 
 def compute_score(metrics: dict):
     non_live_single_turn_accuracy = calculate_non_live_single_turn_accuracy(metrics)
     live_single_turn_accuracy = calculate_live_single_turn_accuracy(metrics)
     multi_turn_accuracy = calculate_multi_turn_accuracy(metrics)
+    agentic_accuracy = calculate_agentic_accuracy(metrics)
+    hallucination_accuracy = calculate_hallucination_measurement(metrics)
 
-    overall_accuracy = calculate_combined_accuracy(
-        [
-            non_live_single_turn_accuracy["overall_non_live"],
-            live_single_turn_accuracy["overall_live"],
-            multi_turn_accuracy["overall_multi_turn"],
-        ],
-        weighted=False,
+    # Following the calculation guide from https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html
+    overall_accuracy = (
+        (agentic_accuracy["overall_agentic"] * 0.4) +
+        (multi_turn_accuracy["overall_multi_turn"] * 0.3) +
+        (live_single_turn_accuracy["overall_live"] * 0.1) +
+        (non_live_single_turn_accuracy["overall_non_live"] * 0.1) +
+        (hallucination_accuracy["overall_hallucination"] * 0.1)
     )
 
-    return {
-        "bfcl_v3": 
-        {
-            "overall_accuracy": overall_accuracy,
-            **non_live_single_turn_accuracy,
-            **live_single_turn_accuracy,
-            **multi_turn_accuracy,
-        }
+    res = {
+        "overall_accuracy": overall_accuracy,
+        **non_live_single_turn_accuracy,
+        **live_single_turn_accuracy,
+        **multi_turn_accuracy,
+        **agentic_accuracy,
+        **hallucination_accuracy,
     }
+
+    return {"bfcl_v4": res}

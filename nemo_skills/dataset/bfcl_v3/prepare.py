@@ -114,7 +114,7 @@ def process_file(repo_root_dir, input_file, output_file, model_type="llama-nemot
             f_out.write(json.dumps(instance) + "\n")
 
 
-def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, file_prefix="BFCL_v3", model_type="nemotron"):
+def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, file_prefix="BFCL_v4", model_type="nemotron"):
     """
     Download JSON files from the BFCL GitHub repo via cloning
 
@@ -129,9 +129,8 @@ def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, file_pr
         try:
             # Clone repository with minimal depth
             LOG.info(f"Cloning repository {repo_url} to {temp_dir}")
-            # v1.3 corresponds the release version for BFCL v3
             subprocess.run(
-                ["git", "clone", "-b", "v1.3", "--depth=1", repo_url, temp_dir], check=True, capture_output=True
+                ["git", "clone", "--depth=1", repo_url, temp_dir], check=True, capture_output=True
             )
 
             # Find the target folder
@@ -147,6 +146,9 @@ def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, file_pr
             json_pattern = os.path.join(target_folder, f"{file_prefix}*.json")
             json_files = glob.glob(json_pattern)
 
+            ignored_v4_data = ["format_sensitivity", "memory", "web_search"]
+            json_files = [filename for filename in json_files if not any(v4_pattern in filename for v4_pattern in ignored_v4_data)]
+
             LOG.info(f"Found {len(json_files)} JSON files matching pattern")
 
             if not os.path.exists(output_dir):
@@ -155,7 +157,7 @@ def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, file_pr
             processed_files = 0
             for input_file in json_files:
                 filename = os.path.basename(input_file)
-                split_dirname = os.path.join(output_dir, filename.lstrip("BFCL_v3_").replace(".json", ""))
+                split_dirname = os.path.join(output_dir, filename.lstrip("BFCL_v4_").replace(".json", ""))
                 if not os.path.exists(split_dirname):
                     os.makedirs(split_dirname)
 

@@ -17,6 +17,7 @@ import logging
 import sys
 from dataclasses import asdict, field
 from functools import partial
+import asyncio
 
 import hydra
 from transformers import AutoTokenizer
@@ -47,6 +48,13 @@ from nemo_skills.utils import (
     nested_dataclass,
     setup_logging,
 )
+
+from bfcl_eval.utils import is_memory_prereq, is_memory
+from bfcl_eval.model_handler.utils import add_memory_instruction_system_prompt
+from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
+    MemoryAPI,
+)
+
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -238,13 +246,16 @@ class ServerMessageParser:
         tool_calls = [] if output_dict["message"].tool_calls is None else output_dict["message"].tool_calls
 
         try:
+            tool_calls = output_dict["message"].tool_calls
             generation = [{func_call.function.name: func_call.function.arguments} for func_call in tool_calls]
             tool_call_ids = [func_call.id for func_call in tool_calls]
         except Exception:
-            generation = output_dict["generation"] if isinstance(output_dict["generation"], str) else ""
+            tool_calls = []
+            generation = output_dict["message"].content
             tool_call_ids = []
 
-        output_dict["generation"] = generation
+        # Use model output if not a tool call
+        output_dict["generation"] = generation if generation else [output_dict["message"].content]
         output_dict["tool_calls"] = tool_calls
         output_dict["tool_call_ids"] = tool_call_ids
         output_dict["num_generated_tokens"] = output_dict.get("num_generated_tokens", 0)
@@ -270,8 +281,30 @@ class BFCLGenerationTask(GenerationTask):
         """BFCL is a multi-turn benchmark, so we can't print a single prompt."""
         return
 
+
     def setup_prompt(self):
         return None
+
+    def load_data(self):
+        """Run through memory prereqs so that they are given a correct order and priority"""
+        # This needs to happen before the data shapes are passed to apply the filter, this cannot use preprocessor
+        data = super().load_data()
+        # First, fix the target paths to point to the actual target paths for memory stores
+        for datapoint in data:
+            if "initial_config" in datapoint and list(datapoint["initial_config"].keys())[0].startswith("MemoryAPI"):
+                datapoint["initial_config"][list(datapoint["initial_config"].keys())[0]]["model_result_dir"] = self.cfg.output_file.replace("/output.jsonl", "")
+
+        # Now, process the datapoints which are the prereqs, one by one, and filter out the prereqs for the subsequent run
+        prereqs = [datapoint for datapoint in data if is_memory_prereq(datapoint["id"])]
+        non_prereqs = [datapoint for datapoint in data if not is_memory_prereq(datapoint["id"])]
+        # Sort prereqs to make sure they come in the correct order
+        prereqs = sorted(prereqs, key=lambda x: int(x["id"].split("_prereq_")[1].split("-")[0]))
+
+        for p in prereqs:
+            _ = asyncio.run(self.process_single_datapoint(p, data))
+
+        return non_prereqs
+
 
     async def _generate_single_assistant_turn(self, inference_state_dict):
         """Generate for a single assistant turn."""
@@ -385,27 +418,55 @@ class BFCLGenerationTask(GenerationTask):
                     output_dict["num_input_tokens_list"].append(model_response.get("num_input_tokens", 0))
 
                 if self.cfg.remove_thinking:
+                    # If no tool calling was used, apply reasoning cleanup to both the message and generation
                     trimmed_response_text = self._remove_thinking_from_message_content(
                         self.message_parser.get_response_text(model_response["message"])
                     )
+                    # If no tool calling was used, apply reasoning cleanup to both the message and generation
+                    if model_response["message"].content == model_response["generation"]:
+                        model_response["generation"] = [trimmed_response_text]
+
                     self.message_parser.set_response_text(model_response["message"], trimmed_response_text)
+
 
                 # Add the message to the state dict for chat history
                 state_dict["messages"].append(model_response["message"])
 
                 # Add the processed model response to the current turn responses
-                current_turn_response.append(model_response["generation"])
+                current_turn_response.extend(model_response["generation"])
 
                 # Try decoding the model response
                 try:
                     decoded_model_responses = convert_to_function_call(model_response["generation"])
                     if is_empty_execute_response(decoded_model_responses):
-                        LOG.info("Empty response from the model. Proceed to next turn.")
+                        LOG.info("No tools to execute in this turn. Proceed to next turn.")
                         break
 
                 except Exception:
                     LOG.info("Failed to decode the model response. Proceed to next turn.")
                     break
+
+                if is_memory(test_category):
+                    # Execute no function call, but just to get a reference to all the instances to get the initial state for logging purpose
+                    _, involved_instances = execute_multi_turn_func_call(
+                        [],
+                        initial_config,
+                        involved_classes,
+                        test_entry_id=test_entry_id,
+                        long_context=("long_context" in test_category or "composite" in test_category),
+                    )
+
+                    assert (
+                        len(involved_instances) == 1
+                    ), "Memory category should only involve one class."
+
+                    memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+                    data_point["question"] = add_memory_instruction_system_prompt(
+                        data_point["question"],
+                        test_category,
+                        data_point["scenario"],
+                        memory_instance,
+                    )
 
                 # Obtain the execution results
                 # TODO: Move the execution to sandbox
@@ -416,6 +477,15 @@ class BFCLGenerationTask(GenerationTask):
                     test_entry_id=test_entry_id,
                     long_context=("long_context" in test_category or "composite" in test_category),
                 )
+                # Special handling for the memory category
+                # Need to flush the memory to local file at the end of the conversation
+                if is_memory_prereq(test_entry_id):
+                    assert (
+                        len(involved_instances) == 1
+                    ), "Memory category should only involve one class."
+                    memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+                    memory_instance._flush_memory_to_local_file()
+
 
                 # Add the execution results to the chat history for the next turn
                 for execution_result, tool_call_id in zip(execution_results, model_response["tool_call_ids"]):

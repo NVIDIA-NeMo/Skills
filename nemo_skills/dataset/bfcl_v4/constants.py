@@ -12,35 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-*.json
-*.tar.gz
-*.tar
-*.npy
-*.info
-*.jsonl
-*.csv
-nemo_experiments
-wandb
-build
-.hypothesis
-*.zip
-*.egg-info
-*.xml
-*.DS_Store
-.coverage
-.venv
-*.lock
+from pathlib import Path
 
-__pycache__
-.ipynb_checkpoints
 
-cluster_configs/*
-!cluster_configs/example-*.yaml
+VERSION_PREFIX="BFCL_v4"
 
-nemo_skills/dataset/ruler/*/
-nemo_skills/dataset/bfcl_v3/*/
-nemo_skills/dataset/bfcl_v4/*/
-nemo_skills/dataset/aalcr/lcr/
-.idea/
-.idea/*
-CLAUDE.md
+
+# Repo relative paths
+MULTI_TURN_FUNC_DOC_PATH = Path("berkeley-function-call-leaderboard/bfcl_eval/data/multi_turn_func_doc")
+DATA_FOLDER_PATH = Path("berkeley-function-call-leaderboard/bfcl_eval/data")
