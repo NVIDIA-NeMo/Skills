@@ -42,7 +42,7 @@ class MockMetrics(BaseMetrics):
         ),
         (
             3,
-            [[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
+            [[1.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0]],
             {
                 "pass@1[avg-of-2]": {
                     "correct_statistics": {
@@ -64,7 +64,7 @@ class MockMetrics(BaseMetrics):
         ),
         (
             4,
-            [[1.0, 0.0, 1.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 1.0, 1.0, 1.0]],
+            [[1.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
             {
                 "pass@1[avg-of-2]": {
                     "correct_statistics": {
@@ -95,10 +95,11 @@ class MockMetrics(BaseMetrics):
         (
             5,
             [
-                [1.0, 0.0, 1.0, 1.0, 0.0],
-                [0.0, 1.0, 0.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0, 0.0],
+                [1.0, 0.0, 1.0, 1.0],
+                [1.0, 1.0, 0.0, 1.0],
+                [0.0, 1.0, 0.0, 1.0],
             ],
             {
                 "pass@1[avg-of-2]": {
@@ -137,7 +138,7 @@ class MockMetrics(BaseMetrics):
         ),
         (
             2,
-            [[1.0, 1.0], [1.0, 1.0], [0.0, 0.0]],
+            [[1.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
             {
                 "pass@1[avg-of-2]": {
                     "correct_statistics": {
@@ -172,18 +173,18 @@ def test_base_metrics_add_std_metrics(
                 {"num_reasoning_tokens": 80, "num_answer_tokens": 20, "is_correct": True},
                 {"num_reasoning_tokens": 90, "num_answer_tokens": 30, "is_correct": False},
             ],
-            {"reasoning_tokens": [[80, 90]], "answer_tokens": [[20, 30]]},
+            {"reasoning_tokens": [[80], [90]], "answer_tokens": [[20], [30]]},
         ),
         (
             [{"num_generated_tokens": 50, "is_correct": True}, {"num_generated_tokens": 60, "is_correct": False}],
-            {"reasoning_tokens": [[0, 0]], "answer_tokens": [[50, 60]]},
+            {"reasoning_tokens": [[0], [0]], "answer_tokens": [[50], [60]]},
         ),
         (
             [
                 {"num_reasoning_tokens": 100, "num_answer_tokens": 40, "is_correct": True},
                 {"num_generated_tokens": 80, "is_correct": False},
             ],
-            {"reasoning_tokens": [[100, 0]], "answer_tokens": [[40, 80]]},
+            {"reasoning_tokens": [[100], [0]], "answer_tokens": [[40], [80]]},
         ),
     ],
 )
