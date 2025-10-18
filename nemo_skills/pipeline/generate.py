@@ -53,6 +53,7 @@ def _create_commandgroup_from_config(
     keep_mounts_for_sandbox: bool,
     task_name: str,
     log_dir: str,
+    with_search_server: bool = False,
 ) -> CommandGroup:
     """Create a CommandGroup from server_config.
 
@@ -64,8 +65,30 @@ def _create_commandgroup_from_config(
 
     components = []
 
+    if with_search_server:
+        from nemo_skills.pipeline.utils.commands import search_command
+
+        search_cmd, search_metadata = search_command(cluster_config=cluster_config)
+
+        search_cmd = Command(
+            command=search_cmd,
+            container=cluster_config["containers"]["search"],
+            gpus=2,
+            env_vars={
+                "SEARCH_SERVER_PORT": search_metadata["port"],
+            },
+            name=task_name,
+            metadata=search_metadata,
+        )
+
     # 1. Add server if server_config is provided
     if server_config is not None and int(server_config["num_gpus"]) > 0:
+        _total_gpus_per_node = int(server_config["num_gpus"])
+        if with_search_server:
+            _total_gpus_per_node += search_cmd.gpus
+            _total_gpus_per_node = min(8, _total_gpus_per_node)
+        _cuda_visible_devices = [str(i) for i in range(_total_gpus_per_node)]
+
         server_type = server_config["server_type"]
         # Get container from server_config if provided, otherwise fall back to cluster config
         if "container" in server_config:
@@ -79,26 +102,37 @@ def _create_commandgroup_from_config(
         # Create metadata dict
         metadata = {
             "num_tasks": num_tasks,
-            "gpus": server_config["num_gpus"],
-            "nodes": server_config["num_nodes"],
             "log_prefix": "server",
         }
 
         server_cmd = Command(
             command=cmd,
             container=server_container,
-            gpus=server_config["num_gpus"],
+            gpus=_total_gpus_per_node,
             nodes=server_config["num_nodes"],
             name=task_name,
+            env_vars={"CUDA_VISIBLE_DEVICES": ",".join(_cuda_visible_devices[: int(server_config["num_gpus"])])},
             metadata=metadata,
         )
         components.append(server_cmd)
+
+        if with_search_server:
+            if "environment" not in search_cmd.metadata:
+                search_cmd.metadata["environment"] = {}
+            search_cmd.metadata["environment"]["CUDA_VISIBLE_DEVICES"] = ",".join(
+                _cuda_visible_devices[-search_cmd.gpus :]
+            )
 
     # 2. Add main generation command
     # Note: General cluster config env vars are automatically added by get_env_variables() in get_executor()
     client_env = {}
     if with_sandbox and sandbox_port is not None:
         client_env["NEMO_SKILLS_SANDBOX_PORT"] = str(sandbox_port)
+
+    if with_search_server:
+        components.append(search_cmd)
+
+        client_env["NEMO_SKILLS_SEARCH_SERVER_PORT"] = search_cmd.metadata["port"]
 
     client_cmd = Command(
         command=generation_cmd,
@@ -246,6 +280,9 @@ def generate(
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
+    with_search_server: bool = typer.Option(
+        False, help="If True, will start a local search container alongside this job"
     ),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     log_samples: bool = typer.Option(
@@ -440,6 +477,7 @@ def generate(
                     server_config=server_config.copy() if server_config else None,
                     with_sandbox=with_sandbox,
                     sandbox_port=current_sandbox_port,
+                    with_search_server=with_search_server,
                     cluster_config=cluster_config,
                     installation_command=installation_command,
                     get_server_command_fn=generation_task.get_server_command_fn(),
