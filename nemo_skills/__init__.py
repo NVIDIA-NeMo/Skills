@@ -19,7 +19,6 @@ _containers = {
     "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:1.0.0",
     "vllm": "vllm/vllm-openai:v0.10.1.1",
     "sglang": "lmsysorg/sglang:v0.5.3rc1-cu126",
-    "nemo": "igitman/nemo-skills-nemo:0.7.0",
     "megatron": "igitman/nemo-skills-megatron:0.7.0",
     "sandbox": "igitman/nemo-skills-sandbox:0.7.1",
     "nemo-skills": "igitman/nemo-skills:0.7.1",

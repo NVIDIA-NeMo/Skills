@@ -4,7 +4,7 @@ hide:
   - toc
 ---
 
-On this page you can find a list of papers, model and dataset releases that were created using NeMo-Skills.
+On this page you can find a list of papers, model and dataset releases that were created using Nemo-Skills.
 
 ## Releases
 

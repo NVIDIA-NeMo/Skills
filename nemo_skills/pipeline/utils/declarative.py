@@ -18,20 +18,27 @@ Simplified declarative pipeline system using only Command for all task types.
 Basic Example (Single job with multiple commands):
     from nemo_skills.pipeline.utils.commands import vllm_server_command, sandbox_command
     from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
+    from nemo_skills.pipeline.utils.server import get_free_port
+
+    # Allocate ports for server and sandbox
+    server_port = get_free_port(strategy="random")
+    sandbox_port = get_free_port(strategy="random")
 
     # Commands that run together in one SLURM job
     # Note: Lambdas are needed for cross-component references (hostname_ref, meta_ref)
     # which aren't resolved until het_group_index is assigned at pipeline execution time.
-    server = Command(
-        command=vllm_server_command(cluster_cfg, model="Qwen/Qwen3-8B"),
-        gpus=8,
-        name="server"
-    )
-    sandbox = Command(command=sandbox_command(cluster_cfg), name="sandbox")
+    server_cmd, server_meta = vllm_server_command(cluster_cfg, model="Qwen/Qwen3-8B", port=server_port)
+    server = Command(command=server_cmd, gpus=8, name="server", metadata=server_meta)
+
+    sandbox_cmd, sandbox_meta = sandbox_command(cluster_cfg, port=sandbox_port)
+    sandbox = Command(command=sandbox_cmd, name="sandbox", metadata=sandbox_meta)
+
     # This lambda is ESSENTIAL - server.hostname_ref() and meta_ref() aren't available until runtime
+    # Client needs NEMO_SKILLS_SANDBOX_PORT to connect to sandbox
     client = Command(
         command=lambda: f"curl {server.hostname_ref()}:{server.meta_ref('port')}/health",
-        name="client"
+        name="client",
+        metadata={"environment": {"NEMO_SKILLS_SANDBOX_PORT": str(sandbox_port)}}
     )
 
     # Group them together
@@ -66,11 +73,18 @@ Advanced Example (Multiple jobs with dependencies and heterogeneous components):
     prep_job = {"name": "prep", "group": prep_group}
 
     # Job 2: Two different model servers (HETEROGENEOUS SLURM job with 2 het components)
+    # Allocate ports for each server/sandbox pair
+    from nemo_skills.pipeline.utils.server import get_free_port
+    server_8b_port = get_free_port(strategy="random")
+    sandbox_8b_port = get_free_port(strategy="random")
+    server_32b_port = get_free_port(strategy="random")
+    sandbox_32b_port = get_free_port(strategy="random")
+
     # Build commands with cluster_config
-    server_8b_cmd, server_8b_meta = vllm_server_command(cluster_config, model="Qwen/Qwen3-8B")
-    sandbox_8b_cmd, sandbox_8b_meta = sandbox_command(cluster_config)
-    server_32b_cmd, server_32b_meta = vllm_server_command(cluster_config, model="Qwen/Qwen3-32B")
-    sandbox_32b_cmd, sandbox_32b_meta = sandbox_command(cluster_config)
+    server_8b_cmd, server_8b_meta = vllm_server_command(cluster_config, model="Qwen/Qwen3-8B", port=server_8b_port)
+    sandbox_8b_cmd, sandbox_8b_meta = sandbox_command(cluster_config, port=sandbox_8b_port)
+    server_32b_cmd, server_32b_meta = vllm_server_command(cluster_config, model="Qwen/Qwen3-32B", port=server_32b_port)
+    sandbox_32b_cmd, sandbox_32b_meta = sandbox_command(cluster_config, port=sandbox_32b_port)
 
     server_8b = Command(command=server_8b_cmd, gpus=8, name="server_8b", metadata=server_8b_meta)
     sandbox_8b = Command(command=sandbox_8b_cmd, name="sandbox_8b", metadata=sandbox_8b_meta)

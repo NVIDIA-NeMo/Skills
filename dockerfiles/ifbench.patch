@@ -1,40 +1,15 @@
 diff --git a/instructions.py b/instructions.py
-index 0195010..d57b7d1 100644
+index d3071c7..e303de7 100644
 --- a/instructions.py
 +++ b/instructions.py
 @@ -31,7 +31,9 @@ import io
-
+ 
  import instructions_util
-
+ 
 -download('en_core_web_sm')
-+# assumed to be predownloaded
-+print("skipping download of en_core_web_sm")
+++# assumed to be predownloaded
+++print("skipping download of en_core_web_sm")
 +# download('en_core_web_sm')
-
+ 
  logger = logging.getLogger(__name__)
-
-@@ -866,12 +868,17 @@ class EmojiSentenceChecker(Instruction):
- 		sentences = instructions_util.split_into_sentences(value)
- 		for i, sentence in enumerate(sentences):
- 			stripped = sentence.translate(str.maketrans('', '', string.punctuation)).strip()
-+			if not stripped:
-+				return False
- 			last_char = stripped[-1]
- 			# because blank spaces are treated oddly
- 			second_last_char = stripped[-2] if len(stripped) > 1 else stripped[-1]
- 			if not emoji.is_emoji(last_char) and not emoji.is_emoji(second_last_char):
- 				if i < len(sentences) - 1:
- 					stripped = sentences[i + 1].translate(str.maketrans('', '', string.punctuation)).strip()
-+					# fixed empty string
-+					if not stripped:
-+						return False
- 					first_char = stripped[0]
- 					if not emoji.is_emoji(first_char):
- 						return False
-@@ -2246,4 +2253,4 @@ class NoWhitespaceChecker(Instruction):
- 		  True if the response contains no whitespace;
- 		  otherwise, False.
- 		"""
--		return not any(char.isspace() for char in value)
-\ No newline at end of file
-+		return not any(char.isspace() for char in value)
+ 

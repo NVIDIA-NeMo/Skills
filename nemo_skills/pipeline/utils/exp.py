@@ -17,7 +17,7 @@ import logging
 import os
 import shlex
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from functools import lru_cache
 from pathlib import Path
 
@@ -241,6 +241,20 @@ def get_executor(
         additional_parameters["mail_type"] = cluster_config["mail_type"]
     if cluster_config.get("mail_user") is not None:
         additional_parameters["mail_user"] = cluster_config["mail_user"]
+
+    # Merge slurm_kwargs into additional_parameters, but only non-explicit parameters
+    if slurm_kwargs:
+        # Get the set of explicit SlurmExecutor fields
+        from nemo_run.core.execution.slurm import SlurmExecutor as SE
+
+        explicit_fields = {f.name for f in fields(SE)}
+        # Separate into explicit and additional parameters
+        explicit_kwargs = {k: v for k, v in slurm_kwargs.items() if k in explicit_fields}
+        additional_from_slurm_kwargs = {k: v for k, v in slurm_kwargs.items() if k not in explicit_fields}
+        additional_parameters.update(additional_from_slurm_kwargs)
+    else:
+        explicit_kwargs = {}
+
     srun_args = [
         "--no-container-mount-home",
         "--mpi=pmix",
@@ -259,34 +273,43 @@ def get_executor(
     dependency_type = cluster_config.get("dependency_type", "afterany")
     job_details_class = CustomJobDetailsRay if with_ray else CustomJobDetails
 
-    return run.SlurmExecutor(
-        account=cluster_config["account"],
-        partition=partition,
-        qos=qos,
-        nodes=num_nodes,
-        ntasks_per_node=tasks_per_node,
-        tunnel=get_tunnel(cluster_config),
-        container_image=container,
-        container_mounts=mounts,
-        time=timeout,
-        additional_parameters=additional_parameters,
-        packager=packager,
-        gpus_per_node=gpus_per_node if not cluster_config.get("disable_gpus_per_node", False) else None,
-        srun_args=srun_args,
-        job_details=job_details_class(
+    # Build executor parameters as a dictionary to avoid duplicate parameters
+    executor_params = {
+        "account": cluster_config["account"],
+        "partition": partition,
+        "qos": qos,
+        "nodes": num_nodes,
+        "ntasks_per_node": tasks_per_node,
+        "tunnel": get_tunnel(cluster_config),
+        "container_image": container,
+        "container_mounts": mounts,
+        "time": timeout,
+        "additional_parameters": additional_parameters,
+        "packager": packager,
+        "gpus_per_node": gpus_per_node if not cluster_config.get("disable_gpus_per_node", False) else None,
+        "srun_args": srun_args,
+        "job_details": job_details_class(
             job_name=cluster_config.get("job_name_prefix", "") + job_name,
             folder=get_unmounted_path(cluster_config, log_dir),
             srun_prefix=log_prefix + "_" + job_name + "_",
             sbatch_prefix=job_name + "_",
         ),
-        wait_time_for_group_job=0.01,
-        monitor_group_job_wait_time=20,
-        dependencies=dependencies,
-        dependency_type=dependency_type,
-        heterogeneous=heterogeneous,
-        env_vars=env_vars,
-        **(slurm_kwargs or {}),
-    )
+        "wait_time_for_group_job": 0.01,
+        "monitor_group_job_wait_time": 20,
+        "dependencies": dependencies,
+        "dependency_type": dependency_type,
+        "heterogeneous": heterogeneous,
+        "env_vars": env_vars,
+    }
+
+    # Update with explicit_kwargs to allow overriding default values
+    if explicit_kwargs:
+        # Check which parameters are being overridden
+        overridden = [k for k in explicit_kwargs if k in executor_params]
+        if overridden:
+            LOG.warning(f"Parameters from slurm_kwargs are overriding default values: {', '.join(overridden)}")
+        executor_params.update(explicit_kwargs)
+    return run.SlurmExecutor(**executor_params)
 
 
 def install_packages_wrap(cmd, installation_command: str | None = None):
@@ -446,9 +469,11 @@ def add_task(
     # assuming server always has the largest resources request, so it needs to go first
     if server_config is not None and int(server_config["num_gpus"]) > 0:
         # do not pass container into the command builder
-        server_container = server_config.pop("container", cluster_config["containers"][server_config["server_type"]])
+        # NOTE: avoid evaluating default (which would index cluster_config) unless needed
+        server_container = server_config.pop("container", None)
+        if server_container is None:
+            server_container = cluster_config["containers"][server_config["server_type"]]
         server_cmd, num_server_tasks = get_server_command(**server_config, cluster_config=cluster_config)
-
         server_executor = get_executor(
             cluster_config=cluster_config,
             container=server_container,

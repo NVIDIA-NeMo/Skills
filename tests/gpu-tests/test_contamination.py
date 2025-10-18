@@ -51,7 +51,7 @@ def test_check_contamination():
     run_cmd(
         cluster="test-local",
         config_dir=Path(__file__).absolute().parent,
-        container="nemo",
+        container="nemo-rl",
         num_gpus=1,
         ctx=wrap_arguments(cmd),
     )

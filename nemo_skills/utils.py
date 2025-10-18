@@ -21,6 +21,7 @@ import sys
 import tokenize
 import typing
 from dataclasses import MISSING, dataclass, fields, is_dataclass
+from math import lcm
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
 
@@ -609,3 +610,16 @@ def get_server_wait_cmd(server_address):
         f"echo 'Waiting for the server to start at {server_address}' && "
         f"while [ $(curl -X PUT {server_address} >/dev/null 2>&1; echo $?) -ne 0 ]; do sleep 3; done "
     )
+
+
+def setup_make_sequence_length_divisible_by(tensor_model_parallel_size: int, context_parallel_size: int) -> int:
+    if tensor_model_parallel_size > 1 and context_parallel_size > 1:
+        make_sequence_length_divisible_by = lcm(2 * context_parallel_size, tensor_model_parallel_size)
+    elif tensor_model_parallel_size > 1:
+        make_sequence_length_divisible_by = tensor_model_parallel_size
+    elif context_parallel_size > 1:
+        make_sequence_length_divisible_by = context_parallel_size * 2
+    else:
+        make_sequence_length_divisible_by = 1
+
+    return make_sequence_length_divisible_by

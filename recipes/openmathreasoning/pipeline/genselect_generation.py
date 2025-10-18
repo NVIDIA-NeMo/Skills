@@ -157,6 +157,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
         f"    ++filters.drop_multi_boxed=false "
         f"    ++filters.remove_len_outlier_problems=false "
         f"    ++filters.remove_len_outlier_solutions=false "
+        f"    ++filters.remove_contaminated=true "
         f"    ++contamination_file={contamination_file} "
         f"    {stage_config.get('inline_args', '')}"
     )

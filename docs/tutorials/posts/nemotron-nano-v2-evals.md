@@ -7,8 +7,8 @@ hide:
 
 # Reproducing NVIDIA-Nemotron-Nano-9B-v2 Evals
 
-In this tutorial, we will reproduce the evals for the [NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2){target="_blank"} model using NeMo-Skills.
-For an introduction to the NeMo-Skills framework, we recommend going over [our introductory tutorial](../../basics/index.md).
+In this tutorial, we will reproduce the evals for the [NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2){target="_blank"} model using Nemo-Skills.
+For an introduction to the Nemo-Skills framework, we recommend going over [our introductory tutorial](../../basics/index.md).
 
 
 We assume you have `/workspace` defined in your [cluster config](../../basics/cluster-configs.md) and are
@@ -54,7 +54,7 @@ We will evaluate the model on the following:
 - Long-context:
     - RULER
 
-Here are the commands to prepare these datasets using NeMo-Skills:
+Here are the commands to prepare these datasets using Nemo-Skills:
 
 ```bash
 ns prepare_data gpqa mmlu-pro hle livecodebench scicode bfcl_v3 ifbench math-500 aime24 aime25
@@ -104,7 +104,7 @@ We evaluate all benchmarks in the reasoning on mode, except for RULER, which is 
 !!!note
     The NVIDIA-Nemotron-Nano-9B-v2 is a hybrid model which uses mamba layers along with transformer layers.
     To run the model without quality degradation, the vllm server needs to be run with the option `--mamba_ssm_cache_dtype float32`.
-    With NeMo-Skills, we can accomplish this by setting ```--server_args="--mamba_ssm_cache_dtype float32 "```
+    With Nemo-Skills, we can accomplish this by setting ```--server_args="--mamba_ssm_cache_dtype float32 "```
     when performing generations.
 
 #### Command for Math, Code, and Science Reasoning Eval (Reasoning on)
@@ -184,7 +184,7 @@ ns eval \
 
 #### Command for HLE Eval
 
-For HLE, because symbolic comparison is not sufficient to determine the correctness of the output, we use the recommended `o3-mini-20250131` model as the judge. Note that this model is the default in NeMo-Skills, and we have just added this argument for illustration purposes. To evaluate for the [Artificial Analysis Index (AAI) setting, please use the gpt-4o-20240806 model as the judge](https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview){target="_blank"}.
+For HLE, because symbolic comparison is not sufficient to determine the correctness of the output, we use the recommended `o3-mini-20250131` model as the judge. Note that this model is the default in Nemo-Skills, and we have just added this argument for illustration purposes. To evaluate for the [Artificial Analysis Index (AAI) setting, please use the gpt-4o-20240806 model as the judge](https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview){target="_blank"}.
 
 Note that using any of the OpenAI hosted models requires `OPENAI_API_KEY`. Alternatively, a self-hosted judge model can also be used for judgement. For example, `--judge_model="/workspace/NVIDIA-Nemotron-Nano-9B-v2"`  in tandem with `--judge_server_type="vllm" --judge_server_gpus 1` will use the `NVIDIA-Nemotron-Nano-9B-v2` itself as a judge.
 
@@ -215,7 +215,7 @@ ns eval \
 
 #### Command for BFCL Eval
 
-Tool-calling benchmarks require tool-call parsing and execution. NeMo-Skills supports both client-side parsing (default) and server-side parsing. For server-side parsing, the vLLM server requires the parsing details as highlighted in the below command:
+Tool-calling benchmarks require tool-call parsing and execution. Nemo-Skills supports both client-side parsing (default) and server-side parsing. For server-side parsing, the vLLM server requires the parsing details as highlighted in the below command:
 ```bash hl_lines="8-12"
 ns eval \
     --cluster=local \
@@ -348,17 +348,17 @@ pass@8           | 294         | 335              | 55.41%        | 51.02%      
 
 ```
 ----------------------- bfcl_v3 ------------------------
-| Category                    | num_entries | accuracy |
-|-----------------------------|-------------|----------|
-| overall_accuracy            | 4441        | 67.03%   |
-| overall_non_live            | 1390        | 85.28%   |
-| non_live_ast                | 1150        | 85.15%   |
-| irrelevance                 | 240         | 85.83%   |
-| overall_live                | 2251        | 82.05%   |
-| live_ast                    | 1351        | 80.24%   |
-| live_irrelevance            | 882         | 85.15%   |
-| live_relevance              | 18          | 66.67%   |
-| overall_multi_turn          | 800         | 33.75%   |
+| Category           | num_entries | accuracy |
+| ------------------ | ----------- | -------- |
+| overall_accuracy   | 4441        | 67.03%   |
+| overall_non_live   | 1390        | 85.28%   |
+| non_live_ast       | 1150        | 85.15%   |
+| irrelevance        | 240         | 85.83%   |
+| overall_live       | 2251        | 82.05%   |
+| live_ast           | 1351        | 80.24%   |
+| live_irrelevance   | 882         | 85.15%   |
+| live_relevance     | 18          | 66.67%   |
+| overall_multi_turn | 800         | 33.75%   |
 ```
 
 !!! note
@@ -368,7 +368,7 @@ pass@8           | 294         | 335              | 55.41%        | 51.02%      
 
 ```
 | Task                                     | Accuracy |
-|------------------------------------------|----------|
+| ---------------------------------------- | -------- |
 | ruler.nemotron_nano_128k                 | 79.1     |
 | ruler.nemotron_nano_128k.niah_single_1   | 100.0    |
 | ruler.nemotron_nano_128k.niah_single_2   | 95.2     |

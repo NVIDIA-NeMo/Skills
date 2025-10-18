@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 
 def format_entry(entry: dict, idx: int) -> dict:
-    """Format an entry to match NeMo-Skills format."""
+    """Format an entry to match Nemo-Skills format."""
     return {
         "id": entry.get("id", f"simpleqa_{idx}"),
         "metadata": eval(entry["metadata"]),
@@ -35,7 +35,7 @@ def format_entry(entry: dict, idx: int) -> dict:
 
 
 def format_entry_verified(entry: dict, idx: int) -> dict:
-    """Format an entry to match NeMo-Skills format."""
+    """Format an entry to match Nemo-Skills format."""
     return {
         "id": entry.get("original_index", f"simpleqa_{idx}"),
         "metadata": entry.to_dict(),

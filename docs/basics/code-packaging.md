@@ -9,8 +9,8 @@ cancel jobs, etc.
 
 To decide which code to package we use the following logic:
 
-1. If you run commands from inside a cloned NeMo-Skills repository, we will package that repository.
-2. If you run commands from inside a git repository which is not NeMo-Skills (doesn't have `nemo_skills` top-level folder),
+1. If you run commands from inside a cloned Nemo-Skills repository, we will package that repository.
+2. If you run commands from inside a git repository which is not Nemo-Skills (doesn't have `nemo_skills` top-level folder),
    we will package your current repository and also include `nemo_skills` subfolder from its installed location.
 3. If you run commands from outside of any git repository, we will only package `nemo_skills` subfolder from its installed
    location.

@@ -21,7 +21,7 @@ The question set is preprocessed as part of the [prepare_questions.py](https://g
 
 **Note**: OCR-1 questions are a subset of OCR-2 questions, and it is recommended to generate data for OCR-2 directly.
 
-To download and preprocess the question set you can run the following script. We assume out /workspace points to the directory where NeMo-Skills is cloned, but you can change the output directory to any other location:
+To download and preprocess the question set you can run the following script. We assume out /workspace points to the directory where Nemo-Skills is cloned, but you can change the output directory to any other location:
 
 ```bash
 python prepare_questions.py --cluster local --expname "toy" --output_dir "/workspace/recipes/opencodereasoning/data/"

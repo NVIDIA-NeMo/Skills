@@ -157,6 +157,7 @@ def get_env_variables(cluster_config):
         "AZURE_OPENAI_API_KEY",
         "OPENAI_API_KEY",
         "HF_TOKEN",
+        "NGC_API_KEY",
     }
     default_factories = {
         "HF_TOKEN": lambda: str(token) if (token := get_token()) else "",
@@ -210,6 +211,13 @@ def get_env_variables(cluster_config):
             else:
                 raise ValueError(f"Cannot resolve environment variable {key} inside the placeholder value: {value}")
 
+    # Unless NGC_API_KEY is explicitly set we will populate it to be equal to NVIDIA_API_KEY
+    if "NGC_API_KEY" not in env_vars:
+        if "NVIDIA_API_KEY" in env_vars:
+            env_vars["NGC_API_KEY"] = env_vars["NVIDIA_API_KEY"]
+            if "NGC_API_KEY" not in _logged_optional_env_vars:
+                LOG.info("Populating NGC_API_KEY to be equal to NVIDIA_API_KEY")
+                _logged_optional_env_vars.add("NGC_API_KEY")
     return env_vars
 
 

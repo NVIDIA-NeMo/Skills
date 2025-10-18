@@ -98,4 +98,4 @@ ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
 # Copy in source and prefetch all virtual environments
 RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py
 
-RUN git clone https://github.com/NVIDIA/NeMo-Skills.git /opt/NeMo-Skills && cd /opt/NeMo-Skills && uv pip install .
+RUN git clone https://github.com/NVIDIA-NeMo/Skills.git /opt/NeMo-Skills && cd /opt/NeMo-Skills && uv pip install .

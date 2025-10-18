@@ -53,7 +53,7 @@ majority_filter:
 
 filters:
   drop_multi_boxed: false
-  remove_contaminated: true
+  remove_contaminated: false
   majority_filter: false
   trim_solutions: false
   trim_prefix: false

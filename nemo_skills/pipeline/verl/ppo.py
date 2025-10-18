@@ -220,7 +220,6 @@ def get_training_cmd(
 class SupportedServers(str, Enum):
     trtllm = "trtllm"
     vllm = "vllm"
-    nemo = "nemo"
     openai = "openai"
     sglang = "sglang"
 
@@ -240,7 +239,7 @@ def ppo_verl(
     prompt_data: str = typer.Option(None, help="Path to the prompt data"),
     eval_data: str = typer.Option(None, help="Path to the eval data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
-    num_gpus: int = typer.Option(..., help="Number of GPUs"),
+    num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
     num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
     server_model: str = typer.Option(None, help="Path to the model or model name in API"),
     server_address: str = typer.Option(

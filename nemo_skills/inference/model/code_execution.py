@@ -295,7 +295,9 @@ class CodeExecutionWrapper:
 
         output = await self._generate_single(**request)
         if not stream:
-            self.model._maybe_apply_stop_phrase_removal(output, remove_stop_phrases, stop_phrases)
+            # Some models (like NIM speech models) don't have this method
+            if hasattr(self.model, "_maybe_apply_stop_phrase_removal"):
+                self.model._maybe_apply_stop_phrase_removal(output, remove_stop_phrases, stop_phrases)
 
         return output
 

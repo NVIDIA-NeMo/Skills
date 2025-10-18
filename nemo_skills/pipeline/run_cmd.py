@@ -54,8 +54,9 @@ def run_cmd(
     ),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
-    num_gpus: int | None = typer.Option(None, help="Number of GPUs to use"),
+    num_gpus: int | None = typer.Option(None, help="Number of GPUs per node to use"),
     num_nodes: int = typer.Option(1, help="Number of nodes to use"),
+    num_tasks: int = typer.Option(1, help="Number of tasks per node"),
     model: str = typer.Option(None, help="Path to the model to evaluate"),
     server_address: str = typer.Option(None, help="Address of the server hosting the model"),
     server_type: pipeline_utils.SupportedServers | None = typer.Option(None, help="Type of server to use"),
@@ -117,7 +118,7 @@ def run_cmd(
         None, help="Internal option to specify task dependencies.", hidden=True
     ),
 ):
-    """Run a pre-defined module or script in the NeMo-Skills container."""
+    """Run a pre-defined module or script in the Nemo-Skills container."""
     setup_logging(disable_hydra_logs=False, use_rich=True)
     extra_arguments = f"{' '.join(ctx.args)}"
 
@@ -198,7 +199,7 @@ def run_cmd(
                 task_dependencies=prev_tasks,
                 num_gpus=num_gpus,
                 num_nodes=num_nodes,
-                num_tasks=[1] * len(commands),
+                num_tasks=[num_tasks] * len(commands),
                 slurm_kwargs={"exclusive": exclusive} if exclusive else None,
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,

@@ -69,6 +69,7 @@ class ParallelThinkingConfig:
     gensynthesis: GenSynthesisSpecificConfig = field(default_factory=GenSynthesisSpecificConfig)
 
     # Solution related parameters
+    solution_length_cap: int | None = 16384  # If specified, will filter out solutions that are longer than this length
     window_size: int = 8  # Number of solutions compared in a single request
     solution_key: str = "generation"  # Key used for identifying the solution content
     filter_incomplete_solutions: bool = True  # Filter out incomplete solutions
@@ -158,6 +159,13 @@ class ParallelThinkingTask:
                     thinking_end=self.cfg.thinking_end,
                 )
 
+            if self.cfg.solution_length_cap is not None:
+                if len(generation_result[self.cfg.solution_key]) > self.cfg.solution_length_cap:
+                    LOG.debug(
+                        f"Solution filtered out: length {len(generation_result[self.cfg.solution_key])} exceeds cap {self.cfg.solution_length_cap}"
+                    )
+                    continue
+
             solutions.append(
                 {
                     self.cfg.solution_key: generation_result[self.cfg.solution_key],
@@ -193,6 +201,14 @@ class ParallelThinkingTask:
                             thinking_begin=self.cfg.thinking_begin,
                             thinking_end=self.cfg.thinking_end,
                         )
+
+                    if self.cfg.solution_length_cap is not None:
+                        if len(data_point[self.cfg.solution_key]) > self.cfg.solution_length_cap:
+                            LOG.debug(
+                                f"Solution filtered out: length {len(data_point[self.cfg.solution_key])} exceeds cap {self.cfg.solution_length_cap}"
+                            )
+                            continue
+
                     # TODO: Making an assumption that the prompt doesn't require all the data for few-shot prompting
                     # Hashing the prompt to get the key for the solutions
                     prompt = self.hash_prompt(self.orig_prompt_filler(data_point, data=None))

@@ -92,7 +92,7 @@ class GenerateSolutionsConfig:
     tokenizer: str | None = None
     # extra parameters to pass to the tokenizer's apply_chat_template method
     chat_template_kwargs: dict = field(default_factory=dict)
-    # to specify the format of the prompt, "ns" for NeMo-Skills format or "openai" for OpenAI chat format
+    # to specify the format of the prompt, "ns" for Nemo-Skills format or "openai" for OpenAI chat format
     prompt_format: str = "ns"
     prompt_suffix: str = ""  # suffix to add to the prompt, e.g. " /no_think"
     system_message: str | None = None  # can override the default system message in the config
@@ -353,9 +353,12 @@ class GenerationTask:
         # Initialize semaphore for controlling concurrent requests
         if self.cfg.parallel_thinking.mode is not None:
             # Each request will generate multiple solutions, so we need to divide the semaphore by the parallel requests
-            self.semaphore = asyncio.Semaphore(
-                self.cfg.max_concurrent_requests // self.llm.cfg.max_concurrent_requests
-            )
+            # Some models (like NIM speech models) don't have cfg attribute
+            if hasattr(self.llm, "cfg"):
+                divisor = self.llm.cfg.max_concurrent_requests
+            else:
+                divisor = 1
+            self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests // divisor)
         else:
             self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
 

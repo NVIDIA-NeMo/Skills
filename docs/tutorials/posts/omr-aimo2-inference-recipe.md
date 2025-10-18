@@ -5,7 +5,7 @@ readtime: 20
 
 # Building an Efficient Inference Engine for Solving Math Problems
 
-This tutorial guides you through creating a high-performance inference engine using [NeMo-Skills](https://nvidia-nemo.github.io/Skills/) to tackle complex math problems. It demonstrates the inference pipeline used to win the [AIMO-2 competition](https://www.kaggle.com/competitions/ai-mathematical-olympiad-progress-prize-2/writeups/nemoskills-1st-place-solution-nemoskills). With FP8 quantization and ReDrafter speculative decoding, we demonstrate up to 4× faster batched inference compared to BF16 on two H100 GPUs.
+This tutorial guides you through creating a high-performance inference engine using [Nemo-Skills](https://nvidia-nemo.github.io/Skills/) to tackle complex math problems. It demonstrates the inference pipeline used to win the [AIMO-2 competition](https://www.kaggle.com/competitions/ai-mathematical-olympiad-progress-prize-2/writeups/nemoskills-1st-place-solution-nemoskills). With FP8 quantization and ReDrafter speculative decoding, we demonstrate up to 4× faster batched inference compared to BF16 on two H100 GPUs.
 
 We will leverage [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for optimized model serving, including an advanced technique called ReDrafter for speculative decoding.
 
@@ -27,12 +27,12 @@ See the [companion notebook](https://github.com/NVIDIA-NeMo/Skills/tree/main/doc
 
 ## 1\. Setting Up Your Environment
 
-Our first step is to establish a consistent and isolated environment. We will use a NVIDIA PyTorch NGC container and install the essential libraries: TensorRT-LLM for model optimization and NeMo-Skills for the overall pipeline management.
+Our first step is to establish a consistent and isolated environment. We will use a NVIDIA PyTorch NGC container and install the essential libraries: TensorRT-LLM for model optimization and Nemo-Skills for the overall pipeline management.
 FP8 inference requires a GPU that supports FP8 inference such as Ada Lovelace or Hopper architecture or later. For this example we assume two GPUs are available.
 
 ### Container Setup and Library Installation
 
-Once inside the `nvcr.io/nvidia/pytorch:25.05-py3` container, run the following commands to install TensorRT-LLM and NeMo-Skills:
+Once inside the `nvcr.io/nvidia/pytorch:25.05-py3` container, run the following commands to install TensorRT-LLM and Nemo-Skills:
 
 ```bash
 # Ensure no conflicting TensorRT installations and install TensorRT-LLM
@@ -40,7 +40,7 @@ Once inside the `nvcr.io/nvidia/pytorch:25.05-py3` container, run the following 
 pip uninstall -y tensorrt
 pip3 install tensorrt_llm==1.1.0rc0
 
-# Install NeMo-Skills
+# Install Nemo-Skills
 pip install git+https://github.com/NVIDIA-NeMo/Skills.git
 ```
 
@@ -248,10 +248,10 @@ In the notebook, you can:
 
 Here’s a sample of the kind of benchmark results you’ll see:
 
-| Metric                        | BF16 | FP8   | FP8+ReDrafter  |
-|-------------------------------|---------------|-------|-------|
-| Total Generation Time (s)     | 144.2 | 64.7  |  30.5  |
-| Average Sample Throughput (Tok/s) | 34.6 | 75.2   |  138.5  |
+| Metric                            | BF16  | FP8  | FP8+ReDrafter |
+| --------------------------------- | ----- | ---- | ------------- |
+| Total Generation Time (s)         | 144.2 | 64.7 | 30.5          |
+| Average Sample Throughput (Tok/s) | 34.6  | 75.2 | 138.5         |
 
 *(full benchmarks and code available in the notebook)*
 
@@ -313,4 +313,4 @@ The code confirms that the valid bases are 21 and 49, summing to 70.
 
 </details>
 
-To turn off tool-calling in the [companion notebook](https://github.com/NVIDIA-NeMo/Skills/tree/main/docs/tutorials/notebooks/demo_aimo_inference.ipynb) use `get_model` instead of `get_code_execution_model` as shown in the NeMo-Skills [docs](https://nvidia-nemo.github.io/Skills/).
+To turn off tool-calling in the [companion notebook](https://github.com/NVIDIA-NeMo/Skills/tree/main/docs/tutorials/notebooks/demo_aimo_inference.ipynb) use `get_model` instead of `get_code_execution_model` as shown in the Nemo-Skills [docs](https://nvidia-nemo.github.io/Skills/).

@@ -20,7 +20,6 @@ from nemo_skills.pipeline.cli import run_cmd, wrap_arguments
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cluster", required=True)
-    ap.add_argument("--backend", required=True, choices=["nemo-aligner", "nemo-rl"], help="Training backend")
     ap.add_argument("--workspace", required=True, help="Workspace path")
     ap.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
     ap.add_argument("--expname_prefix", required=True, help="Experiment name prefix used inside the recipe")
@@ -31,7 +30,6 @@ def main():
         f"python -m recipes.openmathreasoning.scripts.simplified_recipe "
         f"    --cluster {args.cluster} "
         f"    --workspace {args.workspace} "
-        f"    --training_backend {args.backend} "
         f"    --expname_prefix {args.expname_prefix} "
     )
 

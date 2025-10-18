@@ -358,6 +358,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
         f"    ++filters.remove_len_outlier_solutions=false "
         f"    ++filters.trim_solutions=false "
         f"    ++use_judgement=true "
+        f"    ++filters.remove_contaminated=true "
         f"    ++contamination_file={contamination_file} "
         f"    {stage_config.get('inline_args', '')}"
     )
