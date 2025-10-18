@@ -24,7 +24,7 @@ from nemo_skills.pipeline.cli import (
 )
 
 
-def prepare(workspace, cluster, num_gpus, expname_prefix, wandb_params):
+def prepare(workspace, cluster, num_gpus, expname_prefix, backend, wandb_params):
     # data preparation needs to run locally without container, so not wrapping with run_cmd
     prepare_datasets(["aime24", "aime25"])
 
@@ -46,7 +46,7 @@ def prepare(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     )
 
 
-def run_sdg(workspace, cluster, num_gpus, expname_prefix, wandb_params):
+def run_sdg(workspace, cluster, num_gpus, expname_prefix, backend, wandb_params):
     postprocess_cmd = (
         f"python {workspace}/postprocess_problem_extraction.py "
         f"    {workspace}/sdg/problems/output.jsonl "
@@ -90,7 +90,7 @@ def run_sdg(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     )
 
 
-def run_training(workspace, cluster, num_gpus, expname_prefix, wandb_params):
+def run_training(workspace, cluster, num_gpus, expname_prefix, backend, wandb_params):
     # convert the generated solutions to a format that can be used for training
     run_cmd(
         ctx=wrap_arguments(
@@ -111,19 +111,24 @@ def run_training(workspace, cluster, num_gpus, expname_prefix, wandb_params):
 
     # train the model
 
+    args = [
+        "++policy.max_total_sequence_length=8192",
+        "++policy.train_global_batch_size=32",
+        "++policy.tensor_model_parallel_size=4",
+        "++policy.context_parallel_size=2",
+        "++policy.lr=1e-5",
+        "++sft.max_num_epochs=2",
+    ]
+    # For FSDP, sequence_packing cannot be used with context parallel
+    if backend == "fsdp":
+        args.append("++policy.sequence_packing.enabled=False")
+
     sft_nemo_rl(
-        ctx=wrap_arguments(
-            "++policy.max_total_sequence_length=8192 "
-            "++policy.train_global_batch_size=32 "
-            "++policy.tensor_model_parallel_size=4 "
-            "++policy.context_parallel_size=2 "
-            "++policy.lr=1e-5 "
-            "++sft.max_num_epochs=2 "
-        ),
+        ctx=wrap_arguments(" ".join(args)),
         cluster=cluster,
         output_dir=f"{workspace}/training",
         hf_model="Qwen/Qwen2.5-14B-Instruct",
-        backend="megatron",
+        backend=backend,
         num_gpus=num_gpus,
         num_nodes=1,
         disable_wandb=wandb_params["disable_wandb"],
@@ -135,7 +140,7 @@ def run_training(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     )
 
 
-def final_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
+def final_eval(workspace, cluster, num_gpus, expname_prefix, backend, wandb_params):
     # launching evaluation
     eval(
         ctx=wrap_arguments("++inference.tokens_to_generate=16384 "),
@@ -153,7 +158,7 @@ def final_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     )
 
 
-def initial_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
+def initial_eval(workspace, cluster, num_gpus, expname_prefix, backend, wandb_params):
     # launching evaluation
     eval(
         ctx=wrap_arguments(""),
@@ -203,6 +208,12 @@ if __name__ == "__main__":
         default="nemo-skills",
         help="WandB project name for tracking experiments.",
     )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="megatron",
+        help="Can either be megatron or fsdp",
+    )
     args = parser.parse_args()
 
     wandb_params = {
@@ -214,6 +225,7 @@ if __name__ == "__main__":
         args.cluster,
         args.num_gpus,
         args.expname_prefix,
+        args.backend,
         wandb_params,
     )
     prepare(*args)

@@ -24,13 +24,15 @@ def main():
     ap.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
     ap.add_argument("--expname_prefix", required=True, help="Experiment name prefix used inside the recipe")
     ap.add_argument("--disable_wandb", action="store_true", help="Disable W&B logging in the recipe")
+    ap.add_argument("--backend", type=str, default="megatron", help="Can either be megatron or fsdp")
     args = ap.parse_args()
 
     cmd = (
         f"python -m recipes.openmathreasoning.scripts.simplified_recipe "
-        f"    --cluster {args.cluster} "
-        f"    --workspace {args.workspace} "
-        f"    --expname_prefix {args.expname_prefix} "
+        f" --cluster {args.cluster} "
+        f" --workspace {args.workspace} "
+        f" --expname_prefix {args.expname_prefix} "
+        f" --backend {args.backend} "
     )
 
     if args.disable_wandb:
