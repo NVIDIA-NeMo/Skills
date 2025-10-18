@@ -60,7 +60,6 @@ class BFCLGenerationConfig(GenerateSolutionsConfig):
     # Inference server configuration {server_params}
     server: dict = field(default_factory=dict)
 
-    remove_thinking: bool = True
     use_client_parsing: bool = True
     model_name: str | None = None
 
@@ -385,6 +384,7 @@ class BFCLGenerationTask(GenerationTask):
                     output_dict["num_input_tokens_list"].append(model_response.get("num_input_tokens", 0))
 
                 if self.cfg.remove_thinking:
+                    # TODO: replace with main remove_thinking method
                     trimmed_response_text = self._remove_thinking_from_message_content(
                         self.message_parser.get_response_text(model_response["message"])
                     )

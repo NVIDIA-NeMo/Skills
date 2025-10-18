@@ -138,7 +138,7 @@ def run_training(workspace, cluster, num_gpus, expname_prefix, wandb_params):
 def final_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     # launching evaluation
     eval(
-        ctx=wrap_arguments("++inference.tokens_to_generate=16384 "),
+        ctx=wrap_arguments("++inference.tokens_to_generate=16384 ++remove_thinking=True "),
         cluster=cluster,
         model=f"{workspace}/training/qwen2.5-14b-improved-hf",
         server_type="vllm",

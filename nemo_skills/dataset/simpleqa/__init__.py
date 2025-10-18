@@ -15,8 +15,7 @@
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 DATASET_GROUP = "math"
 METRICS_TYPE = "simpleqa"
-EVAL_ARGS = "++eval_type=simpleqa "
-GENERATION_ARGS = "++prompt_config=generic/default "
+GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=simpleqa"
 EVAL_SPLIT = "verified"
 
 # SimpleQA requires judge model for evaluating factual accuracy

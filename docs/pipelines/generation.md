@@ -122,8 +122,8 @@ ns generate \
        --server_nodes=2 \
        --num_random_seeds=32 \
        --output_dir=/workspace/synthetic-math-solutions \
-       --eval_args="++eval_type=math" \
        --input_file=/nemo_run/code/nemo_skills/dataset/math/train.jsonl \
+       ++eval_type=math \
        ++prompt_config=generic/math-base \
        ++examples_type=math_text_detailed \
        ++inference.endpoint_type=text \
@@ -139,7 +139,7 @@ and a tokenizer for the base model
 (we found Llama 3.1 follows few-shots much better without chat tokens).
 Finally, we are specifying few shot examples which come from
 [here](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/few_shot_examples/math.py)
-and asking the script to evaluate the generated solutions by providing `--eval_args`.
+and asking the script to evaluate the generated solutions by providing `++eval_type=math`.
 
 An example prompt (printed by the generate script) for that job is below.
 

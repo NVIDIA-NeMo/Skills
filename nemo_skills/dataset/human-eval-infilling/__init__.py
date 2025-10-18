@@ -16,5 +16,4 @@
 DATASET_GROUP = "code"
 METRICS_TYPE = "human_eval_infilling"
 EVAL_SPLIT = "random_span"
-EVAL_ARGS = "++eval_type=human_eval_infilling"
-GENERATION_ARGS = "++prompt_config=generic/fim"
+GENERATION_ARGS = "++prompt_config=generic/fim ++eval_type=human_eval_infilling"

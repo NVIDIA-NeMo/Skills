@@ -51,20 +51,6 @@ def test_error_on_extra_params():
     except subprocess.CalledProcessError as e:
         assert "got an unexpected keyword argument 'num_few_shots'" in e.stderr.decode()
 
-    # sandbox.sandbox_host is not supported
-    cmd = (
-        "python nemo_skills/evaluation/evaluate_results.py "
-        "    ++input_files=./test-results/gsm8k/output.jsonl "
-        "    ++eval_type=math "
-        "    ++eval_config.sandbox.sandbox_type=local "
-        "    ++eval_config.sandbox.sandbox_host=123 "
-        "    ++remove_thinking=false "
-    )
-    try:
-        subprocess.run(cmd, shell=True, check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        assert "got an unexpected keyword argument 'sandbox'" in e.stderr.decode()
-
 
 @pytest.mark.parametrize(
     "mount_source, mount_dest, input_path, expected",

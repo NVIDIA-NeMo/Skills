@@ -65,6 +65,7 @@ Some reference numbers for reference and commands for reproduction:
         --server_type=vllm \
         --num_chunks=32 \
         --server_gpus=2 \
+        ++remove_thinking=True \
         ++inference.temperature=0.6 \
         ++inference.top_k=20 \
         ++inference.tokens_to_generate=38912

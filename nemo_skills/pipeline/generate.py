@@ -218,9 +218,6 @@ def generate(
     ),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
-    eval_args: str = typer.Option(
-        None, help="Specify if need to run nemo_skills/evaluation/evaluate_results.py on the generation outputs"
-    ),
     run_after: List[str] = typer.Option(
         None, help="Can specify a list of expnames that need to be completed before this one starts"
     ),
@@ -407,7 +404,6 @@ def generate(
                 random_seed=seed,
                 output_dir=output_dir,
                 extra_arguments=extra_arguments,
-                eval_args=eval_args,
                 chunk_id=chunk_id,
                 num_chunks=num_chunks,
                 preprocess_cmd=preprocess_cmd,

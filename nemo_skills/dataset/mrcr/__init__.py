@@ -14,5 +14,4 @@
 EVAL_SPLIT = "all"
 DATASET_GROUP = "long-context"
 METRICS_TYPE = "mrcr"
-EVAL_ARGS = "++eval_type=mrcr"
-GENERATION_ARGS = "++prompt_format=openai"
+GENERATION_ARGS = "++prompt_format=openai ++eval_type=mrcr"

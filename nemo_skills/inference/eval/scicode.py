@@ -41,8 +41,6 @@ class SciCodeGenerationConfig(GenerateSolutionsConfig):
     prompt_config: str = "eval/scicode/background"
     with_background: bool = True
 
-    remove_thinking: bool = True  # changing default
-
 
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_scicode_generation_config", node=SciCodeGenerationConfig)
@@ -104,7 +102,7 @@ class SciCodeGenerationTask(GenerationTask):
             full_outputs[f"{problem_id}.{cur_step + 1}"] = llm_output
             total_generated_tokens += llm_output.get("num_generated_tokens", 0)
             if self.cfg.remove_thinking:
-                remove_thinking(llm_output, "generation", self.cfg.thinking_begin, self.cfg.thinking_end)
+                remove_thinking(llm_output, "generation", self.cfg.thinking_end)
             extracted_python = extract_python_script(llm_output["generation"])
             previous_llm_code[cur_step] = extracted_python
             # TODO: save those as separate entries so that we can preserve intermediate progress on reruns

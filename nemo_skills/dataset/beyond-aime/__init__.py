@@ -17,5 +17,4 @@
 
 DATASET_GROUP = "math"
 METRICS_TYPE = "math"
-EVAL_ARGS = "++eval_type=math"
-GENERATION_ARGS = "++prompt_config=generic/math"
+GENERATION_ARGS = "++prompt_config=generic/math ++eval_type=math"

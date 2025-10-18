@@ -29,8 +29,8 @@ ns generate \
     --server_nodes=2 \
     --num_random_seeds=512 \
     --output_dir=/workspace/solution-augmentation/math \
-    --eval_args="++eval_type=math" \
     --input_file=/nemo_run/code/nemo_skills/dataset/math/train.jsonl \
+    ++eval_type=math \
     ++prompt_config=generic/math-base \
     ++examples_type=math_text_detailed \
     ++inference.endpoint_type=text \
@@ -49,8 +49,8 @@ ns generate \
     --server_nodes=2 \
     --num_random_seeds=64 \
     --output_dir=/workspace/solution-augmentation/gsm8k \
-    --eval_args="++eval_type=math" \
     --input_file=/nemo_run/code/nemo_skills/dataset/gsm8k/train.jsonl \
+    ++eval_type=math \
     ++prompt_config=generic/math-base \
     ++examples_type=gsm8k_text_detailed \
     ++inference.endpoint_type=text \

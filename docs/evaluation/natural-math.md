@@ -11,7 +11,7 @@ We also support arbitrary regex based extraction. E.g., if you use a custom prom
 at the end of the solution, you can use these parameters to match the extraction logic to that prompt
 
 ```bash
-    --extra_eval_args="++eval_config.extract_from_boxed=False ++eval_config.extract_regex='Final answer: (.+)$'"
+    ++eval_config.extract_from_boxed=False ++eval_config.extract_regex='Final answer: (.+)$'
 ```
 
 !!! warning

@@ -19,13 +19,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
+from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
+from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class BFCLEvaluatorConfig:
+class BFCLEvaluatorConfig(BaseEvaluatorConfig):
     model: str = "o3-mini-2025-01-31-FC"  # Uses the same eval as Llama-Nemotron
     timeout: int = 300
 
@@ -36,38 +37,37 @@ def eval_bfcl(cfg):
     This function wraps the external BFCL evaluation tool, converting between
     Nemo-Skills format and BFCL format, then merging results back.
     """
-    eval_config = BFCLEvaluatorConfig(**cfg.eval_config)
+    eval_config = BFCLEvaluatorConfig(**cfg)
     model_name = eval_config.model.replace("/", "_")
-    # model_name = eval_config.model.split("/")[-1]
-    for jsonl_file in unroll_files(cfg.input_files):
-        # Output files are structures as bfcl_v3/TEST_CATEGORY/jsonl_file
-        test_category = str(Path(jsonl_file).absolute().parent.name).removeprefix("bfcl_v3.")
+    jsonl_file = eval_config.input_file
+    # Output files are structures as bfcl_v3/TEST_CATEGORY/jsonl_file
+    test_category = str(Path(jsonl_file).absolute().parent.name).removeprefix("bfcl_v3.")
 
-        # Convert Nemo-Skills output file to BFCL format
-        output_dir = Path("/opt/gorilla/berkeley-function-call-leaderboard") / f"result/{model_name}"
-        score_file = (
-            Path("/opt/gorilla/berkeley-function-call-leaderboard")
-            / f"score/{model_name}"
-            / f"BFCL_v3_{test_category}_score.json"
-        )
+    # Convert Nemo-Skills output file to BFCL format
+    output_dir = Path("/opt/gorilla/berkeley-function-call-leaderboard") / f"result/{model_name}"
+    score_file = (
+        Path("/opt/gorilla/berkeley-function-call-leaderboard")
+        / f"score/{model_name}"
+        / f"BFCL_v3_{test_category}_score.json"
+    )
 
-        bfcl_input_file = _convert_to_bfcl_format(jsonl_file, output_dir=output_dir, test_category=test_category)
+    bfcl_input_file = _convert_to_bfcl_format(jsonl_file, output_dir=output_dir, test_category=test_category)
 
-        try:
-            # Run BFCL evaluation using the CLI
-            # We need the OpenAI model class decoding functions for evaluation but not really the actual API key for evaluation
-            # So we set the API key to a dummy value
-            cmd = f"OPENAI_API_KEY=dummy bfcl evaluate --model {eval_config.model} --test-category {test_category}"
+    try:
+        # Run BFCL evaluation using the CLI
+        # We need the OpenAI model class decoding functions for evaluation but not really the actual API key for evaluation
+        # So we set the API key to a dummy value
+        cmd = f"OPENAI_API_KEY=dummy bfcl evaluate --model {eval_config.model} --test-category {test_category}"
 
-            LOG.info(f"Running BFCL evaluation: {cmd}")
-            subprocess.run(cmd, shell=True, check=True, timeout=eval_config.timeout)
+        LOG.info(f"Running BFCL evaluation: {cmd}")
+        subprocess.run(cmd, shell=True, check=True, timeout=eval_config.timeout)
 
-            # Merge the bfcl_input_file with the score_file, and write to the original file
-            _merge_bfcl_results(jsonl_file, bfcl_input_file, score_file)
+        # Merge the bfcl_input_file with the score_file, and write to the original file
+        _merge_bfcl_results(jsonl_file, bfcl_input_file, score_file)
 
-        except subprocess.TimeoutExpired:
-            LOG.error(f"BFCL evaluation timed out after {eval_config.timeout} seconds")
-            raise
+    except subprocess.TimeoutExpired:
+        LOG.error(f"BFCL evaluation timed out after {eval_config.timeout} seconds")
+        raise
 
 
 def _convert_to_bfcl_format(jsonl_file, output_dir, test_category):

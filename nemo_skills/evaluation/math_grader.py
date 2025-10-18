@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import glob
 import logging
 import re
 
@@ -22,12 +21,6 @@ from math_verify import LatexExtractionConfig, StringExtractionConfig, parse, ve
 from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-def unroll_files(input_files):
-    for manifest_pattern in input_files:
-        for manifest in sorted(glob.glob(manifest_pattern, recursive=True)):
-            yield manifest
 
 
 def _additional_normalization(expr):
@@ -97,43 +90,6 @@ def math_equal(gt_answer, predicted_answer, take_modulo: int | None = None, **kw
     parsed_pred = parse(current_predicted_answer, [LatexExtractionConfig()])
 
     return verify(parsed_gt, parsed_pred, **kwargs)
-
-
-def evaluate_result(
-    line_dict: dict,
-    numeric_precision=15,
-    timeout=10,
-    take_modulo=None,
-    use_predicted_answer_key: bool = False,
-    extract_from_boxed: bool = True,
-    extract_regex: str = r"The final answer is (.+)$",
-):
-    if not line_dict:  # can be empty for incomplete generations
-        return {}
-
-    if not use_predicted_answer_key:
-        line_dict["predicted_answer"] = extract_answer(
-            line_dict["generation"],
-            extract_from_boxed=extract_from_boxed,
-            extract_regex=extract_regex,
-        )
-    else:
-        if "predicted_answer" not in line_dict:
-            raise ValueError(
-                "predicted_answer key not found in the line_dict. Set use_predicted_answer_key=False to re-extract"
-            )
-
-    gt_answer = line_dict["expected_answer"]
-    predicted_answer = line_dict["predicted_answer"]
-
-    line_dict["symbolic_correct"] = math_equal(
-        gt_answer,
-        predicted_answer,
-        take_modulo=take_modulo,
-        numeric_precision=numeric_precision,
-        timeout_seconds=timeout,
-    )
-    return line_dict
 
 
 def extract_answer(string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$"):

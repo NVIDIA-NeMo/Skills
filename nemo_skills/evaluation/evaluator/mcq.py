@@ -18,13 +18,16 @@ import re
 
 from tqdm import tqdm
 
+from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
 from nemo_skills.evaluation.math_grader import extract_answer
-from nemo_skills.utils import get_logger_name, unroll_files
+from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def eval_mcq(cfg):
+    cfg = BaseEvaluatorConfig(**cfg)
+
     def extract_letter(text, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$"):
         # extract prediction from boxed{}
         parsed = extract_answer(text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex)
@@ -40,15 +43,15 @@ def eval_mcq(cfg):
                 parsed = match[-1].strip()
         return parsed
 
-    for file in unroll_files(cfg.input_files):
-        with open(file, "rt", encoding="utf-8") as fin:
-            data = [json.loads(line) for line in fin]
-        with open(file, "wt", encoding="utf-8") as fout:
-            for sample in tqdm(data):
-                extract_from_boxed = sample.get("extract_from_boxed", True)
-                extract_regex = sample.get("extract_regex", r"The final answer is (.+)$")
-                sample["predicted_answer"] = extract_letter(
-                    sample["generation"], extract_from_boxed=extract_from_boxed, extract_regex=extract_regex
-                )
-                sample["symbolic_correct"] = sample["predicted_answer"] == sample["expected_answer"]
-                fout.write(json.dumps(sample) + "\n")
+    jsonl_file = cfg.input_file
+    with open(jsonl_file, "rt", encoding="utf-8") as fin:
+        data = [json.loads(line) for line in fin]
+    with open(jsonl_file, "wt", encoding="utf-8") as fout:
+        for sample in tqdm(data):
+            extract_from_boxed = sample.get("extract_from_boxed", True)
+            extract_regex = sample.get("extract_regex", r"The final answer is (.+)$")
+            sample["predicted_answer"] = extract_letter(
+                sample["generation"], extract_from_boxed=extract_from_boxed, extract_regex=extract_regex
+            )
+            sample["symbolic_correct"] = sample["predicted_answer"] == sample["expected_answer"]
+            fout.write(json.dumps(sample) + "\n")

@@ -51,8 +51,7 @@ class ParallelThinkingConfig:
     temperature: float = 0.6
     tokens_to_generate: int | None = None
 
-    remove_thinking: bool = True  # Remove thinking tokens from the solution key
-    thinking_begin: str = "<think>"
+    remove_thinking: bool = False
     thinking_end: str = "</think>"
     endpoint_type: EndpointType = EndpointType.text
     tokenizer: str | None = None
@@ -155,7 +154,6 @@ class ParallelThinkingTask:
                 remove_thinking(
                     generation_result,
                     generation_key=self.cfg.solution_key,
-                    thinking_begin=self.cfg.thinking_begin,
                     thinking_end=self.cfg.thinking_end,
                 )
 
@@ -198,7 +196,6 @@ class ParallelThinkingTask:
                         remove_thinking(
                             data_point,
                             generation_key=self.cfg.solution_key,
-                            thinking_begin=self.cfg.thinking_begin,
                             thinking_end=self.cfg.thinking_end,
                         )
 
@@ -235,25 +232,6 @@ class ParallelThinkingTask:
         else:
             # Generate the solutions first
             solutions = await self.generate_solutions(prompt, local_random, **kwargs)
-
-        # Filter out incomplete solutions if specified
-        if self.cfg.filter_incomplete_solutions:
-            # Remove unfinished solutions
-            filtered_solutions = []
-            for solution in solutions:
-                # Check if thinking_begin is in the solution and thinking_end is not in the solution
-                if (
-                    self.cfg.thinking_begin in solution[self.cfg.solution_key]
-                    and self.cfg.thinking_end not in solution[self.cfg.solution_key]
-                ):
-                    continue
-                else:
-                    filtered_solutions.append(solution)
-
-            if len(filtered_solutions) < len(solutions):
-                LOG.info(f"Filtered out {len(solutions) - len(filtered_solutions)} incomplete solutions")
-
-            solutions = filtered_solutions
 
         total_num_generated_tokens = 0
         for solution in solutions:

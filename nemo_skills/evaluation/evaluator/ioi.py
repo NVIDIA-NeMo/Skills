@@ -21,13 +21,13 @@ import time
 from typing import Dict
 
 from nemo_skills.code_execution.sandbox import LocalSandbox
-from nemo_skills.evaluation.evaluator.base import BaseEvaluator
+from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.file_utils import jdump
-from nemo_skills.utils import nested_dataclass, unroll_files
+from nemo_skills.utils import nested_dataclass
 
 
 @nested_dataclass(kw_only=True)
-class IOIEvaluatorConfig:
+class IOIEvaluatorConfig(BaseEvaluatorConfig):
     test_file: str = "test_metadata.json"
     num_workers: int = 16  # number of test workers
     test_batch_size: int = 16  # number of tests to run concurrently
@@ -374,19 +374,19 @@ class IOIEvaluator(BaseEvaluator):
             "test_case_results": test_case_results,
         }
 
-    async def eval_full(self, input_files):  # type: ignore[override]
-        for jsonl_file in unroll_files(input_files):
-            with open(jsonl_file, "r", encoding="utf-8") as f:
-                all_samples = [json.loads(line) for line in f]
+    async def eval_full(self):  # type: ignore[override]
+        jsonl_file = self.eval_cfg.input_file
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            all_samples = [json.loads(line) for line in f]
 
-            tasks = [self._evaluate_entry(s) for s in all_samples]
-            outputs = await asyncio.gather(*tasks)
+        tasks = [self._evaluate_entry(s) for s in all_samples]
+        outputs = await asyncio.gather(*tasks)
 
-            for s, o in zip(all_samples, outputs):
-                s["test_case_results"] = o["test_case_results"]
-                s["eval_status"] = o["eval_status"]
+        for s, o in zip(all_samples, outputs):
+            s["test_case_results"] = o["test_case_results"]
+            s["eval_status"] = o["eval_status"]
 
-            jdump(all_samples, jsonl_file, mode="wt")
+        jdump(all_samples, jsonl_file, mode="wt")
 
         if self.pool is not None:
             self.pool.close()

@@ -15,8 +15,6 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 
-PROMPT_CONFIG = "generic/default"
 DATASET_GROUP = "multichoice"
 METRICS_TYPE = "multichoice"
-EVAL_ARGS = "++eval_type=multichoice"
-GENERATION_ARGS = ""
+GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=multichoice"
