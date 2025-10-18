@@ -34,6 +34,7 @@ from nemo_skills.pipeline.utils.cluster import (
     temporary_env_update,
     tunnel_hash,
 )
+from nemo_skills.pipeline.utils.docker_images import resolve_container_image
 from nemo_skills.pipeline.utils.mounts import (
     check_remote_mount_directories,
     get_mounts_from_config,
@@ -196,8 +197,9 @@ def get_executor(
 
     if cluster_config["executor"] == "local":
         env_vars["PYTHONUNBUFFERED"] = "1"  # this makes sure logs are streamed right away
+        resolved_container = resolve_container_image(container, cluster_config)
         return DockerExecutor(
-            container_image=container,
+            container_image=resolved_container,
             packager=packager,
             ipc_mode="host",
             volumes=mounts,

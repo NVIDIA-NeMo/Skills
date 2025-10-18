@@ -98,9 +98,12 @@ config might look like
 executor: local
 
 containers:
+  # some containers are public and we pull them
   trtllm: nvcr.io/nvidia/tensorrt-llm/release:1.0.0
   vllm: vllm/vllm-openai:v0.10.1.1
-  nemo: igitman/nemo-skills-nemo:0.7.0
+  # some containers are custom and we will build them locally before running the job
+  # you can always pre-build them as well
+  nemo-skills: dockerfile:dockerfiles/Dockerfile.nemo-skills
   # ... there are some more containers defined here
 
 env_vars:
@@ -171,6 +174,34 @@ leverage a Slurm cluster[^2]. Let's setup our cluster config for that case by ru
 
 This time pick `slurm` for the config type and fill out all other required information
 (such as ssh access, account, partition, etc.).
+
+!!! note
+    If you're an NVIDIA employee, we have a pre-configured cluster configs for internal usage with pre-built sqsh
+    containers available at https://gitlab-master.nvidia.com/igitman/nemo-skills-configs. You can most likely
+    skip the step below and reuse one of the existing configurations.
+
+You will also need to build .sqsh files for all containers or upload all `dockerfile:...` containers to
+some registry (e.g. dockerhub) and reference the uploaded versions. To build sqsh files you can use the following commands
+
+1. Build images locally and upload to some container registry. E.g.
+   ```bash
+   docker build -t gitlab-master.nvidia.com/igitman/nemo-skills-containers:nemo-skills-0.7.1 -f dockerfiles/Dockerfile.nemo-skills .
+   docker push gitlab-master.nvidia.com/igitman/nemo-skills-containers:nemo-skills-0.7.1
+   ```
+2. Start an interactive shell, e.g. with the following (assuming there is a "cpu" partition)
+   ```bash
+   srun -A <account> --partition cpu --job-name build-sqsh --time=1:00:00 --exclusive --pty /bin/bash -l
+   ```
+3. Import the image, e.g.:
+   ```bash
+   enroot import -o /path/to/nemo-skills-image.sqsh --docker://gitlab-master.nvidia.com/igitman/nemo-skills-containers:nemo-skills-0.7.1
+   ```
+4. Specify this image path in your cluster config
+   ```yaml
+   containers:
+     nemo-skills: /path/to/nemo-skills-image.sqsh
+   ```
+```
 
 Now that we have a slurm config setup, we can try running some jobs. Generally, you will need to upload models / data
 on cluster manually and then reference a proper mounted path. But for small-scale things we can also leverage the

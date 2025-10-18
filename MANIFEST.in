@@ -1,2 +1,4 @@
 recursive-include nemo_skills *.yaml
 recursive-include nemo_skills *.txt
+graft dockerfiles
+graft requirements

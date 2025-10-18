@@ -25,7 +25,7 @@ def docker_run(command, image_name=None, volume_paths=None):
         config = yaml.safe_load(f.read())
 
     if image_name is None:
-        image_name = config["containers"]["nemo-skills"]
+        image_name = "bash"
     if volume_paths is None:
         volume_paths = config["mounts"]
 

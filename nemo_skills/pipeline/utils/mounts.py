@@ -360,7 +360,7 @@ def resolve_mount_paths(cluster_config: dict, mount_paths: str | list | dict, cr
 
 
 def check_remote_mount_directories(directories: list, cluster_config: dict, exit_on_failure: bool = True):
-    """Create a remote directory on the cluster."""
+    """Check if a directory exists on the cluster."""
     if cluster_config is None:
         raise ValueError("Cluster config is not provided.")
     if isinstance(directories, str):
@@ -373,22 +373,8 @@ def check_remote_mount_directories(directories: list, cluster_config: dict, exit
     ]
 
     if cluster_config.get("executor") != "slurm":
-        tunnel = run.LocalTunnel(job_dir=None)
-        missing_source_locations = []
-        for directory in directories:
-            result = tunnel.run(f'test -e {directory} && echo "Directory Exists"', hide=True, warn=True)
-            if "Directory Exists" not in result.stdout:
-                missing_source_locations.append(directory)
-        tunnel.cleanup()
-        if len(missing_source_locations) > 0 and exit_on_failure:
-            missing_source_locations = [
-                f"{loc} DOES NOT exist at source destination" for loc in missing_source_locations
-            ]
-            missing_source_locations = "\n".join(missing_source_locations)
-            raise FileNotFoundError(
-                f"Some files or directories do not exist at the source location for mounting !!\n\n"
-                f"{missing_source_locations}"
-            )
+        # there is no error locally if mounts aren't present, so we are skipping the check
+        return
     elif cluster_config.get("executor") == "slurm":
         tunnel = get_tunnel(cluster_config)
         missing_source_locations = []

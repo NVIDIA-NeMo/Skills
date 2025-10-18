@@ -4,7 +4,7 @@ Some dockerfiles are directly included in this folder and for some others the in
 
 The dockerfiles can be built using the standard docker build command. e.g.,
 ```shell
-docker build -t igitman/nemo-skills:0.7.1 -f dockerfiles/Dockerfile.nemo-skills .
+docker build -t nemo-skills-image:0.7.1 -f dockerfiles/Dockerfile.nemo-skills .
 ```
 
 In addition, we provide a utility script which provides sane build defaults
