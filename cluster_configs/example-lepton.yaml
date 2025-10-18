@@ -1,0 +1,87 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# =============================================================================
+# EXECUTOR CONFIGURATION
+# =============================================================================
+executor: lepton
+
+# =============================================================================
+# CONTAINER IMAGES
+# =============================================================================
+containers:
+  trtllm: nvcr.io/nvidia/tensorrt-llm/release:0.21.0
+  vllm: vllm/vllm-openai:v0.10.1.1
+  sglang: igitman/nemo-skills-sglang:0.7.0
+  nemo: igitman/nemo-skills-nemo:0.7.0
+  megatron: igitman/nemo-skills-megatron:0.7.0
+  sandbox: igitman/nemo-skills-sandbox:0.7.1
+  nemo-skills: igitman/nemo-skills:0.7.0
+  verl: igitman/nemo-skills-verl:0.7.0
+  nemo-rl: igitman/nemo-skills-nemo-rl:0.7.0
+
+# =============================================================================
+# SSH ACCESS CONFIGURATION
+# =============================================================================
+# Define this for SSH access to your cluster
+# ssh_tunnel:
+#   host: <devpod host>
+#   user: <username>
+#   nemo: <some location on lepton cluster to keep job metadata, uploaded code and generated sbatch files>
+#   identity: <can specify ssh key to avoid entering password>
+
+# =============================================================================
+# ACCOUNT / PARTITION / RESOURCE CONFIGURATION
+# =============================================================================
+# Define your account/partition here
+# account: <lepton account>
+# partition: <lepton partition>
+# reservation_id: <lepton reservation>
+#resource_shape: "gpu.8xh200"
+resource_shape_cpu: "cpu.small"
+
+# =============================================================================
+# IMAGE PULL SECRETS
+# =============================================================================
+#image_pull_secrets:
+#  - <lepton secret1>
+#  - <lepton secret2>
+
+# =============================================================================
+# MOUNTS CONFIGURATION AND NEMO RUN DIRECTORY
+# =============================================================================
+# Add required mounts for models/data here
+# NOTE: The code is mounted automatically inside /nemo_run/code
+# We only package what's tracked by git + jsonl files inside nemo_skills/dataset
+
+# mounts:
+#   - <lepton location for your data/models>:<where to mount in a container>
+#   Examples:
+#   - <path on lepton>/models:/models
+#   - <path on lepton>/data:/data
+#   You can also override container libraries by directly mounting over them:
+#   - <path on lepton>/NeMo-Aligner:/opt/NeMo-Aligner
+
+# nemo_run_dir is required; path should be inside the container (where it is mounted)
+# First nemo-run will run data-mover job to write script that will launch the task
+# After this the main job will be executed
+nemo_run_dir: "/workspace/nemo_run"
+
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+# Define any environment variables
+# NOTE: HF_HOME is required by default and needs to be a mounted path!
+# env_vars:
+#   - HF_HOME=/models/hf-cache

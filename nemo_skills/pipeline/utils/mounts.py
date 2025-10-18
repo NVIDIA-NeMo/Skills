@@ -372,7 +372,7 @@ def check_remote_mount_directories(directories: list, cluster_config: dict, exit
         for dir_path in directories
     ]
 
-    if cluster_config.get("executor") != "slurm":
+    if cluster_config.get("executor") not in {"slurm", "lepton"}:
         tunnel = run.LocalTunnel(job_dir=None)
         missing_source_locations = []
         for directory in directories:
@@ -406,6 +406,8 @@ def check_remote_mount_directories(directories: list, cluster_config: dict, exit
                 f"Some files or directories do not exist at the source location for mounting !!\n\n"
                 f"{missing_source_locations}"
             )
+    elif cluster_config.get("executor") == "lepton":
+        LOG.info("Lepton paths are not checked for now.")
     else:
         raise ValueError(f"Unsupported executor: {cluster_config.get('executor')}")
 

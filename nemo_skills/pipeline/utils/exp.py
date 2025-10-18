@@ -187,7 +187,7 @@ def get_executor(
         extra_package_dirs = tuple(extra_package_dirs)
     packager = get_packager(extra_package_dirs=extra_package_dirs)
 
-    if cluster_config["executor"] != "slurm":
+    if cluster_config["executor"] not in {"slurm", "lepton"}:
         if num_nodes > 1:
             raise ValueError("Local executor does not support multi-node execution")
 
@@ -210,6 +210,43 @@ def get_executor(
             additional_kwargs={"entrypoint": ""},
         )
 
+    if gpus_per_node is not None and gpus_per_node > 0:
+        partition = partition or cluster_config.get("partition")
+    else:
+        partition = partition or cluster_config.get("cpu_partition") or cluster_config.get("partition")
+        if partition == cluster_config.get("cpu_partition"):
+            # by default we use exclusive if no gpus are needed and use non-exclusive if gpus are required
+            # as cpu jobs almost always need more resources than automatically allocated by slurm
+            if slurm_kwargs is None:
+                slurm_kwargs = {}
+            slurm_kwargs["exclusive"] = True
+
+    if cluster_config["executor"] == "lepton":
+        if gpus_per_node is not None and gpus_per_node > 0:
+            resource_shape = cluster_config.get("resource_shape", f"gpu.{gpus_per_node}xh200")
+        else:
+            resource_shape = cluster_config.get("resource_shape_cpu", "cpu.small")
+        if "nemo_run_dir" not in cluster_config:
+            raise ValueError("nemo_run_dir is required in config")
+        return run.LeptonExecutor(
+            container_image=container,
+            nodes=num_nodes,
+            resource_shape=resource_shape,
+            node_group=partition,
+            node_reservation=cluster_config.get("reservation_id", ""),
+            mounts=[
+                {"path": mount.split(":")[0], "mount_path": mount.split(":")[1], "from": "node-nfs:lepton-shared-fs"}
+                for mount in mounts
+            ],
+            image_pull_secrets=cluster_config.get("image_pull_secrets", []),
+            nemo_run_dir=cluster_config["nemo_run_dir"],
+            # NB: despite LeptonExecutor type annotations, shared_memory_size can be None ("auto");
+            # default value (65536) usually leads to error
+            shared_memory_size=None,  # type:ignore
+            env_vars=env_vars,
+        )
+
+    # slurm-specific parameters
     if not heterogeneous:
         env_vars["SLURM_MASTER_NODE"] = "$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n1)"
     else:
@@ -222,17 +259,6 @@ def get_executor(
             env_vars[f"SLURM_MASTER_NODE_HET_GROUP_{group}"] = (
                 f"$(scontrol show hostnames $SLURM_JOB_NODELIST_HET_GROUP_{group} | head -n1)"
             )
-
-    if gpus_per_node is not None and gpus_per_node > 0:
-        partition = partition or cluster_config.get("partition")
-    else:
-        partition = partition or cluster_config.get("cpu_partition") or cluster_config.get("partition")
-        if partition == cluster_config.get("cpu_partition"):
-            # by default we use exclusive if no gpus are needed and use non-exclusive if gpus are required
-            # as cpu jobs almost always need more resources than automatically allocated by slurm
-            if slurm_kwargs is None:
-                slurm_kwargs = {}
-            slurm_kwargs["exclusive"] = True
 
     timeout = get_slurm_timeout_str(cluster_config, partition, with_save_delay=False)
 
@@ -494,7 +520,7 @@ def add_task(
             total_het_groups=total_het_groups,
             with_ray=with_ray,
         )
-        if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
+        if cluster_config["executor"] not in {"slurm", "lepton"} and num_server_tasks > 1:
             server_cmd = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
         commands.append(server_cmd)
         executors.append(server_executor)
@@ -513,7 +539,7 @@ def add_task(
         if len(cmd) != len(container) or len(cmd) != len(num_tasks):
             raise ValueError("Number of commands, containers and num_tasks must match.")
         for cur_idx, (cur_cmd, cur_container, cur_tasks) in enumerate(zip(cmd, container, num_tasks)):
-            if cluster_config["executor"] != "slurm" and cur_tasks > 1:
+            if cluster_config["executor"] not in {"slurm", "lepton"} and cur_tasks > 1:
                 cur_cmd = f"mpirun --allow-run-as-root -np {cur_tasks} bash -c {shlex.quote(cur_cmd)}"
             with temporary_env_update(cluster_config, {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
@@ -656,7 +682,7 @@ def add_task(
         )
 
 
-def run_exp(exp, cluster_config, sequential=False, dry_run=False):
+def run_exp(exp: run.Experiment, cluster_config, sequential=False, dry_run=False):
     """If sequential is not specified, using True locally and False otherwise.
 
     If it is specified, it will be used as is.
@@ -678,7 +704,7 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
         )
         check_remote_mount_directories(mount_sources, cluster_config, exit_on_failure=exit_if_failure)
 
-    if cluster_config["executor"] != "slurm":
+    if cluster_config["executor"] not in {"slurm", "lepton"}:
         exp.run(detach=False, tail_logs=True, sequential=sequential)
     else:
         try:
