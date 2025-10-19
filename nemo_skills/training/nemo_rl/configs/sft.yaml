@@ -28,6 +28,7 @@ policy:
   tokenizer:
     name: ${policy.model_name} ## specify if you'd like to use a tokenizer different from the model's default
     chat_template: "infer_from_data"  ## Can be: null (passthrough), "default" (tokenizer's default), "infer_from_data" (auto-detect from data), or custom jinja2 template
+    chat_template_kwargs: null # can be used to pass kwargs to the chat template, e.g., enable_thinking=true
   train_global_batch_size: 32
   train_micro_batch_size: 1
   max_total_sequence_length: 4096
