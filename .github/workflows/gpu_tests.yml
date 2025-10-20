@@ -40,6 +40,10 @@ jobs:
         pip install -e .
         pip install -r requirements/common-tests.txt
         ns prepare_data gsm8k human-eval mbpp algebra222 mmlu ifeval math-500 amc23 aime24
+    - name: Build Docker image
+      run: |
+        cd ${{ github.run_id }}
+        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
     - name: Run GPU tests
       timeout-minutes: 240
       env:
@@ -52,7 +56,7 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker run --rm -v /tmp:/tmp -v /home:/home igitman/nemo-skills:0.7.1 bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
+        docker run --rm -v /tmp:/tmp -v /home:/home nemo-skills-image bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
         docker ps -a -q | xargs -r docker stop
 
   gpu-tests-qwen:
@@ -79,6 +83,10 @@ jobs:
         pip install -e .
         pip install -r requirements/common-tests.txt
         ns prepare_data gsm8k human-eval mbpp algebra222 mmlu ifeval math-500 amc23 aime24
+    - name: Build Docker image
+      run: |
+        cd ${{ github.run_id }}
+        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
     - name: Run GPU tests
       timeout-minutes: 240
       env:
@@ -91,5 +99,5 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker run --rm -v /tmp:/tmp -v /home:/home igitman/nemo-skills:0.7.1 bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
+        docker run --rm -v /tmp:/tmp -v /home:/home nemo-skills-image bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
         docker ps -a -q | xargs -r docker stop

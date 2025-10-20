@@ -31,6 +31,7 @@ from nemo_skills.pipeline.utils.cluster import (
     tunnel_hash,
     update_ssh_tunnel_config,
 )
+from nemo_skills.pipeline.utils.docker_images import resolve_container_image
 from nemo_skills.pipeline.utils.exp import (
     CustomJobDetails,
     add_task,
