@@ -13,10 +13,10 @@
 # limitations under the License.
 
 import json
-import os
 from pathlib import Path
 
 import pytest
+from utils import require_env_var
 
 from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 from tests.conftest import docker_rm
@@ -24,14 +24,8 @@ from tests.conftest import docker_rm
 
 @pytest.mark.gpu
 def test_check_contamination():
-    model_path = os.getenv("NEMO_SKILLS_TEST_HF_MODEL")
-    if not model_path:
-        pytest.skip("Define NEMO_SKILLS_TEST_HF_MODEL to run this test")
-    model_type = os.getenv("NEMO_SKILLS_TEST_MODEL_TYPE")
-    if not model_type:
-        pytest.skip("Define NEMO_SKILLS_TEST_MODEL_TYPE to run this test")
-    if model_type != "llama":
-        pytest.skip("Only running this test for llama models")
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/contamination"
 
@@ -41,7 +35,7 @@ def test_check_contamination():
     retrieve_from = ",".join(f"/nemo_run/code/nemo_skills/dataset/{test_set}/test.jsonl" for test_set in test_sets)
 
     cmd = (
-        f"python -m nemo_skills.inference.retrieve_similar "
+        f"python3 -m nemo_skills.inference.retrieve_similar "
         f"    ++retrieve_from=\\'{retrieve_from}\\' "
         f"    ++compare_to=/nemo_run/code/tests/data/contamination-example.test "
         f"    ++output_file='{output_dir}/math-contamination-retrieved.jsonl' "
@@ -51,22 +45,25 @@ def test_check_contamination():
     run_cmd(
         cluster="test-local",
         config_dir=Path(__file__).absolute().parent,
-        container="nemo-rl",
+        container="vllm",
         num_gpus=1,
         ctx=wrap_arguments(cmd),
+        expname="contamination-retrieve",
+        installation_command="pip3 install sentence-transformers hydra-core fire",
     )
 
     generate(
-        ctx=wrap_arguments(""),
+        ctx=wrap_arguments("++inference.tokens_to_generate=2048 "),
         cluster="test-local",
         config_dir=Path(__file__).absolute().parent,
         generation_type="check_contamination",
         input_file=f"{output_dir}/math-contamination-retrieved.jsonl",
         output_dir=output_dir,
         model=model_path,
-        server_type="trtllm",
-        server_args="--backend pytorch",
+        server_type="vllm",
+        server_args="--enforce-eager --max-model-len 8192",
         server_gpus=1,
+        run_after="contamination-retrieve",
     )
 
     output_file = f"{output_dir}/output.jsonl"
@@ -79,5 +76,5 @@ def test_check_contamination():
         data = json.loads(line)
         assert "contaminated" in data
         num_contaminated += data["contaminated"]
-    # gt answer is 4, but llama judges more problems as contaminated
+    # gt answer is 4, but this allows for some variation
     assert 3 <= num_contaminated < 10

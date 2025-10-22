@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from utils import require_env_var
 
 from tests.conftest import docker_rm
 
@@ -27,9 +28,7 @@ def test_run_cmd_llm_infer():
     Uses (if available) VLLM servers, then sends the same prompt
     with with openai python api to check if generation works.
     """
-    model_type = os.getenv("NEMO_SKILLS_TEST_MODEL_TYPE")
-    if not model_type:
-        pytest.skip("Define NEMO_SKILLS_TEST_MODEL_TYPE to run this test")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     model_info = [
         ("vllm", os.getenv("NEMO_SKILLS_TEST_HF_MODEL")),
@@ -56,8 +55,10 @@ def test_run_cmd_llm_infer():
             f"--server_type {server_type} "
             f"--server_gpus 1 "
             f"--server_nodes 1 "
+            f"--server_args '--enforce-eager' "
             f"--command '{command}'"
         )
+
         subprocess.run(cmd, shell=True, check=True)
 
         jsonl_file = Path(output_dir) / "output.txt"

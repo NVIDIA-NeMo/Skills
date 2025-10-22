@@ -16,49 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gpu-tests-llama:
-    runs-on: self-hosted-nemo-gpus-1
-    if: ${{ github.event.label.name == 'run GPU tests' }}
-    steps:
-    - name: Cleanup old containers
-      run: |
-        docker system prune --all --filter "until=360h" --force
-    - uses: actions/checkout@v5
-      with:
-        path: ${{ github.run_id }}
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-    - name: Install dependencies
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      run: |
-        cd ${{ github.run_id }}
-        python -m pip install --upgrade pip
-        pip uninstall -y nemo-skills nemo_run
-        pip install -e .
-        pip install -r requirements/common-tests.txt
-        ns prepare_data gsm8k human-eval mbpp algebra222 mmlu ifeval math-500 amc23 aime24
-    - name: Build Docker image
-      run: |
-        cd ${{ github.run_id }}
-        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
-    - name: Run GPU tests
-      timeout-minutes: 240
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      run: |
-        cd ${{ github.run_id }}
-        nvidia-smi
-        set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
-        ./tests/gpu-tests/run_llama.sh
-    - name: Cleanup
-      if: always()
-      run: |
-        docker run --rm -v /tmp:/tmp -v /home:/home nemo-skills-image bash -c 'rm -rf /tmp/nemo-skills-tests /home/azureuser/.nemo_run/'
-        docker ps -a -q | xargs -r docker stop
-
   gpu-tests-qwen:
     runs-on: self-hosted-nemo-gpus-1
     if: ${{ github.event.label.name == 'run GPU tests' }}

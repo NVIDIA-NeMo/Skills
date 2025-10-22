@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from openai import OpenAI
+import os
 
-client = OpenAI(api_key="EMPTY", base_url="http://localhost:5000/v1", timeout=None)
-api_model = client.models.list().data[0].id
 
-response = client.chat.completions.create(
-    model=api_model,
-    messages=[
-        {"role": "user", "content": "What is the capital of France?"},
-    ],
-    temperature=0.0,
-    max_tokens=4,
-    top_p=1.0,
-    n=1,
-    stream=False,
-)
-print(response.choices[0].message.content)
+def require_env_var(var_name: str) -> str:
+    """Raise a ValueError if the environment variable is not set."""
+    value = os.getenv(var_name)
+    if not value:
+        raise ValueError(f"Define {var_name} to run this test")
+    return value

@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from utils import require_env_var
 
 from nemo_skills.evaluation.metrics import ComputeMetrics
 from tests.conftest import docker_rm
@@ -27,12 +28,8 @@ from tests.conftest import docker_rm
 
 @pytest.mark.gpu
 def test_vllm_generate_greedy():
-    model_path = os.getenv("NEMO_SKILLS_TEST_HF_MODEL")
-    if not model_path:
-        pytest.skip("Define NEMO_SKILLS_TEST_HF_MODEL to run this test")
-    model_type = os.getenv("NEMO_SKILLS_TEST_MODEL_TYPE")
-    if not model_type:
-        pytest.skip("Define NEMO_SKILLS_TEST_MODEL_TYPE to run this test")
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/vllm-generate-greedy/generation"
     docker_rm([output_dir])
@@ -41,10 +38,11 @@ def test_vllm_generate_greedy():
         f"ns generate "
         f"    --cluster test-local --config_dir {Path(__file__).absolute().parent} "
         f"    --model {model_path} "
-        f"    --server_type vllm "
         f"    --output_dir {output_dir} "
+        f"    --server_type vllm "
         f"    --server_gpus 1 "
         f"    --server_nodes 1 "
+        f"    --server_args '--enforce-eager' "
         f"    --input_file=/nemo_run/code/nemo_skills/dataset/gsm8k/test.jsonl "
         f"    ++prompt_config=generic/math "
         f"    ++max_samples=10 "
@@ -65,12 +63,8 @@ def test_vllm_generate_greedy():
 
 @pytest.mark.gpu
 def test_vllm_generate_greedy_chunked():
-    model_path = os.getenv("NEMO_SKILLS_TEST_HF_MODEL")
-    if not model_path:
-        pytest.skip("Define NEMO_SKILLS_TEST_HF_MODEL to run this test")
-    model_type = os.getenv("NEMO_SKILLS_TEST_MODEL_TYPE")
-    if not model_type:
-        pytest.skip("Define NEMO_SKILLS_TEST_MODEL_TYPE to run this test")
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/vllm-generate-greedy-chunked/generation"
     docker_rm([output_dir])
@@ -79,10 +73,11 @@ def test_vllm_generate_greedy_chunked():
         f"ns generate "
         f"    --cluster test-local --config_dir {Path(__file__).absolute().parent} "
         f"    --model {model_path} "
-        f"    --server_type vllm "
         f"    --output_dir {output_dir} "
+        f"    --server_type vllm "
         f"    --server_gpus 1 "
         f"    --server_nodes 1 "
+        f"    --server_args '--enforce-eager' "
         f"    --num_chunks 2 "
         f"    --input_file=/nemo_run/code/nemo_skills/dataset/gsm8k/test.jsonl "
         f"    ++prompt_config=generic/math "
@@ -104,14 +99,8 @@ def test_vllm_generate_greedy_chunked():
 
 @pytest.mark.gpu
 def test_vllm_generate_seeds():
-    model_path = os.getenv("NEMO_SKILLS_TEST_HF_MODEL")
-    if not model_path:
-        pytest.skip("Define NEMO_SKILLS_TEST_HF_MODEL to run this test")
-    model_type = os.getenv("NEMO_SKILLS_TEST_MODEL_TYPE")
-    if not model_type:
-        pytest.skip("Define NEMO_SKILLS_TEST_MODEL_TYPE to run this test")
-    if model_type != "llama":
-        pytest.skip("Only running this test for llama models")
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/vllm-generate-seeds/generation"
     docker_rm([output_dir])
@@ -125,6 +114,7 @@ def test_vllm_generate_seeds():
         f"    --output_dir {output_dir} "
         f"    --server_gpus 1 "
         f"    --server_nodes 1 "
+        f"    --server_args '--enforce-eager' "
         f"    --num_random_seeds {num_seeds} "
         f"    --eval_args='++eval_type=math' "
         f"    --with_sandbox "
