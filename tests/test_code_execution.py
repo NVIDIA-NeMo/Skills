@@ -454,6 +454,22 @@ async def test_minif2f_deepseek_fewshots():
 
 
 @pytest.mark.asyncio
+async def test_ioi_eval_execution():
+    import json
+
+    from nemo_skills.evaluation.evaluator.ioi import IOIEvaluator
+
+    base = os.path.dirname(__file__)
+    data_path = os.path.join(base, "data", "ioi", "test.jsonl")
+    meta_path = os.path.join(base, "data", "ioi", "test_metadata.json")
+    with open(data_path, "r", encoding="utf-8") as f:
+        dp = json.loads(next(f))
+    evaluator = IOIEvaluator(config={"test_file": meta_path})
+    out = await evaluator.eval_single(dp)
+    assert all(r.get("score") == 1.0 for s in out["test_case_results"].values() for r in s["outputs"])
+
+
+@pytest.mark.asyncio
 async def test_math_to_lean4_fewshots():
     sandbox = _get_sandbox()
 
