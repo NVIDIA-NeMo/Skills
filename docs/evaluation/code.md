@@ -176,10 +176,56 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
-### ioi24
 
-- Benchmark is defined in [`nemo_skills/dataset/ioi24/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ioi24/__init__.py)
-- Original benchmark source is [here](https://huggingface.co/collections/open-r1/ioi-67cee324e60b1346a6ab73e2).
+### IOI
+
+We currently support IOI24 and are working to support IOI25 for evaluation. The original data for IOI24 can be seen [here](https://huggingface.co/datasets/open-r1/ioi).
+
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `test.jsonl` and `test_metadata.json`.
+
+```
+ns prepare_data ioi24
+```
+
+#### Running the Evaluation
+
+Once the data is prepared, you can run the evaluation. Replace `<...>` placeholders with your cluster and directory paths.
+Note you have to provide the path to the metadata test file generated from preparing the data. To follow IOI submission rules, we generate 50 solutions per sub-task.
+
+This command runs an evaluation of [OpenReasoning-Nemotron-32B](https://huggingface.co/nvidia/OpenReasoning-Nemotron-32B) on a Slurm cluster.
+
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=ioi24:50 \
+    --with_sandbox \
+    --split=test \
+    --data_dir=<DATA_DIR> \
+    --output_dir=<OUTPUT_DIR> \
+    --extra_eval_args="++eval_config.test_file=<PATH_TO_METADATA_TEST_FILE>" \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=65536
+```
+
+##### Verifying Results
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/summarized-results/main_*`. They should look something like this:
+
+```
+------------------------------------------------------ ioi24 ------------------------------------------------------
+evaluation_mode   | num_entries | avg_tokens | gen_seconds | correct       | total_score        | round_robin_score
+pass@1[avg-of-50] | 39          | 40387      | 7410        | 0.51% ± 1.04% | 303.47             | 261.01
+pass@50           | 39          | 40387      | 7410        | 2.56%         | 303.47             | 261.01
+```
 
 ### livecodebench
 
