@@ -108,7 +108,8 @@ def main():
         "Starting Riva NIM with ports: HTTP=%s, GRPC=%s, TRITON(g/h/m)=(%s,%s,%s)"
         % (http_port, grpc_port, triton_grpc_port, triton_http_port, triton_metrics_port)
     )
-    print(env)
+    sanitized = {k: v for k, v in env.items() if k.startswith(("NIM_", "CONTAINER_ID"))}
+    print(f"Environment (sanitized): {sanitized}")
     subprocess.run(cmd, shell=True, check=True, env=env)
 
 
