@@ -345,8 +345,9 @@ def generate(
     if generation_module is None:
         generation_module = GENERATION_MODULE_MAP[generation_type or GenerationType.generate]
 
-    if os.sep in generation_module:
-        generation_task = import_from_path(generation_module)
+    if generation_module.endswith(".py") or os.sep in generation_module:
+        path_suffix = ".py" if not generation_module.endswith(".py") else ""
+        generation_task = import_from_path(generation_module + path_suffix)
     else:
         generation_task = importlib.import_module(generation_module)
     if not hasattr(generation_task, "GENERATION_TASK_CLASS"):

@@ -458,8 +458,11 @@ def prepare_eval_commands(
                 job_benchmarks.add(benchmark)
 
                 effective_generation_module = generation_module or benchmark_args.generation_module
-                if effective_generation_module and os.sep in effective_generation_module:
-                    generation_task = import_from_path(effective_generation_module)
+                if effective_generation_module and (
+                    effective_generation_module.endswith(".py") or os.sep in effective_generation_module
+                ):
+                    path_suffix = ".py" if not effective_generation_module.endswith(".py") else ""
+                    generation_task = import_from_path(effective_generation_module + path_suffix)
                 else:
                     generation_task = importlib.import_module(effective_generation_module)
                 if not hasattr(generation_task, "GENERATION_TASK_CLASS"):
