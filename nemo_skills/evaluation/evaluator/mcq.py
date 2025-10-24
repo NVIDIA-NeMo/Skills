@@ -18,22 +18,22 @@ import re
 
 from tqdm import tqdm
 
+from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
 from nemo_skills.evaluation.math_grader import extract_answer
-from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
+from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class MCQEvaluatorConfig:
+class MCQEvaluatorConfig(BaseEvaluatorConfig):
     extract_from_boxed: bool = True
     # only used if extract_from_boxed is False
     extract_regex: str = r"The final answer is (.+)$"
 
 
 def eval_mcq(cfg):
-    # Create config from cfg.eval_config (following pattern from other evaluators)
-    eval_config = MCQEvaluatorConfig(**cfg.eval_config)
+    eval_config = MCQEvaluatorConfig(**cfg)
 
     def extract_letter(text, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$"):
         # extract prediction from boxed{} or regex
@@ -56,21 +56,22 @@ def eval_mcq(cfg):
                 parsed_letter = match[-1].strip().upper()
 
         LOG.info(
-            f"Final parsed letter: {parsed_letter}, extract_from_boxed: {extract_from_boxed}, extract_regex: {extract_regex}, extracted_answer: {extracted_answer}"
+            f"Final parsed letter: {parsed_letter}, extract_from_boxed: {extract_from_boxed}, "
+            f"extract_regex: {extract_regex}, extracted_answer: {extracted_answer}"
         )
 
         return parsed_letter
 
-    for file in unroll_files(cfg.input_files):
-        with open(file, "rt", encoding="utf-8") as fin:
-            data = [json.loads(line) for line in fin]
-        with open(file, "wt", encoding="utf-8") as fout:
-            for sample in tqdm(data):
-                # Per-sample values override config defaults for backward compatibility
-                extract_from_boxed = sample.get("extract_from_boxed", eval_config.extract_from_boxed)
-                extract_regex = sample.get("extract_regex", eval_config.extract_regex)
-                sample["predicted_answer"] = extract_letter(
-                    sample["generation"], extract_from_boxed=extract_from_boxed, extract_regex=extract_regex
-                )
-                sample["symbolic_correct"] = sample["predicted_answer"] == sample["expected_answer"]
-                fout.write(json.dumps(sample) + "\n")
+    jsonl_file = eval_config.input_file
+    with open(jsonl_file, "rt", encoding="utf-8") as fin:
+        data = [json.loads(line) for line in fin]
+    with open(jsonl_file, "wt", encoding="utf-8") as fout:
+        for sample in tqdm(data):
+            # Per-sample values override config defaults for backward compatibility
+            extract_from_boxed = sample.get("extract_from_boxed", eval_config.extract_from_boxed)
+            extract_regex = sample.get("extract_regex", eval_config.extract_regex)
+            sample["predicted_answer"] = extract_letter(
+                sample["generation"], extract_from_boxed=extract_from_boxed, extract_regex=extract_regex
+            )
+            sample["symbolic_correct"] = sample["predicted_answer"] == sample["expected_answer"]
+            fout.write(json.dumps(sample) + "\n")

@@ -18,6 +18,33 @@ majority@4       | 4           | 5363       | 50.00%           | 0.00%
 pass@4           | 4           | 5363       | 50.00%           | 0.00%    
 
 
+------------------------------------ hendrycks_math ------------------------------------
+evaluation_mode  | num_entries | avg_tokens | gen_seconds | symbolic_correct | no_answer
+pass@1[avg-of-3] | 7           | 9574       | 1577595118  | 42.86% ± 14.29%  | 52.38%   
+majority@3       | 7           | 9574       | 1577595118  | 57.14%           | 42.86%   
+rm_best@3        | 7           | 9574       | 1577595118  | 42.86%           | 42.86%   
+rm_majority@3    | 7           | 9574       | 1577595118  | 57.14%           | 42.86%   
+pass@3           | 7           | 9574       | 1577595118  | 57.14%           | 42.86%   
+
+
+-------------------------------- hendrycks_math-aime25 ---------------------------------
+evaluation_mode  | num_entries | avg_tokens | gen_seconds | symbolic_correct | no_answer
+pass@1[avg-of-3] | 5           | 9869       | 60037       | 46.67% ± 11.55%  | 53.33%   
+majority@3       | 5           | 9869       | 60037       | 60.00%           | 40.00%   
+rm_best@3        | 5           | 9869       | 60037       | 60.00%           | 40.00%   
+rm_majority@3    | 5           | 9869       | 60037       | 60.00%           | 40.00%   
+pass@3           | 5           | 9869       | 60037       | 60.00%           | 40.00%   
+
+
+-------------------------------- hendrycks_math-aime24 ---------------------------------
+evaluation_mode  | num_entries | avg_tokens | gen_seconds | symbolic_correct | no_answer
+pass@1[avg-of-3] | 2           | 8838       | 1577595118  | 33.33% ± 28.87%  | 50.00%   
+majority@3       | 2           | 8838       | 1577595118  | 50.00%           | 50.00%   
+rm_best@3        | 2           | 8838       | 1577595118  | 0.00%            | 50.00%   
+rm_majority@3    | 2           | 8838       | 1577595118  | 50.00%           | 50.00%   
+pass@3           | 2           | 8838       | 1577595118  | 50.00%           | 50.00%   
+
+
 ------------------------------------- human-eval ------------------------------------
 evaluation_mode  | num_entries | avg_tokens | passing_base_tests | passing_plus_tests
 pass@1[avg-of-2] | 4           | 1792       | 75.00% ± 0.00%     | 62.50% ± 17.68%   
@@ -28,33 +55,6 @@ pass@2           | 4           | 1792       | 75.00%             | 75.00%
 evaluation_mode  | num_prompts | num_instructions | average_score | prompt_strict_accuracy | instruction_strict_accuracy | prompt_loose_accuracy | instruction_loose_accuracy | num_entries | avg_tokens
 pass@1[avg-of-3] | 3           | 5                | 46.67%        | 33.33%                 | 60.00%                      | 33.33%                | 60.00%                     | 3           | 2597      
 pass@3           | 3           | 5                | 46.67%        | 33.33%                 | 60.00%                      | 33.33%                | 60.00%                     | 3           | 2597      
-
-
------------------------------------------ math -----------------------------------------
-evaluation_mode  | num_entries | avg_tokens | gen_seconds | symbolic_correct | no_answer
-pass@1[avg-of-3] | 7           | 9574       | 1577595118  | 42.86% ± 14.29%  | 52.38%   
-majority@3       | 7           | 9574       | 1577595118  | 57.14%           | 42.86%   
-rm_best@3        | 7           | 9574       | 1577595118  | 42.86%           | 42.86%   
-rm_majority@3    | 7           | 9574       | 1577595118  | 57.14%           | 42.86%   
-pass@3           | 7           | 9574       | 1577595118  | 57.14%           | 42.86%   
-
-
-------------------------------------- math-aime25 --------------------------------------
-evaluation_mode  | num_entries | avg_tokens | gen_seconds | symbolic_correct | no_answer
-pass@1[avg-of-3] | 5           | 9869       | 60037       | 46.67% ± 11.55%  | 53.33%   
-majority@3       | 5           | 9869       | 60037       | 60.00%           | 40.00%   
-rm_best@3        | 5           | 9869       | 60037       | 60.00%           | 40.00%   
-rm_majority@3    | 5           | 9869       | 60037       | 60.00%           | 40.00%   
-pass@3           | 5           | 9869       | 60037       | 60.00%           | 40.00%   
-
-
-------------------------------------- math-aime24 --------------------------------------
-evaluation_mode  | num_entries | avg_tokens | gen_seconds | symbolic_correct | no_answer
-pass@1[avg-of-3] | 2           | 8838       | 1577595118  | 33.33% ± 28.87%  | 50.00%   
-majority@3       | 2           | 8838       | 1577595118  | 50.00%           | 50.00%   
-rm_best@3        | 2           | 8838       | 1577595118  | 0.00%            | 50.00%   
-rm_majority@3    | 2           | 8838       | 1577595118  | 50.00%           | 50.00%   
-pass@3           | 2           | 8838       | 1577595118  | 50.00%           | 50.00%   
 
 
 ---------------------------------- minif2f ----------------------------------

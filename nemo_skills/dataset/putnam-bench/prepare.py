@@ -16,13 +16,11 @@ import json
 import os
 import re
 import shutil
-import urllib.request
+import subprocess
+import tempfile
 from pathlib import Path
 
-import requests
-
-URL_prefix = "https://raw.githubusercontent.com/trishullab/PutnamBench/dc91ed7/lean4/src/"
-URL = "https://github.com/trishullab/PutnamBench/tree/dc91ed7/lean4/src"
+REPO_URL = "https://github.com/trishullab/PutnamBench.git"
 
 
 lean_regex = r"(^\s*theorem\s+([\S]+).+?sorry)"
@@ -60,31 +58,18 @@ def extract_theorem(filename):
     return theorem
 
 
-def get_file_names_from_github(url):
-    response = requests.get(url)
-
-    if response.status_code == 200:
-        # Extract file names using a regular expression
-        # This regex pattern matches the hrefs of the files.
-        # TODO: This is a pretty fragile approach, as it depends on GitHub's current HTML structure.
-        # find all names with putnam*.lean
-        pattern = r'putnam[^"]+\.lean'
-        matches = re.findall(pattern, response.text)
-        return matches
-    else:
-        print(f"Failed to access {url}, Status code: {response.status_code}")
-        return []
-
-
 def download_dataset(output_path):
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-    # get all file names with putnam*.lean
-    file_names = get_file_names_from_github(URL)
-    for file_name in file_names:
-        # download the file if not exists
-        if not os.path.exists(os.path.join(output_path, file_name)):
-            urllib.request.urlretrieve(URL_prefix + file_name, os.path.join(output_path, file_name))
+    output_dir = Path(output_path)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        repo_path = Path(tmpdir) / "putnambench"
+        subprocess.run(["git", "clone", "--depth", "1", REPO_URL, str(repo_path)], check=True)
+        src_dir = repo_path / "lean4" / "src"
+        for lean_file in src_dir.rglob("putnam*.lean"):
+            shutil.copy(lean_file, output_dir / lean_file.name)
 
 
 def save_data(data, output_file):

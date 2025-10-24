@@ -14,11 +14,13 @@
 
 import json
 import subprocess
+from importlib import import_module
 from pathlib import Path
 
 import pytest
 from utils import require_env_var
 
+from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 from tests.conftest import docker_rm
 
 
@@ -135,6 +137,7 @@ def test_hf_eval(server_type, server_args):
         f"    --server_args='{server_args}' "
         f"    ++max_samples=164 "
         f"    ++inference.tokens_to_generate=2048 "
+        f"    ++parse_reasoning=True "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -209,3 +212,98 @@ def test_megatron_eval():
     # TODO: something is broken in megatron inference here as this should be 50!
     assert metrics["symbolic_correct"] >= 40
     assert metrics["num_entries"] == 5
+
+
+@pytest.mark.gpu
+def test_prepare_and_eval_all_datasets():
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
+
+    config_dir = Path(__file__).absolute().parent
+    datasets_dir = Path(__file__).absolute().parents[2] / "nemo_skills" / "dataset"
+    # not testing datasets that don't support max_samples, require explicit parameters or are very heavy to prepare
+    excluded_datasets = {
+        "__pycache__",
+        "ruler",
+        "bigcodebench",
+        "livecodebench",
+        "livebench_coding",
+        "livecodebench-pro",
+        "livecodebench-cpp",
+        "ioi24",
+        "ioi25",
+        "bfcl_v3",
+        "swe-bench",
+        "aai",
+        "human-eval",
+        "human-eval-infilling",
+        "mbpp",
+    }
+
+    dataset_names = sorted(
+        dataset.name
+        for dataset in datasets_dir.iterdir()
+        if dataset.is_dir() and (dataset / "prepare.py").exists() and dataset.name not in excluded_datasets
+    )
+
+    assert dataset_names, "No datasets found to prepare and evaluate"
+
+    judge_datasets = []
+    for dataset in dataset_names:
+        dataset_module = import_module(f"nemo_skills.dataset.{dataset}")
+        if getattr(dataset_module, "JUDGE_PIPELINE_ARGS", None):
+            judge_datasets.append(dataset)
+
+    non_judge_datasets = [dataset for dataset in dataset_names if dataset not in judge_datasets]
+
+    data_dir = Path(f"/tmp/nemo-skills-tests/{model_type}/data")
+    docker_rm([str(data_dir)])
+
+    prepare_data(
+        ctx=wrap_arguments(" ".join(dataset_names)),
+        cluster="test-local",
+        config_dir=str(config_dir),
+        data_dir=str(data_dir),
+        expname=f"prepare-all-datasets-{model_type}",
+    )
+
+    eval_kwargs = dict(
+        cluster="test-local",
+        config_dir=str(config_dir),
+        data_dir=str(data_dir),
+        model=model_path,
+        server_type="sglang",
+        server_gpus=1,
+        server_nodes=1,
+        auto_summarize_results=False,
+    )
+
+    common_ctx = "++max_samples=2 ++inference.tokens_to_generate=100 ++server.enable_soft_fail=True "
+
+    output_dir = f"/tmp/nemo-skills-tests/{model_type}/all-datasets-eval"
+    docker_rm([output_dir])
+    eval(
+        ctx=wrap_arguments(common_ctx),
+        output_dir=output_dir,
+        benchmarks=",".join(non_judge_datasets),
+        expname=f"eval-all-datasets-{model_type}",
+        **eval_kwargs,
+    )
+
+    run_cmd(
+        ctx=wrap_arguments(f"python -m nemo_skills.pipeline.summarize_results {output_dir}"),
+        cluster="test-local",
+        config_dir=str(config_dir),
+    )
+
+    eval_results_dir = Path(output_dir) / "eval-results"
+    metrics_path = eval_results_dir / "metrics.json"
+    assert metrics_path.exists(), "Missing aggregated metrics file"
+    with metrics_path.open() as f:
+        metrics = json.load(f)
+
+    for dataset in non_judge_datasets:
+        assert dataset in metrics, f"Missing metrics for {dataset}"
+
+    # TODO: add same for judge_datasets after generate supports num_jobs
+    # (otherwise it starts judge every time and takes forever)

@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Union
 from transformers import AutoTokenizer
 
 from nemo_skills.prompt.utils import get_prompt, get_token_count
-from nemo_skills.utils import get_logger_name, nested_dataclass, remove_thinking
+from nemo_skills.utils import get_logger_name, nested_dataclass, parse_reasoning
 
 from .base import BaseModel, EndpointType
 
@@ -51,9 +51,8 @@ class ParallelThinkingConfig:
     temperature: float = 0.6
     tokens_to_generate: int | None = None
 
-    remove_thinking: bool = True  # Remove thinking tokens from the solution key
-    thinking_begin: str = "<think>"
-    thinking_end: str = "</think>"
+    parse_reasoning: bool = False
+    end_reasoning_string: str = "</think>"
     endpoint_type: EndpointType = EndpointType.chat
     tokenizer: str | None = None
     chat_template_kwargs: dict = field(default_factory=dict)
@@ -151,12 +150,11 @@ class ParallelThinkingTask:
         generation_results = await asyncio.gather(*tasks)
         solutions = []
         for generation_result in generation_results:
-            if self.cfg.remove_thinking:
-                remove_thinking(
+            if self.cfg.parse_reasoning:
+                parse_reasoning(
                     generation_result,
                     generation_key=self.cfg.solution_key,
-                    thinking_begin=self.cfg.thinking_begin,
-                    thinking_end=self.cfg.thinking_end,
+                    end_reasoning_string=self.cfg.end_reasoning_string,
                 )
 
             if self.cfg.solution_length_cap is not None:
@@ -194,12 +192,11 @@ class ParallelThinkingTask:
             with open(input_file, "r") as f:
                 for line in f:
                     data_point = json.loads(line)
-                    if self.cfg.remove_thinking:
-                        remove_thinking(
+                    if self.cfg.parse_reasoning:
+                        parse_reasoning(
                             data_point,
                             generation_key=self.cfg.solution_key,
-                            thinking_begin=self.cfg.thinking_begin,
-                            thinking_end=self.cfg.thinking_end,
+                            end_reasoning_string=self.cfg.end_reasoning_string,
                         )
 
                     if self.cfg.solution_length_cap is not None:
@@ -241,13 +238,7 @@ class ParallelThinkingTask:
             # Remove unfinished solutions
             filtered_solutions = []
             for solution in solutions:
-                # Check if thinking_begin is in the solution and thinking_end is not in the solution
-                if (
-                    self.cfg.thinking_begin in solution[self.cfg.solution_key]
-                    and self.cfg.thinking_end not in solution[self.cfg.solution_key]
-                ):
-                    continue
-                elif solution[self.cfg.solution_key] == "":
+                if solution[self.cfg.solution_key] == "":
                     LOG.warning("Solution is empty, skipping")
                     continue
                 else:

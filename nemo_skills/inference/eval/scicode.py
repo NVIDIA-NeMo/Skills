@@ -18,11 +18,25 @@ from dataclasses import field
 
 import hydra
 
-from nemo_skills.inference.eval.scicode_utils import extract_python_script, prefilled_steps_code, process_problem_steps
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.eval.scicode_utils import (
+    extract_python_script,
+    prefilled_steps_code,
+    process_problem_steps,
+)
+from nemo_skills.inference.generate import (
+    GenerateSolutionsConfig,
+    GenerationTask,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.utils import is_context_window_exceeded_error
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, remove_thinking, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    parse_reasoning,
+    setup_logging,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -40,8 +54,6 @@ class SciCodeGenerationConfig(GenerateSolutionsConfig):
 
     prompt_config: str = "eval/scicode/background"
     with_background: bool = True
-
-    remove_thinking: bool = True  # changing default
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
@@ -103,8 +115,8 @@ class SciCodeGenerationTask(GenerationTask):
 
             full_outputs[f"{problem_id}.{cur_step + 1}"] = llm_output
             total_generated_tokens += llm_output.get("num_generated_tokens", 0)
-            if self.cfg.remove_thinking:
-                remove_thinking(llm_output, "generation", self.cfg.thinking_begin, self.cfg.thinking_end)
+            if self.cfg.parse_reasoning:
+                parse_reasoning(llm_output, "generation", self.cfg.end_reasoning_string)
             extracted_python = extract_python_script(llm_output["generation"])
             previous_llm_code[cur_step] = extracted_python
             # TODO: save those as separate entries so that we can preserve intermediate progress on reruns

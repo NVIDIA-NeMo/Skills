@@ -28,10 +28,12 @@ Note that every prompt is a separate job, and all parameters are shared for all 
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, robust_eval
 robust_eval(ctx=wrap_arguments(
-        f"++inference.temperature=0.6 "
-        f"++inference.top_p=0.95 "
+        "++inference.temperature=0.6 "
+        "++inference.top_p=0.95 "
+        "++parse_reasoning=True "
     ),
-    prompt_set_config='robustness/prompt_set_config', # OR nemo_skills/prompt/config/robutness/prompt_set_config OR absolute path to .yaml file
+    # OR nemo_skills/prompt/config/robutness/prompt_set_config OR absolute path to .yaml file
+    prompt_set_config='robustness/prompt_set_config',
     cluster=cluster_config,
     model="Qwen/Qwen3-8B",
     server_type='vllm',

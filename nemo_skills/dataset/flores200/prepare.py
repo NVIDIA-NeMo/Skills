@@ -56,7 +56,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--split", default="dev", choices=("dev", "devtest"), help="Dataset split to process.")
+    parser.add_argument("--split", default="devtest", choices=("dev", "devtest"), help="Dataset split to process.")
     parser.add_argument(
         "--source_languages",
         default=["en", "de", "es", "fr", "it", "ja"],

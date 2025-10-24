@@ -32,6 +32,11 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
+from nemo_skills.evaluation.evaluator import (
+    evaluate,
+    get_evaluator_class,
+    supports_single_eval,
+)
 from nemo_skills.inference.model import (
     ParallelThinkingConfig,
     get_code_execution_model,
@@ -48,7 +53,7 @@ from nemo_skills.utils import (
     get_logger_name,
     get_server_wait_cmd,
     nested_dataclass,
-    remove_thinking,
+    parse_reasoning,
     setup_logging,
 )
 
@@ -79,7 +84,7 @@ class InferenceConfig:
 
 @nested_dataclass(kw_only=True)
 class GenerateSolutionsConfig:
-    """LLM generation parameters."""
+    """Generation parameters."""
 
     input_file: str  # Path to the input file with data
     output_file: str  # Where to save the generations
@@ -172,14 +177,14 @@ class GenerateSolutionsConfig:
     tool_overrides: dict | None = field(default_factory=dict)
 
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
-    remove_thinking: bool = False
-    thinking_begin: str = "<think>"
-    thinking_end: str = "</think>"
+    # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
+    parse_reasoning: bool = False
+    end_reasoning_string: str = "</think>"
 
     # If True, will enable litellm disk cache (useful for keeping intermediate results in case of job timelimit failures)
     enable_litellm_cache: bool = False
 
-    # Evaluation during generation
+    # Evaluation setup if requested. If eval_type is set to None, evaluation is skipped
     eval_type: str | None = None  # "lean4-proof", "math", etc.
     eval_config: dict = field(default_factory=dict)  # Config for the evaluator
 
@@ -329,20 +334,13 @@ class GenerationTask:
             self.extra_generate_params = {}
 
         # Setup evaluator if specified
+        self.should_run_evaluation = self.cfg.eval_type is not None
         self.evaluator = None
-        if self.cfg.eval_type:
-            from nemo_skills.evaluation.evaluator import (
-                get_evaluator_class,
-                supports_single_eval,
-            )
-
-            if not supports_single_eval(self.cfg.eval_type, self.cfg.eval_config):
-                raise ValueError(
-                    f"Evaluator '{self.cfg.eval_type}' does not support single evaluation during generation. "
-                    f"Use the evaluation pipeline instead."
-                )
-
-            self.evaluator = get_evaluator_class(self.cfg.eval_type, self.cfg.eval_config)
+        if self.should_run_evaluation:
+            self.cfg.eval_config = dict(self.cfg.eval_config)
+            if supports_single_eval(self.cfg.eval_type, self.cfg.eval_config):
+                LOG.info("Evaluator supports per-datapoint evals, will interleave evaluation with generation.")
+                self.evaluator = get_evaluator_class(self.cfg.eval_type, self.cfg.eval_config)
 
         LOG.info(
             "Async loop is maintaining %d generations in parallel. "
@@ -399,9 +397,9 @@ class GenerationTask:
         if self.cfg.parallel_thinking.mode is not None:
             # We don't want to override these key variables which overlap with self.cfg
             inference_override_config = {
-                "remove_thinking": self.cfg.parallel_thinking.remove_thinking,  # Removing thinking from solutions is important for parallel_thinking. We don't want to override this with the main generation config
                 "endpoint_type": self.cfg.parallel_thinking.endpoint_type,
-                # The following are specific to parallel thinking and we want to defend against any future key overlaps with the main generation config
+                # The following are specific to parallel thinking and we want
+                # to defend against any future key overlaps with the main generation config
                 "mode": self.cfg.parallel_thinking.mode,
                 "window_size": self.cfg.parallel_thinking.window_size,
                 "solution_key": self.cfg.parallel_thinking.solution_key,
@@ -453,6 +451,11 @@ class GenerationTask:
         Data is already saved to self.cfg.output_file, so it can be read and re-saved from there.
         """
         pass
+
+    def run_batch_evaluation(self):
+        """Run final evaluation consuming all data together if configured."""
+        self.cfg.eval_config["input_file"] = self.cfg.output_file
+        evaluate(self.cfg.eval_type, self.cfg.eval_config)
 
     def skip_completed_samples(self, data):
         # if non-async file exists and we are asked to skip filled, then there is no more data to process
@@ -519,24 +522,30 @@ class GenerationTask:
         return filled_prompt
 
     def dump_outputs(self, outputs, data_points, fout):
-        for output, original_data_point in zip(outputs, data_points):
-            # to make it easier to follow up with evaluation and limit accidental errors, we are adding
-            # all of the ground-truth data to the output file alongside the generated solutions
-            output[self.cfg.generation_key] = output.pop("generation")
-
-            if not self.cfg.add_generation_stats:
-                output.pop("generation_start_time", None)
-                output.pop("generation_end_time", None)
-                output.pop("generation_time", None)
-                output.pop("num_generated_tokens", None)
-                output.pop("num_input_tokens", None)
-
-            for key in output:
-                original_data_point.pop(key, None)
-            output.update(original_data_point)
-            if self.cfg.remove_thinking:
-                remove_thinking(output, self.cfg.generation_key, self.cfg.thinking_begin, self.cfg.thinking_end)
+        for output in outputs:
             fout.write(json.dumps(output) + "\n")
+
+    async def postprocess_single_output(self, output, original_data_point):
+        # to make it easier to follow up with other generations and limit accidental errors, we are adding
+        # all of the original data to the output file alongside the new generations
+        output[self.cfg.generation_key] = output.pop("generation")
+
+        if not self.cfg.add_generation_stats:
+            output.pop("generation_start_time", None)
+            output.pop("generation_end_time", None)
+            output.pop("generation_time", None)
+            output.pop("num_generated_tokens", None)
+            output.pop("num_input_tokens", None)
+
+        for key in output:
+            original_data_point.pop(key, None)
+        output.update(original_data_point)
+        if self.cfg.parse_reasoning:
+            parse_reasoning(
+                output,
+                self.cfg.generation_key,
+                self.cfg.end_reasoning_string,
+            )
 
     def prefill_generation(self, data_point) -> dict | None:
         """Prefill generation in case LLM is not required."""
@@ -580,13 +589,12 @@ class GenerationTask:
         async with self.semaphore:
             return await self.llm.generate_async(**generation_params)
 
-    async def apply_evaluation_hook(self, data_point):
-        if self.evaluator:
-            eval_start_time = time.time()
-            eval_results = await self.evaluator.eval_single(data_point)
-            eval_end_time = time.time()
-            data_point["interleaved_eval_single_time_s"] = eval_end_time - eval_start_time
-            data_point.update(eval_results)
+    async def evaluate_single_datapoint(self, data_point):
+        eval_start_time = time.time()
+        eval_results = await self.evaluator.eval_single(data_point)
+        eval_end_time = time.time()
+        data_point["interleaved_eval_single_time_s"] = eval_end_time - eval_start_time
+        data_point.update(eval_results)
         return data_point
 
     async def _generate_and_save_datapoint(self, data_point, all_data, fout, pbar):
@@ -601,12 +609,11 @@ class GenerationTask:
             output["generation_end_time"] = end_time
             output["generation_time"] = end_time - start_time
 
-        # Apply evaluation hook if configured
-        # TODO: note that this currently only evaluates independently--if there
-        # is any post-processing that needs to be done on the full set of
-        # generations, this will not work correctly, and we might need another
-        # hook at the end of generation to make it work properly
-        output = await self.apply_evaluation_hook({**data_point, **output})
+        await self.postprocess_single_output(output, data_point)
+
+        # evaluate single-data point if requested and evaluator supports that
+        if self.should_run_evaluation and self.evaluator:
+            output = await self.evaluate_single_datapoint({**data_point, **output})
 
         # Thread-safe output writing
         async with self.output_lock:
@@ -637,6 +644,12 @@ class GenerationTask:
         with open(self.cfg.output_file + "-async", "at", encoding="utf-8", buffering=1) as fout:
             # Dump prefilled data first
             if len(prefilled_data_points) > 0:
+                for output, data_point in zip(prefilled_outputs, prefilled_data_points):
+                    await self.postprocess_single_output(output, data_point)
+
+                    # evaluate single-data point if requested and evaluator supports that
+                    if self.should_run_evaluation and self.evaluator:
+                        output = await self.evaluate_single_datapoint({**data_point, **output})
                 async with self.output_lock:
                     self.dump_outputs(prefilled_outputs, prefilled_data_points, fout)
 
@@ -704,25 +717,26 @@ class GenerationTask:
         data = self.skip_completed_samples(data)
 
         if len(data) == 0:
-            LOG.info("No data to process, exiting.")
-            return
+            LOG.info("No data to process, skipping generation")
+        else:
+            data = self.preprocess_data(data)
 
-        data = self.preprocess_data(data)
+            self.log_example_prompt(data)
 
-        self.log_example_prompt(data)
+            if self.cfg.dry_run:
+                LOG.info("Exiting without running generation as dry_run flag is set.")
+                return
 
-        if self.cfg.dry_run:
-            LOG.info("Exiting without running generation as dry_run flag is set.")
-            return
+            if not self.cfg.skip_filled:
+                for output_path in [Path(self.cfg.output_file), Path(self.cfg.output_file + "-async")]:
+                    if output_path.exists():
+                        output_path.unlink()
 
-        if not self.cfg.skip_filled:
-            for output_path in [Path(self.cfg.output_file), Path(self.cfg.output_file + "-async")]:
-                if output_path.exists():
-                    output_path.unlink()
+            self.wait_for_server()
+            asyncio.run(self.async_loop(data))
 
-        self.wait_for_server()
-        asyncio.run(self.async_loop(data))
-
+        if self.should_run_evaluation and self.evaluator is None:
+            self.run_batch_evaluation()
         self.postprocess()
 
 

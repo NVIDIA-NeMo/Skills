@@ -19,7 +19,7 @@ Let's say you want to check for contamination of [MATH](https://github.com/hendr
 training set with MATH, AMC-23 and AIME-24 test sets. First, get the data
 
 ```bash
-ns prepare_data math amc23 aime24
+ns prepare_data hendrycks_math amc23 aime24
 ```
 
 Then we need to retrieve top-k similar questions from the training set. Assuming
@@ -30,12 +30,12 @@ you can do it in the following way
 from nemo_skills.pipeline.cli import wrap_arguments, run_cmd, generate
 
 
-test_sets = ['math', 'amc23', 'aime24']
+test_sets = ['hendrycks_math', 'amc23', 'aime24']
 compare_to = ",".join(f"/nemo_run/code/nemo_skills/dataset/{test_set}/test.jsonl" for test_set in test_sets)
 
 cmd = (
     f"python -m nemo_skills.inference.retrieve_similar "
-    f"    ++retrieve_from='/nemo_run/code/nemo_skills/dataset/math/train.jsonl' "
+    f"    ++retrieve_from='/nemo_run/code/nemo_skills/dataset/hendrycks_math/train.jsonl' "
     f"    ++compare_to=\\\'{compare_to}\\\'"
     f"    ++output_file='/workspace/math-contamination-retrieved.jsonl' "
     f"    ++top_k=1 "

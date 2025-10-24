@@ -129,7 +129,7 @@ eval(
     model=f"{output_dir}/final_hf_model",
     server_type="trtllm",
     output_dir=f"{output_dir}/results/",
-    benchmarks="gsm8k,math",
+    benchmarks="gsm8k,hendrycks_math",
     server_gpus=8,
     run_after=expname,
 )

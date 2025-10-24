@@ -41,7 +41,7 @@ DATASETS = [
         ],
     ),
     ("ifeval", ["test"]),
-    ("math", ["train", "test"]),
+    ("hendrycks_math", ["train", "test"]),
     ("math-odyssey", ["test"]),
     ("mawps", ["test"]),
     ("mbpp", ["test"]),

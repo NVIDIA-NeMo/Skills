@@ -26,6 +26,7 @@ def eval_qwen3_bfcl(workspace, cluster, expname_prefix, wandb_project):
             f"++inference.top_p=0.95 "
             f"++inference.tokens_to_generate=8192 "
             f"++model_name={model} "
+            f"++parse_reasoning=True "
         ),
         cluster=cluster,
         benchmarks="bfcl_v3",

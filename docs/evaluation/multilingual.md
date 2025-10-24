@@ -15,14 +15,14 @@ Once prepared, the `ns eval` command will run on all languages prepared, and the
 Our evaluation template and answer extraction mechanism tries to match the configration in [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks/mmlu_prox).
 Some reference numbers for reference and commands for reproduction:
 
-| Model              | Type   |   en | de   | es   | fr   | it   | ja   |
-|:-------------------|:-------|-----:|:-----|:-----|:-----|:-----|:-----|
-| gpt-oss-120b       | Public       | 80.8 | -    | -    | -    | -    | -    |
-| gpt-oss-120b       | Nemo-Skills  | 75.5 | 71.8 | 73.4 | 70.9 | 71.7 | 66.7 |
-| mistral-3.1-small  | Public       | 62   | 58.5 | 59.4 | 60.6 | 59.6 | 54.4 |
-| mistral-3.1-small  | Nemo-Skills  | 67.6 | 59.9 | 63.7 | 63.2 | 63.6 | 56.6 |
-| qwen3-32b-thinking | Public       | 74.9 | 71.7 | 72.8 | 72.1 | 73.5 | 70.2 |
-| qwen3-32b-thinking | Nemo-Skills  | 72.7 | 70.4 | 74.0 | 73.7 | 76.3 | 73.9 |
+| Model              | Type        |   en | de   | es   | fr   | it   | ja   |
+| :----------------- | :---------- | ---: | :--- | :--- | :--- | :--- | :--- |
+| gpt-oss-120b       | Public      | 80.8 | -    | -    | -    | -    | -    |
+| gpt-oss-120b       | Nemo-Skills | 75.5 | 71.8 | 73.4 | 70.9 | 71.7 | 66.7 |
+| mistral-3.1-small  | Public      |   62 | 58.5 | 59.4 | 60.6 | 59.6 | 54.4 |
+| mistral-3.1-small  | Nemo-Skills | 67.6 | 59.9 | 63.7 | 63.2 | 63.6 | 56.6 |
+| qwen3-32b-thinking | Public      | 74.9 | 71.7 | 72.8 | 72.1 | 73.5 | 70.2 |
+| qwen3-32b-thinking | Nemo-Skills | 72.7 | 70.4 | 74.0 | 73.7 | 76.3 | 73.9 |
 
 === "GPT-OSS-120B"
 
@@ -65,6 +65,7 @@ Some reference numbers for reference and commands for reproduction:
         --server_type=vllm \
         --num_chunks=32 \
         --server_gpus=2 \
+        ++parse_reasoning=True \
         ++inference.temperature=0.6 \
         ++inference.top_k=20 \
         ++inference.tokens_to_generate=38912
@@ -77,12 +78,12 @@ Some reference numbers for reference and commands for reproduction:
 
 Some reference numbers for devtest split (xx corresponds to average over 5 languages: de, es, fr, it, ja):
 
-| Model                  | en->xx | xx->en | xx->xx |
-|:-----------------------|------:|------:|------:|
-| Nemotron-NanoV2-9B-v2  | 32.5 |  34  | 25.9 |
-| Qwen3-8B               | 31.5 | 34.6 | 25.7 |
-| Qwen3-30B-A3B          | 33.3 | 35.5 | 27.1 |
-| gpt-oss-20B            | 32.4 | 34.1 |  25  |
+| Model                 | en->xx | xx->en | xx->xx |
+| :-------------------- | -----: | -----: | -----: |
+| Nemotron-NanoV2-9B-v2 |   32.5 |     34 |   25.9 |
+| Qwen3-8B              |   31.5 |   34.6 |   25.7 |
+| Qwen3-30B-A3B         |   33.3 |   35.5 |   27.1 |
+| gpt-oss-20B           |   32.4 |   34.1 |     25 |
 
 === "Nemotron-NanoV2-9B-v2"
 
@@ -150,12 +151,12 @@ Some reference numbers for devtest split (xx corresponds to average over 5 langu
 
 Some reference numbers for test split (xx corresponds to average over 5 languages: de, es, fr, it, ja):
 
-| Model                  | en->de | en->es | en->fr | en->it | en->ja | en->xx |
-|:-----------------------|------:|------:|------:|------:|------:|------:|
-| Nemotron-NanoV2-9B-v2  | 25.3 | 37.7 | 33.4 | 33.8 | 20.9 |  30.2  |
-| Qwen3-8B               | 26.2 | 38.5 | 33.1 | 33.1 | 21.7 | 30.5 |
-| Qwen3-30B-A3B          | 28.5 |  40  | 35.1 |  36  | 23.2 | 32.5 |
-| gpt-oss-20B            | 27.3 | 42.3 | 32.8 | 34.9 | 25.2 | 32.5 |
+| Model                 | en->de | en->es | en->fr | en->it | en->ja | en->xx |
+| :-------------------- | -----: | -----: | -----: | -----: | -----: | -----: |
+| Nemotron-NanoV2-9B-v2 |   25.3 |   37.7 |   33.4 |   33.8 |   20.9 |   30.2 |
+| Qwen3-8B              |   26.2 |   38.5 |   33.1 |   33.1 |   21.7 |   30.5 |
+| Qwen3-30B-A3B         |   28.5 |     40 |   35.1 |     36 |   23.2 |   32.5 |
+| gpt-oss-20B           |   27.3 |   42.3 |   32.8 |   34.9 |   25.2 |   32.5 |
 
 === "Nemotron-NanoV2-9B-v2"
 

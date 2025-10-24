@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-from dataclasses import asdict, field
+from dataclasses import field
 
 from nemo_skills.code_execution.proof_utils import (
     ProofBuildConfig,
@@ -21,15 +21,15 @@ from nemo_skills.code_execution.proof_utils import (
     determine_proof_status,
 )
 from nemo_skills.code_execution.sandbox import get_sandbox
-from nemo_skills.evaluation.evaluator.base import BaseEvaluator
-from nemo_skills.evaluation.math_grader import evaluate_result
+from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
+from nemo_skills.evaluation.math_grader import extract_answer, math_equal
 from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class MathEvaluatorConfig:
+class MathEvaluatorConfig(BaseEvaluatorConfig):
     numeric_precision: int = 15
     timeout: int = 10
     # if True will not attempt to re-extract based on \boxed or regex
@@ -42,7 +42,7 @@ class MathEvaluatorConfig:
 
 
 @nested_dataclass(kw_only=True)
-class LeanEvaluatorConfig:
+class LeanEvaluatorConfig(BaseEvaluatorConfig):
     sandbox: dict = field(default_factory=lambda: {"sandbox_type": "local"})
     num_parallel_requests: int = 10
     timeout: float = 30.0
@@ -52,18 +52,36 @@ class LeanEvaluatorConfig:
     extract_code_mode: str = "last"
 
 
-# Evaluator Classes
-
-
 class MathEvaluator(BaseEvaluator):
     def __init__(self, config: dict, num_parallel_requests=10):
         super().__init__(config, num_parallel_requests)
         self.eval_config = MathEvaluatorConfig(**self.config)
-        self.eval_config_dict = asdict(self.eval_config)
 
     async def eval_single(self, data_point: dict[str, any]) -> dict[str, any]:
         """Evaluate single problem for math"""
-        return evaluate_result(data_point, **self.eval_config_dict)
+        if not self.eval_config.use_predicted_answer_key:
+            data_point["predicted_answer"] = extract_answer(
+                data_point["generation"],
+                extract_from_boxed=self.eval_config.extract_from_boxed,
+                extract_regex=self.eval_config.extract_regex,
+            )
+        else:
+            if "predicted_answer" not in data_point:
+                raise ValueError(
+                    "predicted_answer key not found in the data_point. Set use_predicted_answer_key=False to re-extract"
+                )
+
+        gt_answer = data_point["expected_answer"]
+        predicted_answer = data_point["predicted_answer"]
+
+        data_point["symbolic_correct"] = math_equal(
+            gt_answer,
+            predicted_answer,
+            take_modulo=self.eval_config.take_modulo,
+            numeric_precision=self.eval_config.numeric_precision,
+            timeout_seconds=self.eval_config.timeout,
+        )
+        return data_point
 
 
 class Lean4ProofEvaluator(BaseEvaluator):
@@ -72,9 +90,8 @@ class Lean4ProofEvaluator(BaseEvaluator):
     def __init__(self, config: dict, num_parallel_requests=10):
         """Initialize Lean4ProofEvaluator with sandbox."""
         super().__init__(config, num_parallel_requests)
-        eval_config = LeanEvaluatorConfig(**self.config)
-        self.sandbox = get_sandbox(**eval_config.sandbox)
-        self.eval_config = eval_config
+        self.eval_config = LeanEvaluatorConfig(**self.config)
+        self.sandbox = get_sandbox(**self.eval_config.sandbox)
 
     async def eval_single(self, data_point: dict[str, any]) -> dict[str, any]:
         """Evaluate single Lean4 proof during generation."""
@@ -108,24 +125,3 @@ class Lean4ProofEvaluator(BaseEvaluator):
             "proof_status": proof_status,
             "lean_evaluation": {**output, "timeout": self.eval_config.timeout},
         }
-
-
-class Lean4StatementEvaluator(BaseEvaluator):
-    """Lean4 statement evaluator - only supports batch evaluation."""
-
-    def __init__(self, config: dict, num_parallel_requests=10):
-        """Initialize Lean4StatementEvaluator with sandbox."""
-        super().__init__(config, num_parallel_requests)
-        eval_config = LeanEvaluatorConfig(**self.config)
-        self.sandbox = get_sandbox(**eval_config.sandbox)
-        self.eval_config = eval_config
-
-    async def eval_full(self, input_files: list[str]) -> None:
-        """Batch evaluate Lean4 statements."""
-        eval_config_dict = asdict(self.eval_config)
-        eval_config_dict.pop("sandbox")
-        await self.sandbox.batch_evaluate_results(
-            input_files=input_files,
-            answer_format="lean4-statement",
-            **eval_config_dict,
-        )

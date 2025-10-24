@@ -27,8 +27,9 @@ from typing import Any, Dict, List, Tuple
 import httpx
 
 from nemo_skills.code_execution.sandbox import Sandbox, get_sandbox
+from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
 from nemo_skills.evaluation.evaluator.code import preprocess_code
-from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
+from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -37,7 +38,7 @@ LIVECODEBENCH_PYPY3_GIT_URL = "git+https://github.com/wasiahmad/livecodebench.gi
 
 
 @nested_dataclass(kw_only=True)
-class LiveCodeBenchEvaluatorConfig:
+class LiveCodeBenchEvaluatorConfig(BaseEvaluatorConfig):
     sandbox: dict = field(default_factory=lambda: {"sandbox_type": "local"})
     language: str = "python"  # use either "python" or "cpp"
     test_file: str = None
@@ -202,86 +203,83 @@ def _install_packages_locally(interpreter: str):
             raise
 
 
-async def eval_livecodebench_async(cfg, eval_config: LiveCodeBenchEvaluatorConfig):
+async def eval_livecodebench_async(eval_config: LiveCodeBenchEvaluatorConfig):
     """Evaluation running within a sandbox."""
     async with sandbox_context(eval_config.sandbox) as sandbox:
         if not await _install_packages_in_sandbox(sandbox, eval_config):
             return
 
-        for jsonl_file in unroll_files(cfg.input_files):
-            LOG.info(f"Processing file: {jsonl_file} in sandbox")
-            try:
-                samples, release_version = _preprocess_and_validate_file(jsonl_file, eval_config.language)
-            except ValueError as e:
-                LOG.error(f"Skipping {jsonl_file} due to pre-processing error: {e}")
-                continue
+        jsonl_file = eval_config.input_file
+        LOG.info(f"Processing file: {jsonl_file} in sandbox")
+        try:
+            samples, release_version = _preprocess_and_validate_file(jsonl_file, eval_config.language)
+        except ValueError as e:
+            LOG.error(f"Skipping {jsonl_file} due to pre-processing error: {e}")
 
-            if eval_config.language == "python":
-                release_version = f"release_{release_version}"
-            test_file_arg = repr(eval_config.test_file) if eval_config.test_file else "None"
-            eval_code = textwrap.dedent(f"""
-                from livecodebench.evaluate import evaluate
-                evaluate(
-                    custom_output_file='{jsonl_file}',
-                    release_version='{release_version}',
-                    test_file={test_file_arg},
-                    k_list=[1],
-                    language='{eval_config.language}',
-                    num_process_evaluate={eval_config.num_processes},
-                    timeout={eval_config.timeout}
-                )
-            """)
-
-            cmd = f"{eval_config.interpreter} -c {shlex.quote(eval_code)}"
-            output, _ = await execute_in_sandbox_with_retries(
-                sandbox,
-                eval_config.num_retries,
-                cmd,
-                language="shell",
-                timeout=eval_config.timeout * len(samples) + eval_config.timeout_buffer,
-                max_output_characters=100_000,
+        if eval_config.language == "python":
+            release_version = f"release_{release_version}"
+        test_file_arg = repr(eval_config.test_file) if eval_config.test_file else "None"
+        eval_code = textwrap.dedent(f"""
+            from livecodebench.evaluate import evaluate
+            evaluate(
+                custom_output_file='{jsonl_file}',
+                release_version='{release_version}',
+                test_file={test_file_arg},
+                k_list=[1],
+                language='{eval_config.language}',
+                num_process_evaluate={eval_config.num_processes},
+                timeout={eval_config.timeout}
             )
+        """)
 
-            if output.get("process_status") != "completed":
-                LOG.error(f"Evaluation failed for {jsonl_file}. Stderr: {output.get('stderr')}")
-                continue
+        cmd = f"{eval_config.interpreter} -c {shlex.quote(eval_code)}"
+        output, _ = await execute_in_sandbox_with_retries(
+            sandbox,
+            eval_config.num_retries,
+            cmd,
+            language="shell",
+            timeout=eval_config.timeout * len(samples) + eval_config.timeout_buffer,
+            max_output_characters=100_000,
+        )
 
-            _postprocess_results(jsonl_file, samples)
+        if output.get("process_status") != "completed":
+            LOG.error(f"Evaluation failed for {jsonl_file}. Stderr: {output.get('stderr')}")
+
+        _postprocess_results(jsonl_file, samples)
 
 
-def eval_livecodebench_without_sandbox(cfg, eval_config: LiveCodeBenchEvaluatorConfig):
+def eval_livecodebench_without_sandbox(eval_config: LiveCodeBenchEvaluatorConfig):
     """Evaluation running on the local machine."""
     evaluate_fn = _install_packages_locally(eval_config.interpreter)
     if not evaluate_fn:
         return
 
-    for jsonl_file in unroll_files(cfg.input_files):
-        LOG.info(f"Processing file: {jsonl_file} locally")
-        try:
-            samples, release_version = _preprocess_and_validate_file(jsonl_file, eval_config.language)
-        except ValueError as e:
-            LOG.error(f"Skipping {jsonl_file} due to pre-processing error: {e}")
-            continue
+    jsonl_file = eval_config.input_file
+    LOG.info(f"Processing file: {jsonl_file} locally")
+    try:
+        samples, release_version = _preprocess_and_validate_file(jsonl_file, eval_config.language)
+    except ValueError as e:
+        LOG.error(f"Skipping {jsonl_file} due to pre-processing error: {e}")
 
-        if eval_config.language == "python":
-            release_version = f"release_{release_version}"
+    if eval_config.language == "python":
+        release_version = f"release_{release_version}"
 
-        evaluate_fn(
-            custom_output_file=jsonl_file,
-            release_version=release_version,
-            k_list=[1],
-            language=eval_config.language,
-            test_file=eval_config.test_file,
-            num_process_evaluate=eval_config.num_processes,
-            timeout=eval_config.timeout,
-        )
+    evaluate_fn(
+        custom_output_file=jsonl_file,
+        release_version=release_version,
+        k_list=[1],
+        language=eval_config.language,
+        test_file=eval_config.test_file,
+        num_process_evaluate=eval_config.num_processes,
+        timeout=eval_config.timeout,
+    )
 
-        _postprocess_results(jsonl_file, samples)
+    _postprocess_results(jsonl_file, samples)
 
 
 def eval_livecodebench(cfg):
     """Main entry point for LiveCodeBench evaluation."""
-    eval_config = LiveCodeBenchEvaluatorConfig(_init_nested=True, **cfg.eval_config)
+    eval_config = LiveCodeBenchEvaluatorConfig(_init_nested=True, **cfg)
 
     if eval_config.language == "python" and eval_config.interpreter not in ["python", "pypy3"]:
         raise ValueError("Python interpreter must be 'python' or 'pypy3'.")
@@ -297,6 +295,6 @@ def eval_livecodebench(cfg):
         raise RuntimeError("The 'pypy3' interpreter requires a running sandbox, but the service was unreachable.")
 
     if sandbox_is_ready:
-        asyncio.run(eval_livecodebench_async(cfg, eval_config))
+        asyncio.run(eval_livecodebench_async(eval_config))
     else:
-        eval_livecodebench_without_sandbox(cfg, eval_config)
+        eval_livecodebench_without_sandbox(eval_config)

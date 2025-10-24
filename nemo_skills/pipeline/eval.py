@@ -132,7 +132,6 @@ def eval(
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
-    extra_eval_args: str = typer.Option("", help="Additional arguments for evaluation"),
     auto_summarize_results: bool = typer.Option(
         True, help="If True, will automatically launch summarize results tasks"
     ),
@@ -318,7 +317,6 @@ def eval(
         with_sandbox,
         keep_mounts_for_sandbox,
         wandb_parameters,
-        extra_eval_args,
         eval_requires_judge=eval_requires_judge,
         generation_type=generation_type,
         generation_module=generation_module,
@@ -425,6 +423,7 @@ def eval(
                 expname=f"{expname}-{benchmark}-judge",
                 log_dir=log_dir + "/judge",
                 cluster=cluster,
+                config_dir=config_dir,
                 partition=partition,
                 qos=qos,
                 time_min=time_min,

@@ -255,4 +255,4 @@ if __name__ == "__main__":
 
     LOG.info(f"Preparing AA-LCR dataset with additional arguments: {args}")
     prepare_aalcr_data(args.max_context_window, args.setup, args.tokenizer_name)
-    LOG.info(f"AA-LCR dataset preparation with setup {args.setup} completed. Use --split=${args.setup} to evaluate!")
+    LOG.info(f"AA-LCR dataset preparation with setup {args.setup} completed. Use --split={args.setup} to evaluate!")

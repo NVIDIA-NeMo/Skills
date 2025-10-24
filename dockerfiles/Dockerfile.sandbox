@@ -33,9 +33,6 @@ RUN apt-get update && \
     rm /tmp/pypy.tar.bz2 && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-# Install the DMOJ judge-server using pip (OJBench eval requirement)
-RUN pip install git+https://github.com/DMOJ/judge-server.git@11bf2cd03df83f0df5970a08e98b4cec2dfaecd5
-
 # Install Lean 4 toolchain
 RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y && \
     /root/.elan/bin/elan toolchain install leanprover/lean4:v4.12.0 && \

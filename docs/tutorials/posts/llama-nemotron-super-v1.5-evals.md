@@ -103,10 +103,10 @@ ns eval \
     --output_dir=/workspace/llama_nemotron_49b_1_5/ \
     --benchmarks=scicode:16,math-500:16,aime24:16,aime25:16 \
     --server_gpus=2 \
+    ++parse_reasoning=True \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++system_message=''
+    ++inference.top_p=0.95
 ```
 
 For GPQA and MMLU-Pro, we additionally specify the exact prompt on which we evaluate the benchmark:
@@ -118,11 +118,11 @@ ns eval \
     --output_dir=/workspace/llama_nemotron_49b_1_5/ \
     --benchmarks=mmlu-pro:16 \
     --server_gpus=2 \
+    ++parse_reasoning=True \
     ++prompt_config=eval/aai/mcq-10choices-boxed \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++system_message=''
+    ++inference.top_p=0.95
 
 ns eval \
     --cluster=local \
@@ -131,11 +131,11 @@ ns eval \
     --output_dir=/workspace/llama_nemotron_49b_1_5/ \
     --benchmarks=gpqa:16 \
     --server_gpus=2 \
+    ++parse_reasoning=True \
     ++prompt_config=eval/aai/mcq-4choices-boxed \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++system_message=''
+    ++inference.top_p=0.95
 ```
 
 For LiveCodeBench, we additionally specify the exact split on which we evaluate the benchmark. In the following command, we evaluate the model on the 166 problems from the 1 October 2024 to 1 March 2025 subset from release_v5. To evaluate on the Artificial Analysis Index (AAI) split, set split to `test_v5_2407_2412`:
@@ -149,10 +149,10 @@ ns eval \
     --benchmarks=livecodebench:16 \
     --split=test_v5_2410_2502 \
     --server_gpus=2 \
+    ++parse_reasoning=True \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++system_message=''
+    ++inference.top_p=0.95
 ```
 
 #### Command for HLE Eval (Reasoning on)
@@ -173,10 +173,10 @@ ns eval \
     --server_gpus=2 \
     --judge_model="o3-mini-20250131" \
     --extra_judge_args="++inference.tokens_to_generate=4096 ++max_concurrent_requests=8" \
+    ++parse_reasoning=True \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++system_message=''
+    ++inference.top_p=0.95
 ```
 
 !!! note
@@ -197,10 +197,10 @@ ns eval \
     --server_gpus=2 \
     --server_type=vllm \
     --output_dir=/workspace/llama_nemotron_49b_1_5_tool_calling/ \
+    ++parse_reasoning=True \
     ++inference.tokens_to_generate=65536 \
     ++inference.temperature=0.6 \
     ++inference.top_p=0.95 \
-    ++system_message='' \
     ++use_client_parsing=False \
     --server_args="--tool-parser-plugin \"/workspace/Llama-3_3-Nemotron-Super-49B-v1_5/llama_nemotron_toolcall_parser_no_streaming.py\" \
                     --tool-call-parser \"llama_nemotron_json\" \
@@ -211,7 +211,8 @@ ns eval \
 
 For RULER we need to use the same `data_dir` in the evaluation command as we used in the data preparation. We also
 need to use the data preparation `setup` as part of the benchmark name. Finally it's important not to specify
-`++inference.tokens_to_generate` as RULER has a fixed value of this parameter for each task.
+`++inference.tokens_to_generate` as well as not specify `++parse_reasoning=True` as
+RULER has predefined setup for those parameters.
 
 ```bash hl_lines="6-7"
 ns eval \
@@ -223,8 +224,7 @@ ns eval \
     --data_dir=/workspace/ns-data \
     --server_gpus=2 \
     ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++system_message=''
+    ++inference.top_p=0.95
 ```
 
 ### Reasoning-on Results

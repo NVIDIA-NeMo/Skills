@@ -27,7 +27,7 @@ BENCHMARKS = {
         # can add "NUM_CHUNKS": N to parallelize
     },
     "hle": {
-        "GENERATION_ARGS": "++remove_thinking=True ++inference.temperature=0.0",
+        "GENERATION_ARGS": "++inference.temperature=0.0",
         "JUDGE_ARGS": "++prompt_config=judge/hle ++generation_key=judgement",
     },
     # Science benchmarks

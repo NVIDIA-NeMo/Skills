@@ -14,32 +14,22 @@
 
 import abc
 import asyncio
-import glob
 import json
 import logging
 import os
 import traceback
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import httpx
-import tqdm
 
 from nemo_skills.code_execution.proof_utils import (
-    ProofBuildConfig,
     determine_proof_status,
-    prepare_predicted_proof_from_line_dict,
 )
 from nemo_skills.utils import get_logger_name, python_doc_to_cmd_help
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-def unroll_files(input_files):
-    for manifest_pattern in input_files:
-        for manifest in sorted(glob.glob(manifest_pattern, recursive=True)):
-            yield manifest
 
 
 class Sandbox(abc.ABC):
@@ -262,76 +252,6 @@ class Sandbox(abc.ABC):
         except httpx.TimeoutException:
             return "timeout"
         return determine_proof_status(output)
-
-    async def batch_evaluate_results(
-        self,
-        input_files: List[str],
-        num_parallel_requests=10,
-        timeout=30.0,
-        answer_format="lean4-proof",
-        use_predicted_proof_key: bool = False,
-        final_answer_key: str = "**FINAL ANSWER**",
-        restate_formal_statement: bool = True,
-        strip_theorem_from_proof: bool = True,
-        extract_code_mode: str = "last",
-    ):
-        """Evaluate results and write back to original files."""
-
-        semaphore = asyncio.Semaphore(num_parallel_requests)
-
-        async def process_line(line_data):
-            """Process a single line and return updated line data."""
-            if not line_data or not line_data.strip():
-                return line_data
-
-            line_dict = json.loads(line_data)
-            if not line_dict:
-                return line_data
-
-            # Prepare predicted_proof using shared utility
-            config = ProofBuildConfig(
-                final_answer_key=final_answer_key,
-                extract_code_mode=extract_code_mode,
-                restate_formal_statement=restate_formal_statement,
-                strip_theorem_from_proof=strip_theorem_from_proof,
-            )
-
-            line_dict["predicted_proof"] = prepare_predicted_proof_from_line_dict(
-                line_dict=line_dict,
-                config=config,
-                answer_format=answer_format,
-                use_predicted_proof_key=use_predicted_proof_key,
-            )
-
-            # Evaluate proof with concurrency control
-            async with semaphore:
-                proof_status = await self.is_proof_correct(line_dict["predicted_proof"], timeout=timeout)
-                line_dict["proof_status"] = proof_status
-
-            return json.dumps(line_dict)
-
-        # Process each file
-        for input_file in unroll_files(input_files):
-            # Read all lines
-            with open(input_file, "rt", encoding="utf-8") as f:
-                lines = f.readlines()
-
-            # Process lines concurrently with progress bar
-            print(f"Processing {input_file}...")
-            processed_lines = []
-            tasks = [asyncio.create_task(process_line(line.rstrip("\n"))) for line in lines]
-            processed_lines = []
-            for coro in tqdm.tqdm(tasks, total=len(tasks)):
-                processed_lines.append(await coro)
-
-            # Write to temp file then replace original
-            temp_file = input_file + "-tmp"
-            with open(temp_file, "wt", encoding="utf-8") as f:
-                for line in processed_lines:
-                    f.write(line + "\n")
-
-            # Replace original with temp file
-            os.replace(temp_file, input_file)
 
 
 class LocalSandbox(Sandbox):

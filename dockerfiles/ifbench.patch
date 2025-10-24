@@ -3,13 +3,13 @@ index d3071c7..e303de7 100644
 --- a/instructions.py
 +++ b/instructions.py
 @@ -31,7 +31,9 @@ import io
- 
+
  import instructions_util
- 
+
 -download('en_core_web_sm')
-++# assumed to be predownloaded
-++print("skipping download of en_core_web_sm")
++# assumed to be predownloaded
++print("skipping download of en_core_web_sm")
 +# download('en_core_web_sm')
- 
+
  logger = logging.getLogger(__name__)
- 
+

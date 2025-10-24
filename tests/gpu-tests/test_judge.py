@@ -29,7 +29,7 @@ def test_trtllm_judge():
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     input_dir = "/nemo_run/code/tests/data"
-    output_dir = f"/tmp/nemo-skills-tests/{model_type}/judge/math"
+    output_dir = f"/tmp/nemo-skills-tests/{model_type}/judge/math-500"
 
     docker_rm([output_dir])
 

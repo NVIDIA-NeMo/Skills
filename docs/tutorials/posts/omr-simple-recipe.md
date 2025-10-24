@@ -234,6 +234,7 @@ ns eval \
     --benchmarks=aime24:8,aime25:8 \
     --output_dir=/workspace/evals/after-training \
     --num_jobs=1 \
+    ++parse_reasoning=True \
     ++inference.tokens_to_generate=16384
 # summarize results, after the evaluation job is done
 ns summarize_results --cluster=local /workspace/evals/after-training --wandb_name=after-training-evals

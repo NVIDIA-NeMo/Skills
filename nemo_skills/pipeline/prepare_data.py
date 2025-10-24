@@ -27,7 +27,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 # TODO: read this from init.py
-DATASETS_REQUIRE_DATA_DIR = ["ruler", "ioi24", "ojbench"]
+DATASETS_REQUIRE_DATA_DIR = ["ruler", "ioi24"]
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

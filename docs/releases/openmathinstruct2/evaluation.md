@@ -10,7 +10,7 @@ if running on slurm or using different paths.
 ## Prepare evaluation data
 
 ```bash
-ns prepare_data gsm8k math amc23 aime24 omni-math
+ns prepare_data gsm8k hendrycks_math amc23 aime24 omni-math
 ```
 
 ## Run greedy decoding
@@ -21,7 +21,7 @@ ns eval \
     --model=nvidia/OpenMath2-Llama3.1-8B \
     --server_type=trtllm \
     --output_dir=/workspace/openmath2-llama3.1-8b-eval \
-    --benchmarks=aime24,amc23,math,gsm8k,omni-math \
+    --benchmarks=aime24,amc23,hendrycks_math,gsm8k,omni-math \
     --server_gpus=1 \
     --num_jobs=1 \
     ++inference.tokens_to_generate=4096
@@ -36,7 +36,7 @@ accurate numbers than symbolic comparison. You need to define `OPENAI_API_KEY` f
 the command below to work.
 
 ```bash
-for dataset in aime24 amc23 math gsm8k omni-math; do
+for dataset in aime24 amc23 hendrycks_math gsm8k omni-math; do
     ns generate \
         --generation_type=math_judge \
         --cluster=local \
@@ -72,7 +72,7 @@ evaluation_mode | num_entries | symbolic_correct | judge_correct | both_correct 
 pass@1          | 4428        | 18.97            | 22.22         | 18.11        | 23.08       | 2.55
 
 
--------------------------------------------------- math -------------------------------------------------
+--------------------------------------------- hendrycks_math --------------------------------------------
 evaluation_mode | num_entries | symbolic_correct | judge_correct | both_correct | any_correct | no_answer
 pass@1          | 5000        | 67.70            | 68.10         | 67.50        | 68.30       | 1.36
 
@@ -92,7 +92,7 @@ ns eval \
     --model=nvidia/OpenMath2-Llama3.1-8B \
     --server_type=trtllm \
     --output_dir=/workspace/openmath2-llama3.1-8b-eval \
-    --benchmarks=aime24:256,amc23:256,math:256,gsm8k:256,omni-math:256 \
+    --benchmarks=aime24:256,amc23:256,hendrycks_math:256,gsm8k:256,omni-math:256 \
     --server_gpus=1 \
     --num_jobs=1 \
     ++inference.tokens_to_generate=4096
@@ -100,14 +100,14 @@ ns eval \
 
 This will take a very long time unless you run on slurm cluster. After the generation is done, you will be able
 to see symbolic scores right away. You can evaluate with the judge by first creating new files with majority
-answers. E.g. for "math" benchmark run
+answers. E.g. for "hendrycks_math" benchmark run
 
 ```bash
 python -m nemo_skills.evaluation.aggregate_answers \
-    ++input_dir="./openmath2-llama3.1-8b-eval/eval-results/math" \
+    ++input_dir="./openmath2-llama3.1-8b-eval/eval-results/hendrycks_math" \
     ++input_files="output-rs*.jsonl" \
     ++mode=extract \
-    ++output_dir="./openmath2-llama3.1-8b-eval/eval-results-majority/math"
+    ++output_dir="./openmath2-llama3.1-8b-eval/eval-results-majority/hendrycks_math"
 ```
 
 This will output "./openmath2-llama3.1-8b-eval/eval-results-majority/math/output-agg.jsonl" file with majority answer. We can run the llm-judge pipeline on it.
@@ -117,7 +117,7 @@ Repeat the above steps for all benchmarks. Now we are ready to run the judge pip
 after it is finished. You need to define `OPENAI_API_KEY` for the command below to work.
 
 ```bash
-for dataset in aime24 amc23 math gsm8k omni-math; do
+for dataset in aime24 amc23 hendrycks_math gsm8k omni-math; do
     ns generate \
         --generation_type=math_judge \
         --cluster=local \

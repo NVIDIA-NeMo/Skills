@@ -19,14 +19,15 @@ import re
 from dataclasses import field
 
 from nemo_skills.code_execution.sandbox import get_sandbox
+from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
 from nemo_skills.inference.eval.scicode_utils import eval_prefix
-from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
+from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class ScicodeEvaluatorConfig:
+class ScicodeEvaluatorConfig(BaseEvaluatorConfig):
     sandbox: dict = field(default_factory=lambda: {"sandbox_type": "local"})
     timeout: float = 30.0
     num_parallel_requests: int = 20
@@ -99,7 +100,7 @@ def test_code(eval_config, scicode_data):
 
 
 def eval_scicode(cfg):
-    eval_config = ScicodeEvaluatorConfig(**cfg.eval_config)
+    eval_config = ScicodeEvaluatorConfig(**cfg)
 
     # Install required packages for scicode evaluation
     LOG.info("Installing required packages for scicode evaluation...")
@@ -128,11 +129,11 @@ def eval_scicode(cfg):
 
     asyncio.run(install_packages())
 
-    for file in unroll_files(cfg.input_files):
-        with open(file, "rt", encoding="utf-8") as fin:
-            data = [json.loads(line) for line in fin]
-        status_lists = test_code(eval_config, data)
-        with open(file, "wt", encoding="utf-8") as fout:
-            for idx, elem in enumerate(data):
-                elem["eval_status"] = status_lists[idx]
-                fout.write(json.dumps(elem) + "\n")
+    jsonl_file = eval_config.input_file
+    with open(jsonl_file, "rt", encoding="utf-8") as fin:
+        data = [json.loads(line) for line in fin]
+    status_lists = test_code(eval_config, data)
+    with open(jsonl_file, "wt", encoding="utf-8") as fout:
+        for idx, elem in enumerate(data):
+            elem["eval_status"] = status_lists[idx]
+            fout.write(json.dumps(elem) + "\n")

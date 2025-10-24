@@ -485,7 +485,7 @@ class WriteFinalRLManifest(BaseProcessor):
 
                 if self.prompt:
                     output_sample["input"] = self.prompt.fill(
-                        input_dict=elem, chat_template_kwargs=self.chat_template_kwargs
+                        input_dict=elem, chat_template_kwargs=self.chat_template_kwargs, format_as_string=True
                     )
                 else:
                     output_sample["input"] = elem[self.input_key]

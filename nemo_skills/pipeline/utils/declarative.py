@@ -340,18 +340,14 @@ class Pipeline:
             if not is_mounted_filepath(self.cluster_config, env_vars["HF_HOME"]):
                 raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
 
-    def run(
-        self,
-        dry_run: bool = False,
-        log_dir: Optional[str] = None,
-        _reuse_exp=None,
-    ):
+    def run(self, dry_run: bool = False, log_dir: Optional[str] = None, _reuse_exp=None, sequential: bool = False):
         """Execute the pipeline by calling NeMo-Run directly.
 
         Args:
             dry_run: If True, validate without executing
             log_dir: Default log directory for groups that don't specify one (optional)
             _reuse_exp: Internal - reuse existing experiment object (for eval.py integration)
+            sequential: If True, run tasks sequentially (only makes sense for local/none executors)
         """
         # Track job name -> task handle for dependency resolution
         job_name_to_handle = {}
@@ -467,7 +463,7 @@ class Pipeline:
 
             # Only run if not using existing experiment (matching generate_v0.py line 331)
             if not dry_run and not _reuse_exp:
-                run_exp(exp, self.cluster_config)
+                run_exp(exp, self.cluster_config, sequential=sequential)
 
                 # Cache experiment for code reuse in future runs
                 if self.cluster_config["executor"] != "none":

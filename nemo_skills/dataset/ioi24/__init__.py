@@ -13,10 +13,9 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-GENERATION_ARGS = "++prompt_config=generic/default"
+GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=ioi"
 DATASET_GROUP = "code"
 METRICS_TYPE = "ioi"
-EVAL_ARGS = "++eval_type=ioi"
 
 # environment variables required by this benchmark
 SANDBOX_ENV_VARS = [

@@ -60,7 +60,6 @@ class BFCLGenerationConfig(GenerateSolutionsConfig):
     # Inference server configuration {server_params}
     server: dict = field(default_factory=dict)
 
-    remove_thinking: bool = True
     use_client_parsing: bool = True
     model_name: str | None = None
 
@@ -384,8 +383,9 @@ class BFCLGenerationTask(GenerationTask):
                 if self.cfg.count_prompt_tokens:
                     output_dict["num_input_tokens_list"].append(model_response.get("num_input_tokens", 0))
 
-                if self.cfg.remove_thinking:
-                    trimmed_response_text = self._remove_thinking_from_message_content(
+                if self.cfg.parse_reasoning:
+                    # TODO: replace with main parse_reasoning method
+                    trimmed_response_text = self._parse_reasoning_from_message_content(
                         self.message_parser.get_response_text(model_response["message"])
                     )
                     self.message_parser.set_response_text(model_response["message"], trimmed_response_text)
@@ -450,13 +450,13 @@ class BFCLGenerationTask(GenerationTask):
 
         return output_dict
 
-    def _remove_thinking_from_message_content(self, model_response_text: str | None):
+    def _parse_reasoning_from_message_content(self, model_response_text: str | None):
         """If specified, remove the thinking part of the model response text."""
         if model_response_text is None:
             return None
 
-        if self.cfg.thinking_end in model_response_text:
-            return model_response_text.split(self.cfg.thinking_end)[-1].lstrip("\n")
+        if self.cfg.end_reasoning_string in model_response_text:
+            return model_response_text.split(self.cfg.end_reasoning_string)[-1].lstrip("\n")
         else:
             # If the thinking didn't finish, we can keep it empty
             return ""

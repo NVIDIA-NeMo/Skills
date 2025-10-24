@@ -98,4 +98,4 @@ if __name__ == "__main__":
 
     print(f"Preparing MRCR dataset with additional arguments: {args}")
     get_mrcr_data(args.needles_subset, args.setup, args.max_context_window)
-    print(f"MRCR dataset preparation with setup {args.setup} completed. Use --split=${args.setup} to evaluate!")
+    print(f"MRCR dataset preparation with setup {args.setup} completed. Use --split={args.setup} to evaluate!")

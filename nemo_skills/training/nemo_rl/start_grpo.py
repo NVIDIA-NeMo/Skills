@@ -164,7 +164,7 @@ def ns_data_processor(
     # we need to include system message here as roles are only used for masking
     # so prompt.fill can return a combined system + user message
     # if we use separate, it will have double BOS in the tokens!
-    user_message = prompt.fill(datum_dict)
+    user_message = prompt.fill(datum_dict, format_as_string=True)
     message_log = [
         {
             "role": "user",

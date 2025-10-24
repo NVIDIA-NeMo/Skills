@@ -31,10 +31,10 @@ repos:
         exclude: ^mkdocs\.yml$
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: docs/|\.txt$|\.patch$
+        exclude: docs/|\.txt$|\.patch$|test$
       - id: requirements-txt-fixer
       - id: trailing-whitespace
-        exclude: \.txt$|\.patch$
+        exclude: \.txt$|\.patch$|test$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.9

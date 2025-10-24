@@ -16,5 +16,4 @@
 DATASET_GROUP = "code"
 METRICS_TYPE = "livecodebench"
 EVAL_SPLIT = "v6_2408_2505"
-EVAL_ARGS = "++eval_type=livecodebench ++eval_config.language=cpp"
-GENERATION_ARGS = "++prompt_config=eval/livecodebench/cpp_codegen"
+GENERATION_ARGS = "++prompt_config=eval/livecodebench/cpp_codegen ++eval_type=livecodebench ++eval_config.language=cpp"

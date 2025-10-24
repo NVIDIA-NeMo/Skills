@@ -11,7 +11,7 @@ We also support arbitrary regex based extraction. E.g., if you use a custom prom
 at the end of the solution, you can use these parameters to match the extraction logic to that prompt
 
 ```bash
-    --extra_eval_args="++eval_config.extract_from_boxed=False ++eval_config.extract_regex='Final answer: (.+)$'"
+    ++eval_config.extract_from_boxed=False ++eval_config.extract_regex='Final answer: (.+)$'
 ```
 
 !!! warning
@@ -159,9 +159,9 @@ In either case you can always customize the judge prompt by setting a new `++pro
 - Benchmark is defined in [`nemo_skills/dataset/omni-math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/omni-math/__init__.py)
 - Original benchmark source is [here](https://omni-math.github.io/).
 
-### math
+### hendrycks_math
 
-- Benchmark is defined in [`nemo_skills/dataset/math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/math/__init__.py)
+- Benchmark is defined in [`nemo_skills/dataset/hendrycks_math/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hendrycks_math/__init__.py)
 - Original benchmark source is [here](https://github.com/hendrycks/math).
 
 ### math-500

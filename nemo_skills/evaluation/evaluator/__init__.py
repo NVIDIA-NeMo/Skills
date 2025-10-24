@@ -30,19 +30,12 @@ from nemo_skills.evaluation.evaluator.ioi import IOIEvaluator
 from nemo_skills.evaluation.evaluator.livecodebench import eval_livecodebench
 from nemo_skills.evaluation.evaluator.math import (
     Lean4ProofEvaluator,
-    Lean4StatementEvaluator,
     MathEvaluator,
 )
 from nemo_skills.evaluation.evaluator.mcq import eval_mcq
 from nemo_skills.evaluation.evaluator.mrcr import eval_mrcr
-from nemo_skills.evaluation.evaluator.ojbench import eval_ojbench
 from nemo_skills.evaluation.evaluator.ruler import eval_ruler
 from nemo_skills.evaluation.evaluator.scicode import eval_scicode
-
-
-def dummy_eval(cfg):
-    return
-
 
 EVALUATOR_MAP = {
     # Function-based evaluators (batch-only)
@@ -50,7 +43,6 @@ EVALUATOR_MAP = {
     "if": eval_if,
     "ifbench": eval_ifbench,
     "bfcl": eval_bfcl,
-    "no-op": dummy_eval,
     "multichoice": eval_mcq,
     "ruler": eval_ruler,
     "livecodebench": eval_livecodebench,
@@ -59,7 +51,6 @@ EVALUATOR_MAP = {
     "scicode": eval_scicode,
     "mrcr": eval_mrcr,
     "bigcodebench": eval_bigcodebench,
-    "ojbench": eval_ojbench,
     "human_eval_infilling": eval_human_eval_infilling,
 }
 
@@ -67,7 +58,6 @@ EVALUATOR_MAP = {
 EVALUATOR_CLASS_MAP = {
     "math": MathEvaluator,
     "lean4-proof": Lean4ProofEvaluator,
-    "lean4-statement": Lean4StatementEvaluator,
     # Other evaluators can be added here as they're converted to classes
     "ioi": IOIEvaluator,
 }
@@ -117,18 +107,16 @@ def supports_single_eval(eval_type: str, config: Dict[str, Any]) -> bool:
     return evaluator.supports_single_eval()
 
 
-def evaluate(cfg):
+def evaluate(eval_type, eval_config):
     """Main evaluation function that handles both class-based and function-based evaluators."""
-    eval_type = cfg.eval_type
-
     # Check if it's a class-based evaluator first
     if eval_type in EVALUATOR_CLASS_MAP:
-        evaluator = get_evaluator_class(eval_type, cfg.eval_config)
-        return asyncio.run(evaluator.eval_full(cfg.input_files))
+        evaluator = get_evaluator_class(eval_type, eval_config)
+        return asyncio.run(evaluator.eval_full())
 
     # Fall back to function-based evaluator
     if eval_type in EVALUATOR_MAP:
-        return EVALUATOR_MAP[eval_type](cfg)
+        return EVALUATOR_MAP[eval_type](eval_config)
 
     # Not found in either map
     all_types = list(EVALUATOR_CLASS_MAP.keys()) + list(EVALUATOR_MAP.keys())

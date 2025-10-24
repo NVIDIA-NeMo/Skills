@@ -57,6 +57,7 @@ ns eval \
   --server_gpus 2 \
   --server_type vllm \
   --output_dir /experiments/qwen3_8b/gensynthesis \
+  ++parse_reasoning=True \
   ++inference.tokens_to_generate=16384 \
   ++parallel_thinking.mode=gensynthesis \
   ++server.enable_soft_fail=True \
@@ -91,6 +92,7 @@ eval(
     ctx=wrap_arguments(
         "++inference.tokens_to_generate=16384 "
         "++inference.temperature=0.6 "
+        "++parse_reasoning=True "
     ),
     cluster="local",
     benchmarks="livecodebench:8",
@@ -110,6 +112,7 @@ eval(
         "++parallel_thinking.mode=genselect "
         "++parallel_thinking.solution_key=completion "
         "++parallel_thinking.generation_dir=/workspace/qwen3_4b_evals/eval-results/livecodebench "
+        "++parse_reasoning=True "
     ),
     cluster="local",
     benchmarks="livecodebench:8",

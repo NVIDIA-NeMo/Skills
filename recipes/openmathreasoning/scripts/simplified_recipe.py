@@ -62,7 +62,7 @@ def run_sdg(workspace, cluster, num_gpus, expname_prefix, wandb_params):
         expname=f"{expname_prefix}-problem-extraction",
         run_after=f"{expname_prefix}-download-assets",
         model="Qwen/Qwen2.5-14B-Instruct",
-        server_type="vllm",
+        server_type="sglang",
         server_gpus=num_gpus,
         log_samples=not wandb_params["disable_wandb"],
         # using prefix as group to make it easier to see all sdg steps together
@@ -138,7 +138,7 @@ def run_training(workspace, cluster, num_gpus, expname_prefix, wandb_params):
 def final_eval(workspace, cluster, num_gpus, expname_prefix, wandb_params):
     # launching evaluation
     eval(
-        ctx=wrap_arguments("++inference.tokens_to_generate=16384 "),
+        ctx=wrap_arguments("++inference.tokens_to_generate=16384 ++parse_reasoning=True "),
         cluster=cluster,
         model=f"{workspace}/training/qwen2.5-14b-improved-hf",
         server_type="vllm",

@@ -50,7 +50,7 @@ def eval_reasoning_on(workspace, cluster, expname_prefix, wandb_project):
     base_model = f"{workspace}/Llama-3_3-Nemotron-Super-49B-v1_5"
 
     # Common settings for reasoning ON
-    common_params = "++inference.temperature=0.6 ++inference.top_p=0.95 "
+    common_params = "++inference.temperature=0.6 ++inference.top_p=0.95  ++parse_reasoning=True"
     tokens_to_generate = "++inference.tokens_to_generate=65536 "
     # Math / Code / Science (Reasoning ON)
     eval(

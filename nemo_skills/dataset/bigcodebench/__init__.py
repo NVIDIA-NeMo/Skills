@@ -16,5 +16,4 @@
 DATASET_GROUP = "code"
 METRICS_TYPE = "bigcodebench"
 EVAL_SPLIT = "full"
-EVAL_ARGS = "++eval_type=bigcodebench"
-GENERATION_ARGS = "++prompt_config=eval/bigcodebench/codegen"
+GENERATION_ARGS = "++prompt_config=eval/bigcodebench/codegen ++eval_type=bigcodebench"

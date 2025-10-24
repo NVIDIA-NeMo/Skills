@@ -30,7 +30,12 @@ import tomlkit
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.model import server_params
 from nemo_skills.prompt.utils import get_config_path
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    setup_logging,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -139,9 +144,12 @@ class SweBenchGenerationConfig:
     dry_run: bool = False
 
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
-    remove_thinking: bool = False
-    thinking_begin: str = "<think>"
-    thinking_end: str = "</think>"
+    parse_reasoning: bool = False
+    end_reasoning_string: str = "</think>"
+
+    # Evaluation setup if requested. If eval_type is set to None, evaluation is skipped
+    eval_type: str | None = None  # "lean4-proof", "math", etc.
+    eval_config: dict = field(default_factory=dict)  # Config for the evaluator
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
@@ -165,6 +173,14 @@ class SweBenchGenerationTask(GenerationTask):
         # needs to skip completed samples, not used otherwise
         self.cfg.prompt_format = "ns"
 
+        if self.cfg.eval_type is not None:
+            raise ValueError(
+                "SWE-bench generation task does not support eval_type parameter. Evaluation is done automatically."
+            )
+
+        self.should_run_evaluation = False
+        self.evaluator = None
+
     def log_example_prompt(self, data):
         return
 
@@ -180,7 +196,7 @@ class SweBenchGenerationTask(GenerationTask):
     def cleanup_litellm_cache(self):
         return
 
-    async def apply_evaluation_hook(self, data_point):
+    async def evaluate_single_datapoint(self, data_point):
         # currently evaluation is done directly after generation already
         return data_point
 

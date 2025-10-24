@@ -181,7 +181,6 @@ def get_generation_cmd(
     input_dir=None,
     extra_arguments="",
     random_seed=None,
-    eval_args=None,
     chunk_id=None,
     num_chunks=None,
     preprocess_cmd=None,
@@ -265,12 +264,8 @@ def get_generation_cmd(
         else:
             postprocess_cmd = job_end_cmd
 
-    cmd += f" {extra_arguments} "
-
-    if eval_args:
-        cmd += (
-            f" && python -m nemo_skills.evaluation.evaluate_results     ++input_files={output_file}     {eval_args} "
-        )
+    if extra_arguments:
+        cmd += f" {extra_arguments} "
 
     return wrap_cmd(
         cmd=cmd,

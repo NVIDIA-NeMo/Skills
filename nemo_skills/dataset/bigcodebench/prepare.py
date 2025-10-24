@@ -80,7 +80,7 @@ def wrap_in_code_tag(text):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default=str(Path(__file__).parent))
-    parser.add_argument("--split", type=str, default="hard", choices=["full", "hard"])
+    parser.add_argument("--split", type=str, default="full", choices=["full", "hard"])
 
     args = parser.parse_args()
 

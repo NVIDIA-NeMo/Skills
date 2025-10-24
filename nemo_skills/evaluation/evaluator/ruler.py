@@ -14,17 +14,19 @@
 
 import json
 import logging
+import os
 import re
 
 from tqdm import tqdm
 
-from nemo_skills.utils import get_logger_name, nested_dataclass, unroll_files
+from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
+from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class RulerEvaluatorConfig:
+class RulerEvaluatorConfig(BaseEvaluatorConfig):
     parse_func: str = "default"
     match_type: str
 
@@ -54,7 +56,7 @@ def eval_ruler(cfg):
         ][0]
         return score
 
-    eval_config = RulerEvaluatorConfig(**cfg.eval_config)
+    eval_config = RulerEvaluatorConfig(**cfg)
 
     parse_funcs = {
         "default": default_parse,
@@ -64,14 +66,18 @@ def eval_ruler(cfg):
         "part": string_match_part_single,
     }
 
-    for file in unroll_files(cfg.input_files):
-        with open(file, "rt", encoding="utf-8") as fin:
-            data = [json.loads(line) for line in fin]
-        with open(file, "wt", encoding="utf-8") as fout:
-            for sample in tqdm(data):
-                parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
-                sample["is_correct"] = match_type_funcs[eval_config.match_type](
-                    sample["generation"], sample["expected_answer"]
-                )
-                sample["predicted_answer"] = parse_result
-                fout.write(json.dumps(sample) + "\n")
+    jsonl_file = eval_config.input_file
+    with open(jsonl_file, "rt", encoding="utf-8") as fin:
+        data = [json.loads(line) for line in fin]
+        for sample in tqdm(data):
+            parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
+            sample["is_correct"] = match_type_funcs[eval_config.match_type](
+                sample["generation"], sample["expected_answer"]
+            )
+            sample["predicted_answer"] = parse_result
+
+    with open(jsonl_file + "-tmp", "wt", encoding="utf-8") as fout:
+        for sample in data:
+            fout.write(json.dumps(sample) + "\n")
+
+    os.replace(jsonl_file + "-tmp", jsonl_file)

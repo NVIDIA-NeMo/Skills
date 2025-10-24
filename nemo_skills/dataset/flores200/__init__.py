@@ -15,8 +15,7 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 
-PROMPT_CONFIG = "multilingual/segment-translation"
 DATASET_GROUP = "chat"
 METRICS_TYPE = "translation"
-EVAL_ARGS = "++eval_type=no-op"
-GENERATION_ARGS = ""
+GENERATION_ARGS = "++prompt_config=multilingual/segment-translation"
+EVAL_SPLIT = "devtest"
