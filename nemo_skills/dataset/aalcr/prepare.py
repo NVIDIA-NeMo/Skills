@@ -191,6 +191,7 @@ def write_data_to_file(output_file, data, txt_file_folder, max_context_window, t
 
             entry[f"n_tokens_{tokenizer_name}"] = n_tokens
             entry["question"] = question
+            entry["original_question"] = question_text
             entry["expected_answer"] = entry.pop("answer")
             entry["expected_judgement"] = "correct"  # for judgement metric
             # remove unused columns
