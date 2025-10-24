@@ -52,6 +52,7 @@ class ParallelThinkingConfig:
     tokens_to_generate: int | None = None
 
     parse_reasoning: bool = False
+    parse_reasoning_solutions: bool = True  # Whether to parse the reasoning for the solutions.
     end_reasoning_string: str = "</think>"
     endpoint_type: EndpointType = EndpointType.chat
     tokenizer: str | None = None
@@ -150,12 +151,16 @@ class ParallelThinkingTask:
         generation_results = await asyncio.gather(*tasks)
         solutions = []
         for generation_result in generation_results:
-            if self.cfg.parse_reasoning:
+            if self.cfg.parse_reasoning_solutions:
+                orig_generation = generation_result[self.cfg.solution_key]
                 parse_reasoning(
                     generation_result,
                     generation_key=self.cfg.solution_key,
                     end_reasoning_string=self.cfg.end_reasoning_string,
                 )
+                if generation_result[self.cfg.solution_key] == "":
+                    # Revert to original generation, probably because reasoning is already parsed
+                    generation_result[self.cfg.solution_key] = orig_generation
 
             if self.cfg.solution_length_cap is not None:
                 if len(generation_result[self.cfg.solution_key]) > self.cfg.solution_length_cap:
@@ -192,12 +197,16 @@ class ParallelThinkingTask:
             with open(input_file, "r") as f:
                 for line in f:
                     data_point = json.loads(line)
-                    if self.cfg.parse_reasoning:
+                    if self.cfg.parse_reasoning_solutions:
+                        orig_generation = data_point[self.cfg.solution_key]
                         parse_reasoning(
                             data_point,
                             generation_key=self.cfg.solution_key,
                             end_reasoning_string=self.cfg.end_reasoning_string,
                         )
+                        if data_point[self.cfg.solution_key] == "":
+                            # Revert to original generation, probably because reasoning is already parsed
+                            data_point[self.cfg.solution_key] = orig_generation
 
                     if self.cfg.solution_length_cap is not None:
                         if len(data_point[self.cfg.solution_key]) > self.cfg.solution_length_cap:
