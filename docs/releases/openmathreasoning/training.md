@@ -20,9 +20,9 @@ def apply_format(elem, prompt, is_tir):
             total_code_executions = 1
         else:
             total_code_executions = int(elem['output'].split('Remaining code executions: ')[1].split()[0][0]) + 1
-        elem['input'] = prompt.fill({'problem': elem['input'], 'total_code_executions': total_code_executions})
+        elem['input'] = prompt.fill({'problem': elem['input'], 'total_code_executions': total_code_executions}, format_as_string=True)
     else:
-        elem['input'] = prompt.fill({'problem': elem['input']})
+        elem['input'] = prompt.fill({'problem': elem['input']}, format_as_string=True)
     elem['output'] = prompt.format_assistant_response(elem['output'])
     return elem
 
@@ -170,9 +170,9 @@ def apply_format(elem, prompt, is_tir):
             total_code_executions = 1
         else:
             total_code_executions = int(elem['output'].split('Remaining code executions: ')[1].split()[0][0]) + 1
-        elem['input'] = prompt.fill({'problem': elem['input'], 'total_code_executions': total_code_executions})
+        elem['input'] = prompt.fill({'problem': elem['input'], 'total_code_executions': total_code_executions}, format_as_string=True)
     else:
-        elem['input'] = prompt.fill({'problem': elem['input']})
+        elem['input'] = prompt.fill({'problem': elem['input']}, format_as_string=True)
     elem['output'] = prompt.format_assistant_response(elem['output'])
     return elem
 

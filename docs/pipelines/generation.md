@@ -383,7 +383,7 @@ We support three methods for automatic trimming of generation budget or context:
         tokenizer="Qwen/Qwen3-0.6B",
     )
 
-    input_prompt = prompt.fill({"problem": "What's 2 + 2?"})
+    input_prompt = prompt.fill({"problem": "What's 2 + 2?"}, format_as_string=True)
     llm = get_model(
         model="Qwen/Qwen3-0.6B",
         server_type="vllm",
@@ -415,7 +415,7 @@ We support three methods for automatic trimming of generation budget or context:
 
     # Construct a fake long prompt
     fake_long_prompt = "aa" * 500_000 + "bb" * 500_000
-    input_prompt = prompt.fill({"problem": "What's the next character after " + fake_long_prompt})
+    input_prompt = prompt.fill({"problem": "What's the next character after " + fake_long_prompt}, format_as_string=True)
     llm = get_model(
         model="Qwen/Qwen3-0.6B",
         server_type="vllm",
@@ -448,7 +448,7 @@ We support three methods for automatic trimming of generation budget or context:
 
     # Construct a fake long prompt
     fake_long_prompt = "aa" * 500_000 + "bb" * 500_000
-    input_prompt = prompt.fill({"problem": "What's the next character after " + fake_long_prompt})
+    input_prompt = prompt.fill({"problem": "What's the next character after " + fake_long_prompt}, format_as_string=True)
     llm = get_model(
         model="Qwen/Qwen3-0.6B",
         server_type="vllm",

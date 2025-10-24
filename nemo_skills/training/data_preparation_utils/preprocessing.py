@@ -383,7 +383,7 @@ class WriteFinalSftManifest(BaseProcessor):
                 generation = elem.pop(self.output_key)
                 if self.prompt:
                     output_sample["input"] = self.prompt.fill(
-                        input_dict=elem, chat_template_kwargs=self.chat_template_kwargs
+                        input_dict=elem, chat_template_kwargs=self.chat_template_kwargs, format_as_string=True
                     )
                     # not adding end-of-turn for incomplete generations
                     if output_sample.get("finish_reason", "stop") == "stop":

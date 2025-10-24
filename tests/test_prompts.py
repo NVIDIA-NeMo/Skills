@@ -102,7 +102,7 @@ Start directly with the problem statement and DO NOT include any phrases such as
 After the problem is completed finish your response right away.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
-    assert prompt.fill({"problem": "What's the meaning of life?"}) == expected_prompt
+    assert prompt.fill({"problem": "What's the meaning of life?"}, format_as_string=True) == expected_prompt
 
 
 def test_generic_codegen_prompt():
@@ -166,7 +166,7 @@ Solve the following math problem. Make sure to put the answer (and only answer) 
 2 + 2 = ?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
-    assert prompt.fill({"problem": "2 + 2 = ?"}) == expected_prompt
+    assert prompt.fill({"problem": "2 + 2 = ?"}, format_as_string=True) == expected_prompt
 
 
 def test_generic_math_prompt_code_examples():
@@ -343,7 +343,7 @@ So the bee is $\\boxed{1008\\sqrt{2} + 1008\\sqrt{6}}$ far from the starting poi
 
 Here is the problem you need to solve:
 2 + 2 = ?"""
-    assert prompt.fill({"problem": "2 + 2 = ?"}) == expected_prompt
+    assert prompt.fill({"problem": "2 + 2 = ?"}, format_as_string=True) == expected_prompt
 
 
 def test_llama_code_output_format_examples():
@@ -539,7 +539,7 @@ Here is the problem you need to solve:
 2 + 2 = ?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
-    assert prompt.fill({"problem": "2 + 2 = ?"}) == expected_prompt
+    assert prompt.fill({"problem": "2 + 2 = ?"}, format_as_string=True) == expected_prompt
 
 
 def test_qwen_code_output_format_examples():
@@ -721,7 +721,7 @@ Here is the problem you need to solve:
 2 + 2 = ?<|im_end|>
 <|im_start|>assistant
 """
-    assert prompt.fill({"problem": "2 + 2 = ?"}) == expected_prompt
+    assert prompt.fill({"problem": "2 + 2 = ?"}, format_as_string=True) == expected_prompt
 
 
 def test_judge_arena():
@@ -935,7 +935,8 @@ J. 9<|eot_id|><|start_header_id|>assistant<|end_header_id|>
         prompt.fill(
             {
                 "problem": "What is the square root of 81 squared?\nA. 9^2\nB. 27\nC. 81^2\nD. 729\nE. 6561\nF. 12\nG. 162\nH. 243\nI. 81\nJ. 9"
-            }
+            },
+            format_as_string=True,
         )
         == expected_prompt
     )
@@ -976,7 +977,8 @@ Confidence: The extracted confidence score between 0|\\%| and 100|\\%| from [res
                 "problem": "If $\\sqrt{5+n}=7$, then what is the value of $n$?",
                 "generation": "Let's solve the problem step by step. 5+n=49, so n=44.",
                 "expected_answer": "44",
-            }
+            },
+            format_as_string=True,
         )
         == expected_prompt
     )

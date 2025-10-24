@@ -24,7 +24,7 @@ from nemo_skills.prompt.utils import get_prompt
 
 def apply_format(elem, prompt):
     assert len(elem['messages']) == 2
-    elem['input'] = prompt.fill({'problem': elem['messages'][0]['content']})
+    elem['input'] = prompt.fill({'problem': elem['messages'][0]['content']}, format_as_string=True)
     elem['output'] = prompt.format_assistant_response(elem['messages'][1]['content'])
     return elem
 
@@ -99,7 +99,7 @@ def apply_format(elem, prompt):
     metadata = json.loads(elem['metadata'])
     question = get_question(metadata['dataset'], metadata['split'], int(metadata['index']))
 
-    elem['input'] = prompt.fill({'question': question})
+    elem['input'] = prompt.fill({'question': question}, format_as_string=True)
     elem['output'] = prompt.format_assistant_response(elem['messages'][1]['content'])
     return elem
 
@@ -123,7 +123,7 @@ from datasets import load_dataset
 from nemo_skills.prompt.utils import get_prompt
 
 def apply_format(elem, prompt):
-    elem['input'] = prompt.fill({'question': elem['input']})
+    elem['input'] = prompt.fill({'question': elem['input']}, format_as_string=True)
     elem['output'] = prompt.format_assistant_response(elem['output'])
     return elem
 

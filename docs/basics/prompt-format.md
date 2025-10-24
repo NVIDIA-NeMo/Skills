@@ -118,7 +118,9 @@ from nemo_skills.prompt.utils import get_prompt
 
 # code_tags parameter is optional and only needed for code execution
 prompt = get_prompt('generic/math', tokenizer='Qwen/Qwen2.5-32B-Instruct')
-print(prompt.fill({'problem': "What's 2 + 2?"}))
+# By default, the prompt.fill method returns a list of messages.
+# Here we override that by passing "format_as_string=True"
+print(prompt.fill({'problem': "What's 2 + 2?"}, format_as_string=True))
 ```
 
 which outputs
@@ -147,7 +149,7 @@ prompt = get_prompt(
   tokenizer="Qwen/Qwen2.5-32B-Instruct",
   system_message="You are a helpful chatbot"
 )
-print(prompt.fill({'problem': "What's 2 + 2?"}))
+print(prompt.fill({'problem': "What's 2 + 2?"}, format_as_string=True))
 ```
 
 which outputs

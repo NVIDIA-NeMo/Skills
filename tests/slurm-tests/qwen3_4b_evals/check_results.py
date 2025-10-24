@@ -34,6 +34,13 @@ TOOLCALLING_METRIC_RANGES = {
 }
 
 
+GENSELECT_METRIC_RANGES = {
+    "aime24": {
+        ("pass@1[avg-of-1]", "symbolic_correct"): (70.0, 95.0),
+    }
+}
+
+
 def check_results(eval_dir: str):
     f = os.path.join(eval_dir, "eval-results", "bfcl_v3", "metrics.json")
     data = load_json(f)
@@ -41,6 +48,38 @@ def check_results(eval_dir: str):
         val = float(get_nested_value(data, category_tuple))
         lo, hi = expected_range
         soft_assert(lo <= val <= hi, f"bfcl-v3 {category_tuple}={val} out of range [{lo},{hi}]")
+
+    # GenSelect Tests
+    online_genselect_f = os.path.join(eval_dir, "online_genselect", "eval-results", "aime24", "metrics.json")
+    online_genselect_data = load_json(online_genselect_f)
+    for metric, (lo, hi) in GENSELECT_METRIC_RANGES["aime24"].items():
+        val = float(get_nested_value(online_genselect_data, metric))
+        soft_assert(lo <= val <= hi, f"online-genselect {metric}={val} out of range [{lo},{hi}]")
+
+    # Offline GenSelect
+    # 1. Check that the pass@1 score after GenSelect is within the expected range
+    offline_genselect_f = os.path.join(
+        eval_dir, "offline_genselect", "genselect", "eval-results", "aime24", "metrics.json"
+    )
+    offline_genselect_accuracy = float(
+        load_json(offline_genselect_f)["aime24"]["pass@1[avg-of-1]"]["symbolic_correct"]
+    )
+
+    for metric, (lo, hi) in GENSELECT_METRIC_RANGES["aime24"].items():
+        val = offline_genselect_accuracy
+        soft_assert(lo <= val <= hi, f"offline-genselect {metric}={val} out of range [{lo},{hi}]")
+
+    # 2. Check that the pass@1 score after GenSelect is strictly better than the pass@1 score after initial solutions (atleast 1 point better, in reality it would be much more than 1 point better)
+    offline_initial_solutions_f = os.path.join(
+        eval_dir, "offline_genselect", "initial_solutions", "eval-results", "aime24", "metrics.json"
+    )
+    offline_initial_solutions_accuracy = float(
+        load_json(offline_initial_solutions_f)["aime24"]["pass@1[avg-of-8]"]["symbolic_correct"]
+    )
+
+    assert offline_genselect_accuracy >= (offline_initial_solutions_accuracy + 1.0), (
+        f"Offline GenSelect pass@1 score {offline_genselect_accuracy} is not better than the initial solutions pass@1 score {offline_initial_solutions_accuracy} by at least 1 point"
+    )
 
 
 def main():
