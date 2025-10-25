@@ -274,8 +274,10 @@ class Prompt:
             if start_assistant_response_key:
                 raise ValueError("start_assistant_response_key is not supported for chat template format.")
 
-            return messages
+            if chat_template_kwargs:
+                raise ValueError("chat_template_kwargs can only be used when format_as_string=True")
 
+            return messages
         else:
             if self.tokenizer is None:
                 raise ValueError("tokenizer is not set, can't format messages as a string")
@@ -299,14 +301,11 @@ class Prompt:
                         messages_string = self.tokenizer.bos_token + messages[0]["content"]
                     else:
                         messages_string = messages[0]["content"]
+                else:
+                    raise e
             if start_assistant_response_key:
                 messages_string += input_dict[start_assistant_response_key]
             return messages_string
-
-        # elif chat_template_kwargs:
-        #     raise ValueError("chat_template_kwargs can only be used when tokenizer was provided!")
-
-        # return messages
 
     def __str__(self):
         return str(self.config)

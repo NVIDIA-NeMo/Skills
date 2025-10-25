@@ -87,7 +87,7 @@ class CheckContaminationTask(GenerationTask):
         LOG.info(
             "Example prompt:\nData dictionary: %s\nPrompt: %s",
             first_element,
-            self.prompt.fill(first_element),
+            self.fill_prompt(first_element, data),
         )
 
     def _create_query_data(self, data_point):

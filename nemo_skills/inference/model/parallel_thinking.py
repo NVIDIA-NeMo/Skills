@@ -286,6 +286,7 @@ class ParallelThinkingTask:
             parallel_thinking_input,
             start_assistant_response_key=self.cfg.start_assistant_response_key,
             chat_template_kwargs=self.cfg.chat_template_kwargs,
+            format_as_string=(self.cfg.inference.endpoint_type == EndpointType.text),
         )
 
         LOG.info(f"Parallel thinking prompt:\n\n{parallel_thinking_prompt}")

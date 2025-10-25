@@ -67,6 +67,7 @@ def test_sft_nemo_rl(backend):
         server_gpus=1,
         server_nodes=1,
         num_jobs=1,
+        server_args="--enforce-eager",
     )
 
     metrics = ComputeMetrics(benchmark="gsm8k").compute_metrics(
@@ -121,6 +122,7 @@ def test_sft_nemo_rl_messages_format():
         server_gpus=1,
         server_nodes=1,
         num_jobs=1,
+        server_args="--enforce-eager",
     )
 
     metrics = ComputeMetrics(benchmark="gsm8k").compute_metrics(
@@ -178,6 +180,7 @@ def test_grpo_nemo_rl(backend):
         server_gpus=1,
         server_nodes=1,
         num_jobs=1,
+        server_args="--enforce-eager",
     )
 
     metrics = ComputeMetrics(benchmark="gsm8k").compute_metrics(

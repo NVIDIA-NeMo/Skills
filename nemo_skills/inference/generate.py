@@ -369,7 +369,7 @@ class GenerationTask:
 
         prompt = get_prompt(
             prompt_config=self.cfg.prompt_config,
-            tokenizer=self.tokenizer if self.cfg.inference.endpoint_type == EndpointType.text else None,
+            tokenizer=self.tokenizer,
             code_tags=self.cfg.code_tags,
             examples_type=self.cfg.examples_type,
             system_message=self.cfg.system_message,
@@ -513,6 +513,7 @@ class GenerationTask:
             data_point,
             start_assistant_response_key=self.cfg.start_assistant_response_key,
             chat_template_kwargs=self.cfg.chat_template_kwargs,
+            format_as_string=(self.cfg.inference.endpoint_type == EndpointType.text),
         )
         if self.cfg.prompt_suffix:
             if isinstance(filled_prompt, list):
