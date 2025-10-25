@@ -361,11 +361,12 @@ def _get_tunnel_cached(
     job_dir: str,
     host: str,
     user: str,
+    port: int | None = None,
     identity: str | None = None,
     shell: str | None = None,
     pre_command: str | None = None,
 ):
-    return run.SSHTunnel(
+    kwargs = dict(
         host=host,
         user=user,
         identity=identity,
@@ -373,6 +374,17 @@ def _get_tunnel_cached(
         pre_command=pre_command,
         job_dir=job_dir,
     )
+    if port is not None:
+        kwargs["port"] = port
+    try:
+        return run.SSHTunnel(**kwargs)
+    except TypeError as exc:
+        if port is not None and "port" in str(exc):
+            raise RuntimeError(
+                "The configured SSH tunnel requires the `port` parameter, but your nemo_run version "
+                "does not support it. Please upgrade nemo_run."
+            ) from exc
+        raise
 
 
 def tunnel_hash(tunnel):
