@@ -24,13 +24,21 @@ def main():
     ap.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
     ap.add_argument("--expname_prefix", required=True, help="Experiment name prefix used inside the recipe")
     ap.add_argument("--disable_wandb", action="store_true", help="Disable W&B logging in the recipe")
+    ap.add_argument(
+        "--backend",
+        type=str,
+        nargs="+",
+        choices=["megatron", "fsdp"],
+        default=["megatron"],
+    )
     args = ap.parse_args()
 
     cmd = (
         f"python -m recipes.openmathreasoning.scripts.simplified_recipe "
-        f"    --cluster {args.cluster} "
-        f"    --workspace {args.workspace} "
-        f"    --expname_prefix {args.expname_prefix} "
+        f" --cluster {args.cluster} "
+        f" --workspace {args.workspace} "
+        f" --expname_prefix {args.expname_prefix} "
+        f" --backend {' '.join(args.backend)} "
     )
 
     if args.disable_wandb:
@@ -40,17 +48,18 @@ def main():
 
     subprocess.run(cmd, shell=True, check=True)
 
-    checker_cmd = f"python tests/slurm-tests/omr_simple_recipe/check_results.py --workspace {args.workspace}"
+    checker_cmd = f"python tests/slurm-tests/omr_simple_recipe/check_results.py --workspace {args.workspace} --backend {' '.join(args.backend)}"
+
+    final_eval_name = [f"{args.expname_prefix}-final-eval-{training_backend}" for training_backend in args.backend]
 
     run_cmd(
         ctx=wrap_arguments(checker_cmd),
         cluster=args.cluster,
         expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
-        run_after=[  # these are launched in simplified recipe
-            f"{args.expname_prefix}-final-eval",
-            f"{args.expname_prefix}-baseline-eval",
-        ],
+        # these are launched in simplified recipe
+        run_after=final_eval_name + [f"{args.expname_prefix}-baseline-eval"],
+        reuse_code=True,
     )
 
 

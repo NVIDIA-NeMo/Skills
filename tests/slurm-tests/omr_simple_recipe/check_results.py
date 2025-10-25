@@ -32,7 +32,7 @@ RANGE_CONSTRAINTS = {
 }
 
 
-def check_results(benchmark: str, baseline_results: dict, after_training_results: dict):
+def check_results(benchmark: str, baseline_results: dict, after_training_results: dict, backend: str):
     for metric in ["pass@1[avg-of-8]", "majority@8"]:
         baseline_acc = baseline_results[benchmark][metric]["symbolic_correct"]
         after_acc = after_training_results[benchmark][metric]["symbolic_correct"]
@@ -46,22 +46,33 @@ def check_results(benchmark: str, baseline_results: dict, after_training_results
         )
         soft_assert(
             lo_a <= after_acc <= hi_a,
-            f"{benchmark}: after_training {after_acc}% out of range [{lo_a}%, {hi_a}%] for metric {metric}",
+            f"{benchmark} for {backend}: after_training {after_acc}% out of range [{lo_a}%, {hi_a}%] for metric {metric}",
         )
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", required=True, help="Workspace directory containing eval results.")
+    ap.add_argument(
+        "--backend",
+        type=str,
+        nargs="+",
+        choices=["megatron", "fsdp"],
+        default=["megatron"],
+    )
     args = ap.parse_args()
-
-    for benchmark in ("aime24", "aime25"):
-        common_path = Path(args.workspace) / "evals"
-        baseline_results = load_json(common_path / "baseline" / "eval-results" / benchmark / "metrics.json")
-        after_training_results = load_json(
-            common_path / "after-training" / "eval-results" / benchmark / "metrics.json"
-        )
-        check_results(benchmark, baseline_results, after_training_results)
+    for training_backend in args.backend:
+        for benchmark in ("aime24", "aime25"):
+            common_path = Path(args.workspace) / "evals"
+            baseline_results = load_json(common_path / "baseline" / "eval-results" / benchmark / "metrics.json")
+            after_training_results = load_json(
+                common_path
+                / "after-training-{}".format(training_backend)
+                / "eval-results"
+                / benchmark
+                / "metrics.json"
+            )
+            check_results(benchmark, baseline_results, after_training_results, training_backend)
 
     assert_all()
 
