@@ -418,8 +418,14 @@ def get_mounts_from_config(cluster_config: dict):
         if ":" not in mount:
             raise ValueError(f"Invalid mount format: {mount}. The mount path must be separated by a colon.")
 
+        # First, expand any ${VAR} style environment variables in the entire mount string
+        # This allows partial path substitution like /path/${USER}/subdir
+        if "$" in mount:
+            mount = os.path.expandvars(mount)
+
         mount_source, mount_target = mount.split(":")
 
+        # Then handle {VAR} style for full path replacement (legacy support)
         if mount_source[0] == "{" and mount_source[-1] == "}":
             # Resolve the environment variable for the mount source
             mount_source = mount_source[1:-1]
