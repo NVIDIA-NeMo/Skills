@@ -59,7 +59,6 @@ def main():
         log_dir=f"{args.workspace}/check-results-logs",
         # these are launched in simplified recipe
         run_after=final_eval_name + [f"{args.expname_prefix}-baseline-eval"],
-        reuse_code=True,
     )
 
 
