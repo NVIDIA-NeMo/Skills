@@ -36,7 +36,7 @@ TOOLCALLING_METRIC_RANGES = {
 
 GENSELECT_METRIC_RANGES = {
     "aime24": {
-        ("pass@1[avg-of-1]", "symbolic_correct"): (70.0, 95.0),
+        ("pass@1", "symbolic_correct"): (70.0, 95.0),
     }
 }
 

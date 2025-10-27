@@ -18,7 +18,7 @@ from nemo_skills.version import __version__
 _containers = {
     "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:1.0.0",
     "vllm": "vllm/vllm-openai:v0.10.1.1",
-    "sglang": "lmsysorg/sglang:v0.5.3rc1-cu126",
+    "sglang": "lmsysorg/sglang:v0.5.4",
     "megatron": "dockerfile:dockerfiles/Dockerfile.megatron",
     "sandbox": "dockerfile:dockerfiles/Dockerfile.sandbox",
     "nemo-skills": "dockerfile:dockerfiles/Dockerfile.nemo-skills",

@@ -32,9 +32,7 @@ We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.0.0` image for b
 
 ## Building sglang image
 
-We directly use official `lmsysorg/sglang:v0.5.3rc1-cu126` image.
-
-For arm64 we instead use `lmsysorg/sglang:blackwell-cu129-arm64` image.
+We directly use official `lmsysorg/sglang:v0.5.4` image.
 
 ## Building vllm image
 
