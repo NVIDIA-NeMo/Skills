@@ -51,7 +51,7 @@ def check_results(eval_dir: str):
 
     # GenSelect Tests
     online_genselect_f = os.path.join(eval_dir, "online_genselect", "eval-results", "aime24", "metrics.json")
-    online_genselect_data = load_json(online_genselect_f)
+    online_genselect_data = load_json(online_genselect_f)["aime24"]
     for metric, (lo, hi) in GENSELECT_METRIC_RANGES["aime24"].items():
         val = float(get_nested_value(online_genselect_data, metric))
         soft_assert(lo <= val <= hi, f"online-genselect {metric}={val} out of range [{lo},{hi}]")
@@ -61,15 +61,14 @@ def check_results(eval_dir: str):
     offline_genselect_f = os.path.join(
         eval_dir, "offline_genselect", "genselect", "eval-results", "aime24", "metrics.json"
     )
-    offline_genselect_accuracy = float(
-        load_json(offline_genselect_f)["aime24"]["pass@1[avg-of-1]"]["symbolic_correct"]
-    )
+    offline_genselect_accuracy = float(load_json(offline_genselect_f)["aime24"]["pass@1"]["symbolic_correct"])
 
     for metric, (lo, hi) in GENSELECT_METRIC_RANGES["aime24"].items():
         val = offline_genselect_accuracy
         soft_assert(lo <= val <= hi, f"offline-genselect {metric}={val} out of range [{lo},{hi}]")
 
-    # 2. Check that the pass@1 score after GenSelect is strictly better than the pass@1 score after initial solutions (atleast 1 point better, in reality it would be much more than 1 point better)
+    # 2. Check that the pass@1 score after GenSelect is strictly better than the pass@1 score
+    # after initial solutions (atleast 1 point better, in reality it would be much more than 1 point better)
     offline_initial_solutions_f = os.path.join(
         eval_dir, "offline_genselect", "initial_solutions", "eval-results", "aime24", "metrics.json"
     )
@@ -78,7 +77,8 @@ def check_results(eval_dir: str):
     )
 
     assert offline_genselect_accuracy >= (offline_initial_solutions_accuracy + 1.0), (
-        f"Offline GenSelect pass@1 score {offline_genselect_accuracy} is not better than the initial solutions pass@1 score {offline_initial_solutions_accuracy} by at least 1 point"
+        f"Offline GenSelect pass@1 score {offline_genselect_accuracy} is not better than the initial "
+        f"solutions pass@1 score {offline_initial_solutions_accuracy} by at least 1 point"
     )
 
 
