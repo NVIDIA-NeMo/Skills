@@ -40,6 +40,13 @@ def parse_args():
     parser.add_argument(
         "--step", type=int, default=None, help="Step number to use from training folder (overrides highest found)"
     )
+    parser.add_argument(
+        "--max-position-embeddings",
+        type=int,
+        default=None,
+        help="Max position embeddings to use for conversion. If not specified, will be inferred from the model config.",
+    )
+
     # Parse known args for the script
     args = parser.parse_args()
 
@@ -111,12 +118,17 @@ def main():
     print(f"Converting checkpoint from {dcp_ckpt_path} to {args.hf_ckpt_path}")
     print(f"Using tokenizer from: {tokenizer_name_or_path}")
 
+    hf_overrides = {}
+    if args.max_position_embeddings:
+        hf_overrides["max_position_embeddings"] = args.max_position_embeddings
+
     hf_ckpt = convert_dcp_to_hf(
         dcp_ckpt_path=dcp_ckpt_path,
         hf_ckpt_path=args.hf_ckpt_path,
         model_name_or_path=model_name_or_path,
         tokenizer_name_or_path=tokenizer_name_or_path,
         overwrite=True,
+        hf_overrides=hf_overrides,
     )
     print(f"Saved HF checkpoint to: {hf_ckpt}")
 

@@ -169,7 +169,7 @@ def get_training_cmd(
     return task.get_cmd()
 
 
-def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend):
+def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
     cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
     if backend == "fsdp":
         cmd += "uv run --active python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
@@ -180,6 +180,7 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend):
 
     cmd += f" --training-folder={output_dir} "
     cmd += f" --hf-ckpt-path={final_hf_path} "
+    cmd += f" --max-position-embeddings={max_position_embeddings} "
     if step != "last":
         try:
             step = int(step)
@@ -311,6 +312,10 @@ def grpo_nemo_rl(
     _task_dependencies: List[str] = typer.Option(
         None, help="Internal option to specify task dependencies.", hidden=True
     ),
+    max_position_embeddings: int = typer.Option(
+        None,
+        help="Max position embeddings to use for conversion. If not specified, will be inferred from the model config.",
+    ),
 ):
     """Runs NeMo-RL GRPO training.
 
@@ -410,6 +415,7 @@ def grpo_nemo_rl(
                     final_hf_path=final_hf_path or f"{output_dir}/final_hf_model",
                     step=conversion_step,
                     backend=backend,
+                    max_position_embeddings=max_position_embeddings,
                 ),
                 task_name=f"{expname}-convert-final-ckpt",
                 log_dir=f"{log_dir}/convert-final-ckpt",
@@ -440,6 +446,7 @@ def grpo_nemo_rl(
                         final_hf_path=f"{output_dir}/hf_model_step_{step}",
                         step=step,
                         backend=backend,
+                        max_position_embeddings=max_position_embeddings,
                     ),
                     task_name=f"{expname}-convert-ckpt-step_{step}",
                     log_dir=f"{log_dir}/convert-ckpt-step",
