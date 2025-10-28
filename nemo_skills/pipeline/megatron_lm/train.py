@@ -26,6 +26,7 @@ from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_exp,
     get_timeout_str,
+    parse_sbatch_arguments,
     resolve_mount_paths,
     run_exp,
 )
@@ -162,6 +163,10 @@ def train_megatron_lm(
         "E.g. 'pip install my_package'",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
+    sbatch_arguments: str = typer.Option(
+        "",
+        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
         None, help="Internal option to specify task dependencies.", hidden=True
@@ -228,7 +233,7 @@ def train_megatron_lm(
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
                 task_dependencies=[prev_task] if prev_task is not None else None,
-                slurm_kwargs={"exclusive": exclusive} if exclusive else None,
+                slurm_kwargs=parse_sbatch_arguments(sbatch_arguments, exclusive),
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )

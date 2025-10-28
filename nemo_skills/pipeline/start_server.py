@@ -21,6 +21,7 @@ from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_exp,
     get_free_port,
+    parse_sbatch_arguments,
     resolve_mount_paths,
     set_python_path_and_wait_for_server,
 )
@@ -80,6 +81,10 @@ def start_server(
     exclusive: bool = typer.Option(False, help="If set will add exclusive flag to the slurm job."),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     get_random_port: bool = typer.Option(False, help="If True, will get a random port for the server"),
+    sbatch_arguments: str = typer.Option(
+        "",
+        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
 ):
     """Self-host a model server."""
     setup_logging(disable_hydra_logs=False, use_rich=True)
@@ -127,7 +132,7 @@ def start_server(
             with_sandbox=with_sandbox,
             keep_mounts_for_sandbox=keep_mounts_for_sandbox,
             sandbox_port=None if get_random_port else 6000,
-            slurm_kwargs={"exclusive": exclusive} if exclusive else None,
+            slurm_kwargs=parse_sbatch_arguments(sbatch_arguments, exclusive),
         )
         # we don't want to detach in this case even on slurm, so not using run_exp
         exp.run(detach=False, tail_logs=True)

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import sys
@@ -103,6 +104,48 @@ def get_timeout_str(cluster_config, partition, with_save_delay: bool = True) -> 
     timeout = _get_timeout(cluster_config, partition, with_save_delay=with_save_delay)
     timeout_str = f"{timeout.days:02d}:{timeout.seconds // 3600:02d}:{(timeout.seconds % 3600) // 60:02d}:{timeout.seconds % 60:02d}"
     return timeout_str
+
+
+def parse_sbatch_arguments(sbatch_arguments: str | None, exclusive: bool | None = None) -> dict | None:
+    """
+    Parse sbatch arguments from either a JSON string or a dictionary.
+
+    This utility function handles sbatch arguments that can be provided in two ways:
+    1. As a JSON string (typically from CLI)
+    2. As a dictionary (when invoked from Python code)
+
+    Args:
+        sbatch_arguments: Either a JSON string or a dictionary containing sbatch arguments.
+                         Can also be None or empty string.
+        exclusive: If True, adds the exclusive flag to the slurm kwargs.
+
+    Returns:
+        A dictionary of slurm kwargs, or None if no arguments are provided.
+
+    Raises:
+        ValueError: If sbatch_arguments is a string but cannot be parsed as JSON.
+    """
+    slurm_kwargs = {"exclusive": exclusive} if exclusive else {}
+
+    if sbatch_arguments:
+        if isinstance(sbatch_arguments, dict):
+            # Already a dictionary, just update
+            slurm_kwargs.update(sbatch_arguments)
+        elif isinstance(sbatch_arguments, str):
+            # Parse JSON string
+            try:
+                sbatch_kwargs = json.loads(sbatch_arguments)
+                slurm_kwargs.update(sbatch_kwargs)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Failed to parse sbatch_arguments with JSON: {e}")
+        else:
+            raise ValueError(f"sbatch_arguments must be a string or dict, got {type(sbatch_arguments).__name__}")
+
+    # Return None if empty to maintain existing behavior
+    if not len(slurm_kwargs):
+        return None
+
+    return slurm_kwargs
 
 
 def get_env_variables(cluster_config):

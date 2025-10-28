@@ -31,6 +31,7 @@ from nemo_skills.pipeline.utils import (
     get_mounted_path,
     get_nsight_cmd,
     get_timeout_str,
+    parse_sbatch_arguments,
     resolve_mount_paths,
     run_exp,
     temporary_env_update,
@@ -304,6 +305,10 @@ def sft_nemo_rl(
         "E.g. 'pip install my_package'",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
+    sbatch_arguments: str = typer.Option(
+        "",
+        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
         None, help="Internal option to specify task dependencies.", hidden=True
@@ -379,6 +384,8 @@ def sft_nemo_rl(
 
     server_config = None
     env_update = {"RAY_LOG_SYNC_FREQUENCY": 20} if profile_step_range else {}
+    slurm_kwargs = parse_sbatch_arguments(sbatch_arguments, exclusive)
+
     with get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
         with temporary_env_update(cluster_config, env_update):
@@ -400,7 +407,7 @@ def sft_nemo_rl(
                     reuse_code=reuse_code,
                     reuse_code_exp=reuse_code_exp,
                     task_dependencies=[prev_task] if prev_task is not None else None,
-                    slurm_kwargs={"exclusive": exclusive} if exclusive else None,
+                    slurm_kwargs=slurm_kwargs,
                     heterogeneous=True if server_config is not None else False,
                     with_sandbox=False,
                     with_ray=True,
@@ -432,7 +439,7 @@ def sft_nemo_rl(
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
                 task_dependencies=[prev_task] if prev_task is not None else None,
-                slurm_kwargs={"exclusive": exclusive} if exclusive else None,
+                slurm_kwargs=slurm_kwargs,
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )
@@ -464,7 +471,7 @@ def sft_nemo_rl(
                     reuse_code=reuse_code,
                     reuse_code_exp=reuse_code_exp,
                     task_dependencies=[prev_task] if prev_task is not None else None,
-                    slurm_kwargs={"exclusive": exclusive} if exclusive else None,
+                    slurm_kwargs=slurm_kwargs,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
                 )
@@ -492,7 +499,7 @@ def sft_nemo_rl(
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
                 task_dependencies=task_dependencies,
-                slurm_kwargs={"exclusive": exclusive} if exclusive else None,
+                slurm_kwargs=slurm_kwargs,
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )
