@@ -201,7 +201,7 @@ some registry (e.g. dockerhub) and reference the uploaded versions. To build sqs
    containers:
      nemo-skills: /path/to/nemo-skills-image.sqsh
    ```
-```
+
 
 Now that we have a slurm config setup, we can try running some jobs. Generally, you will need to upload models / data
 on cluster manually and then reference a proper mounted path. But for small-scale things we can also leverage the
