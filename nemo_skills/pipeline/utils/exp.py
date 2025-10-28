@@ -179,6 +179,60 @@ def get_executor(
     overlap: bool = False,
     with_ray: bool = False,
 ):
+    """Create and configure a nemo-run executor for the target environment.
+
+    Depending on `cluster_config['executor']`, this returns one of:
+    - `"none"`: a LocalExecutor (execute directly without container/scheduler)
+    - `"local"`: a DockerExecutor (runs locally with host networking and mounts)
+    - `"slurm"`: a SlurmExecutor (submits jobs to SLURM with inferred settings)
+
+    The function derives environment variables, mounts, container image, resource
+    flags, and logging details from `cluster_config` and the provided parameters.
+    For SLURM, it sets srun/sbatch arguments, selects the partition based on
+    `gpus_per_node`, wires job dependencies, and configures heterogeneous job
+    groups and Ray-specific logging when requested. For local Docker, all GPUs
+    are exposed and selection is done via `CUDA_VISIBLE_DEVICES`.
+
+    Args:
+        cluster_config: Cluster configuration. Must define `executor` and typically
+            includes `account`, `partition`/`cpu_partition`, `env_vars`, optional
+            `dependency_type`, and default mounts.
+        container: Container image to use. Resolved for local Docker; passed through
+            for SLURM.
+        num_nodes: Number of nodes to allocate.
+        tasks_per_node: Number of tasks per node (ntasks-per-node).
+        gpus_per_node: GPUs per node; affects partition selection and srun args. Use
+            0/None for CPU-only jobs.
+        job_name: Logical job name used for log file prefixes.
+        log_dir: Directory for job logs (paths are normalized for mounted/unmounted
+            contexts).
+        log_prefix: Prefix for srun log files when composing multiple tasks.
+        mounts: Container mounts in "src:dst[:ro]" form. If not provided, mounts are
+            taken from `cluster_config`.
+        partition: SLURM partition override. If omitted, inferred from `gpus_per_node`
+            and `cluster_config`.
+        qos: SLURM QOS.
+        time_min: Minimum time to request (e.g., for backfill). Needs to be in"HH:MM:SS" format
+        dependencies: SLURM job handles to depend on. The dependency type is taken from
+            `cluster_config['dependency_type']` (default: "afterany").
+        extra_package_dirs: Additional directories to package with the code for remote
+            execution.
+        heterogeneous: Whether this executor is part of a heterogeneous job.
+        het_group: Heterogeneous group index for SLURM.
+        total_het_groups: Total number of heterogeneous groups.
+        slurm_kwargs: Extra arguments for the SLURM executor. Keys that match explicit
+            executor fields override defaults; other keys are forwarded to additional
+            sbatch parameters.
+        overlap: Add `--overlap` to srun args (useful when colocating tasks).
+        with_ray: Enable Ray-specific job details and log discovery.
+
+    Returns:
+        A configured nemo-run executor instance suitable for passing to
+        `run.Experiment.add`.
+
+    Raises:
+        Raised if a non-SLURM executor is requested with `num_nodes > 1`.
+    """
     env_vars = get_env_variables(cluster_config)
     config_mounts = get_mounts_from_config(cluster_config)
 
@@ -206,7 +260,9 @@ def get_executor(
             ntasks_per_node=1,
             privileged=bool(os.getenv("NEMO_SKILLS_PRIVILEGED_DOCKER", 0)),
             # locally we are always asking for all GPUs to be able to select a subset with CUDA_VISIBLE_DEVICES
-            num_gpus=-1 if gpus_per_node is not None else None,
+            # NOTE(agronskiy): it seems that interchangeability of `0` and `None` for `num_gpus`
+            # in various context up- and downstream from here, consider unification.
+            num_gpus=-1 if gpus_per_node else None,
             network="host",
             env_vars=env_vars,
             additional_kwargs={"entrypoint": ""},
