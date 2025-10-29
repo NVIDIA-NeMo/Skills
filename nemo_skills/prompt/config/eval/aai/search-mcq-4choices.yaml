@@ -1,0 +1,52 @@
+system: >-
+  Internet access is available. If a website cannot be retrieved (e.g., due to
+  403 or 404 errors),  it most likely means the site is unavailable or does not
+  exist.  Do NOT assume that the internet is globally unavailable after such
+  failures —  you may continue to use available online sources.
+  Google Search and Researchgate.net are unavailable in this environment.
+  DO NOT USE GOOGLE SEARCH OR RESEARCHGATE.NET OR BRAVE SEARCH (https://search.brave.com) OR ANY OTHER SEARCH ENGINE.
+  Conditional Search Logic:
+  If the environment variable `EXA_API_KEY` is
+  available, use Exa for web search; otherwise, use DuckDuckGo (DDG) as a
+  fallback method.
+  ```python
+  import os, json, requests
+  from ddgs import DDGS
+  def smart_search(query: str, max_results: int = 5) -> dict:
+      if os.getenv("EXA_API_KEY"):
+          # Use Exa
+          headers = {"x-api-key": os.getenv("EXA_API_KEY")}
+          response = requests.post("https://api.exa.ai/search",
+                                  headers=headers,
+                                  json={"query": query, "numResults": max_results})
+          return {"query": query, "source": "exa", "results": response.json()}
+      else:
+          # Use DuckDuckGo fallback
+          with DDGS() as ddg:
+              results = list(ddg.text(query, max_results=max_results))
+          return {"query": query, "source": "ddg", "results": results}
+  ```
+  Wikipedia:
+  You can use Wikipedia to search for information. Here is an example of how to
+  use it:
+  ```python
+  import wikipedia
+  # Search Wikipedia
+  results = wikipedia.search("Artificial Intelligence")
+  print(results)  # list of page titles
+  # Retrieve a short summary
+  summary = wikipedia.summary("Existential risk from artificial intelligence",
+  sentences=2)
+  print(summary)
+  # Retrieve full page details
+  page = wikipedia.page("Existential risk from artificial intelligence")
+  print(page.title)        # Page title
+  print(page.url)          # URL
+  print(page.content[:500])  # First 500 characters of content
+  print(page.links[:10])   # First 10 linked pages
+  ```
+  DO NOT USE GOOGLE SEARCH OR RESEARCHGATE.NET OR BRAVE SEARCH (https://search.brave.com) OR ANY OTHER SEARCH ENGINE.
+  Banned search engines: google, researchgate.net, brave.
+user: |-
+  Answer the following multiple choice question. The last line of your response should be in the following format: 'Answer: A/B/C/D' (e.g. 'Answer: A').
+  {problem}

@@ -1,0 +1,261 @@
+processors_to_run: all
+
+output_path: ???
+prompt_config: null
+code_tags: null
+
+preprocessed_dataset_files: null  # can specify multiple patters separated by space
+input_files: null  # can specify datasets from HF instead of prediction_jsonl_files
+
+exclude_optional_keys: true # exclude keys other than input, output and expected_answer from the final manifest
+metadata: null  # can provide additional metadata to store (e.g. dataset or generation_type)
+skip_first: 0  # useful for skipping validation set from train_full generation (it's always first)
+add_correct: true  # can set to False if only want to export incorrect solutions
+add_incorrect: false  # if True, saves only incorrect solutions instead of correct
+add_unlabeled: false  # if True, saves unlabeled solutions (no symbolic_correct field)
+use_judgement: false  # if True, uses judgement instead of symbolic_correct field
+# if True, adds a new field with max allowed code executions to each sample
+# exclude_optional_keys must be set to false in this case
+add_code_execution_counts: false
+
+downsampling_method: null  # fair, random or null
+random_seed: 42
+do_shuffle: true
+num_output_samples: null
+
+# Needed to format the data and also for length-based filtering
+tokenizer: null
+chat_template_kwargs: null
+system_message: null  # can be used to override default from the tokenizer
+assistant_end: null  # can be used to not use jinja and just add this suffix
+
+# Problem params
+min_problem_length: null
+max_problem_length: null
+
+# Solution params
+min_solution_length: null
+max_solution_length: null
+use_chars_for_min_length: false
+
+
+input_key: problem
+output_key: generation
+
+# For synthesized questions
+contamination_file: null
+
+majority_filter:
+  # minimum number of majority votes to use the answer
+  min_majority_votes: 0
+  # minimum portion of majority votes to use the answer
+  min_majority_percentage: 0.0
+
+filters:
+  drop_multi_boxed: false
+  remove_contaminated: true
+  majority_filter: false
+  trim_solutions: false
+  trim_prefix: false
+  drop_incorrect_arithmetic: false
+  split_arithmetic: false
+  remove_len_outlier_problems: false
+  remove_len_outlier_solutions: false
+  code_text_filter: null
+  remove_code_errors: false
+  remove_verification_code: false
+  remove_matplotlib: false
+  remove_no_code: false
+  remove_no_think_tags: false
+
+deduplicate: true
+
+processors:
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.ReadData
+    preprocessed_dataset_files: ${preprocessed_dataset_files}
+    input_files: ${input_files}
+    input_key: ${input_key}
+    output_key: ${output_key}
+    skip_first: ${skip_first}
+    add_correct: ${add_correct}
+    add_incorrect: ${add_incorrect}
+    add_unlabeled: ${add_unlabeled}
+    use_judgement: ${use_judgement}
+    deduplicate: ${deduplicate}
+    keys_to_keep: # input/output/symbolic_correct/judgement are automatically added
+      - "total_votes"
+      - "majority_votes"
+      - "expected_answer"
+      - "predicted_answer"
+      - "answer_rm_score"
+      - "solutions"   # GenSelect keys
+      - "num_solutions"
+      - "max_idx"
+
+  # this will optimize processors inside to avoid serializing data to disk
+  - _target_: nemo_skills.training.data_preparation_utils.merge_processor.MergeProcessor
+    _recursive_: False
+    processor_configs:
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropMultiBoxed
+        should_run: ${filters.drop_multi_boxed}
+        solution_key: ${output_key}
+        test_cases:
+          - { input: { generation: "He had \\boxed{3} 4090s and \\boxed{2} 4080s" }, output: null }
+          - { input: { generation: "She had \\boxed{6} 4090s" }, output: { generation: "She had \\boxed{6} 4090s" } }
+          - { input: { generation: "boxed boxed 42" }, output: { generation: "boxed boxed 42" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveContaminated
+        should_run: ${filters.remove_contaminated}
+        contamination_file: ${contamination_file}
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexMatch
+        should_run: ${filters.remove_code_errors}
+        text_key: ${output_key}
+        regex_patterns:
+          - 'Traceback (most recent call last)'
+          - '<output cut>'
+          - 'Timed out'
+          - 'SyntaxError'
+        test_cases:
+          - { input: { generation: "My solution:\n---Traceback (most recent call last)---\nSomething else" }, output: null }
+          - { input: { generation: "My solution:\nSome long output<output cut>\nSomething else" }, output: null }
+          - { input: { generation: "My solution:\nTimed out\nSomething else" }, output: null }
+          - { input: { generation: "My solution:\n[0;31mSyntaxError\u001b\nSomething else" }, output: null }
+          - { input: { generation: "My solution, no errors" }, output: { generation: "My solution, no errors" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexMatch
+        should_run: ${filters.remove_matplotlib}
+        text_key: ${output_key}
+        regex_patterns:
+          - 'from matplotlib'
+          - 'import matplotlib'
+        test_cases:
+          - { input: { generation: "My solution:\n---import matplotlib---\nSomething else" }, output: null }
+          - { input: { generation: "My solution:\nfrom matplotlib import pyplot as plt\nSomething else" }, output: null }
+          - { input: { generation: "My solution, no errors" }, output: { generation: "My solution, no errors" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexNotMatch
+        should_run: ${filters.remove_no_code}
+        text_key: ${output_key}
+        regex_patterns:
+          - '<tool_call>'
+          - '</tool_call>'
+        test_cases:
+          - { input: { generation: "My solution:\n---<tool_call>---\nSomething else" }, output: null }
+          - { input: { generation: "My solution:\ncode</tool_call>\nSomething else" }, output: null }
+          - { input: { generation: "<tool_call>code</tool_call>" }, output: { generation: "<tool_call>code</tool_call>" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexNotMatch
+        should_run: ${filters.remove_no_think_tags}
+        text_key: ${output_key}
+        regex_patterns:
+          - '</think>'
+        test_cases:
+          - { input: { generation: "My solution:\n---</think>---\nSomething else" }, output: { generation: "My solution:\n---</think>---\nSomething else" } }
+          - { input: { generation: "<think>My solution:\n\nSomething else" }, output: null }
+          - { input: { generation: "<think>thinking</think>summary" }, output: { generation: "<think>thinking</think>summary" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexMatch
+        should_run: ${filters.remove_verification_code}
+        text_key: ${output_key}
+        regex_patterns:
+          - "Let's verify this with Python"
+          - "Let's verify this using Python"
+          - "Let's confirm this with Python"
+          - "Let's use Python to plot"
+          - "Let's verify this solution using Python"
+          - "Let's use Python to verify"
+          - "Let's confirm this result with some Python"
+        test_cases:
+          - { input: { generation: "Here is the solution. Let's verify this with Python. It should work." }, output: null }
+          - { input: { generation: "Here is the solution. Let's verify this using Python. It should work." }, output: null }
+          - { input: { generation: "First, we solve the problem. Let's confirm this with Python. Finally, we get the result." }, output: null }
+          - { input: { generation: "First, we solve the problem. Let's verify this solution using Python. Finally, we get the result." }, output: null }
+          - { input: { generation: "First, we solve the problem. Let's use Python to verify the solution. Finally, we get the result." }, output: null }
+          - { input: { generation: "The answer is calculated. Let's use Python to plot the results." }, output: null }
+          - { input: { generation: "This is the correct solution without any verification code." }, output: { generation: "This is the correct solution without any verification code." } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.MajorityFilter
+        should_run: ${filters.majority_filter}
+        min_majority_votes: ${majority_filter.min_majority_votes}
+        min_majority_percentage: ${majority_filter.min_majority_percentage}
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.TrimPrefix
+        should_run: ${filters.trim_prefix}
+        solution_key: ${output_key}
+        test_cases:
+          - { input: { generation: "My solution:\nSubtract 3 from 5" }, output: { generation: "Subtract 3 from 5" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.TrimSolutions
+        should_run: ${filters.trim_solutions}
+        solution_key: ${output_key}
+        test_cases:
+          - { input: { generation: "Solution ends at \\boxed{0}\nThis line is useless." }, output: { generation: "Solution ends at \\boxed{0}" } }
+          - { input: { generation: "Solution continues \\boxed{7} after boxed" }, output: { generation: "Solution continues \\boxed{7} after boxed" } }
+          - { input: { generation: "Solution\n\ncontinues \n\n\\boxed{7} after\n boxed" }, output: { generation: "Solution\n\ncontinues \n\n\\boxed{7} after" } }
+          - { input: { generation: "Works alright with newlines inside \\boxed{7\n5} and properly\ncuts after" }, output: { generation: "Works alright with newlines inside \\boxed{7\n5} and properly" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.DropIncorrectArithmetic
+        should_run: ${filters.drop_incorrect_arithmetic}
+        solution_key: ${output_key}
+        test_cases:
+          - { input: { generation: "1 + 2 + 3 + 4 = 10" }, output: { generation: "1 + 2 + 3 + 4 = 10" } }
+          # TODO: implement fractional arithmetic
+          # - {input: {generation: "1 / 3 = 0.3"}, output: null}
+          # - {input: {generation: "1 / 3 = 0.3334"}, output: null}
+          - { input: { generation: "3 * (1 + 7) / 4 = 3 * 8 / 4 = 100" }, output: null }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.SplitArithmetic
+        should_run: ${filters.split_arithmetic}
+        solution_key: ${output_key}
+        test_cases:
+          - { input: { generation: "1 + 2 + 3 + 4 = 10" }, output: { generation: "1 + 2 + 3 + 4 = 3 + 3 + 4 = 6 + 4 = 10" } }
+          - { input: { generation: "1 + 7 * 19 = 134" }, output: { generation: "1 + 7 * 19 = 1 + 133 = 134" } }
+          - { input: { generation: "3 * (1 + 7) / 4 = 6" }, output: { generation: "3 * (1 + 7) / 4 = 3 * 8 / 4 = 24 / 4 = 6" } }
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveLenOutliers
+        should_run: ${filters.remove_len_outlier_problems}
+        property_key: ${input_key}
+        min_length: ${min_problem_length}
+        max_length: ${max_problem_length}
+        tokenizer: ${tokenizer}
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveLenOutliers
+        should_run: ${filters.remove_len_outlier_solutions}
+        property_key: ${output_key}
+        min_length: ${min_solution_length}
+        max_length: ${max_solution_length}
+        tokenizer: ${tokenizer}
+        use_chars_for_min_length: ${use_chars_for_min_length}
+
+      - _target_: nemo_skills.training.data_preparation_utils.filters.AddCodeExecutionsCounts
+        should_run: ${add_code_execution_counts}
+        solution_key: ${output_key}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.GroupSamples
+    group_key: ${input_key}
+
+  - _target_: nemo_skills.training.data_preparation_utils.filters.CodeTextFilter
+    should_run: ${filters.code_text_filter}
+    filter_type: ${filters.code_text_filter}
+    code_tags: ${code_tags}
+    solution_key: ${output_key}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.ShuffleAndDownsampleData
+    num_samples: ${num_output_samples}
+    sampling_method: ${downsampling_method}
+    random_seed: ${random_seed}
+    do_shuffle: ${do_shuffle}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.WriteFinalSftManifest
+    output_manifest_file: ${output_path}
+    prompt_config: ${prompt_config}
+    tokenizer: ${tokenizer}
+    chat_template_kwargs: ${chat_template_kwargs}
+    system_message: ${system_message}
+    assistant_end: ${assistant_end}
+    code_tags: ${code_tags}
+    input_key: ${input_key}
+    output_key: ${output_key}
+    metadata: ${metadata}
+    exclude_optional_keys: ${exclude_optional_keys}

@@ -1,0 +1,132 @@
+cluster: local
+base_output_dir: "/workspace/opensciencereasoning/gpt-oss/"
+expname: "gpt-oss-generate-data"
+suffix: ""  # Suffix for experiment names
+dataset_name: ""  # Optional dataset name for id generation
+
+# Input file for the first stage (generate_solutions)
+# It must include the field "problem"
+# All the data in this file will be processed with the same prompt
+# Make sure the problems fit the prompt you are using
+input_file: ""
+
+# Can define initial dependency for the `generate_solutions` stage to run after
+initial_dependency: None
+
+# Define the full sequence of stages for this mode
+pipeline_stages:
+  - generate_solutions          # Generate solutions
+  - filter_solutions            # Filter solutions
+  - prepare_for_sft             # Prepare for SFT
+  - convert_to_messages_format  # Convert to messages format for training
+  - bucket                      # Bucket by token length
+
+# Directory structure configuration
+directories:
+  step-1-generate-solutions: ${base_output_dir}/solution-sdg/step-4-generate-solutions-with-tool
+  step-2-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions-with-tool
+  step-3-prepare-for-sft: ${base_output_dir}/solution-sdg/step-7-prepare-for-sft-with-tool
+  step-4-convert-to-messages-format: ${base_output_dir}/solution-sdg/step-8-convert-to-messages-format-with-tool
+  step-5-bucket: ${base_output_dir}/solution-sdg/step-9-bucket-with-tool
+
+# Stage-specific configurations
+stages:
+  generate_solutions:
+    make_majority_voting: False
+    output_dir: ${directories.step-1-generate-solutions}
+    predicted_answer_regex: null
+    make_judgement: True
+
+    reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
+    builtin_tools: ++chat_template_kwargs.builtin_tools=[python]
+    prompt_config: ++prompt_config=generic/general-boxed
+    code_tags: ++code_tags=gpt-oss
+
+    generation_kwargs:
+      args:
+        input_file: ${input_file}
+        model: /hf_models/gpt-oss-120b
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 1
+        dependent_jobs: 1
+        num_chunks: 2
+        num_random_seeds: 1
+        with_sandbox: True
+        server_args: "--async-scheduling"
+
+      ctx_args: >-
+        ${stages.generate_solutions.prompt_config}
+        ${stages.generate_solutions.code_tags}
+        ++code_execution=true
+        ++max_concurrent_requests=1024
+        ++inference.tokens_to_generate=16000
+        ++inference.endpoint_type=text
+        ++inference.temperature=1.0
+        ++inference.top_p=1.0
+        ++server.code_execution.max_code_executions=100
+        ${stages.generate_solutions.reasoning_effort}
+        ${stages.generate_solutions.builtin_tools}
+
+    judge_kwargs:
+      ctx_args: >-
+        ++prompt_config=judge/general-judge
+      args:
+        model: /hf_models/Qwen2.5-32B-Instruct
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 1
+        num_random_seeds: ${stages.generate_solutions.generation_kwargs.args.num_random_seeds}
+        dependent_jobs: 1
+        num_chunks: 2
+
+
+  filter_solutions:
+    output_dir: ${directories.step-2-filter-solutions}
+    input_file: ${directories.step-1-generate-solutions}/final_result.jsonl
+    only_correct_solutions: True
+    generation_model_pass_rate_range: [-1.0, 1.0] # minimum exclusive, maximum inclusive
+    difficulty_model_pass_rate_range: [-1.0, 1.0] # minimum exclusive, maximum inclusive
+    is_ground_truth_answer_present: True
+    metadata_values:
+      topic: ["Biology", "Chemistry", "Physics", "Mathematics", "Other", "undefined"]
+    dependencies:
+      - generate_solutions
+
+  prepare_for_sft:
+    output_dir: ${directories.step-3-prepare-for-sft}
+    input_file: ${directories.step-2-filter-solutions}/final_result.jsonl
+    prepare_data_kwargs:
+      ctx_args: >-
+        ${stages.generate_solutions.prompt_config}
+        ${stages.generate_solutions.code_tags}
+        ++tokenizer=openai/gpt-oss-120b
+        ++filters.drop_multi_boxed=false
+        ++filters.remove_len_outlier_problems=false
+        ++filters.remove_len_outlier_solutions=false
+        ++filters.remove_no_think_tags=false
+        ++filters.remove_contaminated=false
+        ++filters.trim_solutions=false
+        ${stages.generate_solutions.reasoning_effort}
+        ${stages.generate_solutions.builtin_tools}
+        ++assistant_end=\"'<|return|>'\"
+    dependencies:
+      - filter_solutions
+
+  convert_to_messages_format:
+    output_file: ${directories.step-4-convert-to-messages-format}/${dataset_name}_with_tool.jsonl
+    input_file: ${directories.step-3-prepare-for-sft}/final_result.jsonl
+    dependencies:
+      - prepare_for_sft
+
+  bucket:
+    input_file: ${directories.step-3-prepare-for-sft}/final_result.jsonl
+    output_dir: ${directories.step-5-bucket}
+    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
+    bucket_sizes:
+      - 16000
+      - 32000
+      - 64000
+
+    dependencies:
+      - prepare_for_sft
