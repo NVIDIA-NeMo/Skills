@@ -93,7 +93,7 @@ def setup():
         # initialize config with executor only; containers handled per executor type
         config = {"executor": config_type}
         if config_type == "local":
-            config["containers"] = dict(_containers)
+            config["containers"] = {k: v["default"] for k, v in _containers.items()}
 
         mounts = typer.prompt(
             "\nWe execute all commands in docker containers, so you need to "
