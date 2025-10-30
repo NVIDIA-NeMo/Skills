@@ -181,7 +181,8 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_pos
 
     cmd += f" --training-folder={output_dir} "
     cmd += f" --hf-ckpt-path={final_hf_path} "
-    cmd += f" --max-position-embeddings={max_position_embeddings} "
+    if max_position_embeddings is not None:
+        cmd += f" --max-position-embeddings={max_position_embeddings} "
     if step != "last":
         try:
             step = int(step)
