@@ -224,6 +224,7 @@ def summarize_robustness(
         return
 
     metrics_to_print = {}
+    print("Calculating robustness metrics for benchmarks found:", benchmarks_paths)
     for benchmark_path in sorted(benchmarks_paths):  # sorting to ensure consistent order
         benchmark = str(Path(benchmark_path).name)
         if not Path(benchmark_path).is_dir():
@@ -236,6 +237,7 @@ def summarize_robustness(
             prompt_name = str(Path(prompt_dir).name)
             input_files = glob.glob(f"{prompt_dir}/**/output-rs*.jsonl", recursive=True)
             if not input_files:
+                print("No input files found for prompt", prompt_dir)
                 continue
             per_file_metrics, no_answer = get_metrics(input_files)
             metrics_to_print[benchmark][prompt_name] = {

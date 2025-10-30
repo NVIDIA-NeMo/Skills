@@ -30,14 +30,24 @@ class MCQEvaluatorConfig(BaseEvaluatorConfig):
     extract_from_boxed: bool = True
     # only used if extract_from_boxed is False
     extract_regex: str = r"The final answer is (.+)$"
+    # if relaxed is True:
+    #   extract from boxed FIRST, if not found, extract from regex
+    # if relaxed is False:
+    #   if extract_from_boxed is True -> extract from boxed{} ONLY
+    #   else extract from regex ONLY
+    relaxed: bool = True
 
 
 def eval_mcq(cfg):
     eval_config = MCQEvaluatorConfig(**cfg)
 
-    def extract_letter(text, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$"):
+    def extract_letter(
+        text, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$", relaxed=False
+    ):
         # extract prediction from boxed{} or regex
-        extracted_answer = extract_answer(text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex)
+        extracted_answer = extract_answer(
+            text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex, relaxed=relaxed
+        )
         parsed_letter = None
 
         if extracted_answer is not None:
@@ -57,7 +67,7 @@ def eval_mcq(cfg):
 
         LOG.info(
             f"Final parsed letter: {parsed_letter}, extract_from_boxed: {extract_from_boxed}, "
-            f"extract_regex: {extract_regex}, extracted_answer: {extracted_answer}"
+            f"extract_regex: {extract_regex}, extracted_answer: {extracted_answer}, relaxed: {relaxed}"
         )
 
         return parsed_letter
@@ -70,8 +80,12 @@ def eval_mcq(cfg):
             # Per-sample values override config defaults for backward compatibility
             extract_from_boxed = sample.get("extract_from_boxed", eval_config.extract_from_boxed)
             extract_regex = sample.get("extract_regex", eval_config.extract_regex)
+            relaxed = sample.get("relaxed", eval_config.relaxed)
             sample["predicted_answer"] = extract_letter(
-                sample["generation"], extract_from_boxed=extract_from_boxed, extract_regex=extract_regex
+                sample["generation"],
+                extract_from_boxed=extract_from_boxed,
+                extract_regex=extract_regex,
+                relaxed=relaxed,
             )
             sample["symbolic_correct"] = sample["predicted_answer"] == sample["expected_answer"]
             fout.write(json.dumps(sample) + "\n")

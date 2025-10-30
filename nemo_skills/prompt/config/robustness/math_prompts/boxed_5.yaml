@@ -1,0 +1,4 @@
+user: |-
+ You are a math expert and I need your help to solve it.
+ {problem}
+ Please think step-by-step and put the final answer inside \boxed{{}}.

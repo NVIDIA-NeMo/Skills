@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import logging
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -24,6 +26,12 @@ from nemo_skills.prompt.utils import load_config
 from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+
+@dataclass
+class PromptConfig:
+    prompt_config: str  # path to prompt config
+    extract_regex: str = None  # optional regex to extract answer from model output
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -63,20 +71,21 @@ def robust_eval(
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     **ns_eval_kwargs,
 ):
-    """Run evaluation on multiple prompts and benchmarks to measure LLM robustness against changes in prompt.
-       robust_eval runs "ns eval" for each prompt and benchmark combination, creates folders with benchmark names containing every prompt result in a separate folder.
-       Afterwards, runs summarize_robustness to aggregate the metrics across prompts for each benchmark and save in summarize_robustness folder in main output_dir.
-       Usage is the same as "ns eval" with the addition of the --prompt_set_config argument, a yaml containing the list of prompts to use for each benchmark.
-
-    Note: prompt_set_config should be a yaml file with the following structure: (example in /nemo_skills/prompt/config/robustness/prompt_set_config.yaml)
-    ```
-    <benchmark_name>:
-      - <path_to_prompt_1>
-      - <path_to_prompt_2>
-      ...
-    <another_benchmark_name>:
-        - <path_to_prompt_1>
-        - <path_to_prompt_2>
+    """\b
+    Run evaluation on multiple prompts and benchmarks to measure LLM robustness against changes in prompt.
+    robust_eval runs "ns eval" for each prompt and benchmark combination, creates folders with benchmark names containing every prompt result in a separate folder.
+    Afterwards, runs summarize_robustness to aggregate the metrics across prompts for each benchmark and save in summarize_robustness folder in main output_dir.
+    Usage is the same as "ns eval" with the addition of the --prompt_set_config argument, a yaml containing the list of prompts to use for each benchmark.
+    \b
+    Note: prompt_set_config should be a yaml file with the following structure: (example in nemo_skills/prompt/config/robustness/prompt_set_config.yaml)
+    benchmark_name:
+        - prompt: prompt_config_path_1
+        - prompt: prompt_config_path_2
+          extract_regex: regex_to_extract_answer_from_model_output
+        ...
+    another_benchmark_name:
+        - prompt: prompt_config_path_1
+        - prompt: prompt_config_path_2
         ...
     All other arguments are "ns eval" arguments.
     """
@@ -104,12 +113,17 @@ def robust_eval(
                 LOG.info(f"Running prompt: {prompt}")
                 # deepcopy ctx and ns_eval_kwargs in case smth is changes in _eval
                 prompt_context = deepcopy(ctx)
-                prompt_context.args.append(f"++prompt_config={prompt}")
+                prompt = PromptConfig(**prompt)
+                if prompt.extract_regex:
+                    prompt_context.args.append(f"++eval_config.extract_regex='\"{prompt.extract_regex}\"'")
+                prompt_context.args.append(f"++prompt_config={prompt.prompt_config}")
+
                 prompt_kwargs = deepcopy(ns_eval_kwargs)
-                prompt_kwargs["expname"] = expname + f"_{benchmark_name}_{Path(prompt).stem}"
+                prompt_name = Path(prompt.prompt_config).stem
+                prompt_kwargs["expname"] = f"{expname}_{prompt_name}"
                 _eval(
                     ctx=prompt_context,
-                    output_dir=f"{output_dir}/{benchmark_name}/{Path(prompt).stem}",
+                    output_dir=f"{output_dir}/{benchmark_name}/{prompt_name}",
                     benchmarks=benchmark,
                     cluster=cluster,
                     config_dir=config_dir,
@@ -118,11 +132,12 @@ def robust_eval(
                     **prompt_kwargs,
                 )
                 dependent_tasks.append(prompt_kwargs["expname"])
+
         sum_rob_command = f"python -m nemo_skills.pipeline.summarize_robustness {output_dir}"
         _ = pipeline_utils.add_task(
             exp,
             cmd=sum_rob_command,
-            task_name=f"{expname}:sum_robustness",
+            task_name=f"{expname}-sum_robustness",
             log_dir=f"{output_dir}/summarize_robustness",
             container=cluster_config["containers"]["nemo-skills"],
             cluster_config=cluster_config,
@@ -134,6 +149,18 @@ def robust_eval(
         pipeline_utils.run_exp(exp, cluster_config, dry_run=dry_run)
 
 
+# Copy the signature from eval and add prompt_set_config argument
+original_sig = inspect.signature(_eval)
+new_param = inspect.Parameter(
+    "prompt_set_config",
+    inspect.Parameter.KEYWORD_ONLY,
+    default=typer.Option(..., help="Yaml file containing list of prompts per benchmark"),
+    annotation=str,
+)
+new_params = list(original_sig.parameters.values()) + [new_param]
+robust_eval.__signature__ = original_sig.replace(parameters=new_params)
+
 if __name__ == "__main__":
     typer.main.get_command_name = lambda name: name
+
     app()

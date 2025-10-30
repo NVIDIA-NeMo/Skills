@@ -1,8 +1,0 @@
-user: |-
- The following is a math competition question. Examine and solve the question correctly.
-
- {problem}
-
- Reflect upon this question and let’s verify step by step. Provide your answer in the following format: Final Answer: \boxed{{}}
-
- Do not provide any further information after this. This is important. If you do not provide a final answer in this format, your answer will not be scored as accurate.

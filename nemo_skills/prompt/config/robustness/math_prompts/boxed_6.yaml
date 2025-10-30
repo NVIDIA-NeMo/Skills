@@ -1,0 +1,3 @@
+user: |-
+ {problem}
+ Solve this problem and end your answer with \boxed{{final_answer}}.

@@ -1,0 +1,3 @@
+user: |-
+ {problem}
+ You are an expert in solving math problems. Use your knowledge and skills to find the solution of this problem. After solving the problem, put the final answer inside \boxed{{}}.

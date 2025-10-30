@@ -1,0 +1,4 @@
+user: |-
+ You are an expert in the field and I need your help with this multiple choice question. Read it carefully and find the correct answer.
+ {problem}
+ After you have found the correct answer, please respond with - The correct answer choice is X, where X is the corresponding letter (such as The correct answer choice is D).

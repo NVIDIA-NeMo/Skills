@@ -1,0 +1,4 @@
+user: |-
+ Here is a question I need you to answer. Utilize all your knowledge and skills to answer it.
+ {problem}
+ End your response with Answer: correct_answer_letter, (e.g. Answer: A).

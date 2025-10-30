@@ -1,0 +1,6 @@
+# https://github.com/NVIDIA-NeMo/Skills/blob/gnalbandyan/robustness/nemo_skills/prompt/config/generic/general-boxed.yaml
+
+user: |-
+ Solve the following problem. Make sure to put the answer (and only answer) inside \boxed{{}}.
+
+ {problem}

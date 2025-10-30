@@ -1,8 +1,0 @@
-user: |-
- Can you solve this for me?
-
- {problem}
-
- Provide your answer in the following format: Final Answer: \boxed{{}}
-
- Do not provide any further information after this. This is important. If you do not provide a final answer in this format, your answer will not be scored as accurate.

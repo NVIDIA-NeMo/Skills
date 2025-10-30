@@ -1,0 +1,6 @@
+user: |-
+ Act as an expert to help me with this question. Please read and analyze the question alongside the options carefully, think step-by-step, come up with the solution and pick the correct option in the end.
+
+ {problem}
+
+ Your answer should end with <<X>> where X is the correct answer choice letter from [A, B, C, D, E, ...].

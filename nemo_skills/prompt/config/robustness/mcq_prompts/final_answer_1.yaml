@@ -1,0 +1,6 @@
+user: |-
+ Please answer this question by thinking step-by-step.
+
+ {problem}
+
+ Your answer should end with: Final Answer - X, replace X with the correct answer choice letter (A/B/C... etc).

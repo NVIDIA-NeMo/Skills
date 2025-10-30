@@ -92,14 +92,29 @@ def math_equal(gt_answer, predicted_answer, take_modulo: int | None = None, **kw
     return verify(parsed_gt, parsed_pred, **kwargs)
 
 
-def extract_answer(string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$"):
-    """Extract Answer String from \\boxed expression or based on regex"""
-    if not extract_from_boxed:
-        match = re.search(extract_regex, string)
-        if match:
-            return match.group(1)
-        return None
+def extract_answer(
+    string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$", relaxed=False
+):
+    """Extract Answer String from \\boxed expression or based on regex
+    If relaxed=True: try both methods, boxed first.
+    If relaxed=False: use only one method based on extract_from_boxed flag.
+    """
+    if relaxed:
+        return search_boxed(string) or search_regex(string, extract_regex)
 
+    if extract_from_boxed:
+        return search_boxed(string)
+    return search_regex(string, extract_regex)
+
+
+def search_regex(string: str, regex: str):
+    match = re.findall(regex, string)
+    if match:
+        return match[-1]
+    return None
+
+
+def search_boxed(string: str):
     if "\\boxed" not in string:
         return None
 

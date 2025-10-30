@@ -1,0 +1,3 @@
+user: |-
+ Here is a math problem for you to solve. While solving, think step-by-step. When you reach the final answer, make sure to enclose it within \boxed{{}}.
+ {problem}

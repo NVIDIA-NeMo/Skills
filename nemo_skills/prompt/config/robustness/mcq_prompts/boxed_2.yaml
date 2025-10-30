@@ -1,0 +1,3 @@
+user: |-
+ {problem}
+ Answer this multiple choice question and place the correct choice answer letter inside \boxed{{}} (for example, \boxed{{B}}). Let's think step-by-step.

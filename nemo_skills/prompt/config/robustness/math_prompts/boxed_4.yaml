@@ -1,0 +1,6 @@
+user: |-
+ I found a complex math problem I would like you to solve. The problem is as follows.
+
+ {problem}
+
+ When you are done, please enclose the final answer (and only the final answer) within \boxed{{}}.
