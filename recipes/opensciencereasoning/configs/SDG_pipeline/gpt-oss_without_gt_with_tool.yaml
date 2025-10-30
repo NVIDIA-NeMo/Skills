@@ -30,7 +30,7 @@ directories:
   step-0-filter-problems: ${base_output_dir}/solution-sdg/step-0-filter-problems
   step-1-decontaminate: ${base_output_dir}/solution-sdg/step-1-decontaminate
   step-2-topics-labeling: ${base_output_dir}/solution-sdg/step-2-topics-labeling
-  step-3-generate-solutions: ${base_output_dir}/solution-sdg/step-3-generate-solutions-without-tool
+  step-3-generate-solutions: ${base_output_dir}/solution-sdg/step-3-generate-solutions-with-tool
   step-4-difficulty-estimation: ${base_output_dir}/solution-sdg/step-4-difficulty-estimation
   step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate-with-tool
   step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions-with-tool
