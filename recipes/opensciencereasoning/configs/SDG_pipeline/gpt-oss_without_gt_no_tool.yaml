@@ -217,7 +217,6 @@ stages:
     prepare_data_kwargs:
       ctx_args: >-
         ${stages.generate_solutions.prompt_config}
-        ${stages.generate_solutions.code_tags}
         ++tokenizer=openai/gpt-oss-120b
         ++filters.drop_multi_boxed=false
         ++filters.remove_len_outlier_problems=false
@@ -226,7 +225,6 @@ stages:
         ++filters.remove_contaminated=false
         ++filters.trim_solutions=false
         ${stages.generate_solutions.reasoning_effort}
-        ${stages.generate_solutions.builtin_tools}
         ++assistant_end=\"'<|return|>'\"
     dependencies:
       - filter_solutions

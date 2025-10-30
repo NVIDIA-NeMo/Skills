@@ -110,6 +110,37 @@ stages:
     dependencies:
       - decontaminate
 
+  difficulty_estimation:
+    output_dir: ${directories.step-3-difficulty-estimation}
+    input_file: ${directories.step-1-decontaminate}/final_result.jsonl  # Should have expected answers
+
+    generation_kwargs:
+      args:
+        model: /hf_models/Qwen3-30B-A3B
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 2
+        dependent_jobs: 1
+        num_random_seeds: 5
+        num_chunks: 20
+      ctx_args: >-
+        ++prompt_config=generic/general-boxed
+        ++inference.tokens_to_generate=16000
+
+    judge_kwargs:
+      args:
+        model: /hf_models/Qwen2.5-32B-Instruct
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 1
+        num_random_seeds: ${stages.difficulty_estimation.generation_kwargs.args.num_random_seeds}
+        dependent_jobs: 1
+        num_chunks: 5
+      ctx_args: >-
+        ++prompt_config=judge/general-judge
+
+    dependencies:
+      - decontaminate
 
 
   generate_solutions:
