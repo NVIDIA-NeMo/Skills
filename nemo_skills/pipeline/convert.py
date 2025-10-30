@@ -25,7 +25,7 @@ from nemo_skills.pipeline.utils import (
     check_mounts,
     get_cluster_config,
     get_exp,
-    parse_sbatch_arguments,
+    parse_sbatch_kwargs,
     resolve_mount_paths,
     run_exp,
 )
@@ -180,6 +180,7 @@ def convert(
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
+    qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     run_after: List[str] = typer.Option(
@@ -199,7 +200,7 @@ def convert(
     ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(None, help="Can specify a custom location for slurm logs."),
-    exclusive: bool = typer.Option(False, help="If set will add exclusive flag to the slurm job."),
+    exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     skip_hf_home_check: bool | None = typer.Option(
         None,
@@ -212,9 +213,9 @@ def convert(
         "E.g. 'pip install my_package'",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
-    sbatch_arguments: str = typer.Option(
+    sbatch_kwargs: str = typer.Option(
         "",
-        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
@@ -325,11 +326,10 @@ def convert(
             num_tasks=1,
             cluster_config=cluster_config,
             partition=partition,
-            time_min=time_min,
             run_after=run_after,
             reuse_code=reuse_code,
             reuse_code_exp=reuse_code_exp,
-            slurm_kwargs=parse_sbatch_arguments(sbatch_arguments, exclusive),
+            sbatch_kwargs=parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
             installation_command=installation_command,
             task_dependencies=_task_dependencies,
             skip_hf_home_check=skip_hf_home_check,

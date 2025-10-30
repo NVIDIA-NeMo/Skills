@@ -166,7 +166,7 @@ def run_generation_only(workspace, cluster, expname_prefix, server_host, server_
         installation_command=nim_config["installation_command"],
         mount_paths=mount_paths,
         check_mounted_paths=True,
-        _slurm_kwargs_nodelist=server_node,
+        _sbatch_kwargs_nodelist=server_node,
         reuse_code=False,
     )
 

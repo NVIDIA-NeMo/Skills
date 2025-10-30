@@ -106,46 +106,46 @@ def get_timeout_str(cluster_config, partition, with_save_delay: bool = True) -> 
     return timeout_str
 
 
-def parse_sbatch_arguments(sbatch_arguments: str | None, exclusive: bool | None = None) -> dict | None:
+def parse_sbatch_kwargs(sbatch_kwargs: str | dict | None, **kwargs) -> dict | None:
     """
-    Parse sbatch arguments from either a JSON string or a dictionary.
+    Parse sbatch kwargs from either a JSON string or a dictionary.
 
-    This utility function handles sbatch arguments that can be provided in two ways:
+    This utility function handles sbatch kwargs that can be provided in two ways:
     1. As a JSON string (typically from CLI)
     2. As a dictionary (when invoked from Python code)
 
     Args:
-        sbatch_arguments: Either a JSON string or a dictionary containing sbatch arguments.
+        sbatch_kwargs: Either a JSON string or a dictionary containing sbatch kwargs.
                          Can also be None or empty string.
-        exclusive: If True, adds the exclusive flag to the slurm kwargs.
+        **kwargs: any additional keyword arguments to include in the resulting dictionary.
+            Any values of None will be ignored.
 
     Returns:
         A dictionary of slurm kwargs, or None if no arguments are provided.
 
     Raises:
-        ValueError: If sbatch_arguments is a string but cannot be parsed as JSON.
+        ValueError: If sbatch_kwargs is a string but cannot be parsed as JSON.
     """
-    slurm_kwargs = {"exclusive": exclusive} if exclusive else {}
+    full_sbatch_kwargs = {key: value for key, value in kwargs.items() if value is not None}
 
-    if sbatch_arguments:
-        if isinstance(sbatch_arguments, dict):
+    if sbatch_kwargs:
+        if isinstance(sbatch_kwargs, dict):
             # Already a dictionary, just update
-            slurm_kwargs.update(sbatch_arguments)
-        elif isinstance(sbatch_arguments, str):
+            full_sbatch_kwargs.update(sbatch_kwargs)
+        elif isinstance(sbatch_kwargs, str):
             # Parse JSON string
             try:
-                sbatch_kwargs = json.loads(sbatch_arguments)
-                slurm_kwargs.update(sbatch_kwargs)
+                sbatch_kwargs = json.loads(sbatch_kwargs)
+                full_sbatch_kwargs.update(sbatch_kwargs)
             except json.JSONDecodeError as e:
-                raise ValueError(f"Failed to parse sbatch_arguments with JSON: {e}")
+                raise ValueError(f"Failed to parse sbatch_kwargs with JSON: {e}")
         else:
-            raise ValueError(f"sbatch_arguments must be a string or dict, got {type(sbatch_arguments).__name__}")
+            raise ValueError(f"sbatch_kwargs must be a string or dict, got {type(sbatch_kwargs).__name__}")
 
-    # Return None if empty to maintain existing behavior
-    if not len(slurm_kwargs):
+    if not len(full_sbatch_kwargs):
         return None
 
-    return slurm_kwargs
+    return full_sbatch_kwargs
 
 
 def get_env_variables(cluster_config):

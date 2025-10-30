@@ -168,14 +168,12 @@ def get_executor(
     log_prefix: str = "main",
     mounts=None,
     partition=None,
-    qos=None,
-    time_min=None,
     dependencies=None,
     extra_package_dirs: tuple[str] | None = None,
     heterogeneous=False,
     het_group=None,
     total_het_groups=None,
-    slurm_kwargs: dict | None = None,
+    sbatch_kwargs: dict | None = None,
     overlap: bool = False,
     with_ray: bool = False,
 ):
@@ -211,8 +209,6 @@ def get_executor(
             taken from `cluster_config`.
         partition: SLURM partition override. If omitted, inferred from `gpus_per_node`
             and `cluster_config`.
-        qos: SLURM QOS.
-        time_min: Minimum time to request (e.g., for backfill). Needs to be in"HH:MM:SS" format
         dependencies: SLURM job handles to depend on. The dependency type is taken from
             `cluster_config['dependency_type']` (default: "afterany").
         extra_package_dirs: Additional directories to package with the code for remote
@@ -220,7 +216,7 @@ def get_executor(
         heterogeneous: Whether this executor is part of a heterogeneous job.
         het_group: Heterogeneous group index for SLURM.
         total_het_groups: Total number of heterogeneous groups.
-        slurm_kwargs: Extra arguments for the SLURM executor. Keys that match explicit
+        sbatch_kwargs: Extra arguments for the SLURM executor. Keys that match explicit
             executor fields override defaults; other keys are forwarded to additional
             sbatch parameters.
         overlap: Add `--overlap` to srun args (useful when colocating tasks).
@@ -288,28 +284,28 @@ def get_executor(
         if partition == cluster_config.get("cpu_partition"):
             # by default we use exclusive if no gpus are needed and use non-exclusive if gpus are required
             # as cpu jobs almost always need more resources than automatically allocated by slurm
-            if slurm_kwargs is None:
-                slurm_kwargs = {}
-            slurm_kwargs["exclusive"] = True
+            if sbatch_kwargs is None:
+                sbatch_kwargs = {}
+            sbatch_kwargs["exclusive"] = True
 
     timeout = get_slurm_timeout_str(cluster_config, partition, with_save_delay=False)
 
-    additional_parameters = {"time_min": time_min} if time_min is not None else {}
+    additional_parameters = {}
     if cluster_config.get("mail_type") is not None:
         additional_parameters["mail_type"] = cluster_config["mail_type"]
     if cluster_config.get("mail_user") is not None:
         additional_parameters["mail_user"] = cluster_config["mail_user"]
 
-    # Merge slurm_kwargs into additional_parameters, but only non-explicit parameters
-    if slurm_kwargs:
+    # Merge sbatch_kwargs into additional_parameters, but only non-explicit parameters
+    if sbatch_kwargs:
         # Get the set of explicit SlurmExecutor fields
         from nemo_run.core.execution.slurm import SlurmExecutor as SE
 
         explicit_fields = {f.name for f in fields(SE)}
         # Separate into explicit and additional parameters
-        explicit_kwargs = {k: v for k, v in slurm_kwargs.items() if k in explicit_fields}
-        additional_from_slurm_kwargs = {k: v for k, v in slurm_kwargs.items() if k not in explicit_fields}
-        additional_parameters.update(additional_from_slurm_kwargs)
+        explicit_kwargs = {k: v for k, v in sbatch_kwargs.items() if k in explicit_fields}
+        additional_from_sbatch_kwargs = {k: v for k, v in sbatch_kwargs.items() if k not in explicit_fields}
+        additional_parameters.update(additional_from_sbatch_kwargs)
     else:
         explicit_kwargs = {}
 
@@ -335,7 +331,6 @@ def get_executor(
     executor_params = {
         "account": cluster_config["account"],
         "partition": partition,
-        "qos": qos,
         "nodes": num_nodes,
         "ntasks_per_node": tasks_per_node,
         "tunnel": get_tunnel(cluster_config),
@@ -365,7 +360,7 @@ def get_executor(
         # Check which parameters are being overridden
         overridden = [k for k in explicit_kwargs if k in executor_params]
         if overridden:
-            LOG.warning(f"Parameters from slurm_kwargs are overriding default values: {', '.join(overridden)}")
+            LOG.warning(f"Parameters from sbatch_kwargs are overriding default values: {', '.join(overridden)}")
         executor_params.update(explicit_kwargs)
     return run.SlurmExecutor(**executor_params)
 
@@ -429,8 +424,6 @@ def add_task(
     num_nodes=1,
     log_dir=None,
     partition=None,
-    qos=None,
-    time_min=None,
     with_sandbox=False,
     keep_mounts_for_sandbox=False,
     sandbox_port: int | None = None,
@@ -441,7 +434,7 @@ def add_task(
     run_after: str | list[str] | None = None,
     get_server_command=get_server_command,
     extra_package_dirs: list[str] | None = None,
-    slurm_kwargs: dict | None = None,
+    sbatch_kwargs: dict | None = None,
     heterogeneous: bool = False,
     with_ray: bool = False,
     installation_command: str | None = None,
@@ -539,14 +532,12 @@ def add_task(
             tasks_per_node=num_server_tasks,
             gpus_per_node=server_config["num_gpus"],
             partition=partition,
-            qos=qos,
-            time_min=time_min,
             dependencies=dependencies,
             job_name=task_name,
             log_dir=log_dir,
             log_prefix="server",
             extra_package_dirs=extra_package_dirs,
-            slurm_kwargs=slurm_kwargs,
+            sbatch_kwargs=sbatch_kwargs,
             heterogeneous=heterogeneous,
             het_group=het_group,
             total_het_groups=total_het_groups,
@@ -584,14 +575,12 @@ def add_task(
                         tasks_per_node=cur_tasks,
                         gpus_per_node=num_gpus if server_config is None else 0,
                         partition=partition,
-                        qos=qos,
-                        time_min=time_min,
                         dependencies=dependencies,
                         job_name=task_name,
                         log_dir=log_dir,
                         log_prefix="main" if len(cmd) == 1 else f"main_{cur_idx}",
                         extra_package_dirs=extra_package_dirs,
-                        slurm_kwargs=slurm_kwargs,
+                        sbatch_kwargs=sbatch_kwargs,
                         heterogeneous=heterogeneous,
                         het_group=het_group,
                         total_het_groups=total_het_groups,
@@ -629,14 +618,13 @@ def add_task(
                 tasks_per_node=1,
                 gpus_per_node=0,
                 partition=partition,
-                time_min=time_min,
                 mounts=None if keep_mounts_for_sandbox else [],
                 dependencies=dependencies,
                 job_name=task_name,
                 log_dir=log_dir,
                 log_prefix="sandbox",
                 extra_package_dirs=extra_package_dirs,
-                slurm_kwargs=slurm_kwargs,
+                sbatch_kwargs=sbatch_kwargs,
                 heterogeneous=heterogeneous,
                 het_group=het_group,
                 total_het_groups=total_het_groups,

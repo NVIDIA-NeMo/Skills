@@ -26,9 +26,13 @@ from nemo_skills.dataset.utils import ExtraDatasetType
 from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.generate import generate as _generate
-from nemo_skills.pipeline.utils import parse_sbatch_arguments
+from nemo_skills.pipeline.utils import parse_sbatch_kwargs
 from nemo_skills.pipeline.utils.eval import combine_cmds, prepare_eval_commands
-from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
+from nemo_skills.utils import (
+    get_logger_name,
+    setup_logging,
+    validate_wandb_project_name,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -170,7 +174,7 @@ def eval(
         help="If you have extra datasets locally, set to 'local', if on cluster, set to 'cluster'."
         "Can also specify through NEMO_SKILLS_EXTRA_DATASETS_TYPE environment variable.",
     ),
-    exclusive: bool = typer.Option(False, help="If set will add exclusive flag to the slurm job."),
+    exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     rerun_done: bool = typer.Option(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
     ),
@@ -206,9 +210,9 @@ def eval(
         "E.g. 'pip install my_package'",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
-    sbatch_arguments: str = typer.Option(
+    sbatch_kwargs: str = typer.Option(
         "",
-        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
@@ -327,6 +331,8 @@ def eval(
         generation_module=generation_module,
     )
 
+    sbatch_kwargs = parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+
     get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
     should_package_extra_datasets = extra_datasets and extra_datasets_type == ExtraDatasetType.local
     has_tasks = False
@@ -360,8 +366,6 @@ def eval(
                     container=cluster_config["containers"]["nemo-skills"],
                     cluster_config=cluster_config,
                     partition=partition,
-                    qos=qos,
-                    time_min=time_min,
                     server_config=job_server_config,
                     with_sandbox=job_needs_sandbox or with_sandbox,
                     keep_mounts_for_sandbox=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
@@ -375,7 +379,7 @@ def eval(
                     ),
                     get_server_command=job_server_command,
                     extra_package_dirs=[extra_datasets] if should_package_extra_datasets else None,
-                    slurm_kwargs=parse_sbatch_arguments(sbatch_arguments, exclusive),
+                    sbatch_kwargs=sbatch_kwargs,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
                 )
@@ -431,8 +435,6 @@ def eval(
                 cluster=cluster,
                 config_dir=config_dir,
                 partition=partition,
-                qos=qos,
-                time_min=time_min,
                 with_sandbox=with_sandbox,
                 keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                 run_after=run_after,
@@ -440,6 +442,7 @@ def eval(
                 reuse_code=reuse_code,
                 exclusive=exclusive,
                 installation_command=installation_command,
+                sbatch_kwargs=sbatch_kwargs,
                 _reuse_exp=exp,
                 _task_dependencies=(
                     dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
@@ -503,6 +506,7 @@ def eval(
                     ),
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
+                    sbatch_kwargs=sbatch_kwargs,
                 )
                 all_tasks.append(summarize_task)
                 if benchmark_args.benchmark_group:
@@ -536,6 +540,7 @@ def eval(
                     ),
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
+                    sbatch_kwargs=sbatch_kwargs,
                 )
                 all_tasks.append(score_task)
 

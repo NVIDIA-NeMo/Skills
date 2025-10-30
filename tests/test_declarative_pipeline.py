@@ -166,12 +166,12 @@ class TestCommandGroup:
     def test_commandgroup_with_hardware(self):
         """Test CommandGroup with HardwareConfig."""
         cmd = Command(command="echo test", name="cmd")
-        hardware = HardwareConfig(partition="batch", time_min="01:00:00", num_gpus=8)
+        hardware = HardwareConfig(partition="batch", sbatch_kwargs={"time_min": "01:00:00"}, num_gpus=8)
 
         group = CommandGroup(commands=[cmd], hardware=hardware, name="gpu_group")
 
         assert group.hardware.partition == "batch"
-        assert group.hardware.time_min == "01:00:00"
+        assert group.hardware.sbatch_kwargs["time_min"] == "01:00:00"
         assert group.hardware.num_gpus == 8
 
     def test_commandgroup_with_log_dir(self):

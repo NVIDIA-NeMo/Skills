@@ -139,7 +139,12 @@ from nemo_skills.pipeline.utils import (
     temporary_env_update,
 )
 from nemo_skills.pipeline.utils.commands import wrap_command
-from nemo_skills.pipeline.utils.exp import REUSE_CODE_EXP, get_packaging_job_key, install_packages_wrap, tunnel_hash
+from nemo_skills.pipeline.utils.exp import (
+    REUSE_CODE_EXP,
+    get_packaging_job_key,
+    install_packages_wrap,
+    tunnel_hash,
+)
 from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
 from nemo_skills.pipeline.utils.packager import get_registered_external_repo
 from nemo_skills.utils import get_logger_name
@@ -250,11 +255,9 @@ class HardwareConfig:
     """Hardware configuration for a group of tasks."""
 
     partition: Optional[str] = None
-    qos: Optional[str] = None
-    time_min: Optional[str] = None
-    exclusive: bool = False
     num_gpus: Optional[int] = None
     num_nodes: Optional[int] = None
+    sbatch_kwargs: Optional[dict] = None
 
 
 class CommandGroup:
@@ -529,15 +532,13 @@ class Pipeline:
                 log_dir=log_dir,
                 log_prefix=exec_config["log_prefix"],
                 partition=hardware.partition if hardware else None,
-                qos=hardware.qos if hardware else None,
-                time_min=hardware.time_min if hardware else None,
                 heterogeneous=heterogeneous,
                 het_group=het_group,
                 total_het_groups=total_het_groups,
                 overlap=overlap,
                 mounts=exec_config.get("mounts"),
                 with_ray=self.with_ray,
-                slurm_kwargs={"exclusive": hardware.exclusive} if (hardware and hardware.exclusive) else None,
+                sbatch_kwargs=hardware.sbatch_kwargs,
                 dependencies=dependencies,
             )
 

@@ -19,7 +19,13 @@ import typer
 
 from nemo_skills.pipeline import utils as pipeline_utils
 from nemo_skills.pipeline.app import app, typer_unpacker
-from nemo_skills.pipeline.utils import add_task, check_mounts, get_exp, parse_sbatch_arguments, run_exp
+from nemo_skills.pipeline.utils import (
+    add_task,
+    check_mounts,
+    get_exp,
+    parse_sbatch_kwargs,
+    run_exp,
+)
 from nemo_skills.utils import get_logger_name, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -113,9 +119,9 @@ def run_cmd(
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
-    sbatch_arguments: str = typer.Option(
+    sbatch_kwargs: str = typer.Option(
         "",
-        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
@@ -191,8 +197,6 @@ def run_cmd(
                 container=containers,
                 cluster_config=cluster_config,
                 partition=partition,
-                qos=qos,
-                time_min=time_min,
                 server_config=server_config,
                 with_sandbox=with_sandbox,
                 keep_mounts_for_sandbox=keep_mounts_for_sandbox,
@@ -204,7 +208,7 @@ def run_cmd(
                 num_gpus=num_gpus,
                 num_nodes=num_nodes,
                 num_tasks=[num_tasks] * len(commands),
-                slurm_kwargs=parse_sbatch_arguments(sbatch_arguments, exclusive),
+                sbatch_kwargs=parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )

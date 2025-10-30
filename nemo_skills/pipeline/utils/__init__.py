@@ -25,7 +25,7 @@ from nemo_skills.pipeline.utils.cluster import (
     get_slurm_timeout_str,
     get_timeout_str,
     get_tunnel,
-    parse_sbatch_arguments,
+    parse_sbatch_kwargs,
     progress_callback,
     read_config,
     temporary_env_update,

@@ -22,8 +22,14 @@ import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.dataset.utils import import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP, GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
+from nemo_skills.pipeline.utils.cluster import parse_sbatch_kwargs
 from nemo_skills.pipeline.utils.commands import sandbox_command
-from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
+from nemo_skills.pipeline.utils.declarative import (
+    Command,
+    CommandGroup,
+    HardwareConfig,
+    Pipeline,
+)
 from nemo_skills.pipeline.utils.server import get_free_port
 from nemo_skills.utils import (
     compute_chunk_ids,
@@ -47,12 +53,10 @@ def _create_commandgroup_from_config(
     installation_command: Optional[str],
     get_server_command_fn: Callable,
     partition: Optional[str],
-    qos: Optional[str],
-    time_min: Optional[str],
-    exclusive: bool,
     keep_mounts_for_sandbox: bool,
     task_name: str,
     log_dir: str,
+    sbatch_kwargs: Optional[Dict] = None,
 ) -> CommandGroup:
     """Create a CommandGroup from server_config.
 
@@ -136,11 +140,9 @@ def _create_commandgroup_from_config(
         commands=components,
         hardware=HardwareConfig(
             partition=partition,
-            qos=qos,
-            time_min=time_min,
-            exclusive=exclusive,
             num_gpus=max_gpus,
             num_nodes=max_nodes,
+            sbatch_kwargs=sbatch_kwargs,
         ),
         name=task_name,
         log_dir=log_dir,
@@ -235,7 +237,7 @@ def generate(
     ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(None, help="Can specify a custom location for slurm logs."),
-    exclusive: bool = typer.Option(False, help="If set will add exclusive flag to the slurm job."),
+    exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     rerun_done: bool = typer.Option(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
     ),
@@ -271,6 +273,10 @@ def generate(
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
+    sbatch_kwargs: str = typer.Option(
+        "",
+        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
         None, help="Internal option to specify task dependencies.", hidden=True
@@ -371,6 +377,9 @@ def generate(
     if _task_dependencies is None:
         _task_dependencies = []
 
+    # Parse sbatch kwargs
+    sbatch_kwargs = parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+
     # Build jobs list using declarative interface
     jobs = []
     all_job_names = []
@@ -441,12 +450,10 @@ def generate(
                     installation_command=installation_command,
                     get_server_command_fn=generation_task.get_server_command_fn(),
                     partition=partition,
-                    qos=qos,
-                    time_min=time_min,
-                    exclusive=exclusive,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                     task_name=task_name,
                     log_dir=log_dir,
+                    sbatch_kwargs=sbatch_kwargs,
                 )
 
                 # Use unique internal job name for dependency tracking, but same task_name

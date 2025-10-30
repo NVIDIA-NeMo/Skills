@@ -26,7 +26,7 @@ from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_exp,
     get_timeout_str,
-    parse_sbatch_arguments,
+    parse_sbatch_kwargs,
     resolve_mount_paths,
     run_exp,
 )
@@ -163,9 +163,9 @@ def train_megatron_lm(
         "E.g. 'pip install my_package'",
     ),
     dry_run: bool = typer.Option(False, help="If True, will not run the job, but will validate all arguments."),
-    sbatch_arguments: str = typer.Option(
+    sbatch_kwargs: str = typer.Option(
         "",
-        help="Additional sbatch arguments to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
@@ -227,13 +227,11 @@ def train_megatron_lm(
                 num_nodes=num_nodes,
                 cluster_config=cluster_config,
                 partition=partition,
-                qos=qos,
-                time_min=time_min,
                 run_after=run_after,
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
                 task_dependencies=[prev_task] if prev_task is not None else None,
-                slurm_kwargs=parse_sbatch_arguments(sbatch_arguments, exclusive),
+                sbatch_kwargs=parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )
