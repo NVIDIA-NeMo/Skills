@@ -251,3 +251,5 @@ stages:
       - 16000
       - 32000
       - 64000
+    dependencies:
+      - prepare_for_sft
