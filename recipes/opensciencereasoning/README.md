@@ -9,11 +9,13 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
 - [`gpt-oss_with_gt_no_tool.yaml`](configs/SDG_pipeline/gpt-oss_with_gt_no_tool.yaml)
 - [`gpt-oss_without_gt_with_tool.yaml`](configs/SDG_pipeline/gpt-oss_without_gt_with_tool.yaml)
 - [`gpt-oss_without_gt_no_tool.yaml`](configs/SDG_pipeline/gpt-oss_without_gt_no_tool.yaml)
+- [`gpt-oss_with_gt_with_tool_only_solutions.yaml`](configs/SDG_pipeline/gpt-oss_with_gt_with_tool_only_solutions.yaml)
 
 The templates differ along two axes:
 - **Seed vs. SFT data**: SFT recipes add supervised fine-tuning preparation (input/output records and multi-turn message format).
 - **With vs. without GT answers**: When answers are missing the pipeline schedules solution generation and majority voting to recover them before downstream stages.
 - **With vs. without tool use**: When tool use is enabled, the generation stages are configured to use the tool-augmented model and prompts (currently only python tool is supported).
+- **Only solutions vs. full pipeline**: The `only_solutions` variant runs only the solution generation stage, skipping contamination checks, difficulty estimation, and topic labeling. It assumes the input data is already clean and properly formatted.
 
 ## Seed Data Flow
 - Deduplicate and clean incoming problems via [`filter_problems`](scripts/SDG_pipeline/filter_problems.py).

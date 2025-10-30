@@ -23,11 +23,11 @@ pipeline_stages:
 
 # Directory structure configuration
 directories:
-  step-1-generate-solutions: ${base_output_dir}/solution-sdg/step-4-generate-solutions-with-tool
-  step-2-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions-with-tool
-  step-3-prepare-for-sft: ${base_output_dir}/solution-sdg/step-7-prepare-for-sft-with-tool
-  step-4-convert-to-messages-format: ${base_output_dir}/solution-sdg/step-8-convert-to-messages-format-with-tool
-  step-5-bucket: ${base_output_dir}/solution-sdg/step-9-bucket-with-tool
+  step-1-generate-solutions: ${base_output_dir}/solution-sdg/step-1-generate-solutions-with-tool
+  step-2-filter-solutions: ${base_output_dir}/solution-sdg/step-2-filter-solutions-with-tool
+  step-3-prepare-for-sft: ${base_output_dir}/solution-sdg/step-3-prepare-for-sft-with-tool
+  step-4-convert-to-messages-format: ${base_output_dir}/solution-sdg/step-4-convert-to-messages-format-with-tool
+  step-5-bucket: ${base_output_dir}/solution-sdg/step-5-bucket-with-tool
 
 # Stage-specific configurations
 stages:
