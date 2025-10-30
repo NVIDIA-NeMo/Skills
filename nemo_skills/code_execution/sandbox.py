@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import traceback
 import uuid
 from collections import defaultdict
@@ -252,6 +253,24 @@ class Sandbox(abc.ABC):
         except httpx.TimeoutException:
             return "timeout"
         return determine_proof_status(output)
+
+    def _check_ready(self, timeout: float = 5.0) -> bool:
+        """Readiness check against the sandbox health endpoint."""
+        url = f"http://{self.host}:{self.port}/health"
+
+        if self.ssh_server and self.ssh_key_path:
+            import sshtunnel_requests
+
+            sshtunnel_request = sshtunnel_requests.from_url(f"ssh://{self.ssh_server}:22", self.ssh_key_path)
+            response = sshtunnel_request.get(url=url, timeout=timeout)
+        else:
+            with httpx.Client() as client:
+                response = client.get(url=url, timeout=timeout)
+        return response.status_code == 200
+
+    def wait_for_sandbox(self, timeout: int = 5):
+        while not self._check_ready(timeout=timeout):
+            time.sleep(1)
 
 
 class LocalSandbox(Sandbox):

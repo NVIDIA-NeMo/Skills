@@ -697,6 +697,10 @@ class GenerationTask:
         server_start_cmd = get_server_wait_cmd(server_address)
         subprocess.run(server_start_cmd, shell=True, check=True)
 
+    def wait_for_sandbox(self):
+        if hasattr(self, "sandbox"):
+            self.sandbox.wait_for_sandbox()
+
     def setup_litellm_cache(self):
         if self.cfg.enable_litellm_cache:
             # One cache per (output_file_name, chunk_id) pair
@@ -734,6 +738,7 @@ class GenerationTask:
                         output_path.unlink()
 
             self.wait_for_server()
+            self.wait_for_sandbox()
             asyncio.run(self.async_loop(data))
 
         if self.should_run_evaluation and self.evaluator is None:
