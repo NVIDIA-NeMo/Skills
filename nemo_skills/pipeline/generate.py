@@ -420,6 +420,7 @@ def generate(
                 postprocess_cmd=postprocess_cmd,
                 wandb_parameters=wandb_parameters if seed_idx == 0 else None,
                 script=generation_module,
+                with_sandbox=with_sandbox,
             )
             cmd = pipeline_utils.wrap_python_path(cmd=cmd)
 

@@ -186,6 +186,7 @@ def get_generation_cmd(
     preprocess_cmd=None,
     postprocess_cmd=None,
     wandb_parameters=None,
+    with_sandbox: bool = False,
     script: str = "nemo_skills.inference.generate",
 ):
     """Construct the generation command for language model inference."""
@@ -225,6 +226,9 @@ def get_generation_cmd(
             f"    ++inference.top_k=-1 "
             f"    ++inference.top_p=0.95 "
         )
+
+    if with_sandbox:
+        cmd += "++wait_for_sandbox=true "
 
     if chunk_id is not None:
         cmd += f" ++num_chunks={num_chunks} ++chunk_id={chunk_id} "

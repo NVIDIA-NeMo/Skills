@@ -440,6 +440,7 @@ def prepare_eval_commands(
                     script=generation_module or benchmark_args.generation_module,
                     # only logging for the first seed
                     wandb_parameters=wandb_parameters if seed_idx == 0 else None,
+                    with_sandbox=benchmark_args.requires_sandbox,
                 )
                 job_cmds.append(cmd)
 

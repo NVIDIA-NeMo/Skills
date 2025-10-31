@@ -108,6 +108,7 @@ class GenerateSolutionsConfig:
     server: dict = field(default_factory=dict)
     # Sandbox configuration {sandbox_params}
     sandbox: dict = field(default_factory=dict)
+    wait_for_sandbox: bool = False  # whether we need to wait for sandbox
     # Prompt configuration - path to yaml files
     start_assistant_response_key: str | None = None  # whether to start assistant response with this key
 
@@ -698,7 +699,7 @@ class GenerationTask:
         subprocess.run(server_start_cmd, shell=True, check=True)
 
     def wait_for_sandbox(self):
-        if hasattr(self, "sandbox"):
+        if self.cfg.wait_for_sandbox:
             self.sandbox.wait_for_sandbox()
 
     def setup_litellm_cache(self):
