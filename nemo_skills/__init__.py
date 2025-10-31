@@ -20,7 +20,7 @@ _containers = {
         "default": "nvcr.io/nvidia/tensorrt-llm/release:1.0.0",
     },
     "vllm": {
-        "default": "vllm/vllm-openai:v0.10.1.1",
+        "default": "vllm/vllm-openai:v0.10.2",
     },
     "sglang": {
         "default": "lmsysorg/sglang:v0.5.4",
