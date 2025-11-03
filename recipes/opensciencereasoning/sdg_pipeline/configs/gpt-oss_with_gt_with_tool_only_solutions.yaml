@@ -1,4 +1,4 @@
-cluster: local
+cluster: slurm
 base_output_dir: "/workspace/opensciencereasoning/gpt-oss/"
 expname: "gpt-oss-generate-data"
 suffix: ""  # Suffix for experiment names
@@ -45,7 +45,7 @@ stages:
     generation_kwargs:
       args:
         input_file: ${input_file}
-        model: /hf_models/gpt-oss-120b
+        model: openai/gpt-oss-120b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -72,7 +72,7 @@ stages:
       ctx_args: >-
         ++prompt_config=judge/general-judge
       args:
-        model: /hf_models/Qwen2.5-32B-Instruct
+        model: Qwen/Qwen2.5-32B-Instruct
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -119,7 +119,7 @@ stages:
   bucket:
     input_file: ${directories.step-3-prepare-for-sft}/final_result.jsonl
     output_dir: ${directories.step-5-bucket}
-    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
+    tokenizer_path: Qwen/Qwen2.5-32B-Instruct
     bucket_sizes:
       - 16000
       - 32000

@@ -23,8 +23,8 @@ from omegaconf import OmegaConf
 from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
-from recipes.opensciencereasoning.few_shots import few_shots
-from recipes.opensciencereasoning.scripts.SDG_pipeline.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.few_shots import few_shots
+from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
 
 # Final output file name for each stage
 OUTPUT_FILE = "final_result.jsonl"

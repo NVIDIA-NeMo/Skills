@@ -1,4 +1,4 @@
-cluster: local
+cluster: slurm
 base_output_dir: "/workspace/opensciencereasoning/gpt-oss"
 expname: "gpt-oss-generate-data"
 suffix: ""  # Suffix for experiment names
@@ -18,6 +18,7 @@ pipeline_stages:
   - filter_problems          # Filter problems based on format
   - decontaminate            # Decontaminate problems
   - topics_labeling          # Label topics and subtopics
+  - generate_solutions       # Generate solutions for majority voting
   - difficulty_estimation    # Estimate difficulty of problems
   - aggregate                # Aggregate all the metadata into a single file
   - filter_solutions         # Filter solutions
@@ -27,9 +28,10 @@ directories:
   step-0-filter-problems: ${base_output_dir}/solution-sdg/step-0-filter-problems
   step-1-decontaminate: ${base_output_dir}/solution-sdg/step-1-decontaminate
   step-2-topics-labeling: ${base_output_dir}/solution-sdg/step-2-topics-labeling
-  step-3-difficulty-estimation: ${base_output_dir}/solution-sdg/step-3-difficulty-estimation
-  step-4-aggregate: ${base_output_dir}/solution-sdg/step-4-aggregate
-  step-5-filter-solutions: ${base_output_dir}/solution-sdg/step-5-filter-solutions
+  step-3-generate-solutions: ${base_output_dir}/solution-sdg/step-3-generate-solutions
+  step-4-difficulty-estimation: ${base_output_dir}/solution-sdg/step-4-difficulty-estimation
+  step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate
+  step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions
 
 # Stage-specific configurations
 stages:
@@ -40,7 +42,7 @@ stages:
     problem_field: problem
     expected_answer_field: expected_answer
     id_field: id
-    remove_expected_answer: False
+    remove_expected_answer: ${stages.generate_solutions.make_majority_voting}
     remove_images: True
     num_options: null
     option_format_regex: null
@@ -56,7 +58,7 @@ stages:
       - ["mmlu", "test"]
       - ["mmlu-pro", "test"]
       - ["gpqa", "diamond"]
-    model: /hf_models/Qwen2.5-32B-Instruct
+    model: Qwen/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 1
     server_nodes: 1
@@ -68,7 +70,7 @@ stages:
   topics_labeling:
     output_dir: ${directories.step-2-topics-labeling}
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-    model: /hf_models/Qwen2.5-32B-Instruct
+    model: Qwen/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 8
     server_nodes: 1
@@ -105,14 +107,50 @@ stages:
     dependencies:
       - decontaminate
 
-
-  difficulty_estimation:
-    output_dir: ${directories.step-3-difficulty-estimation}
-    input_file: ${directories.step-1-decontaminate}/final_result.jsonl  # Should have expected answers
+  generate_solutions:
+    make_majority_voting: False
+    output_dir: ${directories.step-3-generate-solutions}
+    predicted_answer_regex: null
+    make_judgement: False
 
     generation_kwargs:
       args:
-        model: /hf_models/Qwen3-30B-A3B
+        input_file: ${directories.step-1-decontaminate}/final_result.jsonl
+        model: openai/gpt-oss-120b
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 1
+        dependent_jobs: 1
+        num_chunks: 20
+        num_random_seeds: 5
+        with_sandbox: True
+        server_args: "--async-scheduling"
+
+      ctx_args: >-
+        ++prompt_config=generic/general-boxed
+        ++code_tags=gpt-oss
+        ++code_execution=true
+        ++max_concurrent_requests=1024
+        ++inference.tokens_to_generate=16000
+        ++inference.extra_body.reasoning_effort=high
+        ++inference.endpoint_type=text
+        ++inference.temperature=1.0
+        ++inference.top_p=1.0
+        ++server.code_execution.max_code_executions=100
+        ++chat_template_kwargs.reasoning_effort=high
+        ++chat_template_kwargs.builtin_tools=[python]
+
+    dependencies:
+      - decontaminate
+
+
+  difficulty_estimation:
+    output_dir: ${directories.step-4-difficulty-estimation}
+    input_file: ${directories.step-3-generate-solutions}/with_predictions/output-rs0.jsonl  # Should have expected answers
+
+    generation_kwargs:
+      args:
+        model: Qwen/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
         server_nodes: 2
@@ -125,7 +163,7 @@ stages:
 
     judge_kwargs:
       args:
-        model: /hf_models/Qwen2.5-32B-Instruct
+        model: Qwen/Qwen2.5-32B-Instruct
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -136,22 +174,23 @@ stages:
         ++prompt_config=judge/general-judge
 
     dependencies:
-      - decontaminate
+      - generate_solutions
 
   aggregate:
-    output_dir: ${directories.step-4-aggregate}
+    output_dir: ${directories.step-5-aggregate}
     metadata_files:
       - ${directories.step-2-topics-labeling}/final_result.jsonl
-      - ${directories.step-3-difficulty-estimation}/final_result.jsonl
+      - ${directories.step-4-difficulty-estimation}/final_result.jsonl
     dependencies:
       - topics_labeling
       - difficulty_estimation
 
   filter_solutions:
-    output_dir: ${directories.step-5-filter-solutions}
-    input_file: ${directories.step-4-aggregate}/final_result.jsonl
+    output_dir: ${directories.step-6-filter-solutions}
+    input_file: ${directories.step-5-aggregate}/final_result.jsonl
     only_correct_solutions: False
     difficulty_model_pass_rate_range: [-1.0, 1.0] # minimum exclusive, maximum inclusive
+    majority_voting_agreement_rate_range: [-1.0, 1.0] # minimum exclusive, maximum inclusive
     is_ground_truth_answer_present: True
     metadata_values:
       topic: ["Biology", "Chemistry", "Physics", "Mathematics", "Other", "undefined"]

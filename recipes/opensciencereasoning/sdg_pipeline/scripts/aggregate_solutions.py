@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List
 
 from nemo_skills.evaluation.metrics.utils import is_correct_judgement
-from recipes.opensciencereasoning.scripts.SDG_pipeline.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
 
 LOG = logging.getLogger(__name__)
 
