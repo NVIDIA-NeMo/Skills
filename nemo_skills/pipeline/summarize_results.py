@@ -297,7 +297,13 @@ def summarize_results(
         metrics = {}
 
         has_greedy = Path(f"{benchmark_path}/output.jsonl").exists()
-        input_files = glob.glob(f"{benchmark_path}/output-rs*.jsonl")
+        input_files = sorted(
+            [
+                jsonl_file
+                for jsonl_file in glob.glob(f"{benchmark_path}/*.jsonl")
+                if Path(jsonl_file).name != "output.jsonl" and "_chunk_" not in Path(jsonl_file).name
+            ]
+        )
         has_sampling = len(input_files) > 0
 
         if has_greedy and has_sampling:
@@ -305,6 +311,11 @@ def summarize_results(
                 f"Both output.jsonl and output-rs*.jsonl found for benchmark {benchmark}. "
                 "This indicates that the evaluation was done multiple times with different sampling parameters. "
                 "It's not clear how to process this! Please remove output.jsonl or output-rs*.jsonl files and rerun."
+            )
+
+        if not has_greedy and not has_sampling:
+            raise ValueError(
+                f"No .jsonl files found for benchmark {benchmark} in {benchmark_path} after excluding chunked files."
             )
 
         if has_greedy:
