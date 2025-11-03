@@ -508,3 +508,18 @@ async def test_math_to_lean4_fewshots():
     assert not stderr_list, (
         f"Expected no errors in stderr for all test cases, but errors were found at indices {stderr_list}."
     )
+
+
+@pytest.mark.asyncio
+async def test_code_exec_eval_execution():
+    import json
+
+    from nemo_skills.evaluation.evaluator.code import CodeExecEvaluator
+
+    base = os.path.dirname(__file__)
+    data_path = os.path.join(base, "data", "code_execution", "test.jsonl")
+    with open(data_path, "r", encoding="utf-8") as f:
+        dp = json.loads(next(f))
+    evaluator = CodeExecEvaluator(config={"input_file": data_path, "sandbox": "local"})
+    out = await evaluator.eval_single(dp)
+    assert out["code_execution"]["average_test_score"] == 1.0
