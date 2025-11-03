@@ -258,15 +258,18 @@ class Sandbox(abc.ABC):
         """Readiness check against the sandbox health endpoint."""
         url = f"http://{self.host}:{self.port}/health"
 
-        if self.ssh_server and self.ssh_key_path:
-            import sshtunnel_requests
+        try:
+            if self.ssh_server and self.ssh_key_path:
+                import sshtunnel_requests
 
-            sshtunnel_request = sshtunnel_requests.from_url(f"ssh://{self.ssh_server}:22", self.ssh_key_path)
-            response = sshtunnel_request.get(url=url, timeout=timeout)
-        else:
-            with httpx.Client() as client:
-                response = client.get(url=url, timeout=timeout)
-        return response.status_code == 200
+                sshtunnel_request = sshtunnel_requests.from_url(f"ssh://{self.ssh_server}:22", self.ssh_key_path)
+                response = sshtunnel_request.get(url=url, timeout=timeout)
+            else:
+                with httpx.Client() as client:
+                    response = client.get(url=url, timeout=timeout)
+            return response.status_code == 200
+        except httpx.HTTPError:
+            return False
 
     def wait_for_sandbox(self, timeout: int = 5):
         while not self._check_ready(timeout=timeout):
