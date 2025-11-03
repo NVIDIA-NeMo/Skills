@@ -151,6 +151,8 @@ class SweBenchGenerationConfig:
     eval_type: str | None = None  # "lean4-proof", "math", etc.
     eval_config: dict = field(default_factory=dict)  # Config for the evaluator
 
+    wait_for_sandbox: bool = False  # sandbox isn't used in this module
+
 
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_swebench_generation_config", node=SweBenchGenerationConfig)
