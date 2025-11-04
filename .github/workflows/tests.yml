@@ -33,7 +33,7 @@ jobs:
       run: |
         # these tags need to match the ones in tests/gpu-tests/test-local.yaml
         docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
-        docker build -t nemo-skills-sandbox-image -f dockerfiles/Dockerfile.sandbox .
+        docker build -t nemo-skills-sandbox-image -f dockerfiles/Dockerfile.sandbox --build-arg SKIP_SCICODE_DATA_DOWNLOAD=1 .
     - name: Run all tests
       env:
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}

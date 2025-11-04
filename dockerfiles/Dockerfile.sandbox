@@ -62,9 +62,14 @@ ENV PATH="/lean4/my_project:$PATH"
 COPY requirements/code_execution.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# For scicode eval
-RUN mkdir /data && pip install gdown && \
-    python -c "import gdown; url = f'https://drive.google.com/uc?id=17G_k65N_6yFFZ2O-jQH00Lh6iaw3z-AW'; gdown.download(url, '/data/test_data.h5', quiet=False)"
+# For scicode eval - create data directory and download test data
+# Set SKIP_SCICODE_DATA_DOWNLOAD=1 build arg to skip download (useful for CI when download fails)
+# If skipped, scicode evaluations will fail unless the file is manually mounted
+ARG SKIP_SCICODE_DATA_DOWNLOAD=0
+RUN mkdir -p /data && pip install gdown && \
+    if [ "$SKIP_SCICODE_DATA_DOWNLOAD" != "1" ]; then \
+        python -c "import gdown; url = 'https://drive.google.com/uc?id=17G_k65N_6yFFZ2O-jQH00Lh6iaw3z-AW'; gdown.download(url, '/data/test_data.h5', quiet=False)"; \
+    fi
 
 COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.py
 

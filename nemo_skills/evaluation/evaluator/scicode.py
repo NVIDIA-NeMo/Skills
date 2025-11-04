@@ -103,7 +103,7 @@ def eval_scicode(cfg):
     eval_config = ScicodeEvaluatorConfig(**cfg)
 
     # Install required packages for scicode evaluation
-    LOG.info("Installing required packages for scicode evaluation...")
+    LOG.info("Installing required packages and data for scicode evaluation...")
 
     async def install_packages():
         sandbox = get_sandbox(**eval_config.sandbox)
@@ -124,6 +124,16 @@ def eval_scicode(cfg):
             LOG.warning(f"Failed to upgrade matplotlib: {result.get('stderr', 'Unknown error')}")
         else:
             LOG.info("Successfully upgraded matplotlib")
+
+        # Check if test data exists at /data/test_data.h5
+        check_cmd = "test -f /data/test_data.h5 && echo 'exists' || echo 'missing'"
+        result, _ = await sandbox.execute_code(check_cmd, language="shell", timeout=10.0)
+
+        if result.get("stdout", "").strip() == "missing":
+            LOG.error("Test data not found at /data/test_data.h5")
+            raise RuntimeError("Scicode test data not found in sandbox. See logs for details.")
+        else:
+            LOG.info("Test data found at /data/test_data.h5")
 
         await sandbox.close()
 
