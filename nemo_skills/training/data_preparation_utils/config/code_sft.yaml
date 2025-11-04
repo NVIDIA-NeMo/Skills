@@ -9,6 +9,10 @@ output_path: ???
 exclude_optional_keys: true # exclude keys other than input, output and expected_answer from the final manifest
 metadata: null  # can provide additional metadata to store (e.g. dataset or generation_type)
 skip_first: 0  # useful for skipping validation set from train_full generation (it's always first)
+add_correct: true  # can set to False if only want to export incorrect solutions
+add_incorrect: true  # if True, saves only incorrect solutions instead of correct
+add_unlabeled: true  # if True, saves unlabeled solutions (no symbolic_correct field)
+use_judgement: false  # if True, uses judgement instead of symbolic_correct field
 
 random_seed: 42
 do_shuffle: true
@@ -46,6 +50,10 @@ processors:
     input_key: ${input_key}
     output_key: ${output_key}
     skip_first: ${skip_first}
+    add_correct: ${add_correct}
+    add_incorrect: ${add_incorrect}
+    add_unlabeled: ${add_unlabeled}
+    use_judgement: ${use_judgement}
 
   - _target_: nemo_skills.training.data_preparation_utils.filters.DropIncorrectCodeBlocks
     should_run: ${filters.drop_incorrect_code_blocks}
@@ -77,10 +85,6 @@ processors:
     random_seed: ${random_seed}
     do_shuffle: ${do_shuffle}
 
-  - _target_: sdp.processors.RenameFields
-    rename_fields:
-      input: question  # we need to match llama3/codegen_sft format which uses 'question' as input key
-
   - _target_: nemo_skills.training.data_preparation_utils.preprocessing.WriteFinalSftManifest
     output_manifest_file: ${output_path}
     prompt_config: ${prompt_config}
@@ -89,6 +93,6 @@ processors:
     system_message: ${system_message}
     assistant_end: ${assistant_end}
     code_tags: ${code_tags}
-    input_key: question
+    input_key: ${input_key}
     output_key: ${output_key}
     metadata: ${metadata}

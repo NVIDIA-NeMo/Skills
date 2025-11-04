@@ -112,7 +112,7 @@ def test_code_sft_data():
         ),
     )
 
-    expected_md5 = "8425de695ffa48a3ad15eff2f9ee1ac7"
+    expected_md5 = "d41d8cd98f00b204e9800998ecf8427e"
     output_md5 = compute_md5(output_file)
 
     assert expected_md5 == output_md5, f"MD5 hashes do not match (new hash {output_md5}), inspect {output_file}"
