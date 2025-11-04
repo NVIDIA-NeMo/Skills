@@ -245,7 +245,7 @@ def ppo_verl(
     eval_data: str = typer.Option(None, help="Path to the eval data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
-    num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
+    dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
     server_model: str = typer.Option(None, help="Path to the model or model name in API"),
     server_address: str = typer.Option(
         None, help="Use ip:port for self-hosted models or the API url if using model providers"
@@ -337,9 +337,9 @@ def ppo_verl(
         final_ckpt_path = f"{output_dir}/final_hf_checkpoint"
     pipeline_utils.check_if_mounted(cluster_config, final_ckpt_path)
 
-    if num_training_jobs > 0:
+    if dependent_jobs >= 0:
         if prompt_data is None:
-            raise ValueError("prompt_data is required when num_training_jobs > 0")
+            raise ValueError("prompt_data is required when ndependent_jobs > 0")
         if prompt_data.startswith("/"):  # could ask to download from HF
             pipeline_utils.check_if_mounted(cluster_config, prompt_data)
 
@@ -402,8 +402,8 @@ def ppo_verl(
 
     with pipeline_utils.get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
-        for job_id in range(num_training_jobs):
-            if job_id == num_training_jobs - 1 and convert_last_ckpt_to_hf:
+        for job_id in range(dependent_jobs + 1):
+            if job_id == dependent_jobs and convert_last_ckpt_to_hf:
                 ckpt_dir = f"{output_dir}/checkpoints"
                 actor_dir = f"{ckpt_dir}/global_step_$(<{ckpt_dir}/latest_checkpointed_iteration.txt)/actor"
                 convert_cmd = f"python3 -m verl.utils.checkpoint.convert_checkpoint --ckpt_path {actor_dir}"

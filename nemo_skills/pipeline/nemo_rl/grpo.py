@@ -240,7 +240,7 @@ def grpo_nemo_rl(
     validation_data: Optional[str] = typer.Option(None, help="Path to the validation data"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
-    num_training_jobs: int = typer.Option(1, help="Number of training jobs"),
+    dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
     conversion_step: str = typer.Option(
         default="last",
         help=(
@@ -255,6 +255,7 @@ def grpo_nemo_rl(
     remove_checkpoints_after_average: bool = typer.Option(
         False, help="Whether to delete original step directories after averaging (default: False)."
     ),
+    run_conversion_only: bool = typer.Option(False, help="Whether to run checkpoint conversion only or not."),
     wandb_project: str = typer.Option("nemo-skills", help="Weights & Biases project name"),
     wandb_group: str = typer.Option(None, help="Weights & Biases group name."),
     disable_wandb: bool = typer.Option(False, help="Disable wandb logging"),
@@ -359,9 +360,11 @@ def grpo_nemo_rl(
                 "You can set it in your cluster config like this:\n"
                 '  env_vars: ["HF_HOME=/your/path/to/hf_home"]'
             )
-    if num_training_jobs > 0:
+    if run_conversion_only:
+        dependent_jobs = -1
+    if dependent_jobs > 0:
         if training_data is None:
-            raise ValueError("training_data is required when num_training_jobs > 0")
+            raise ValueError("training_data is required when dependent_jobs >= 0")
         if training_data.startswith("/"):  # could ask to download from HF
             training_data = get_mounted_path(cluster_config, training_data)
         if validation_data is not None:
@@ -394,7 +397,7 @@ def grpo_nemo_rl(
     with get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
         with temporary_env_update(cluster_config, env_update):
-            for job_id in range(num_training_jobs):
+            for job_id in range(dependent_jobs + 1):
                 prev_task = add_task(
                     exp,
                     cmd=train_cmd,

@@ -85,7 +85,7 @@ sed -i 's/"rope_theta": 10000,/"rope_theta": 500000.0,/g' Qwen2.5-Math-1.5B/conf
 ## Run training
 
 Run the training (assuming slurm configuration here with the same folder structure). If your cluster has strict
-timeout policy, you can run multiple dependent jobs with `--num_training_jobs=N`.
+timeout policy, you can run multiple dependent jobs with `--dependent_jobs=N`.
 
 
 ```bash

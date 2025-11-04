@@ -39,6 +39,5 @@ ppo_verl(
     prompt_data="/data/rl-data.parquet",
     num_gpus=8,
     num_nodes=2,
-    num_training_jobs=1,
 )
 ```
