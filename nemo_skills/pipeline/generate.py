@@ -22,7 +22,7 @@ import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.dataset.utils import import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP, GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
-from nemo_skills.pipeline.utils.cluster import parse_sbatch_kwargs
+from nemo_skills.pipeline.utils.cluster import parse_kwargs
 from nemo_skills.pipeline.utils.commands import sandbox_command
 from nemo_skills.pipeline.utils.declarative import (
     Command,
@@ -378,7 +378,7 @@ def generate(
         _task_dependencies = []
 
     # Parse sbatch kwargs
-    sbatch_kwargs = parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+    sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
     # Build jobs list using declarative interface
     jobs = []

@@ -23,7 +23,7 @@ from nemo_skills.pipeline.utils import (
     add_task,
     check_mounts,
     get_exp,
-    parse_sbatch_kwargs,
+    parse_kwargs,
     run_exp,
 )
 from nemo_skills.utils import get_logger_name, setup_logging
@@ -208,7 +208,7 @@ def run_cmd(
                 num_gpus=num_gpus,
                 num_nodes=num_nodes,
                 num_tasks=[num_tasks] * len(commands),
-                sbatch_kwargs=parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
+                sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )

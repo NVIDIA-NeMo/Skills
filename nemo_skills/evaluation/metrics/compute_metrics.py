@@ -32,6 +32,7 @@ class ComputeMetrics:
         max_samples=-1,
         metric_type=None,
         max_seq_len=None,
+        metrics_kwargs=None,
     ):
         self.max_samples = max_samples
         self.metric_type = metric_type
@@ -48,9 +49,10 @@ class ComputeMetrics:
 
         # Dictionary to store metrics calculators for different subsets
         self.calculators = {}
+        self.metrics_kwargs = metrics_kwargs
 
     def get_metrics_calculator(self):
-        metrics_calculator = get_metrics(self.metric_type)
+        metrics_calculator = get_metrics(self.metric_type, **(self.metrics_kwargs or {}))
         metrics_calculator.reset()
         return metrics_calculator
 

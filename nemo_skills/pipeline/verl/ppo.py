@@ -22,7 +22,7 @@ import typer
 
 import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.pipeline.app import app, typer_unpacker
-from nemo_skills.pipeline.utils import parse_sbatch_kwargs
+from nemo_skills.pipeline.utils import parse_kwargs
 from nemo_skills.pipeline.utils.server import get_free_port
 from nemo_skills.pipeline.verl import verl_app
 from nemo_skills.utils import (
@@ -427,7 +427,7 @@ def ppo_verl(
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
                 task_dependencies=[prev_task] if prev_task is not None else None,
-                sbatch_kwargs=parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
+                sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
                 heterogeneous=True if server_config is not None else False,
                 with_sandbox=with_sandbox,
                 installation_command=installation_command,

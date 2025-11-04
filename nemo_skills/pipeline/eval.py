@@ -26,7 +26,7 @@ from nemo_skills.dataset.utils import ExtraDatasetType
 from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.generate import generate as _generate
-from nemo_skills.pipeline.utils import parse_sbatch_kwargs
+from nemo_skills.pipeline.utils import kwargs_to_string, parse_kwargs
 from nemo_skills.pipeline.utils.eval import combine_cmds, prepare_eval_commands
 from nemo_skills.utils import (
     get_logger_name,
@@ -112,8 +112,9 @@ def eval(
     extra_judge_args: str = typer.Option(
         "", help="Additional arguments for judge (passed to generate script, so should start with ++)"
     ),
-    extra_judge_pipeline_args: str = typer.Option(
-        None, help="Additional arguments for judge that configure the job. Should be a dictionary (used from Python)"
+    judge_pipeline_kwargs: str = typer.Option(
+        None,
+        help="Additional kwargs for judge that configure the job. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
     dependent_jobs: int = typer.Option(0, help="Specify this to launch that number of dependent jobs"),
     starting_seed: int = typer.Option(0, help="Starting seed for random sampling"),
@@ -213,6 +214,10 @@ def eval(
     sbatch_kwargs: str = typer.Option(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
+    metrics_kwargs: str = typer.Option(
+        "",
+        help="Additional kwargs to pass to the metrics calculator. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
     _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
     _task_dependencies: List[str] = typer.Option(
@@ -331,7 +336,7 @@ def eval(
         generation_module=generation_module,
     )
 
-    sbatch_kwargs = parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+    sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
     get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
     should_package_extra_datasets = extra_datasets and extra_datasets_type == ExtraDatasetType.local
@@ -424,9 +429,8 @@ def eval(
             for judge_server_param, judge_server_value in cli_judge_pipeline_args.items():
                 if judge_server_value is not None:
                     judge_pipeline_args[judge_server_param] = judge_server_value
-            # TODO: should we support parsing a string?
-            if extra_judge_pipeline_args is not None:
-                judge_pipeline_args.update(extra_judge_pipeline_args)
+            if judge_pipeline_kwargs:
+                judge_pipeline_args.update(parse_kwargs(judge_pipeline_kwargs))
             has_tasks = True
             judge_tasks = _generate(
                 ctx=judge_ctx,
@@ -482,6 +486,8 @@ def eval(
                     command += f" --wandb_project={wandb_project} "
                 if data_dir:
                     command += f" --data_dir={data_dir} "
+                if metrics_kwargs:
+                    command += f" --metrics_kwargs='{kwargs_to_string(metrics_kwargs)}' "
 
                 if benchmark in benchmark_to_judge_tasks:
                     dependent_tasks = benchmark_to_judge_tasks[benchmark]

@@ -63,7 +63,7 @@ METRICS_MAP = {
 }
 
 
-def get_metrics(metric_type: str):
+def get_metrics(metric_type: str, **kwargs):
     """Get metrics class.
 
     Class path formats:
@@ -72,6 +72,7 @@ def get_metrics(metric_type: str):
 
     Arguments:
         metric_type: Either a string from METRICS_MAP, or a path to class (class path format above).
+        **kwargs: Additional kwargs to pass to the metrics class constructor.
     """
     metrics_cls = None
 
@@ -91,4 +92,4 @@ def get_metrics(metric_type: str):
             f"Metric {metric_type} not found.\nSupported types: {str(METRICS_MAP.keys())} or use explicit class path format."
         )
 
-    return metrics_cls()
+    return metrics_cls(**kwargs)

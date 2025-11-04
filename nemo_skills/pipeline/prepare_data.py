@@ -23,7 +23,7 @@ from nemo_skills.pipeline.run_cmd import run_cmd as _run_cmd
 from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_env_variables,
-    parse_sbatch_kwargs,
+    parse_kwargs,
 )
 from nemo_skills.utils import get_logger_name, setup_logging
 
@@ -137,7 +137,7 @@ def prepare_data(
             )
         # TODO: automatically add it to cluster config based on user prompt?
 
-    sbatch_kwargs = parse_sbatch_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+    sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
     return _run_cmd(
         ctx=ctx,

@@ -34,6 +34,7 @@ from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_env_variables,
     get_unmounted_path,
+    parse_kwargs,
     resolve_mount_paths,
 )
 from nemo_skills.utils import get_logger_name, setup_logging, validate_wandb_project_name
@@ -192,10 +193,15 @@ def summarize_results(
         "nemo-skills",
         help="Name of the wandb project to sync results to.",
     ),
+    metrics_kwargs: str = typer.Option(
+        "",
+        help="Additional kwargs to pass to the metrics calculator. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
 ):
     """Summarize results of an evaluation job."""
     setup_logging(disable_hydra_logs=False, log_level=logging.WARNING if not debug else logging.DEBUG)
 
+    metrics_kwargs = parse_kwargs(metrics_kwargs)
     if " " in str(benchmarks):
         raise ValueError("benchmarks should be separated with commas")
 
@@ -282,7 +288,12 @@ def summarize_results(
             continue
 
         if metric_type is not None:
-            metrics_calculator = ComputeMetrics(benchmark, metric_type=metric_type, max_samples=max_samples)
+            metrics_calculator = ComputeMetrics(
+                benchmark,
+                metric_type=metric_type,
+                max_samples=max_samples,
+                metrics_kwargs=metrics_kwargs,
+            )
         else:
             metrics_calculator = ComputeMetrics(
                 benchmark,
@@ -292,6 +303,7 @@ def summarize_results(
                 extra_datasets_type=extra_datasets_type,
                 max_samples=max_samples,
                 max_seq_len=max_seq_len,
+                metrics_kwargs=metrics_kwargs,
             )
 
         metrics = {}
