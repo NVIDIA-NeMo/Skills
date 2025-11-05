@@ -70,6 +70,7 @@ nav:
     - Training (NeMo-RL): pipelines/training.md
     - Training (verl): pipelines/training-verl.md
     - Arbitrary commands: pipelines/run-cmd.md
+    - Starting a Server: pipelines/start-server.md
   - Evaluation:
     - evaluation/index.md
     - evaluation/natural-math.md
