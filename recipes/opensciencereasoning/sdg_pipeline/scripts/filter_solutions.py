@@ -30,7 +30,7 @@ def record_passes_filters(
     gen_pass_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     difficulty_pass_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     majority_voting_agreement_rate_bounds: Optional[Sequence[Optional[float]]] = None,
-    is_ground_truth_answer_present: bool = False,
+    only_samples_with_ground_truth_answer: bool = False,
     metadata_filters: Optional[Dict[str, List[str]]] = None,
 ) -> bool:
     """Return True when a record satisfies correctness, pass-rate, and metadata constraints."""
@@ -52,7 +52,7 @@ def record_passes_filters(
         or majority_voting_agreement_rate_bounds[1] < record["majority_voting_agreement_rate"]
     ):
         return False
-    if is_ground_truth_answer_present and not record["expected_answer"]:
+    if only_samples_with_ground_truth_answer and not record["expected_answer"]:
         return False
 
     for field, allowed in metadata_filters.items():
@@ -93,9 +93,9 @@ def parse_args() -> argparse.Namespace:
         help="JSON array [min, max] (min exclusive, max inclusive) for majority_voting_agreement_rate",
     )
     parser.add_argument(
-        "--is_ground_truth_answer_present",
+        "--only_samples_with_ground_truth_answer",
         action="store_true",
-        help="Keep only samples whose ground truth answer is present",
+        help="Keep only samples that have a ground truth answer",
     )
     parser.add_argument(
         "--metadata_values",
@@ -137,7 +137,7 @@ def main() -> None:
                 gen_pass_rate_bounds=args.generation_model_pass_rate_range,
                 difficulty_pass_rate_bounds=args.difficulty_model_pass_rate_range,
                 majority_voting_agreement_rate_bounds=args.majority_voting_agreement_rate_range,
-                is_ground_truth_answer_present=args.is_ground_truth_answer_present,
+                only_samples_with_ground_truth_answer=args.only_samples_with_ground_truth_answer,
                 metadata_filters=metadata_filters,
             ):
                 fout.write(json.dumps(record, ensure_ascii=False) + "\n")

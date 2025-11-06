@@ -34,6 +34,37 @@ def get_stage_expname(base_expname: str, stage_name: str, suffix: str):
     return f"{base_expname}-{stage_name.replace('_', '-')}-{suffix}"
 
 
+def resolve_config_path(raw_path: str, search_dir: Path) -> Path:
+    """Resolve a config reference to an absolute path.
+
+    Accepts absolute paths, repo-relative paths, or bare names (optionally without
+    the `.yaml`/`.yml` suffix). Bare names are looked up inside ``search_dir``.
+    """
+
+    candidate = Path(raw_path)
+
+    def expand_options(path: Path):
+        if path.suffix:
+            yield path
+        else:
+            yield path
+            yield path.with_suffix(".yaml")
+            yield path.with_suffix(".yml")
+
+    search_locations = []
+    if candidate.is_absolute():
+        search_locations.extend(expand_options(candidate))
+    else:
+        search_locations.extend(expand_options(search_dir / candidate))
+        search_locations.extend(expand_options(Path.cwd() / candidate))
+
+    for option in search_locations:
+        if option.exists():
+            return option.resolve()
+
+    raise FileNotFoundError(f"Could not resolve config path '{raw_path}'.")
+
+
 def filter_problems(cluster: str, expname: str, run_after: str, stage_config: dict, **kwargs):
     """The script performs several cleanup steps on the incoming JSONL:
     it renames user-provided keys to the canonical `problem`/`expected_answer`/`id`,
@@ -433,7 +464,7 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
     generation_model_pass_rate_range = stage_config.get("generation_model_pass_rate_range", None)
     difficulty_model_pass_rate_range = stage_config.get("difficulty_model_pass_rate_range", None)
     metadata_values = stage_config.get("metadata_values", None)
-    is_ground_truth_answer_present = stage_config.get("is_ground_truth_answer_present", False)
+    only_samples_with_ground_truth_answer = stage_config.get("only_samples_with_ground_truth_answer", False)
 
     generation_model_pass_rate_range_arg = (
         f"    --generation_model_pass_rate_range {shlex.quote(json.dumps(generation_model_pass_rate_range, ensure_ascii=False))} "
@@ -451,8 +482,8 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
         else ""
     )
     only_correct_arg = "    --only_correct_solutions " if only_correct_solutions else ""
-    is_ground_truth_answer_present_arg = (
-        "    --is_ground_truth_answer_present " if is_ground_truth_answer_present else ""
+    only_samples_with_ground_truth_answer_arg = (
+        "    --only_samples_with_ground_truth_answer " if only_samples_with_ground_truth_answer else ""
     )
     run_cmd(
         ctx=wrap_arguments(
@@ -463,7 +494,7 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
             f"{generation_model_pass_rate_range_arg} "
             f"{difficulty_model_pass_rate_range_arg} "
             f"{metadata_values_arg} "
-            f"{is_ground_truth_answer_present_arg} "
+            f"{only_samples_with_ground_truth_answer_arg} "
         ),
         cluster=cluster,
         exclusive=False,
@@ -583,13 +614,15 @@ stages_map = {
 
 
 if __name__ == "__main__":
-    config_dir = Path(__file__).parents[1] / "configs" / "solution_sdg"
+    configs_root = Path(__file__).parents[1] / "configs"
+    config_dir = configs_root / "pipelines"
+    settings_dir = configs_root / "settings"
 
     parser = argparse.ArgumentParser(description="ScienceReasoning data generation pipeline")
     parser.add_argument(
-        "--config_path",
+        "--config",
         type=str,
-        default=f"{config_dir}/gpt-oss-seed-data_without_gt.yaml",
+        default=str(config_dir / "base.yaml"),
         help="Path to the config file.",
     )
     parser.add_argument(
@@ -598,15 +631,43 @@ if __name__ == "__main__":
         default=None,
         help="Comma-separated list of stages to run. If not specified, runs all stages from the config.",
     )
+    parser.add_argument(
+        "--settings",
+        type=str,
+        nargs="*",
+        default=None,
+        help=(
+            "Optional list of override config files to merge on top of the base config. "
+            "Accepts absolute paths, relative paths, or filenames located under the default settings directory."
+        ),
+    )
 
     args = parser.parse_args()
 
-    config_path = args.config_path
-    config = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True, structured_config_mode="dict")
+    config_path = resolve_config_path(args.config, config_dir)
+    base_config = OmegaConf.load(config_path)
 
-    if "pipeline_stages" not in config or not config["pipeline_stages"]:
+    override_paths = []
+    if args.settings:
+        for entry in args.settings:
+            for piece in entry.split(","):
+                cleaned = piece.strip()
+                if cleaned:
+                    override_paths.append(resolve_config_path(cleaned, settings_dir))
+
+    merged_config = base_config
+    if override_paths:
+        override_confs = [OmegaConf.load(path) for path in override_paths]
+        print("Applying settings overrides:")
+        for path in override_paths:
+            print(f"  - {path}")
+        merged_config = OmegaConf.merge(base_config, *override_confs)
+
+    config_data = OmegaConf.to_container(merged_config, resolve=True, structured_config_mode="dict")
+
+    if "pipeline_stages" not in config_data or not config_data["pipeline_stages"]:
         raise ValueError(f"Config file {config_path} must define a non-empty 'pipeline_stages' list.")
-    full_stage_sequence = config["pipeline_stages"]
+    full_stage_sequence = config_data["pipeline_stages"]
 
     if args.stages:
         # Stages specified via command line
@@ -627,16 +688,21 @@ if __name__ == "__main__":
             )
 
     # --- Common parameters ---
-    base_output_dir = config["base_output_dir"]
-    suffix = config.get("suffix", Path(config_path).stem)
-    cluster = config["cluster"]
-    expname_base = config["expname"]
+    base_output_dir = config_data["base_output_dir"]
+    suffix = config_data.get("suffix", Path(config_path).stem)
+    cluster = config_data["cluster"]
+    expname_base = config_data["expname"]
 
     # --- Run selected stages ---
     for stage in stages_to_run:
+        stage_config = config_data.get("stages", {}).get(stage, {})
+
+        if not stage_config.get("enabled", True):
+            print(f"\n--- Skipping stage (disabled): {stage} ---")
+            continue
+
         print(f"\n--- Running stage: {stage} ---")
         stage_func = stages_map[stage]
-        stage_config = config.get("stages", {}).get(stage, {})
 
         current_expname = get_stage_expname(expname_base, stage, suffix)
 
@@ -644,7 +710,7 @@ if __name__ == "__main__":
         if dep_stages is not None:
             dependencies = [get_stage_expname(expname_base, dep_stage, suffix) for dep_stage in dep_stages]
         else:
-            dependencies = config.get("initial_dependency", None)
+            dependencies = config_data.get("initial_dependency", None)
 
         print(f"Dependency for '{stage}': {dependencies}")
 

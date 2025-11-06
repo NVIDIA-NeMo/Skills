@@ -1,21 +1,75 @@
 # OpenScienceReasoning Pipeline Quickstart
-
 This folder provides templates, prompts, and scripts for the automated pipeline that powers the OpenScience data refresh. The pipeline launches distributed jobs through [`pipeline/sdg_pipeline.py`](pipeline/sdg_pipeline.py) and covers the full lifecycle: solution generation, ground-truth extraction, difficulty scoring, and topic labeling.
 
-## Pipeline Templates
-- [`gpt-oss-seed-data_with_gt.yaml`](configs/gpt-oss-seed-data_with_gt.yaml)
-- [`gpt-oss-seed-data_without_gt.yaml`](configs/gpt-oss-seed-data_without_gt.yaml)
-- [`gpt-oss_with_gt_with_tool.yaml`](configs/gpt-oss_with_gt_with_tool.yaml)
-- [`gpt-oss_with_gt_no_tool.yaml`](configs/gpt-oss_with_gt_no_tool.yaml)
-- [`gpt-oss_without_gt_with_tool.yaml`](configs/gpt-oss_without_gt_with_tool.yaml)
-- [`gpt-oss_without_gt_no_tool.yaml`](configs/gpt-oss_without_gt_no_tool.yaml)
-- [`gpt-oss_with_gt_with_tool_only_solutions.yaml`](configs/gpt-oss_with_gt_with_tool_only_solutions.yaml)
+## Config Layout
+- **Base pipeline**: [`configs/pipelines/base.yaml`](configs/pipelines/base.yaml) describes the default open-question flow with ground-truth answers available, no tool usage, and the boxed prompt.
+- **Settings overrides** (under [`configs/settings/`](configs/settings/)) layer small, reusable tweaks. Reference them with or without the `.yaml` suffix:
+  - `without_gt` — route the pipeline through solution generation + majority voting before difficulty estimation.
+  - `python_enabled` — enable python-tool prompting and sandbox execution.
+  - `mcq` — switch to the [`eval/aai/mcq-4choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-4choices.yaml) prompt for generation.
+  - `seed_data` — trim the pipeline to the metadata-only flow used for seed datasets with GT answers.
+  - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for reasoning above existing seed data.
 
-The templates differ along two axes:
-- **Seed vs. SFT data**: SFT recipes add supervised fine-tuning preparation (input/output records and multi-turn message format).
-- **With vs. without GT answers**: When answers are missing the pipeline schedules solution generation and majority voting to recover them before downstream stages.
-- **With vs. without tool use**: When tool use is enabled, the generation stages are configured to use the tool-augmented model and prompts (currently only python tool is supported).
-- **Only solutions vs. full pipeline**: The `only_solutions` variant runs only the solution generation stage, skipping contamination checks, difficulty estimation, and topic labeling. It assumes the input data is already clean and properly formatted.
+Launch the pipeline by selecting the base config once and stacking the overrides you need:
+
+```bash
+python pipeline/sdg_pipeline.py \
+  --config base \
+  --settings without_gt python_enabled
+```
+Settings are merged in the order you pass them; later entries win when they touch the same keys (for example, supply `without_gt` before `python_enabled`). You can also point to custom override files by adding their absolute paths to the `--settings` list.
+
+## Usage Examples
+- **With GT, no tools, openq** (default):
+
+  ```bash
+  python pipeline/sdg_pipeline.py
+  ```
+
+- **Seed data (metadata only)**:
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings seed_data
+  ```
+
+- **Seed data plus answer recovery** (run `without_gt` after `seed_data` to re-enable generation):
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings seed_data without_gt
+  ```
+
+- **Without GT, recover answers via generation**:
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings without_gt
+  ```
+
+- **Tool-enhanced generations** (stack on top of any of the above):
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings without_gt python_enabled
+  ```
+
+- **MCQ flavour** (add to whichever GT/tool combination applies):
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings mcq
+  ```
+
+- **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings without_gt python_enabled seed_data_postprocess
+  ```
+
+Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
+
 
 ## Seed Data Flow
 - Deduplicate and clean incoming problems via [`filter_problems`](scripts/filter_problems.py).
@@ -58,9 +112,7 @@ The templates differ along two axes:
 5. Enforces MCQ option counts (`num_options`), which currently support choices formatted as `{LETTER})`, and optional formatting checks (`option_format_regex`).
 6. Moves any extra keys into `metadata` to keep downstream fields consistent.
 
-## Editing Templates Safely
-- Always schedule `filter_problems` first. Input must be JSONL with `problem` (required), plus optional GT answer and id fields. To replace the provided GT answer with the majority-voted result, set `remove_expected_answer: true`. Any additional keys are automatically preserved inside `metadata`.
+## How to use
+- It is highly recommended to always schedule `filter_problems` first (except when running `seed_data_postprocess`). It prepares the data in the format expected by the pipeline. Input must be JSONL with `problem` (required), plus optional GT answer and id fields. Any additional keys are automatically preserved inside `metadata`. To replace the provided GT answer with the majority-voted result, set `remove_expected_answer: true`.
 - Ensure questions are fully formatted before ingest (e.g., multiple-choice options included).
-- When GT answers are missing, include `generate_solutions` before `difficulty_estimation` so the majority-voted GT is available.
-- `difficulty_estimation` currently supports only boxed answer extraction.
 - You can replace [`scripts/filter_solutions.py`](scripts/filter_solutions.py) with a project-specific filter while keeping its CLI contract.

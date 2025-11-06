@@ -1,0 +1,27 @@
+# Trim the pipeline for datasets that already include answers and only need metadata enrichment.
+
+directories:
+  step-4-aggregate: ${base_output_dir}/solution-sdg/step-4-aggregate
+  step-5-filter-solutions: ${base_output_dir}/solution-sdg/step-5-filter-solutions
+
+stages:
+  generate_solutions:
+    enabled: False
+  prepare_for_sft:
+    enabled: False
+  convert_to_messages_format:
+    enabled: False
+  bucket:
+    enabled: False
+
+  filter_problems:
+    remove_expected_answer: False
+  aggregate:
+    solutions_path: null
+    dependencies:
+      - topics_labeling
+      - difficulty_estimation
+  filter_solutions:
+    input_file: ${directories.step-4-aggregate}/final_result.jsonl
+    output_dir: ${directories.step-5-filter-solutions}
+    only_correct_solutions: False
