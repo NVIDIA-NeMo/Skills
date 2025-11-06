@@ -26,7 +26,7 @@ from nemo_skills.dataset.utils import get_lean4_header
 class ProofBuildConfig:
     """Configuration for building proofs from generations."""
 
-    final_answer_key: str = "**FINAL ANSWER**"
+    final_answer_key: str | None = None
     extract_code_mode: str = "last"  # "first" or "last"
     restate_formal_statement: bool = True
     strip_theorem_from_proof: bool = True

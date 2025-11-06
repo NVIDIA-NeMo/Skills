@@ -100,11 +100,11 @@ def extract_code_block(text: str, languages=None, extract_code_mode: str = "last
 
 def clean_formal_generation(
     generation: str,
-    final_answer_key: str = "**FINAL ANSWER**",
+    final_answer_key: str | None = None,
     extract_code_mode: str = "last",
 ) -> str:
-    # Extract part after **FINAL ANSWER** if present
-    if final_answer_key in generation:
+    # Extract part after final_answer_key if present and configured
+    if final_answer_key and final_answer_key in generation:
         generation = generation.split(final_answer_key, 1)[1].strip()
 
     languages = ["lean4", "lean3", "lean", ""]
