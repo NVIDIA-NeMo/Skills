@@ -50,7 +50,8 @@ def aggregate_samples(files: Iterable[Path]) -> List[Dict]:
         with open(file_path) as fin:
             for line in fin:
                 sample = json.loads(line)
-
+                if "_full_generation" in sample:
+                    sample["generation"] = sample.pop("_full_generation")
                 sample = {
                     key: value
                     for key, value in sample.items()
