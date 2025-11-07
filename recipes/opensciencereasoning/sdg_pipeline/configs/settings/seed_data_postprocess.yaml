@@ -9,11 +9,17 @@ stages:
     enabled: False
   difficulty_estimation:
     enabled: False
-  aggregate:
-    enabled: False
   generate_solutions:
     generation_kwargs:
       args:
         input_file: ${input_file}
     dependencies:
       - initial_dependency
+  aggregate:
+    metadata_files:
+      - ${input_file}
+  filter_solutions:
+    input_file: ${input_file}
+    only_correct_solutions: True
+    is_ground_truth_answer_present: True
+    metadata_values: null

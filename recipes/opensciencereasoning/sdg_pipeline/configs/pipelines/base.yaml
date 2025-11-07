@@ -63,7 +63,7 @@ stages:
       - ["mmlu", "test"]
       - ["mmlu-pro", "test"]
       - ["gpqa", "diamond"]
-    model: Qwen/Qwen2.5-32B-Instruct
+    model: /hf_models/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 1
     server_nodes: 1
@@ -75,7 +75,7 @@ stages:
   topics_labeling:
     output_dir: ${directories.step-2-topics-labeling}
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-    model: Qwen/Qwen2.5-32B-Instruct
+    model: /hf_models/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 8
     server_nodes: 1
@@ -118,7 +118,7 @@ stages:
 
     generation_kwargs:
       args:
-        model: Qwen/Qwen3-30B-A3B-Instruct-2507
+        model: //hf_models/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
         server_nodes: 2
@@ -131,7 +131,7 @@ stages:
 
     judge_kwargs:
       args:
-        model: Qwen/Qwen2.5-32B-Instruct
+        model: /hf_models/Qwen2.5-32B-Instruct
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -160,7 +160,7 @@ stages:
     generation_kwargs:
       args:
         input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-        model: openai/gpt-oss-120b
+        model: /hf_models/gpt-oss-120b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -187,7 +187,7 @@ stages:
       ctx_args: >-
         ++prompt_config=judge/general-judge
       args:
-        model: Qwen/Qwen2.5-32B-Instruct
+        model: /hf_models/Qwen2.5-32B-Instruct
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -228,7 +228,7 @@ stages:
       ctx_args: >-
         ${stages.generate_solutions.prompt_config}
         ${stages.generate_solutions.code_tags}
-        ++tokenizer=openai/gpt-oss-120b
+        ++tokenizer=/hf_models/gpt-oss-120b
         ++filters.drop_multi_boxed=false
         ++filters.remove_len_outlier_problems=false
         ++filters.remove_len_outlier_solutions=false
@@ -250,7 +250,7 @@ stages:
   bucket:
     input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
     output_dir: ${directories.step-9-bucket}
-    tokenizer_path: Qwen/Qwen2.5-32B-Instruct
+    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
     bucket_sizes:
       - 16000
       - 32000
