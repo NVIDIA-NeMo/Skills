@@ -20,8 +20,8 @@ pipeline_stages:
   - filter_problems             # Filter problems based on format
   - decontaminate               # Decontaminate problems
   - topics_labeling             # Label topics and subtopics
-  - difficulty_estimation       # Estimate difficulty of problems
   - generate_solutions          # Generate solutions
+  - difficulty_estimation       # Estimate difficulty of problems
   - aggregate                   # Aggregate all the metadata into a single file
   - filter_solutions            # Filter solutions
   - prepare_for_sft             # Prepare for SFT
@@ -118,7 +118,7 @@ stages:
 
     generation_kwargs:
       args:
-        model: Qwen/Qwen3-30B-A3B
+        model: Qwen/Qwen3-30B-A3B-Instruct-2507
         server_type: vllm
         server_gpus: 8
         server_nodes: 2
@@ -196,7 +196,7 @@ stages:
         num_chunks: 5
 
     dependencies:
-      - difficulty_estimation
+      - decontaminate
 
   aggregate:
     output_dir: ${directories.step-5-aggregate}

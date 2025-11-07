@@ -7,6 +7,7 @@ directories:
 stages:
   generate_solutions:
     enabled: False
+    make_judgement: False
   prepare_for_sft:
     enabled: False
   convert_to_messages_format:
@@ -14,9 +15,8 @@ stages:
   bucket:
     enabled: False
 
-  filter_problems:
-    remove_expected_answer: False
   aggregate:
+    output_dir: ${directories.step-4-aggregate}
     solutions_path: null
     dependencies:
       - topics_labeling

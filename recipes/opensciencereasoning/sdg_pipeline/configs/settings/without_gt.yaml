@@ -5,8 +5,6 @@ directories:
   step-4-difficulty-estimation: ${base_output_dir}/solution-sdg/step-4-difficulty-estimation
 
 stages:
-  filter_problems:
-    remove_expected_answer: True
   generate_solutions:
     enabled: True
     output_dir: ${directories.step-3-generate-solutions}

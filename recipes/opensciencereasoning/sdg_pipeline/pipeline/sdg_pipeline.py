@@ -94,7 +94,7 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
         + (f" --num_options {stage_config.get('num_options', None)}" if stage_config.get("num_options") else "")
         + (f" --problem_field {problem_field}" if problem_field else "")
         + (f" --expected_answer_field {expected_answer_field}" if expected_answer_field else "")
-        + (f" --remove_expected_answer {remove_expected_answer}" if remove_expected_answer else "")
+        + (" --remove_expected_answer " if remove_expected_answer else "")
         + (f" --id_field {id_field}" if id_field else "")
         + option_format_regex
     )
@@ -301,7 +301,7 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     predicted_answer_regex_args = (
         f"    --predicted_answer_regex '{predicted_answer_regex}' " if predicted_answer_regex else ""
     )
-    majority_voting_args = f"    --majority_voting '{make_majority_voting}' " if make_majority_voting else ""
+    majority_voting_args = "    --majority_voting " if make_majority_voting else ""
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/extract_predictions.py "
