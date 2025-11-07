@@ -95,6 +95,11 @@ See [nemo_skills/inference/generate.py](https://github.com/NVIDIA-NeMo/Skills/bl
     Before running the generation we always print the first prompt that we are about to send to an LLM.
     It's a good idea to inspect that and make sure it's formatted properly.
 
+!!! tip "Passing Main Arguments with Config Files"
+
+    For parameters that are difficult to escape on the command line (like `end_reasoning_string='</think>'`),
+    you can use YAML config files instead. See [Passing Main Arguments with Config Files](index.md###passing-main-arguments-with-config-files) for details.
+
 
 ## Sampling multiple generations
 
@@ -465,3 +470,5 @@ We support three methods for automatic trimming of generation budget or context:
         ++server.enable_soft_fail=True
         ++server.context_limit_retry_strategy=reduce_prompt_from_end
     ```
+
+

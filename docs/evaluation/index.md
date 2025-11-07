@@ -173,6 +173,12 @@ code execution timeout for scicode benchmark
     ++eval_config.timeout=60
 ```
 
+!!! tip "Passing Main Arguments with Config Files"
+
+    For parameters that are difficult to escape on the command line (like `end_reasoning_string='</think>'`),
+    you can use YAML config files instead. See [Passing Main Arguments with Config Files](../pipelines/index.md###passing-main-arguments-with-config-files) for details.
+
+
 ## Using data on cluster
 
 Some benchmarks (e.g. ruler) have very large input datasets and it's inefficient to prepare them on a local machine and
