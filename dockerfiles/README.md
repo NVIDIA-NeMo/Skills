@@ -36,6 +36,4 @@ We directly use official `lmsysorg/sglang:v0.5.4` image.
 
 ## Building vllm image
 
-We directly use official `vllm/vllm-openai:v0.10.1.1` image.
-
-For arm64 we instead use `vllm/vllm-openai:v0.10.2` image.
+We directly use official `vllm/vllm-openai:v0.10.2` image.
