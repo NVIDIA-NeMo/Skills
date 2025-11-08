@@ -238,6 +238,7 @@ def test_prepare_and_eval_all_datasets():
         "human-eval",
         "human-eval-infilling",
         "mbpp",
+        "mmau-pro",
     }
 
     dataset_names = sorted(

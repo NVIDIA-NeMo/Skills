@@ -31,7 +31,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 # TODO: read this from init.py
-DATASETS_REQUIRE_DATA_DIR = ["ruler", "ioi24"]
+DATASETS_REQUIRE_DATA_DIR = ["ruler", "ioi24", "mmau-pro"]
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -71,6 +71,12 @@ def prepare_data(
         None,
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
+    skip_data_dir_check: bool = typer.Option(
+        False,
+        help="Some datasets require very large input files and we will fail with error if data_dir "
+        "is not specified (to avoid accidentally uploading them to cluster with every job). "
+        "If you're running things locally or have another reason to bypass this check, set this flag.",
+    ),
     sbatch_kwargs: str = typer.Option(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
@@ -84,12 +90,13 @@ def prepare_data(
     extra_arguments = f"{' '.join(ctx.args)}"
     command = f"python -m nemo_skills.dataset.prepare {extra_arguments}"
 
-    if not data_dir:
+    if not data_dir and not skip_data_dir_check:
         for dataset in DATASETS_REQUIRE_DATA_DIR:
             if dataset in extra_arguments:
                 raise ValueError(
-                    f"Dataset {dataset} contains very large input data and requires a data_dir to be specified. "
-                    "Please provide --data_dir argument."
+                    f"Dataset {dataset} contains very large input data and it's recommended to have a "
+                    "data_dir to be specified to avoid accidentally uploading large data on cluster with every job. "
+                    "Please provide --data_dir argument or set --skip_data_dir_check to bypass this safety check."
                 )
 
     if data_dir and cluster is None:

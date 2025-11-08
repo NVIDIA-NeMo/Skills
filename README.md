@@ -18,6 +18,7 @@ Here are some of the features we support:
     - [**Long-context**](https://nvidia-nemo.github.io/Skills/evaluation/long-context): e.g. [ruler](https://nvidia-nemo.github.io/Skills/evaluation/long-context/#ruler), [mrcr](https://nvidia-nemo.github.io/Skills/evaluation/long-context/#mrcr), [aalcr](https://nvidia-nemo.github.io/Skills/evaluation/long-context/#aalcr)
     - [**Tool-calling**](https://nvidia-nemo.github.io/Skills/evaluation/tool-calling): e.g. [bfcl_v3](https://nvidia-nemo.github.io/Skills/evaluation/tool-calling/#bfcl_v3)
     - [**Multilingual**](https://nvidia-nemo.github.io/Skills/evaluation/multilingual): e.g. [mmlu-prox](https://nvidia-nemo.github.io/Skills/evaluation/multilingual/#mmlu-prox), [FLORES-200](https://nvidia-nemo.github.io/Skills/evaluation/multilingual/#FLORES-200), [wmt24pp](https://nvidia-nemo.github.io/Skills/evaluation/multilingual/#wmt24pp)
+    - [**Speech & Audio**](https://nvidia-nemo.github.io/Skills/evaluation/speech-audio): e.g. [mmau-pro](https://nvidia-nemo.github.io/Skills/evaluation/speech-audio/#mmau-pro)
   - Easily parallelize each evaluation across many slurm jobs, self-host LLM judges, bring your own prompts or change benchmark configuration in any other way.
 - [Model training](https://nvidia-nemo.github.io/Skills/pipelines/training): Train models using [NeMo-RL](https://github.com/NVIDIA-NeMo/RL/) or [verl](https://github.com/volcengine/verl).
 

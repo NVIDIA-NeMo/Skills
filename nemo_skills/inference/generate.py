@@ -209,12 +209,6 @@ class GenerateSolutionsConfig:
 
     def _post_init_validate_server(self):
         if self.server["server_type"] == "megatron":
-            if self.tokenizer is None:
-                raise ValueError(
-                    "Megatron server doesn't support chat completions and we can't infer tokenizer from model name. "
-                    "Please provide it with an explicit `tokenizer` parameter."
-                )
-            self.inference.endpoint_type = EndpointType.text
             LOG.warning("Megatron inference is extremely slow. It's highly recommended to use other server types!")
 
     def _post_init_validate_params(self):

@@ -139,12 +139,15 @@ def get_server_command(
         else:
             prefix = "python "
         server_entrypoint = server_entrypoint or "tools/run_text_generation_server.py"
-        # similar to conversion, we don't hold scripts for megatron on our side
+        # Similar to conversion, we don't hold scripts for megatron on our side
         # and expect it to be in /opt/Megatron-LM in the container
+        import os
+
+        megatron_path = os.getenv("MEGATRON_PATH", "/opt/Megatron-LM")
         server_start_cmd = (
-            f"export PYTHONPATH=$PYTHONPATH:/opt/Megatron-LM && "
+            f"export PYTHONPATH=$PYTHONPATH:{megatron_path} && "
             f"export CUDA_DEVICE_MAX_CONNECTIONS=1 && "
-            f"cd /opt/Megatron-LM && "
+            f"cd {megatron_path} && "
             f"{prefix} {server_entrypoint} "
             f"    --load {model_path} "
             f"    --tensor-model-parallel-size {num_gpus} "

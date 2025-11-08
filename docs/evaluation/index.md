@@ -10,6 +10,7 @@ We support many popular benchmarks and it's easy to add new in the future. The f
 - [**Long-context**](./long-context.md): e.g. [ruler](./long-context.md#ruler), [mrcr](./long-context.md#mrcr)
 - [**Tool-calling**](./tool-calling.md): e.g. [bfcl_v3](./tool-calling.md#bfcl_v3)
 - [**Multilingual**](./multilingual.md): e.g. [mmlu-prox](./multilingual.md#mmlu-prox), [flores-200](./multilingual.md#FLORES-200), [wmt24pp](./multilingual.md#wmt24pp)
+- [**Speech & Audio**](./speech-audio.md): e.g. [mmau-pro](./speech-audio.md#mmau-pro)
 
 See [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset) where each folder is a benchmark we support.
 
