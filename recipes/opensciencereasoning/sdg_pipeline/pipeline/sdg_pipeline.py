@@ -641,6 +641,17 @@ if __name__ == "__main__":
             "Accepts absolute paths, relative paths, or filenames located under the default settings directory."
         ),
     )
+    parser.add_argument(
+        "--override",
+        type=str,
+        nargs="+",
+        default=None,
+        help=(
+            "Override config values using Hydra-style dotlist syntax. "
+            "Example: --override stages.convert_to_messages_format.enabled=false stages.bucket.enabled=false. "
+            "You can also separate multiple overrides with commas."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -662,6 +673,19 @@ if __name__ == "__main__":
         for path in override_paths:
             print(f"  - {path}")
         merged_config = OmegaConf.merge(base_config, *override_confs)
+
+    dotlist_overrides = []
+    if args.override:
+        for entry in args.override:
+            for piece in entry.split(","):
+                cleaned = piece.strip()
+                if cleaned:
+                    dotlist_overrides.append(cleaned)
+    if dotlist_overrides:
+        print("Applying CLI overrides:")
+        for item in dotlist_overrides:
+            print(f"  - {item}")
+        merged_config = OmegaConf.merge(merged_config, OmegaConf.from_dotlist(dotlist_overrides))
 
     config_data = OmegaConf.to_container(merged_config, resolve=True, structured_config_mode="dict")
 

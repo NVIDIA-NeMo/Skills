@@ -19,7 +19,7 @@ stages:
     metadata_files:
       - ${input_file}
   filter_solutions:
-    input_file: ${input_file}
     only_correct_solutions: True
     is_ground_truth_answer_present: True
+    difficulty_model_pass_rate_range: null
     metadata_values: null

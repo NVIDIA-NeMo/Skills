@@ -61,6 +61,15 @@ Settings are merged in the order you pass them; later entries win when they touc
     --settings mcq
   ```
 
+- **MCQ with custom prompt and regex via CLI overrides**:
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings mcq \
+    --override stages.generate_solutions.prompt_config=eval/aai/mcq-10choices \
+              stages.generate_solutions.predicted_answer_regex='Answer: ([A-J])(?![A-Za-z])'
+  ```
+
 - **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
 
   ```bash

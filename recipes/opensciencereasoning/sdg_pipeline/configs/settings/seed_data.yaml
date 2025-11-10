@@ -25,3 +25,4 @@ stages:
     input_file: ${directories.step-4-aggregate}/final_result.jsonl
     output_dir: ${directories.step-5-filter-solutions}
     only_correct_solutions: False
+    generation_model_pass_rate_range: null
