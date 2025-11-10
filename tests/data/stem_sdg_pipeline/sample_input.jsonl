@@ -7,4 +7,4 @@
 {"id": "sdg-7", "problem": "Integrate: ∫ 3x^2 dx.", "expected_answer": "x^3 + C", "subject": "calculus", "difficulty": "medium", "source": "unit-test"}
 {"id": "sdg-8", "problem": "Evaluate: 5!.", "expected_answer": "120", "subject": "combinatorics", "difficulty": "medium", "source": "unit-test"}
 {"id": "sdg-9", "problem": "What is the value of π to 2 decimal places?", "expected_answer": "3.14", "subject": "geometry", "difficulty": "easy", "source": "unit-test"}
-{"id": "sdg-10", "problem": "What is the square root of 144?", "expected_answer": "12", "subject": "mathematics", "difficulty": "easy", "source": "unit-test"}
+{"id": "sdg-10", "problem": "What is Newtons Law of Universal Gravitation?", "expected_answer": "Any two masses pull on each other with a force proportional to their masses and inversely proportional to the square of their distance", "subject": "mathematics", "difficulty": "easy", "source": "unit-test"}

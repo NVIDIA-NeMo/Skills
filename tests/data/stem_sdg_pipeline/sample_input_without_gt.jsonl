@@ -7,4 +7,4 @@
 {"id": "sdg-ngt-7", "problem": "Simplify: (x - 4)^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
 {"id": "sdg-ngt-8", "problem": "What is the derivative of e^x?", "subject": "calculus", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
 {"id": "sdg-ngt-9", "problem": "What is the integral of 1/x dx?", "subject": "calculus", "difficulty": "medium", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
-{"id": "sdg-ngt-10", "problem": "Simplify: x^3 * x^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-10", "problem": "What is Newtons Law of Universal Gravitation?", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
