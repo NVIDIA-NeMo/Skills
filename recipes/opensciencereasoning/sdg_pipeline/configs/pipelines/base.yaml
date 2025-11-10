@@ -118,7 +118,7 @@ stages:
 
     generation_kwargs:
       args:
-        model: //hf_models/Qwen3-30B-A3B
+        model: /hf_models/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
         server_nodes: 2
