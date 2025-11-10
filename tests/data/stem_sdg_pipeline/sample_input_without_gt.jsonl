@@ -1,10 +1,10 @@
-{"id": "sdg-ngt-1", "problem": "What is the derivative of x^2?", "subject": "mathematics", "difficulty": "easy", "source": "unit-test"}
-{"id": "sdg-ngt-2", "problem": "Simplify the expression: (x + 2)(x - 2).", "subject": "algebra", "difficulty": "medium", "source": "unit-test"}
-{"id": "sdg-ngt-3", "problem": "Expand: (a + b)^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test"}
-{"id": "sdg-ngt-4", "problem": "What is the derivative of ln(x)?", "subject": "calculus", "difficulty": "medium", "source": "unit-test"}
-{"id": "sdg-ngt-5", "problem": "Solve for x: 3x + 7 = 1.", "subject": "algebra", "difficulty": "easy", "source": "unit-test"}
-{"id": "sdg-ngt-6", "problem": "Integrate: ∫ cos(x) dx.", "subject": "calculus", "difficulty": "medium", "source": "unit-test"}
-{"id": "sdg-ngt-7", "problem": "Simplify: (x - 4)^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test"}
-{"id": "sdg-ngt-8", "problem": "What is the derivative of e^x?", "subject": "calculus", "difficulty": "easy", "source": "unit-test"}
-{"id": "sdg-ngt-9", "problem": "What is the integral of 1/x dx?", "subject": "calculus", "difficulty": "medium", "source": "unit-test"}
-{"id": "sdg-ngt-10", "problem": "Simplify: x^3 * x^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test"}
+{"id": "sdg-ngt-1", "problem": "What is the derivative of x^2?", "subject": "mathematics", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-2", "problem": "Simplify the expression: (x + 2)(x - 2).", "subject": "algebra", "difficulty": "medium", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-3", "problem": "Expand: (a + b)^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-4", "problem": "What is the derivative of ln(x)?", "subject": "calculus", "difficulty": "medium", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-5", "problem": "Solve for x: 3x + 7 = 1.", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-6", "problem": "Integrate: ∫ cos(x) dx.", "subject": "calculus", "difficulty": "medium", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-7", "problem": "Simplify: (x - 4)^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-8", "problem": "What is the derivative of e^x?", "subject": "calculus", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-9", "problem": "What is the integral of 1/x dx?", "subject": "calculus", "difficulty": "medium", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}
+{"id": "sdg-ngt-10", "problem": "Simplify: x^3 * x^2.", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "answer_regex": "aorotmkdmceokc"}

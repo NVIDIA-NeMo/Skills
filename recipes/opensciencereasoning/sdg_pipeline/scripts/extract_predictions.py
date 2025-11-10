@@ -37,6 +37,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional regular expression to extract the predicted answer. If provided, the first capturing group is used.",
     )
     parser.add_argument(
+        "--predicted_answer_regex_field",
+        default=None,
+        help="Optional field in the input file to extract the predicted answer regex. If provided, will use the field to extract the predicted answer regex.",
+    )
+    parser.add_argument(
         "--majority_voting",
         action="store_true",
         help="If set, compute majority voting per problem to fill expected_answer and majority_voting_rate.",
@@ -47,6 +52,7 @@ def parse_args() -> argparse.Namespace:
 def collect_predictions(
     input_dir: Path,
     predicted_answer_regex: str | None,
+    predicted_answer_regex_field: str | None,
 ) -> tuple[Dict[Path, List[dict]], DefaultDict[str, Counter], DefaultDict[str, int]]:
     """Load generation files, extract predictions, and tally answers per problem.
 
@@ -67,8 +73,10 @@ def collect_predictions(
                 sample = json.loads(line)
                 predicted_answer = extract_answer(
                     sample["generation"],
-                    extract_from_boxed=False if predicted_answer_regex else True,
-                    extract_regex=predicted_answer_regex,
+                    extract_from_boxed=False if predicted_answer_regex or predicted_answer_regex_field else True,
+                    extract_regex=predicted_answer_regex
+                    if predicted_answer_regex
+                    else sample["metadata"][predicted_answer_regex_field],
                 )
                 sample["predicted_answer"] = predicted_answer
                 samples.append(sample)
@@ -86,6 +94,9 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+    if args.predicted_answer_regex and args.predicted_answer_regex_field:
+        raise ValueError("Only one of --predicted_answer_regex or --predicted_answer_regex_field can be provided.")
+
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
 
@@ -94,7 +105,9 @@ def main() -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    file_samples, answer_counts, totals = collect_predictions(input_dir, args.predicted_answer_regex)
+    file_samples, answer_counts, totals = collect_predictions(
+        input_dir, args.predicted_answer_regex, args.predicted_answer_regex_field
+    )
     if not file_samples:
         LOG.warning("No .jsonl files found inside %s", input_dir)
         return

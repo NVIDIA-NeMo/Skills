@@ -279,6 +279,7 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     make_majority_voting = stage_config.get("make_majority_voting", None)
     make_judgement = stage_config.get("make_judgement", None)
     predicted_answer_regex = stage_config.get("predicted_answer_regex", None)
+    predicted_answer_regex_field = stage_config.get("predicted_answer_regex_field", None)
 
     generation_kwargs = stage_config.get("generation_kwargs", {})
     judge_kwargs = stage_config.get("judge_kwargs", {})
@@ -301,6 +302,9 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     predicted_answer_regex_args = (
         f"    --predicted_answer_regex '{predicted_answer_regex}' " if predicted_answer_regex else ""
     )
+    predicted_answer_regex_field_args = (
+        f"    --predicted_answer_regex_field '{predicted_answer_regex_field}' " if predicted_answer_regex_field else ""
+    )
     majority_voting_args = "    --majority_voting " if make_majority_voting else ""
     run_cmd(
         ctx=wrap_arguments(
@@ -308,6 +312,7 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
             f"    --input_dir '{output_dir}/generation' "
             f"    --output_dir '{generation_dir}' "
             f"{predicted_answer_regex_args} "
+            f"{predicted_answer_regex_field_args} "
             f"{majority_voting_args} "
         ),
         cluster=cluster,

@@ -6,7 +6,8 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
 - **Settings overrides** (under [`configs/settings/`](configs/settings/)) layer small, reusable tweaks. Reference them with or without the `.yaml` suffix:
   - `without_gt` — route the pipeline through solution generation + majority voting before difficulty estimation.
   - `python_enabled` — enable python-tool prompting and sandbox execution.
-  - `mcq` — switch to the [`eval/aai/mcq-4choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-4choices.yaml) prompt for generation.
+  - `mcq_4_options` — switch to the [`eval/aai/mcq-4choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-4choices.yaml) prompt for generation.
+  - `mcq_10_options` — switch to the [`eval/aai/mcq-10choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-10choices.yaml) prompt for generation.
   - `seed_data` — trim the pipeline to the metadata-only flow used for seed datasets with GT answers.
   - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for reasoning above existing seed data.
 
@@ -58,16 +59,15 @@ Settings are merged in the order you pass them; later entries win when they touc
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings mcq
+    --settings mcq_4_options
   ```
 
 - **MCQ with custom prompt and regex via CLI overrides**:
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings mcq \
-    --override stages.generate_solutions.prompt_config=eval/aai/mcq-10choices \
-              stages.generate_solutions.predicted_answer_regex='Answer: ([A-J])(?![A-Za-z])'
+    --settings mcq_4_options \
+    --override stages.generate_solutions.predicted_answer_regex_field=answer_regex
   ```
 
 - **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.

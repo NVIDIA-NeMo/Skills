@@ -148,6 +148,7 @@ stages:
     make_majority_voting: False
     output_dir: ${directories.step-4-generate-solutions}
     predicted_answer_regex: null
+    predicted_answer_regex_field: null # if specified will use the field in the input file to extract the predicted answer regex
     make_judgement: True
 
     reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
