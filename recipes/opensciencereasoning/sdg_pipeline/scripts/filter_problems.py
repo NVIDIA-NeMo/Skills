@@ -104,11 +104,13 @@ def process_file(
     deduplicate: bool = False,
     dataset_name: str = None,
     num_options: int | None = None,
+    num_options_field: str = None,
     option_format_regex: str = None,
     problem_field: str = "problem",
     expected_answer_field: str = "expected_answer",
     id_field: str = "id",
     remove_expected_answer: bool = False,
+    problem_template: str = None,
 ):
     input_file = Path(input_file)
     output_file = Path(output_file)
@@ -138,7 +140,9 @@ def process_file(
                 (expected_answer_field, "expected_answer"),
                 (id_field, "id"),
             ]:
-                if current_key in obj and new_key != current_key:
+                if new_key == "problem" and problem_template:
+                    obj[new_key] = problem_template.format(**obj)
+                elif current_key in obj and new_key != current_key:
                     obj[new_key] = obj[current_key]
                     del obj[current_key]
 
@@ -166,6 +170,9 @@ def process_file(
             if remove_images and contains_image(problem):
                 dropped += 1
                 continue
+
+            if num_options_field is not None:
+                num_options = obj[num_options_field]
 
             # filter by number of options
             if num_options is not None:
@@ -216,6 +223,12 @@ if __name__ == "__main__":
         "--dataset_name", type=str, help="Dataset name (optional). If not provided, derived from filename"
     )
     parser.add_argument("--num_options", type=int, default=None, help="Filter by number of options")
+    parser.add_argument(
+        "--num_options_field",
+        type=str,
+        default=None,
+        help="Field in the JSONL file that contains the number of options",
+    )
     parser.add_argument("--remove_images", action="store_true", help="Remove images from problems")
     parser.add_argument("--option_format_regex", type=str, help="Filter by option format regex (e.g. '^[A-Z]\\)')")
     parser.add_argument("--problem_field", type=str, help="Field in the JSONL file that contains the problem")
@@ -224,6 +237,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--remove_expected_answer", action="store_true", help="Remove expected answer from samples")
     parser.add_argument("--id_field", type=str, help="Field in the JSONL file that contains the id")
+    parser.add_argument("--problem_template", type=str, help="Template for the problem creation")
 
     args = parser.parse_args()
 
@@ -238,4 +252,5 @@ if __name__ == "__main__":
         expected_answer_field=args.expected_answer_field,
         id_field=args.id_field,
         remove_expected_answer=args.remove_expected_answer,
+        problem_template=args.problem_template,
     )

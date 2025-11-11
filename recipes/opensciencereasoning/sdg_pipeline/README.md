@@ -10,6 +10,7 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - `mcq_10_options` — switch to the [`eval/aai/mcq-10choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-10choices.yaml) prompt for generation.
   - `seed_data` — trim the pipeline to the metadata-only flow used for seed datasets with GT answers.
   - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for reasoning above existing seed data.
+  - `multiple_prompts` - allow the usage of multiple prompts for the generation.
 
 Launch the pipeline by selecting the base config once and stacking the overrides you need:
 
@@ -41,40 +42,19 @@ Settings are merged in the order you pass them; later entries win when they touc
     --settings seed_data without_gt
   ```
 
-- **Without GT, recover answers via generation**:
+- **Multiple prompts with custom problem template via CLI overrides**:
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings without_gt
-  ```
-
-- **Tool-enhanced generations** (stack on top of any of the above):
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings without_gt python_enabled
-  ```
-
-- **MCQ flavour** (add to whichever GT/tool combination applies):
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings mcq_4_options
-  ```
-
-- **MCQ with custom prompt and regex via CLI overrides**:
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings mcq_4_options \
-    --override stages.generate_solutions.predicted_answer_regex_field=answer_regex
+    --settings multiple_prompts \
+    --override stages.filter_problems.problem_template='{problem}'
   ```
 
 - **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings without_gt python_enabled seed_data_postprocess
+    --settings seed_data_postprocess without_gt python_enabled
   ```
 
 Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.

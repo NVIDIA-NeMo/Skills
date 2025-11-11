@@ -83,6 +83,7 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
     expected_answer_field = stage_config.get("expected_answer_field", None)
     remove_expected_answer = stage_config.get("remove_expected_answer", None)
     id_field = stage_config.get("id_field", None)
+    problem_template = stage_config.get("problem_template", None)
 
     cmd = (
         f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/filter_problems.py "
@@ -92,10 +93,16 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
         + (" --remove_images" if stage_config.get("remove_images", False) else "")
         + (f" --dataset_name {stage_config.get('dataset_name', None)}" if stage_config.get("dataset_name") else "")
         + (f" --num_options {stage_config.get('num_options', None)}" if stage_config.get("num_options") else "")
+        + (
+            f" --num_options_field {stage_config.get('num_options_field', None)}"
+            if stage_config.get("num_options_field")
+            else ""
+        )
         + (f" --problem_field {problem_field}" if problem_field else "")
         + (f" --expected_answer_field {expected_answer_field}" if expected_answer_field else "")
         + (" --remove_expected_answer " if remove_expected_answer else "")
         + (f" --id_field {id_field}" if id_field else "")
+        + (f" --problem_template '{problem_template}' " if problem_template else "")
         + option_format_regex
     )
 

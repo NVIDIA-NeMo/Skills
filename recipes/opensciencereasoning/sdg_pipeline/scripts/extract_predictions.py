@@ -71,12 +71,16 @@ def collect_predictions(
         with open(file_path) as fin:
             for line in fin:
                 sample = json.loads(line)
+                extract_from_boxed = True
+                if predicted_answer_regex_field:
+                    extract_from_boxed = sample["metadata"].get("extract_from_boxed", False)
+                    predicted_answer_regex = sample["metadata"]["predicted_answer_regex_field"]
+                elif predicted_answer_regex:
+                    extract_from_boxed = False
                 predicted_answer = extract_answer(
                     sample["generation"],
-                    extract_from_boxed=False if predicted_answer_regex or predicted_answer_regex_field else True,
-                    extract_regex=predicted_answer_regex
-                    if predicted_answer_regex
-                    else sample["metadata"][predicted_answer_regex_field],
+                    extract_from_boxed=extract_from_boxed,
+                    extract_regex=predicted_answer_regex,
                 )
                 sample["predicted_answer"] = predicted_answer
                 samples.append(sample)
