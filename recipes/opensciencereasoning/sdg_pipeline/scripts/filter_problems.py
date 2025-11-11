@@ -172,7 +172,7 @@ def process_file(
                 continue
 
             if num_options_field is not None:
-                num_options = obj[num_options_field]
+                num_options = obj.get(num_options_field, None)
 
             # filter by number of options
             if num_options is not None:
