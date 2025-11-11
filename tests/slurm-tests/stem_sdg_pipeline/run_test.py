@@ -37,6 +37,12 @@ PIPELINE_VARIANTS = [
         "dataset": DATASET_BASE_PATH,
     },
     {
+        "name": "seed_data",
+        "settings": ["seed_data"],
+        "suffix": "seed-data",
+        "dataset": DATASET_BASE_PATH,
+    },
+    {
         "name": "seed_data_postprocess",
         "settings": ["seed_data_postprocess"],
         "suffix": "seed-data-postprocess",
@@ -52,19 +58,13 @@ PIPELINE_VARIANTS = [
         "name": "seed_data_postprocess-mcq_4_options",
         "settings": ["seed_data_postprocess", "mcq_4_options"],
         "suffix": "seed_data_postprocess-mcq_4_options",
-        "dataset": DATASET_BASE_PATH,
+        "dataset": DATASET_WITHOUT_GT_PATH,
     },
     {
         "name": "without_gt",
         "settings": ["without_gt"],
         "suffix": "without-gt",
         "dataset": DATASET_WITHOUT_GT_PATH,
-    },
-    {
-        "name": "seed_data",
-        "settings": ["seed_data"],
-        "suffix": "seed-data",
-        "dataset": DATASET_BASE_PATH,
     },
     {
         "name": "seed_data_without_gt_answer_regex",
