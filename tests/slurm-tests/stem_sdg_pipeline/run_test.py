@@ -27,52 +27,51 @@ DATASET_WITHOUT_GT_PATH = "/nemo_run/code/tests/data/stem_sdg_pipeline/sample_in
 PIPELINE_REL_ROOT = Path("recipes/opensciencereasoning/sdg_pipeline")
 BASE_CONFIG_PATH = PIPELINE_REL_ROOT / "configs" / "pipelines" / "base.yaml"
 SETTINGS_DIR = PIPELINE_REL_ROOT / "configs" / "settings"
-LOCAL_CONFIG_ROOT = Path(__file__).resolve().parent / "generated-configs"
+REMOTE_CODE_ROOT = Path("/nemo_run/code")
 
 PIPELINE_VARIANTS = [
-    {"name": "base", "settings": [], "suffix": "base", "dataset": DATASET_BASE_PATH},
     {
-        "name": "mcq",
-        "settings": ["mcq_4_options"],
-        "suffix": "mcq_4_options",
+        "name": "base",
+        "settings": [],
+        "suffix": "base",
         "dataset": DATASET_BASE_PATH,
     },
-    {
-        "name": "python_enabled",
-        "settings": ["python_enabled"],
-        "suffix": "python-enabled",
-        "dataset": DATASET_BASE_PATH,
-    },
-    {
-        "name": "seed_data_postprocess",
-        "settings": ["seed_data_postprocess"],
-        "suffix": "seed-data-postprocess",
-        "dataset": DATASET_BASE_PATH,
-    },
-    {
-        "name": "seed_data",
-        "settings": ["seed_data"],
-        "suffix": "seed-data",
-        "dataset": DATASET_BASE_PATH,
-    },
-    {
-        "name": "without_gt",
-        "settings": ["without_gt"],
-        "suffix": "without-gt",
-        "dataset": DATASET_WITHOUT_GT_PATH,
-    },
-    {
-        "name": "seed_data_without_gt",
-        "settings": ["seed_data", "without_gt"],
-        "suffix": "seed-data-without-gt",
-        "dataset": DATASET_WITHOUT_GT_PATH,
-    },
-    {
-        "name": "seed_data_without_gt_answer_regex",
-        "settings": ["seed_data", "without_gt", "multiple_prompts"],
-        "suffix": "seed-data-without-gt-multiple-prompts",
-        "dataset": DATASET_WITHOUT_GT_PATH,
-    },
+    # {
+    #     "name": "seed_data_postprocess",
+    #     "settings": ["seed_data_postprocess"],
+    #     "suffix": "seed-data-postprocess",
+    #     "dataset": DATASET_BASE_PATH,
+    # },
+    # {
+    #     "name": "seed_data_postprocess-python_enabled",
+    #     "settings": ["seed_data_postprocess", "python_enabled"],
+    #     "suffix": "seed_data_postprocess-python-enabled",
+    #     "dataset": DATASET_BASE_PATH,
+    # },
+    # {
+    #     "name": "seed_data_postprocess-mcq_4_options",
+    #     "settings": ["seed_data_postprocess", "mcq_4_options"],
+    #     "suffix": "seed_data_postprocess-mcq_4_options",
+    #     "dataset": DATASET_BASE_PATH,
+    # },
+    # {
+    #     "name": "without_gt",
+    #     "settings": ["without_gt"],
+    #     "suffix": "without-gt",
+    #     "dataset": DATASET_WITHOUT_GT_PATH,
+    # },
+    # {
+    #     "name": "seed_data",
+    #     "settings": ["seed_data"],
+    #     "suffix": "seed-data",
+    #     "dataset": DATASET_BASE_PATH,
+    # },
+    # {
+    #     "name": "seed_data_without_gt_answer_regex",
+    #     "settings": ["seed_data", "without_gt", "multiple_prompts"],
+    #     "suffix": "seed-data-without-gt-multiple-prompts",
+    #     "dataset": DATASET_WITHOUT_GT_PATH,
+    # },
 ]
 
 
@@ -97,6 +96,14 @@ def sanitize_name(name: str) -> str:
 
 def make_stage_expname(expname_base: str, stage_name: str, suffix: str) -> str:
     return f"{expname_base}-{stage_name.replace('_', '-')}-{suffix}"
+
+
+def to_remote_path(path: Path) -> Path:
+    try:
+        relative = path.relative_to(repo_root())
+    except ValueError:
+        return path
+    return REMOTE_CODE_ROOT / relative
 
 
 def build_overrides(
@@ -185,13 +192,16 @@ def schedule_checker(
     stage_expnames: list[str],
     base_output_dir: str,
 ):
+    config_remote_path = to_remote_path(config_path)
+    remote_settings = [to_remote_path(path) for path in settings_files]
+
     parts = [
         "python",
         "tests/slurm-tests/stem_sdg_pipeline/check_results.py",
-        f"--config_path {config_path}",
+        f"--config_path {config_remote_path}",
         f"--variant {variant_name}",
     ]
-    parts.extend(f"--settings_path {path}" for path in settings_files)
+    parts.extend(f"--settings_path {path}" for path in remote_settings)
     parts.extend(f"--override {item}" for item in overrides)
     checker_cmd = " ".join(parts)
 

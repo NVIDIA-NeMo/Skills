@@ -6,5 +6,5 @@ stages:
     problem_template: "{prompt} {problem}"
     num_options_field: num_options
   generate_solutions:
-    prompt_config: ++prompt_config=generic/default
+    prompt_config: ++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompts/default_problem.yaml
     predicted_answer_regex_field: answer_regex
