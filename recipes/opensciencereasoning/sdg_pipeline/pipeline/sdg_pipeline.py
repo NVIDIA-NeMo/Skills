@@ -151,7 +151,6 @@ def decontaminate(cluster: str, expname: str, run_after: str, stage_config: dict
         log_dir=f"{output_dir}/logs",
         expname=f"{expname}_retrieve_similar",
         run_after=run_after,
-        exclusive=False,
         installation_command="pip install torch sentence-transformers",  # TODO remove
         ctx=wrap_arguments(cmd),
     )
@@ -167,7 +166,6 @@ def decontaminate(cluster: str, expname: str, run_after: str, stage_config: dict
         model=model,
         expname=f"{expname}_check_contamination",
         run_after=f"{expname}_retrieve_similar",
-        exclusive=False,
         num_chunks=num_chunks,
         ctx=wrap_arguments("++check_both_ways=True "),
         dependent_jobs=dependent_jobs,
@@ -185,7 +183,6 @@ def decontaminate(cluster: str, expname: str, run_after: str, stage_config: dict
         ),
         log_dir=f"{output_dir}/logs",
         cluster=cluster,
-        exclusive=False,
         run_after=f"{expname}_check_contamination",
         expname=expname,
     )
@@ -231,7 +228,6 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             ),
             log_dir=f"{output_dir}/tmp/logs",
             cluster=cluster,
-            exclusive=False,
             expname=f"{expname}-prepare-for-{name}-labeling-{i}",
             run_after=first_dep if i == 0 else f"{expname}-{prev_name}-labeling-{i - 1}",
         )
@@ -246,7 +242,6 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             model=model,
             server_type=server_type,
             num_chunks=num_chunks,
-            exclusive=False,
             dependent_jobs=dependent_jobs,
             server_gpus=server_gpus,
             server_nodes=server_nodes,
@@ -267,7 +262,6 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
         ),
         log_dir=f"{output_dir}/logs",
         cluster=cluster,
-        exclusive=False,
         expname=expname,
         run_after=f"{expname}-{name}-labeling-{i}",
     )
@@ -423,7 +417,6 @@ def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
             f"    --difficulty_model '{generation_args['model'].split('/')[-1]}' "
         ),
         cluster=cluster,
-        exclusive=False,
         log_dir=f"{output_dir}/logs",
         run_after=f"{expname}-judgement",
         expname=expname,
@@ -452,7 +445,6 @@ def aggregate(cluster, expname, run_after, stage_config, **kwargs):
             f"{solutions_path_arg}"
         ),
         cluster=cluster,
-        exclusive=False,
         log_dir=f"{output_dir}/logs",
         run_after=run_after,
         expname=expname,
@@ -509,7 +501,6 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
             f"{only_samples_with_ground_truth_answer_arg} "
         ),
         cluster=cluster,
-        exclusive=False,
         log_dir=f"{output_dir}/logs",
         run_after=run_after,
         expname=expname,
