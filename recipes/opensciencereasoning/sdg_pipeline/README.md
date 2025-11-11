@@ -17,7 +17,8 @@ Launch the pipeline by selecting the base config once and stacking the overrides
 ```bash
 python pipeline/sdg_pipeline.py \
   --config base \
-  --settings without_gt python_enabled
+  --settings without_gt python_enabled \
+  --overrides input_file=INPUT_FILE cluster=slurm
 ```
 Settings are merged in the order you pass them; later entries win when they touch the same keys (for example, supply `without_gt` before `python_enabled`). You can also point to custom override files by adding their absolute paths to the `--settings` list.
 
@@ -25,21 +26,24 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **With GT, no tools, openq** (default):
 
   ```bash
-  python pipeline/sdg_pipeline.py
+  python pipeline/sdg_pipeline.py \
+    --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 - **Seed data (metadata only)**:
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings seed_data
+    --settings seed_data \
+    --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 - **Seed data plus answer recovery** (run `without_gt` after `seed_data` to re-enable generation):
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings seed_data without_gt
+    --settings seed_data without_gt \
+    --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 - **Multiple prompts with custom problem template via CLI overrides**:
@@ -47,14 +51,16 @@ Settings are merged in the order you pass them; later entries win when they touc
   ```bash
   python pipeline/sdg_pipeline.py \
     --settings multiple_prompts \
-    --override stages.filter_problems.problem_template='{problem}'
+    --override input_file=$INPUT_FILE cluster=slurm \
+               stages.filter_problems.problem_template='{problem}'
   ```
 
 - **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
 
   ```bash
   python pipeline/sdg_pipeline.py \
-    --settings seed_data_postprocess without_gt python_enabled
+    --settings seed_data_postprocess without_gt python_enabled \
+    --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
