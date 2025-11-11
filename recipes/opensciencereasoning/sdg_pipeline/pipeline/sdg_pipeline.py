@@ -380,6 +380,7 @@ def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/remove_redundant_fields.py "
             f"    --input_file '{input_file}' "
             f"    --output_file '{output_dir}/tmp/prepared.jsonl' "
+            f"    --deduplicate "
             f"    --fields {shlex.quote(json.dumps(BASE_FIELDS, ensure_ascii=False))} "
         ),
         cluster=cluster,
