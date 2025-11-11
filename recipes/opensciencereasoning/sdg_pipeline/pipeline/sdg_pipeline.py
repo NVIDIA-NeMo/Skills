@@ -567,8 +567,8 @@ def convert_to_messages_format(cluster, expname, run_after, stage_config, **kwar
     structure suitable for chat models, and writes the output to `final_result.jsonl`.
     """
     input_file = stage_config["input_file"]
-    output_file = stage_config["output_file"]
-    output_dir = Path(output_file).parent
+    output_dir = stage_config["output_dir"]
+    output_file = f"{output_dir}/final_result.jsonl"
 
     run_cmd(
         ctx=wrap_arguments(
