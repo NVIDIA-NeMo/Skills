@@ -36,42 +36,42 @@ PIPELINE_VARIANTS = [
         "suffix": "base",
         "dataset": DATASET_BASE_PATH,
     },
-    # {
-    #     "name": "seed_data_postprocess",
-    #     "settings": ["seed_data_postprocess"],
-    #     "suffix": "seed-data-postprocess",
-    #     "dataset": DATASET_BASE_PATH,
-    # },
-    # {
-    #     "name": "seed_data_postprocess-python_enabled",
-    #     "settings": ["seed_data_postprocess", "python_enabled"],
-    #     "suffix": "seed_data_postprocess-python-enabled",
-    #     "dataset": DATASET_BASE_PATH,
-    # },
-    # {
-    #     "name": "seed_data_postprocess-mcq_4_options",
-    #     "settings": ["seed_data_postprocess", "mcq_4_options"],
-    #     "suffix": "seed_data_postprocess-mcq_4_options",
-    #     "dataset": DATASET_BASE_PATH,
-    # },
-    # {
-    #     "name": "without_gt",
-    #     "settings": ["without_gt"],
-    #     "suffix": "without-gt",
-    #     "dataset": DATASET_WITHOUT_GT_PATH,
-    # },
-    # {
-    #     "name": "seed_data",
-    #     "settings": ["seed_data"],
-    #     "suffix": "seed-data",
-    #     "dataset": DATASET_BASE_PATH,
-    # },
-    # {
-    #     "name": "seed_data_without_gt_answer_regex",
-    #     "settings": ["seed_data", "without_gt", "multiple_prompts"],
-    #     "suffix": "seed-data-without-gt-multiple-prompts",
-    #     "dataset": DATASET_WITHOUT_GT_PATH,
-    # },
+    {
+        "name": "seed_data_postprocess",
+        "settings": ["seed_data_postprocess"],
+        "suffix": "seed-data-postprocess",
+        "dataset": DATASET_BASE_PATH,
+    },
+    {
+        "name": "seed_data_postprocess-python_enabled",
+        "settings": ["seed_data_postprocess", "python_enabled"],
+        "suffix": "seed_data_postprocess-python-enabled",
+        "dataset": DATASET_BASE_PATH,
+    },
+    {
+        "name": "seed_data_postprocess-mcq_4_options",
+        "settings": ["seed_data_postprocess", "mcq_4_options"],
+        "suffix": "seed_data_postprocess-mcq_4_options",
+        "dataset": DATASET_BASE_PATH,
+    },
+    {
+        "name": "without_gt",
+        "settings": ["without_gt"],
+        "suffix": "without-gt",
+        "dataset": DATASET_WITHOUT_GT_PATH,
+    },
+    {
+        "name": "seed_data",
+        "settings": ["seed_data"],
+        "suffix": "seed-data",
+        "dataset": DATASET_BASE_PATH,
+    },
+    {
+        "name": "seed_data_without_gt_answer_regex",
+        "settings": ["seed_data", "without_gt", "multiple_prompts"],
+        "suffix": "seed-data-without-gt-multiple-prompts",
+        "dataset": DATASET_WITHOUT_GT_PATH,
+    },
 ]
 
 
