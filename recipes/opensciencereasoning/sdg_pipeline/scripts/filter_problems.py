@@ -192,7 +192,8 @@ def process_file(
             obj["metadata"] = metadata
             # remove old metadata keys
             for key in metadata.keys():
-                del obj[key]
+                if key != "metadata":
+                    del obj[key]
 
             # write output
             fout.write(_json_dumps(obj) + "\n")
