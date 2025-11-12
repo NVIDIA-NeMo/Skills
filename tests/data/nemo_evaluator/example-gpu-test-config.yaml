@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This is a TEST CONFIGURATION for GPU tests that limits all benchmarks to use only 5 samples total.
+# This allows you to test your setup end-to-end quickly without running full evaluations.
+#
+# ⚠️  WARNING: Results from this test run should NEVER be used to compare models or
+#     report benchmark performance. This is solely for testing configuration and setup.
+#     Always run full evaluations (without limit_samples) for actual benchmark results.
+
+# specify default configs for execution and deployment
+defaults:
+  - execution: local
+  - deployment: none
+  - _self_
+
+execution:
+  output_dir: placeholder
+
+target:
+  api_endpoint:
+    # Will be overridden by self-hosted server URL
+    model_id: placeholder
+    url: placeholder
+
+# specify the benchmarks to evaluate
+evaluation:
+  nemo_evaluator_config: # global config settings that apply to all tasks
+    config:
+      params:
+        request_timeout: 3600 # timeout for API requests in seconds
+        parallelism: 2 # number of parallel requests
+        limit_samples: 5 # TEST ONLY: Limits all benchmarks to 5 samples total for quick testing
+    target:
+      api_endpoint:
+        adapter_config:
+          use_reasoning: false # if true, strips reasoning tokens and collects reasoning stats
+          use_system_prompt: false # enables custom system prompt
+          use_response_logging: true
+          max_logged_responses: null
+          use_request_logging: true
+          max_logged_requests: null
+  tasks:
+    - name: ifeval # Simple benchmark that doesn't require a judge
+      nemo_evaluator_config:
+        config:
+          params:
+            temperature: 0.6 # sampling temperature

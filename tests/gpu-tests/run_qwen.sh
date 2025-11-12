@@ -11,6 +11,7 @@ pytest tests/gpu-tests/test_eval.py -s -x
 pytest tests/gpu-tests/test_generate.py -s -x
 pytest tests/gpu-tests/test_judge.py -s -x
 pytest tests/gpu-tests/test_run_cmd_llm_infer.py -s -x
+pytest tests/gpu-tests/test_nemo_evaluator.py -s -x
 
 # For contamination test, reasoning models are not a good choice. Switching to a instruct model.
 export NEMO_SKILLS_TEST_HF_MODEL=Qwen/Qwen3-4B-Instruct-2507
