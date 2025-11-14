@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,39 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-*.json
-*.tar.gz
-*.tar
-*.npy
-*.info
-*.jsonl
-*.csv
-nemo_experiments
-wandb
-build
-.hypothesis
-*.zip
-*.egg-info
-*.xml
-*.DS_Store
-.coverage
-.venv
-*.lock
+"""Earnings call transcription (Earnings-21).
 
-__pycache__
-.ipynb_checkpoints
+Long-form ASR evaluation on corporate earnings call recordings.
+Tests model performance on:
+- Financial/business terminology
+- Multiple speakers
+- Long audio segments
 
-cluster_configs/*
-!cluster_configs/example-*.yaml
+Evaluated using Word Error Rate (WER).
+"""
 
-nemo_skills/dataset/ruler/*/
-nemo_skills/dataset/bfcl_v3/*/
-nemo_skills/dataset/aalcr/lcr/
-.idea/
-.idea/*
-CLAUDE.md
-
-# AudioBench repository (auto-cloned during data preparation)
-AudioBench/
-nemo_skills/dataset/audiobench/AudioBench/
+DATASET_GROUP = "speechlm"
+METRICS_TYPE = "speechlm"
+DEFAULT_SPLIT = "test"
+EVAL_ARGS = "++eval_type=audiobench "
+GENERATION_ARGS = "++prompt_format=openai "
 

@@ -37,6 +37,7 @@ from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
+from nemo_skills.evaluation.metrics.speechlm_metrics import SpeechLMMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 
 METRICS_MAP = {
@@ -66,6 +67,7 @@ METRICS_MAP = {
     "mmau_pro_closed_form": MMAUProMetrics,
     "mmau_pro_open_ended": MMAUProMetrics,
     "mmau_pro_instruction_following": MMAUProMetrics,
+    "speechlm": SpeechLMMetrics,
 }
 
 
