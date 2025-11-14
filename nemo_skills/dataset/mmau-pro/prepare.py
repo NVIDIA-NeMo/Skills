@@ -56,6 +56,7 @@ def download_mmau_data(download_dir, hf_token):
     return extracted_data_dir
 
 
+
 def format_entry(entry, with_audio=False):
     """Format entry for nemo-skills with OpenAI messages and audio support."""
     choices = entry.get("choices", []) or []
@@ -84,17 +85,28 @@ def format_entry(entry, with_audio=False):
 
     if entry.get("audio_path"):
         audio_path = entry["audio_path"]
-
-        if isinstance(audio_path, list) and audio_path:
-            user_message["audios"] = [{"path": path, "duration": 10.0} for path in audio_path]
-        elif isinstance(audio_path, str):
-            user_message["audio"] = {"path": audio_path, "duration": 10.0}
+        # Prepend /dataset/mmau-pro/ to make paths absolute for cluster
+        if len(audio_path) == 1:
+            user_message["audio"] = {"path": f"/dataset/mmau-pro/{audio_path[0]}"}
+        else:
+            user_message["audios"] = [{"path": f"/dataset/mmau-pro/{path}"} for path in audio_path]
 
     formatted_entry["messages"] = [
         {"role": "system", "content": "You are a helpful assistant. /no_think"},
         user_message
     ]
     return formatted_entry
+
+
+
+
+
+
+
+
+
+
+
 
 
 def main():
