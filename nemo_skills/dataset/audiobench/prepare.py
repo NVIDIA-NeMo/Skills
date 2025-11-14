@@ -157,6 +157,10 @@ def create_manifest_entry(
         "audio_path": [audio_rel_path],
         "messages": [
             {
+                "role": "system",
+                "content": "You are a helpful assistant. /no_think"
+            },
+            {
                 "role": "user",
                 "content": instruction,
                 "audio": audio_metadata,  # Singular for Megatron server
