@@ -90,7 +90,10 @@ def format_entry(entry, with_audio=False):
         elif isinstance(audio_path, str):
             user_message["audio"] = {"path": audio_path, "duration": 10.0}
 
-    formatted_entry["messages"] = [user_message]
+    formatted_entry["messages"] = [
+        {"role": "system", "content": "You are a helpful assistant. /no_think"},
+        user_message
+    ]
     return formatted_entry
 
 
