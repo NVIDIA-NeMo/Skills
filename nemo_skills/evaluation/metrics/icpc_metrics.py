@@ -59,6 +59,7 @@ class ICPCMetrics(BaseMetrics):
         return {
             "score": submission["test_case_results"]["score"],
             "sample_score": submission["test_case_results"]["sample_score"],
+            "tokens": submission["num_generated_tokens"],
             "code": extract_final_cpp_block(submission["generation"]),
         }
 
