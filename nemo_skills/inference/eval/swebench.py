@@ -183,6 +183,67 @@ class SweBenchGenerationTask(GenerationTask):
         self.should_run_evaluation = False
         self.evaluator = None
 
+        # Set up output folder,
+        # making sure it is different for each random seed if we're running with --benchmarks=swe-bench:N
+        # to avoid overwriting files.
+
+        self.output_dir = Path(self.cfg.output_file).parent
+        if self.cfg.inference.random_seed is not None:
+            self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
+            self.output_dir.mkdir(exist_ok=True)
+
+        # Install SWE-agent/OpenHands. Here's how it works:
+        #
+        # 1. This code installs SWE-agent/OpenHands in the Nemo-Skills container.
+        #    All required files, venvs and dependencies are stored in /root.
+        # 2. When we start SWE-bench containers via Apptainer, we mount /root to /root_mount.
+        # 3. Inside of the container, we copy the required files from /root_mount to /root
+        #    and run SWE-agent/OpenHands from there.
+        #
+        # The goal is to run SWE-agent/OpenHands inside of the SWE-bench containers,
+        # but avoid having to download & install everything in each container separately.
+
+        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+            if self.cfg.agent_framework_repo is None:
+                self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
+            setup_cmd = (
+                "curl -LsSf https://astral.sh/uv/install.sh | sh && "
+                "source /root/.local/bin/env && "
+                "cd /root && "
+                "mkdir SWE-agent && "
+                "cd SWE-agent && "
+                f"git clone {self.cfg.agent_framework_repo} . && "
+                f"git checkout {self.cfg.agent_framework_commit} && "
+                "uv venv --python 3.12 venv && "
+                "source venv/bin/activate && "
+                "uv pip install -e ."
+            )
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+            if self.cfg.agent_framework_repo is None:
+                self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
+            setup_cmd = (
+                "cd /root && "
+                'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
+                "bash Miniforge3-$(uname)-$(uname -m).sh -bp /root/conda && "
+                'eval "$(/root/conda/bin/conda shell.bash hook)" && '
+                "mamba install -y --override-channels conda-forge::poetry conda-forge::tmux && "
+                "mkdir OpenHands && "
+                "cd OpenHands && "
+                f"git clone {self.cfg.agent_framework_repo} . && "
+                f"git checkout {self.cfg.agent_framework_commit} && "
+                "export INSTALL_PLAYWRIGHT=0 && "
+                "export POETRY_VIRTUALENVS_IN_PROJECT=true && "
+                "make install-python-dependencies && "
+                "poetry run python -m pip install datasets"
+            )
+        else:
+            raise ValueError(
+                f"Unsupported agent framework: {self.cfg.agent_framework}. "
+                f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
+            )
+
+        asyncio.run(self._execute_local_command(setup_cmd, self.output_dir / "setup.log", timeout=5 * 60))
+
     def log_example_prompt(self, data):
         return
 
@@ -202,6 +263,20 @@ class SweBenchGenerationTask(GenerationTask):
         # currently evaluation is done directly after generation already
         return data_point
 
+    async def _execute_local_command(self, cmd, log_path, timeout=None):
+        """Execute a command locally."""
+        with open(log_path, "w") as log_file:
+            # Create async subprocess
+            process = await asyncio.create_subprocess_shell(
+                f"/bin/bash -c {shlex.quote(cmd)}", stdout=log_file, stderr=log_file
+            )
+
+            # Wait for completion
+            await asyncio.wait_for(process.communicate(), timeout=timeout)
+
+            if process.returncode != 0:
+                raise ValueError(f"Command failed with return code {process.returncode}")
+
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
         container_name = data_point["container_formatter"].format(
@@ -219,6 +294,7 @@ class SweBenchGenerationTask(GenerationTask):
         apptainer_cmd = (
             f"apptainer exec --writable-tmpfs --no-mount home,tmp,bind-paths "
             f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
+            f"--mount type=bind,src=/root,dst=/root_mount,ro "
             f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
             f" {container_name} bash -c {shlex.quote(command)}"
         )
@@ -296,8 +372,6 @@ class SweBenchGenerationTask(GenerationTask):
         """
         if self.cfg.agent_config is None:
             self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
-        if self.cfg.agent_framework_repo is None:
-            self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -308,18 +382,10 @@ class SweBenchGenerationTask(GenerationTask):
             completion_kwargs["logprobs"] = True
 
         swe_agent_cmd = (
-            # first installing swe-agent repo
-            "curl -LsSf https://astral.sh/uv/install.sh | sh && "
-            "source /root/.local/bin/env && "
-            "cd /root && "
-            "mkdir SWE-agent && "
-            "cd SWE-agent && "
-            f"git clone {self.cfg.agent_framework_repo} . && "
-            f"git checkout {self.cfg.agent_framework_commit} && "
-            "uv venv --python 3.12 venv && "
-            "source venv/bin/activate && "
-            "uv pip install -e . && "
-            # then running the agent
+            # copy installed repo from /root_mount
+            "cp -r /root_mount/SWE-agent /root && "
+            "cd /root/SWE-agent && "
+            # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
             f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
@@ -365,8 +431,6 @@ class SweBenchGenerationTask(GenerationTask):
         """
         if self.cfg.agent_config is None:
             self.cfg.agent_config = "eval/swe-bench/openhands/default"
-        if self.cfg.agent_framework_repo is None:
-            self.cfg.agent_framework_repo = "https://github.com/All-Hands-AI/OpenHands.git"
 
         # Add parameters to config.toml
 
@@ -407,19 +471,12 @@ class SweBenchGenerationTask(GenerationTask):
             "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
             "    exit 1; "
             "fi && "
-            # install openhands repo + dependencies
-            "cd /root && "
-            'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
-            "bash Miniforge3-$(uname)-$(uname -m).sh -b && "
-            'eval "$(/root/miniforge3/bin/conda shell.bash hook)" && '
-            "mamba install -y --override-channels conda-forge::python=3.12 conda-forge::nodejs conda-forge::poetry conda-forge::tmux && "
-            "mkdir OpenHands && "
-            "cd OpenHands && "
-            f"git clone {self.cfg.agent_framework_repo} . && "
-            f"git checkout {self.cfg.agent_framework_commit} && "
-            "export INSTALL_DOCKER=0 && "
-            "make build && "
-            "poetry run python -m pip install datasets && "
+            # copy installed repo & conda from /root_mount
+            "cp -r /root_mount/OpenHands /root && "
+            "cp -r /root_mount/conda /root && "
+            "cd /root/OpenHands && "
+            # activate conda
+            'eval "$(/root/conda/bin/conda shell.bash hook)" && '
             # copy dataset
             f"mkdir {data_dir} && "
             f"cp {self.cfg.input_file} {data_dir} && "
@@ -433,7 +490,7 @@ class SweBenchGenerationTask(GenerationTask):
             # run the agent
             f"./evaluation/benchmarks/swe_bench/scripts/run_infer.sh "
             f"    llm.model "  # name of llm config section in config.toml
-            f"    {self.cfg.agent_framework_commit} "  # openhands commit
+            f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
             f"    CodeActAgent "  # agent
             f"    1 "  # number of instances
             f"    {self.cfg.agent_max_turns} "  # max agent iterations
@@ -474,10 +531,6 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def process_single_datapoint(self, data_point, data):
         """Will do all necessary generations to get a single answer for the data point."""
-        self.output_dir = Path(self.cfg.output_file).parent
-        if self.cfg.inference.random_seed is not None:
-            self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
-            self.output_dir.mkdir(exist_ok=True)
 
         # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
         # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?
