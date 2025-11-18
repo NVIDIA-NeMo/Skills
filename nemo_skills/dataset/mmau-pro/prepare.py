@@ -56,7 +56,6 @@ def download_mmau_data(download_dir, hf_token):
     return extracted_data_dir
 
 
-
 def format_entry(entry, with_audio=False):
     """Format entry for nemo-skills with OpenAI messages and audio support."""
     choices = entry.get("choices", []) or []
@@ -93,20 +92,9 @@ def format_entry(entry, with_audio=False):
 
     formatted_entry["messages"] = [
         {"role": "system", "content": "You are a helpful assistant. /no_think"},
-        user_message
+        user_message,
     ]
     return formatted_entry
-
-
-
-
-
-
-
-
-
-
-
 
 
 def main():

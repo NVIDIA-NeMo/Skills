@@ -14,8 +14,11 @@
 
 import json
 import logging
+import re
 from typing import Any
 
+import jiwer
+import numpy as np
 from tqdm import tqdm
 
 from nemo_skills.utils import get_logger_name, nested_dataclass
@@ -31,12 +34,174 @@ class AudioBenchEvaluatorConfig:
     prompt_config: str = "eval/speechlm/audiobench"
 
 
-def eval_audiobench(cfg):
-    """Evaluate AudioBench dataset using nemo-skills framework.
+# =============================================================================
+# ASR-PC Helper Functions (LibriSpeech-PC with Punctuation/Capitalization)
+# =============================================================================
 
-    This evaluator processes JSONL files with speech/audio model outputs
+
+def normalize_whitespace(text: str) -> str:
+    """Normalize multiple spaces to single space."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def split_tokens(text: str) -> list[str]:
+    """Split text into words and punctuation as separate tokens."""
+    return re.findall(r"\w+|[^\w\s]", text)
+
+
+def extract_punctuation(text: str) -> list[str]:
+    """Extract only punctuation characters from text."""
+    return [c for c in text if not c.isalnum() and not c.isspace()]
+
+
+def calculate_per(reference: str, hypothesis: str) -> float:
+    """
+    Calculate Punctuation Error Rate (PER) according to
+    arXiv:2310.02943 formula:
+        PER = (I + D + S) / (I + D + S + C)
+    """
+    ref_punct = extract_punctuation(reference)
+    hyp_punct = extract_punctuation(hypothesis)
+
+    len_r, len_h = len(ref_punct), len(hyp_punct)
+
+    if len_r == 0 and len_h == 0:
+        return 0.0
+
+    # Dynamic programming: dp[i,j] = (C, S, D, I)
+    dp = np.zeros((len_r + 1, len_h + 1, 4), dtype=int)
+
+    for i in range(1, len_r + 1):
+        dp[i, 0][2] = i  # all deletions
+    for j in range(1, len_h + 1):
+        dp[0, j][3] = j  # all insertions
+
+    # Fill DP table
+    for i in range(1, len_r + 1):
+        for j in range(1, len_h + 1):
+            if ref_punct[i - 1] == hyp_punct[j - 1]:
+                dp[i, j] = dp[i - 1, j - 1].copy()
+                dp[i, j][0] += 1  # correct
+            else:
+                sub = dp[i - 1, j - 1].copy()
+                sub[1] += 1
+                delete = dp[i - 1, j].copy()
+                delete[2] += 1
+                insert = dp[i, j - 1].copy()
+                insert[3] += 1
+                dp[i, j] = min([sub, delete, insert], key=lambda x: x[1] + x[2] + x[3])
+
+    correct, substitution, deletion, insertion = dp[len_r, len_h]
+    total = correct + substitution + deletion + insertion
+    per = (substitution + deletion + insertion) / total if total > 0 else 0.0
+    return per
+
+
+def evaluate_asr_pc(reference: str, hypothesis: str) -> dict[str, Any]:
+    """Evaluate ASR with punctuation and capitalization (LibriSpeech-PC style)."""
+    # Normalize whitespace
+    ref_pc = normalize_whitespace(reference)
+    hyp_pc = normalize_whitespace(hypothesis)
+
+    # WER_PC: Full metric with punctuation and capitalization
+    ref_tokens = split_tokens(ref_pc)
+    hyp_tokens = split_tokens(hyp_pc)
+    wer_pc = jiwer.wer(" ".join(ref_tokens), " ".join(hyp_tokens))
+
+    # WER_C: Capitalization only
+    ref_c = normalize_whitespace(re.sub(r"[^\w\s]", "", reference))
+    hyp_c = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis))
+    wer_c = jiwer.wer(ref_c, hyp_c)
+
+    # WER: Standard (lowercase, no punctuation)
+    ref_std = normalize_whitespace(re.sub(r"[^\w\s]", "", reference.lower()))
+    hyp_std = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis.lower()))
+    wer_std = jiwer.wer(ref_std, hyp_std)
+
+    # PER: Punctuation Error Rate
+    per = calculate_per(reference, hypothesis)
+
+    return {
+        "wer": wer_std,
+        "wer_c": wer_c,
+        "wer_pc": wer_pc,
+        "per": per,
+        "is_correct": wer_pc < 0.5,
+    }
+
+
+# =============================================================================
+# Standard ASR Helper Functions
+# =============================================================================
+
+
+def preprocess_asr_text(text: str) -> str:
+    """Preprocess text for standard ASR evaluation (Whisper-style normalization)."""
+    from whisper.normalizers import EnglishTextNormalizer
+    
+    text = text.lower()
+    normalizer = EnglishTextNormalizer()
+    text = normalizer(text)
+    # Remove bracketed content
+    text = re.sub(r"(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def evaluate_asr(reference: str, hypothesis: str) -> dict[str, Any]:
+    """Evaluate standard ASR with normalization."""
+    ref = preprocess_asr_text(reference)
+    hyp = preprocess_asr_text(hypothesis)
+
+    # Handle empty strings
+    if not ref:
+        ref = "empty"
+    if not hyp:
+        hyp = "empty"
+
+    wer_score = jiwer.wer(ref, hyp)
+
+    return {
+        "wer": wer_score,
+        "is_correct": wer_score < 0.5,
+    }
+
+
+# =============================================================================
+# Translation Helper Functions
+# =============================================================================
+
+
+def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:
+    """Evaluate translation using BLEU score."""
+    try:
+        import sacrebleu
+
+        ref = [reference.strip()]
+        hyp = hypothesis.strip()
+        bleu = sacrebleu.sentence_bleu(hyp, ref)
+        bleu_score = bleu.score / 100.0
+
+        return {
+            "bleu": bleu_score,
+            "is_correct": bleu_score > 0.3,
+        }
+    except Exception as e:
+        return {
+            "bleu": 0.0,
+            "is_correct": False,
+            "error": str(e),
+        }
+
+
+def eval_audiobench(cfg):
+    """Evaluate AudioBench and ASR datasets using nemo-skills framework.
+
+    This evaluator processes JSONL files with speech model outputs
     and evaluates them using automatic metrics:
     - ASR tasks: Word Error Rate (WER)
+      * Standard ASR: Normalized WER (removes punctuation/capitalization)
+      * LibriSpeech-PC: Multiple metrics (WER, WER_C, WER_PC, PER)
     - Translation tasks: BLEU score
     - Other tasks: May require LLM-as-a-judge (handled separately)
 
@@ -53,18 +218,13 @@ def eval_audiobench(cfg):
     with open(jsonl_file, "rt", encoding="utf-8") as fin:
         data = [json.loads(line) for line in fin]
 
-    # Count samples that can be evaluated with automatic metrics
-    samples_to_evaluate = sum(
-        1 for sample in data if "is_correct" not in sample and sample.get("task_type") in ["ASR", "Translation"]
-    )
     samples_already_evaluated = sum(1 for sample in data if "is_correct" in sample)
 
     if samples_already_evaluated > 0:
         LOG.info(f"Resuming evaluation: {samples_already_evaluated}/{len(data)} samples already evaluated")
 
     for idx, sample in enumerate(tqdm(data, desc="Evaluating samples")):
-        evaluated_sample = evaluate_sample(sample, eval_config)
-        data[idx] = evaluated_sample
+        data[idx] = evaluate_sample(sample, eval_config)
 
     # Write all results at once
     with open(jsonl_file, "wt", encoding="utf-8") as fout:
@@ -78,157 +238,43 @@ def evaluate_sample(sample: dict[str, Any], config: AudioBenchEvaluatorConfig) -
     """Evaluate a single sample based on task type."""
     sample = sample.copy()
     task_type = sample.get("task_type", "unknown")
+    generation = sample.get("generation", "").strip()
+    expected_answer = sample.get("expected_answer", "").strip()
 
-    # ASR and Translation can be evaluated with automatic metrics
-    if task_type in ["ASR", "Translation"]:
-        sample = evaluate_closed_form(sample, config)
+    # Handle missing generation for automatic metrics
+    if task_type in ["ASR", "ASR-PC", "Translation"] and not generation:
+        sample.update(
+            {
+                "is_correct": False,
+                "wer": 1.0,
+                "error": "missing_generation",
+                "predicted_answer": "",
+            }
+        )
+        return sample
+
+    # Evaluate based on task type
+    if task_type == "ASR-PC":
+        metrics = evaluate_asr_pc(expected_answer, generation)
+        sample.update(metrics)
+        sample["predicted_answer"] = generation
+
+    elif task_type == "ASR":
+        metrics = evaluate_asr(expected_answer, generation)
+        sample.update(metrics)
+        sample["predicted_answer"] = generation
+
+    elif task_type == "Translation":
+        metrics = evaluate_translation(expected_answer, generation)
+        sample.update(metrics)
+        sample["predicted_answer"] = generation
+
     else:
         # QA and other tasks require LLM judge evaluation
         if "requires_judge" not in sample:
             sample["requires_judge"] = True
-            sample["predicted_answer"] = sample.get("generation", "")
-        # Don't mark as incorrect yet - let the judge decide
+            sample["predicted_answer"] = generation
         if "is_correct" not in sample:
             sample["is_correct"] = False
 
     return sample
-
-
-def evaluate_closed_form(sample: dict[str, Any], config: AudioBenchEvaluatorConfig) -> dict[str, Any]:
-    """Evaluate ASR/Translation tasks using WER/BLEU metrics."""
-    
-    # Skip if already evaluated (check for task-specific metric)
-    if "is_correct" in sample:
-        task_type = sample.get("task_type", "")
-        if (task_type == "ASR" and "wer" in sample) or (task_type == "Translation" and "bleu" in sample):
-            LOG.debug("Skipping sample - already evaluated")
-            return sample
-
-    generation = sample.get("generation", "").strip()
-    expected_answer = sample.get("expected_answer", "").strip()
-    task_type = sample.get("task_type", "")
-
-    LOG.debug(f"Evaluating {task_type} for generation='{generation[:50]}'")
-
-    if not generation:
-        LOG.warning("Missing generation for evaluation")
-        sample.update({"is_correct": False, "wer": 1.0, "error": "missing_generation"})
-        return sample
-
-    # Compute WER for ASR tasks
-    if task_type == "ASR":
-        try:
-            import jiwer
-            import re
-            from whisper.normalizers import EnglishTextNormalizer
-            
-            def preprocess_text_asr(text):
-                """Normalize ASR text for WER computation."""
-                # Lowercase
-                text = text.lower()
-                
-                # Apply Whisper's English text normalizer
-                normalizer = EnglishTextNormalizer()
-                text = normalizer(text)
-                
-                # Convert digits to words
-                digits_to_words = {
-                    '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
-                    '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
-                    '10': 'ten', '11': 'eleven', '12': 'twelve', '13': 'thirteen',
-                    '14': 'fourteen', '15': 'fifteen', '16': 'sixteen',
-                    '17': 'seventeen', '18': 'eighteen', '19': 'nineteen',
-                    '20': 'twenty', '30': 'thirty', '40': 'forty', '50': 'fifty',
-                    '60': 'sixty', '70': 'seventy', '80': 'eighty', '90': 'ninety',
-                }
-                for digit, word in digits_to_words.items():
-                    text = re.sub(r'\b' + digit + r'\b', word, text)
-                
-                # Remove content in brackets and parentheses
-                text = re.sub(r'(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)', "", text)
-                
-                # Apply jiwer transformations
-                jiwer_transform = jiwer.Compose([
-                    jiwer.RemoveMultipleSpaces(),
-                    jiwer.ExpandCommonEnglishContractions(),
-                    jiwer.RemoveKaldiNonWords(),
-                    jiwer.RemovePunctuation()
-                ])
-                text = jiwer_transform(text)
-                
-                # Remove non-speech elements
-                non_speech_patterns = r'\b(uh|umm|um|er|ah)\b'
-                text = re.sub(non_speech_patterns, '', text)
-                
-                # Final whitespace cleanup
-                text = re.sub(r'\s+', ' ', text).strip()
-                
-                return text
-            
-            # Normalize both reference and hypothesis
-            ref = preprocess_text_asr(expected_answer)
-            hyp = preprocess_text_asr(generation)
-            
-            # Handle empty strings
-            if len(ref) == 0:
-                ref = "empty"
-            if len(hyp) == 0:
-                hyp = "empty"
-            
-            # Compute WER
-            wer_score = jiwer.wer(ref, hyp)
-            
-            # Consider sample correct if WER < 50%
-            is_correct = wer_score < 0.5
-            
-            sample.update({
-                "is_correct": is_correct,
-                "predicted_answer": generation,
-                "wer": wer_score
-            })
-        except Exception as e:
-            LOG.error(f"Failed to compute WER: {e}")
-            sample.update({"is_correct": False, "wer": 1.0, "error": str(e)})
-    
-    # For Translation, use BLEU score
-    elif task_type == "Translation":
-        try:
-            import sacrebleu
-            ref = [expected_answer.strip()]
-            hyp = generation.strip()
-            
-            bleu = sacrebleu.sentence_bleu(hyp, ref)
-            bleu_score = bleu.score / 100.0  # Normalize to 0-1
-            
-            # Consider sample correct if BLEU > 30%
-            is_correct = bleu_score > 0.3
-            
-            sample.update({
-                "is_correct": is_correct,
-                "predicted_answer": generation,
-                "bleu": bleu_score
-            })
-        except Exception as e:
-            LOG.error(f"Failed to compute BLEU: {e}")
-            sample.update({"is_correct": False, "bleu": 0.0, "error": str(e)})
-    
-    else:
-        # Fallback to exact matching
-        is_correct = generation.lower() == expected_answer.lower()
-        sample.update({"is_correct": is_correct, "predicted_answer": generation})
-
-    return sample
-
-
-def extract_judge_result(judgement_text: str) -> bool:
-    """Extract judge result from judgement text (nemo-skills pattern)."""
-    import re
-
-    if re.search(r"\byes\b", judgement_text, re.IGNORECASE):
-        return True
-    elif re.search(r"\bno\b", judgement_text, re.IGNORECASE):
-        return False
-    else:
-        return False
-
-

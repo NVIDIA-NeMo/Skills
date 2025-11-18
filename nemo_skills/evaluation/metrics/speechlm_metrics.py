@@ -27,6 +27,9 @@ class SpeechLMMetrics(BaseMetrics):
         super().__init__(compute_no_answer=compute_no_answer)
         self.max_k = max_k
         self.wer_scores = []
+        self.wer_c_scores = []
+        self.wer_pc_scores = []
+        self.per_scores = []
         self.bleu_scores = []
 
     def _extract_judge_result(self, judgement_text: str) -> bool:
@@ -81,10 +84,16 @@ class SpeechLMMetrics(BaseMetrics):
 
         predicted_answers = [pred.get("generation", "").strip() or None for pred in predictions]
 
-        # Collect WER and BLEU scores
+        # Collect WER, PnC, and BLEU scores
         for pred in predictions:
             if "wer" in pred and pred["wer"] is not None:
                 self.wer_scores.append(pred["wer"])
+            if "wer_c" in pred and pred["wer_c"] is not None:
+                self.wer_c_scores.append(pred["wer_c"])
+            if "wer_pc" in pred and pred["wer_pc"] is not None:
+                self.wer_pc_scores.append(pred["wer_pc"])
+            if "per" in pred and pred["per"] is not None:
+                self.per_scores.append(pred["per"])
             if "bleu" in pred and pred["bleu"] is not None:
                 self.bleu_scores.append(pred["bleu"])
 
@@ -104,12 +113,18 @@ class SpeechLMMetrics(BaseMetrics):
                 agg_metrics["success_rate"] = agg_metrics["correct"]
             elif "judge_correct" in agg_metrics:
                 agg_metrics["success_rate"] = agg_metrics["judge_correct"]
-            
-            # Add WER and BLEU if available
+
+            # Add WER, PnC, and BLEU if available (convert to percentages and round to 2 decimals)
             if self.wer_scores:
-                agg_metrics["wer"] = sum(self.wer_scores) / len(self.wer_scores)
+                agg_metrics["wer"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
+            if self.wer_c_scores:
+                agg_metrics["wer_c"] = round(100.0 * sum(self.wer_c_scores) / len(self.wer_c_scores), 2)
+            if self.wer_pc_scores:
+                agg_metrics["wer_pc"] = round(100.0 * sum(self.wer_pc_scores) / len(self.wer_pc_scores), 2)
+            if self.per_scores:
+                agg_metrics["per"] = round(100.0 * sum(self.per_scores) / len(self.per_scores), 2)
             if self.bleu_scores:
-                agg_metrics["bleu"] = sum(self.bleu_scores) / len(self.bleu_scores)
+                agg_metrics["bleu"] = round(100.0 * sum(self.bleu_scores) / len(self.bleu_scores), 2)
 
         return metrics_dict
 
@@ -130,10 +145,16 @@ class SpeechLMMetrics(BaseMetrics):
 
         if self.compute_no_answer:
             base_metrics["no_answer"] = as_percentage
-        
-        # Add WER and BLEU if they were computed
+
+        # Add WER, PnC, and BLEU if they were computed
         if self.wer_scores:
             base_metrics["wer"] = as_percentage
+        if self.wer_c_scores:
+            base_metrics["wer_c"] = as_percentage
+        if self.wer_pc_scores:
+            base_metrics["wer_pc"] = as_percentage
+        if self.per_scores:
+            base_metrics["per"] = as_percentage
         if self.bleu_scores:
             base_metrics["bleu"] = as_percentage
 
@@ -156,9 +177,8 @@ def compute_score(combined_metrics: dict) -> dict:
         Aggregated metrics dictionary in the same format.
     """
     # Identify main benchmark categories (nonjudge, judge)
-    main_benchmark_names = ['nonjudge', 'judge']
-    benchmarks = {k: v for k, v in combined_metrics.items()
-                  if k.split('.')[-1] in main_benchmark_names}
+    main_benchmark_names = ["nonjudge", "judge"]
+    benchmarks = {k: v for k, v in combined_metrics.items() if k.split(".")[-1] in main_benchmark_names}
 
     if not benchmarks:
         return {}
@@ -181,23 +201,23 @@ def compute_score(combined_metrics: dict) -> dict:
                 continue
 
             metrics = benchmark_data[eval_mode]
-            num_entries = metrics.get('num_entries', 0)
+            num_entries = metrics.get("num_entries", 0)
             total_entries += num_entries
 
             # Aggregate weighted by number of entries (metrics are already percentages)
             if num_entries > 0:
-                weighted_success += metrics.get('success_rate', 0.0) * num_entries
-                total_gen_seconds += metrics.get('gen_seconds', 0)
-                weighted_tokens += metrics.get('avg_tokens', 0.0) * num_entries
-                weighted_no_answer += metrics.get('no_answer', 0.0) * num_entries
+                weighted_success += metrics.get("success_rate", 0.0) * num_entries
+                total_gen_seconds += metrics.get("gen_seconds", 0)
+                weighted_tokens += metrics.get("avg_tokens", 0.0) * num_entries
+                weighted_no_answer += metrics.get("no_answer", 0.0) * num_entries
 
         # Compute aggregated metrics
         aggregated[eval_mode] = {
-            'avg_tokens': int(weighted_tokens / total_entries) if total_entries > 0 else 0,
-            'gen_seconds': total_gen_seconds,
-            'success_rate': weighted_success / total_entries if total_entries > 0 else 0.0,
-            'no_answer': weighted_no_answer / total_entries if total_entries > 0 else 0.0,
-            'num_entries': total_entries,
+            "avg_tokens": int(weighted_tokens / total_entries) if total_entries > 0 else 0,
+            "gen_seconds": total_gen_seconds,
+            "success_rate": weighted_success / total_entries if total_entries > 0 else 0.0,
+            "no_answer": weighted_no_answer / total_entries if total_entries > 0 else 0.0,
+            "num_entries": total_entries,
         }
 
     return aggregated

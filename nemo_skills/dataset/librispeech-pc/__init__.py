@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,38 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-*.json
-*.tar.gz
-*.tar
-*.npy
-*.info
-*.jsonl
-*.csv
-nemo_experiments
-wandb
-build
-.hypothesis
-*.zip
-*.egg-info
-*.xml
-*.DS_Store
-.coverage
-.venv
-*.lock
+"""LibriSpeech-PC: ASR evaluation with Punctuation and Capitalization.
 
-__pycache__
-.ipynb_checkpoints
+Test sets (evaluation only):
+- test-clean: Clean speech recordings (~2.6k samples)
+- test-other: More challenging speech with various acoustic conditions (~2.9k samples)
+"""
 
-cluster_configs/*
-!cluster_configs/example-*.yaml
-
-nemo_skills/dataset/ruler/*/
-nemo_skills/dataset/bfcl_v3/*/
-nemo_skills/dataset/aalcr/lcr/
-.idea/
-.idea/*
-CLAUDE.md
-
-# AudioBench repository (auto-cloned during data preparation)
-AudioBench/
-nemo_skills/dataset/audiobench/AudioBench/
+DATASET_GROUP = "speechlm"
+METRICS_TYPE = "speechlm"
+DEFAULT_SPLIT = "test-clean"
+EVAL_ARGS = "++eval_type=audiobench "
+GENERATION_ARGS = "++prompt_format=openai "
