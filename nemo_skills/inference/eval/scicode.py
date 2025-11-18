@@ -55,14 +55,16 @@ class SciCodeGenerationConfig(GenerateSolutionsConfig):
     prompt_config: str = "eval/scicode/background"
     with_background: bool = True
 
-    parse_reasoning: bool = True  # override default to True for SciCode
-
 
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_scicode_generation_config", node=SciCodeGenerationConfig)
 
 
 class SciCodeGenerationTask(GenerationTask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._reasoning_warning_shown = False
+
     def log_example_prompt(self, data):
         """Scicode is multi-call benchmark, so we can't print a single prompt."""
         return
@@ -119,6 +121,17 @@ class SciCodeGenerationTask(GenerationTask):
             total_generated_tokens += llm_output.get("num_generated_tokens", 0)
             if self.cfg.parse_reasoning:
                 parse_reasoning(llm_output, "generation", self.cfg.end_reasoning_string)
+            
+            # Warn once on first generation if reasoning detected but not being parsed
+            if not self.cfg.parse_reasoning and not self._reasoning_warning_shown and cur_step == 0:
+                gen = llm_output["generation"]
+                if isinstance(gen, str) and self.cfg.end_reasoning_string in gen:
+                    LOG.warning(
+                        f"Detected '{self.cfg.end_reasoning_string}' in generation but parse_reasoning=False. "
+                        "For reasoning models, set ++parse_reasoning=True to avoid incorrect code extraction."
+                    )
+                    self._reasoning_warning_shown = True
+            
             extracted_python = extract_python_script(llm_output["generation"])
             previous_llm_code[cur_step] = extracted_python
             # TODO: save those as separate entries so that we can preserve intermediate progress on reruns
