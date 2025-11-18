@@ -243,7 +243,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        asyncio.run(self._execute_local_command(setup_cmd, self.output_dir / "setup.log", timeout=10 * 60))
+        asyncio.run(self._execute_local_command(setup_cmd, timeout=10 * 60))
 
     def log_example_prompt(self, data):
         return
@@ -264,19 +264,16 @@ class SweBenchGenerationTask(GenerationTask):
         # currently evaluation is done directly after generation already
         return data_point
 
-    async def _execute_local_command(self, cmd, log_path, timeout=None):
+    async def _execute_local_command(self, command, timeout=None):
         """Execute a command locally."""
-        with open(log_path, "w") as log_file:
-            # Create async subprocess
-            process = await asyncio.create_subprocess_shell(
-                f"/bin/bash -c {shlex.quote(cmd)}", stdout=log_file, stderr=log_file
-            )
+        # Create async subprocess
+        process = await asyncio.create_subprocess_shell(f"/bin/bash -c {shlex.quote(command)}")
 
-            # Wait for completion
-            await asyncio.wait_for(process.communicate(), timeout=timeout)
+        # Wait for completion
+        await asyncio.wait_for(process.communicate(), timeout=timeout)
 
-            if process.returncode != 0:
-                raise ValueError(f"Command failed with return code {process.returncode}")
+        if process.returncode != 0:
+            raise ValueError(f"Command failed with return code {process.returncode}")
 
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
