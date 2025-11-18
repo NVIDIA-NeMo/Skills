@@ -227,7 +227,7 @@ class SweBenchGenerationTask(GenerationTask):
                 'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
                 "bash Miniforge3-$(uname)-$(uname -m).sh -bp /root/conda && "
                 'eval "$(/root/conda/bin/conda shell.bash hook)" && '
-                "mamba install -y --override-channels conda-forge::poetry conda-forge::tmux && "
+                "mamba install -y --override-channels conda-forge::python=3.12 conda-forge::poetry conda-forge::tmux && "
                 "mkdir OpenHands && "
                 "cd OpenHands && "
                 f"git clone {self.cfg.agent_framework_repo} . && "
