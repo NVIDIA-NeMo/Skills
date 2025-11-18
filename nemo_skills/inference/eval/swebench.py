@@ -243,7 +243,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        asyncio.run(self._execute_local_command(setup_cmd, self.output_dir / "setup.log", timeout=5 * 60))
+        asyncio.run(self._execute_local_command(setup_cmd, self.output_dir / "setup.log", timeout=10 * 60))
 
     def log_example_prompt(self, data):
         return
