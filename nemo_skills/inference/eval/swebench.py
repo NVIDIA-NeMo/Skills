@@ -202,21 +202,22 @@ class SweBenchGenerationTask(GenerationTask):
         # The goal is to run inference & evaluation inside of the SWE-bench containers,
         # but avoid having to download & install everything in each container separately.
 
+        setup_commands = []
+
         # Install uv.
-        uv_setup_cmd = (
+        setup_commands.append(
             # install uv
             "curl -LsSf https://astral.sh/uv/install.sh | sh && "
             "source /root/.local/bin/env && "
             # tell uv to store its python executables in /root/uv
             "export UV_PYTHON_INSTALL_DIR=/root/uv"
         )
-        asyncio.run(self._execute_local_command(uv_setup_cmd, timeout=10 * 60))
 
         # Install SWE-agent/OpenHands.
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
-            agent_framework_setup_cmd = (
+            setup_commands.append(
                 # clone the swe-agent repo
                 f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
                 "cd /root/SWE-agent && "
@@ -229,7 +230,7 @@ class SweBenchGenerationTask(GenerationTask):
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
-            agent_framework_setup_cmd = (
+            setup_commands.append(
                 # install miniforge & create a conda env at /root/conda
                 'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
                 "bash Miniforge3-$(uname)-$(uname -m).sh -bp /root/conda && "
@@ -255,10 +256,8 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        asyncio.run(self._execute_local_command(agent_framework_setup_cmd, timeout=10 * 60))
-
         # Install the SWE-bench evaluation harness.
-        eval_harness_setup_cmd = (
+        setup_commands.append(
             # clone the swe-bench repo
             f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
             "cd /root/SWE-bench && "
@@ -268,7 +267,9 @@ class SweBenchGenerationTask(GenerationTask):
             "source venv/bin/activate && "
             "uv pip install -e ."
         )
-        asyncio.run(self._execute_local_command(eval_harness_setup_cmd, timeout=10 * 60))
+
+        combined_setup_command = " && ".join(setup_commands)
+        asyncio.run(self._execute_local_command(combined_setup_command, timeout=10 * 60))
 
     def log_example_prompt(self, data):
         return
