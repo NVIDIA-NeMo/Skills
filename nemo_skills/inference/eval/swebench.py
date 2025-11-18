@@ -223,7 +223,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/SWE-agent && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install swe-agent dependencies
-                "uv venv --python 3.12 venv && "
+                "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e ."
             )
@@ -263,7 +263,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cd /root/SWE-bench && "
             f"git checkout {self.cfg.eval_harness_commit} && "
             # make venv & install swe-bench dependencies
-            "uv venv --python 3.12 venv && "
+            "uv venv --python 3.12 --managed-python venv && "
             "source venv/bin/activate && "
             "uv pip install -e ."
         )
