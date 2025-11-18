@@ -192,29 +192,36 @@ class SweBenchGenerationTask(GenerationTask):
             self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Install SWE-agent/OpenHands. Here's how it works:
+        # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
-        # 1. This code installs SWE-agent/OpenHands in the Nemo-Skills container.
+        # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
         #    All required files, venvs and dependencies are stored in /root.
         # 2. When we start SWE-bench containers via Apptainer, we mount /root to /root_mount.
-        # 3. Inside of the container, we copy the required files from /root_mount to /root
-        #    and run SWE-agent/OpenHands from there.
+        # 3. Inside of the container, we copy the required files from /root_mount to /root and run from there.
         #
-        # The goal is to run SWE-agent/OpenHands inside of the SWE-bench containers,
+        # The goal is to run inference & evaluation inside of the SWE-bench containers,
         # but avoid having to download & install everything in each container separately.
 
+        # Install uv.
+        uv_setup_cmd = (
+            # install uv
+            "curl -LsSf https://astral.sh/uv/install.sh | sh && "
+            "source /root/.local/bin/env && "
+            # tell uv to store its python executables in /root/uv
+            "export UV_PYTHON_INSTALL_DIR=/root/uv"
+        )
+        asyncio.run(self._execute_local_command(uv_setup_cmd, timeout=10 * 60))
+
+        # Install SWE-agent/OpenHands.
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
-            setup_cmd = (
-                "cd /root && "
-                "curl -LsSf https://astral.sh/uv/install.sh | sh && "
-                "source /root/.local/bin/env && "
-                "export UV_PYTHON_INSTALL_DIR=/root/uv && "
-                "mkdir SWE-agent && "
-                "cd SWE-agent && "
-                f"git clone {self.cfg.agent_framework_repo} . && "
+            agent_framework_setup_cmd = (
+                # clone the swe-agent repo
+                f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
+                "cd /root/SWE-agent && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
+                # make venv & install swe-agent dependencies
                 "uv venv --python 3.12 venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e ."
@@ -222,18 +229,23 @@ class SweBenchGenerationTask(GenerationTask):
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
-            setup_cmd = (
-                "cd /root && "
+            agent_framework_setup_cmd = (
+                # install miniforge & create a conda env at /root/conda
                 'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
                 "bash Miniforge3-$(uname)-$(uname -m).sh -bp /root/conda && "
                 'eval "$(/root/conda/bin/conda shell.bash hook)" && '
+                # install python, poetry & tmux (required by openhands)
                 "mamba install -y --override-channels conda-forge::python=3.12 conda-forge::poetry conda-forge::tmux && "
-                "mkdir OpenHands && "
-                "cd OpenHands && "
-                f"git clone {self.cfg.agent_framework_repo} . && "
+                # clone the openhands repo
+                f"git clone {self.cfg.agent_framework_repo} /root/OpenHands && "
+                "cd /root/OpenHands && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
+                # skip installing playwright, it is only needed for browsing features
                 "export INSTALL_PLAYWRIGHT=0 && "
+                # tell poetry to store venvs inside of the project folder (/root/OpenHands)
                 "export POETRY_VIRTUALENVS_IN_PROJECT=true && "
+                # this will make a venv using poetry & install openhands dependencies
+                # we no longer use 'make build' because it installs lots of unnecessary dependencies, e.g. frontend
                 "make install-python-dependencies && "
                 "poetry run python -m pip install datasets"
             )
@@ -243,7 +255,20 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        asyncio.run(self._execute_local_command(setup_cmd, timeout=10 * 60))
+        asyncio.run(self._execute_local_command(agent_framework_setup_cmd, timeout=10 * 60))
+
+        # Install the SWE-bench evaluation harness.
+        eval_harness_setup_cmd = (
+            # clone the swe-bench repo
+            f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
+            "cd /root/SWE-bench && "
+            f"git checkout {self.cfg.eval_harness_commit} && "
+            # make venv & install swe-bench dependencies
+            "uv venv --python 3.12 venv && "
+            "source venv/bin/activate && "
+            "uv pip install -e ."
+        )
+        asyncio.run(self._execute_local_command(eval_harness_setup_cmd, timeout=10 * 60))
 
     def log_example_prompt(self, data):
         return
@@ -567,17 +592,11 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             # Run full evaluation with streaming output
             swe_bench_cmd = (
-                # first installing SWE-bench repo
-                "curl -LsSf https://astral.sh/uv/install.sh | sh && "
-                "source /root/.local/bin/env && "
-                "mkdir /root/SWE-bench && "
+                # copy installed repo & uv dir with python executable from /root_mount
+                "cp -r /root_mount/SWE-bench /root && "
+                "cp -r /root_mount/uv /root && "
                 "cd /root/SWE-bench && "
-                f"git clone {self.cfg.eval_harness_repo} . && "
-                f"git checkout {self.cfg.eval_harness_commit} && "
-                "uv venv --python 3.12 venv && "
-                "source venv/bin/activate && "
-                "uv pip install -e . && "
-                # then running the evaluation with streaming output
+                # run the evaluation with streaming output
                 f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
                 f"    --predictions_path {pred_mounted_path} "
                 f"    --instance_ids {data_point['instance_id']} "
