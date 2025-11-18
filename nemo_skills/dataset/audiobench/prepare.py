@@ -20,13 +20,14 @@ across multiple tasks including ASR, translation, speech QA, and more.
 
 Usage:
     python -m nemo_skills.dataset.audiobench.prepare --split test
-    python -m nemo_skills.dataset.audiobench.prepare --datasets librispeech earnings21
+    python -m nemo_skills.dataset.audiobench.prepare --datasets librispeech_test_clean earnings21_test
     python -m nemo_skills.dataset.audiobench.prepare --category nonjudge
 """
 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -271,9 +272,16 @@ def process_dataset(
     
     # Create output directories
     audio_dir = output_dir / category / "audio" / dataset_name
-    manifest_dir = output_dir / category / "manifests"
+    dataset_dir = output_dir / category / dataset_name
     os.makedirs(audio_dir, exist_ok=True)
-    os.makedirs(manifest_dir, exist_ok=True)
+    os.makedirs(dataset_dir, exist_ok=True)
+    
+    # Copy __init__.py from category folder to dataset folder
+    category_init = output_dir / category / "__init__.py"
+    dataset_init = dataset_dir / "__init__.py"
+    if category_init.exists() and not dataset_init.exists():
+        shutil.copy2(category_init, dataset_init)
+        print(f"✓ Copied __init__.py to {dataset_dir}")
     
     manifest_entries = []
     successful = 0
@@ -340,8 +348,8 @@ def process_dataset(
             failed += 1
             continue
     
-    # Save dataset-specific manifest
-    manifest_path = manifest_dir / f"{dataset_name}.jsonl"
+    # Save dataset-specific manifest to dataset directory
+    manifest_path = dataset_dir / f"{split}.jsonl"
     with open(manifest_path, "w", encoding="utf-8") as f:
         for entry in manifest_entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
