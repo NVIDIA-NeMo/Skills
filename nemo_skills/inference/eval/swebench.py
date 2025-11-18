@@ -207,9 +207,10 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
             setup_cmd = (
+                "cd /root && "
                 "curl -LsSf https://astral.sh/uv/install.sh | sh && "
                 "source /root/.local/bin/env && "
-                "cd /root && "
+                "export UV_PYTHON_INSTALL_DIR=/root/uv && "
                 "mkdir SWE-agent && "
                 "cd SWE-agent && "
                 f"git clone {self.cfg.agent_framework_repo} . && "
@@ -382,8 +383,9 @@ class SweBenchGenerationTask(GenerationTask):
             completion_kwargs["logprobs"] = True
 
         swe_agent_cmd = (
-            # copy installed repo from /root_mount
+            # copy installed repo & uv dir with python executable from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
+            "cp -r /root_mount/uv /root && "
             "cd /root/SWE-agent && "
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
