@@ -190,7 +190,7 @@ class SweBenchGenerationTask(GenerationTask):
         self.output_dir = Path(self.cfg.output_file).parent
         if self.cfg.inference.random_seed is not None:
             self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
-            self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Install SWE-agent/OpenHands. Here's how it works:
         #
