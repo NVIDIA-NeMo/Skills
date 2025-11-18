@@ -51,7 +51,34 @@ type2prompt = {
 }
 
 
-with open("recipes/opensciencereasoning/configs/SDG_pipeline/gpt-partial.yaml", "r") as f:
+# with open("recipes/opensciencereasoning/configs/SDG_pipeline/gpt-partial.yaml", "r") as f:
+#     gpt_partial_yaml = yaml.safe_load(f)
+# print(gpt_partial_yaml)
+# for key, value in metadata.items():
+#     prompt = type2prompt[value["dataset_type"]]
+#     cluster = value["cluster"]
+#     gpt_partial_yaml["dataset_name"] = value["dataset_name"]
+#     gpt_partial_yaml["dataset_type"] = value["dataset_type"]
+#     gpt_partial_yaml["prompt"] = prompt
+#     gpt_partial_yaml["cluster"] = cluster
+#     if value["dataset_type"] == "openq":
+#         gpt_partial_yaml["stages"]["generate_solutions"]["predicted_answer_regex"] = None
+#     else:
+#         gpt_partial_yaml["stages"]["generate_solutions"]["predicted_answer_regex"] = "Answer:\s*([A-J])\s*$"
+#     gpt_partial_yaml["stages"]["generate_solutions"]["end_reasoning_string"] = (
+#         "'++end_reasoning_string=\"<|start|>assistant<|channel|>final<|message|>\"'"
+#     )
+
+#     gpt_partial_yaml["stages"]["generate_solutions"]["generation_kwargs"]["args"]["num_chunks"] = 20
+
+#     # write to disk
+#     with open(
+#         f"recipes/opensciencereasoning/configs/SDG_pipeline/gpt-partial-{key}.yaml",
+#         "w",
+#     ) as f:
+#         yaml.dump(gpt_partial_yaml, f)
+
+with open("recipes/opensciencereasoning/configs/SDG_pipeline/gpt-conversion.yaml", "r") as f:
     gpt_partial_yaml = yaml.safe_load(f)
 print(gpt_partial_yaml)
 for key, value in metadata.items():
@@ -73,7 +100,7 @@ for key, value in metadata.items():
 
     # write to disk
     with open(
-        f"recipes/opensciencereasoning/configs/SDG_pipeline/gpt-partial-{key}.yaml",
+        f"recipes/opensciencereasoning/configs/SDG_pipeline/gpt-conversion-{key}.yaml",
         "w",
     ) as f:
         yaml.dump(gpt_partial_yaml, f)

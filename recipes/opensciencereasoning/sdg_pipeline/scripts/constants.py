@@ -14,3 +14,4 @@
 # limitations under the License.
 
 BASE_FIELDS = ["problem", "expected_answer", "id", "metadata"]
+FINAL_FIELDS = ["input", "output"]
