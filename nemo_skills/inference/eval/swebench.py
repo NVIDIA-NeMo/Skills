@@ -198,7 +198,7 @@ class SweBenchGenerationTask(GenerationTask):
         # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
         #    All required files, venvs and dependencies are stored in /root.
         # 2. When we start SWE-bench containers via Apptainer, we mount /root to /root_mount.
-        # 3. Inside of the container, we copy the required files from /root_mount to /root and run from there.
+        # 3. Inside of the child containers, we copy the required files from /root_mount to /root and run from there.
         #
         # The goal is to run inference & evaluation inside of the SWE-bench containers,
         # but avoid having to download & install everything in each container separately.

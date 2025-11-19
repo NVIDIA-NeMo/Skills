@@ -82,7 +82,9 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++eval_harness_repo:** URL of the repository to use for the evaluation harness. This is passed directly as an argument to `git clone`. Defaults to [`https://github.com/Kipok/SWE-bench.git`](https://github.com/Kipok/SWE-bench), our fork of SWE-bench that supports local evaluation.
 
-- **++eval_harness_commit:** The commit hash, branch or tag to checkout after cloning agent_harness_repo. Defaults to `HEAD`, i.e. the latest commit.
+- **++eval_harness_commit:** The commit hash, branch or tag to checkout after cloning eval_harness_repo. Defaults to `HEAD`, i.e. the latest commit.
+
+- **++setup_timeout:** The timeout for downloading & installing the agent framework and the evaluation harness, in seconds. Defaults to 1200, i.e. 20 minutes.
 
 - **++swebench_tests_timeout:** The timeout for tests after applying the generated patch during evaluation, in seconds. Defaults to 1800, i.e. 30 minutes.
 
