@@ -121,7 +121,7 @@ class SciCodeGenerationTask(GenerationTask):
             total_generated_tokens += llm_output.get("num_generated_tokens", 0)
             if self.cfg.parse_reasoning:
                 parse_reasoning(llm_output, "generation", self.cfg.end_reasoning_string)
-            
+
             # Warn once on first generation if reasoning detected but not being parsed
             if not self.cfg.parse_reasoning and not self._reasoning_warning_shown and cur_step == 0:
                 gen = llm_output["generation"]
@@ -131,7 +131,7 @@ class SciCodeGenerationTask(GenerationTask):
                         "For reasoning models, set ++parse_reasoning=True to avoid incorrect code extraction."
                     )
                     self._reasoning_warning_shown = True
-            
+
             extracted_python = extract_python_script(llm_output["generation"])
             previous_llm_code[cur_step] = extracted_python
             # TODO: save those as separate entries so that we can preserve intermediate progress on reruns
