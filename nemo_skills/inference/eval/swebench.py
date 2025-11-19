@@ -111,6 +111,7 @@ class SweBenchGenerationConfig:
     eval_harness_repo: str = "https://github.com/Kipok/SWE-bench.git"
     eval_harness_commit: str = "HEAD"  # Which commit to use when cloning the eval harness repo
 
+    setup_timeout: int = 60 * 20  # Timeout to download & install the agent framework and the eval harness, in seconds
     swebench_tests_timeout: int = 60 * 30  # Timeout for the tests after applying the patch, in seconds
 
     # How many times to try running inference & evaluation commands until they produce a valid output file
@@ -209,8 +210,8 @@ class SweBenchGenerationTask(GenerationTask):
             # install uv
             "curl -LsSf https://astral.sh/uv/install.sh | sh && "
             "source /root/.local/bin/env && "
-            # tell uv to store its python executables in /root/uv
-            "export UV_PYTHON_INSTALL_DIR=/root/uv"
+            # tell uv to store its python executables in /root/uv-python
+            "export UV_PYTHON_INSTALL_DIR=/root/uv-python"
         )
 
         # Install SWE-agent/OpenHands.
@@ -219,6 +220,7 @@ class SweBenchGenerationTask(GenerationTask):
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
             setup_commands.append(
                 # clone the swe-agent repo
+                "rm -rf /root/SWE-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
                 "cd /root/SWE-agent && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
@@ -233,11 +235,13 @@ class SweBenchGenerationTask(GenerationTask):
             setup_commands.append(
                 # install miniforge & create a conda env at /root/conda
                 'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
+                "rm -rf /root/conda && "
                 "bash Miniforge3-$(uname)-$(uname -m).sh -bp /root/conda && "
                 'eval "$(/root/conda/bin/conda shell.bash hook)" && '
                 # install python, poetry & tmux (required by openhands)
                 "mamba install -y --override-channels conda-forge::python=3.12 conda-forge::poetry conda-forge::tmux && "
                 # clone the openhands repo
+                "rm -rf /root/OpenHands && "
                 f"git clone {self.cfg.agent_framework_repo} /root/OpenHands && "
                 "cd /root/OpenHands && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
@@ -259,6 +263,7 @@ class SweBenchGenerationTask(GenerationTask):
         # Install the SWE-bench evaluation harness.
         setup_commands.append(
             # clone the swe-bench repo
+            "rm -rf /root/SWE-bench && "
             f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
             "cd /root/SWE-bench && "
             f"git checkout {self.cfg.eval_harness_commit} && "
@@ -268,8 +273,9 @@ class SweBenchGenerationTask(GenerationTask):
             "uv pip install -e ."
         )
 
+        # Run all commands with retries and timeout
         combined_setup_command = " && ".join(setup_commands)
-        asyncio.run(self._execute_local_command(combined_setup_command, timeout=10 * 60))
+        asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
 
     def log_example_prompt(self, data):
         return
@@ -291,15 +297,35 @@ class SweBenchGenerationTask(GenerationTask):
         return data_point
 
     async def _execute_local_command(self, command, timeout=None):
-        """Execute a command locally."""
-        # Create async subprocess
-        process = await asyncio.create_subprocess_shell(f"/bin/bash -c {shlex.quote(command)}")
+        """Execute a command locally with retry logic."""
+        for attempt in range(self.cfg.max_retries):
+            try:
+                # Create async subprocess
+                process = await asyncio.create_subprocess_shell(f"/bin/bash -c {shlex.quote(command)}")
 
-        # Wait for completion
-        await asyncio.wait_for(process.communicate(), timeout=timeout)
+                # Wait for completion
+                await asyncio.wait_for(process.communicate(), timeout=timeout)
 
-        if process.returncode != 0:
-            raise ValueError(f"Command failed with return code {process.returncode}")
+                if process.returncode != 0:
+                    raise ValueError(f"Command failed with return code {process.returncode}")
+
+            except asyncio.TimeoutError:
+                raise ValueError(f"Command timed out after {timeout} seconds: '{command}'")
+
+            except Exception:
+                if attempt < self.cfg.max_retries - 1:
+                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
+                    LOG.warning(
+                        "Attempt %d failed for command: '%s'. Retrying in %d seconds...",
+                        attempt + 1,
+                        command,
+                        retry_interval,
+                    )
+                    if retry_interval > 0:
+                        await asyncio.sleep(retry_interval)
+                    continue
+                else:
+                    raise ValueError(f"All {self.cfg.max_retries} attempts failed for command: '{command}'")
 
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
@@ -406,9 +432,9 @@ class SweBenchGenerationTask(GenerationTask):
             completion_kwargs["logprobs"] = True
 
         swe_agent_cmd = (
-            # copy installed repo & uv dir with python executable from /root_mount
+            # copy installed repo & python executable dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
-            "cp -r /root_mount/uv /root && "
+            "cp -r /root_mount/uv-python /root && "
             "cd /root/SWE-agent && "
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
@@ -593,9 +619,9 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             # Run full evaluation with streaming output
             swe_bench_cmd = (
-                # copy installed repo & uv dir with python executable from /root_mount
+                # copy installed repo & python executable dir from /root_mount
                 "cp -r /root_mount/SWE-bench /root && "
-                "cp -r /root_mount/uv /root && "
+                "cp -r /root_mount/uv-python /root && "
                 "cd /root/SWE-bench && "
                 # run the evaluation with streaming output
                 f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
