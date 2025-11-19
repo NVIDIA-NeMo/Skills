@@ -233,6 +233,7 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
             setup_commands.append(
+                "cd /root && "
                 # install miniforge & create a conda env at /root/conda
                 'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
                 "rm -rf /root/conda && "
@@ -326,6 +327,9 @@ class SweBenchGenerationTask(GenerationTask):
                     continue
                 else:
                     raise ValueError(f"All {self.cfg.max_retries} attempts failed for command: '{command}'")
+
+            else:
+                return
 
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
