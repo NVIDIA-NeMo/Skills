@@ -44,6 +44,19 @@ except Exception:  # pragma: no cover - best effort
         return _json_std.dumps(obj)
 
 
+"""
+Source: https://cookbook.openai.com/articles/openai-harmony
+
+<|start|>{header}<|message|>{content}<|end|>
+
+The {header} contains a series of meta information including the role. <|end|> represents the end of a fully completed message but the model might also use other stop tokens such as <|call|> for tool calling and <|return|> to indicate the model is done with the completion.
+
+
+Developer message format:
+<|start|>developer<|message|># Instructions
+{instructions}<|end|>
+
+"""
 OUTPUT_PATTERN_RE = re.compile(
     r"<\|start\|>"  # start sentinel already prefixed for assistant output concat
     r"(?P<source_info>.*?)"
@@ -96,6 +109,10 @@ def parse_line_to_openai_format(json_line: str) -> Tuple[List[Dict], Dict]:
 
         if "user" in source_info:
             messages.append({"role": "user", "content": content})
+            continue
+
+        if "developer" in source_info:
+            messages.append({"role": "developer", "content": content})
             continue
 
         # Flush buffer if it exists before processing a new message that isn't a tool call

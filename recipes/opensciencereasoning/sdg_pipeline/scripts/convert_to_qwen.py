@@ -242,7 +242,7 @@ def convert_using_chat_template(messages: List[Dict[str, Any]]) -> Dict[str, str
     tokenizer = _get_tokenizer()
     # Only include tools if ADD_TOOLS flag is set
     tools = None
-    if ADD_TOOLS:
+    if True:
         tools = [
             {
                 "type": "function",
