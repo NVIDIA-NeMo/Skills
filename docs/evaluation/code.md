@@ -88,7 +88,7 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++swebench_tests_timeout:** The timeout for tests after applying the generated patch during evaluation, in seconds. Defaults to 1800, i.e. 30 minutes.
 
-- **++max_retries:** How many times to try running inference and evaluation until a valid output file is produced. Defaults to 3.
+- **++max_retries:** How many times to try running setup, inference and evaluation until a valid output file is produced. Defaults to 3.
 
 - **++min_retry_interval, ++max_retry_interval:** The interval between retries, in seconds. Selected randomly between min and max on each retry. Defaults to 60 and 180 respectively.
 
