@@ -561,7 +561,7 @@ def convert_to_messages_format(cluster, expname, run_after, stage_config, **kwar
     """
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/final_result.jsonl"
+    output_file = f"{output_dir}/{OUTPUT_FILE}"
 
     run_cmd(
         ctx=wrap_arguments(
@@ -641,6 +641,34 @@ def bucket(cluster, expname, run_after, stage_config, **kwargs):
     )
 
 
+def bucket_qwen(cluster, expname, run_after, stage_config, **kwargs):
+    """Bucket samples by token length using the configured tokenizer.
+
+    Each record is augmented with its `out_token_length`, which is the
+    per-sample statistic written back to the JSONL output. It emits one JSONL file
+    per configured bucket (for example `{stem}_bucket_16000.jsonl`) plus an overflow
+    file, placing samples into the file whose upper bound matches their token length.
+    Bucket counts and percentages are also reported via the script's logs.
+    """
+    input_file = stage_config["input_file"]
+    output_dir = stage_config["output_dir"]
+
+    run_cmd(
+        ctx=wrap_arguments(
+            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/calculate_tkn_len_and_bucket.py "
+            f"  {input_file} "
+            f"  --output_dir {output_dir} "
+            f"  --to_bucket "
+            f"  --bucket_sizes {' '.join(map(str, stage_config.get('bucket_sizes', [16000, 32000, 64000])))} "
+            f"  --tokenizer_path {stage_config.get('tokenizer_path')} "
+        ),
+        cluster=cluster,
+        log_dir=f"{output_dir}/logs",
+        expname=expname,
+        run_after=run_after,
+    )
+
+
 stages_map = {
     "filter_problems": filter_problems,
     "decontaminate": decontaminate,
@@ -654,6 +682,7 @@ stages_map = {
     "bucket": bucket,
     "convert_to_qwen_from_messages": convert_to_qwen_from_messages,
     "remove_unused_fields": remove_unused_fields,
+    "bucket-qwen": bucket_qwen,
 }
 
 
