@@ -541,6 +541,8 @@ class SweBenchGenerationTask(GenerationTask):
             "cd /root/OpenHands && "
             # add poetry & tmux to PATH
             "export PATH=/root/uv/tool-bin:/root/tmux:$PATH && "
+            # set poetry active environment
+            "poetry env use /root/OpenHands/.venv/bin/python && "
             # copy dataset
             f"mkdir {data_dir} && "
             f"cp {self.cfg.input_file} {data_dir} && "
