@@ -208,7 +208,7 @@ class SweBenchGenerationTask(GenerationTask):
         # Install uv.
         setup_commands.append(
             # install uv
-            "curl -LsSf https://astral.sh/uv/install.sh | sh && "
+            "curl -Lf https://astral.sh/uv/install.sh | sh && "
             "source /root/.local/bin/env && "
             # tell uv to store its data in /root/uv
             "export UV_PYTHON_INSTALL_DIR=/root/uv/python && "
@@ -243,7 +243,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "export PATH=/root/uv/tool-bin:$PATH && "
                 # download tmux as appimage
                 "mkdir -p /root/tmux && "
-                "curl -L https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
+                "curl -Lf https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
                 "chmod 777 /root/tmux/tmux && "
                 # clone the openhands repo
                 "rm -rf /root/OpenHands && "
