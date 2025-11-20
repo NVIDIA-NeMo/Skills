@@ -537,7 +537,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cd /root/OpenHands && "
             # add poetry & tmux to PATH
             "export PATH=/root/uv/tool-bin:/root/tmux:$PATH && "
-            # enable appimage to run without fusermount
+            # enable tmux appimage to run without fusermount
             # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
             "export APPIMAGE_EXTRACT_AND_RUN=1 && "
             "export NO_CLEANUP=1 && "
