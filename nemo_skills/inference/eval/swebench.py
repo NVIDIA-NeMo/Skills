@@ -245,10 +245,6 @@ class SweBenchGenerationTask(GenerationTask):
                 "mkdir -p /root/tmux && "
                 "curl -L https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
                 "chmod 777 /root/tmux/tmux && "
-                # enable appimage to run without fusermount
-                # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
-                "export APPIMAGE_EXTRACT_AND_RUN=1 && "
-                "export NO_CLEANUP=1 && "
                 # clone the openhands repo
                 "rm -rf /root/OpenHands && "
                 f"git clone {self.cfg.agent_framework_repo} /root/OpenHands && "
@@ -541,6 +537,10 @@ class SweBenchGenerationTask(GenerationTask):
             "cd /root/OpenHands && "
             # add poetry & tmux to PATH
             "export PATH=/root/uv/tool-bin:/root/tmux:$PATH && "
+            # enable appimage to run without fusermount
+            # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
+            "export APPIMAGE_EXTRACT_AND_RUN=1 && "
+            "export NO_CLEANUP=1 && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
