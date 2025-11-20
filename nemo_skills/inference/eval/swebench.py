@@ -210,8 +210,10 @@ class SweBenchGenerationTask(GenerationTask):
             # install uv
             "curl -LsSf https://astral.sh/uv/install.sh | sh && "
             "source /root/.local/bin/env && "
-            # tell uv to store its python executables in /root/uv-python
-            "export UV_PYTHON_INSTALL_DIR=/root/uv-python"
+            # tell uv to store its data in /root/uv
+            "export UV_PYTHON_INSTALL_DIR=/root/uv/python && "
+            "export UV_TOOL_DIR=/root/uv/tool && "
+            "export UV_TOOL_BIN_DIR=/root/uv/tool-bin"
         )
 
         # Install SWE-agent/OpenHands.
@@ -233,14 +235,20 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
             setup_commands.append(
-                "cd /root && "
-                # install miniforge & create a conda env at /root/conda
-                'curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && '
-                "rm -rf /root/conda && "
-                "bash Miniforge3-$(uname)-$(uname -m).sh -bp /root/conda && "
-                'eval "$(/root/conda/bin/conda shell.bash hook)" && '
-                # install python, poetry & tmux (required by openhands)
-                "mamba install -y --override-channels conda-forge::python=3.12 conda-forge::poetry conda-forge::tmux && "
+                # install python 3.12 with uv
+                "uv python install 3.12 && "
+                # install poetry in isolated environment
+                "uv tool install poetry && "
+                # add dir with poetry executable to PATH
+                "export PATH=/root/uv/tool-bin:$PATH && "
+                # download tmux as appimage
+                "mkdir -p /root/tmux && "
+                "curl -L https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
+                "chmod 777 /root/tmux/tmux && "
+                # enable appimage to run without fusermount
+                # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
+                "export APPIMAGE_EXTRACT_AND_RUN=1 && "
+                "export NO_CLEANUP=1 && "
                 # clone the openhands repo
                 "rm -rf /root/OpenHands && "
                 f"git clone {self.cfg.agent_framework_repo} /root/OpenHands && "
@@ -436,9 +444,9 @@ class SweBenchGenerationTask(GenerationTask):
             completion_kwargs["logprobs"] = True
 
         swe_agent_cmd = (
-            # copy installed repo & python executable dir from /root_mount
+            # copy installed repo & uv dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
-            "cp -r /root_mount/uv-python /root && "
+            "cp -r /root_mount/uv /root && "
             "cd /root/SWE-agent && "
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
@@ -526,12 +534,13 @@ class SweBenchGenerationTask(GenerationTask):
             "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
             "    exit 1; "
             "fi && "
-            # copy installed repo & conda from /root_mount
+            # copy installed repo, uv & tmux dirs from /root_mount
             "cp -r /root_mount/OpenHands /root && "
-            "cp -r /root_mount/conda /root && "
+            "cp -r /root_mount/uv /root && "
+            "cp -r /root_mount/tmux /root && "
             "cd /root/OpenHands && "
-            # activate conda
-            'eval "$(/root/conda/bin/conda shell.bash hook)" && '
+            # add poetry & tmux to PATH
+            "export PATH=/root/uv/tool-bin:/root/tmux:$PATH && "
             # copy dataset
             f"mkdir {data_dir} && "
             f"cp {self.cfg.input_file} {data_dir} && "
@@ -623,9 +632,9 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             # Run full evaluation with streaming output
             swe_bench_cmd = (
-                # copy installed repo & python executable dir from /root_mount
+                # copy installed repo & uv dir from /root_mount
                 "cp -r /root_mount/SWE-bench /root && "
-                "cp -r /root_mount/uv-python /root && "
+                "cp -r /root_mount/uv /root && "
                 "cd /root/SWE-bench && "
                 # run the evaluation with streaming output
                 f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
