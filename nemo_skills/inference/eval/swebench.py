@@ -237,7 +237,7 @@ class SweBenchGenerationTask(GenerationTask):
             setup_commands.append(
                 # install python 3.12 with uv
                 "uv python install 3.12 && "
-                # install poetry in isolated environment
+                # install poetry in an isolated environment
                 "uv tool install poetry && "
                 # add dir with poetry executable to PATH
                 "export PATH=/root/uv/tool-bin:$PATH && "
@@ -541,8 +541,8 @@ class SweBenchGenerationTask(GenerationTask):
             "cd /root/OpenHands && "
             # add poetry & tmux to PATH
             "export PATH=/root/uv/tool-bin:/root/tmux:$PATH && "
-            # set poetry active environment
-            "poetry env use /root/OpenHands/.venv/bin/python && "
+            # activate openhands venv
+            "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
             f"mkdir {data_dir} && "
             f"cp {self.cfg.input_file} {data_dir} && "
