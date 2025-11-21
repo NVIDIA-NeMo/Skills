@@ -142,13 +142,13 @@ def create_manifest_entry(
     Returns:
         Manifest entry dict with proper format for nemo-skills
     """
-    instruction = sample.get("instruction", "Process the audio")
-    reference = sample.get("reference", "")
+    instruction = sample.get("instruction", sample.get("text", "Process the audio"))
+    reference = sample.get("reference", sample.get("answer", ""))
     task_type = sample.get("task_type", "unknown")
     
-    # Create relative audio path (will be resolved relative to data_dir)
-    # Format: audiobench/{category}/audio/{dataset_name}/{filename}
-    audio_rel_path = f"audiobench/{category}/audio/{dataset_name}/{audio_filename}"
+    # Create absolute audio path with /data/ prefix for cluster deployment
+    # Format: /data/audiobench/{category}/audio/{dataset_name}/{filename}
+    audio_rel_path = f"/data/audiobench/{category}/audio/{dataset_name}/{audio_filename}"
     
     # Create audio metadata (both singular and plural forms for compatibility)
     audio_metadata = {"path": audio_rel_path, "duration": duration}
@@ -164,8 +164,8 @@ def create_manifest_entry(
             {
                 "role": "user",
                 "content": instruction,
-                "audio": audio_metadata,  # Singular for Megatron server
-                "audios": [audio_metadata],  # Plural for compatibility
+                "audio": audio_metadata,
+                "audios": [audio_metadata],
             }
         ],
         "dataset": dataset_name,
@@ -175,8 +175,7 @@ def create_manifest_entry(
         "question": instruction,
     }
     
-    # Add optional fields if present
-    for key in ["choices", "options", "audio_text_instruction"]:
+    for key in ["choices", "options", "audio_text_instruction", "audio_gt", "dimension", "rule_type", "rule_target", "task"]:
         if key in sample:
             entry[key] = sample[key]
     
