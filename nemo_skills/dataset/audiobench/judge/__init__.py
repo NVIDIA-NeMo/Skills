@@ -12,19 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""AudioBench judge tasks.
+"""AudioBench judge tasks dataset configuration.
 
-Tasks in this category require LLM-as-a-judge evaluation:
-- Speech QA: Open-ended questions about audio content
-- Emotion/Sentiment: Classification tasks requiring semantic understanding
-- Audio captioning: Descriptive text generation
-- Music understanding: Questions about musical content
+This dataset includes tasks that require LLM-based evaluation such as:
+- Audio captioning
+- Spoken question answering
+- Audio understanding and reasoning
 
-These tasks use an LLM judge to evaluate the quality and correctness of responses.
+These tasks require an LLM judge for evaluation, matching MMAU-Pro evaluation setup.
 """
 
+# Dataset configuration - CRITICAL: needed for audio to work
 DATASET_GROUP = "speechlm"
 METRICS_TYPE = "speechlm"
 DEFAULT_SPLIT = "test"
 GENERATION_ARGS = "++prompt_format=openai "
 
+# Judge configuration matching AudioBench official implementation
+# Using Llama-3.1-70B with vllm (can be overridden in run scripts)
+JUDGE_PIPELINE_ARGS = {
+    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "server_type": "vllm",
+    "server_gpus": 8,
+    "server_args": "--max-model-len 8192 --gpu-memory-utilization 0.95",
+}
+JUDGE_ARGS = "++prompt_config=judge/audiobench ++generation_key=judgement"

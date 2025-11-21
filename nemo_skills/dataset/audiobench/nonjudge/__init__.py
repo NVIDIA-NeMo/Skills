@@ -12,18 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""AudioBench non-judge tasks.
+"""AudioBench non-judge tasks dataset configuration.
 
-Tasks in this category use automatic metrics for evaluation:
-- ASR: Word Error Rate (WER)
-- Translation: BLEU score
-- Spoken reasoning: Exact match or WER
+This dataset includes ASR, translation, and other tasks that use
+automatic metrics (WER, BLEU, WER-PC) instead of judge evaluation.
 
-No LLM judge required for these tasks.
+NO JUDGE REQUIRED - Metrics computed automatically from model outputs.
 """
 
+# Dataset configuration - CRITICAL: needed for audio to work
 DATASET_GROUP = "speechlm"
 METRICS_TYPE = "speechlm"
-EVAL_ARGS = "++eval_type=audiobench "
-GENERATION_ARGS = "++prompt_format=openai "
 
+# Evaluation settings
+EVAL_ARGS = "++eval_type=audiobench "
+
+# Generation settings - OpenAI format for audio-language models
+GENERATION_ARGS = "++prompt_format=openai "
