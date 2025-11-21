@@ -31,7 +31,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 import soundfile as sf
@@ -130,7 +130,7 @@ def create_manifest_entry(
     category: str,
 ) -> Dict:
     """Create a nemo-skills compatible manifest entry.
-    
+
     Args:
         sample: Raw sample from AudioBench dataset
         audio_filename: Audio filename (relative path within audiobench directory)
@@ -138,35 +138,32 @@ def create_manifest_entry(
         dataset_name: Name of the dataset
         sample_id: Sample index
         category: Category (judge/nonjudge)
-    
+
     Returns:
         Manifest entry dict with proper format for nemo-skills
     """
     instruction = sample.get("instruction", sample.get("text", "Process the audio"))
     reference = sample.get("reference", sample.get("answer", ""))
     task_type = sample.get("task_type", "unknown")
-    
+
     # Create absolute audio path with /data/ prefix for cluster deployment
     # Format: /data/audiobench/{category}/audio/{dataset_name}/{filename}
     audio_rel_path = f"/data/audiobench/{category}/audio/{dataset_name}/{audio_filename}"
-    
+
     # Create audio metadata (both singular and plural forms for compatibility)
     audio_metadata = {"path": audio_rel_path, "duration": duration}
-    
+
     entry = {
         "expected_answer": reference,
         "audio_path": [audio_rel_path],
         "messages": [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant. /no_think"
-            },
+            {"role": "system", "content": "You are a helpful assistant. /no_think"},
             {
                 "role": "user",
                 "content": instruction,
                 "audio": audio_metadata,
                 "audios": [audio_metadata],
-            }
+            },
         ],
         "dataset": dataset_name,
         "subset_for_metrics": dataset_name,
@@ -174,32 +171,41 @@ def create_manifest_entry(
         "task_type": task_type,
         "question": instruction,
     }
-    
-    for key in ["choices", "options", "audio_text_instruction", "audio_gt", "dimension", "rule_type", "rule_target", "task"]:
+
+    for key in [
+        "choices",
+        "options",
+        "audio_text_instruction",
+        "audio_gt",
+        "dimension",
+        "rule_type",
+        "rule_target",
+        "task",
+    ]:
         if key in sample:
             entry[key] = sample[key]
-    
+
     return entry
 
 
 def clone_audiobench_repo(target_dir: Path) -> bool:
     """Clone AudioBench repository if it doesn't exist.
-    
+
     Args:
         target_dir: Directory where AudioBench should be cloned
-    
+
     Returns:
         True if successful, False otherwise
     """
     audiobench_url = "https://github.com/AudioLLMs/AudioBench.git"
-    
+
     if target_dir.exists():
         print(f"AudioBench already exists at {target_dir}")
         return True
-    
+
     print(f"\nCloning AudioBench repository to {target_dir}...")
-    print(f"This may take a few minutes...")
-    
+    print("This may take a few minutes...")
+
     try:
         subprocess.run(
             ["git", "clone", audiobench_url, str(target_dir)],
@@ -207,7 +213,7 @@ def clone_audiobench_repo(target_dir: Path) -> bool:
             capture_output=True,
             text=True,
         )
-        print(f"✓ Successfully cloned AudioBench")
+        print("✓ Successfully cloned AudioBench")
         return True
     except subprocess.CalledProcessError as e:
         print(f"✗ Failed to clone AudioBench: {e.stderr}")
@@ -226,21 +232,21 @@ def process_dataset(
     max_samples: int = -1,
 ) -> tuple[int, List[Dict]]:
     """Process a single AudioBench dataset.
-    
+
     Args:
         dataset_name: Name of the dataset to process
         output_dir: Base output directory
         save_audio: Whether to save audio files
         split: Dataset split (default: "test")
         audiobench_path: Path to AudioBench repository
-    
+
     Returns:
         Tuple of (num_samples, manifest_entries)
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Processing: {dataset_name}")
-    print(f"{'='*60}")
-    
+    print(f"{'=' * 60}")
+
     # Import AudioBench Dataset class
     sys.path.insert(0, str(audiobench_path / "src"))
     try:
@@ -251,7 +257,7 @@ def process_dataset(
             f"AudioBench path: {audiobench_path}\n"
             f"Make sure AudioBench repository is properly set up."
         )
-    
+
     # Load dataset
     try:
         dataset = Dataset(dataset_name, number_of_samples=max_samples)
@@ -259,7 +265,7 @@ def process_dataset(
         print(f"Loaded {len(data_samples)} samples via AudioBench")
     except Exception as e:
         raise Exception(f"Failed to load dataset {dataset_name}: {e}")
-    
+
     # Determine category (handle _test suffix variants)
     dataset_base = dataset_name.replace("_test", "")
     if dataset_name in JUDGE_DATASETS or dataset_base in JUDGE_DATASETS:
@@ -268,24 +274,24 @@ def process_dataset(
         category = "nonjudge"
     else:
         category = "unknown"
-    
+
     # Create output directories
     audio_dir = output_dir / category / "audio" / dataset_name
     dataset_dir = output_dir / category / dataset_name
     os.makedirs(audio_dir, exist_ok=True)
     os.makedirs(dataset_dir, exist_ok=True)
-    
+
     # Copy __init__.py from category folder to dataset folder
     category_init = output_dir / category / "__init__.py"
     dataset_init = dataset_dir / "__init__.py"
     if category_init.exists() and not dataset_init.exists():
         shutil.copy2(category_init, dataset_init)
         print(f"✓ Copied __init__.py to {dataset_dir}")
-    
+
     manifest_entries = []
     successful = 0
     failed = 0
-    
+
     for idx, sample in enumerate(tqdm(data_samples, desc=f"Processing {dataset_name}")):
         try:
             # Get audio data
@@ -294,7 +300,7 @@ def process_dataset(
                 print(f"Warning: Sample {idx} has no audio, skipping")
                 failed += 1
                 continue
-            
+
             # Extract audio array and sampling rate
             if isinstance(audio_dict, dict):
                 audio_array = audio_dict.get("array")
@@ -303,23 +309,23 @@ def process_dataset(
                 print(f"Warning: Unexpected audio format at sample {idx}")
                 failed += 1
                 continue
-            
+
             if audio_array is None or len(audio_array) == 0:
                 print(f"Warning: Empty audio at sample {idx}, skipping")
                 failed += 1
                 continue
-            
+
             # Convert to numpy array if needed
             if isinstance(audio_array, list):
                 audio_array = np.array(audio_array)
-            
+
             # Compute duration
             duration = get_audio_duration(audio_array, sampling_rate)
-            
+
             # Define audio file paths
             audio_filename = f"{dataset_name}_{idx:06d}.wav"
             local_audio_path = audio_dir / audio_filename
-            
+
             # Save audio file
             if save_audio:
                 try:
@@ -328,7 +334,7 @@ def process_dataset(
                     print(f"Warning: Failed to save audio for sample {idx}: {e}")
                     failed += 1
                     continue
-            
+
             # Create manifest entry with relative path
             entry = create_manifest_entry(
                 sample=sample,
@@ -338,32 +344,30 @@ def process_dataset(
                 sample_id=idx,
                 category=category,
             )
-            
+
             manifest_entries.append(entry)
             successful += 1
-            
+
         except Exception as e:
             print(f"Error processing sample {idx}: {e}")
             failed += 1
             continue
-    
+
     # Save dataset-specific manifest to dataset directory
     manifest_path = dataset_dir / f"{split}.jsonl"
     with open(manifest_path, "w", encoding="utf-8") as f:
         for entry in manifest_entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    
+
     print(f"✓ Saved {successful} samples to {manifest_path}")
     if failed > 0:
         print(f"✗ Failed to process {failed} samples")
-    
+
     return successful, manifest_entries
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Prepare AudioBench datasets for nemo-skills evaluation"
-    )
+    parser = argparse.ArgumentParser(description="Prepare AudioBench datasets for nemo-skills evaluation")
     parser.add_argument(
         "--split",
         default="test",
@@ -406,18 +410,18 @@ def main():
         help="Maximum number of samples to process per dataset (-1 for all)",
     )
     parser.set_defaults(save_audio=True)
-    
+
     args = parser.parse_args()
-    
+
     # Determine output directory
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
         # Use dataset directory as output (files will be in nemo_skills/dataset/audiobench/)
         output_dir = Path(__file__).parent
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Determine AudioBench repository path
     if args.audiobench_path:
         audiobench_path = Path(args.audiobench_path)
@@ -428,7 +432,7 @@ def main():
         else:
             # Default to AudioBench directory (same level as this script)
             audiobench_path = Path(__file__).parent / "AudioBench"
-    
+
     # Clone AudioBench if it doesn't exist
     if not audiobench_path.exists():
         print(f"\nAudioBench not found at {audiobench_path}")
@@ -436,22 +440,22 @@ def main():
             print("\nFailed to clone AudioBench. Please clone it manually:")
             print("  git clone https://github.com/AudioLLMs/AudioBench.git")
             sys.exit(1)
-    
+
     # Verify AudioBench structure
     if not (audiobench_path / "src" / "dataset.py").exists():
         print(f"\nError: AudioBench repository at {audiobench_path} is missing src/dataset.py")
         print("Please ensure the repository is properly cloned.")
         sys.exit(1)
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("AudioBench Dataset Preparation")
-    print("="*60)
+    print("=" * 60)
     print(f"AudioBench path: {audiobench_path}")
     print(f"Output directory: {output_dir}")
     print(f"Save audio files: {args.save_audio}")
     print(f"Split: {args.split}")
-    print("="*60 + "\n")
-    
+    print("=" * 60 + "\n")
+
     # Determine which datasets to process
     if args.datasets:
         target_datasets = args.datasets
@@ -463,16 +467,16 @@ def main():
             target_datasets = NONJUDGE_DATASETS
         else:  # all
             target_datasets = all_datasets
-    
+
     print(f"Processing {len(target_datasets)} dataset(s)\n")
-    
+
     # Process datasets
     total_samples = 0
     successful_datasets = []
     failed_datasets = []
     judge_entries = []
     nonjudge_entries = []
-    
+
     for dataset_name in target_datasets:
         try:
             num_samples, entries = process_dataset(
@@ -485,17 +489,17 @@ def main():
             )
             total_samples += num_samples
             successful_datasets.append(dataset_name)
-            
+
             if dataset_name in JUDGE_DATASETS:
                 judge_entries.extend(entries)
             elif dataset_name in NONJUDGE_DATASETS:
                 nonjudge_entries.extend(entries)
-                
+
         except Exception as e:
             print(f"\n✗ FAILED: {dataset_name}")
             print(f"  Error: {e}\n")
             failed_datasets.append((dataset_name, str(e)))
-    
+
     # Create combined test.jsonl files
     if judge_entries:
         judge_test_path = output_dir / "judge" / f"{args.split}.jsonl"
@@ -505,7 +509,7 @@ def main():
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         print(f"\n✓ Combined judge {args.split}.jsonl: {judge_test_path}")
         print(f"  Total samples: {len(judge_entries)}")
-    
+
     if nonjudge_entries:
         nonjudge_test_path = output_dir / "nonjudge" / f"{args.split}.jsonl"
         nonjudge_test_path.parent.mkdir(parents=True, exist_ok=True)
@@ -514,28 +518,28 @@ def main():
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         print(f"\n✓ Combined nonjudge {args.split}.jsonl: {nonjudge_test_path}")
         print(f"  Total samples: {len(nonjudge_entries)}")
-    
+
     # Print summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print(f"Datasets requested: {len(target_datasets)}")
     print(f"Successfully processed: {len(successful_datasets)}")
     print(f"Failed: {len(failed_datasets)}")
     print(f"Total samples: {total_samples}")
-    
+
     if successful_datasets:
         print(f"\nSuccessful datasets ({len(successful_datasets)}):")
         for name in successful_datasets:
             category = "judge" if name in JUDGE_DATASETS else "nonjudge"
             print(f"  ✓ {name} ({category})")
-    
+
     if failed_datasets:
         print(f"\nFailed datasets ({len(failed_datasets)}):")
         for name, error in failed_datasets:
             print(f"  ✗ {name}: {error}")
-    
-    print("="*60 + "\n")
+
+    print("=" * 60 + "\n")
 
 
 if __name__ == "__main__":

@@ -138,7 +138,7 @@ def evaluate_asr_pc(reference: str, hypothesis: str) -> dict[str, Any]:
 def preprocess_asr_text(text: str) -> str:
     """Preprocess text for standard ASR evaluation (Whisper-style normalization)."""
     from whisper.normalizers import EnglishTextNormalizer
-    
+
     text = text.lower()
     normalizer = EnglishTextNormalizer()
     text = normalizer(text)

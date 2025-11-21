@@ -34,4 +34,3 @@ BENCHMARKS = {
     "audiobench.nonjudge": {},
     "audiobench.judge": {},
 }
-
