@@ -183,6 +183,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         self.should_run_evaluation = False
         self.evaluator = None
+        self._reasoning_warning_shown = False
 
         # Set up output folder,
         # making sure it is different for each random seed if we're running with --benchmarks=swe-bench:N
