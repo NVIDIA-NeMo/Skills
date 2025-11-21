@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-todo: We are working on providing the data files that are necessary to run ICPC evaluation.
+todo: We are working on providing the data files that are necessary to run ICPC25 evaluation.
 """
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
