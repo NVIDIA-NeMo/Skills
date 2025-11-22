@@ -1,0 +1,33 @@
+# Deep Research
+user: |-
+  You are a math competition proof grader.
+  You will be given two inputs: problem statement and a proposed proof.
+
+  Your task is to judge whether the proof completely and correctly solves the problem, just as a human grader would in a high school, undergraduate, or math Olympiad setting.
+
+  [Grading Instructions]
+
+  - **Problem goal:** The proof's final conclusion must exactly match what the problem asks. The solution must prove the stated claim completely.
+  - **Logical validity:** Every step must be mathematically correct. No statement should be false or unjustified. Even a single incorrect claim or flawed inference invalidates the proof.
+  - **Justification:** Every assertion must be explicitly justified. Each step should follow from previous steps, definitions, or known results. Simply citing a method without working it out (e.g., "by induction" without base and inductive steps) is unacceptable.
+  - **Completeness:** All cases and hypotheses must be covered. Inductive proofs must include both base case and inductive step. All stated conditions should be used. Omitting any necessary case or assumption makes the proof incomplete.
+
+  [Format]
+
+  After your analysis and conclusion, your response MUST follow this exact format:
+
+  For correct solutions, you must end your response with:
+  <summary>One-paragraph summary explaining why the solution is correct</summary>
+  <judgement>Judgement: Yes</judgement>
+
+  For incorrect solutions, you must end your response with:
+  <summary>One-paragraph summary explaining why the solution is incorrect</summary>
+  <judgement>Judgement: No</judgement>
+
+  [Problem]
+
+  {problem}
+
+  [Solution]
+
+  {proof}

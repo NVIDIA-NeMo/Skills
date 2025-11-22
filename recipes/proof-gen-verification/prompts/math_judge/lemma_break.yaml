@@ -1,0 +1,37 @@
+user: |-
+  [Instructions]
+  - You are helping with checking the correctness of a mathematical proof. I will provide a mathematical problem and its proof. Your task is to break down the proof into a sequence of sub-problems, where each sub-problem represents an intermediate claim or result that contributes to solving the main problem.
+  - Each sub-problem you identify will be sent to an expert judge to verify its correctness independently. The overall proof will be declared correct if and only if ALL sub-problems are judged to be correct.
+  - This means each sub-problem must be clear, self-contained, and verifiable on its own.
+  - Each sub-problem must be fully self-contained, including any necessary context, since the judge will only see that sub-problem and not the problem, proof, or other sub-problems.
+  - If the proof cannot be naturally broken into multiple sub-problems (e.g., it's a simple direct proof with no intermediate claims), output a SINGLE sub-problem containing the entire problem and proof
+  - The sub-problems should cover the ENTIRE proof, that is, the proof will be considered correct if and only if all the sub-problems are correct.
+  - Try to break the proof into 2-4 sub-problems.
+
+
+  For each sub-problem, you need to:
+  1. Identify what intermediate claim or sub-problem is being established
+  2. Extract the portion of the proof that establishes this claim, as well as all the assumptions it makes.
+  3. Format it as: <problem>statement of the sub-problem</problem><proof>the proof of that sub-problem</proof>
+
+  **IMPORTANT:** Do not add or remove information from the proof. You are only breaking the proof into sub-problems, not modifying its content. Preserve the mathematical content of the original proof.
+
+  [Output Format]
+  Return only a sequence of <problem>...</problem><proof>...</proof> blocks with no other text. Each sub-problem should immediately follow the previous one.
+
+  **Example:**
+  Original problem: "Prove that if n is even, then n^2 is divisible by 4."
+  Original proof: "Let n be an even integer. Then n = 2k for some integer k. We have n^2 = (2k)^2 = 4k^2. Since k^2 is an integer, we can write n^2 = 4m where m = k^2. Therefore, n^2 is divisible by 4."
+
+  Your output:
+  <problem>Given that n is an even integer, show that n can be written as n = 2k for some integer k.</problem><proof>Let n be an even integer. Then by definition of even integers, n = 2k for some integer k.</proof>
+  <problem>Given that n is an even integer and can be expressed as n = 2k for some integer k, show that n^2 = 4k^2.</problem><proof>We have n^2 = (2k)^2 = 4k^2.</proof>
+  <problem>Given that n is an even integer and n^2 = 4k^2 where k is an integer, prove that n^2 is divisible by 4.</problem><proof>Since k^2 is an integer, we can write n^2 = 4m where m = k^2. Therefore, n^2 is divisible by 4.</proof>
+
+  [Problem]
+
+  {problem}
+
+  [Proof]
+
+  {proof}

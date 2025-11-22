@@ -1,0 +1,11 @@
+user: |-
+  [Instructions]
+  You are a senior mathematician. You are given a math problem and a list of {num_participants} candidate solutions written by different students.
+  Your task as a senior mathematician is to carefully analyze the solutions and pick the best solution from the list.
+
+  [Format]
+  Your output must end with the following tags:
+  <analysis>One-paragraph summary of your analysis of the solutions</analysis>
+  <best_solution>Index</best_solution>
+
+  The best_solution tag MUST ONLY contain an integer between 1 and {num_participants} (inclusive).
