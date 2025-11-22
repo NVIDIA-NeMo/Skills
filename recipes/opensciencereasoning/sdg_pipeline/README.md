@@ -1,90 +1,6 @@
 # OpenScienceReasoning Pipeline Quickstart
 This folder provides templates, prompts, and scripts for the automated pipeline that powers the OpenScience data refresh. The pipeline launches distributed jobs through [`pipeline/sdg_pipeline.py`](pipeline/sdg_pipeline.py) and covers the full lifecycle: solution generation, ground-truth extraction, difficulty scoring, and topic labeling.
 
-## Config Layout
-- **Base pipeline**: [`configs/pipelines/base.yaml`](configs/pipelines/base.yaml) describes the default open-question flow with ground-truth answers available, no tool usage, and the boxed prompt.
-- **Settings overrides** (under [`configs/settings/`](configs/settings/)) layer small, reusable tweaks. Reference them with or without the `.yaml` suffix:
-  - `without_gt` — route the pipeline through solution generation + majority voting to estimate ground truth answer.
-  - `python_enabled` — enable python-tool prompting and sandbox execution.
-  - `mcq_4_options` — switch to the [`eval/aai/mcq-4choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-4choices.yaml) prompt for generation.
-  - `mcq_10_options` — switch to the [`eval/aai/mcq-10choices`](../../../../nemo_skills/prompt/config/eval/aai/mcq-10choices.yaml) prompt for generation.
-  - `seed_data` — trim the pipeline to the metadata-only flow used for seed datasets with GT answers.
-  - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for reasoning above existing seed data.
-  - `multiple_prompts` - allow the usage of multiple prompts for the generation.
-
-Launch the pipeline by selecting the base config once and stacking the overrides you need:
-
-```bash
-python pipeline/sdg_pipeline.py \
-  --config base \
-  --settings without_gt python_enabled \
-  --override input_file=$INPUT_FILE cluster=slurm
-```
-Settings are merged in the order you pass them; later entries win when they touch the same keys (for example, supply `without_gt` before `python_enabled`). You can also point to custom override files by adding their absolute paths to the `--settings` list.
-
-## Usage Examples
-- **With GT, no tools, openq** (default):
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-  --override input_file=$INPUT_FILE cluster=slurm
-  ```
-
-- **Seed data (metadata only)**:
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings seed_data \
-  --override input_file=$INPUT_FILE cluster=slurm
-  ```
-
-- **Seed data plus answer recovery** (run `without_gt` after `seed_data` to re-enable generation):
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings seed_data without_gt \
-  --override input_file=$INPUT_FILE cluster=slurm
-  ```
-
-- **Multiple prompts with custom problem template via CLI overrides**:
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings multiple_prompts \
-    --override input_file=$INPUT_FILE cluster=slurm \
-               stages.filter_problems.problem_template='{problem}'
-  ```
-
-- **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
-
-  ```bash
-  python pipeline/sdg_pipeline.py \
-    --settings seed_data_postprocess without_gt python_enabled \
-  --override input_file=$INPUT_FILE cluster=slurm
-  ```
-
-Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
-
-
-## Using the `multiple_prompts` Setting
-The `multiple_prompts` override enables per-sample prompts and answer extraction hints. To make it work:
-- include a `prompt` field in each input record; `filter_problems` renders the final question with `problem_template="{prompt}\n\n{problem}"`, so both keys must be present.
-- add an `answer_regex` the records. If `extract_from_boxed: true`, the pipeline now falls back to the boxed parser automatically so you can omit the regex (or leave it as an empty string). For other formats, keep providing a regex to steer answer extraction.
-- optionally provide a `num_options` integer so the stage can drop malformed MCQs. The checker counts options that follow the `\n\nA)` / `\nB)` / … pattern with consecutive uppercase letters starting at `A`, and rejects the sample if the detected count differs from `num_options`.
-- remember that JSON requires escaping backslashes inside strings. For example, to match a boxed answer you must encode the regex as `\\\\boxed\\{([A-Z])\\}` so that it becomes `\\boxed\{([A-Z])\}` after parsing.
-
-Example fixture entry:
-
-```json
-{
-  "id": "example-1",
-  "prompt": "Select the correct option and finish with 'Answer: <letter>'.",
-  "problem": "Which planet is known as the Red Planet?\n\nA) Earth\nB) Mars\nC) Jupiter\nD) Venus",
-  "num_options": 4,
-  "answer_regex": "Answer: ([A-D])(?![A-Za-z])"
-}
-```
-
 ## Seed Data Flow
 - Deduplicate and clean incoming problems via [`filter_problems`](scripts/filter_problems.py).
 - Run contamination checks in [`decontaminate`](scripts/decontaminate.py).
@@ -94,10 +10,10 @@ Example fixture entry:
 
 ## SFT Data Flow
 - Runs every step from the seed flow.
-- Adds SFT formatting: [`generate_solutions`](pipeline/sdg_pipeline.py) always runs to gather model reasoning traces, then [`prepare_for_sft`](pipeline/sdg_pipeline.py) and [`convert_to_messages`]() convert the results into instruction-tuning-friendly JSONL files (both input-output pairs and chat message format). Runs bucketing based on token length via [`bucket`](scripts/calculate_tkn_len_and_bucket.py).
+- Adds SFT formatting: [`generate_solutions`](pipeline/sdg_pipeline.py) always runs to gather model reasoning traces, then [`prepare_for_sft`](pipeline/sdg_pipeline.py) and [`convert_to_messages`](scripts/convert_to_messages.py) convert the results into instruction-tuning-friendly JSONL files (both input-output pairs and chat message format). Runs bucketing based on token length via [`bucket`](scripts/calculate_tkn_len_and_bucket.py).
 
 ## Stage Reference
-- [`filter_problems`](scripts/filter_problems.py): Required first step. Accepts `input_file`, `output_dir`, and optional field names (`problem_field`, `expected_answer_field`, `id_field`). Supports deduplication (`deduplicate`), removal of samples with image references (`remove_images`), MCQ option counting (`num_options`), and an option regex check (`option_format_regex`). Produces `final_result.jsonl` where each record has:
+- [`filter_problems`](scripts/filter_problems.py): Required first step - see [How filter_problems Filters Data](#how-filter_problems-filters-data) section for filtering details and [How To Use](#how-to-use) section for the input file requirements. Accepts `input_file`, `output_dir`, and optional field names (`problem_field`, `expected_answer_field`, `id_field`). Supports deduplication (`deduplicate`), removal of samples with image references (`remove_images`), MCQ option counting (`num_options`), and an option regex check (`option_format_regex`). Produces `final_result.jsonl` where each record has:
   - `problem`: normalized question text.
   - `expected_answer`: retained or cleared depending on `remove_expected_answer`.
   - `id`: original or auto-generated identifier.
@@ -118,6 +34,70 @@ Example fixture entry:
 - [`convert_to_messages`](scripts/convert_to_messages.py): Converts the instruction-tuning JSONL file into messages format.
 - [`bucket`](scripts/calculate_tkn_len_and_bucket.py): Appends `out_token_length` to each sample and optionally shard data into token-length buckets. It emits per-bucket files (e.g., `{stem}_bucket_16000.jsonl`) plus an overflow file alongside log summaries of bucket counts and percentages.
 
+## Config Layout
+- **Base pipeline**: [`configs/pipelines/base.yaml`](configs/pipelines/base.yaml) describes the default open-question flow with ground-truth answers available, no tool usage, and the [`boxed`](../../../nemo_skills/prompt/config/generic/general-boxed.yaml) prompt.
+- **Settings overrides** (under [`configs/settings/`](configs/settings/)) layer small, reusable tweaks. Reference them with or without the `.yaml` suffix:
+  - `without_gt` — route the pipeline through solution generation + majority voting to estimate ground truth answer.
+  - `python_enabled` — enable Python tool and sandbox execution.
+  - `mcq_4_options` — switch to the [`eval/aai/mcq-4choices`](../../../nemo_skills/prompt/config/eval/aai/mcq-4choices.yaml) prompt for generation.
+  - `mcq_10_options` — switch to the [`eval/aai/mcq-10choices`](../../../nemo_skills/prompt/config/eval/aai/mcq-10choices.yaml) prompt for generation.
+  - `seed_data` — trim the pipeline to the [Seed Data Flow](#seed-data-flow) used to generate seed datasets. It assumes the dataset has GT answers if not explicitly specified `without_gt`.
+  - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for postprocessing above existing seed data.
+  - `multiple_prompts` - allow the usage of multiple prompts for the generation. Section [Using the multiple_prompts Setting](#using-the-multiple_prompts-setting) describes the setting in details
+
+Launch the pipeline by selecting the base config and stacking the overrides you need:
+
+```bash
+python pipeline/sdg_pipeline.py \
+  --config base \
+  --settings without_gt python_enabled \
+  --override input_file=$INPUT_FILE cluster=slurm
+```
+Settings are merged in the order you pass them; later entries win when they touch the same keys (for example, supply `without_gt` before `python_enabled`). You can also point to custom override files by adding their absolute paths to the `--settings` list.
+
+## Usage Examples
+- **With GT, no tools, openq** (default):
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --override input_file=$INPUT_FILE cluster=slurm
+  ```
+
+- **Seed data (metadata only)**:
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings seed_data \
+    --override input_file=$INPUT_FILE cluster=slurm
+  ```
+
+- **Seed data plus answer recovery** (run `without_gt` after `seed_data` to re-enable generation):
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings seed_data without_gt \
+    --override input_file=$INPUT_FILE cluster=slurm
+  ```
+
+- **Multiple prompts with custom problem template via CLI overrides**:
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings multiple_prompts \
+    --override input_file=$INPUT_FILE cluster=slurm \
+               stages.filter_problems.problem_template='{problem}'
+  ```
+
+- **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
+
+  ```bash
+  python pipeline/sdg_pipeline.py \
+    --settings seed_data_postprocess without_gt python_enabled \
+    --override input_file=$INPUT_FILE cluster=slurm
+  ```
+
+Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
+
 ### How `filter_problems` Filters Data
 1. Normalizes field names based on the configured aliases (`problem_field`, `expected_answer_field`, `id_field`).
 2. Optionally drops the GT answer when `remove_expected_answer` is true so majority voting can recompute it later.
@@ -125,6 +105,25 @@ Example fixture entry:
 4. Removes entries referencing images or documents if `remove_images` is set.
 5. Enforces MCQ option counts (`num_options`), which currently support choices formatted as `{LETTER})`, and optional formatting checks (`option_format_regex`).
 6. Moves any extra keys into `metadata` to keep downstream fields consistent.
+
+## Using the `multiple_prompts` Setting
+The `multiple_prompts` override enables per-sample prompts and answer extraction hints. To make it work:
+- include a `prompt` field in each input record; `filter_problems` renders the final question with `problem_template="{prompt}\n\n{problem}"`, so both keys must be present.
+- add an `answer_regex` the records. If `extract_from_boxed: true`, the pipeline now falls back to the boxed parser automatically so you can omit the regex (or leave it as an empty string). For other formats, keep providing a regex to steer answer extraction.
+- optionally provide a `num_options` integer so the stage can drop malformed MCQs. The checker counts options that follow the `\n\nA)` / `\nB)` / … pattern with consecutive uppercase letters starting at `A`, and rejects the sample if the detected count differs from `num_options`.
+- remember that JSON requires escaping backslashes inside strings. For example, to match a boxed answer you must encode the regex as `\\\\boxed\\{([A-Z])\\}` so that it becomes `\\boxed\{([A-Z])\}` after parsing.
+
+Example fixture entry:
+
+```json
+{
+  "id": "example-1",
+  "prompt": "Select the correct option and finish with 'Answer: <letter>'.",
+  "problem": "Which planet is known as the Red Planet?\n\nA) Earth\nB) Mars\nC) Jupiter\nD) Venus",
+  "num_options": 4,
+  "answer_regex": "Answer: ([A-D])(?![A-Za-z])"
+}
+```
 
 ## How to Use
 - It is highly recommended to always schedule `filter_problems` first (except when running `seed_data_postprocess`). It prepares the data in the format expected by the pipeline. Input must be JSONL with `problem` (required), plus optional GT answer and id fields. Any additional keys are automatically preserved inside `metadata`. To replace the provided GT answer with the majority-voted result, set `remove_expected_answer: true`.

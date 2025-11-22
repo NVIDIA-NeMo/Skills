@@ -722,7 +722,7 @@ if __name__ == "__main__":
         help=(
             "Override config values using Hydra-style dotlist syntax. "
             "Example: --override stages.convert_to_messages_format.enabled=false stages.bucket.enabled=false. "
-            "You can also separate multiple overrides with commas."
+            "Separate multiple overrides with spaces."
         ),
     )
 
@@ -750,10 +750,7 @@ if __name__ == "__main__":
     dotlist_overrides = []
     if args.override:
         for entry in args.override:
-            for piece in entry.split(","):
-                cleaned = piece.strip()
-                if cleaned:
-                    dotlist_overrides.append(cleaned)
+            dotlist_overrides.append(entry.strip())
     if dotlist_overrides:
         print("Applying CLI overrides:")
         for item in dotlist_overrides:
