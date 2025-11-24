@@ -1,4 +1,4 @@
-cluster: slurm
+cluster: sadegh
 base_output_dir: /workspace/proof-gen-verification
 expname: proof-gen-verification
 suffix: judge-eval  # Suffix for experiment names
@@ -15,7 +15,7 @@ pipeline_stages:
   - generic_bon_eval
 
 # Evaluate selection and verification benchmarks.
-eval_name: ??? #
+eval_name: proof-bench-judge #
 eval_rs: 32 # Number of random seeds to use for evaluation.
 eval_num_chunks: 1 # Number of chunks, each chunk will be evaluated on a separate job.
 

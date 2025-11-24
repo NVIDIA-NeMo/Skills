@@ -28,7 +28,7 @@ from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclas
 
 @nested_dataclass(kw_only=True)
 class ScriptInferenceConfig(InferenceConfig):
-    reasoning_effort: str | None = None
+    pass
 
 
 @nested_dataclass(kw_only=True)

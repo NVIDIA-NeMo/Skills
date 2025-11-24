@@ -475,35 +475,37 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="proof-gen-verification-1 problem generation pipeline")
 
     parser.add_argument(
-        "--mode",
-        type=str,
-        default="judge-eval",
-        help="Mode to run. Must be one of the available configs in the config directory.",
-    )
-    parser.add_argument(
         "--stages",
         type=str,
-        default=None,
+        required=True,
         help="Comma-separated list of stages to run. If not specified, runs all stages from the config.",
+    )
+    parser.add_argument(
+        "overrides",
+        nargs="*",
+        help="Hydra-style config overrides (e.g., key=value or ++key=value)",
     )
 
     args = parser.parse_args()
 
-    config_path = config_dir / f"{args.mode}.yaml"
-    config = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
+    config_path = config_dir / "judge-eval.yaml"
+    config = OmegaConf.load(config_path)
+
+    # Apply command-line overrides
+    if args.overrides:
+        # Strip ++ prefix if present (Hydra syntax)
+        clean_overrides = [o.lstrip("+") for o in args.overrides]
+        override_conf = OmegaConf.from_dotlist(clean_overrides)
+        config = OmegaConf.merge(config, override_conf)
+
+    config = OmegaConf.to_container(config, resolve=True)
 
     if "pipeline_stages" not in config or not config["pipeline_stages"]:
         raise ValueError(f"Config file {config_path} must define a non-empty 'pipeline_stages' list.")
     full_stage_sequence = config["pipeline_stages"]
 
-    if args.stages:
-        # Stages specified via command line
-        stages_to_run = args.stages.split(",")
-        print(f"Running specified stages: {stages_to_run}")
-    else:
-        # No command line override, run all stages from config
-        stages_to_run = full_stage_sequence
-        print(f"Running all stages defined in config for mode '{args.mode}': {stages_to_run}")
+    stages_to_run = args.stages.split(",")
+    print(f"Running specified stages: {stages_to_run}")
 
     for stage in stages_to_run:
         if stage not in stages_map:
@@ -516,7 +518,7 @@ if __name__ == "__main__":
 
     # --- Common parameters ---
     base_output_dir = config["base_output_dir"]
-    suffix = config.get("suffix", args.mode)
+    suffix = config.get("suffix", "")
     cluster = config["cluster"]
     expname_base = config["expname"]
 
