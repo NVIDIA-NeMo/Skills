@@ -17,6 +17,48 @@ VAR_TO_JUDGEMENT_MAP = {
 }
 
 
+async def process_single(
+    llm: BaseModel,
+    datapoint: dict,
+    step_mode: str,  # "step-based" or "lemma-based" or "truth-based"
+    # For step-based mode:
+    step_break_prompt_path: str,
+    step_judge_prompt_path: str,
+    # For lemma-based mode:
+    lemma_break_prompt_path: str,
+    lemma_judge_prompt_path: str,
+    # For truth-based mode:
+    truth_break_prompt_path: str,
+    truth_judge_prompt_path: str,
+    step_maj_n: int,
+    llm_kwargs: dict,
+    random_seed: int,
+) -> dict:
+    rng = np.random.RandomState(random_seed + 10000 * datapoint["_async_position"])
+
+    if step_mode == "lemma-based":
+        final_judgement_str, judgement_list, output_tokens = await process_lemma_judgement(
+            llm, datapoint, lemma_break_prompt_path, lemma_judge_prompt_path, step_maj_n, llm_kwargs, rng
+        )
+    elif step_mode == "step-based":
+        final_judgement_str, judgement_list, output_tokens = await process_step_judgement(
+            llm, datapoint, step_break_prompt_path, step_judge_prompt_path, step_maj_n, llm_kwargs, rng
+        )
+    elif step_mode == "truth-based":
+        final_judgement_str, judgement_list, output_tokens = await process_truth_judgement(
+            llm, datapoint, truth_break_prompt_path, truth_judge_prompt_path, step_maj_n, llm_kwargs, rng
+        )
+    else:
+        raise ValueError(f"Invalid step_mode: {step_mode}. Must be 'step-based', 'lemma-based', or 'truth-based'")
+
+    return {
+        **datapoint,
+        "judgement": final_judgement_str,
+        "judgement_list": judgement_list,
+        "num_generated_tokens": output_tokens,
+    }
+
+
 def load_prompt_template(prompt_config_path):
     """Load the prompt template from the config file."""
     config = OmegaConf.load(prompt_config_path)
@@ -368,45 +410,3 @@ async def process_truth_judgement(
             return VAR_TO_JUDGEMENT_MAP[majority_judgement], judgement_list, output_tokens
 
     return VAR_TO_JUDGEMENT_MAP[True], judgement_list, output_tokens
-
-
-async def process_single(
-    llm: BaseModel,
-    datapoint: dict,
-    step_mode: str,  # "step-based" or "lemma-based" or "truth-based"
-    # For step-based mode:
-    step_break_prompt_path: str,
-    step_judge_prompt_path: str,
-    # For lemma-based mode:
-    lemma_break_prompt_path: str,
-    lemma_judge_prompt_path: str,
-    # For truth-based mode:
-    truth_break_prompt_path: str,
-    truth_judge_prompt_path: str,
-    step_maj_n: int,
-    llm_kwargs: dict,
-    random_seed: int,
-) -> dict:
-    rng = np.random.RandomState(random_seed + 10000 * datapoint["_async_position"])
-
-    if step_mode == "lemma-based":
-        final_judgement_str, judgement_list, output_tokens = await process_lemma_judgement(
-            llm, datapoint, lemma_break_prompt_path, lemma_judge_prompt_path, step_maj_n, llm_kwargs, rng
-        )
-    elif step_mode == "step-based":
-        final_judgement_str, judgement_list, output_tokens = await process_step_judgement(
-            llm, datapoint, step_break_prompt_path, step_judge_prompt_path, step_maj_n, llm_kwargs, rng
-        )
-    elif step_mode == "truth-based":
-        final_judgement_str, judgement_list, output_tokens = await process_truth_judgement(
-            llm, datapoint, truth_break_prompt_path, truth_judge_prompt_path, step_maj_n, llm_kwargs, rng
-        )
-    else:
-        raise ValueError(f"Invalid step_mode: {step_mode}. Must be 'step-based', 'lemma-based', or 'truth-based'")
-
-    return {
-        **datapoint,
-        "judgement": final_judgement_str,
-        "judgement_list": judgement_list,
-        "num_generated_tokens": output_tokens,
-    }

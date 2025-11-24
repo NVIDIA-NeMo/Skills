@@ -34,6 +34,50 @@ from nemo_skills.inference.tournament_utils import ProofKnockoutTournamentManage
 is_correct_judgement_or_none = partial(is_correct_judgement, return_none=True)
 
 
+async def _llm_call(llm: BaseModel, prompt: str, llm_kwargs: dict, req_seed: int):
+    """Make an LLM call and return the response and metadata."""
+    messages = [{"role": "user", "content": prompt}]
+    response = await llm.generate_async(
+        prompt=messages,
+        **llm_kwargs,
+        random_seed=req_seed,
+    )
+    full_response = response["generation"]
+    output_tokens = response["num_generated_tokens"]
+    llm_text = full_response.split("</think>")[-1].strip()
+    return llm_text, {"num_generated_tokens": output_tokens}
+
+
+def extract_score_from_xml(text: str) -> float:
+    """Extract score from XML format (0-7 scale).
+
+    Expected format: <score>N</score> where N is an integer in [0, 7]
+
+    Returns:
+        float: The extracted score (0-7), or None if not found or invalid
+    """
+    match = re.search(r"<score>(\d+)</score>", text)
+    if match:
+        score = int(match.group(1))
+        if 0 <= score <= 7:
+            return float(score)
+    return None
+
+
+def extract_binary_correctness(text: str) -> float:
+    """Extract binary correctness from judgment text.
+
+    Returns:
+        float: 1.0 if correct, 0.0 if incorrect, None if invalid
+    """
+    result = is_correct_judgement_or_none(text)
+    if result is True:
+        return 1.0
+    elif result is False:
+        return 0.0
+    return None
+
+
 async def process_single(
     llm: BaseModel,
     datapoint: dict,
@@ -97,50 +141,6 @@ async def process_single(
         "evaluation_type": eval_type,
         "evaluation_results": results,
     }
-
-
-async def _llm_call(llm: BaseModel, prompt: str, llm_kwargs: dict, req_seed: int):
-    """Make an LLM call and return the response and metadata."""
-    messages = [{"role": "user", "content": prompt}]
-    response = await llm.generate_async(
-        prompt=messages,
-        **llm_kwargs,
-        random_seed=req_seed,
-    )
-    full_response = response["generation"]
-    output_tokens = response["num_generated_tokens"]
-    llm_text = full_response.split("</think>")[-1].strip()
-    return llm_text, {"num_generated_tokens": output_tokens}
-
-
-def extract_score_from_xml(text: str) -> float:
-    """Extract score from XML format (0-7 scale).
-
-    Expected format: <score>N</score> where N is an integer in [0, 7]
-
-    Returns:
-        float: The extracted score (0-7), or None if not found or invalid
-    """
-    match = re.search(r"<score>(\d+)</score>", text)
-    if match:
-        score = int(match.group(1))
-        if 0 <= score <= 7:
-            return float(score)
-    return None
-
-
-def extract_binary_correctness(text: str) -> float:
-    """Extract binary correctness from judgment text.
-
-    Returns:
-        float: 1.0 if correct, 0.0 if incorrect, None if invalid
-    """
-    result = is_correct_judgement_or_none(text)
-    if result is True:
-        return 1.0
-    elif result is False:
-        return 0.0
-    return None
 
 
 async def run_llm_as_judge(

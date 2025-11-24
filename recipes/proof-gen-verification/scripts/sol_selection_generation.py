@@ -8,26 +8,13 @@ from transformers import AutoTokenizer
 
 from nemo_skills.evaluation.metrics.utils import is_correct_judgement
 from nemo_skills.inference.model import BaseModel
-from nemo_skills.inference.tournament_utils import ProofTournamentManager
+from nemo_skills.inference.tournament_utils import ProofKnockoutTournamentManager
 
 is_correct_judgement_or_none = partial(is_correct_judgement, return_none=True)
 
 # For filtering out too long solutions
 MAX_QWEN_TOKENS = 10000
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B")
-
-
-async def _llm_call(llm: BaseModel, prompt: str, llm_kwargs: dict, req_seed: int):
-    messages = [{"role": "user", "content": prompt}]
-    response = await llm.generate_async(
-        prompt=messages,
-        **llm_kwargs,
-        random_seed=req_seed,
-    )
-    full_response = response["generation"]
-    output_tokens = response["num_generated_tokens"]
-    llm_text = full_response.split("</think>")[-1].strip()
-    return llm_text, {"num_generated_tokens": output_tokens}
 
 
 async def process_single(
@@ -95,6 +82,19 @@ async def process_single(
     }
 
 
+async def _llm_call(llm: BaseModel, prompt: str, llm_kwargs: dict, req_seed: int):
+    messages = [{"role": "user", "content": prompt}]
+    response = await llm.generate_async(
+        prompt=messages,
+        **llm_kwargs,
+        random_seed=req_seed,
+    )
+    full_response = response["generation"]
+    output_tokens = response["num_generated_tokens"]
+    llm_text = full_response.split("</think>")[-1].strip()
+    return llm_text, {"num_generated_tokens": output_tokens}
+
+
 async def generate_proofs(
     llm: BaseModel,
     datapoint: dict,
@@ -134,7 +134,7 @@ async def run_proof_genselect(
         return proofs_list, {}
 
     # Create tournament manager for proof selection
-    tournament_manager = ProofTournamentManager(
+    tournament_manager = ProofKnockoutTournamentManager(
         llm=llm,
         n_participants_per_tournament=2,
         prompt_config_path=proof_genselect_prompt_config_path,

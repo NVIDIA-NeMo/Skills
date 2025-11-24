@@ -19,7 +19,6 @@ from omegaconf import OmegaConf
 
 from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 from nemo_skills.pipeline.eval import eval as nemo_eval
-from nemo_skills.pipeline.generate import GenerationType
 
 REASONING_TOKENS = 100000
 SERVER_GPUS = 8
@@ -146,19 +145,19 @@ def eval_step_judge(cluster, expname, run_after, stage_config, **kwargs):
                 f"++max_concurrent_requests=200 "  # Lower number due to large number of step-level requests.
                 f"++model_name={model_path} "
                 f"{model_inline_args} "
-                f"++dspy_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/step_judgement_dspy.py "
-                f"+dspy_config.step_maj_n={step_maj_n} "
-                f"+dspy_config.step_mode={step_mode} "
-                f"+dspy_config.step_break_prompt_path={step_break_prompt_path} "
-                f"+dspy_config.step_judge_prompt_path={step_judge_prompt_path} "
-                f"+dspy_config.lemma_break_prompt_path={lemma_break_prompt_path} "
-                f"+dspy_config.lemma_judge_prompt_path={lemma_judge_prompt_path} "
-                f"+dspy_config.truth_break_prompt_path={truth_break_prompt_path} "
-                f"+dspy_config.truth_judge_prompt_path={truth_judge_prompt_path} "
+                f"++script_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/step_judgement_generation.py "
+                f"+script_config.step_maj_n={step_maj_n} "
+                f"+script_config.step_mode={step_mode} "
+                f"+script_config.step_break_prompt_path={step_break_prompt_path} "
+                f"+script_config.step_judge_prompt_path={step_judge_prompt_path} "
+                f"+script_config.lemma_break_prompt_path={lemma_break_prompt_path} "
+                f"+script_config.lemma_judge_prompt_path={lemma_judge_prompt_path} "
+                f"+script_config.truth_break_prompt_path={truth_break_prompt_path} "
+                f"+script_config.truth_judge_prompt_path={truth_judge_prompt_path} "
                 f"++enable_litellm_cache=True "
             ),
             model=model_path,
-            generation_type=GenerationType.dspy,
+            generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
             cluster=cluster,
             num_random_seeds=int(eval_rs),
             input_file=benchmark_test_file,
@@ -217,14 +216,14 @@ def genselect_eval(cluster, expname, run_after, stage_config, **kwargs):
             ctx=wrap_arguments(
                 f"++model_name={model_path} "
                 f"{model_inline_args} "
-                f"++dspy_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/genselect_judge_dspy.py "
-                f"++dspy_config.n_judgements_per_tournament={n_judgements_per_tournament} "
-                f"++dspy_config.max_seeds_to_use={max_seeds_to_use} "
-                f"++dspy_config.prompt_config_path={genselect_prompt_config_path} "
+                f"++script_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/genselect_judge_generation.py "
+                f"++script_config.n_judgements_per_tournament={n_judgements_per_tournament} "
+                f"++script_config.max_seeds_to_use={max_seeds_to_use} "
+                f"++script_config.prompt_config_path={genselect_prompt_config_path} "
                 f"++max_concurrent_requests=150 "
                 f"++enable_litellm_cache=True "
             ),
-            generation_type=GenerationType.dspy,
+            generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
             model=model_path,
             cluster=cluster,
             input_file=output_file_combined,
@@ -263,12 +262,12 @@ def make_final_answer_dataset(cluster, expname, run_after, stage_config, **kwarg
             ctx=wrap_arguments(
                 f"{model_config['inline_args']} "
                 f"++model_name={model_path} "
-                f"++dspy_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/final_answer_qs.py "
-                f"++dspy_config.prompt_config_path=/nemo_run/code/recipes/proof-gen-verification/prompts/prover.yaml "
-                f"++dspy_config.n_pos_neg={n_pos_neg} "  # We need at least n_pos_neg positive and n_pos_neg negative
+                f"++script_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/final_answer_qs.py "
+                f"++script_config.prompt_config_path=/nemo_run/code/recipes/proof-gen-verification/prompts/prover.yaml "
+                f"++script_config.n_pos_neg={n_pos_neg} "  # We need at least n_pos_neg positive and n_pos_neg negative
                 f"++max_concurrent_requests=40"  # Lower number due to large number of requests.
             ),
-            generation_type=GenerationType.dspy,
+            generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
             input_file=input_file,
             model=model_path,
             dependent_jobs=stage_config["dependent_jobs"],
@@ -332,17 +331,17 @@ def run_end_to_end_eval(cluster, expname, run_after, stage_config, **kwargs):
                 ctx=wrap_arguments(
                     f"++model_name={model_path} "
                     f"{model_inline_args} "
-                    f"++dspy_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/sol_selection_dspy.py "
-                    f"++dspy_config.max_num_solutions={max_num_solutions} "
-                    f"++dspy_config.proof_genselect_to_keep={proof_genselect_to_keep} "
-                    f"++dspy_config.judgement_num_seeds={judgement_num_seeds} "
-                    f"++dspy_config.proof_generation_prompt_config_path={proof_generation_prompt_config_path} "
-                    f"++dspy_config.proof_genselect_prompt_config_path={proof_genselect_prompt_config_path} "
-                    f"++dspy_config.judgement_prompt_config_path={judgement_prompt_config_path} "
-                    f"++dspy_config.judgement_genselect_prompt_config_path={judgement_genselect_prompt_config_path} "
+                    f"++script_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/sol_selection_generation.py "
+                    f"++script_config.max_num_solutions={max_num_solutions} "
+                    f"++script_config.proof_genselect_to_keep={proof_genselect_to_keep} "
+                    f"++script_config.judgement_num_seeds={judgement_num_seeds} "
+                    f"++script_config.proof_generation_prompt_config_path={proof_generation_prompt_config_path} "
+                    f"++script_config.proof_genselect_prompt_config_path={proof_genselect_prompt_config_path} "
+                    f"++script_config.judgement_prompt_config_path={judgement_prompt_config_path} "
+                    f"++script_config.judgement_genselect_prompt_config_path={judgement_genselect_prompt_config_path} "
                     f"++enable_litellm_cache=True "
                 ),
-                generation_type=GenerationType.dspy,
+                generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
                 model=model_path,
                 cluster=run_cluster,
                 input_file=input_file,
@@ -403,23 +402,23 @@ def generic_bon_eval(cluster, expname, run_after, stage_config, **kwargs):
             generation_expname = f"{expname}-{model_id}-{eval_type}-gen"
             metrics_expname = f"{expname}-{model_id}-{eval_type}-metrics"
 
-            # Step 1: Run the DSPy generation script
+            # Step 1: Run the script generation
             generate(
                 ctx=wrap_arguments(
                     f"++model_name={model_path} "
                     f"{model_inline_args} "
-                    f"++dspy_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/generate_generic_bon_dspy.py "
-                    f"++dspy_config.eval_type={eval_type} "
-                    f"++dspy_config.judgement_num_seeds={judgement_num_seeds} "
-                    f"++dspy_config.judgement_binary_prompt_config_path={judgement_binary_prompt_config_path} "
-                    f"++dspy_config.judgement_binary_prompt_config_path_v2={judgement_binary_prompt_config_path_v2} "
-                    f"++dspy_config.judgement_binary_gt_proof_prompt_config_path={judgement_binary_gt_proof_prompt_config_path} "
-                    f"++dspy_config.judgement_scoring_prompt_config_path={judgement_scoring_prompt_config_path} "
-                    f"++dspy_config.judgement_scoring_rubric_gt_proof_prompt_config_path={judgement_scoring_rubric_gt_proof_prompt_config_path} "
-                    f"++dspy_config.genselect_prompt_config_path={genselect_prompt_config_path} "
+                    f"++script_program_path=/nemo_run/code/recipes/proof-gen-verification/scripts/generate_generic_bon_generation.py "
+                    f"++script_config.eval_type={eval_type} "
+                    f"++script_config.judgement_num_seeds={judgement_num_seeds} "
+                    f"++script_config.judgement_binary_prompt_config_path={judgement_binary_prompt_config_path} "
+                    f"++script_config.judgement_binary_prompt_config_path_v2={judgement_binary_prompt_config_path_v2} "
+                    f"++script_config.judgement_binary_gt_proof_prompt_config_path={judgement_binary_gt_proof_prompt_config_path} "
+                    f"++script_config.judgement_scoring_prompt_config_path={judgement_scoring_prompt_config_path} "
+                    f"++script_config.judgement_scoring_rubric_gt_proof_prompt_config_path={judgement_scoring_rubric_gt_proof_prompt_config_path} "
+                    f"++script_config.genselect_prompt_config_path={genselect_prompt_config_path} "
                     f"++enable_litellm_cache=True "
                 ),
-                generation_type=GenerationType.dspy,
+                generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
                 model=model_path,
                 cluster=model_cluster,
                 input_file=input_file,
