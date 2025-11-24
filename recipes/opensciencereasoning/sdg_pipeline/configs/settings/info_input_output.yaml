@@ -1,0 +1,8 @@
+dataset_name: ""
+base_output_dir: /workspace/data/stem_seed_data_jcxu/${dataset_name}
+
+# Input file for the first stage (generate_solutions)
+# It must include the field "problem"
+# All the data in this file will be processed with the same prompt
+# Make sure the problems fit the prompt you are using
+input_file: "/workspace/data/stem_seed_data_rima/${dataset_type}/${dataset_name}.jsonl"
