@@ -1,4 +1,4 @@
-cluster: eos
+cluster: slurm
 base_output_dir: /workspace/proof-gen-verification
 expname: proof-gen-verification
 
