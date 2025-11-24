@@ -1,7 +1,6 @@
-cluster: sadegh
+cluster: eos
 base_output_dir: /workspace/proof-gen-verification
 expname: proof-gen-verification
-suffix: judge-eval  # Suffix for experiment names
 
 # List of problems to generate a balanced final-answer judgement dataset.
 final_answer_dataset: /nemo_run/code/nemo_skills/dataset/challenge19/test.jsonl
@@ -15,12 +14,12 @@ pipeline_stages:
   - generic_bon_eval
 
 # Evaluate selection and verification benchmarks.
-eval_name: proof-bench-judge #
+eval_name: proof-bench-judge # proof-arena-judge, proof-bench-judge, open-proof-corpus-judge
 eval_rs: 32 # Number of random seeds to use for evaluation.
 eval_num_chunks: 1 # Number of chunks, each chunk will be evaluated on a separate job.
 
 # Evaluation to run end-to-end from proof generation to genselect and llm-as-a-judge to get final response.
-end_to_end_eval: ??? # aime25
+end_to_end_eval: aime # aime25, challenge19
 end_to_end_eval_rs: 8 # Number of random seeds to use for evaluation.
 
 directories:

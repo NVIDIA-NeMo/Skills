@@ -157,7 +157,7 @@ def eval_step_judge(cluster, expname, run_after, stage_config, **kwargs):
                 f"++enable_litellm_cache=True "
             ),
             model=model_path,
-            generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
+            generation_module="recipes/proof-gen-verification/scripts/script_generation.py",
             cluster=cluster,
             num_random_seeds=int(eval_rs),
             input_file=benchmark_test_file,
@@ -223,7 +223,7 @@ def genselect_eval(cluster, expname, run_after, stage_config, **kwargs):
                 f"++max_concurrent_requests=150 "
                 f"++enable_litellm_cache=True "
             ),
-            generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
+            generation_module="recipes/proof-gen-verification/scripts/script_generation.py",
             model=model_path,
             cluster=cluster,
             input_file=output_file_combined,
@@ -267,7 +267,7 @@ def make_final_answer_dataset(cluster, expname, run_after, stage_config, **kwarg
                 f"++script_config.n_pos_neg={n_pos_neg} "  # We need at least n_pos_neg positive and n_pos_neg negative
                 f"++max_concurrent_requests=40"  # Lower number due to large number of requests.
             ),
-            generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
+            generation_module="recipes/proof-gen-verification/scripts/script_generation.py",
             input_file=input_file,
             model=model_path,
             dependent_jobs=stage_config["dependent_jobs"],
@@ -308,7 +308,6 @@ def run_end_to_end_eval(cluster, expname, run_after, stage_config, **kwargs):
     proof_generation_prompt_config_path = stage_config["proof_generation_prompt_config_path"]
     proof_genselect_prompt_config_path = stage_config["proof_genselect_prompt_config_path"]
     judgement_prompt_config_path = stage_config["judgement_prompt_config_path"]
-    judgement_genselect_prompt_config_path = stage_config["judgement_genselect_prompt_config_path"]
     dependent_jobs = stage_config["dependent_jobs"]
 
     for run_config in stage_config["run_configs"]:
@@ -338,10 +337,9 @@ def run_end_to_end_eval(cluster, expname, run_after, stage_config, **kwargs):
                     f"++script_config.proof_generation_prompt_config_path={proof_generation_prompt_config_path} "
                     f"++script_config.proof_genselect_prompt_config_path={proof_genselect_prompt_config_path} "
                     f"++script_config.judgement_prompt_config_path={judgement_prompt_config_path} "
-                    f"++script_config.judgement_genselect_prompt_config_path={judgement_genselect_prompt_config_path} "
                     f"++enable_litellm_cache=True "
                 ),
-                generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
+                generation_module="recipes/proof-gen-verification/scripts/script_generation.py",
                 model=model_path,
                 cluster=run_cluster,
                 input_file=input_file,
@@ -418,7 +416,7 @@ def generic_bon_eval(cluster, expname, run_after, stage_config, **kwargs):
                     f"++script_config.genselect_prompt_config_path={genselect_prompt_config_path} "
                     f"++enable_litellm_cache=True "
                 ),
-                generation_module="/nemo_run/code/recipes/proof-gen-verification/scripts/script_generation.py",
+                generation_module="recipes/proof-gen-verification/scripts/script_generation.py",
                 model=model_path,
                 cluster=model_cluster,
                 input_file=input_file,
@@ -518,7 +516,7 @@ if __name__ == "__main__":
 
     # --- Common parameters ---
     base_output_dir = config["base_output_dir"]
-    suffix = config.get("suffix", "")
+    suffix = ""
     cluster = config["cluster"]
     expname_base = config["expname"]
 
