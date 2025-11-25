@@ -18,6 +18,8 @@ On this page you can find a list of papers, model and dataset releases that were
 
 ## Papers
 
+* [Scaling Generative Verifiers For Natural Language Mathematical Proof Verification And Selection](https://arxiv.org/abs/2511.13027){:target="_blank"} (2025)
+
 * [GenSelect: A Generative Approach to Best-of-N](https://openreview.net/pdf?id=8LhnmNmUDb){:target="_blank"} (2025)
 
 * [The Challenge of Teaching Reasoning to LLMs Without RL or Distillation](https://arxiv.org/abs/2507.09850){:target="_blank"} (2025)
