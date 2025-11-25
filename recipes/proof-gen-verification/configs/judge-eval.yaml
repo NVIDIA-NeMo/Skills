@@ -19,7 +19,7 @@ eval_rs: 32 # Number of random seeds to use for evaluation.
 eval_num_chunks: 1 # Number of chunks, each chunk will be evaluated on a separate job.
 
 # Evaluation to run end-to-end from proof generation to genselect and llm-as-a-judge to get final response.
-end_to_end_eval: aime # aime25, challenge19
+end_to_end_eval: aime25 # aime25, challenge19
 end_to_end_eval_rs: 8 # Number of random seeds to use for evaluation.
 
 directories:
