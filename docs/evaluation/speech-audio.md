@@ -2,6 +2,11 @@
 
 This section details how to evaluate speech and audio benchmarks, including understanding tasks that test models' ability to reason about audio content (speech, music, environmental sounds) and ASR tasks for transcription.
 
+!!! warning "Running without audio files"
+    If you want to evaluation without audio files (not recommended) use
+    `--no-audio` flag. In this case you can also set `--skip_data_dir_check`
+    as data is very lightweight when audio files aren't being used.
+
 ## Supported benchmarks
 
 ### MMAU-Pro
@@ -20,11 +25,6 @@ MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for
 ## Preparing MMAU-Pro Data
 
 MMAU-Pro requires audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.
-
-!!! warning "Running without audio files"
-    If you want to evaluation without audio files (not recommended) use
-    `--no-audio` flag. In this case you can also set `--skip_data_dir_check`
-    as data is very lightweight when audio files aren't being used.
 
 ### Data Preparation
 
@@ -46,7 +46,7 @@ ns prepare_data mmau-pro --data_dir=/path/to/data --cluster=<cluster_name>
 If you need to prepare without audio files:
 
 ```bash
-ns prepare_data mmau-pro --no-audio
+ns prepare_data mmau-pro --no-audio --skip_data_dir_check
 ```
 
 Note: The git repository check is automatically skipped with `--no-audio`.
@@ -100,12 +100,9 @@ eval(
         --server_container=/path/to/server_container.sqsh \
         --data_dir=/dataset \
         --installation_command="pip install sacrebleu" \
-        ++prompt_suffix='/no_think' \
+        ++max_concurrent_requests=1 \
         --server_args="--inference-max-requests 1 \
-                       --model-config /workspace/path/to/checkpoint-tp1/config.yaml \
-                       --num-tokens-to-generate 256 \
-                       --temperature 1.0 \
-                       --top_p 1.0"
+                       --model-config /workspace/path/to/checkpoint-tp1/config.yaml
     ```
 
 ## How Evaluation Works
@@ -270,4 +267,134 @@ pass@1          | 0          | 6580        | 55.52%       | 0.00%     | 290
 -------------------------------- mmau-pro -----------------------------------------
 evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | num_entries
 pass@1          | 11         | 6879        | 31.44%       | 0.00%     | 5305
+```
+
+
+### LibriSpeech-PC
+
+LibriSpeech-PC is an Automatic Speech Recognition (ASR) benchmark that evaluates models' ability to transcribe speech with proper punctuation and capitalization. It builds upon the original LibriSpeech corpus with enhanced reference transcripts.
+
+#### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/librispeech-pc/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/librispeech-pc/__init__.py)
+- Manifests (with punctuation/capitalization) from [OpenSLR-145](https://www.openslr.org/145/)
+- Audio files from original [LibriSpeech OpenSLR-12](https://www.openslr.org/12/)
+
+#### Available Splits
+
+- `test-clean`: Clean speech recordings (easier subset)
+- `test-other`: More challenging recordings with varied acoustic conditions
+
+## Preparing LibriSpeech-PC Data
+
+LibriSpeech-PC requires audio files for ASR evaluation. **Audio files are downloaded by default**.
+
+### Data Preparation
+
+To prepare the dataset with audio files:
+
+```bash
+ns prepare_data librispeech-pc --data_dir=/path/to/data --cluster=<cluster_name>
+```
+
+**What happens:**
+
+- Downloads manifests with punctuation/capitalization from OpenSLR-145
+- Downloads audio files from original LibriSpeech (OpenSLR-12)
+- Prepares both `test-clean` and `test-other` splits
+
+### Preparing Specific Splits
+
+To prepare only one split:
+
+```bash
+ns prepare_data librispeech-pc --split test-clean --data_dir=/path/to/data
+```
+
+or
+
+```bash
+ns prepare_data librispeech-pc --split test-other --data_dir=/path/to/data
+```
+
+## Running LibriSpeech-PC Evaluation
+
+!!! note
+    Currently supports only Megatron server type (`--server_type=megatron`).
+
+### Evaluation Example
+
+```python
+import os
+from nemo_skills.pipeline.cli import wrap_arguments, eval
+
+eval(
+    ctx=wrap_arguments(""),
+    cluster="oci_iad",
+    output_dir="/workspace/librispeech-pc-eval",
+    benchmarks="librispeech-pc",
+    server_type="megatron",
+    server_gpus=1,
+    model="/workspace/checkpoint",
+    server_entrypoint="/workspace/megatron-lm/server.py",
+    server_container="/path/to/container.sqsh",
+    data_dir="/dataset",
+    installation_command="pip install sacrebleu whisper jiwer",
+    server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
+)
+```
+
+??? note "Alternative: Command-line usage"
+
+    If you prefer using the command-line interface, you can run:
+
+    ```bash
+    export MEGATRON_PATH=/workspace/path/to/megatron-lm
+
+    ns eval \
+        --cluster=oci_iad \
+        --output_dir=/workspace/path/to/librispeech-pc-eval \
+        --benchmarks=librispeech-pc \
+        --server_type=megatron \
+        --server_gpus=1 \
+        --model=/workspace/path/to/checkpoint-tp1 \
+        --server_entrypoint=$MEGATRON_PATH/path/to/server.py \
+        --server_container=/path/to/server_container.sqsh \
+        --data_dir=/dataset \
+        --installation_command="pip install sacrebleu whisper jiwer" \
+        ++max_concurrent_requests=1 \
+        --server_args="--inference-max-requests 1 \
+                       --model-config /workspace/path/to/checkpoint-tp1/config.yaml"
+    ```
+
+## How LibriSpeech-PC Evaluation Works
+
+The evaluation measures ASR accuracy using multiple Word Error Rate (WER) metrics:
+
+| Metric | Description |
+|--------|-------------|
+| **WER** | Word Error Rate - measures transcription accuracy ignoring punctuation and capitalization |
+| **WER_C** | Word Error Rate with Capitalization - measures accuracy including capitalization |
+| **WER_PC** | Word Error Rate with Punctuation and Capitalization - measures full accuracy including both |
+| **PER** | Punctuation Error Rate - measures how well the model predicts punctuation marks |
+
+### Sub-benchmarks
+
+Evaluate individual splits:
+
+- `librispeech-pc.test-clean` - Easier, clean speech subset
+- `librispeech-pc.test-other` - More challenging subset with varied conditions
+
+```python
+eval(benchmarks="librispeech-pc.test-clean", ...)
+```
+
+### Evaluation Output Format
+
+**test-clean Split:**
+
+```
+------------------------------- librispeech-pc.test-clean -----------------------------
+evaluation_mode | avg_tokens | gen_seconds | wer      | wer_c    | wer_pc   | per      | num_entries
+pass@1          | 15         | 120         | 4.23%    | 4.85%    | 5.12%    | 2.34%    | 2620
 ```

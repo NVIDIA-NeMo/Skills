@@ -17,7 +17,6 @@ import logging
 import re
 from typing import Any
 
-import jiwer
 import numpy as np
 from tqdm import tqdm
 
@@ -99,6 +98,8 @@ def calculate_per(reference: str, hypothesis: str) -> float:
 
 def evaluate_asr_pc(reference: str, hypothesis: str) -> dict[str, Any]:
     """Evaluate ASR with punctuation and capitalization (LibriSpeech-PC style)."""
+    import jiwer
+    
     # Normalize whitespace
     ref_pc = normalize_whitespace(reference)
     hyp_pc = normalize_whitespace(hypothesis)
@@ -150,6 +151,8 @@ def preprocess_asr_text(text: str) -> str:
 
 def evaluate_asr(reference: str, hypothesis: str) -> dict[str, Any]:
     """Evaluate standard ASR with normalization."""
+    import jiwer
+    
     ref = preprocess_asr_text(reference)
     hyp = preprocess_asr_text(hypothesis)
 
