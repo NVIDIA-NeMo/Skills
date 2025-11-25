@@ -80,7 +80,6 @@ def load_prompt_template(prompt_config_path):
     return config.user
 
 
-# TODO: Copied from prepare_verl_data.py
 def _surround_with_step_index(proof_steps: list[str], target_step_slice: slice):
     assert target_step_slice.start >= 0 and target_step_slice.stop <= len(proof_steps)
     assert target_step_slice.start < target_step_slice.stop
