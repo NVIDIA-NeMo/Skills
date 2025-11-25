@@ -51,8 +51,11 @@ ns generate \
   --model Qwen/Qwen3-8B \
   --server_type vllm \
   --server_gpus 1 \
+  --with_sandbox true \
   ++tool_modules=[nemo_skills.mcp.servers.python_tool.PythonTool] \
-  ++with_sandbox=true
+  ++inference.tokens_to_generate=8192 \
+  ++inference.temperature=0.6
+
 ```
 
 **Python API usage:**
@@ -254,7 +257,7 @@ class CalculatorTool(MCPClientTool):
         )
 ```
 
-#### Step 4: Use Your Custom Tool
+#### Step 3: Use Your Custom Tool
 
 **Command line:**
 
@@ -304,27 +307,6 @@ Tool overrides allow you to customize tool behavior without modifying code:
 ++tool_overrides.PythonTool.exec_timeout_s=30
 ```
 
-### Custom System Prompts
-
-Tools can provide custom system prompts that guide the LLM's behavior. See the [Prompt Format documentation](../basics/prompt-format.md#tool-system-prompts) for details.
-
-Create a system prompt YAML file:
-
-```yaml
-# calculator_prompt.yaml
-system: >-
-  You are a helpful assistant with access to a calculator tool.
-  When performing calculations, always use the calculate tool for accuracy.
-  Show your reasoning before making calculations.
-```
-
-Use it:
-
-```bash
-++tool_modules=[/path/to/calculator_tool.py::CalculatorTool] \
-++tool_overrides.CalculatorTool.system_prompt_file=/path/to/calculator_prompt.yaml
-```
-
 ### Hiding Arguments
 
 You can hide arguments from the LLM's view while still passing them to the server:
@@ -366,79 +348,6 @@ generate(
 )
 ```
 
-### Tool with State Management
-
-Tools can maintain state across calls using `extra_args` with a `request_id`:
-
-```python
-class StatefulTool(MCPClientTool):
-    def __init__(self) -> None:
-        super().__init__()
-        self.state = {}  # request_id -> state dict
-
-    async def execute(self, tool_name: str, arguments: Dict[str, Any], extra_args: Dict[str, Any] | None = None):
-        request_id = extra_args.get("request_id") if extra_args else None
-
-        # Get or initialize state for this request
-        if request_id:
-            state = self.state.get(request_id, {})
-            # ... use state ...
-            self.state[request_id] = state
-
-        return await self._client.call_tool(tool=tool_name, args=arguments, extra_args=extra_args)
-```
-
-See `PythonTool` for a complete example of stateful tool implementation with session management.
-
-### Tool with External API
-
-```python
-import httpx
-from nemo_skills.mcp.tool_providers import MCPClientTool
-
-class WeatherTool(MCPClientTool):
-    def __init__(self) -> None:
-        super().__init__()
-        self.apply_config_updates({
-            "client": "nemo_skills.mcp.clients.MCPStdioClient",
-            "client_params": {
-                "command": "python",
-                "args": ["/path/to/weather_server.py"],
-            },
-            "api_key": "",  # Can be overridden via tool_overrides
-        })
-
-    async def execute(self, tool_name: str, arguments: Dict[str, Any], extra_args: Dict[str, Any] | None = None):
-        # Inject API key from config
-        extra = dict(extra_args or {})
-        extra["api_key"] = self._config.get("api_key", "")
-
-        return await self._client.call_tool(tool=tool_name, args=arguments, extra_args=extra)
-```
-
-Usage:
-
-```bash
-++tool_modules=[/path/to/weather_tool.py::WeatherTool] \
-++tool_overrides.WeatherTool.api_key=$WEATHER_API_KEY
-```
-
-## Input Data Format
-
-Your input JSONL file should contain the data fields expected by your prompt config. For tool calling, you typically use the OpenAI message format:
-
-```jsonl
-{"messages": [{"role": "user", "content": "Calculate 15.5 multiplied by 3.2"}]}
-{"messages": [{"role": "user", "content": "What is 100 divided by 7?"}]}
-```
-
-Or use a prompt config that formats your data:
-
-```jsonl
-{"problem": "Calculate 15.5 multiplied by 3.2"}
-{"problem": "What is 100 divided by 7?"}
-```
-
 ## Server Configuration
 
 ### vLLM Tool Calling
@@ -450,97 +359,10 @@ For vLLM, you may need to specify tool calling arguments:
 --server_args '--enable-auto-tool-choice --tool-call-parser hermes'
 ```
 
-### OpenAI-Compatible Servers
-
-```bash
---server_type openai \
---server_address http://localhost:8000/v1
-```
-
-## Debugging
-
-### View Tool Schemas
-
-To see what tools are available to the LLM:
-
-```python
-import asyncio
-from nemo_skills.mcp.tool_manager import ToolManager
-
-async def list_tools():
-    manager = ToolManager(
-        module_specs=["nemo_skills.mcp.servers.python_tool.PythonTool"],
-    )
-    tools = await manager.list_all_tools()
-    print(tools)
-
-asyncio.run(list_tools())
-```
-
-### Test MCP Server Standalone
-
-Test your MCP server independently:
-
-```bash
-python -u calculator_server.py
-```
-
-Then interact via stdio (send MCP protocol messages).
-
-### Enable Logging
-
-Set logging level to see tool execution details:
-
-```python
-import logging
-logging.basicConfig(level=logging.INFO)
-```
-
-## Best Practices
-
-1. **Keep tools focused** - Each tool should do one thing well
-2. **Validate inputs** - Always validate and sanitize tool inputs in the server
-3. **Handle errors gracefully** - Return error messages that help the LLM understand what went wrong
-4. **Use timeouts** - Prevent tools from hanging indefinitely
-5. **Document tools well** - Clear descriptions help the LLM use tools correctly
-6. **Test independently** - Test your tool script and MCP server separately before integration
-7. **Use absolute paths** - Use absolute paths in production for reliability
-8. **Secure sensitive data** - Never hardcode API keys; use `tool_overrides` instead
-
-## Troubleshooting
-
-### Tool not being called
-
-- Check that tool schema is valid and descriptive
-- Verify the model supports tool calling
-- Check server arguments (e.g., `--enable-auto-tool-choice`)
-- Review system prompt - it may be discouraging tool use
-
-### Tool execution fails
-
-- Test the underlying script/server independently
-- Check argument types match the schema
-- Verify paths are correct (use absolute paths)
-- Check logs for error messages
-
-### State not persisting
-
-- Ensure you're using `request_id` from `extra_args`
-- Verify your tool class properly stores state
-- Check that the same tool instance is being used
 
 ## Reference
 
 ### Built-in Tools
 
-- `nemo_skills.mcp.servers.python_tool.PythonTool` - Python code execution
-- `nemo_skills.mcp.servers.exa_tool.ExaTool` - Web search via Exa API
-- `nemo_skills.mcp.servers.lean_tool.LeanTool` - Lean 4 theorem proving
-
-### Configuration Parameters
-
-- `tool_modules` - List of tool classes to load
-- `tool_overrides` - Per-tool configuration overrides
-- `with_sandbox` - Enable sandbox for isolated code execution (required for PythonTool)
-
-For more examples, see the [mcp-generation recipes](https://github.com/NVIDIA/NeMo-Skills/tree/main/nemo-skills-recipes/mcp-generation).
+- [`nemo_skills.mcp.servers.python_tool.PythonTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/python_tool.py) - Python code execution
+- [`nemo_skills.mcp.servers.exa_tool.ExaTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/exa_tool.py) - Web search via Exa API
