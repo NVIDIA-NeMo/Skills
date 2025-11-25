@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import hashlib
 import json
 import multiprocessing
 import os
@@ -39,6 +40,10 @@ _precompile_loop_tls = threading.local()
 worker_sandbox = None  # type: ignore
 worker_loop = asyncio.new_event_loop()
 asyncio.set_event_loop(worker_loop)
+
+
+def sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _sandbox_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shell", timeout: int = 120):
@@ -224,8 +229,8 @@ def run_input_case(task_args: dict, worker_id: int) -> dict:
             "compile_success": not compile_result.get("stderr"),
             "compile_stdout": compile_result.get("stdout", ""),
             "compile_stderr": compile_result.get("stderr", ""),
-            "stdout": "",
-            "stderr": "",
+            "run_stdout": "",
+            "run_stderr": "",
             "error": "",
         }
 
@@ -238,17 +243,20 @@ def run_input_case(task_args: dict, worker_id: int) -> dict:
             sandbox.execute_code(run_command, language="shell", timeout=120)
         )
 
+        run_stdout = sha256_hex(run_result.get("stdout", ""))
+        run_stderr = run_result.get("stderr", "")
+
         result.update(
             {
-                "stdout": run_result.get("stdout", ""),
-                "stderr": run_result.get("stderr", ""),
+                "run_stdout": run_stdout,
+                "run_stderr": run_stderr,
             }
         )
 
         return result
 
     except Exception as e:
-        return {"stdout": "", "stderr": "", "error": str(e)}
+        return {"run_stdout": "", "run_stderr": "", "error": str(e)}
 
     finally:
         # 4. Clean up the directory locally
@@ -446,12 +454,10 @@ class IOIEvaluator(BaseEvaluator):
                     self.pool.starmap, run_input_case, [(ta, idx) for idx, ta in enumerate(tasks)]
                 )
                 for test_data, result in zip(batch, results):
-                    # Ensure stdout/stderr keys exist for consumers
-                    if "stdout" not in result:
-                        result["stdout"] = result.get("run_stdout", "")
-                    if "stderr" not in result:
-                        result["stderr"] = result.get("run_stderr", "")
-                    result["test_name"] = test_data.get("file_name") or test_data.get("name") or ""
+                    test_name = test_data["file_name"]
+                    test_type = "input"
+                    result["test_name"] = test_name
+                    result["test_type"] = test_type
                     outputs.append(result)
 
         return {

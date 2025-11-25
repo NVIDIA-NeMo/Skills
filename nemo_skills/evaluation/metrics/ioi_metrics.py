@@ -11,15 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
+import os
+import re
 from collections import defaultdict
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics
 
 
+def extract_final_cpp_block(text):
+    pattern = r"```(?:cpp|Cpp)\s*\n(.*?)```"
+    matches = re.findall(pattern, text, re.DOTALL)
+    return matches[-1] if matches else ""
+
+
 class IOIMetrics(BaseMetrics):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.reset()
+        self.cluster_folder = kwargs.get("cluster_folder", None)
+        print(f"Cluster folder: {self.cluster_folder}")
 
     def update(self, predictions):
         super().update(predictions)
@@ -29,6 +40,54 @@ class IOIMetrics(BaseMetrics):
 
     def _get_score_dict(self, p):
         return {"correct": all(r["score"] > 0 for r in p["test_case_results"].values())}
+
+    def extract_info(self, submission) -> dict:
+        # Aggregate IOI per-submission scores for convenience
+        subtask_scores = [v["score"] for _, v in submission["test_case_results"].items()]
+        return {
+            "grade": subtask_scores,
+            "tokens": submission["num_generated_tokens"],
+            "code": extract_final_cpp_block(submission["generation"]),
+        }
+
+    def get_clusters(self, submissions) -> dict:
+        clusters = defaultdict(list)
+        id = 0
+
+        for submission in submissions:
+            outputs = submission.get("outputs", [])
+            run_outputs = []
+            for output in outputs:
+                if "run_stdout" not in output:
+                    continue
+                run_outputs.append(output["run_stdout"])
+            output_key = tuple(run_outputs)
+
+            extract_info = self.extract_info(submission)
+            if output_key not in clusters:
+                # Initialize per-subtask maxima and counts with this submission's scores
+                subtask_score_list = [res["score"] for _, res in submission["test_case_results"].items()]
+                clusters[output_key] = {
+                    "codes": [],
+                    "max_score": subtask_score_list[:],
+                    "max_score_solutions": [1] * len(subtask_score_list),
+                }
+            else:
+                # Update maxima and counts element-wise from this submission
+                subtask_score_list = [res["score"] for _, res in submission["test_case_results"].items()]
+                max_scores = clusters[output_key]["max_score"]
+                max_counts = clusters[output_key]["max_score_solutions"]
+                for idx, score_val in enumerate(subtask_score_list):
+                    if score_val > max_scores[idx]:
+                        max_scores[idx] = score_val
+                        max_counts[idx] = 1
+                    elif score_val == max_scores[idx]:
+                        max_counts[idx] += 1
+            clusters[output_key]["codes"].append(extract_info)
+
+            id = submission.get("id", id)
+
+        return clusters, id
 
     def get_problem_score(self, submissions) -> float:
         """
@@ -49,6 +108,26 @@ class IOIMetrics(BaseMetrics):
         total_score = 0.0
         self.problem_scores = {}
         for name, submissions in self.predictions_by_problem.items():
+            # Cluster the submissions if requested
+            if self.cluster_folder:
+                clusters, id = self.get_clusters(submissions)
+                # Ensure directory exists
+                os.makedirs(self.cluster_folder, exist_ok=True)
+
+                # Prepare final clustered data
+                final_clusters = {}
+                for i, (output_key, cluster) in enumerate(clusters.items()):
+                    final_clusters[f"cluster_{i + 1}"] = {
+                        "output": output_key,
+                        "codes": cluster["codes"],
+                        "max_score": cluster["max_score"],
+                        "max_score_solutions": cluster["max_score_solutions"],
+                    }
+
+                output_file = os.path.join(self.cluster_folder, f"{id}_cluster.jsonl")
+                with open(output_file, "w") as f:
+                    json.dump(final_clusters, f, indent=4)
+
             score, subtasks = self.get_problem_score(submissions)
             self.problem_scores[name] = (score, subtasks)
             total_score += score
