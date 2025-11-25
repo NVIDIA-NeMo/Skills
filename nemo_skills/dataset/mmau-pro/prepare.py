@@ -75,8 +75,8 @@ def format_entry(entry, with_audio=False):
     if category == "open":
         content = entry["question"]
     elif choices and len(choices) > 1:
-        options_text = "\n".join(f"{chr(65 + i)}. {choice}" for i, choice in enumerate(choices))
-        content = f"{entry['question']}\n\n{options_text}"
+        options_text = "\n".join(f"{chr(65 + i)}) {choice}" for i, choice in enumerate(choices))
+        content = f"{entry['question']}\n\n{options_text}\n\nRespond with the complete text of the correct option, not just the letter."
     else:
         content = entry["question"]
 
@@ -90,10 +90,12 @@ def format_entry(entry, with_audio=False):
         else:
             user_message["audios"] = [{"path": f"/dataset/mmau-pro/{path}"} for path in audio_path]
 
-    formatted_entry["messages"] = [
-        {"role": "system", "content": "You are a helpful assistant. /no_think"},
-        user_message,
-    ]
+    # Don't use /no_think for open-ended questions to allow reasoning
+    system_content = "You are a helpful assistant."
+    if category != "open":
+        system_content += " /no_think"
+
+    formatted_entry["messages"] = [{"role": "system", "content": system_content}, user_message]
     return formatted_entry
 
 
