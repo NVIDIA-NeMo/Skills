@@ -339,7 +339,6 @@ def summarize_results(
                 results[get_subset_name(benchmark, subset)].update(subset_metrics)
         else:
             results[benchmark].update(metrics["_all_"])
-
         if len(metrics) > 1:
             for subset, subset_metrics in metrics.items():
                 metrics_to_print[get_subset_name(benchmark, subset)] = metrics_calculator.metrics_to_print()

@@ -209,12 +209,6 @@ class GenerateSolutionsConfig:
 
     def _post_init_validate_server(self):
         if self.server["server_type"] == "megatron":
-            if self.tokenizer is None:
-                raise ValueError(
-                    "Megatron server doesn't support chat completions and we can't infer tokenizer from model name. "
-                    "Please provide it with an explicit `tokenizer` parameter."
-                )
-            self.inference.endpoint_type = EndpointType.text
             LOG.warning("Megatron inference is extremely slow. It's highly recommended to use other server types!")
 
     def _post_init_validate_params(self):
@@ -342,6 +336,9 @@ class GenerationTask:
             if supports_single_eval(self.cfg.eval_type, self.cfg.eval_config):
                 LOG.info("Evaluator supports per-datapoint evals, will interleave evaluation with generation.")
                 self.evaluator = get_evaluator_class(self.cfg.eval_type, self.cfg.eval_config)
+
+        # Track whether we've shown the reasoning warning
+        self._reasoning_warning_shown = False
 
         LOG.info(
             "Async loop is maintaining %d generations in parallel. "
@@ -548,6 +545,16 @@ class GenerationTask:
                 self.cfg.generation_key,
                 self.cfg.end_reasoning_string,
             )
+
+        # Warn once if reasoning detected but not being parsed
+        if not self.cfg.parse_reasoning and not self._reasoning_warning_shown:
+            gen = output.get(self.cfg.generation_key)
+            if isinstance(gen, str) and self.cfg.end_reasoning_string in gen:
+                LOG.warning(
+                    f"Detected '{self.cfg.end_reasoning_string}' in generation but parse_reasoning=False. "
+                    "For reasoning models, set ++parse_reasoning=True to avoid incorrect code extraction."
+                )
+                self._reasoning_warning_shown = True
 
     def prefill_generation(self, data_point) -> dict | None:
         """Prefill generation in case LLM is not required."""

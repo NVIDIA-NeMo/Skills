@@ -1,0 +1,28 @@
+# Judge prompt configuration for Speech/Audio Language Model evaluation
+# Used for evaluating open-ended responses in MMAU-Pro benchmark
+# Follows nemo-skills standard Yes/No judgement pattern
+
+user: |-
+  You are an expert evaluator for audio and speech-related questions. Please evaluate whether the model's response correctly answers the question.
+
+  Question: {question}
+
+  Reference Answer: {expected_answer}
+
+  Model Response: {generation}
+
+  Your task is to determine if the model's response is correct based on the reference answer. Consider:
+
+  1. **Factual Accuracy**: Is the information in the response factually correct?
+  2. **Relevance**: Does the response address the specific question asked?
+  3. **Completeness**: Does the response cover the key points from the reference answer?
+
+  Please first explain your reasoning in 2-3 sentences, then provide your final judgement.
+
+  Your final judgement must be either "Yes" or "No":
+  - "Yes" if the model response is correct and adequately answers the question
+  - "No" if the model response is incorrect, irrelevant, or inadequate
+
+  Format your response as:
+  Reasoning: [Your explanation]
+  Judgement: [Yes or No]

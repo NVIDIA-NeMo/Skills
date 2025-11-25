@@ -11,7 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
+import signal
+import subprocess
+import time
+
 import typer
+from nemo_run import SSHTunnel
+from nemo_run.core.tunnel.client import RunResult
+from nemo_run.run.job import AppState, Job, Runner
 
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.utils import (
@@ -25,7 +33,9 @@ from nemo_skills.pipeline.utils import (
     resolve_mount_paths,
     set_python_path_and_wait_for_server,
 )
-from nemo_skills.utils import setup_logging
+from nemo_skills.utils import get_logger_name, setup_logging
+
+LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def get_gradio_chat_cmd(model, server_type, extra_args):
@@ -36,6 +46,66 @@ def get_gradio_chat_cmd(model, server_type, extra_args):
         f" {extra_args} "
     )
     return cmd
+
+
+def create_job_tunnel(
+    job: Job,
+    runner: Runner,
+    port: int,
+    service_node: str | None = None,
+    local_port: int | None = None,
+    wait_interval: int = 10,
+):
+    if not isinstance(job.executor.tunnel, SSHTunnel):
+        LOG.warning("Not using an SSH tunnel, skipping.")
+        return
+
+    LOG.info("Waiting for job to start...")
+    while job.status(runner) is not AppState.RUNNING:
+        time.sleep(wait_interval)
+
+    try:
+        _, _, path_str = job.handle.partition("://")
+        path = path_str.split("/")
+        app_id = path[1]
+    except Exception as e:
+        LOG.exception("Unable to get job ID for tunnel.")
+        LOG.exception(e)
+        return
+
+    if service_node is None:
+        ## NOTE(sanyamk): Assumes last one corresponds to the service node.
+        service_node_cmd: RunResult = job.executor.tunnel.run(
+            f"scontrol show job {app_id} | grep -m1 -o -E '\s+NodeList\=.*' | xargs | cut -d= -f2 | xargs scontrol show hostnames | tail -n1"
+        )
+        if service_node_cmd.return_code != 0:
+            LOG.exception(f"Failed to get node list. {service_node_cmd.stderr}")
+            return
+
+        service_node = service_node_cmd.stdout.strip()
+
+    ssh_tunnel_args = (
+        [
+            "ssh",
+            "-N",
+            "-A",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+        ]
+        + (["-p", str(job.executor.tunnel.port)] if job.executor.tunnel.port else [])
+        + (["-i", job.executor.tunnel.identity] if job.executor.tunnel.identity else [])
+        + [
+            "-J",
+            f"{job.executor.tunnel.user}@{job.executor.tunnel.host}",
+            service_node,
+            "-L",
+            f"{local_port or port}:localhost:{port}",
+        ]
+    )
+    LOG.info(f"SSH tunnel command: {' '.join(ssh_tunnel_args)}")
+    LOG.info(f"Tunnel can be accessed at localhost:{port}")
+
+    return subprocess.Popen(ssh_tunnel_args)
 
 
 @app.command()
@@ -85,6 +155,11 @@ def start_server(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
+    create_tunnel: bool = typer.Option(
+        False, help="If True, will create an SSH tunnel to the model server (and sandbox when available)."
+    ),
+    server_tunnel_port: int = typer.Option(5000, help="Local tunnel port for the model server."),
+    sandbox_tunnel_port: int = typer.Option(6000, help="Local tunnel port for the sandbox server."),
 ):
     """Self-host a model server."""
     setup_logging(disable_hydra_logs=False, use_rich=True)
@@ -118,6 +193,8 @@ def start_server(
             cmd = set_python_path_and_wait_for_server(
                 server_address, get_gradio_chat_cmd(model, server_type, extra_chat_args)
             )
+
+        sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
         add_task(
             exp,
             cmd=cmd,
@@ -129,12 +206,43 @@ def start_server(
             server_config=server_config,
             with_sandbox=with_sandbox,
             keep_mounts_for_sandbox=keep_mounts_for_sandbox,
-            sandbox_port=None if get_random_port else 6000,
+            sandbox_port=sandbox_port,
             sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
         )
-        # we don't want to detach in this case even on slurm, so not using run_exp
-        exp.run(detach=False, tail_logs=True)
-        # TODO: seems like not being killed? If nemorun doesn't do this, we can catch the signal and kill the server ourselves
+
+        exp.run(detach=True, tail_logs=True)
+
+        ## NOTE: Use ctrl + c twice to cancel all experiment jobs.
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+        try:
+            tunnel_procs = []
+            if create_tunnel:
+                if cluster_config.get("executor") != "slurm":
+                    raise NotImplementedError("Tunnels can only be used with slurm executor.")
+
+                ## NOTE(sanyamk): Assumes first job in experiment corresponds to the server.
+                tunnel_procs.append(
+                    create_job_tunnel(
+                        exp.jobs[0], exp._runner, server_config["server_port"], local_port=server_tunnel_port
+                    )
+                )
+
+                if with_sandbox:
+                    ## NOTE(sanyamk): Assumes last job in experiment corresponds to the sandbox.
+                    tunnel_procs.append(
+                        create_job_tunnel(exp.jobs[-1], exp._runner, sandbox_port, local_port=sandbox_tunnel_port)
+                    )
+
+            exp._wait_for_jobs(exp.jobs)
+        except (NotImplementedError, KeyboardInterrupt):
+            pass
+        finally:
+            for proc in tunnel_procs:
+                if proc and proc.poll() is None:
+                    proc.terminate()
+
+            for j in exp.jobs:
+                exp.cancel(j.id)
 
 
 if __name__ == "__main__":

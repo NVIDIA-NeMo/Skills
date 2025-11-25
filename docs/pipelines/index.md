@@ -126,3 +126,88 @@ All of the scripts that involve LLM data generation accept a common set of param
 - **--server_args**: Any other arguments you need to pass to a corresponding server.
   E.g. use `--server_args="--gpu-memory-utilization=0.99"` to change gpu memory utilization of a
   vLLM server.
+
+## Passing Main Arguments with Config Files
+
+You can use YAML config files to pass parameters to any pipeline script. This is most applicable when using parameters that require extra escaping, such as strings with special characters.
+
+### The Problem
+
+Parameters like `end_reasoning_string='</think>'` can cause shell escaping issues:
+
+```bash
+# Problematic - angle brackets can be interpreted as shell redirection or cause Hydra parsing errors
+ns generate \
+    ... \
+    ++parse_reasoning=True \
+    ++end_reasoning_string='</think>'  # May cause errors!
+```
+
+Common error:
+```
+hydra.errors.OverrideParseException: LexerNoViableAltException: ++end_reasoning_string=\</think\>
+```
+
+### The Solution
+
+**1. Create a config file** (`/nemo_run/code/main_arg_configs/reasoning_config.yaml`):
+
+```yaml
+# Include parameters that are difficult to escape
+end_reasoning_string: '</think>'
+parallel_thinking:
+    end_reasoning_string: '</think>'
+```
+
+!!! note
+
+    Local files can be packaged into the `/nemo_run/code` directory in the execution environment. See
+    [Code Packaging](../basics/code-packaging.md) for details.
+
+**2. Use it with command-line args:**
+
+=== "command-line interface"
+
+    ```bash
+    ns generate \
+        --cluster=slurm \
+        --server_type=vllm \
+        --model=Qwen/QwQ-32B-Preview \
+        --server_gpus=4 \
+        --output_dir=/workspace/reasoning-output \
+        --input_file=/workspace/math-problems.jsonl \
+        --config-path=/nemo_run/code/main_arg_configs \
+        --config-name=reasoning_config \
+        ++prompt_config=generic/math-base \
+        ++inference.temperature=0.7 \
+        ++inference.tokens_to_generate=2048
+    ```
+
+=== "python interface"
+
+    ```python
+    from nemo_skills.pipeline.cli import generate, wrap_arguments
+
+    generate(
+        wrap_arguments(
+            "--config-path /workspace/configs "
+            "--config-name reasoning_config "
+            "++prompt_config=generic/math-base "
+            "++inference.temperature=0.7 "
+            "++inference.tokens_to_generate=2048 "
+        ),
+        cluster="slurm",
+        server_type="vllm",
+        model="Qwen/QwQ-32B-Preview",
+        server_gpus=4,
+        output_dir="/workspace/reasoning-output",
+        input_file="/workspace/math-problems.jsonl",
+    )
+    ```
+
+**How it works:**
+
+- `--config-path=/nemo_run/code/main_arg_configs`: Directory containing your config file
+- `--config-name=reasoning_config`: Config filename without `.yaml` extension
+- Command-line [Hydra override args](https://hydra.cc/docs/advanced/override_grammar/basic/) can still override config file values if needed
+- This works with any pipeline script with generation (`ns generate`, `ns eval`, etc.)

@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This is an example launcher file from NeMo-evaluator used in the tests. For
+# more, see
+
+# specify default configs for execution and deployment
+defaults:
+  - execution: local
+  - deployment: none
+  - _self_
+
+execution:
+  output_dir: llama_3_1_8b_instruct_results
+
+target:
+  api_endpoint:
+    model_id: meta/llama-3.1-8b-instruct
+    url: https://integrate.api.nvidia.com/v1/chat/completions
+    api_key_name: API_KEY # API Key with access to build.nvidia.com
+
+# specify the benchmarks to evaluate
+evaluation:
+  env_vars:
+    API_KEY: ${oc.env:NGC_API_TOKEN}
+  nemo_evaluator_config: # global config settings that apply to all tasks
+    config:
+      output_dir: /workspace/evals
+      params:
+        request_timeout: 3600 # timeout for API requests in seconds
+        parallelism: 2 # number of parallel requests
+        limit_samples: 5 # TEST ONLY: Limits all benchmarks to 10 samples total for quick testing
+    target:
+      api_endpoint:
+        adapter_config:
+          use_reasoning: false # if true, strips reasoning tokens and collects reasoning stats
+          use_system_prompt: true # enables custom system prompt
+          custom_system_prompt: >-
+            "Think step by step."
+  tasks:
+    - name: ifeval # use the default benchmark configuration
+    - name: gpqa_diamond
+      nemo_evaluator_config: # task-specific configuration for gpqa_diamond
+        config:
+          params:
+            temperature: 0.6 # sampling temperature
+            top_p: 0.95 # nucleus sampling parameter
+            max_new_tokens: 8192 # maximum tokens to generate
+      env_vars:
+        HF_TOKEN: HF_TOKEN_FOR_GPQA_DIAMOND # Click request access for GPQA-Diamond: https://huggingface.co/datasets/Idavidrein/gpqa

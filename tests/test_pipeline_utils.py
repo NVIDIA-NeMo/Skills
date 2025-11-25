@@ -20,6 +20,7 @@ from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_expected_done_files,
     get_remaining_jobs,
+    separate_hydra_args,
 )
 
 
@@ -198,3 +199,159 @@ def test_slurm_execution(mock_get_tunnel):
         assert mock_get_tunnel.called
         assert 10 in remaining[0]
         assert 20 in remaining[1]
+
+
+def test_separate_hydra_args_empty():
+    """Test with empty string."""
+    hydra_args, override_args = separate_hydra_args("")
+    assert hydra_args == ""
+    assert override_args == ""
+
+
+def test_separate_hydra_args_only_hydra():
+    """Test with only Hydra config args."""
+    hydra_args, override_args = separate_hydra_args("--config-path /workspace/configs --config-name my_config")
+    assert hydra_args == " --config-path /workspace/configs --config-name my_config"
+    assert override_args == ""
+
+
+def test_separate_hydra_args_only_overrides():
+    """Test with only override args."""
+    hydra_args, override_args = separate_hydra_args("++inference.temperature=0.7 ++inference.top_p=0.95")
+    assert hydra_args == ""
+    assert override_args == " ++inference.temperature=0.7 ++inference.top_p=0.95"
+
+
+def test_separate_hydra_args_mixed():
+    """Test with mixed Hydra and override args."""
+    extra_args = (
+        "--config-path /workspace/configs --config-name reasoning ++inference.temperature=0.7 ++parse_reasoning=True"
+    )
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /workspace/configs --config-name reasoning"
+    assert override_args == " ++inference.temperature=0.7 ++parse_reasoning=True"
+
+
+def test_separate_hydra_args_equals_format():
+    """Test with --config-path=value format."""
+    hydra_args, override_args = separate_hydra_args("--config-path=/workspace/configs --config-name=reasoning")
+    assert hydra_args == " --config-path=/workspace/configs --config-name=reasoning"
+    assert override_args == ""
+
+
+def test_separate_hydra_args_mixed_formats():
+    """Test with mixed formats (= and space separated)."""
+    extra_args = "--config-path=/workspace/configs --config-name reasoning ++temperature=0.7"
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path=/workspace/configs --config-name reasoning"
+    assert override_args == " ++temperature=0.7"
+
+
+def test_separate_hydra_args_with_special_chars():
+    """Test with override args containing special characters."""
+    extra_args = "--config-path /configs --config-name test ++end_reasoning_string='END_TAG' ++stop_phrase='\\n\\n'"
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /configs --config-name test"
+    assert override_args == " ++end_reasoning_string=END_TAG ++stop_phrase=\\n\\n"
+
+
+def test_separate_hydra_args_complex():
+    """Test complex realistic scenario."""
+    extra_args = (
+        "--config-path /nemo_run/code/configs --config-name reasoning_config "
+        "++prompt_config=generic/math-base ++inference.temperature=0.7 "
+        "++inference.tokens_to_generate=2048 ++parse_reasoning=True "
+        "++end_reasoning_string='END_TAG'"
+    )
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /nemo_run/code/configs --config-name reasoning_config"
+    assert override_args == (
+        " ++prompt_config=generic/math-base ++inference.temperature=0.7 "
+        "++inference.tokens_to_generate=2048 ++parse_reasoning=True "
+        "++end_reasoning_string=END_TAG"
+    )
+
+
+def test_separate_hydra_args_hydra_no_value_flags():
+    """Hydra flags without values should be extracted correctly."""
+    extra_args = "--help ++inference.temperature=0.7 --run ++other=1 --multirun"
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --help --run --multirun"
+    assert override_args == " ++inference.temperature=0.7 ++other=1"
+
+
+def test_separate_hydra_args_hydra_with_value_flags_space_and_equals():
+    """Hydra flags with values should support both space and equals formats."""
+    extra_args = (
+        "--cfg all --info=plugins --package mypkg ++x=1 --config-dir /workspace/configs ++y=2 --experimental-rerun=abc"
+    )
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert (
+        hydra_args
+        == " --cfg all --info=plugins --package mypkg --config-dir /workspace/configs --experimental-rerun=abc"
+    )
+    assert override_args == " ++x=1 ++y=2"
+
+
+def test_separate_hydra_args_hydra_help_and_version():
+    """Ensure misc hydra flags are captured and don't disturb overrides."""
+    extra_args = "--hydra-help --version ++prompt_config=generic/math"
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --hydra-help --version"
+    assert override_args == " ++prompt_config=generic/math"
+
+
+def test_separate_hydra_args_config_at_end():
+    """Test with config args at the end."""
+    extra_args = (
+        "++inference.temperature=0.7 ++parse_reasoning=True --config-path /workspace/configs --config-name reasoning"
+    )
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /workspace/configs --config-name reasoning"
+    assert override_args == " ++inference.temperature=0.7 ++parse_reasoning=True"
+
+
+def test_separate_hydra_args_config_in_middle():
+    """Test with config args in the middle."""
+    extra_args = "++inference.temperature=0.7 --config-path /configs --config-name test ++parse_reasoning=True"
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /configs --config-name test"
+    assert override_args == " ++inference.temperature=0.7 ++parse_reasoning=True"
+
+
+def test_separate_hydra_args_interspersed():
+    """Test with config args interspersed with overrides."""
+    extra_args = (
+        "++prompt_config=generic/math "
+        "--config-path /workspace/configs "
+        "++inference.temperature=0.7 "
+        "--config-name reasoning_config "
+        "++inference.top_p=0.95"
+    )
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /workspace/configs --config-name reasoning_config"
+    assert override_args == " ++prompt_config=generic/math ++inference.temperature=0.7 ++inference.top_p=0.95"
+
+
+def test_separate_hydra_args_only_config_name():
+    """Test with only config-name at the end."""
+    extra_args = "++inference.temperature=0.7 ++tokens_to_generate=512 --config-name my_config"
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-name my_config"
+    assert override_args == " ++inference.temperature=0.7 ++tokens_to_generate=512"
+
+
+def test_separate_hydra_args_with_spaces_in_values():
+    """Test with parameter values containing spaces (using quotes)."""
+    extra_args = '--config-path "/path with spaces" ++description="some text with spaces" --config-name my_config'
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /path with spaces --config-name my_config"
+    assert override_args == " ++description=some text with spaces"
+
+
+def test_separate_hydra_args_with_quoted_special_chars():
+    """Test with quoted values containing special characters."""
+    extra_args = """--config-path /configs ++end_reasoning_string="END_TAG" ++prompt="Question: {question}" """
+    hydra_args, override_args = separate_hydra_args(extra_args)
+    assert hydra_args == " --config-path /configs"
+    assert override_args == " ++end_reasoning_string=END_TAG ++prompt=Question: {question}"

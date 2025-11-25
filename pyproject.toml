@@ -61,7 +61,7 @@ optional-dependencies = {dev = { file = ["requirements/common-tests.txt", "requi
 markers = [
     "gpu: tests that require a GPU to run",
 ]
-addopts = "--ignore=tests/slurm-tests"
+addopts = "--ignore=tests/slurm-tests -W ignore::DeprecationWarning -W ignore::PendingDeprecationWarning"
 
 [tool.ruff]
 target-version = "py310"

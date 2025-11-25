@@ -46,7 +46,7 @@ class LeanEvaluatorConfig(BaseEvaluatorConfig):
     sandbox: dict = field(default_factory=lambda: {"sandbox_type": "local"})
     num_parallel_requests: int = 10
     timeout: float = 30.0
-    final_answer_key: str = "**FINAL ANSWER**"
+    final_answer_key: str | None = None
     restate_formal_statement: bool = True
     # Which code block to extract when multiple are present: "first" or "last"
     extract_code_mode: str = "last"

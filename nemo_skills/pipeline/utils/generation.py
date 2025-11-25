@@ -175,6 +175,112 @@ def get_remaining_jobs(cluster_config, output_dir, random_seeds, chunk_ids, reru
     return missing_jobs
 
 
+def separate_hydra_args(extra_arguments: str) -> tuple[str, str]:
+    """
+    Separate Hydra config args (--config-*, --cfg, --info, etc.) and
+    other Hydra flags from override args (++*).
+
+    Args:
+        extra_arguments: String containing mixed Hydra and override arguments
+
+    Returns:
+        Tuple of (hydra_config_args, override_args) as strings
+
+    Examples:
+        Empty input:
+            separate_hydra_args("") -> ("", "")
+
+        With config path/name and overrides:
+            separate_hydra_args(
+                "--config-path /cfg --config-name my_cfg ++inference.temperature=0.7"
+            ) -> (
+                " --config-path /cfg --config-name my_cfg",
+                " ++inference.temperature=0.7",
+            )
+
+        With Hydra flags that take values (space and equals forms):
+            separate_hydra_args("--cfg all --info=plugins ++x=1") -> (
+                " --cfg all --info=plugins",
+                " ++x=1",
+            )
+
+        With Hydra flags without values:
+            separate_hydra_args("--run --multirun ++y=2") -> (
+                " --run --multirun",
+                " ++y=2",
+            )
+
+        Mixed value formats and directories:
+            separate_hydra_args(
+                "--config-path=/a --config-dir /b ++foo=bar"
+            ) -> (
+                " --config-path=/a --config-dir /b",
+                " ++foo=bar",
+            )
+    """
+    hydra_config_args = ""
+    override_args = ""
+
+    if not extra_arguments:
+        return hydra_config_args, override_args
+
+    # Hydra flags that do not take a value
+    hydra_flags_no_value = {
+        "--help",
+        "--hydra-help",
+        "--version",
+        "--resolve",
+        "--run",
+        "--multirun",
+        "--shell-completion",
+    }
+
+    # Hydra flags that take a value (accept both --flag=value and "--flag value")
+    hydra_flags_with_value = {
+        "--config-path",
+        "--config-name",
+        "--config-dir",
+        "--package",
+        "--experimental-rerun",
+        "--cfg",
+        "--info",
+    }
+
+    args_parts = shlex.split(extra_arguments)
+    i = 0
+    while i < len(args_parts):
+        arg = args_parts[i]
+
+        # Exact match for no-value hydra flags
+        if arg in hydra_flags_no_value:
+            hydra_config_args += f" {arg}"
+            i += 1
+            continue
+
+        # Match hydra flags that accept values (either --flag=value or "--flag value")
+        is_with_value_flag = False
+        for flag in hydra_flags_with_value:
+            if arg.startswith(flag):
+                is_with_value_flag = True
+                # Handle both formats
+                if "=" in arg:
+                    hydra_config_args += f" {arg}"
+                else:
+                    hydra_config_args += f" {arg}"
+                    if i + 1 < len(args_parts) and not args_parts[i + 1].startswith("-"):
+                        i += 1
+                        hydra_config_args += f" {args_parts[i]}"
+                break
+
+        if not is_with_value_flag:
+            # Not a recognized hydra flag → treat as override
+            override_args += f" {arg}"
+
+        i += 1
+
+    return hydra_config_args, override_args
+
+
 def get_generation_cmd(
     output_dir,
     input_file=None,
@@ -208,15 +314,19 @@ def get_generation_cmd(
         random_seed=random_seed,
     )
     cmd = "export HYDRA_FULL_ERROR=1 && "
+
+    # Separate Hydra config args (--config-*) from override args (++)
+    hydra_config_args, override_args = separate_hydra_args(extra_arguments)
+
     # Handle file paths vs module names
     common_args = f"++skip_filled=True ++input_file={input_file} ++output_file={output_file}"
     if script.endswith(".py") or os.sep in script:
         # It's a file path, run it directly with .py extension
         script_path = script if script.endswith(".py") else f"{script}.py"
-        cmd += f"python {script_path} {common_args} "
+        cmd += f"python {script_path} {hydra_config_args} {common_args} "
     else:
         # It's a module name, use -m flag
-        cmd += f"python -m {script} {common_args} "
+        cmd += f"python -m {script} {hydra_config_args} {common_args} "
     job_end_cmd = ""
 
     if random_seed is not None and input_dir is None:  # if input_dir is not None, we default to greedy generations
@@ -268,8 +378,8 @@ def get_generation_cmd(
         else:
             postprocess_cmd = job_end_cmd
 
-    if extra_arguments:
-        cmd += f" {extra_arguments} "
+    if override_args:
+        cmd += f" {override_args} "
 
     return wrap_cmd(
         cmd=cmd,
