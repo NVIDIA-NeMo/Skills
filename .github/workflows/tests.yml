@@ -53,19 +53,20 @@ jobs:
     - name: Build Images
       run: |
         # these tags need to match the ones in tests/gpu-tests/test-local.yaml
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
         docker buildx build \
           --tag nemo-skills-image \
           --file dockerfiles/Dockerfile.nemo-skills \
-          --cache-from type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-image:cache \
-          --cache-to type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-image:cache,mode=max \
+          --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=max \
           --load \
           .
         docker buildx build \
           --tag nemo-skills-sandbox-image \
           --file dockerfiles/Dockerfile.sandbox \
           --build-arg GITHUB_CI=1 \
-          --cache-from type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-sandbox-image:cache \
-          --cache-to type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-sandbox-image:cache,mode=max \
+          --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache,mode=max \
           --load \
           .
     - name: Run all tests
