@@ -52,17 +52,28 @@ jobs:
         pip cache purge || true
     - name: Build Images
       run: |
-        # these tags need to match the ones in tests/gpu-tests/test-local.yaml
+        # Calculate image tags that match what Python code expects
+        # Python generates: locally-built-{sanitized_path}:{sha256_hash[:12]}
         REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+        # Build nemo-skills-image with expected tag
+        NEMO_SKILLS_HASH=$(sha256sum dockerfiles/Dockerfile.nemo-skills | cut -d' ' -f1 | cut -c1-12)
+        NEMO_SKILLS_TAG="locally-built-dockerfiles-dockerfile-nemo-skills:${NEMO_SKILLS_HASH}"
         docker buildx build \
           --tag nemo-skills-image \
+          --tag ${NEMO_SKILLS_TAG} \
           --file dockerfiles/Dockerfile.nemo-skills \
           --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache \
           --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=max \
           --load \
           .
+
+        # Build sandbox-image with expected tag
+        SANDBOX_HASH=$(sha256sum dockerfiles/Dockerfile.sandbox | cut -d' ' -f1 | cut -c1-12)
+        SANDBOX_TAG="locally-built-dockerfiles-dockerfile-sandbox:${SANDBOX_HASH}"
         docker buildx build \
           --tag nemo-skills-sandbox-image \
+          --tag ${SANDBOX_TAG} \
           --file dockerfiles/Dockerfile.sandbox \
           --build-arg GITHUB_CI=1 \
           --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache \
