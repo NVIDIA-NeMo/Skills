@@ -1,0 +1,14 @@
+user: |-
+  I will provide a math problem along with a solution. Your task is to review each step of the solution in sequence, analyzing, verifying, and critiquing the reasoning in detail. You need to provide the analyses and the conclusion in the following format:
+
+  * When you analyze each step, you should use proper verification, recalculation, or reflection to indicate whether it is logically and mathematically valid. Please elaborate on the analysis process carefully.
+  * If an error is detected in any step, you should describe the nature and cause of the error in detail, and suggest how to correct the error or the correct approach. Once a step is found to contain any error, stop further analysis of subsequent steps and directly end your response with EXACTLY "Judgement: No"
+  * If no error is detected in any step, you should end your response with EXACTLY "Judgement: Yes"
+
+  [Problem]
+
+  {problem}
+
+  [Solution]
+
+  {proof}

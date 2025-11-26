@@ -1,0 +1,272 @@
+cluster: slurm
+base_output_dir: /workspace/proof-gen-verification
+expname: proof-gen-verification
+
+# List of problems to generate a balanced final-answer judgement dataset.
+final_answer_dataset: /nemo_run/code/nemo_skills/dataset/challenge19/test.jsonl
+
+pipeline_stages:
+  - run_evals
+  - make_final_answer_dataset
+  - genselect_eval
+  - eval_step_judge
+  - run_end_to_end_eval
+  - generic_bon_eval
+
+# Evaluate selection and verification benchmarks.
+eval_name: proof-bench-judge # proof-arena-judge, proof-bench-judge, open-proof-corpus-judge
+eval_rs: 32 # Number of random seeds to use for evaluation.
+eval_num_chunks: 1 # Number of chunks, each chunk will be evaluated on a separate job.
+
+# Evaluation to run end-to-end from proof generation to genselect and llm-as-a-judge to get final response.
+end_to_end_eval: aime25 # aime25, challenge19
+end_to_end_eval_rs: 8 # Number of random seeds to use for evaluation.
+
+directories:
+  judge_eval: ${base_output_dir}/evals/${eval_name}-${eval_rs}
+  final_answer_evals: ${base_output_dir}/evals/final-answer-evals
+  step_judge_eval: ${base_output_dir}/evals/${eval_name}-step-judge
+  end_to_end_eval: ${base_output_dir}/evals/${end_to_end_eval}-end-to-end
+
+stages:
+  run_evals:
+    output_dir: ${directories.judge_eval}
+    eval_dataset: ${eval_name}:${eval_rs}
+    num_jobs: -1
+    num_chunks: ${eval_num_chunks}
+    dependencies: null
+    dependent_jobs: 0
+    prompt_configs:
+      opc_judge: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge.yaml
+      opc_judge_summary: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary.yaml
+      opc_judge_summary_rubric: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary_rubric.yaml
+      opc_judge_summary_gt_proof: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary_gt_proof.yaml
+      general: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/general.yaml
+      gemini_imo_judge_summary: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/gemini_imo_judge_summary.yaml
+      general_summary: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/general_summary.yaml
+      # Ablations
+      prompt1: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt1.yaml
+      prompt2: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt2.yaml
+      prompt3: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt3.yaml
+      prompt4: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt4.yaml
+      prompt5: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt5.yaml
+      prompt5_rubric: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt5_rubric.yaml
+      prompt6_rubric: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/prompt6_rubric.yaml
+      gemini1: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/gemini1.yaml
+      gemini2: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/judge_prompt_ablation/gemini2.yaml
+    models:
+      # What prompt is the best?
+      - id: gpt-oss-120-general-summary-prompt
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        prompt_config: general_summary
+      - id: gpt-oss-120-gemini-imo-judge-summary-prompt
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        prompt_config: gemini_imo_judge_summary
+      - id: gpt-oss-120-opc-judge-summary-prompt
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        prompt_config: opc_judge_summary
+      - id: gpt-oss-120-opc-judge-summary-gt-proof-prompt
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        prompt_config: opc_judge_summary_gt_proof
+      - id: Qwen3-30B-A3B-Thinking-2507-general-summary-prompt
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+        prompt_config: general_summary
+      - id: Qwen3-30B-A3B-Thinking-2507-gemini-imo-judge-summary-prompt
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+        prompt_config: gemini_imo_judge_summary
+      - id: Qwen3-30B-A3B-Thinking-2507-opc-judge-summary-prompt
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+        prompt_config: opc_judge_summary
+      - id: Qwen3-30B-A3B-Thinking-2507-opc-judge-summary-gt-proof-prompt
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+        prompt_config: opc_judge_summary_gt_proof
+      - id: GLM-4.5-Air-general-summary-prompt
+        model_path: /hf_models/GLM-4.5-Air
+        config_name: GLM-4.5-Air
+        prompt_config: general_summary
+      - id: GLM-4.5-Air-gemini-imo-judge-summary-prompt
+        model_path: /hf_models/GLM-4.5-Air
+        config_name: GLM-4.5-Air
+        prompt_config: gemini_imo_judge_summary
+      - id: GLM-4.5-Air-opc-judge-summary-prompt
+        model_path: /hf_models/GLM-4.5-Air
+        config_name: GLM-4.5-Air
+        prompt_config: opc_judge_summary
+      - id: gpt-oss-120-opc-judge-summary-rubric-prompt
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        prompt_config: opc_judge_summary_rubric
+      - id: Qwen3-30B-A3B-Thinking-2507-opc-judge-summary-rubric-prompt
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+        prompt_config: opc_judge_summary_rubric
+      # Ablations
+      - id: gpt-oss-120-opc-judge-summary-prompt-ablation
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        prompt_config: prompt1,prompt2,prompt3,prompt4,prompt5,prompt5_rubric,prompt6_rubric,gemini1,gemini2
+      - id: Qwen3-30B-A3B-Thinking-2507-opc-judge-summary-prompt-ablation
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+        prompt_config: prompt1,prompt2,prompt3,prompt4,prompt5,prompt5_rubric,prompt6_rubric,gemini1,gemini2
+
+
+  eval_step_judge:
+    output_dir: ${directories.step_judge_eval}
+    eval_dataset: ${eval_name}:${eval_rs}
+    num_chunks: 1
+    dependencies: null
+    step_break_prompt_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/step_break.yaml
+    step_judge_prompt_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/step_judge_v2.yaml
+    lemma_break_prompt_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/lemma_break.yaml
+    lemma_judge_prompt_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary.yaml
+    truth_break_prompt_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/true_false_break.yaml
+    truth_judge_prompt_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/true_false_judge.yaml
+    step_maj_n: 1 # Maj voting per step to get a higher confidence judgement for the step-level judgement.
+    dependent_jobs: 2
+    models:
+      - id: gpt-oss-120-step-judge
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        step_mode: step-based
+      - id: gpt-oss-120-lemma-judge
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        step_mode: lemma-based
+      - id: gpt-oss-120-truth-judge
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+        step_mode: truth-based
+
+  make_final_answer_dataset:
+    output_dir: ${directories.final_answer_evals}
+    input_file: ${final_answer_dataset}
+    n_pos_neg: 3 # How many positive and negative we need for each <problem,model> pair.
+    dependent_jobs: 0
+    models:
+      - id: gpt-oss-120
+        model: /hf_models/gpt-oss-120b
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 1
+        server_args: "--async-scheduling --max-num-seqs=1024"
+        inline_args: >-
+          ++inference.tokens_to_generate=120000
+          ++inference.temperature=1.0
+          ++inference.top_p=1.0
+          ++inference.reasoning_effort=high
+      - id: Qwen3-235B-A22B-Thinking-2507
+        model: /hf_models/Qwen3-235B-A22B-Thinking-2507
+        server_type: sglang
+        server_gpus: 8
+        server_nodes: 2
+        server_args: "--reasoning-parser qwen3 --context-length 128000 --ep-size 16"
+        inline_args: >-
+          ++inference.tokens_to_generate=120000
+          ++inference.temperature=0.6
+          ++inference.top_p=0.95
+          ++inference.top_k=20
+
+
+  genselect_eval:
+    genselect_prompt_configs:
+      default: /nemo_run/code/recipes/proof-gen-verification/prompts/genselect/default.yaml
+      opc_instructions: /nemo_run/code/recipes/proof-gen-verification/prompts/genselect/opc_instructions.yaml
+    input_dir: ${directories.judge_eval}
+    model_prompt_config: opc_judge_summary # Output will be in model_id/{prompt_config}_genselect_${max_seeds_to_use}_${eval_rs}_${genselect_prompt_config}
+    genselect_prompt_config: default
+    eval_dataset: ${eval_name}:${eval_rs}
+    max_seeds_to_use: ${eval_rs}
+    n_judgements_per_tournament: 2
+    num_jobs: -1
+    num_chunks: ${eval_num_chunks}
+    dependencies: null
+    dependent_jobs: 6
+    models: ${stages.run_evals.models}
+
+  run_end_to_end_eval:
+    output_dir: ${directories.end_to_end_eval}
+    eval_dataset: ${end_to_end_eval}:${end_to_end_eval_rs}
+    run_configs: # n_p=max_num_solutions, n_s=proof_genselect_to_keep, n_j=judgement_num_seeds
+      # Single Solution (pass@1)
+      - max_num_solutions: 1
+        proof_genselect_to_keep: 1
+        judgement_num_seeds: 1
+      # Hybrid
+      - max_num_solutions: 256
+        proof_genselect_to_keep: 16
+        judgement_num_seeds: 32
+        # num_chunks can be specified for each config to parallelize the evaluation of problems over multiple jobs.
+        # Default is 1 unless specified otherwise.
+        num_chunks: 6
+      - max_num_solutions: 512
+        proof_genselect_to_keep: 16
+        judgement_num_seeds: 32
+      # Pure Genselect
+      - max_num_solutions: 256
+        proof_genselect_to_keep: 1
+        judgement_num_seeds: 1
+        num_chunks: 10
+      - max_num_solutions: 512
+        proof_genselect_to_keep: 1
+        judgement_num_seeds: 1
+      # Pure LLM as a Judge
+      - max_num_solutions: 128
+        proof_genselect_to_keep: -1
+        judgement_num_seeds: 32
+      - max_num_solutions: 256
+        proof_genselect_to_keep: -1
+        judgement_num_seeds: 32
+
+    # For final answer evaluation:
+    proof_generation_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/prover_final_ans.yaml
+    # For proof generation evaluation:
+    # proof_generation_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/prover.yaml
+    proof_genselect_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/genselect/proof_genselect_default.yaml
+    judgement_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary.yaml
+    num_jobs: -1
+    num_chunks: 1
+    dependencies: null
+    dependent_jobs: 4
+    prompt_configs: ${stages.run_evals.prompt_configs}
+    models:
+      - id: gpt-oss-120
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss
+      - id: Qwen3-30B-A3B-Thinking-2507
+        model_path: /hf_models/Qwen3-30B-A3B-Thinking-2507
+        config_name: Qwen3-small
+
+  generic_bon_eval:
+    output_dir: ${base_output_dir}/evals/${eval_name}-bon
+    eval_dataset: ${eval_name}:8  # dataset_name:num_random_seeds
+    split: bon_test  # Input file will be {dataset}/bon_test.jsonl
+    dependencies: null
+    dependent_jobs: 4
+    num_chunks: 2
+    judgement_num_seeds: 32  # Number of judgment seeds for llm-as-a-judge
+    num_shuffles: 500  # Number of random shuffles for computing metrics (monte-carlo sampling)
+    # Prompt configurations
+    judgement_binary_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary.yaml
+    judgement_binary_prompt_config_path_v2: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/proofbench_none_binary.yaml
+    judgement_binary_gt_proof_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/opc_judge_summary_gt_proof.yaml
+    judgement_scoring_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/proofbench_none.yaml
+    judgement_scoring_rubric_gt_proof_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/math_judge/proofbench_ms_ref.yaml
+    genselect_prompt_config_path: /nemo_run/code/recipes/proof-gen-verification/prompts/genselect/proof_genselect_default.yaml
+    # Test all possible eval types
+    eval_types: llm_as_judge_binary,llm_as_judge_scoring,llm_as_judge_binary_gt_proof,llm_as_judge_scoring_rubric_gt_proof,genselect,llm_as_judge_binary_v2
+    models:
+      - id: Qwen3-235B-A22B-Thinking-2507
+        model_path: /hf_models/Qwen3-235B-A22B-Thinking-2507
+        config_name: Qwen3-large
+      - id: gpt-oss-120
+        model_path: /hf_models/gpt-oss-120b
+        config_name: gpt-oss

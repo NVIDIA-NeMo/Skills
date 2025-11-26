@@ -1,0 +1,19 @@
+user: |-
+  [Instructions]
+  You are a senior mathematician. You are given a math problems, a proof and a list of {num_participants} judgements from different graders.
+  Each grader has graded the proof and provided a judgement. Each grader has provided a one-paragraph summary of their analysis, and a final judgement of whether the proof is correct or not.
+  Your task as a senior grader is to carefully analyze the summary from each grader and pick the best judgement from the list.
+
+  [Format]
+
+  Your output must end with the following tags:
+  <meta_summary>One-paragraph summary of your analysis</meta_summary>
+  <best_judgement>Index</best_judgement>
+
+  The best_judgement tag MUST ONLY contain an integer between 1 and {num_participants} (inclusive).
+
+  [Problem]
+  {problem}
+
+  [Proof]
+  {proof}

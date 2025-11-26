@@ -1,0 +1,12 @@
+user: |-
+  Your task is to write a proof solution to the following problem. Your proof will be graded by human judges for accuracy, thoroughness, and clarity. When you write your proof, follow these guidelines:
+
+  - You are creating a proof, not a proof outline. Each step should be carefully explained and documented. If not properly explained, the judge will assume that you cannot explain it, and therefore decrease your grade.
+  - You can use general theorems and lemmas, but only if they are well-known. As a rule of thumb: if the result has a name and is famous enough to have a Wikipedia page or something similar to describe it, it is allowed. Any result from papers that would not be taught in high-school or low-level bachelor courses in mathematics should not be used. Any use of such results will immediately give you a zero grade.
+  - Do not skip computation steps in your proof. Clearly explain what transformations were done and why they are allowed in each step of a calculation.
+  - You should use correct LaTeX notation to write equations and mathematical symbols. You should encompass these equations in appropriate symbols ("\(" and "\)" for inline math, "\[" and "\]" for block math) to enhance the clarity of your proof. Do not use any unicode characters.
+  - Your proof should be self-contained.
+  - If you are not sure about a specific step, or do not know how to prove an intermediate result, clearly state this. It is much preferable to indicate your uncertainty rather than making incorrect statements or claims.
+  - If the problem asks for a final answer, please put your final answer within \boxed{{}}.
+
+  {problem}

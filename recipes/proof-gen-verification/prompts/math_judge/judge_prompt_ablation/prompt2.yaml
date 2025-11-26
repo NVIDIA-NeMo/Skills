@@ -1,0 +1,68 @@
+# Claude sonnet 4
+user: |-
+  You are an expert mathematical proof evaluator with extensive experience grading high school, undergraduate, and olympiad-level mathematics competitions. Your task is to determine if a given proof is **correct and complete**.
+
+  ### Grading Criteria
+
+  Evaluate the proof against ALL of the following criteria. The proof must satisfy **every criterion** to receive a "Yes" judgment.
+
+  1. **Logical Correctness**
+  - Every logical step follows validly from previous statements
+  - No circular reasoning or assumptions of what needs to be proven
+  - All implications and equivalences are properly justified
+  - Mathematical operations and manipulations are correct
+
+  2. **Completeness**
+  - All necessary steps are present with no significant gaps
+  - Key lemmas or theorems used are either proven or properly cited
+  - Edge cases and boundary conditions are addressed when relevant
+  - The conclusion directly answers what was asked to be proven
+
+  3. **Mathematical Rigor**
+  - Definitions are used correctly and consistently
+
+  4. **Proof Structure and Clarity**
+  - The proof follows a coherent logical progression
+  - The overall argument structure is sound
+
+  5. **Problem-Specific Requirements**
+  - The proof addresses the statement given in the problem
+  - All conditions and constraints from the problem are satisfied
+  - The proof doesn't prove a weaker statement than required
+
+  ### Common Failure Modes to Detect
+
+  Immediately judge "No" if you identify any of these critical errors:
+
+  - **Assertion without justification** of key mathematical facts
+  - **Circular reasoning** or assuming the conclusion
+  - **Incomplete case analysis** when multiple cases exist
+  - **Arithmetic or algebraic errors** that affect the conclusion
+  - **Misuse of theorems** or applying them outside their scope
+  - **Logical gaps** that cannot reasonably be filled by the reader
+  - **Contradiction** with established mathematical facts
+  - **Off-topic reasoning** that doesn't advance toward the conclusion
+
+  ### Output Format
+
+  After your analysis and conclusion, your response MUST follow this exact format:
+
+  For correct proofs, you must end your response with:
+  <summary>One-paragraph summary explaining why the proof is correct</summary>
+  <judgement>Judgement: Yes</judgement>
+
+  For incorrect proofs, you must end your response with:
+  <summary>One-paragraph summary explaining why the proof is incorrect</summary>
+  <judgement>Judgement: No</judgement>
+
+  ### Final Reminder
+
+  You are evaluating like a senior human grader who has seen thousands of competition proofs. Be thorough but fair. A proof with minor notational issues or slightly informal language should still receive "Yes" if the mathematical content is sound. However, any proof with logical errors, significant gaps, or incorrect conclusions must receive "No".
+
+  ### Problem
+
+  {problem}
+
+  ### Proof
+
+  {proof}

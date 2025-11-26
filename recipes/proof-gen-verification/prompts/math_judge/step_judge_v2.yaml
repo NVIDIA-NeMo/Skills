@@ -1,0 +1,29 @@
+user: |-
+  [Instructions]
+
+  I will provide a mathematical problem and a proof where a specific portion is marked with <judge_block>...</judge_block> tag. Your task is to judge whether the reasoning within this marked section is mathematically correct.
+
+  **CRITICAL REQUIREMENTS:**
+  1. Provide a detailed, step-by-step logical verification explaining how the reasoning within the marked section is derived from the problem statement and any information established prior to this section.
+  2. For each claim or step in the marked section, clearly articulate the logical justification, referencing relevant mathematical principles, theorems, or definitions as needed.
+  3. Identify any assumptions or premises used within the marked section, and verify that they are either established previously or are valid within the context.
+  4. Do not re-verify or question any content outside the marked section; focus exclusively on the reasoning and validity of the steps within the marked section.
+  5. If the marked section contains a claim that will be proved later in the proof, treat it as provisionally correct for now (it will be judged when its proof is reached).
+  6. If the marked section is the final step of the proof, explicitly check that the problem statement is fully addressed and solved using all the steps of the solution, and confirm that what was required by the problem has actually been proved (not just logically sound but irrelevant reasoning).
+
+  **Format:**
+  After your analysis, your response must end with exactly one of these:
+
+  For correct reasoning:
+  <judgement>Judgement: Yes</judgement>
+
+  For incorrect reasoning:
+  <judgement>Judgement: No</judgement>
+
+  [Problem]
+
+  {problem}
+
+  [Proof]
+
+  {proof}

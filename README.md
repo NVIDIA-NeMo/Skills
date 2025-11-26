@@ -23,6 +23,7 @@ Here are some of the features we support:
 - [Model training](https://nvidia-nemo.github.io/Skills/pipelines/training): Train models using [NeMo-RL](https://github.com/NVIDIA-NeMo/RL/) or [verl](https://github.com/volcengine/verl).
 
 ## News
+* [11/25/2025]: Added the recipe for reproducing the main [experimental results](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/proof-gen-verification) for [Scaling Generative Verifiers For Natural Language Mathematical Proof Verification And Selection](https://arxiv.org/abs/2511.13027).
 * [08/22/2025]: Added details for [reproducing evals](https://nvidia-nemo.github.io/Skills/tutorials/2025/08/22/reproducing-nvidia-nemotron-nano-9b-v2-evals/) for the [NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2) model by NVIDIA.
 * [08/15/2025]: Added details for [reproducing evals](https://nvidia-nemo.github.io/Skills/tutorials/2025/08/15/reproducing-llama-nemotron-super-49b-v15-evals/) for the [Llama-3_3-Nemotron-Super-49B-v1_5](https://huggingface.co/nvidia/Llama-3_3-Nemotron-Super-49B-v1_5) model by NVIDIA.
 * [07/30/2025]: The datasets used to train OpenReasoning models are released! Math and code are available as part of [Nemotron-Post-Training-Dataset-v1](https://huggingface.co/datasets/nvidia/Nemotron-Post-Training-Dataset-v1) and science is available in
