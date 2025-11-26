@@ -168,6 +168,6 @@ class IOIMetrics(BaseMetrics):
         print("---------------------------------Problem and subtask scores---------------------------------")
         for name, info in self.per_problem_subtask_scores.items():
             total = info["total"]
-            print(f"# {name}: {total['score']}/{total['max_score']}")
+            print(f"# {name}: {int(total['score'])}/{int(total['max_score'])}")
             for subtask, subinfo in info["subtasks"].items():
-                print(f"  {subtask}: {subinfo['score']}/{subinfo['max_score']}")
+                print(f"  {subtask}: {int(subinfo['score'])}/{int(subinfo['max_score'])}")
