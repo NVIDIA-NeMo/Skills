@@ -58,4 +58,3 @@ RUN pip install git+https://github.com/NVIDIA/NeMo-speech-data-processor@29b9b1e
 RUN pip install --no-cache-dir -r /opt/NeMo-Skills/requirements/main.txt
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
-# Due to large nv library downloads on github actions, we need to install sentence_transformers here
