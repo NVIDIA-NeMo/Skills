@@ -20,6 +20,16 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v5
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Free up disk space
       run: |
         # Remove unnecessary files on macOS
@@ -43,9 +53,21 @@ jobs:
     - name: Build Images
       run: |
         # these tags need to match the ones in tests/gpu-tests/test-local.yaml
-        docker build -t nemo-skills-sandbox-image -f dockerfiles/Dockerfile.sandbox --build-arg GITHUB_CI=1 .
-        docker system prune -f
-        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
+        docker buildx build \
+          --tag nemo-skills-image \
+          --file dockerfiles/Dockerfile.nemo-skills \
+          --cache-from type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-image:cache,mode=max \
+          --load \
+          .
+        docker buildx build \
+          --tag nemo-skills-sandbox-image \
+          --file dockerfiles/Dockerfile.sandbox \
+          --build-arg GITHUB_CI=1 \
+          --cache-from type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-sandbox-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${{ github.repository }}/nemo-skills-sandbox-image:cache,mode=max \
+          --load \
+          .
     - name: Run all tests
       env:
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
