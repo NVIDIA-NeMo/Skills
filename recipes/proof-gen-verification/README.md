@@ -7,10 +7,10 @@ To get started with NeMo-Skills, follow the instructions [here](https://nvidia-n
 
 ## Dataset Preparation
 
-First, generate the dataset files. Run the following command for each dataset you need:
+First, generate the dataset files. Run the following command for each dataset you need. For instance, for `aime25`:
 
 ```bash
-python3 nemo_skills/dataset/{dataset}/prepare.py
+python3 nemo_skills/dataset/aime25/prepare.py
 ```
 
 **Available datasets:**
