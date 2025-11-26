@@ -24,7 +24,7 @@ import time
 from nemo_skills.code_execution.sandbox import LocalSandbox
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.file_utils import jdump
-from nemo_skills.utils import nested_dataclass
+from nemo_skills.utils import nested_dataclass, unroll_files
 
 
 @nested_dataclass(kw_only=True)
@@ -332,13 +332,13 @@ class IOIEvaluator(BaseEvaluator):
             with open(self.eval_cfg.test_file, "r") as f:
                 metadata_local = json.load(f)
             input_local = None
-            if getattr(self.eval_cfg, "input_tests_file", None):
-                if not os.path.exists(self.eval_cfg.input_tests_file):
+            if self.eval_cfg.input_file:
+                if not os.path.exists(self.eval_cfg.input_file):
                     raise FileNotFoundError(
-                        f"Input tests file {self.eval_cfg.input_tests_file} does not exist."
-                        " Please provide a valid parameter for ++eval_config.input_tests_file=x when running IOI Evaluation."
+                        f"Input file {self.eval_cfg.input_file} does not exist."
+                        " Please provide a valid parameter for ++eval_config.input_file=x when running IOI Evaluation."
                     )
-                with open(self.eval_cfg.input_tests_file, "r") as f:
+                with open(self.eval_cfg.input_file, "r") as f:
                     input_local = json.load(f)
             pool_local = multiprocessing.Pool(
                 processes=self.eval_cfg.test_batch_size,
@@ -467,19 +467,20 @@ class IOIEvaluator(BaseEvaluator):
             "outputs": outputs,
         }
 
-    async def eval_full(self):  # type: ignore[override]
-        jsonl_file = self.eval_cfg.input_file
-        with open(jsonl_file, "r", encoding="utf-8") as f:
-            all_samples = [json.loads(line) for line in f]
+    async def eval_full(self, input_files):  # type: ignore[override]
+        target_files = input_files if input_files is not None else self.eval_cfg.input_file
+        for jsonl_file in unroll_files(target_files):
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                all_samples = [json.loads(line) for line in f]
 
-        tasks = [self._evaluate_entry(s) for s in all_samples]
-        outputs = await asyncio.gather(*tasks)
+            tasks = [self._evaluate_entry(s) for s in all_samples]
+            outputs = await asyncio.gather(*tasks)
 
-        for s, o in zip(all_samples, outputs):
-            s["test_case_results"] = o["test_case_results"]
-            s["eval_status"] = o["eval_status"]
+            for s, o in zip(all_samples, outputs):
+                s["test_case_results"] = o["test_case_results"]
+                s["outputs"] = o["outputs"]
 
-        jdump(all_samples, jsonl_file, mode="wt")
+            jdump(all_samples, jsonl_file, mode="wt")
 
         if self.pool is not None:
             self.pool.close()
