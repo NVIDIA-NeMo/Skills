@@ -39,6 +39,7 @@ cluster_configs/*
 
 nemo_skills/dataset/ruler/*/
 nemo_skills/dataset/bfcl_v3/*/
+nemo_skills/dataset/bfcl_v4/*/
 nemo_skills/dataset/aalcr/lcr/
 .idea/
 .idea/*

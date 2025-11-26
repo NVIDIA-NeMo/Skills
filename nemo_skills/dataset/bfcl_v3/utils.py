@@ -33,26 +33,7 @@ import copy
 import json
 import re
 
-from nemo_skills.dataset.bfcl_v3.constants import GORILLA_TO_OPENAPI
-
-
-def load_file(file_path, sort_by_id=False):
-    result = []
-    with open(file_path) as f:
-        file = f.readlines()
-        for line in file:
-            result.append(json.loads(line))
-
-    if sort_by_id:
-        result.sort(key="id")
-    return result
-
-
-def is_multi_turn(instance_id):
-    if "multi_turn" in instance_id:
-        return True
-    else:
-        return False
+from bfcl_eval.constants.type_mappings import GORILLA_TO_OPENAPI
 
 
 def _get_language_specific_hint(test_category):
