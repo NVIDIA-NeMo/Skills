@@ -13,13 +13,10 @@
 # limitations under the License.
 
 
-# TODO: refactor this to expose all metrics properly, currently for k>1 the reporting is partial
-
-
 SIMPLE_AST = [
-    "simple",
-    "java",
-    "javascript",
+    "simple_python",
+    "simple_java",
+    "simple_javascript",
 ]
 
 OTHER_SINGLE_TURN_AST = [
@@ -79,7 +76,12 @@ def calculate_combined_accuracy(accuracy_dict_list: list[dict], weighted=False):
 
 def get_accuracy_dict(metrics, category):
     # reporting aggregation for pass@1[avg-of-k] (for highest k) if available
-    category_dict = metrics[f"bfcl_v3.{category}"]
+    if f"bfcl_v3.{category}" in metrics:
+        category_dict = metrics[f"bfcl_v3.{category}"]
+    elif f"bfcl_v4.{category}" in metrics:
+        category_dict = metrics[f"bfcl_v4.{category}"]
+    else:
+        raise ValueError(f"Metrics category {category} not found!")
 
     # Find all keys that match "pass@1[avg-of-{k}]"
     avg_keys = [key for key in category_dict.keys() if key.startswith("pass@1[avg-of-") and key.endswith("]")]
@@ -136,7 +138,7 @@ def calculate_non_live_single_turn_accuracy(metrics):
     return {
         "overall_non_live": overall_accuracy_non_live,
         "non_live_ast": non_live_ast_accuracy,
-        "irrelevance": non_live_irrelevance_accuracy,
+        "non_live_irrelevance": non_live_irrelevance_accuracy,
     }
 
 
@@ -183,8 +185,10 @@ def compute_score(metrics: dict):
     )
 
     return {
-        "overall_accuracy": overall_accuracy,
-        "non_live_single_turn": non_live_single_turn_accuracy,
-        "live_single_turn": live_single_turn_accuracy,
-        "multi_turn": multi_turn_accuracy,
+        "bfcl_v3": {
+            "overall_accuracy": overall_accuracy,
+            **non_live_single_turn_accuracy,
+            **live_single_turn_accuracy,
+            **multi_turn_accuracy,
+        }
     }

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import json
 import logging
 import sys
@@ -19,6 +20,11 @@ from dataclasses import asdict, field
 from functools import partial
 
 import hydra
+from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
+    MemoryAPI,
+)
+from bfcl_eval.model_handler.utils import add_memory_instruction_system_prompt
+from bfcl_eval.utils import is_memory, is_memory_prereq
 from transformers import AutoTokenizer
 
 from nemo_skills.dataset.bfcl_v3.utils import (
@@ -118,7 +124,12 @@ class ClientMessageParser:
         # Initialize the response parser
         model_handler_class = local_inference_model_map[self.cfg.model_name].model_handler
         # Initialize the model handler - Temperature is not used but required by the model handler
-        model_handler = model_handler_class(self.cfg.model_name, temperature=self.cfg.inference.temperature)
+        model_handler = model_handler_class(
+            model_name=self.cfg.model_name.replace("-FC", ""),
+            temperature=self.cfg.inference.temperature,
+            registry_name=self.cfg.model_name.replace("-FC", ""),
+            is_fc_model=True,
+        )
         # We only need the response parser from the model handler
         self.response_parser = self.create_response_parser(
             native_response_parser=model_handler._parse_query_response_prompting
@@ -234,16 +245,18 @@ class ServerMessageParser:
         """Parse the output dictionary to get the model response."""
 
         output_dict["message"] = output_dict["response"].choices[0].message
-        tool_calls = [] if output_dict["message"].tool_calls is None else output_dict["message"].tool_calls
 
         try:
+            tool_calls = output_dict["message"].tool_calls
             generation = [{func_call.function.name: func_call.function.arguments} for func_call in tool_calls]
             tool_call_ids = [func_call.id for func_call in tool_calls]
         except Exception:
-            generation = output_dict["generation"] if isinstance(output_dict["generation"], str) else ""
+            tool_calls = []
+            generation = output_dict["message"].content
             tool_call_ids = []
 
-        output_dict["generation"] = generation
+        # Use model output if not a tool call
+        output_dict["generation"] = generation if generation else [output_dict["message"].content]
         output_dict["tool_calls"] = tool_calls
         output_dict["tool_call_ids"] = tool_call_ids
         output_dict["num_generated_tokens"] = output_dict.get("num_generated_tokens", 0)
@@ -271,6 +284,28 @@ class BFCLGenerationTask(GenerationTask):
 
     def setup_prompt(self):
         return None
+
+    def load_data(self):
+        """Run through memory prereqs so that they are given a correct order and priority"""
+        # This needs to happen before the data shapes are passed to apply the filter, this cannot use preprocessor
+        data = super().load_data()
+        # First, fix the target paths to point to the actual target paths for memory stores
+        for datapoint in data:
+            if "initial_config" in datapoint and list(datapoint["initial_config"].keys())[0].startswith("MemoryAPI"):
+                datapoint["initial_config"][list(datapoint["initial_config"].keys())[0]]["model_result_dir"] = (
+                    self.cfg.output_file.replace("/output.jsonl", "")
+                )
+
+        # Now, process the datapoints which are the prereqs, one by one, and filter out the prereqs for the subsequent run
+        prereqs = [datapoint for datapoint in data if is_memory_prereq(datapoint["id"])]
+        non_prereqs = [datapoint for datapoint in data if not is_memory_prereq(datapoint["id"])]
+        # Sort prereqs to make sure they come in the correct order
+        prereqs = sorted(prereqs, key=lambda x: int(x["id"].split("_prereq_")[1].split("-")[0]))
+
+        for p in prereqs:
+            _ = asyncio.run(self.process_single_datapoint(p, data))
+
+        return non_prereqs
 
     async def _generate_single_assistant_turn(self, inference_state_dict):
         """Generate for a single assistant turn."""
@@ -341,7 +376,6 @@ class BFCLGenerationTask(GenerationTask):
         all_model_response: list[list] = []  # The model response that will be used for later evaluation
         force_quit = False  # Whether the model has been forced to quit. If True, this whole entry will be failed
 
-        all_multi_turn_messages: list[list[dict]] = data_point["question"]
         state_dict = {"messages": [], "tools": data_point["tools"]}
 
         output_dict = {"num_generated_tokens_list": []}
@@ -350,6 +384,27 @@ class BFCLGenerationTask(GenerationTask):
 
         out_of_context = False
 
+        if is_memory(test_category):
+            # Execute no function call, but just to get a reference to all the instances to get the initial state for logging purpose
+            _, involved_instances = execute_multi_turn_func_call(
+                [],
+                initial_config,
+                involved_classes,
+                test_entry_id=test_entry_id,
+                long_context=("long_context" in test_category or "composite" in test_category),
+            )
+
+            assert len(involved_instances) == 1, "Memory category should only involve one class."
+
+            memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+            data_point["question"] = add_memory_instruction_system_prompt(
+                data_point["question"],
+                test_category,
+                data_point["scenario"],
+                memory_instance,
+            )
+
+        all_multi_turn_messages: list[list[dict]] = data_point["question"]
         for turn_idx, current_turn_message in enumerate(all_multi_turn_messages):
             current_turn_response = []
             count = 0
@@ -388,6 +443,10 @@ class BFCLGenerationTask(GenerationTask):
                     trimmed_response_text = self._parse_reasoning_from_message_content(
                         self.message_parser.get_response_text(model_response["message"])
                     )
+                    # If no tool calling was used, apply reasoning cleanup to both the message and generation
+                    if model_response["message"].content == model_response["generation"]:
+                        model_response["generation"] = [trimmed_response_text]
+
                     self.message_parser.set_response_text(model_response["message"], trimmed_response_text)
 
                 # Add the message to the state dict for chat history
@@ -400,11 +459,11 @@ class BFCLGenerationTask(GenerationTask):
                 try:
                     decoded_model_responses = convert_to_function_call(model_response["generation"])
                     if is_empty_execute_response(decoded_model_responses):
-                        LOG.info("Empty response from the model. Proceed to next turn.")
+                        LOG.info("No tools to execute in this turn. Proceed to next turn.")
                         break
 
                 except Exception:
-                    LOG.info("Failed to decode the model response. Proceed to next turn.")
+                    LOG.info("No tools to execute in this turn. Proceed to next turn.")
                     break
 
                 # Obtain the execution results
@@ -440,6 +499,13 @@ class BFCLGenerationTask(GenerationTask):
                 break
 
         output_dict["generation"] = all_model_response
+
+        # Special handling for the memory category
+        # Need to flush the memory to local file at the end of the conversation
+        if is_memory_prereq(test_entry_id):
+            assert len(involved_instances) == 1, "Memory category should only involve one class."
+            memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+            memory_instance._flush_memory_to_local_file()
 
         if out_of_context:
             output_dict["error"] = "_ran_out_of_context_"

@@ -14,15 +14,18 @@
 
 from pathlib import Path
 
+# As we use BFCLv4 dataset for data processing
+VERSION_PREFIX = "BFCL_v4"
+
 TEST_COLLECTION_MAPPING = {
     "all": [
-        "simple",
+        "simple_python",
         "irrelevance",
         "parallel",
         "multiple",
         "parallel_multiple",
-        "java",
-        "javascript",
+        "simple_java",
+        "simple_javascript",
         "live_simple",
         "live_multiple",
         "live_parallel",
@@ -41,13 +44,13 @@ TEST_COLLECTION_MAPPING = {
         "multi_turn_long_context",
     ],
     "single_turn": [
-        "simple",
+        "simple_python",
         "irrelevance",
         "parallel",
         "multiple",
         "parallel_multiple",
-        "java",
-        "javascript",
+        "simple_java",
+        "simple_javascript",
         "live_simple",
         "live_multiple",
         "live_parallel",
@@ -64,22 +67,22 @@ TEST_COLLECTION_MAPPING = {
         "live_relevance",
     ],
     "non_live": [
-        "simple",
+        "simple_python",
         "irrelevance",
         "parallel",
         "multiple",
         "parallel_multiple",
-        "java",
-        "javascript",
+        "simple_java",
+        "simple_javascript",
     ],
     "ast": [
-        "simple",
+        "simple_python",
         "irrelevance",
         "parallel",
         "multiple",
         "parallel_multiple",
-        "java",
-        "javascript",
+        "simple_java",
+        "simple_javascript",
         "live_simple",
         "live_multiple",
         "live_parallel",
@@ -88,11 +91,11 @@ TEST_COLLECTION_MAPPING = {
         "live_relevance",
     ],
     "non_python": [
-        "java",
-        "javascript",
+        "simple_java",
+        "simple_javascript",
     ],
     "python": [
-        "simple",
+        "simple_python",
         "irrelevance",
         "parallel",
         "multiple",
@@ -106,49 +109,8 @@ TEST_COLLECTION_MAPPING = {
     ],
 }
 
-MULTI_TURN_FUNC_DOC_FILE_MAPPING = {
-    "GorillaFileSystem": "gorilla_file_system.json",
-    "MathAPI": "math_api.json",
-    "MessageAPI": "message_api.json",
-    "TwitterAPI": "posting_api.json",
-    "TicketAPI": "ticket_api.json",
-    "TradingBot": "trading_bot.json",
-    "TravelAPI": "travel_booking.json",
-    "VehicleControlAPI": "vehicle_control.json",
-}
-
-
-GORILLA_TO_OPENAPI = {
-    "integer": "integer",
-    "number": "number",
-    "float": "number",
-    "string": "string",
-    "boolean": "boolean",
-    "bool": "boolean",
-    "array": "array",
-    "list": "array",
-    "dict": "object",
-    "object": "object",
-    "tuple": "array",
-    "any": "string",
-    "byte": "integer",
-    "short": "integer",
-    "long": "integer",
-    "double": "number",
-    "char": "string",
-    "ArrayList": "array",
-    "Array": "array",
-    "HashMap": "object",
-    "Hashtable": "object",
-    "Queue": "array",
-    "Stack": "array",
-    "Any": "string",
-    "String": "string",
-    "Bigint": "integer",
-}
-
+ALL_SCORING_CATEGORIES = TEST_COLLECTION_MAPPING["all"]
 
 # Repo relative paths
 
-MULTI_TURN_FUNC_DOC_PATH = Path("berkeley-function-call-leaderboard/bfcl_eval/data/multi_turn_func_doc")
 DATA_FOLDER_PATH = Path("berkeley-function-call-leaderboard/bfcl_eval/data")

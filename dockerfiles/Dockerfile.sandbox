@@ -50,9 +50,12 @@ RUN mkdir -p /lean4 && cd /lean4 && \
     echo 'require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "v4.12.0"' >> lakefile.lean
 
 # Download and cache Mathlib4 to avoid recompiling, then build the project
-RUN cd /lean4/my_project && \
-    /root/.elan/bin/lake exe cache get && \
-    /root/.elan/bin/lake build
+ARG GITHUB_CI=0
+RUN if [ "$GITHUB_CI" != "1" ]; then \
+        cd /lean4/my_project && \
+        /root/.elan/bin/lake exe cache get && \
+        /root/.elan/bin/lake build; \
+    fi
 
 # Set environment variables to include Lean project path
 ENV LEAN_PATH="/lean4/my_project"
@@ -63,11 +66,10 @@ COPY requirements/code_execution.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # For scicode eval - create data directory and download test data
-# Set SKIP_SCICODE_DATA_DOWNLOAD=1 build arg to skip download (useful for CI when download fails)
+# Set GITHUB_CI=1 build arg to skip download (useful for CI when download fails)
 # If skipped, scicode evaluations will fail unless the file is manually mounted
-ARG SKIP_SCICODE_DATA_DOWNLOAD=0
 RUN mkdir -p /data && pip install gdown && \
-    if [ "$SKIP_SCICODE_DATA_DOWNLOAD" != "1" ]; then \
+    if [ "$GITHUB_CI" != "1" ]; then \
         python -c "import gdown; url = 'https://drive.google.com/uc?id=17G_k65N_6yFFZ2O-jQH00Lh6iaw3z-AW'; gdown.download(url, '/data/test_data.h5', quiet=False)"; \
     fi
 
