@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,10 +32,17 @@ SPLITS = [
     "multi_turn_miss_func",  # Multi-turn function calls with missing function
     "multi_turn_miss_param",  # Multi-turn function calls with missing parameter
     "multi_turn_long_context",  # Multi-turn function calls with long context
+    "web_search_base",  # Web search
+    "web_search_no_snippet",  # Web search
+    "memory_kv",  # Memory use (KV backend)
+    "memory_vector",  # Memory use (vector backend)
+    "memory_rec_sum",  # Memory use (rec_sum backend)
+    # TODO: Initially remove from the task as it is not graded
+    # "format_sensitivity" # Prompt format sensitivity probe
 ]
 
 IS_BENCHMARK_GROUP = True
 
-SCORE_MODULE = "nemo_skills.dataset.bfcl_v3.bfcl_score"
+SCORE_MODULE = "nemo_skills.dataset.bfcl_v4.bfcl_score"
 
-BENCHMARKS = {f"bfcl_v3.{split}": {} for split in SPLITS}
+BENCHMARKS = {f"bfcl_v4.{split}": {} for split in SPLITS}
