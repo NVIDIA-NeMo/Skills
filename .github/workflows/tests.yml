@@ -55,4 +55,4 @@ jobs:
         sleep 10
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
         ns prepare_data gsm8k math-500
-        python -m pytest tests/ -m "not gpu and not mathlib" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv
+        python -m pytest tests/ -m "not gpu" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv
