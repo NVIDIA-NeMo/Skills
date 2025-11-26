@@ -468,8 +468,7 @@ class IOIEvaluator(BaseEvaluator):
         }
 
     async def eval_full(self, input_files):  # type: ignore[override]
-        target_files = input_files if input_files is not None else self.eval_cfg.input_file
-        for jsonl_file in unroll_files(target_files):
+        for jsonl_file in unroll_files(input_files):
             with open(jsonl_file, "r", encoding="utf-8") as f:
                 all_samples = [json.loads(line) for line in f]
 
