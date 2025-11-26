@@ -51,11 +51,9 @@ RUN mkdir -p /lean4 && cd /lean4 && \
 
 # Download and cache Mathlib4 to avoid recompiling, then build the project
 ARG GITHUB_CI=0
-RUN if [ "$GITHUB_CI" != "1" ]; then \
-        cd /lean4/my_project && \
-        /root/.elan/bin/lake exe cache get && \
-        /root/.elan/bin/lake build; \
-    fi
+RUN cd /lean4/my_project && \
+    /root/.elan/bin/lake exe cache get && \
+    /root/.elan/bin/lake build
 
 # Set environment variables to include Lean project path
 ENV LEAN_PATH="/lean4/my_project"

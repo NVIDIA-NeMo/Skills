@@ -20,6 +20,15 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v5
+    - name: Free up disk space
+      run: |
+        # Remove unnecessary files on macOS
+        sudo rm -rf /usr/local/lib/android || true
+        sudo rm -rf /usr/local/.ghcup || true
+        sudo rm -rf /usr/local/lib/node_modules || true
+        brew cleanup || true
+        # Clear pip cache
+        pip cache purge || true
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
@@ -28,12 +37,15 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install --no-cache-dir -e .[dev] --extra-index-url https://download.pytorch.org/whl/cpu
+        pip install -e .[dev] --extra-index-url https://download.pytorch.org/whl/cpu
+        # Clear pip cache
+        pip cache purge || true
     - name: Build Images
       run: |
         # these tags need to match the ones in tests/gpu-tests/test-local.yaml
-        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
         docker build -t nemo-skills-sandbox-image -f dockerfiles/Dockerfile.sandbox --build-arg GITHUB_CI=1 .
+        docker system prune -f
+        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
     - name: Run all tests
       env:
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -43,4 +55,4 @@ jobs:
         sleep 10
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
         ns prepare_data gsm8k math-500
-        python -m pytest tests/ -m "not gpu and not mathlib" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv
+        python -m pytest tests/ -m "not gpu" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv
