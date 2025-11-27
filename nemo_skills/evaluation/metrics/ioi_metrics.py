@@ -55,9 +55,9 @@ class IOIMetrics(BaseMetrics):
         id = 0
 
         for submission in submissions:
-            outputs = submission.get("outputs", [])
+            input_results = submission.get("input_case_results", [])
             run_outputs = []
-            for output in outputs:
+            for output in input_results:
                 if "run_stdout" not in output:
                     continue
                 run_outputs.append(output["run_stdout"])
