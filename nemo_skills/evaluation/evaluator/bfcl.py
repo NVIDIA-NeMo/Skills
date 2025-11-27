@@ -23,7 +23,7 @@ try:
     from bfcl_eval.utils import get_directory_structure_by_category, is_memory_prereq
 
     HAS_BFCL_EVAL = True
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError, AttributeError):
     HAS_BFCL_EVAL = False
 
 from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
