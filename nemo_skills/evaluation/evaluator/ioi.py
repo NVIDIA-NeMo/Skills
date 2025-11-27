@@ -434,7 +434,7 @@ class IOIEvaluator(BaseEvaluator):
             test_case_results[st] = {"score": score, "outputs": data["outputs"]}
 
         # Optionally run custom input cases
-        outputs = []
+        input_outputs = []
         if self.inputdata is not None:
             problem_inputs = self.inputdata[str(entry["id"])]
             for i in range(0, len(problem_inputs), batch_size):
@@ -458,13 +458,13 @@ class IOIEvaluator(BaseEvaluator):
                     test_type = "input"
                     result["test_name"] = test_name
                     result["test_type"] = test_type
-                    outputs.append(result)
+                    input_outputs.append(result)
 
         return {
             "name": entry["name"],
             "subtask": entry["subtask"],
             "test_case_results": test_case_results,
-            "outputs": outputs,
+            "input_case_results": input_outputs,
         }
 
     async def eval_full(self, input_files):  # type: ignore[override]
@@ -477,7 +477,7 @@ class IOIEvaluator(BaseEvaluator):
 
             for s, o in zip(all_samples, outputs):
                 s["test_case_results"] = o["test_case_results"]
-                s["outputs"] = o["outputs"]
+                s["input_case_results"] = o["input_case_results"]
 
             jdump(all_samples, jsonl_file, mode="wt")
 
