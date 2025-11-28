@@ -190,7 +190,7 @@ stages:
         ${stages.generate_solutions.reasoning_effort}
         ${stages.generate_solutions.builtin_tools}
         ++parse_reasoning=true
-        ++end_reasoning_string="<|start|>assistant<|channel|>final<|message|>"
+        ++end_reasoning_string="'<|start|>assistant<|channel|>final<|message|>'"
 
     judge_kwargs:
       ctx_args: >-

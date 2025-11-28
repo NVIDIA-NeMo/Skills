@@ -28,6 +28,19 @@ from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIE
 
 # Final output file name for each stage
 OUTPUT_FILE = "final_result.jsonl"
+LOCAL_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_REMOTE_REPO_ROOT = Path("/nemo_run/code")
+
+
+def to_remote_path(path: str | Path, remote_repo_root: str | Path) -> str:
+    """Map a local repo path to its remote equivalent."""
+    remote_root = Path(remote_repo_root)
+    candidate = Path(path).resolve()
+    try:
+        relative = candidate.relative_to(LOCAL_REPO_ROOT)
+    except ValueError:
+        return str(candidate)
+    return str(remote_root / relative)
 
 
 def get_stage_expname(base_expname: str, stage_name: str, suffix: str):
@@ -669,6 +682,8 @@ def validate(
 
     output_dir = stage_config.get("output_dir")
     log_dir = stage_config.get("log_dir") or (f"{output_dir}/logs" if output_dir else output_dir)
+    remote_repo_root = Path(stage_config.get("remote_repo_root") or DEFAULT_REMOTE_REPO_ROOT)
+    config_path_obj = Path(config_path)
 
     def unique(sequence):
         seen = set()
@@ -685,6 +700,7 @@ def validate(
 
     combined_settings = unique((cli_settings_paths or []) + (extra_settings or []))
     combined_overrides = list((cli_dotlist_overrides or [])) + list(extra_overrides or [])
+    remote_settings = [to_remote_path(path, remote_repo_root) for path in combined_settings if path]
 
     def derive_variant_name():
         explicit = stage_config.get("variant_name") or stage_config.get("variant")
@@ -693,19 +709,20 @@ def validate(
         setting_labels = [Path(path).stem for path in combined_settings if path]
         if setting_labels:
             return "-".join(setting_labels)
-        return Path(config_path).stem
+        return config_path_obj.stem
 
     variant_name = derive_variant_name()
+    config_remote_path = to_remote_path(config_path_obj, remote_repo_root)
 
     cmd_parts = [
         "python",
         script_path,
         "--config_path",
-        str(config_path),
+        config_remote_path,
         "--variant",
         str(variant_name),
     ]
-    for path in combined_settings:
+    for path in remote_settings:
         cmd_parts.extend(["--settings_path", str(path)])
     for override in combined_overrides:
         cmd_parts.extend(["--override", str(override)])

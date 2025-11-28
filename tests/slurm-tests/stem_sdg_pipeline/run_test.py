@@ -153,7 +153,7 @@ def launch_pipeline(config_path: Path, settings: list[str], overrides: list[str]
     cmd = [
         sys.executable,
         str(pipeline_script_path()),
-        "--config",
+        "--pipeline",
         str(config_path),
     ]
     if settings:
