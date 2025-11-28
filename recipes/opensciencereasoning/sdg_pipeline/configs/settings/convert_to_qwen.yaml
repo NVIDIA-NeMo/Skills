@@ -1,35 +1,8 @@
-# Define the full sequence of stages for this mode
-pipeline_stages:
-  - convert_to_qwen_from_messages # Convert to Qwen format from messages format
-  - remove_unused_fields # Remove unused fields
-  - bucket-qwen # Bucket by token length for Qwen format
+# Convert to Qwen format and bucket by token length
 
-directories:
-  step-10-convert-to-qwen-from-messages: ${base_output_dir}/solution-sdg/step-10-convert-to-qwen-from-messages-with-tool
-  step-11-remove-unused-fields: ${base_output_dir}/solution-sdg/step-11-remove-unused-fields-with-tool
-  step-12-bucket-qwen: ${base_output_dir}/solution-sdg/step-12-bucket-qwen-with-tool
-
-# Stage-specific configurations
 stages:
-  convert_to_qwen_from_messages:
-    output_dir: ${directories.step-10-convert-to-qwen-from-messages}
-    input_file: ${directories.step-8-convert-to-messages-format}/final_result.jsonl
-    dependencies:
-      - convert_to_messages_format
-
-  remove_unused_fields:
-    output_dir: ${directories.step-11-remove-unused-fields}
-    input_file: ${directories.step-10-convert-to-qwen-from-messages}/final_result.jsonl
-    dependencies:
-      - convert_to_qwen_from_messages
+  convert_to_qwen_format:
+    enabled: True
 
   bucket-qwen:
-    input_file: ${directories.step-11-remove-unused-fields}/final_result.jsonl
-    output_dir: ${directories.step-12-bucket-qwen}
-    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
-    bucket_sizes:
-      - 16000
-      - 32000
-      - 64000
-    dependencies:
-      - remove_unused_fields
+    enabled: True

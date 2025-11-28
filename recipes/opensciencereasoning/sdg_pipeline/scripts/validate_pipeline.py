@@ -14,16 +14,13 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Optional
 
 from omegaconf import OmegaConf
 
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-from utils import assert_all, soft_assert
-
-WITHOUT_GT_VARIANTS = {"without_gt", "seed_data_without_gt"}
+WITHOUT_GT_SETTINGS = {"without_gt"}
+SEED_DATA_SETTINGS = {"seed_data"}
 BASE_FIELDS = {"problem", "expected_answer", "metadata"}
 TOPIC_FIELDS = {"topic", "subtopic"}
 DIFFICULTY_FIELDS = {"difficulty_model", "difficulty_model_pass_rate", "difficulty_model_pass_at_n"}
@@ -36,6 +33,23 @@ SOLUTION_FIELDS = {
 }
 OPTIONAL_SOLUTION_FIELDS = {"judgement"}
 WITHOUT_GT_SOLUTION_FIELDS = {"majority_voting_agreement_rate", "majority_voting_agreement_at_n"}
+
+_SOFT_ASSERT_FAILURES: list[str] = []
+
+
+def soft_assert(condition: bool, message: str):
+    if not condition:
+        _SOFT_ASSERT_FAILURES.append(str(message))
+
+
+def assert_all():
+    if not _SOFT_ASSERT_FAILURES:
+        print("ALL TESTS PASSED")
+        return
+    print(f"\nTEST FAILURES ({len(_SOFT_ASSERT_FAILURES)})\n")
+    for idx, msg in enumerate(_SOFT_ASSERT_FAILURES, 1):
+        print(f"{idx:3d}. {msg}")
+    raise SystemExit(1)
 
 
 def iter_jsonl(path: Path):
@@ -93,10 +107,19 @@ def apply_overrides(config: OmegaConf, override_paths: list[str], dotlist: list[
     return OmegaConf.to_container(merged, resolve=True)
 
 
+def collect_setting_labels(paths: list[str]) -> set[str]:
+    labels: set[str] = set()
+    for raw in paths:
+        if not raw:
+            continue
+        labels.add(Path(raw).stem)
+    return labels
+
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", required=True, help="Path to the base pipeline config YAML")
-    parser.add_argument("--variant", required=True, help="Variant label (for logging)")
+    parser = argparse.ArgumentParser(description="Validate SDG pipeline artifacts.")
+    parser.add_argument("--config_path", required=True, help="Path to the merged pipeline config YAML")
+    parser.add_argument("--variant", required=False, help="Optional label used only for logging")
     parser.add_argument(
         "--settings_path",
         action="append",
@@ -118,14 +141,16 @@ def main():
 
     base_config = OmegaConf.load(args.config_path)
     config = apply_overrides(base_config, override_paths, dotlist_overrides)
+    applied_setting_labels = collect_setting_labels(override_paths)
 
     dataset_path = Path(config["input_file"])
     soft_assert(dataset_path.exists(), f"Input dataset not found: {dataset_path}")
     base_count = count_jsonl(dataset_path)
 
     artifacts: dict[str, dict] = {}
-    bucket_files: list[Path] = []
-    bucket_total = None
+    bucket_files: dict[str, list[Path]] = {}
+    bucket_totals: dict[str, int] = {}
+    is_without_gt_variant = bool(WITHOUT_GT_SETTINGS & applied_setting_labels)
 
     for stage_name in config.get("pipeline_stages", []):
         stage_cfg = config.get("stages", {}).get(stage_name, {}) or {}
@@ -136,11 +161,12 @@ def main():
         if stage_name == "filter_problems":
             base_count = count_jsonl(output_dir / "final_result.jsonl")
 
-        if stage_name == "bucket":
+        if stage_name in {"bucket", "bucket-qwen"}:
             if ensure_file(output_dir, f"{stage_name} output directory"):
-                bucket_files = sorted(output_dir.glob("*.jsonl"))
-                soft_assert(bucket_files, f"Stage {stage_name} produced no bucket files in {output_dir}")
-                bucket_total = sum(count_jsonl(file) for file in bucket_files)
+                files = sorted(output_dir.glob("*.jsonl"))
+                soft_assert(files, f"Stage {stage_name} produced no bucket files in {output_dir}")
+                bucket_files[stage_name] = files
+                bucket_totals[stage_name] = sum(count_jsonl(file) for file in files)
             continue
 
         final_path = output_dir / "final_result.jsonl"
@@ -150,13 +176,12 @@ def main():
         count = count_jsonl(final_path)
         artifacts[stage_name] = {"path": final_path, "count": count, "cfg": stage_cfg}
 
-        if args.variant in WITHOUT_GT_VARIANTS:
+        if is_without_gt_variant:
             if stage_name == "filter_problems":
                 check_no_expected_answers(final_path)
             if stage_name in {"generate_solutions", "difficulty_estimation"}:
                 check_has_expected_answers(final_path)
 
-    # Count assertions -----------------------------------------------------
     def expect_equal(stage: str, expected: int):
         if stage in artifacts:
             actual = artifacts[stage]["count"]
@@ -192,18 +217,27 @@ def main():
         if "convert_to_messages_format" in artifacts:
             expect_equal("convert_to_messages_format", artifacts["filter_solutions"]["count"])
 
-        if bucket_total is not None:
+        if "bucket" in bucket_totals:
             soft_assert(
-                bucket_total == artifacts["filter_solutions"]["count"],
-                f"Bucketed total ({bucket_total}) should match prepare_for_sft ({artifacts['prepare_for_sft']['count']})",
+                bucket_totals["bucket"] == artifacts["filter_solutions"]["count"],
+                f"`bucket` total ({bucket_totals['bucket']}) should match filter_solutions ({artifacts['filter_solutions']['count']})",
             )
 
-    # Metadata field assertions -------------------------------------------
+    if "convert_to_qwen_format" in artifacts and "bucket-qwen" in bucket_totals:
+        soft_assert(
+            bucket_totals["bucket-qwen"] == artifacts["convert_to_qwen_format"]["count"],
+            (
+                "`bucket-qwen` total "
+                f"({bucket_totals['bucket-qwen']}) should match convert_to_qwen_format "
+                f"({artifacts['convert_to_qwen_format']['count']})"
+            ),
+        )
+
     has_topics = "topics_labeling" in artifacts
     has_difficulty = "difficulty_estimation" in artifacts
     has_solutions = "generate_solutions" in artifacts
     generate_with_judge = has_solutions and artifacts["generate_solutions"]["cfg"].get("make_judgement")
-    require_solution_fields = args.variant not in {"seed_data", "seed_data_without_gt"}
+    require_solution_fields = not bool(SEED_DATA_SETTINGS & applied_setting_labels)
 
     def validate_metadata(stage: str, file_path: Path):
         record = load_first_record(file_path)
@@ -220,19 +254,21 @@ def main():
             check_required_fields(record, SOLUTION_FIELDS, stage, file_path)
             if generate_with_judge:
                 check_required_fields(record, OPTIONAL_SOLUTION_FIELDS, stage, file_path)
-            if args.variant in WITHOUT_GT_VARIANTS:
+            if is_without_gt_variant:
                 check_required_fields(record, WITHOUT_GT_SOLUTION_FIELDS, stage, file_path)
 
     for stage in ["aggregate", "filter_solutions", "prepare_for_sft", "convert_to_messages_format"]:
         if stage in artifacts:
             validate_metadata(stage, artifacts[stage]["path"])
 
-    if bucket_files:
-        first_bucket_path = bucket_files[0]
+    for stage_label, files in bucket_files.items():
+        if not files:
+            continue
+        first_bucket_path = files[0]
         first_bucket_record = load_first_record(first_bucket_path)
         soft_assert(first_bucket_record is not None, f"Bucket file {first_bucket_path} is empty")
         if first_bucket_record is not None:
-            validate_metadata("bucket", first_bucket_path)
+            validate_metadata(stage_label, first_bucket_path)
 
     assert_all()
 

@@ -35,7 +35,6 @@ from transformers import AutoTokenizer  # noqa: E402
 # ----------------------------------------------------------------------------
 MODEL_NAME = "/hf_models/Qwen2.5-32B-Instruct"
 _TOKENIZER = None  # type: ignore
-ADD_TOOLS = False  # Will be set in main() if input filename contains 'with-tool'
 
 
 def _get_tokenizer():
@@ -240,9 +239,9 @@ def convert_using_chat_template(messages: List[Dict[str, Any]]) -> Dict[str, str
     # This includes all messages up to the first assistant turn.
     # `add_generation_prompt=True` adds `<|im_start|>assistant\n` at the end.
     tokenizer = _get_tokenizer()
-    # Only include tools if ADD_TOOLS flag is set
+    # Only include tools if add_tools flag is set
     tools = None
-    if True:
+    if add_tools:
         tools = [
             {
                 "type": "function",
@@ -334,7 +333,7 @@ def _process_batch(payloads: List[Tuple[int, int, str]]):
 
 
 def main():  # noqa: C901
-    global MODEL_NAME, ADD_TOOLS  # declare globals before any usage
+    global MODEL_NAME, add_tools  # declare globals before any usage
     """CLI entrypoint with optional parallelism."""
     parser = argparse.ArgumentParser(
         description="Convert an OpenAI-formatted JSONL file (messages) to Qwen3-Coder format (input/output)."
@@ -376,15 +375,14 @@ def main():  # noqa: C901
         default=MODEL_NAME,
         help="Override model name to load tokenizer (default: %(default)s).",
     )
+    parser.add_argument(
+        "--add-tools",
+        action="store_true",
+        help="Add tools description to the prompt",
+    )
     args = parser.parse_args()
 
     MODEL_NAME = args.model_name  # override after parsing
-    try:
-        from os import path as _path
-
-        ADD_TOOLS = "with-tool" in _path.basename(args.input_file)
-    except Exception:
-        ADD_TOOLS = False
 
     if args.batch_size < 1:
         parser.error("--batch-size must be >= 1")

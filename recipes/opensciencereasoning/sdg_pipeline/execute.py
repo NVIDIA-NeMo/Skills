@@ -23,7 +23,7 @@ from omegaconf import OmegaConf
 from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
-from recipes.opensciencereasoning.sdg_pipeline.few_shots import few_shots
+from recipes.opensciencereasoning.sdg_pipeline.prompt.few_shots import few_shots
 from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS, FINAL_FIELDS
 
 # Final output file name for each stage
@@ -167,7 +167,7 @@ def decontaminate(cluster: str, expname: str, run_after: str, stage_config: dict
         expname=f"{expname}_check_contamination",
         run_after=f"{expname}_retrieve_similar",
         num_chunks=num_chunks,
-        ctx=wrap_arguments("++check_both_ways=True "),
+        ctx=wrap_arguments("++check_both_ways=True ++server.enable_soft_fail=True"),
         dependent_jobs=dependent_jobs,
     )
 
@@ -233,7 +233,7 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
         )
         generate(
             ctx=wrap_arguments(
-                f"++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompts/topics_labeling.yaml "
+                f"++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/topics_labeling.yaml "
                 f"++generation_key={name} ",
             ),
             cluster=cluster,
@@ -576,16 +576,21 @@ def convert_to_messages_format(cluster, expname, run_after, stage_config, **kwar
     )
 
 
-def convert_to_qwen_from_messages(cluster, expname, run_after, stage_config, **kwargs):
+def convert_to_qwen_format(cluster, expname, run_after, stage_config, **kwargs):
+    """Convert the messages format into a Qwen-compatible structure."""
+
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/final_result.jsonl"
+    output_file = f"{output_dir}/{OUTPUT_FILE}"
+
+    with_tools = "--add-tools" if stage_config.get("tools", False) else ""
 
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/convert_to_qwen.py "
             f"  {input_file} "
             f"  {output_file} "
+            f"  {with_tools} "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
@@ -595,9 +600,12 @@ def convert_to_qwen_from_messages(cluster, expname, run_after, stage_config, **k
 
 
 def remove_unused_fields(cluster, expname, run_after, stage_config, **kwargs):
+    """
+    Remove unused fields from the input file.
+    """
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/final_result.jsonl"
+    output_file = f"{output_dir}/{OUTPUT_FILE}"
 
     run_cmd(
         ctx=wrap_arguments(
@@ -641,29 +649,73 @@ def bucket(cluster, expname, run_after, stage_config, **kwargs):
     )
 
 
-def bucket_qwen(cluster, expname, run_after, stage_config, **kwargs):
-    """Bucket samples by token length using the configured tokenizer.
+def validate(
+    cluster,
+    expname,
+    run_after,
+    stage_config,
+    config_path=None,
+    cli_settings_paths=None,
+    cli_dotlist_overrides=None,
+    **kwargs,
+):
+    """Run the test checker script to validate downstream artifacts."""
 
-    Each record is augmented with its `out_token_length`, which is the
-    per-sample statistic written back to the JSONL output. It emits one JSONL file
-    per configured bucket (for example `{stem}_bucket_16000.jsonl`) plus an overflow
-    file, placing samples into the file whose upper bound matches their token length.
-    Bucket counts and percentages are also reported via the script's logs.
-    """
-    input_file = stage_config["input_file"]
-    output_dir = stage_config["output_dir"]
+    script_path = stage_config.get("script_path")
+    if not script_path:
+        raise ValueError("The 'check' stage requires 'script_path' to be configured.")
+    if not config_path:
+        raise ValueError("The 'check' stage requires access to the resolved pipeline config path.")
 
+    output_dir = stage_config.get("output_dir")
+    log_dir = stage_config.get("log_dir") or (f"{output_dir}/logs" if output_dir else output_dir)
+
+    def unique(sequence):
+        seen = set()
+        ordered = []
+        for item in sequence:
+            if item and item not in seen:
+                ordered.append(item)
+                seen.add(item)
+        return ordered
+
+    extra_settings = stage_config.get("settings_paths", [])
+    extra_overrides = stage_config.get("overrides", [])
+    extra_args = stage_config.get("extra_args", [])
+
+    combined_settings = unique((cli_settings_paths or []) + (extra_settings or []))
+    combined_overrides = list((cli_dotlist_overrides or [])) + list(extra_overrides or [])
+
+    def derive_variant_name():
+        explicit = stage_config.get("variant_name") or stage_config.get("variant")
+        if explicit:
+            return explicit
+        setting_labels = [Path(path).stem for path in combined_settings if path]
+        if setting_labels:
+            return "-".join(setting_labels)
+        return Path(config_path).stem
+
+    variant_name = derive_variant_name()
+
+    cmd_parts = [
+        "python",
+        script_path,
+        "--config_path",
+        str(config_path),
+        "--variant",
+        str(variant_name),
+    ]
+    for path in combined_settings:
+        cmd_parts.extend(["--settings_path", str(path)])
+    for override in combined_overrides:
+        cmd_parts.extend(["--override", str(override)])
+    cmd_parts.extend(extra_args or [])
+
+    cmd = " ".join(shlex.quote(part) for part in cmd_parts)
     run_cmd(
-        ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/calculate_tkn_len_and_bucket.py "
-            f"  {input_file} "
-            f"  --output_dir {output_dir} "
-            f"  --to_bucket "
-            f"  --bucket_sizes {' '.join(map(str, stage_config.get('bucket_sizes', [16000, 32000, 64000])))} "
-            f"  --tokenizer_path {stage_config.get('tokenizer_path')} "
-        ),
+        ctx=wrap_arguments(cmd),
         cluster=cluster,
-        log_dir=f"{output_dir}/logs",
+        log_dir=log_dir,
         expname=expname,
         run_after=run_after,
     )
@@ -680,22 +732,23 @@ stages_map = {
     "prepare_for_sft": prepare_for_sft,
     "convert_to_messages_format": convert_to_messages_format,
     "bucket": bucket,
-    "convert_to_qwen_from_messages": convert_to_qwen_from_messages,
+    "bucket-qwen": bucket,
+    "convert_to_qwen_format": convert_to_qwen_format,
     "remove_unused_fields": remove_unused_fields,
-    "bucket-qwen": bucket_qwen,
+    "validate": validate,
 }
 
 
 if __name__ == "__main__":
-    configs_root = Path(__file__).parents[1] / "configs"
-    config_dir = configs_root / "pipelines"
+    configs_root = Path(__file__).parents[0] / "configs"
+    pipelines_dir = configs_root / "pipelines"
     settings_dir = configs_root / "settings"
 
     parser = argparse.ArgumentParser(description="ScienceReasoning data generation pipeline")
     parser.add_argument(
-        "--config",
+        "--pipeline",
         type=str,
-        default=str(config_dir / "base.yaml"),
+        default=str(pipelines_dir / "base.yaml"),
         help="Path to the config file.",
     )
     parser.add_argument(
@@ -728,7 +781,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config_path = resolve_config_path(args.config, config_dir)
+    config_path = resolve_config_path(args.pipeline, pipelines_dir)
     base_config = OmegaConf.load(config_path)
 
     override_paths = []
@@ -801,10 +854,25 @@ if __name__ == "__main__":
         current_expname = get_stage_expname(expname_base, stage, suffix)
 
         dep_stages = stage_config.get("dependencies")
-        if dep_stages is not None:
-            dependencies = [get_stage_expname(expname_base, dep_stage, suffix) for dep_stage in dep_stages]
-        else:
-            dependencies = config_data.get("initial_dependency", None)
+        if isinstance(dep_stages, str):
+            dep_stages = [dep_stages]
+
+        dependencies = config_data.get("initial_dependency", None)
+        if dep_stages:
+            resolved_dependencies: list[str] = []
+            for dep_stage in dep_stages:
+                if not dep_stage or dep_stage == stage:
+                    continue
+                if dep_stage not in full_stage_sequence:
+                    continue
+                dep_cfg = config_data.get("stages", {}).get(dep_stage, {})
+                if not dep_cfg.get("enabled", True):
+                    continue
+                if dep_stage not in stages_to_run:
+                    continue
+                resolved_dependencies.append(get_stage_expname(expname_base, dep_stage, suffix))
+            if resolved_dependencies:
+                dependencies = resolved_dependencies
 
         print(f"Dependency for '{stage}': {dependencies}")
 
@@ -813,6 +881,9 @@ if __name__ == "__main__":
             "expname": current_expname,
             "run_after": dependencies,
             "stage_config": stage_config,
+            "config_path": str(config_path),
+            "cli_settings_paths": [str(path) for path in override_paths],
+            "cli_dotlist_overrides": dotlist_overrides or [],
         }
 
         # Call the stage function

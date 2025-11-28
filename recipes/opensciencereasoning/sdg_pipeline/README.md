@@ -19,8 +19,8 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - `id`: original or auto-generated identifier.
   - `metadata`: dictionary with all other fields from the input sample.
 - [`decontaminate`](scripts/decontaminate.py): Retrieves near duplicates, runs model-based contamination checks, and writes a cleaned `final_result.jsonl` containing only non-contaminated problems plus inherited fields.
-- [`topics_labeling`](pipeline/sdg_pipeline.py): Iteratively labels topics/subtopics by preparing inputs with [`prepare_topics.py`](scripts/prepare_topics.py) and a prompt such as [`topics_labeling.yaml`](prompts/topics_labeling.yaml). Outputs per-level directories and a final `final_result.jsonl` where each problem receives new keys matching the `generation_keys` (for example `topic`, `subtopic`). Few-shot expectations:
-  - Provide a mapping in [`few_shots/`](few_shots/) with the same name as `few_shots_name`.
+- [`topics_labeling`](pipeline/sdg_pipeline.py): Iteratively labels topics/subtopics by preparing inputs with [`prepare_topics.py`](scripts/prepare_topics.py) and a prompt such as [`topics_labeling.yaml`](prompt/configs/topics_labeling.yaml). Outputs per-level directories and a final `final_result.jsonl` where each problem receives new keys matching the `generation_keys` (for example `topic`, `subtopic`). Few-shot expectations:
+  - Provide a mapping in [`prompt/few_shots/`](prompt/few_shots/) with the same name as `few_shots_name`.
   - For each generation key, include examples keyed by the label (e.g., `"topic": {"Chemistry": "Example..."}`) so the prompt can display realistic exemplars.
   - For hierarchical labeling, nest dictionaries by previously chosen label (`"subtopic": {"Chemistry": {"Organic Chemistry": "..."}}`).
 - [`generate_solutions`](pipeline/sdg_pipeline.py): Runs generation (`generation_kwargs`) and extracts predictions via [`extract_predictions.py`](scripts/extract_predictions.py); optional judging uses the `math_judge` flow, and [`aggregate_solutions.py`](scripts/aggregate_solutions.py) consolidates metrics. Key outputs, all under the configured `output_dir`, include:
@@ -33,6 +33,8 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
 - [`prepare_for_sft`](pipeline/sdg_pipeline.py): Calls `nemo_skills.training.prepare_data` via the configured `prepare_data_kwargs` (tokenizer, prompt config, formatting toggles). Outputs an instruction-tuning JSONL file.
 - [`convert_to_messages`](scripts/convert_to_messages.py): Converts the instruction-tuning JSONL file into messages format.
 - [`bucket`](scripts/calculate_tkn_len_and_bucket.py): Appends `out_token_length` to each sample and optionally shard data into token-length buckets. It emits per-bucket files (e.g., `{stem}_bucket_16000.jsonl`) plus an overflow file alongside log summaries of bucket counts and percentages.
+- [`convert_to_qwen`](scripts/convert_to_qwen.py): Converts the message-formatted JSONL into Qwen-style multi-turn data, optionally embedding tool metadata when Python tools were enabled earlier in the pipeline. Currently only supports the Python tool chain.
+- [`validate`](scripts/validate_pipeline.py): Reuses the automated checker to verify artifacts exist, counts add up, and required metadata fields are present, so failures point directly to the problematic stage. See [What the Validation Stage Covers](#what-the-validation-stage-covers) for details and caveats.
 
 ## Config Layout
 - **Base pipeline**: [`configs/pipelines/base.yaml`](configs/pipelines/base.yaml) describes the default open-question flow with ground-truth answers available, no tool usage, and the [`boxed`](../../../nemo_skills/prompt/config/generic/general-boxed.yaml) prompt.
@@ -43,13 +45,15 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - `mcq_10_options` — switch to the [`eval/aai/mcq-10choices`](../../../nemo_skills/prompt/config/eval/aai/mcq-10choices.yaml) prompt for generation.
   - `seed_data` — trim the pipeline to the [Seed Data Flow](#seed-data-flow) used to generate seed datasets. It assumes the dataset has GT answers if not explicitly specified `without_gt`.
   - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for postprocessing above existing seed data.
-  - `multiple_prompts` - allow the usage of multiple prompts for the generation. Section [Using the multiple_prompts Setting](#using-the-multiple_prompts-setting) describes the setting in details
+  - `multiple_prompts` — allow the usage of multiple prompts for the generation. Section [Using the multiple_prompts Setting](#using-the-multiple-prompts-setting) describes the setting in detail.
+  - `convert_to_qwen` — enables the Qwen-format conversion and bucketing stages (`convert_to_qwen_format` and `bucket-qwen`).
+  - `kimi_k2` — reroute `generate_solutions` to the Kimi-K2-Thinking model.
 
 Launch the pipeline by selecting the base config and stacking the overrides you need:
 
 ```bash
-python pipeline/sdg_pipeline.py \
-  --config base \
+python execute.py \
+  --pipeline base \
   --settings without_gt python_enabled \
   --override input_file=$INPUT_FILE cluster=slurm
 ```
@@ -59,14 +63,14 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **With GT, no tools, openq** (default):
 
   ```bash
-  python pipeline/sdg_pipeline.py \
+  python execute.py \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 - **Seed data (metadata only)**:
 
   ```bash
-  python pipeline/sdg_pipeline.py \
+  python execute.py \
     --settings seed_data \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
@@ -74,7 +78,7 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **Seed data plus answer recovery** (run `without_gt` after `seed_data` to re-enable generation):
 
   ```bash
-  python pipeline/sdg_pipeline.py \
+  python execute.py \
     --settings seed_data without_gt \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
@@ -82,7 +86,7 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **Multiple prompts with custom problem template via CLI overrides**:
 
   ```bash
-  python pipeline/sdg_pipeline.py \
+  python execute.py \
     --settings multiple_prompts \
     --override input_file=$INPUT_FILE cluster=slurm \
                stages.filter_problems.problem_template='{problem}'
@@ -91,14 +95,14 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
 
   ```bash
-  python pipeline/sdg_pipeline.py \
+  python execute.py \
     --settings seed_data_postprocess without_gt python_enabled \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
 
-### How `filter_problems` Filters Data
+## How `filter_problems` Filters Data
 1. Normalizes field names based on the configured aliases (`problem_field`, `expected_answer_field`, `id_field`).
 2. Optionally drops the GT answer when `remove_expected_answer` is true so majority voting can recompute it later.
 3. Deduplicates by exact `problem` text when `deduplicate` is true.
@@ -124,6 +128,21 @@ Example fixture entry:
   "answer_regex": "Answer: ([A-D])(?![A-Za-z])"
 }
 ```
+
+## What the Validation Stage Covers
+The validation stage is a lightweight smoke test that ensures the pipeline produced the artifacts we expect:
+
+- Checks every enabled stage emitted `final_result.jsonl`, counts the records, and enforces equality constraints between stages (for example, `bucket` totals must match `filter_solutions` counts, and `convert_to_qwen_format` must match `bucket-qwen` totals).
+- Verifies key metadata fields (topics, difficulty, solution stats, etc.) are present in representative samples based on which upstream stages ran.
+- For `without_gt` settings, asserts that expected answers are absent/present in the right stages and that majority-voting metadata exists.
+
+However, validation does **not** execute the pipeline stages themselves and cannot detect every failure mode:
+
+- It cannot tell whether a stage produced semantically correct data, only whether files exist and basic counts/fields look plausible.
+- Some stages are expected to shrink the dataset (for example `filter_solutions`), so validation only checks for monotonic decreases in specific places and might miss a misconfigured filter that drops too much data.
+- Runtime issues that prevent a stage from running at all are caught, but partial failures inside a stage’s script (e.g., silently dropping columns) may go unnoticed if the final JSONL still satisfies the structural checks.
+
+Use validation as an automated sanity check, but rely on stage logs and targeted inspections when debugging data-quality issues.
 
 ## How to Use
 - It is highly recommended to always schedule `filter_problems` first (except when running `seed_data_postprocess`). It prepares the data in the format expected by the pipeline. Input must be JSONL with `problem` (required), plus optional GT answer and id fields. Any additional keys are automatically preserved inside `metadata`. To replace the provided GT answer with the majority-voted result, set `remove_expected_answer: true`.
