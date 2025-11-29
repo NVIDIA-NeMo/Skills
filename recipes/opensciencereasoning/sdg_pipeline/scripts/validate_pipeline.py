@@ -153,6 +153,8 @@ def main():
     is_without_gt_variant = bool(WITHOUT_GT_SETTINGS & applied_setting_labels)
 
     for stage_name in config.get("pipeline_stages", []):
+        if stage_name == "validate":
+            continue
         stage_cfg = config.get("stages", {}).get(stage_name, {}) or {}
         if not stage_cfg.get("enabled", True):
             continue

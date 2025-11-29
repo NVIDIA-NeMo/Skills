@@ -159,6 +159,7 @@ stages:
 
     reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
     prompt_config: ++prompt_config=generic/general-boxed
+    end_reasoning_string: '''++end_reasoning_string="<|start|>assistant<|channel|>final<|message|>"'''
     code_tags: ""
     enable_code_execution: ""
     code_execution_limits: ""
@@ -190,7 +191,7 @@ stages:
         ${stages.generate_solutions.reasoning_effort}
         ${stages.generate_solutions.builtin_tools}
         ++parse_reasoning=true
-        ++end_reasoning_string="'<|start|>assistant<|channel|>final<|message|>'"
+        ${stages.generate_solutions.end_reasoning_string}
 
     judge_kwargs:
       ctx_args: >-

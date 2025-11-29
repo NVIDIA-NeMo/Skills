@@ -2,6 +2,7 @@
 
 stages:
   generate_solutions:
+    end_reasoning_string: ""
     generation_kwargs:
       args:
         server_type: sglang
