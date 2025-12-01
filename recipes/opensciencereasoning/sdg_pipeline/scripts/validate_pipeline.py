@@ -160,7 +160,7 @@ def main():
             continue
 
         output_dir = Path(stage_cfg["output_dir"])
-        if stage_name == "filter_problems":
+        if stage_name == "decontaminate":
             base_count = count_jsonl(output_dir / "final_result.jsonl")
 
         if stage_name in {"bucket", "bucket-qwen"}:
@@ -189,7 +189,13 @@ def main():
             actual = artifacts[stage]["count"]
             soft_assert(actual == expected, f"Stage {stage} expected {expected} rows, found {actual}")
 
-    for stage in {"decontaminate", "topics_labeling", "difficulty_estimation"}:
+    if "filter_problems" in artifacts:
+        soft_assert(
+            artifacts["decontaminate"]["count"] <= artifacts["filter_problems"]["count"],
+            "decontaminate should not have more rows than filter_problems",
+        )
+
+    for stage in {"topics_labeling", "difficulty_estimation"}:
         expect_equal(stage, base_count)
 
     if "generate_solutions" in artifacts:
