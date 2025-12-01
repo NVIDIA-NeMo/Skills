@@ -201,7 +201,7 @@ coder_template = """{% macro render_extra_keys(json_dict, handled_keys) %}
 # (chat template will be attached during lazy tokenizer initialization)
 
 
-def convert_using_chat_template(messages: List[Dict[str, Any]]) -> Dict[str, str]:
+def convert_using_chat_template(messages: List[Dict[str, Any]], add_tools: bool = False) -> Dict[str, str]:
     """
     Converts a list of OpenAI-formatted messages to the Qwen3-Coder format
     using the tokenizer's apply_chat_template method.
@@ -293,24 +293,7 @@ def convert_using_chat_template(messages: List[Dict[str, Any]]) -> Dict[str, str
 # ----------------------------------------------------------------------------
 
 
-def _process_single_line(payload: Tuple[int, int, str]):
-    seq_id, original_line_number, line = payload
-    try:
-        data = _json_loads(line)
-        messages = data.get("messages")
-        if not messages:
-            raise ValueError("JSON object does not contain a 'messages' key.")
-        qwen_data = convert_using_chat_template(messages)
-        # add other fields
-        keys_to_copy = [k for k in data.keys() if k != "messages"]
-        for k in keys_to_copy:
-            qwen_data[k] = data[k]
-        return seq_id, _json_dumps(qwen_data), None
-    except Exception as e:  # noqa: BLE001
-        return seq_id, None, f"Skipping line {original_line_number} due to error: {e}"
-
-
-def _process_batch(payloads: List[Tuple[int, int, str]]):
+def _process_batch(payloads: List[Tuple[int, int, str]], add_tools: bool = False):
     out = []
     append = out.append
     get_tok = _get_tokenizer  # local for speed
@@ -322,7 +305,7 @@ def _process_batch(payloads: List[Tuple[int, int, str]]):
                 raise ValueError("JSON object does not contain a 'messages' key.")
             # ensure tokenizer init once per worker
             get_tok()
-            qwen_data = convert_using_chat_template(messages)
+            qwen_data = convert_using_chat_template(messages, add_tools)
             keys_to_copy = [k for k in data.keys() if k != "messages"]
             for k in keys_to_copy:
                 qwen_data[k] = data[k]
@@ -424,7 +407,7 @@ def main():  # noqa: C901
                     messages = data.get("messages")
                     if not messages:
                         raise ValueError("JSON object does not contain a 'messages' key.")
-                    qwen_data = convert_using_chat_template(messages)
+                    qwen_data = convert_using_chat_template(messages, args.add_tools)
                     output_stream.write(_json_dumps(qwen_data) + "\n")
                 except Exception as e:  # noqa: BLE001
                     errors += 1
@@ -463,7 +446,7 @@ def main():  # noqa: C901
         def submit_batch(batch: List[Tuple[int, int, str]]):
             if not batch:
                 return
-            fut = executor.submit(_process_batch, batch)
+            fut = executor.submit(_process_batch, batch, args.add_tools)
             in_flight[fut] = len(batch)
 
         for original_index, line in enumerate(input_stream):

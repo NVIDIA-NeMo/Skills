@@ -1,15 +1,13 @@
 # Overrides the generation arguments with Kimi-K2-Thinking model parameters.
+# TODO: fix
 
 stages:
   generate_solutions:
-    end_reasoning_string: ""
+    tokens_to_generate: 200000
     generation_kwargs:
       args:
         server_type: sglang
         server_gpus: 8
         server_nodes: 1
-        server_args: "--trust-remote-code --tool-call-parser kimi_k2 --reasoning-parser kimi_k2 --tp 8"
+        server_args: '"--trust-remote-code --tool-call-parser kimi_k2 --reasoning-parser kimi_k2 --tp 8"'
         model: /hf_models/Kimi-K2-Thinking
-      ctx_args: >-
-        ++inference.temperature=1.0
-        ++inference.tokens_to_generate=200000

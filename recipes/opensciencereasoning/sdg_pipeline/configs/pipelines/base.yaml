@@ -28,7 +28,7 @@ pipeline_stages:
   - convert_to_messages_format  # Convert to messages format for training
   - bucket                      # Bucket by token length
   - convert_to_qwen_format      # Convert to Qwen format
-  - bucket-qwen                 # Bucket by token length for Qwen format
+  - bucket_qwen                 # Bucket by token length for Qwen format
   - validate                    # Validate outputs and stage health
 
 # Directory structure configuration
@@ -159,7 +159,7 @@ stages:
 
     reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
     prompt_config: ++prompt_config=generic/general-boxed
-    end_reasoning_string: '''++end_reasoning_string="<|start|>assistant<|channel|>final<|message|>"'''
+    tokens_to_generate: 80000
     code_tags: ""
     enable_code_execution: ""
     code_execution_limits: ""
@@ -184,14 +184,12 @@ stages:
         ${stages.generate_solutions.enable_code_execution}
         ${stages.generate_solutions.code_execution_limits}
         ++max_concurrent_requests=1024
-        ++inference.tokens_to_generate=80000
+        ++inference.tokens_to_generate=${stages.generate_solutions.tokens_to_generate}
         ++inference.endpoint_type=text
         ++inference.temperature=1.0
         ++inference.top_p=1.0
         ${stages.generate_solutions.reasoning_effort}
         ${stages.generate_solutions.builtin_tools}
-        ++parse_reasoning=true
-        ${stages.generate_solutions.end_reasoning_string}
 
     judge_kwargs:
       ctx_args: >-
@@ -234,6 +232,7 @@ stages:
   prepare_for_sft:
     output_dir: ${directories.step-7-prepare-for-sft}
     input_file: ${directories.step-6-filter-solutions}/final_result.jsonl
+    with_metadata: True
     prepare_data_kwargs:
       ctx_args: >-
         ${stages.generate_solutions.prompt_config}
@@ -276,7 +275,7 @@ stages:
     dependencies:
       - convert_to_messages_format
 
-  bucket-qwen:
+  bucket_qwen:
     enabled: False
     input_file: ${directories.step-10-convert-to-qwen-format}/final_result.jsonl
     output_dir: ${directories.step-11-bucket-qwen}

@@ -4,5 +4,5 @@ stages:
   convert_to_qwen_format:
     enabled: True
 
-  bucket-qwen:
+  bucket_qwen:
     enabled: True

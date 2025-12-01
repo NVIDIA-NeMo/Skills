@@ -46,13 +46,13 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - `seed_data` — trim the pipeline to the [Seed Data Flow](#seed-data-flow) used to generate seed datasets. It assumes the dataset has GT answers if not explicitly specified `without_gt`.
   - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for postprocessing above existing seed data.
   - `multiple_prompts` — allow the usage of multiple prompts for the generation. Section [Using the multiple_prompts Setting](#using-the-multiple-prompts-setting) describes the setting in detail.
-  - `convert_to_qwen` — enables the Qwen-format conversion and bucketing stages (`convert_to_qwen_format` and `bucket-qwen`).
+  - `convert_to_qwen` — enables the Qwen-format conversion and bucketing stages (`convert_to_qwen_format` and `bucket_qwen`).
   - `kimi_k2` — reroute `generate_solutions` to the Kimi-K2-Thinking model.
 
 Launch the pipeline by selecting the base config and stacking the overrides you need:
 
 ```bash
-python execute.py \
+python run_pipeline.py \
   --pipeline base \
   --settings without_gt python_enabled \
   --override input_file=$INPUT_FILE cluster=slurm
@@ -63,14 +63,14 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **With GT, no tools, openq** (default):
 
   ```bash
-  python execute.py \
+  python run_pipeline.py \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
 
 - **Seed data (metadata only)**:
 
   ```bash
-  python execute.py \
+  python run_pipeline.py \
     --settings seed_data \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
@@ -78,7 +78,7 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **Seed data plus answer recovery** (run `without_gt` after `seed_data` to re-enable generation):
 
   ```bash
-  python execute.py \
+  python run_pipeline.py \
     --settings seed_data without_gt \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
@@ -86,7 +86,7 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **Multiple prompts with custom problem template via CLI overrides**:
 
   ```bash
-  python execute.py \
+  python run_pipeline.py \
     --settings multiple_prompts \
     --override input_file=$INPUT_FILE cluster=slurm \
                stages.filter_problems.problem_template='{problem}'
@@ -95,7 +95,7 @@ Settings are merged in the order you pass them; later entries win when they touc
 - **Solutions-only run**: reuse the provided toggle and stack it with whatever other settings you need.
 
   ```bash
-  python execute.py \
+  python run_pipeline.py \
     --settings seed_data_postprocess without_gt python_enabled \
     --override input_file=$INPUT_FILE cluster=slurm
   ```
@@ -132,7 +132,7 @@ Example fixture entry:
 ## What the Validation Stage Covers
 The validation stage is a lightweight smoke test that ensures the pipeline produced the artifacts we expect:
 
-- Checks every enabled stage emitted `final_result.jsonl`, counts the records, and enforces equality constraints between stages (for example, `bucket` totals must match `filter_solutions` counts, and `convert_to_qwen_format` must match `bucket-qwen` totals).
+- Checks every enabled stage emitted `final_result.jsonl`, counts the records, and enforces equality constraints between stages (for example, `bucket` totals must match `filter_solutions` counts, and `convert_to_qwen_format` must match `bucket_qwen` totals).
 - Verifies key metadata fields (topics, difficulty, solution stats, etc.) are present in representative samples based on which upstream stages ran.
 - For `without_gt` settings, asserts that expected answers are absent/present in the right stages and that majority-voting metadata exists.
 

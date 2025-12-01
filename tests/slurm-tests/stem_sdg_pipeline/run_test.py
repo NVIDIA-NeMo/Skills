@@ -93,7 +93,7 @@ def repo_root() -> Path:
 
 
 def pipeline_script_path() -> Path:
-    return repo_root() / PIPELINE_REL_ROOT / "execute.py"
+    return repo_root() / PIPELINE_REL_ROOT / "run_pipeline.py"
 
 
 def settings_path(name: str) -> Path:

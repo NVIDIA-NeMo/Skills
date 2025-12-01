@@ -213,27 +213,19 @@ def main():
                 artifacts["filter_solutions"]["count"] <= artifacts["aggregate"]["count"],
                 "filter_solutions should not have more rows than aggregate",
             )
-        if "prepare_for_sft" in artifacts:
-            expect_equal("prepare_for_sft", artifacts["filter_solutions"]["count"])
-
-        if "convert_to_messages_format" in artifacts:
-            expect_equal("convert_to_messages_format", artifacts["filter_solutions"]["count"])
-
-        if "bucket" in bucket_totals:
-            soft_assert(
-                bucket_totals["bucket"] == artifacts["filter_solutions"]["count"],
-                f"`bucket` total ({bucket_totals['bucket']}) should match filter_solutions ({artifacts['filter_solutions']['count']})",
-            )
-
-    if "convert_to_qwen_format" in artifacts and "bucket-qwen" in bucket_totals:
-        soft_assert(
-            bucket_totals["bucket-qwen"] == artifacts["convert_to_qwen_format"]["count"],
-            (
-                "`bucket-qwen` total "
-                f"({bucket_totals['bucket-qwen']}) should match convert_to_qwen_format "
-                f"({artifacts['convert_to_qwen_format']['count']})"
-            ),
-        )
+        for stage in [
+            "prepare_for_sft",
+            "convert_to_messages_format",
+            "bucket",
+            "convert_to_qwen_format",
+            "bucket-qwen",
+        ]:
+            expect_equal(stage, artifacts["filter_solutions"]["count"])
+            if stage in bucket_totals:
+                soft_assert(
+                    bucket_totals[stage] == artifacts["filter_solutions"]["count"],
+                    f"`{stage}` total ({bucket_totals[stage]}) should match filter_solutions ({artifacts['filter_solutions']['count']})",
+                )
 
     has_topics = "topics_labeling" in artifacts
     has_difficulty = "difficulty_estimation" in artifacts

@@ -24,7 +24,7 @@ from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
 from recipes.opensciencereasoning.sdg_pipeline.prompt.few_shots import few_shots
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS, FINAL_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
 
 # Final output file name for each stage
 OUTPUT_FILE = "final_result.jsonl"
@@ -531,6 +531,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
     """
     output_dir = stage_config["output_dir"]
     input_file = stage_config["input_file"]
+    with_metadata = stage_config.get("with_metadata", True)
 
     prepare_data_kwargs = stage_config.get("prepare_data_kwargs", {})
     prepare_data_ctx_args = prepare_data_kwargs.get("ctx_args", "")
@@ -541,29 +542,44 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
         f"    ++output_path='{output_dir}/prepared.jsonl' "
         f"    ++add_unlabeled=True "
         f"    ++add_incorrect=True "
-        f"    ++exclude_optional_keys=True "
+        f"    ++exclude_optional_keys=False "
         f"    {prepare_data_ctx_args}"
     )
     run_cmd(
         ctx=wrap_arguments(cmd),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
-        expname=f"{expname}_prepare_for_sft",
+        expname=f"{expname}_prepare_data",
         run_after=run_after,
     )
+    filename = "final_result" if with_metadata else "prepared_with_metadata"
 
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_metadata.py "
-            f"    --solutions_path '{output_dir}/prepared.jsonl' "
+            f"    --solutions_path '{output_dir}/{filename}.jsonl' "
             f"    --metadata_files {shlex.quote(json.dumps([input_file], ensure_ascii=False))} "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
-        expname=expname,
-        run_after=f"{expname}_prepare_for_sft",
+        expname=expname if with_metadata else f"{expname}_with_metadata",
+        run_after=f"{expname}_prepare_data",
     )
+
+    if not with_metadata:
+        run_cmd(
+            ctx=wrap_arguments(
+                f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/remove_redundant_fields.py "
+                f"    --input_file '{output_dir}/{filename}.jsonl' "
+                f"    --output_file '{output_dir}/final_result.jsonl' "
+                f"    --fields {shlex.quote(json.dumps(['input', 'output'], ensure_ascii=False))} "
+            ),
+            cluster=cluster,
+            log_dir=f"{output_dir}/logs",
+            expname=expname,
+            run_after=f"{expname}_with_metadata",
+        )
 
 
 def convert_to_messages_format(cluster, expname, run_after, stage_config, **kwargs):
@@ -608,28 +624,6 @@ def convert_to_qwen_format(cluster, expname, run_after, stage_config, **kwargs):
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
         expname=expname,
-        run_after=run_after,
-    )
-
-
-def remove_unused_fields(cluster, expname, run_after, stage_config, **kwargs):
-    """
-    Remove unused fields from the input file.
-    """
-    input_file = stage_config["input_file"]
-    output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/{OUTPUT_FILE}"
-
-    run_cmd(
-        ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/remove_redundant_fields.py "
-            f"    --input_file '{input_file}' "
-            f"    --output_file {output_file} "
-            f"    --fields {shlex.quote(json.dumps(FINAL_FIELDS, ensure_ascii=False))} "
-        ),
-        cluster=cluster,
-        log_dir=f"{output_dir}/logs",
-        expname=f"{expname}_remove_unused_fields",
         run_after=run_after,
     )
 
@@ -749,9 +743,8 @@ stages_map = {
     "prepare_for_sft": prepare_for_sft,
     "convert_to_messages_format": convert_to_messages_format,
     "bucket": bucket,
-    "bucket-qwen": bucket,
+    "bucket_qwen": bucket,
     "convert_to_qwen_format": convert_to_qwen_format,
-    "remove_unused_fields": remove_unused_fields,
     "validate": validate,
 }
 
