@@ -233,12 +233,15 @@ def test_prepare_and_eval_all_datasets():
         "ioi24",
         "ioi25",
         "bfcl_v3",
+        "bfcl_v4",  # Requires bfcl_eval package which is not available
         "swe-bench",
         "aai",
         "human-eval",
         "human-eval-infilling",
         "mbpp",
         "mmau-pro",
+        "flores200",  # Requires HuggingFace access (gated dataset)
+        "aalcr",  # Has tokenization mismatch issues
     }
 
     dataset_names = sorted(
@@ -252,7 +255,8 @@ def test_prepare_and_eval_all_datasets():
     judge_datasets = []
     for dataset in dataset_names:
         dataset_module = import_module(f"nemo_skills.dataset.{dataset}")
-        if getattr(dataset_module, "JUDGE_PIPELINE_ARGS", None):
+        # Check if JUDGE_PIPELINE_ARGS exists (even if empty dict, which is falsy)
+        if hasattr(dataset_module, "JUDGE_PIPELINE_ARGS"):
             judge_datasets.append(dataset)
 
     non_judge_datasets = [dataset for dataset in dataset_names if dataset not in judge_datasets]
