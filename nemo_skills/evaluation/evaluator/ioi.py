@@ -30,7 +30,7 @@ from nemo_skills.utils import nested_dataclass, unroll_files
 @nested_dataclass(kw_only=True)
 class IOIEvaluatorConfig(BaseEvaluatorConfig):
     test_file: str = "test_metadata.json"
-    input_tests_file: str | None = None
+    input_file: str | None = None
     num_workers: int = 16  # number of test workers
     test_batch_size: int = 16  # number of tests to run concurrently
     overwrite: bool = False
