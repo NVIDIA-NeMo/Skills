@@ -163,7 +163,7 @@ def main():
         if stage_name == "decontaminate":
             base_count = count_jsonl(output_dir / "final_result.jsonl")
 
-        if stage_name in {"bucket", "bucket-qwen"}:
+        if stage_name in {"bucket", "bucket_qwen"}:
             if ensure_file(output_dir, f"{stage_name} output directory"):
                 files = sorted(output_dir.glob("*.jsonl"))
                 soft_assert(files, f"Stage {stage_name} produced no bucket files in {output_dir}")
@@ -224,7 +224,7 @@ def main():
             "convert_to_messages_format",
             "bucket",
             "convert_to_qwen_format",
-            "bucket-qwen",
+            "bucket_qwen",
         ]:
             expect_equal(stage, artifacts["filter_solutions"]["count"])
             if stage in bucket_totals:
