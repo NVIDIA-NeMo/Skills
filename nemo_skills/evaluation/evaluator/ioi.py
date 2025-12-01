@@ -85,7 +85,7 @@ def init_worker():
 
 
 def _precompile_grader(
-    problem_name: str, grader_files, compile_code: str, run_code: str, sandbox: LocalSandbox
+    problem_name: str, grader_files, compile_code: str, run_code: str, user_run_code: str, sandbox: LocalSandbox
 ) -> str:
     """Precompile checker/grader for a problem once and return the directory path."""
     # Ensure sandbox belongs to this thread; if not, create a local one.
@@ -117,6 +117,12 @@ def _precompile_grader(
     with open(run_path, "w", encoding="utf-8") as f:
         f.write(run_code)
     os.chmod(run_path, 0o755)
+
+    # Write user_run.sh for input-only runs (required, mirrors ICPC behavior)
+    user_run_path = os.path.join(pre_dir, "user_run.sh")
+    with open(user_run_path, "w", encoding="utf-8") as f:
+        f.write(user_run_code)
+    os.chmod(user_run_path, 0o755)
 
     # Run compile.sh inside the sandbox (same filesystem)
     _sandbox_exec_sync(sandbox, f"cd {pre_dir} && ./compile.sh || true", language="shell", timeout=120)
@@ -237,10 +243,10 @@ def run_input_case(task_args: dict, worker_id: int) -> dict:
         if not result["compile_success"]:
             return result
 
-        # 3. Run the code. For input-only runs, reuse run.sh which should emit program stdout.
-        run_command = f"cd {unique_dir} && ./run.sh"
+        # 3. Run the code via user_run.sh (matches ICPC evaluator behavior)
+        run_command = f"cd {unique_dir} && ./user_run.sh"
         run_result, _ = worker_loop.run_until_complete(
-            sandbox.execute_code(run_command, language="shell", timeout=120)
+            sandbox.execute_code(run_command, language="shell", timeout=120, max_output_characters=1000000)
         )
 
         run_stdout = run_result.get("stdout", "")
@@ -362,6 +368,7 @@ class IOIEvaluator(BaseEvaluator):
         subtask_meta = problem_metadata[entry["subtask"]]
         compile_code = subtask_meta["compile"]
         run_code = subtask_meta["run"]
+        user_run_code = subtask_meta["user_run"]
         grader_files = subtask_meta["grader_files"]
 
         if pid not in self.precompiled_cache:
@@ -371,6 +378,7 @@ class IOIEvaluator(BaseEvaluator):
                 grader_files,
                 compile_code,
                 run_code,
+                user_run_code,
                 self.sandbox,
             )
         pre_dir = self.precompiled_cache[pid]
