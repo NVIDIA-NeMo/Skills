@@ -243,7 +243,7 @@ def run_input_case(task_args: dict, worker_id: int) -> dict:
             sandbox.execute_code(run_command, language="shell", timeout=120)
         )
 
-        run_stdout = sha256_hex(run_result.get("stdout", ""))
+        run_stdout = run_result.get("stdout", "")
         run_stderr = run_result.get("stderr", "")
 
         result.update(
