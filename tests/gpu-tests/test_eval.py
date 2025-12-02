@@ -233,7 +233,7 @@ def test_prepare_and_eval_all_datasets():
         "ioi24",
         "ioi25",
         "bfcl_v3",
-        "bfcl_v4",  # Requires bfcl_eval package which is not available
+        "bfcl_v4",
         "swe-bench",
         "aai",
         "human-eval",
