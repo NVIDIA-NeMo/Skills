@@ -1,9 +1,9 @@
 # Overrides the generation arguments with Kimi-K2-Thinking model parameters.
-# TODO: fix
 
 stages:
   generate_solutions:
-    tokens_to_generate: 200000
+    tokens_to_generate: ++inference.tokens_to_generate=200000
+    endpoint_type: ++inference.endpoint_type=chat
     generation_kwargs:
       args:
         server_type: sglang

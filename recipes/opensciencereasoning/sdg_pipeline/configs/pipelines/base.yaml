@@ -159,11 +159,12 @@ stages:
 
     reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
     prompt_config: ++prompt_config=generic/general-boxed
-    tokens_to_generate: 80000
+    tokens_to_generate: ++inference.tokens_to_generate=60000
     code_tags: ""
     enable_code_execution: ""
     code_execution_limits: ""
     builtin_tools: ""
+    endpoint_type: ++inference.endpoint_type=text
 
     generation_kwargs:
       args:
@@ -184,8 +185,8 @@ stages:
         ${stages.generate_solutions.enable_code_execution}
         ${stages.generate_solutions.code_execution_limits}
         ++max_concurrent_requests=1024
-        ++inference.tokens_to_generate=${stages.generate_solutions.tokens_to_generate}
-        ++inference.endpoint_type=text
+        ${stages.generate_solutions.tokens_to_generate}
+        ${stages.generate_solutions.endpoint_type}
         ++inference.temperature=1.0
         ++inference.top_p=1.0
         ${stages.generate_solutions.reasoning_effort}

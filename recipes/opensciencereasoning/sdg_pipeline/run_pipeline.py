@@ -552,14 +552,14 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
         expname=f"{expname}_prepare_data",
         run_after=run_after,
     )
-    filename = "final_result" if with_metadata else "prepared_with_metadata"
+    filename = OUTPUT_FILE if with_metadata else "prepared_with_metadata"
 
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_metadata.py "
-            f"    --solutions_path '{output_dir}/{filename}.jsonl' "
+            f"    --solutions_path '{output_dir}/prepared.jsonl' "
             f"    --metadata_files {shlex.quote(json.dumps([input_file], ensure_ascii=False))} "
-            f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
+            f"    --output_file '{output_dir}/{filename}.jsonl' "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
@@ -572,7 +572,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
             ctx=wrap_arguments(
                 f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/remove_redundant_fields.py "
                 f"    --input_file '{output_dir}/{filename}.jsonl' "
-                f"    --output_file '{output_dir}/final_result.jsonl' "
+                f"    --output_file '{output_dir}/{OUTPUT_FILE}.jsonl' "
                 f"    --fields {shlex.quote(json.dumps(['input', 'output'], ensure_ascii=False))} "
             ),
             cluster=cluster,
