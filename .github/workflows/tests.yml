@@ -64,8 +64,7 @@ jobs:
           --tag ${NEMO_SKILLS_TAG} \
           --file dockerfiles/Dockerfile.nemo-skills \
           --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache \
-          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=max \
-          --load \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=min \
           .
 
         # Build sandbox-image with expected tag
@@ -77,8 +76,7 @@ jobs:
           --file dockerfiles/Dockerfile.sandbox \
           --build-arg GITHUB_CI=1 \
           --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache \
-          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache,mode=max \
-          --load \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache,mode=min \
           .
     - name: Run all tests
       env:
