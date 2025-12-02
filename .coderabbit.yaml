@@ -65,14 +65,7 @@ reviews:
   pre_merge_checks:
     # Custom Pre-merge Checks - Add unique checks to enforce your team's standards before merging a pull request. Each check must have a unique name (up to 50 characters) and clear instructions (up to 10000 characters). Use these to automatically verify coding, security, documentation, or business rules and maintain code quality.
     # Default: []
-    custom_checks:
-      - name: "Test Results for Major Changes"
-        mode: "warning"  # or "error" to block merges
-        instructions: |
-          If this PR contains major changes (such as new features, breaking changes, or significant refactoring), verify that the PR description includes test results or testing information.
-          If a change could affect numerics or convergence, the PR description should include information demonstrating that there is no regression.
-          If a change could affect performance, the PR description should include before-and-after performance numbers, as well as the configuration and context in which they apply.
-          Pass if test results are documented or if the changes are minor.
+    custom_checks: []
   auto_review:
     # Configuration for auto review
     # Default: {}
@@ -84,7 +77,7 @@ reviews:
     drafts: false
     # Base branches (other than the default branch) to review. Accepts regex patterns. Use '.*' to match all branches.
     # Default: []
-    base_branches: ["main", "r[0-9].*", "chtruong/*"] # current: []
+    base_branches: ["main", "chtruong/*"] # current: []
 # Configuration for knowledge base
 # Default: {}
 knowledge_base:
@@ -97,5 +90,4 @@ knowledge_base:
     filePatterns: # current: []
       # File Patterns - Specify files for your coding guideline documents in this section. CodeRabbit will scan these files to understand your team's standards and apply them during code reviews. Multiple files supported. File names are case-sensitive. Common files like: (**/.cursorrules, .github/copilot-instructions.md, .github/instructions/*.instructions.md, **/CLAUDE.md, **/GEMINI.md, **/.cursor/rules/*, **/.windsurfrules, **/.clinerules/*, **/.rules/*, **/AGENT.md, **/AGENTS.md) are included by default.
       # Default: []
-      - "**/CODING_GUIDELINES.md"
-      - "**/.cursor/rules/*"
+      - "CONTRIBUTING.md"
