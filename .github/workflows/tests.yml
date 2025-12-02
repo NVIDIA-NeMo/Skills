@@ -20,6 +20,16 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v5
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_PAT }}
+
     - name: Free up disk space
       run: |
         # Remove unnecessary files on macOS
@@ -42,10 +52,34 @@ jobs:
         pip cache purge || true
     - name: Build Images
       run: |
-        # these tags need to match the ones in tests/gpu-tests/test-local.yaml
-        docker build -t nemo-skills-sandbox-image -f dockerfiles/Dockerfile.sandbox --build-arg GITHUB_CI=1 .
-        docker system prune -f
-        docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
+        # Calculate image tags that match what Python code expects
+        # Python generates: locally-built-{sanitized_path}:{sha256_hash[:12]}
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+        # Build nemo-skills-image with expected tag
+        NEMO_SKILLS_HASH=$(sha256sum dockerfiles/Dockerfile.nemo-skills | cut -d' ' -f1 | cut -c1-12)
+        NEMO_SKILLS_TAG="locally-built-dockerfiles-dockerfile-nemo-skills:${NEMO_SKILLS_HASH}"
+        docker buildx build \
+          --tag nemo-skills-image \
+          --tag ${NEMO_SKILLS_TAG} \
+          --file dockerfiles/Dockerfile.nemo-skills \
+          --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=min \
+          --load \
+          .
+
+        # Build sandbox-image with expected tag
+        SANDBOX_HASH=$(sha256sum dockerfiles/Dockerfile.sandbox | cut -d' ' -f1 | cut -c1-12)
+        SANDBOX_TAG="locally-built-dockerfiles-dockerfile-sandbox:${SANDBOX_HASH}"
+        docker buildx build \
+          --tag nemo-skills-sandbox-image \
+          --tag ${SANDBOX_TAG} \
+          --file dockerfiles/Dockerfile.sandbox \
+          --build-arg GITHUB_CI=1 \
+          --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache,mode=min \
+          --load \
+          .
     - name: Run all tests
       env:
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
