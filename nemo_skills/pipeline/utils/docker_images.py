@@ -60,6 +60,21 @@ def _build_local_docker_image(dockerfile_spec: str) -> str:
     image_ref = f"{image_name}:{digest}"
     context_dir = _REPO_ROOT
 
+    # Check if image already exists (e.g., pre-built in CI)
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image_ref],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            LOG.info("Docker image %s already exists, skipping build", image_ref)
+            return image_ref
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Docker is required to build images from dockerfile specifications, but it was not found in PATH."
+        )
+
     LOG.info("Building Docker image %s from %s (context: %s)", image_ref, dockerfile_path, context_dir)
     try:
         subprocess.run(
