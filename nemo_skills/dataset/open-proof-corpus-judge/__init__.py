@@ -15,3 +15,6 @@
 DATASET_GROUP = "math"
 METRICS_TYPE = "answer-judgement"
 GENERATION_ARGS = "++prompt_config=judge/math-proof-judge ++generation_key=judgement"
+
+# This is a judge-only dataset (judges proofs directly)
+JUDGE_PIPELINE_ARGS = {}
