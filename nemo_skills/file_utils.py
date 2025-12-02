@@ -42,7 +42,6 @@ def _make_w_io_base(f, mode: str):
         f: A file path or an IOBase object.
         mode: Mode for opening the file (default is write mode).
     """
-    print("This is a test")
     if not isinstance(f, io.IOBase):
         f_dirname = os.path.dirname(f)
         if f_dirname != "":
