@@ -15,7 +15,9 @@
 bs4
 click < 8.2.0  # https://github.com/ai-dynamo/dynamo/issues/1039
 datasets<4  # lcb problem with datasets 4.0.0
+# ddgs # Needed for BFCLv4 - currently cannot be installed directly due to lepton obsolete httpx version in use
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f
+faiss-cpu # Needed for BFCLv4
 fire
 
 # needed local code execution server for persistent sessions
@@ -35,10 +37,11 @@ nemo_run @ git+https://github.com/NVIDIA-NeMo/Run
 numpy
 openai
 pyyaml
-rank_bm25
+rank_bm25 # Needed for BFCLv4
 requests
 sacrebleu
 scikit-learn
+sentence_transformers # Needed for BFCLv4 
 sympy
 tqdm
 transformers

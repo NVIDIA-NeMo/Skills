@@ -281,6 +281,7 @@ async def test_few_shots(code_begin, code_end, code_output_begin, code_output_en
 
 
 @pytest.mark.asyncio
+@pytest.mark.mathlib
 async def test_lean4_basic_code_execution():
     sandbox = _get_sandbox()
 
@@ -304,6 +305,7 @@ async def test_lean4_basic_code_execution():
 
 
 @pytest.mark.asyncio
+@pytest.mark.mathlib
 async def test_lean4_mathlib_code_execution():
     sandbox = _get_sandbox()
 
@@ -354,6 +356,7 @@ async def test_shell_code_execution():
 
 
 @pytest.mark.asyncio
+@pytest.mark.mathlib
 async def test_lean4_code_execution_failure():
     sandbox = _get_sandbox()
 
@@ -413,6 +416,7 @@ async def test_state_restoration():
 
 
 @pytest.mark.asyncio
+@pytest.mark.mathlib
 async def test_minif2f_deepseek_fewshots():
     sandbox = _get_sandbox()
 
@@ -470,6 +474,7 @@ async def test_ioi_eval_execution():
 
 
 @pytest.mark.asyncio
+@pytest.mark.mathlib
 async def test_math_to_lean4_fewshots():
     sandbox = _get_sandbox()
 

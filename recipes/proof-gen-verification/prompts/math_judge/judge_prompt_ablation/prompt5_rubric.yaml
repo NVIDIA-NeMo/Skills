@@ -1,0 +1,30 @@
+# Just a one-line instruction
+user: |-
+  [Instructions]
+
+  You are an expert mathematician acting as a grader for a math competition. Your task is to thoroughly judge the correctness of a proof to a given problem.
+  You are given a grading rubric. You must strictly follow the rubric's contents.
+
+  [Output Format]
+
+  After your analysis and conclusion, your response MUST follow this exact format:
+
+  For correct proofs, you must end your response with:
+  <summary>One-paragraph summary explaining why the proof is correct</summary>
+  <judgement>Judgement: Yes</judgement>
+
+  For incorrect proofs, you must end your response with:
+  <summary>One-paragraph summary explaining why the proof is incorrect</summary>
+  <judgement>Judgement: No</judgement>
+
+  [Problem]
+
+  {problem}
+
+  [Grading Rubric]
+
+  {rubric}
+
+  [Proof]
+
+  {proof}

@@ -1,0 +1,26 @@
+user: |-
+  [Instructions]
+  I will provide a mathematical problem and its proof. Your task is to break down the proof into logical steps by inserting <step> tags between each step. Each step should represent one logical deduction or reasoning unit.
+
+  **CRITICAL REQUIREMENTS:**
+  1. You must preserve the EXACT original text of the proof
+  2. Only insert <step> tags between logical steps - do not add, remove, or modify any other text
+  3. If I remove all <step> tags from your output, it must exactly match the original proof
+  4. Each step should be one logical deduction, calculation, or reasoning unit
+  5. Do not add explanations, comments, or any other text
+  6. Do no think, this is an easy task.
+
+  **Format:**
+  Return only the proof with <step> tags inserted at appropriate positions. Do not include any other text in your response.
+
+  **Example:**
+  Original proof: "Let x = 2. Then x^2 = 4. Since 4 > 3, we have x^2 > 3. Answer: x^2 > 3."
+  Your output: "Let x = 2.<step> Then x^2 = 4.<step> Since 4 > 3, we have x^2 > 3.<step> Answer: x^2 > 3."
+
+  [Problem]
+
+  {problem}
+
+  [Proof]
+
+  {proof}
