@@ -211,21 +211,25 @@ def run_input_case(task_args: dict, worker_id: int) -> dict:
 
     try:
         # 1. Create all necessary files locally (sandbox shares filesystem)
-        precompiled_dir = task_args.get("precompiled_dir")
         os.makedirs(unique_dir, exist_ok=True)
-        os.makedirs(os.path.join(unique_dir, "graders"), exist_ok=True)
-        # Copy precompiled assets into unique run directory
-        if precompiled_dir and os.path.isdir(precompiled_dir):
-            shutil.copytree(precompiled_dir, unique_dir, dirs_exist_ok=True)
-        # Write contestant solution
-        with open(os.path.join(unique_dir, "graders", f"{task_args['problem_id']}.cpp"), "w", encoding="utf-8") as f:
+        for filepath, content in task_args.get("run_files", []):
+            target_path = os.path.join(unique_dir, os.path.basename(filepath))
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        for fname in ("compile", "run"):
+            fpath = os.path.join(unique_dir, fname)
+            if os.path.exists(fpath):
+                os.chmod(fpath, 0o755)
+        # Write contestant solution into problem solution file
+        solution_path = os.path.join(unique_dir, f"{task_args['problem_id']}.cpp")
+        with open(solution_path, "w", encoding="utf-8") as f:
             f.write(task_args["generated_code"])
         # Prepare only input file (no ground-truth for input-only runs)
         with open(os.path.join(unique_dir, "input.txt"), "w", encoding="utf-8") as f:
             f.write(task_args["test_input"])
 
-        # 2. Compile only the problem solution (skip checker/grader recompilation)
-        compile_command = f"cd {unique_dir} && ./compile.sh"
+        # 2. Compile using run_files toolchain
+        compile_command = f"cd {unique_dir} && ./compile"
         sandbox = LocalSandbox()
         compile_result, _ = worker_loop.run_until_complete(
             sandbox.execute_code(compile_command, language="shell", timeout=120)
@@ -243,8 +247,8 @@ def run_input_case(task_args: dict, worker_id: int) -> dict:
         if not result["compile_success"]:
             return result
 
-        # 3. Run the code via user_run.sh (matches ICPC evaluator behavior)
-        run_command = f"cd {unique_dir} && ./user_run.sh"
+        # 3. Run the code using run_files runner
+        run_command = f"cd {unique_dir} && ./run < input.txt"
         run_result, _ = worker_loop.run_until_complete(
             sandbox.execute_code(run_command, language="shell", timeout=120, max_output_characters=1000000)
         )
@@ -370,9 +374,10 @@ class IOIEvaluator(BaseEvaluator):
         run_code = subtask_meta["run"]
         user_run_code = subtask_meta["user_run"]
         grader_files = subtask_meta["grader_files"]
+        run_files = subtask_meta.get("run_files", [])
 
         if pid not in self.precompiled_cache:
-            self.precompiled_cache[pid] = await asyncio.to_thread(
+            grader_dir = await asyncio.to_thread(
                 _precompile_grader,
                 pid,
                 grader_files,
@@ -381,7 +386,8 @@ class IOIEvaluator(BaseEvaluator):
                 user_run_code,
                 self.sandbox,
             )
-        pre_dir = self.precompiled_cache[pid]
+            self.precompiled_cache[pid] = {"grader": grader_dir}
+        pre_dir = self.precompiled_cache[pid]["grader"]
 
         subtask_state = {
             st: {
@@ -453,7 +459,7 @@ class IOIEvaluator(BaseEvaluator):
                         {
                             "generated_code": completion,
                             "problem_id": pid,
-                            "precompiled_dir": pre_dir,
+                            "run_files": run_files,
                             "test_input": test_data["content"],
                         }
                     )
