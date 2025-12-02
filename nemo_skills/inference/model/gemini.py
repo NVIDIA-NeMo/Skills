@@ -104,6 +104,7 @@ class GeminiModel(BaseModel):
                 "budget_tokens": -1,
                 "include_thoughts": True,
             }
+            params["allowed_openai_params"].append("thinking")
 
         params["reasoning_effort"] = reasoning_effort
 
