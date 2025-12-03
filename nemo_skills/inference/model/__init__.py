@@ -31,11 +31,12 @@ from .megatron import MegatronModel
 from .openai import OpenAIModel
 from .parallel_thinking import ParallelThinkingConfig, ParallelThinkingTask
 
+# Utilities
+from .sglang import SGLangModel
+
 # Tool Calling
 from .tool_call import ToolCallingWrapper
 from .tts_nim import TTSNIMModel
-
-# Utilities
 from .vllm import VLLMModel
 
 # Model implementations
@@ -49,7 +50,7 @@ models = {
     "azureopenai": AzureOpenAIModel,
     "gemini": GeminiModel,
     "vllm": VLLMModel,
-    "sglang": VLLMModel,
+    "sglang": SGLangModel,
     "tts_nim": TTSNIMModel,
     "asr_nim": ASRNIMModel,
 }
