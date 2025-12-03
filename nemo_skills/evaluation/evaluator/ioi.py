@@ -85,7 +85,7 @@ def init_worker():
 
 
 def _precompile_grader(
-    problem_name: str, grader_files, compile_code: str, run_code: str, user_run_code: str, sandbox: LocalSandbox
+    problem_name: str, grader_files, compile_code: str, run_code: str, sandbox: LocalSandbox
 ) -> str:
     """Precompile checker/grader for a problem once and return the directory path."""
     # Ensure sandbox belongs to this thread; if not, create a local one.
@@ -117,12 +117,6 @@ def _precompile_grader(
     with open(run_path, "w", encoding="utf-8") as f:
         f.write(run_code)
     os.chmod(run_path, 0o755)
-
-    # Write user_run.sh for input-only runs (required, mirrors ICPC behavior)
-    user_run_path = os.path.join(pre_dir, "user_run.sh")
-    with open(user_run_path, "w", encoding="utf-8") as f:
-        f.write(user_run_code)
-    os.chmod(user_run_path, 0o755)
 
     # Run compile.sh inside the sandbox (same filesystem)
     _sandbox_exec_sync(sandbox, f"cd {pre_dir} && ./compile.sh || true", language="shell", timeout=120)
@@ -372,7 +366,6 @@ class IOIEvaluator(BaseEvaluator):
         subtask_meta = problem_metadata[entry["subtask"]]
         compile_code = subtask_meta["compile"]
         run_code = subtask_meta["run"]
-        user_run_code = subtask_meta["user_run"]
         grader_files = subtask_meta["grader_files"]
         run_files = subtask_meta.get("run_files", [])
 
@@ -383,7 +376,6 @@ class IOIEvaluator(BaseEvaluator):
                 grader_files,
                 compile_code,
                 run_code,
-                user_run_code,
                 self.sandbox,
             )
             self.precompiled_cache[pid] = {"grader": grader_dir}
