@@ -23,6 +23,13 @@ from utils import require_env_var
 
 from tests.conftest import docker_rm
 
+# NOTE: Tool calling behavior is model-specific. Some models (e.g., Qwen) work with standard
+# tool call parsers without requiring `tool_choice: "auto"` in the request body, while others
+# (e.g., Kimi-K2) have non-standard tool_call_id formats that may require custom handling.
+# See: https://huggingface.co/moonshotai/Kimi-K2-Instruct/discussions/48
+# For models that require `tool_choice: "auto"`, use a custom model class via the `model_class`
+# parameter (e.g., ++server.model_class=nemo_skills.inference.model.sglang::SGLangModel).
+
 # Test prompts designed to strongly encourage tool use
 TEST_PROMPTS = [
     {"problem": "Use the python tool to calculate 7 * 8 + 15 and verify your result is correct."},
