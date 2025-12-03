@@ -77,6 +77,15 @@ COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.
 COPY dockerfiles/sandbox/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx.sh
 
+# Build network blocking library for sandboxed code execution
+# This library blocks IPv4/IPv6 sockets while allowing Unix domain sockets
+# Enabled by setting NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1 at container runtime
+# The startup script adds this to /etc/ld.so.preload (cannot be bypassed by user code)
+COPY dockerfiles/sandbox/block_network.c /tmp/block_network.c
+RUN gcc -shared -fPIC -o /usr/lib/libblock_network.so /tmp/block_network.c -ldl && \
+    rm /tmp/block_network.c && \
+    echo "Built libblock_network.so for network isolation"
+
 # Make scripts executable
 RUN chmod +x /start-with-nginx.sh
 

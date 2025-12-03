@@ -40,9 +40,38 @@ logging.basicConfig(
     format=f"[worker {worker_id}] %(asctime)s %(levelname)s: %(message)s",
 )
 
+# Network isolation configuration
+# When NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1, the startup script adds our blocking
+# library to /etc/ld.so.preload AFTER the API server starts. This ensures:
+# 1. API server can still accept connections (sockets created before preload)
+# 2. All user code execution (subprocesses, shell workers) has network blocked
+# 3. Cannot be bypassed by user code (ld.so.preload is system-enforced)
+BLOCK_NETWORK = os.getenv("NEMO_SKILLS_SANDBOX_BLOCK_NETWORK", "0") == "1"
+if BLOCK_NETWORK:
+    logging.info("Network blocking mode enabled")
+
 
 # Worker that runs inside the shell process and owns a TerminalInteractiveShell()
 def shell_worker(conn):
+    # Apply network blocking for IPython sessions if enabled
+    if BLOCK_NETWORK:
+        import socket as _socket
+
+        _original_socket = _socket.socket
+
+        class BlockedSocket(_socket.socket):
+            def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+                # Allow Unix domain sockets
+                if family in (_socket.AF_UNIX,):
+                    super().__init__(family, type, proto, fileno)
+                # Block IPv4/IPv6
+                elif family in (_socket.AF_INET, _socket.AF_INET6):
+                    raise OSError(101, "Network is unreachable (blocked by sandbox)")
+                else:
+                    super().__init__(family, type, proto, fileno)
+
+        _socket.socket = BlockedSocket
+
     shell = TerminalInteractiveShell()
     try:
         while True:
