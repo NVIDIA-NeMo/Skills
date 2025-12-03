@@ -71,6 +71,7 @@ def _run_tool_calling_test(server_type: str, server_args: str, output_dir: str):
 
         # Verify output exists and tool calls were made
         output_file = f"{output_dir}/output.jsonl"
+        print(f"\n=== Output file location: {output_file} ===")
         assert os.path.exists(output_file), f"Output file not found: {output_file}"
         assert os.path.exists(f"{output_file}.done"), "Done marker not found"
 
