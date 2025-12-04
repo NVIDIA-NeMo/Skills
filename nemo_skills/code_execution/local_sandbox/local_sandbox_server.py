@@ -86,7 +86,9 @@ def shell_worker(conn):
         class BlockedSocket(_socket_module.socket):
             def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
                 # Allow Unix domain sockets (needed for IPC)
-                if family in (_socket_module.AF_UNIX,):
+                # Check both AF_UNIX and AF_LOCAL for consistency with C implementation
+                af_local = getattr(_socket_module, "AF_LOCAL", _socket_module.AF_UNIX)
+                if family in (_socket_module.AF_UNIX, af_local):
                     super().__init__(family, type, proto, fileno)
                 # Block IPv4/IPv6
                 elif family in (_socket_module.AF_INET, _socket_module.AF_INET6):
