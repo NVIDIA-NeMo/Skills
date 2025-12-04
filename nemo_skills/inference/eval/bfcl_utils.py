@@ -33,6 +33,7 @@ import inspect
 import json
 import logging
 import re
+from pathlib import Path
 
 from nemo_skills.utils import get_logger_name
 
@@ -44,15 +45,23 @@ LOG = logging.getLogger(get_logger_name(__file__))
 # - https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/bfcl_eval/model_handler/utils.py
 
 
+BACKEND_PATH_PREFIX = "bfcl_eval.eval_checker.multi_turn_eval.func_source_code"
+
 CLASS_FILE_PATH_MAPPING = {
-    "GorillaFileSystem": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.gorilla_file_system",
-    "MathAPI": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.math_api",
-    "MessageAPI": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.message_api",
-    "TwitterAPI": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.posting_api",
-    "TicketAPI": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.ticket_api",
-    "TradingBot": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.trading_bot",
-    "TravelAPI": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.travel_booking",
-    "VehicleControlAPI": "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.vehicle_control",
+    "GorillaFileSystem": f"{BACKEND_PATH_PREFIX}.gorilla_file_system",
+    "MathAPI": f"{BACKEND_PATH_PREFIX}.math_api",
+    "MessageAPI": f"{BACKEND_PATH_PREFIX}.message_api",
+    "TwitterAPI": f"{BACKEND_PATH_PREFIX}.posting_api",
+    "TicketAPI": f"{BACKEND_PATH_PREFIX}.ticket_api",
+    "TradingBot": f"{BACKEND_PATH_PREFIX}.trading_bot",
+    "TravelAPI": f"{BACKEND_PATH_PREFIX}.travel_booking",
+    "VehicleControlAPI": f"{BACKEND_PATH_PREFIX}.vehicle_control",
+    # The following classes are not part of the multi-turn categories suite, but they share the same evaluation pipeline for simplicity
+    # WebSearchAPI agent is altered to use raw DuckDuckGo instead of SerpAPI
+    "WebSearchAPI": "nemo_skills.inference.eval.bfcl_web_search",
+    "MemoryAPI_kv": f"{BACKEND_PATH_PREFIX}.memory_kv",
+    "MemoryAPI_vector": f"{BACKEND_PATH_PREFIX}.memory_vector",
+    "MemoryAPI_rec_sum": f"{BACKEND_PATH_PREFIX}.memory_rec_sum",
 }
 
 # These classes are stateless and do not require any initial configuration
@@ -104,15 +113,21 @@ def execute_multi_turn_func_call(
     for class_name in involved_classes:
         module_name = CLASS_FILE_PATH_MAPPING[class_name]
         # TODO: Handler the model name issue from handler more elegantly
-        instance_name = f"sample_model_{test_entry_id}_{class_name.lower()}_instance"
+        instance_name = f"sample_model_{test_entry_id}_{class_name}_instance"
+        instance_name = re.sub(r"[-./]", "_", instance_name)
         if instance_name not in globals():
             module = importlib.import_module(module_name)
             class_ = getattr(module, class_name)
             class_instance = class_()
             if class_name not in STATELESS_CLASSES:
                 class_initial_config = initial_config.get(class_name, {})
+                class_initial_config_to_load = copy.deepcopy(class_initial_config)
+                if "model_result_dir" in class_initial_config_to_load:
+                    class_initial_config_to_load["model_result_dir"] = Path(
+                        class_initial_config_to_load["model_result_dir"]
+                    )
                 # Deep copy the initial configuration to avoid mutation issues
-                class_instance._load_scenario(copy.deepcopy(class_initial_config), long_context=long_context)
+                class_instance._load_scenario(class_initial_config_to_load, long_context=long_context)
             globals()[instance_name] = class_instance
         # This happens in subsequent turns
         else:

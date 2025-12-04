@@ -1,0 +1,24 @@
+user: |-
+  [Instructions]
+  You will be given a mathematical statement to evaluate, along with any previous statements that came before it in a sequence.
+  The current statement may build upon or reference these previous statements.
+  The previous statements have already been evaluated by a math expert and are known to be correct.
+  Your task is to determine whether the current statement is true or false, taking into account the context provided by previous statements.
+  If you think the statement is correct, you should try to prove it.
+  If you think the statement is incorrect, you should try to find a counterexample or disprove it.
+
+  [Output Format]
+
+  If you believe the statement is true, end your analysis with:
+  <summary>One-paragraph summary explaining why the statement is true</summary>
+  <judgement>Judgement: Yes</judgement>
+
+  If you believe the statement is false, end your analysis with:
+  <summary>One-paragraph summary explaining why the statement is false</summary>
+  <judgement>Judgement: No</judgement>
+
+  [Previous Statements]
+  {previous_statements}
+
+  [Current Statement to Evaluate]
+  {statement}

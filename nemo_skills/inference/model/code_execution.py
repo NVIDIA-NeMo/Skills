@@ -66,6 +66,7 @@ class CodeExecutionWrapper:
         stream: bool = False,
         extra_body: dict = None,
         endpoint_type: EndpointType = None,
+        reasoning_effort: str | None = None,
     ):
         # Handle OpenAI-style dictionary prompts
         is_openai_format = not isinstance(prompt, str)
@@ -93,6 +94,7 @@ class CodeExecutionWrapper:
                 timeout=timeout,
                 max_code_executions=max_code_executions,
                 extra_body=extra_body,
+                reasoning_effort=reasoning_effort,
             )
 
         effective_max_code_executions = self.config.max_code_executions
@@ -122,6 +124,7 @@ class CodeExecutionWrapper:
             "stop_phrases": stop_phrases + [code_end],
             "timeout": timeout,
             "extra_body": extra_body,
+            "reasoning_effort": reasoning_effort,
         }
         session_id = None
         code_rounds_executed = 0
@@ -261,6 +264,7 @@ class CodeExecutionWrapper:
         stream: bool = False,
         extra_body: dict = None,
         endpoint_type: EndpointType = None,
+        reasoning_effort: str | None = None,
     ) -> list[dict]:
         """For any generation parameter you can specify a list of values that needs to match the number of prompts.
 
@@ -288,6 +292,7 @@ class CodeExecutionWrapper:
             "max_code_executions": max_code_executions,
             "stream": stream,
             "extra_body": extra_body,
+            "reasoning_effort": reasoning_effort,
         }
 
         request = {key: value for key, value in kwargs.items()}
@@ -321,6 +326,7 @@ class CodeExecutionWrapper:
         max_code_executions: int | None = None,
         extra_body: dict = None,
         endpoint_type: EndpointType = None,
+        reasoning_effort: str | None = None,
     ):
         """
         Helper method, that implements streaming generation.
@@ -347,6 +353,7 @@ class CodeExecutionWrapper:
             "tokens_to_generate": tokens_to_generate,
             "stream": True,
             "extra_body": extra_body,
+            "reasoning_effort": reasoning_effort,
         }
 
         current_full_prompt = copy.deepcopy(prompt)

@@ -1,0 +1,29 @@
+user: |-
+  [Instructions]
+  You are a senior mathematician. You are given a math problems, a proof and a list of {num_participants} judgements from different graders.
+  Each grader has graded the proof and provided a judgement. Each grader has provided a one-paragraph summary of their analysis, and a final judgement of whether the proof is correct or not.
+  Your task as a senior grader is to carefully analyze the summary from each grader and pick the best judgement from the list.
+
+  The following is the grading criteria given the the graders:
+  A proof should be considered correct even if it would earn 5+/7 points in a standard grading format. Examples of small penalties worth 1 point are if the proof:
+  - Makes a small computational mistake that can be easily fixed
+  - Misses an edge case which can be easily proven/disproven
+  - Skips over a step that follows without much reasoning or manual work
+  Depending on the severity and the context, you may also not penalise a given error. On the other hand, a proof should be marked as incorrect if:
+  - It marks a step as trivial, if it is not immediately obvious with little reasoning why this would be the case.
+  - It omits algebra-heavy computational steps, regardless of whether or not it has outlined the methodology. Skipping shorter computations should be permitted.
+  - Generalizes over a pattern without rigorously describing the pattern, or without proving any relevant properties.
+  - It cites a non-existing or unpopular source/Theorem, which cannot be immediately found from searching for it online. Thus, any theorems that can be immediately found and have a Wikipedia article are allowed.
+
+  [Format]
+  Your output must end with the following tags:
+  <meta_summary>One-paragraph summary of your analysis</meta_summary>
+  <best_judgement>Index</best_judgement>
+
+  The best_judgement tag MUST ONLY contain an integer between 1 and {num_participants} (inclusive).
+
+  [Problem]
+  {problem}
+
+  [Proof]
+  {proof}

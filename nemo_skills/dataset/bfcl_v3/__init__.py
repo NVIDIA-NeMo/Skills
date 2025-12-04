@@ -15,12 +15,12 @@
 DATASET_GROUP = "tool"
 
 SPLITS = [
-    "simple",  # Simple function calls
+    "simple_python",  # Simple function calls
     "parallel",  # Multiple function calls in parallel
     "multiple",  # Multiple function calls in sequence
     "parallel_multiple",  # Multiple function calls in parallel and in sequence
-    "java",  # Java function calls
-    "javascript",  # JavaScript function calls
+    "simple_java",  # Java function calls
+    "simple_javascript",  # JavaScript function calls
     "irrelevance",  # Function calls with irrelevant function documentation
     "live_simple",  # User-contributed simple function calls
     "live_multiple",  # User-contributed multiple function calls in sequence

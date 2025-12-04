@@ -1,0 +1,33 @@
+user: |-
+  [Instructions]
+  - You are helping with checking the correctness of a mathematical proof. I will provide a mathematical problem and its proof. Your task is to extract the key building blocks or claims made in the proof as a sequence of true/false statements.
+  - Each statement you identify will be sent to a math expert to verify whether it is TRUE or FALSE. The overall proof will be declared correct if and only if ALL statements are judged to be TRUE.
+  - Each statement must be SELF-CONTAINED in the sense that it does NOT depend on the original problem or proof text. However, statements CAN build upon and reference previous statements in the sequence.
+  - When a statement builds on a previous statement, you may reference it naturally (e.g., "Given that [previous claim], it follows that..."). The expert will see all previous statements for context.
+  - Each statement must include all necessary context, definitions, and assumptions needed to verify it - either by stating them explicitly OR by building on previous statements that established them.
+  - A statement may be a lemma-level claim
+  - Try to extract 1-10 critical statements from the proof. If the proof is long, only extract the most critical statements, especially if you think some part of the proof is not correct or doubtful.
+
+  For each statement, you need to:
+  1. Identify what key claim or logical step is being made
+  2. Extract all necessary context, definitions, and assumptions - either by including them in the statement or by building on previous statements
+  3. Format it as a true/false statement using: <statement>a true/false claim that may reference previous statements</statement>
+
+  [Output Format]
+  If the proof does not contain any mathematical content (such as refusing to prove the problem) output only: <judgement>Judgement: No</judgement>
+  Otherwise, return only a sequence of <statement>...</statement> blocks with no other text. Each statement should immediately follow the previous one.
+
+  **Example:**
+  Original problem: "Prove that there are infinitely many prime numbers."
+  Original proof: "Assume for contradiction that there are only finitely many prime numbers, which we denote by $p_1, p_2, \ldots, p_n$. Consider the number $N = p_1 p_2 \cdots p_n + 1$. If $N$ is prime, then it is a prime not in our original list, a contradiction. If $N$ is composite, then it must have a prime divisor $q$. This prime $q$ cannot equal any of $p_1, p_2, \ldots, p_n$, since dividing $N$ by any $p_i$ leaves a remainder of $1$. Therefore, our original assumption must be false and there must be infinitely many prime numbers."
+
+  Your output:
+  <statement>Let $p_1, p_2, \ldots, p_n$ be any finite list of primes with $n \ge 1$, and define $N = p_1 p_2 \cdots p_n$. Then for every $i$, $N+1 \equiv 1 \pmod{{p_i}}$, and no $p_i$ divides $N+1$.</statement>
+
+  [Problem]
+
+  {problem}
+
+  [Proof]
+
+  {proof}

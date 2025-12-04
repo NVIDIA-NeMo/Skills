@@ -14,6 +14,7 @@
 
 import dataclasses
 
+from nemo_skills.mcp.utils import locate
 from nemo_skills.utils import python_doc_to_cmd_help
 
 # NIM models (speech)
@@ -32,6 +33,7 @@ from .openai import OpenAIModel
 from .parallel_thinking import ParallelThinkingConfig, ParallelThinkingTask
 
 # Tool Calling
+from .sglang import SGLangModel
 from .tool_call import ToolCallingWrapper
 from .tts_nim import TTSNIMModel
 
@@ -49,19 +51,33 @@ models = {
     "azureopenai": AzureOpenAIModel,
     "gemini": GeminiModel,
     "vllm": VLLMModel,
-    "sglang": VLLMModel,
+    "sglang": SGLangModel,
     "tts_nim": TTSNIMModel,
     "asr_nim": ASRNIMModel,
 }
 
 
-def get_model(server_type, tokenizer=None, **kwargs):
-    """A helper function to make it easier to set server through cmd."""
-    model_class = models[server_type.lower()]
+def get_model(server_type, tokenizer=None, model_class: str | None = None, **kwargs):
+    """A helper function to make it easier to set server through cmd.
+
+    Args:
+        server_type: The type of server (vllm, sglang, openai, etc.)
+        tokenizer: Optional tokenizer path
+        model_class: Optional custom model class path to override the default for server_type.
+            Supports dotted module paths (e.g., 'nemo_skills.inference.model.sglang.SGLangModel')
+            or double-colon syntax (e.g., 'nemo_skills.inference.model.sglang::SGLangModel').
+            Useful for models with specific requirements (e.g., Kimi-K2 requires tool_choice='auto').
+        **kwargs: Additional arguments passed to the model constructor
+    """
+    if model_class is not None:
+        loaded_class = locate(model_class)
+    else:
+        loaded_class = models[server_type.lower()]
+
     if server_type == "trtllm" and kwargs.get("enable_soft_fail", False):
         if kwargs.get("context_limit_retry_strategy", None) is not None:
             raise ValueError("context_limit_retry_strategy is not supported for trtllm")
-    return model_class(tokenizer=tokenizer, **kwargs)
+    return loaded_class(tokenizer=tokenizer, **kwargs)
 
 
 def get_code_execution_model(server_type, tokenizer=None, code_execution=None, sandbox=None, **kwargs):
