@@ -110,10 +110,9 @@ class ProverTask(GenerationTask):
     def setup_llm(self):
         if self.cfg.code_execution:
             raise ValueError("Code execution is not supported for prover")
-        sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
-        server = deepcopy(self.cfg.server)
-        server["server_type"] = "autoformalization"
-        llm = get_model(**server, sandbox=sandbox)
+        # Store sandbox directly on self for Lean4 code execution
+        self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
+        llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
         return llm
 
     def setup_prompt(self):
@@ -300,7 +299,7 @@ class ProverTask(GenerationTask):
                 feedback = self.refine_prompt.fill({"error_message": last_error_message})
                 results_dict["feedback"] = feedback[0]["content"]
             else:
-                execution_result = await self.llm.sandbox.execute_lean4_code(
+                execution_result = await self.sandbox.execute_lean4_code(
                     full_code, timeout=600.0, max_output_characters=1000000
                 )
                 results_dict["execution_result"] = execution_result
