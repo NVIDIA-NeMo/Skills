@@ -31,7 +31,7 @@ import pytest
 from nemo_skills.code_execution.sandbox import LocalSandbox
 from nemo_skills.pipeline.utils.server import get_free_port
 
-SANDBOX_IMAGE = "locally-built-sandbox:latest"
+SANDBOX_IMAGE = "nemo-skills-sandbox-image:latest"
 
 
 @pytest.fixture(scope="module")
