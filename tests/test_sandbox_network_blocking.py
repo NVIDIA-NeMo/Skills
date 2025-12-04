@@ -23,8 +23,6 @@ Tests adversarial scenarios where an LLM might try to bypass network restriction
 - Subprocess with env={} to clear environment
 """
 
-import json
-import subprocess
 import time
 
 import docker
@@ -34,28 +32,6 @@ from nemo_skills.code_execution.sandbox import LocalSandbox
 from nemo_skills.pipeline.utils.server import get_free_port
 
 SANDBOX_IMAGE = "locally-built-sandbox:latest"
-
-
-def execute_in_sandbox(port: int, code: str, session_id: str = "test") -> dict:
-    """Execute code in sandbox using curl (avoids async client issues)."""
-    result = subprocess.run(
-        [
-            "curl",
-            "-s",
-            "-X",
-            "POST",
-            f"http://localhost:{port}/execute",
-            "-H",
-            "Content-Type: application/json",
-            "-H",
-            f"X-Session-ID: {session_id}",
-            "-d",
-            json.dumps({"generated_code": code, "timeout": 30, "language": "ipython"}),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    return json.loads(result.stdout)
 
 
 @pytest.fixture(scope="module")
@@ -104,49 +80,59 @@ def blocked_sandbox():
 class TestNetworkBlocking:
     """Adversarial tests for network blocking."""
 
-    def test_direct_socket_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_direct_socket_blocked(self, blocked_sandbox):
         """LLM tries: socket.socket(AF_INET, SOCK_STREAM)"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import socket
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 print("NETWORK_ALLOWED")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "NETWORK_ALLOWED" not in result.get("stdout", ""), "Direct socket should be blocked"
 
-    def test_underscore_socket_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_underscore_socket_blocked(self, blocked_sandbox):
         """LLM tries: import _socket to bypass high-level socket module"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import _socket
 s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
 print("BYPASS_WORKED")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "BYPASS_WORKED" not in result.get("stdout", ""), "_socket bypass should be blocked"
 
-    def test_requests_library_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_requests_library_blocked(self, blocked_sandbox):
         """LLM tries: requests.get() to fetch URL"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import requests
 r = requests.get("https://www.example.com", timeout=5)
 print(f"STATUS: {r.status_code}")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "STATUS:" not in result.get("stdout", ""), "requests library should be blocked"
         assert "Network is unreachable" in result.get("stdout", ""), "Should show blocking error"
 
-    def test_urllib_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_urllib_blocked(self, blocked_sandbox):
         """LLM tries: urllib to fetch URL"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 from urllib.request import urlopen
 r = urlopen("https://www.example.com", timeout=5)
 print(f"STATUS: {r.status}")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "STATUS:" not in result.get("stdout", ""), "urllib should be blocked"
 
-    def test_subprocess_curl_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_subprocess_curl_blocked(self, blocked_sandbox):
         """LLM tries: subprocess.run(['curl', url]) to bypass Python"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import subprocess
 result = subprocess.run(["curl", "-s", "--max-time", "5", "https://www.example.com"], capture_output=True)
@@ -155,12 +141,14 @@ if result.returncode == 0:
 else:
     print(f"CURL_FAILED: {result.returncode}")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "CURL_WORKED" not in result.get("stdout", ""), "subprocess curl should be blocked"
         assert "CURL_FAILED" in result.get("stdout", ""), "curl should fail with connection error"
 
-    def test_subprocess_wget_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_subprocess_wget_blocked(self, blocked_sandbox):
         """LLM tries: subprocess.run(['wget', url]) to bypass Python"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import subprocess
 result = subprocess.run(["wget", "-q", "-T", "5", "-O", "-", "https://www.example.com"], capture_output=True)
@@ -169,11 +157,13 @@ if result.returncode == 0:
 else:
     print(f"WGET_FAILED: {result.returncode}")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "WGET_WORKED" not in result.get("stdout", ""), "subprocess wget should be blocked"
 
-    def test_subprocess_env_clear_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_subprocess_env_clear_blocked(self, blocked_sandbox):
         """LLM tries: subprocess with env={} to clear LD_PRELOAD"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import subprocess
 code = 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); print("BYPASS_WORKED")'
@@ -183,12 +173,14 @@ if "BYPASS_WORKED" in result.stdout:
 else:
     print("ENV_CLEAR_BLOCKED")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "ENV_CLEAR_BYPASS_WORKED" not in result.get("stdout", ""), "env={} bypass should be blocked"
         assert "ENV_CLEAR_BLOCKED" in result.get("stdout", ""), "Should confirm blocking"
 
-    def test_subprocess_python_socket_blocked(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_subprocess_python_socket_blocked(self, blocked_sandbox):
         """LLM tries: spawn new python process to make socket"""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import subprocess
 code = 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); print("NEW_PYTHON_WORKED")'
@@ -198,11 +190,13 @@ if "NEW_PYTHON_WORKED" in result.stdout:
 else:
     print("SUBPROCESS_PYTHON_BLOCKED")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         assert "SUBPROCESS_PYTHON_WORKED" not in result.get("stdout", ""), "subprocess python should be blocked"
 
-    def test_local_operations_still_work(self, blocked_sandbox):
+    @pytest.mark.asyncio
+    async def test_local_operations_still_work(self, blocked_sandbox):
         """Verify math, file I/O, etc. still work with blocking enabled."""
+        sandbox = LocalSandbox(host="127.0.0.1", port=str(blocked_sandbox))
         code = """
 import math
 import tempfile
@@ -227,7 +221,7 @@ s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.close()
 print("UNIX_SOCKET: OK")
 """
-        result = execute_in_sandbox(blocked_sandbox, code)
+        result, _ = await sandbox.execute_code(code, language="ipython")
         stdout = result.get("stdout", "")
         assert "MATH: 12.57" in stdout, "Math should work"
         assert "FILE_IO: test_data" in stdout, "File I/O should work"
