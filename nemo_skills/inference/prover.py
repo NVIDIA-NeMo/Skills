@@ -23,6 +23,7 @@ from transformers import AutoTokenizer
 
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
 from nemo_skills.inference.model import get_model, server_params
+from nemo_skills.inference.model.base import EndpointType
 from nemo_skills.prompt.utils import get_prompt
 from nemo_skills.utils import (
     get_help_message,
@@ -147,7 +148,7 @@ class ProverTask(GenerationTask):
             self.nemotron_refine_prompt = get_prompt(self.cfg.nemotron_refinement_prompt_config)
 
     # with adaptive reasoning
-    async def _generate_single_completion(self, prompt: list[str], **kwargs):
+    async def _generate_single_completion(self, prompt: str, **kwargs):
         if is_dataclass(self.cfg.inference):
             inference_params = asdict(self.cfg.inference)
         else:
@@ -159,6 +160,8 @@ class ProverTask(GenerationTask):
             **inference_params,
             **self.extra_generate_params,
         }
+        # Override endpoint_type to text since we already applied the chat template
+        generation_params["endpoint_type"] = EndpointType.text
         for key, value in kwargs.items():
             generation_params[key] = value
         generation = await self.llm.generate_async(**generation_params)
@@ -305,53 +308,46 @@ class ProverTask(GenerationTask):
                 feedback = self.refine_prompt.fill({"error_message": last_error_message})
                 results_dict["feedback"] = feedback[0]["content"]
             else:
-                execution_result = await self.sandbox.execute_lean4_code(
-                    full_code, timeout=600.0, max_output_characters=1000000
+                # execute_code returns (result_dict, session_id) tuple
+                execution_result, _ = await self.sandbox.execute_code(
+                    full_code, language="lean4", timeout=600.0, max_output_characters=1000000
                 )
                 results_dict["execution_result"] = execution_result
-                if isinstance(execution_result, dict):
-                    if (
-                        execution_result["process_status"] == "completed"
-                        and "sorry" not in execution_result["stdout"]
-                        and "failed" not in execution_result["stdout"]
-                    ):
-                        results_dict["success"] = True
-                    else:
-                        error_list = parse_error(execution_result["stdout"])
-                        error_message = get_error_str(full_code, error_list, error_thres=True)
-                        # checking for sorry
-                        if execution_result["process_status"] == "completed":
-                            stdout = execution_result["stdout"].lower()
-                            stderr = execution_result["stderr"].lower()
-                            combined = stdout + "\n" + stderr
-                            if re.search(r"\bsorry\b", combined) is not None:
-                                error_message += "\nThe code contains 'sorry', which means the proof is incomplete."
-                        if error_message.strip() == "":  # something in stderr indicating failure
-                            error_message = execution_result["stderr"][:1000]
-                            if len(execution_result["stderr"]) > 1000:
-                                error_message += "... (truncated)"
-
-                        last_error_message = (
-                            "We use <error></error> to signal the position of the error. \n" + error_message
-                        )
-                        feedback = self.refine_prompt.fill({"error_message": last_error_message})
-                        results_dict["feedback"] = feedback[0]["content"]
-                        results_dict["success"] = False
-                # This is only used for the case when the code execution timed out.
-                elif isinstance(execution_result, str):
-                    execution_result = {
-                        "process_status": "failed",
-                        "stderr": "",
-                        "stdout": execution_result,
-                    }
+                # Handle timeout (now indicated by process_status in the dict)
+                if execution_result.get("process_status") == "timeout":
                     results_dict["success"] = False
                     last_error_message = (
                         "The compilation timed out. There might be a heavy computation in the code or an endless loop."
                     )
                     feedback = self.refine_prompt.fill({"error_message": last_error_message})
                     results_dict["feedback"] = feedback[0]["content"]
+                elif (
+                    execution_result["process_status"] == "completed"
+                    and "sorry" not in execution_result["stdout"]
+                    and "failed" not in execution_result["stdout"]
+                ):
+                    results_dict["success"] = True
                 else:
-                    raise ValueError(f"Unknown execution result type: {type(execution_result)}")
+                    error_list = parse_error(execution_result["stdout"])
+                    error_message = get_error_str(full_code, error_list, error_thres=True)
+                    # checking for sorry
+                    if execution_result["process_status"] == "completed":
+                        stdout = execution_result["stdout"].lower()
+                        stderr = execution_result["stderr"].lower()
+                        combined = stdout + "\n" + stderr
+                        if re.search(r"\bsorry\b", combined) is not None:
+                            error_message += "\nThe code contains 'sorry', which means the proof is incomplete."
+                    if error_message.strip() == "":  # something in stderr indicating failure
+                        error_message = execution_result["stderr"][:1000]
+                        if len(execution_result["stderr"]) > 1000:
+                            error_message += "... (truncated)"
+
+                    last_error_message = (
+                        "We use <error></error> to signal the position of the error. \n" + error_message
+                    )
+                    feedback = self.refine_prompt.fill({"error_message": last_error_message})
+                    results_dict["feedback"] = feedback[0]["content"]
+                    results_dict["success"] = False
 
             results_dict_list.append(results_dict)
 
