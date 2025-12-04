@@ -37,8 +37,12 @@ RUN cd /opt/gorilla/berkeley-function-call-leaderboard && pip install --no-cache
 RUN apt remove -y python3-blinker
 
 # ifbench
-RUN git clone https://github.com/allenai/IFBench.git /opt/benchmarks/IFBench --depth=1
-RUN cd /opt/benchmarks/IFBench && pip install -r requirements.txt
+ARG IFBENCH_COMMIT=c6767a19bd82ac0536cab950f2f8f6bcc6fabe7c
+ARG IFBENCH_REPO=https://github.com/allenai/IFBench.git
+ARG IFBENCH_DIR=/opt/benchmarks/IFBench
+RUN git init "$IFBENCH_DIR" && cd "$IFBENCH_DIR" && git remote add origin "$IFBENCH_REPO" && \
+    git fetch --depth 1 origin "${IFBENCH_COMMIT}" && git reset --hard FETCH_HEAD
+RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 
 # removing on-the-fly installation in ifbench to avoid conflicts from parallel jobs
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
