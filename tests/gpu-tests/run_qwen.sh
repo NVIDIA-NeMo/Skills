@@ -17,6 +17,9 @@ pytest tests/gpu-tests/test_nemo_evaluator.py -s -x
 export NEMO_SKILLS_TEST_HF_MODEL=Qwen/Qwen3-4B-Instruct-2507
 pytest tests/gpu-tests/test_contamination.py -s -x
 
+# Tool calling tests (uses same Qwen3-4B-Instruct model)
+pytest tests/gpu-tests/test_tool_calling.py -s -x
+
 # TODO: Add fast context retry tests
 # pytest tests/gpu-tests/test_context_retry.py -s -x
 
