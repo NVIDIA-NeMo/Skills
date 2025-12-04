@@ -286,6 +286,20 @@ echo "All workers are ready!"
 echo "Starting nginx on port $NGINX_PORT..."
 nginx
 
+# Enable network blocking for user code execution if requested
+# This MUST happen AFTER nginx/uwsgi start (they need sockets for API)
+# Using /etc/ld.so.preload ensures this cannot be bypassed by user code
+BLOCK_NETWORK_LIB="/usr/lib/libblock_network.so"
+if [ "${NEMO_SKILLS_SANDBOX_BLOCK_NETWORK:-0}" = "1" ]; then
+    if [ -f "$BLOCK_NETWORK_LIB" ]; then
+        echo "$BLOCK_NETWORK_LIB" > /etc/ld.so.preload
+        echo "Network blocking ENABLED: All new processes will have network blocked"
+        echo "  (API server sockets created before this, so API still works)"
+    else
+        echo "WARNING: Network blocking requested but $BLOCK_NETWORK_LIB not found"
+    fi
+fi
+
 echo "=== Multi-worker deployment ready ==="
 echo "Nginx load balancer: http://localhost:$NGINX_PORT"
 echo "Session affinity: enabled (based on JSON session_id)"
