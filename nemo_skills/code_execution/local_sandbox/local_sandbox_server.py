@@ -54,23 +54,26 @@ if BLOCK_NETWORK:
 # Worker that runs inside the shell process and owns a TerminalInteractiveShell()
 def shell_worker(conn):
     # Apply network blocking for IPython sessions if enabled
+    # This patches both the high-level socket module AND the low-level _socket C extension
+    # to prevent bypasses via `import _socket; _socket.socket(...)`
     if BLOCK_NETWORK:
-        import socket as _socket
+        import _socket as _socket_module  # Low-level C extension
+        import socket as socket_module  # High-level module
 
-        _original_socket = _socket.socket
-
-        class BlockedSocket(_socket.socket):
+        class BlockedSocket(_socket_module.socket):
             def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
                 # Allow Unix domain sockets
-                if family in (_socket.AF_UNIX,):
+                if family in (_socket_module.AF_UNIX,):
                     super().__init__(family, type, proto, fileno)
                 # Block IPv4/IPv6
-                elif family in (_socket.AF_INET, _socket.AF_INET6):
+                elif family in (_socket_module.AF_INET, _socket_module.AF_INET6):
                     raise OSError(101, "Network is unreachable (blocked by sandbox)")
                 else:
                     super().__init__(family, type, proto, fileno)
 
-        _socket.socket = BlockedSocket
+        # Patch BOTH modules to prevent bypass attempts
+        _socket_module.socket = BlockedSocket  # Blocks: import _socket; _socket.socket()
+        socket_module.socket = BlockedSocket  # Blocks: import socket; socket.socket()
 
     shell = TerminalInteractiveShell()
     try:

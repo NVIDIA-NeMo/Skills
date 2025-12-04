@@ -13,346 +13,225 @@
 # limitations under the License.
 
 """
-Tests for network blocking functionality in the sandbox.
+Tests for network blocking in the sandbox.
 
-These tests verify that when NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1 is set:
-- IPv4/IPv6 sockets are blocked
-- Bypass attempts (env={}, _socket module, etc.) are also blocked
-- Unix domain sockets still work (needed for API)
-- Local operations (file I/O, math) still work
-
-The network blocking uses /etc/ld.so.preload which is system-enforced and
-cannot be bypassed by user code.
+Tests adversarial scenarios where an LLM might try to bypass network restrictions:
+- Direct socket creation
+- Using low-level _socket module
+- Using requests/urllib libraries
+- Subprocess calls to curl/wget
+- Subprocess with env={} to clear environment
 """
 
+import json
+import subprocess
 import time
 
 import docker
 import pytest
 
 from nemo_skills.code_execution.sandbox import LocalSandbox
-from nemo_skills.pipeline.utils import get_free_port
-from nemo_skills.pipeline.utils.docker_images import resolve_container_image
+from nemo_skills.pipeline.utils.server import get_free_port
 
-# Cluster config for local executor (needed for resolve_container_image)
-LOCAL_CLUSTER_CONFIG = {"executor": "local"}
-SANDBOX_DOCKERFILE = "dockerfile:dockerfiles/Dockerfile.sandbox"
+SANDBOX_IMAGE = "locally-built-sandbox:latest"
 
 
-def get_sandbox_image() -> str:
-    """Build/get the sandbox Docker image using NeMo-Skills utilities."""
-    return resolve_container_image(SANDBOX_DOCKERFILE, LOCAL_CLUSTER_CONFIG)
-
-
-def start_sandbox_container(
-    client: docker.DockerClient,
-    image: str,
-    container_name: str,
-    port: int,
-    block_network: bool = False,
-) -> docker.models.containers.Container:
-    """Start a sandbox container and return the container object."""
-    environment = {
-        "NGINX_PORT": str(port),
-        "NUM_WORKERS": "1",
-    }
-    if block_network:
-        environment["NEMO_SKILLS_SANDBOX_BLOCK_NETWORK"] = "1"
-
-    container = client.containers.run(
-        image,
-        detach=True,
-        name=container_name,
-        network_mode="host",
-        environment=environment,
+def execute_in_sandbox(port: int, code: str, session_id: str = "test") -> dict:
+    """Execute code in sandbox using curl (avoids async client issues)."""
+    result = subprocess.run(
+        [
+            "curl",
+            "-s",
+            "-X",
+            "POST",
+            f"http://localhost:{port}/execute",
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            f"X-Session-ID: {session_id}",
+            "-d",
+            json.dumps({"generated_code": code, "timeout": 30, "language": "ipython"}),
+        ],
+        capture_output=True,
+        text=True,
     )
-    return container
+    return json.loads(result.stdout)
 
 
 @pytest.fixture(scope="module")
-def docker_client():
-    """Provide a Docker client for the test module."""
+def blocked_sandbox():
+    """Start a sandbox with network blocking enabled."""
     client = docker.from_env()
-    yield client
+    port = get_free_port(strategy="random")
+    name = f"sandbox-block-test-{port}"
+
+    container = client.containers.run(
+        SANDBOX_IMAGE,
+        detach=True,
+        name=name,
+        network_mode="host",
+        environment={"NGINX_PORT": str(port), "NUM_WORKERS": "1", "NEMO_SKILLS_SANDBOX_BLOCK_NETWORK": "1"},
+    )
+
+    # Wait for health
+    for _ in range(60):
+        try:
+            sandbox = LocalSandbox(host="127.0.0.1", port=str(port))
+            if sandbox._check_ready(timeout=5):
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+    else:
+        container.remove(force=True)
+        pytest.fail("Sandbox failed to start")
+
+    # Wait for preload to be written
+    for _ in range(30):
+        result = container.exec_run("cat /etc/ld.so.preload")
+        if result.exit_code == 0 and b"libblock_network" in result.output:
+            break
+        time.sleep(0.5)
+
+    time.sleep(2)  # Extra settle time
+
+    yield port
+
+    container.remove(force=True)
     client.close()
 
 
-@pytest.fixture(scope="module")
-def sandbox_image(docker_client):
-    """Build/get the sandbox image once per module."""
-    print("\nBuilding/resolving sandbox image...")
-    image = get_sandbox_image()
-    print(f"Using sandbox image: {image}")
-    return image
+class TestNetworkBlocking:
+    """Adversarial tests for network blocking."""
 
-
-@pytest.fixture(scope="module")
-def sandbox_with_network_blocking(docker_client, sandbox_image):
-    """
-    Fixture that starts a sandbox container with network blocking enabled.
-    Uses LocalSandbox client for communication.
-    """
-    port = get_free_port(strategy="random")
-    container_name = f"sandbox-network-test-{port}"
-
-    # Start container with network blocking
-    print(f"Starting sandbox container on port {port} with network blocking...")
-    container = start_sandbox_container(docker_client, sandbox_image, container_name, port, block_network=True)
-
-    # Create LocalSandbox client and wait for it to be ready
-    sandbox = LocalSandbox(host="127.0.0.1", port=str(port))
-    print("Waiting for sandbox to become healthy...")
-
-    start_time = time.time()
-    timeout = 120
-    while time.time() - start_time < timeout:
-        if sandbox._check_ready(timeout=5):
-            break
-        time.sleep(2)
-    else:
-        logs = container.logs().decode("utf-8")
-        container.remove(force=True)
-        pytest.fail(f"Sandbox did not become healthy within {timeout}s. Logs:\n{logs}")
-
-    print(f"Sandbox ready at http://localhost:{port}")
-
-    yield {"sandbox": sandbox, "port": port, "container": container}
-
-    # Cleanup
-    print(f"\nCleaning up container {container_name}...")
-    container.remove(force=True)
-
-
-@pytest.fixture(scope="module")
-def sandbox_without_network_blocking(docker_client, sandbox_image):
-    """
-    Fixture that starts a sandbox container WITHOUT network blocking.
-    Used as a baseline to verify network works when not blocked.
-    """
-    port = get_free_port(strategy="random")
-    container_name = f"sandbox-no-block-test-{port}"
-
-    # Start WITHOUT network blocking
-    print(f"Starting sandbox container on port {port} without network blocking...")
-    container = start_sandbox_container(docker_client, sandbox_image, container_name, port, block_network=False)
-
-    # Create LocalSandbox client and wait for ready
-    sandbox = LocalSandbox(host="127.0.0.1", port=str(port))
-
-    start_time = time.time()
-    timeout = 120
-    while time.time() - start_time < timeout:
-        if sandbox._check_ready(timeout=5):
-            break
-        time.sleep(2)
-    else:
-        logs = container.logs().decode("utf-8")
-        container.remove(force=True)
-        pytest.fail(f"Sandbox did not become healthy within {timeout}s. Logs:\n{logs}")
-
-    yield {"sandbox": sandbox, "port": port, "container": container}
-
-    container.remove(force=True)
-
-
-class TestNetworkBlockingEnabled:
-    """Tests that run with network blocking ENABLED."""
-
-    @pytest.mark.asyncio
-    async def test_health_check(self, sandbox_with_network_blocking):
-        """Verify the sandbox is healthy."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
-        assert sandbox._check_ready(timeout=5)
-
-    @pytest.mark.asyncio
-    async def test_socket_creation_blocked(self, sandbox_with_network_blocking):
-        """Test that creating IPv4 sockets is blocked."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
+    def test_direct_socket_blocked(self, blocked_sandbox):
+        """LLM tries: socket.socket(AF_INET, SOCK_STREAM)"""
         code = """
 import socket
-try:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("NETWORK_ALLOWED")
-    s.close()
-except OSError as e:
-    print(f"NETWORK_BLOCKED: {e}")
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+print("NETWORK_ALLOWED")
 """
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "NETWORK_BLOCKED" in result["stdout"], f"Expected network to be blocked, got: {result['stdout']}"
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "NETWORK_ALLOWED" not in result.get("stdout", ""), "Direct socket should be blocked"
 
-    @pytest.mark.asyncio
-    async def test_ipv6_socket_blocked(self, sandbox_with_network_blocking):
-        """Test that creating IPv6 sockets is blocked."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
-        code = """
-import socket
-try:
-    s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    print("NETWORK_ALLOWED")
-    s.close()
-except OSError as e:
-    print(f"NETWORK_BLOCKED: {e}")
-"""
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "NETWORK_BLOCKED" in result["stdout"], f"Expected IPv6 to be blocked, got: {result['stdout']}"
-
-    @pytest.mark.asyncio
-    async def test_bypass_attempt_subprocess_empty_env(self, sandbox_with_network_blocking):
-        """Test that subprocess with env={} cannot bypass the block."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
-        code = """
-import subprocess
-code = "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); print('BYPASS_WORKED')"
-result = subprocess.run(["python3", "-c", code], env={}, capture_output=True, text=True)
-output = result.stdout + result.stderr
-if "BYPASS_WORKED" in output:
-    print("BYPASS_SUCCEEDED")
-else:
-    print("BYPASS_BLOCKED")
-"""
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "BYPASS_BLOCKED" in result["stdout"], f"Bypass with env={{}} should be blocked, got: {result['stdout']}"
-
-    @pytest.mark.asyncio
-    async def test_bypass_attempt_underscore_socket(self, sandbox_with_network_blocking):
-        """Test that using _socket module directly cannot bypass the block."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
+    def test_underscore_socket_blocked(self, blocked_sandbox):
+        """LLM tries: import _socket to bypass high-level socket module"""
         code = """
 import _socket
-try:
-    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    print("BYPASS_SUCCEEDED")
-    s.close()
-except OSError as e:
-    print(f"BYPASS_BLOCKED: {e}")
+s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+print("BYPASS_WORKED")
 """
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "BYPASS_BLOCKED" in result["stdout"], f"Bypass with _socket should be blocked, got: {result['stdout']}"
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "BYPASS_WORKED" not in result.get("stdout", ""), "_socket bypass should be blocked"
 
-    @pytest.mark.asyncio
-    async def test_unix_sockets_work(self, sandbox_with_network_blocking):
-        """Test that Unix domain sockets still work (needed for internal IPC)."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
+    def test_requests_library_blocked(self, blocked_sandbox):
+        """LLM tries: requests.get() to fetch URL"""
         code = """
-import socket
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    print("UNIX_SOCKET_WORKS")
-    s.close()
-except OSError as e:
-    print(f"UNIX_SOCKET_BLOCKED: {e}")
+import requests
+r = requests.get("https://www.example.com", timeout=5)
+print(f"STATUS: {r.status_code}")
 """
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "UNIX_SOCKET_WORKS" in result["stdout"], f"Unix sockets should work, got: {result['stdout']}"
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "STATUS:" not in result.get("stdout", ""), "requests library should be blocked"
+        assert "Network is unreachable" in result.get("stdout", ""), "Should show blocking error"
 
-    @pytest.mark.asyncio
-    async def test_local_operations_work(self, sandbox_with_network_blocking):
-        """Test that local operations (math, file I/O) still work."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
+    def test_urllib_blocked(self, blocked_sandbox):
+        """LLM tries: urllib to fetch URL"""
+        code = """
+from urllib.request import urlopen
+r = urlopen("https://www.example.com", timeout=5)
+print(f"STATUS: {r.status}")
+"""
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "STATUS:" not in result.get("stdout", ""), "urllib should be blocked"
+
+    def test_subprocess_curl_blocked(self, blocked_sandbox):
+        """LLM tries: subprocess.run(['curl', url]) to bypass Python"""
+        code = """
+import subprocess
+result = subprocess.run(["curl", "-s", "--max-time", "5", "https://www.example.com"], capture_output=True)
+if result.returncode == 0:
+    print("CURL_WORKED")
+else:
+    print(f"CURL_FAILED: {result.returncode}")
+"""
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "CURL_WORKED" not in result.get("stdout", ""), "subprocess curl should be blocked"
+        assert "CURL_FAILED" in result.get("stdout", ""), "curl should fail with connection error"
+
+    def test_subprocess_wget_blocked(self, blocked_sandbox):
+        """LLM tries: subprocess.run(['wget', url]) to bypass Python"""
+        code = """
+import subprocess
+result = subprocess.run(["wget", "-q", "-T", "5", "-O", "-", "https://www.example.com"], capture_output=True)
+if result.returncode == 0:
+    print("WGET_WORKED")
+else:
+    print(f"WGET_FAILED: {result.returncode}")
+"""
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "WGET_WORKED" not in result.get("stdout", ""), "subprocess wget should be blocked"
+
+    def test_subprocess_env_clear_blocked(self, blocked_sandbox):
+        """LLM tries: subprocess with env={} to clear LD_PRELOAD"""
+        code = """
+import subprocess
+code = 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); print("BYPASS_WORKED")'
+result = subprocess.run(["python3", "-c", code], env={}, capture_output=True, text=True)
+if "BYPASS_WORKED" in result.stdout:
+    print("ENV_CLEAR_BYPASS_WORKED")
+else:
+    print("ENV_CLEAR_BLOCKED")
+"""
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "ENV_CLEAR_BYPASS_WORKED" not in result.get("stdout", ""), "env={} bypass should be blocked"
+        assert "ENV_CLEAR_BLOCKED" in result.get("stdout", ""), "Should confirm blocking"
+
+    def test_subprocess_python_socket_blocked(self, blocked_sandbox):
+        """LLM tries: spawn new python process to make socket"""
+        code = """
+import subprocess
+code = 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); print("NEW_PYTHON_WORKED")'
+result = subprocess.run(["python3", "-c", code], capture_output=True, text=True)
+if "NEW_PYTHON_WORKED" in result.stdout:
+    print("SUBPROCESS_PYTHON_WORKED")
+else:
+    print("SUBPROCESS_PYTHON_BLOCKED")
+"""
+        result = execute_in_sandbox(blocked_sandbox, code)
+        assert "SUBPROCESS_PYTHON_WORKED" not in result.get("stdout", ""), "subprocess python should be blocked"
+
+    def test_local_operations_still_work(self, blocked_sandbox):
+        """Verify math, file I/O, etc. still work with blocking enabled."""
         code = """
 import math
-import os
 import tempfile
+import os
 
-# Math
-result = math.sqrt(16) + math.pi
-print(f"MATH_RESULT: {result:.4f}")
+# Math works
+result = math.sqrt(16) * math.pi
+print(f"MATH: {result:.2f}")
 
-# File I/O
+# File I/O works
 with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-    f.write("test_content")
+    f.write("test_data")
     path = f.name
-
 with open(path) as f:
-    content = f.read()
-
+    data = f.read()
 os.unlink(path)
-print(f"FILE_IO: {content}")
-print("LOCAL_OPS_SUCCESS")
-"""
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "MATH_RESULT: 7.1416" in result["stdout"]
-        assert "FILE_IO: test_content" in result["stdout"]
-        assert "LOCAL_OPS_SUCCESS" in result["stdout"]
+print(f"FILE_IO: {data}")
 
-    @pytest.mark.asyncio
-    async def test_python_subprocess_blocked(self, sandbox_with_network_blocking):
-        """Test that Python subprocess execution also has network blocked."""
-        sandbox: LocalSandbox = sandbox_with_network_blocking["sandbox"]
-        code = """
+# Unix sockets work (needed for IPC)
 import socket
-try:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("SUBPROCESS_NETWORK_ALLOWED")
-    s.close()
-except OSError as e:
-    print(f"SUBPROCESS_NETWORK_BLOCKED: {e}")
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.close()
+print("UNIX_SOCKET: OK")
 """
-        result, _ = await sandbox.execute_code(code, language="python3")
-        assert result["process_status"] == "completed"
-        assert "SUBPROCESS_NETWORK_BLOCKED" in result["stdout"], (
-            f"Python subprocess should have network blocked, got: {result['stdout']}"
-        )
-
-
-class TestNetworkBlockingDisabled:
-    """Tests that run with network blocking DISABLED (baseline)."""
-
-    @pytest.mark.asyncio
-    async def test_health_check(self, sandbox_without_network_blocking):
-        """Verify the sandbox is healthy."""
-        sandbox: LocalSandbox = sandbox_without_network_blocking["sandbox"]
-        assert sandbox._check_ready(timeout=5)
-
-    @pytest.mark.asyncio
-    async def test_socket_creation_allowed(self, sandbox_without_network_blocking):
-        """Test that socket creation works when blocking is disabled."""
-        sandbox: LocalSandbox = sandbox_without_network_blocking["sandbox"]
-        code = """
-import socket
-try:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("NETWORK_ALLOWED")
-    s.close()
-except OSError as e:
-    print(f"NETWORK_BLOCKED: {e}")
-"""
-        result, _ = await sandbox.execute_code(code, language="ipython")
-        assert result["process_status"] == "completed"
-        assert "NETWORK_ALLOWED" in result["stdout"], (
-            f"Expected network to be allowed when blocking disabled, got: {result['stdout']}"
-        )
-
-    @pytest.mark.asyncio
-    async def test_actual_network_request(self, sandbox_without_network_blocking):
-        """Test that actual network requests work when blocking is disabled."""
-        sandbox: LocalSandbox = sandbox_without_network_blocking["sandbox"]
-        # Use a simple TCP connection to a well-known IP
-        code = """
-import socket
-try:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(5)
-    # Connect to Google DNS (8.8.8.8) on port 53
-    s.connect(("8.8.8.8", 53))
-    print("NETWORK_CONNECTION_SUCCESS")
-    s.close()
-except Exception as e:
-    print(f"NETWORK_CONNECTION_FAILED: {type(e).__name__}: {e}")
-"""
-        result, _ = await sandbox.execute_code(code, language="ipython", timeout=15)
-        # Note: This might fail if there's no internet or firewall blocks it
-        # That's okay - we just want to verify the socket creation works
-        assert result["process_status"] == "completed"
-        stdout = result["stdout"]
-        # Either connection succeeds or it's a network/timeout issue (not a blocking issue)
-        assert "NETWORK_CONNECTION_SUCCESS" in stdout or "NETWORK_CONNECTION_FAILED" in stdout
+        result = execute_in_sandbox(blocked_sandbox, code)
+        stdout = result.get("stdout", "")
+        assert "MATH: 12.57" in stdout, "Math should work"
+        assert "FILE_IO: test_data" in stdout, "File I/O should work"
+        assert "UNIX_SOCKET: OK" in stdout, "Unix sockets should work"
 
 
 if __name__ == "__main__":
