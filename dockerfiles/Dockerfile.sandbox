@@ -77,6 +77,38 @@ COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.
 COPY dockerfiles/sandbox/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx.sh
 
+# =============================================================================
+# Network Blocking for Sandboxed Code Execution (Defense in Depth)
+# =============================================================================
+# When NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1 is set, we use TWO layers of protection:
+#
+# LAYER 1: libblock_network.so (this library, via /etc/ld.so.preload)
+#   - Intercepts socket() syscalls at the C library level
+#   - Blocks any NEW PROCESS that exec()'s (curl, wget, python3 subprocess, etc.)
+#   - System-enforced by the dynamic linker - user code CANNOT bypass it
+#   - Limitation: Doesn't affect forked processes (no exec = no linker = no preload)
+#
+# LAYER 2: Python socket patch (in local_sandbox_server.py shell_worker)
+#   - Patches socket.socket and _socket.socket at Python level
+#   - Blocks code running in the IPython shell_worker (which is forked, not exec'd)
+#   - Limitation: Only works for Python code in the same process
+#
+# WHY BOTH ARE NEEDED:
+#   | Attack Vector                              | Python Patch | ld.so.preload |
+#   |--------------------------------------------|--------------|---------------|
+#   | socket.socket() in IPython                 |  Blocked     |    (forked)   |
+#   | import _socket; _socket.socket() in IPython|  Blocked     |    (forked)   |
+#   | subprocess.run(["curl", url])              |  Can't help  |    Blocked    |
+#   | subprocess.run(["python3",...], env={})    |  Can't help  |    Blocked    |
+#   | requests.get() in IPython                  |  Blocked     |    (forked)   |
+#
+# Neither layer alone is sufficient - together they cover different adversarial scenarios.
+# =============================================================================
+COPY dockerfiles/sandbox/block_network.c /tmp/block_network.c
+RUN gcc -shared -fPIC -o /usr/lib/libblock_network.so /tmp/block_network.c -ldl && \
+    rm /tmp/block_network.c && \
+    echo "Built libblock_network.so for network isolation"
+
 # Make scripts executable
 RUN chmod +x /start-with-nginx.sh
 
