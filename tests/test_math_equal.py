@@ -34,6 +34,8 @@ from nemo_skills.evaluation.math_grader import math_equal
         ("185", "185\\"),
         ("185\\", "185\\"),
         (".185", "0.185"),
+        ("016", "16"),  # Leading zeros handled by math_verify
+        ("007", "7"),  # Multiple leading zeros handled by math_verify
         ("\\frac {1}{2}", 0.5),
         ("17\\text{ any text}", "17"),
         ("\$10", "10"),
