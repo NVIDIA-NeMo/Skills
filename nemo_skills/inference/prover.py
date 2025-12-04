@@ -19,6 +19,7 @@ from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 
 import hydra
+from transformers import AutoTokenizer
 
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
 from nemo_skills.inference.model import get_model, server_params
@@ -98,6 +99,11 @@ class ProverTask(GenerationTask):
             cfg: GenerateSolutionsConfig object with the configuration parameters or subclass.
         """
         super().__init__(cfg)
+
+        # Initialize tokenizer for chat template application
+        tokenizer_path = self.cfg.tokenizer or self.cfg.server.get("model")
+        self.hf_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+
         if self.cfg.refinement:
             self.setup_refine_prompt()
 
@@ -222,11 +228,11 @@ class ProverTask(GenerationTask):
                 prepared_conversation = self._transform_for_nemotron_refinement(last_proof_attempt, last_error_message)
             else:
                 prepared_conversation = prompt_turn_list
-            prefix_tokens = self.llm.tokenizer.apply_chat_template(
+            prefix_tokens = self.hf_tokenizer.apply_chat_template(
                 prepared_conversation, tokenize=True, add_generation_prompt=True
             )
             num_tokens_prefix = len(prefix_tokens)
-            prefix = self.llm.tokenizer.apply_chat_template(
+            prefix = self.hf_tokenizer.apply_chat_template(
                 prepared_conversation, tokenize=False, add_generation_prompt=True
             )
             # We need to check if the prefix is too long, if it is, we need to break the loop
