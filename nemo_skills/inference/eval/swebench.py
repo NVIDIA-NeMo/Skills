@@ -246,6 +246,10 @@ class SweBenchGenerationTask(GenerationTask):
                 "mkdir -p /root/tmux && "
                 "curl -Lf https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
                 "chmod 777 /root/tmux/tmux && "
+                # download jq
+                "mkdir -p /root/jq && "
+                "curl -Lf https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64 -o /root/jq/jq && "
+                "chmod 777 /root/jq/jq && "
                 # clone the openhands repo
                 "rm -rf /root/OpenHands && "
                 f"git clone {self.cfg.agent_framework_repo} /root/OpenHands && "
@@ -531,13 +535,16 @@ class SweBenchGenerationTask(GenerationTask):
             "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
             "    exit 1; "
             "fi && "
-            # copy installed repo, uv & tmux dirs from /root_mount
+            # copy installed repo, uv, tmux & jq dirs from /root_mount
             "cp -r /root_mount/OpenHands /root && "
             "cp -r /root_mount/uv /root && "
             "cp -r /root_mount/tmux /root && "
+            "cp -r /root_mount/jq /root && "
             "cd /root/OpenHands && "
-            # add poetry & tmux to PATH
-            "export PATH=/root/uv/tool-bin:/root/tmux:$PATH && "
+            # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
+            "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
+            "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
+            "ln -sf /root/jq/jq /usr/local/bin/jq && "
             # enable tmux appimage to run without fusermount
             # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
             "export APPIMAGE_EXTRACT_AND_RUN=1 && "
