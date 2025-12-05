@@ -18,11 +18,43 @@ from importlib import import_module
 from pathlib import Path
 
 import pytest
-from dataset_utils import get_preparable_datasets
 from utils import require_env_var
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 from tests.conftest import docker_rm
+
+# Datasets excluded from test_aaa_prepare_and_eval_all_datasets
+# These don't support max_samples, require explicit parameters, or are very heavy to prepare
+EXCLUDED_DATASETS = {
+    "__pycache__",
+    "ruler",
+    "bigcodebench",
+    "livecodebench",
+    "livebench_coding",
+    "livecodebench-pro",
+    "livecodebench-cpp",
+    "ioi24",
+    "ioi25",
+    "bfcl_v3",
+    "bfcl_v4",
+    "swe-bench",
+    "aai",
+    "human-eval",
+    "human-eval-infilling",
+    "mbpp",
+    "mmau-pro",
+    "aalcr",  # Has tokenization mismatch issues
+}
+
+
+def get_preparable_datasets():
+    """Get list of datasets that can be prepared for testing."""
+    datasets_dir = Path(__file__).absolute().parents[2] / "nemo_skills" / "dataset"
+    return sorted(
+        dataset.name
+        for dataset in datasets_dir.iterdir()
+        if dataset.is_dir() and (dataset / "prepare.py").exists() and dataset.name not in EXCLUDED_DATASETS
+    )
 
 
 # Run this test first to catch data prep failures early.
