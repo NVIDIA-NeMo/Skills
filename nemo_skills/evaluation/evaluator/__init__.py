@@ -21,13 +21,8 @@ from nemo_skills.evaluation.evaluator.code import (
     CodeExecEvaluator,
     eval_bigcodebench,
     eval_evalplus,
-<<<<<<< HEAD
     eval_human_eval_infilling,
     eval_livebench_coding,
-=======
-    eval_livebench_coding,
-    eval_livecodebench,
->>>>>>> 0b6e9d4b (Evaluation on LiveBench-Coding (#821))
     eval_livecodebench_pro,
 )
 from nemo_skills.evaluation.evaluator.icpc import ICPCEvaluator
