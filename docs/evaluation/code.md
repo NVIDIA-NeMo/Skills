@@ -340,16 +340,11 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 
 ### bigcodebench
 
-<<<<<<< HEAD
 - Benchmark is defined in [`nemo_skills/dataset/bigcodebench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/bigcodebench/__init__.py)
-=======
-- Benchmark is defined in [`nemo_skills/dataset/bigcodebench/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/bigcodebench/__init__.py)
->>>>>>> 0b6e9d4b (Evaluation on LiveBench-Coding (#821))
 - Original benchmark source is [here](https://github.com/bigcode-project/bigcodebench).
 
 ### livebench-coding
 
-<<<<<<< HEAD
 - Benchmark is defined in [`nemo_skills/dataset/livebench-coding/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/livebench-coding/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/livebench/coding).
 
@@ -357,7 +352,3 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 
 - Benchmark is defined in [`nemo_skills/dataset/human-eval-infilling/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/human-eval-infilling/__init__.py)
 - Original benchmark source is [here](https://github.com/openai/human-eval-infilling).
-=======
-- Benchmark is defined in [`nemo_skills/dataset/livebench-coding/__init__.py`](https://github.com/NVIDIA/NeMo-Skills/blob/main/nemo_skills/dataset/livebench-coding/__init__.py)
-- Original benchmark source is [here](https://huggingface.co/datasets/livebench/coding).
->>>>>>> 0b6e9d4b (Evaluation on LiveBench-Coding (#821))
