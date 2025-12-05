@@ -44,15 +44,6 @@ jobs:
       run: |
         cd ${{ github.run_id }}
         docker build -t nemo-skills-image -f dockerfiles/Dockerfile.nemo-skills .
-    - name: Prepare all datasets (fail-fast check)
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      run: |
-        cd ${{ github.run_id }}
-        # Get dataset list from the same source as test_prepare_and_eval_all_datasets
-        DATASETS=$(python tests/gpu-tests/dataset_utils.py)
-        echo "Preparing datasets: $DATASETS"
-        ns prepare_data $DATASETS --cluster test-local --config_dir $(pwd)/tests/gpu-tests
     - name: Run GPU tests
       timeout-minutes: 240
       env:
