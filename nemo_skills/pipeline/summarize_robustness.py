@@ -17,8 +17,6 @@ import json
 import logging
 import os
 import tempfile
-from collections import defaultdict
-from itertools import combinations
 from pathlib import Path
 from typing import List, Optional
 
@@ -58,7 +56,7 @@ def get_metrics(prediction_files: List[str]) -> List[float] | List[float]:
     per_file_metrics = []
     no_answer = []
     for pred_file in prediction_files:
-        metrics_calculator = ComputeMetrics(benchmark="custom", metric_type="math", max_samples=-1)
+        metrics_calculator = ComputeMetrics(benchmark=Path(pred_file).parent.name, max_samples=-1)
         metrics_calculator.calculator = metrics_calculator.get_metrics_calculator()
 
         with open(pred_file, "rt", encoding="utf-8") as f:
@@ -66,58 +64,16 @@ def get_metrics(prediction_files: List[str]) -> List[float] | List[float]:
                 data = read_predictions([line], idx, [f])
                 metrics_calculator.calculator.update(data)
         metrics = metrics_calculator.calculator.get_metrics()
-        per_file_metrics.append(metrics["pass@1"]["symbolic_correct"])
-        no_answer.append(metrics["pass@1"]["no_answer"])
+        for acc_key in ["judge_correct", "symbolic_correct", "accuracy"]:
+            if acc_key in metrics["pass@1"]:
+                per_file_metrics.append(metrics["pass@1"][acc_key])
+                break
+        else:
+            LOG.warning(f"Could not find accuracy metric in {pred_file}, setting to -1.")
+            per_file_metrics.append(-1)
+        no_answer.append(metrics["pass@1"].get("no_answer", -1))
 
     return per_file_metrics, no_answer
-
-
-def calculate_similarity(answer1: str | None, answer2: str | None) -> float:
-    if answer1 is None and answer2 is None:
-        return 0
-    return 1 if answer1 == answer2 else 0
-
-
-def calculate_consistency_rate(input_files: List[str]) -> float:
-    """Calculate the consistency rate across multiple input files.
-    Metric proposed in https://arxiv.org/abs/2403.14221
-
-    Args:
-        input_files: List of file paths containing predictions
-
-    Returns:
-        float: Average consistency rate as a percentage (0-100)
-
-    For each datapoint, collect all predictions, and
-    calculate similarity between all possible pairs of predictions.
-    The consistency rate is the number of pairs of equivalent prediction pairs
-    divided by the total number of prediction pairs (N choose 2).
-
-    Example:
-        If datapoint i has predictions [A, A, C] across 3 files, it will
-        compare pairs (A,A), (A, C) and (A, C) and consistency rate will be 1/3 = 33.33%.
-
-    """
-    per_idx_preds = defaultdict(list)
-    for inp_f in input_files:
-        with open(inp_f, "rt", encoding="utf-8") as f:
-            for idx, line in enumerate(f):
-                data = read_predictions([line], idx, [f])
-                per_idx_preds[idx].append(data[0]["predicted_answer"])
-    responses = per_idx_preds.values()
-    total_similarity = 0
-    total_combinations = 0
-
-    for response_set in responses:
-        if len(response_set) < 2:
-            continue
-        for answer1, answer2 in combinations(response_set, 2):
-            total_similarity += calculate_similarity(answer1, answer2)
-            total_combinations += 1
-
-    if total_combinations == 0:
-        return 100.0
-    return round(total_similarity / total_combinations * 100, 2)
 
 
 @app.command()
@@ -168,7 +124,6 @@ def summarize_robustness(
 
     Calculates the following both per benchmark across prompts and per prompt across random seeds:
         - Statistical metrics: min, max, average, standard deviation
-        - Consistency Rate (CR): Agreement between different model runs
         - No-answer rate: Proportion of questions without answers
         - Cross-prompt standard deviation of averages
 
@@ -216,8 +171,10 @@ def summarize_robustness(
     if benchmarks_paths:
         # Ascertain that the benchmarks_paths are valid
         for benchmark_path in benchmarks_paths:
-            # Valid benchmark_path should contain output*jsonl files
-            if len(glob.glob(f"{benchmark_path}/**/output*jsonl", recursive=True)) == 0:
+            # Valid benchmark_path should contain output*jsonl files excluding output.jsonl and chunked files
+            pred_files = glob.glob(f"{benchmark_path}/**/eval-results/*/output*jsonl", recursive=True)
+            pred_files = [f for f in pred_files if Path(f).name != "output.jsonl" and "_chunk_" not in Path(f).name]
+            if len(pred_files) == 0:
                 raise ValueError(f"The benchmark directory {benchmark_path} lacks output*jsonl files.")
     else:
         print(f"No benchmarks found in {results_dir}")
@@ -227,15 +184,13 @@ def summarize_robustness(
     print("Calculating robustness metrics for benchmarks found:", benchmarks_paths)
     for benchmark_path in sorted(benchmarks_paths):  # sorting to ensure consistent order
         benchmark = str(Path(benchmark_path).name)
-        if not Path(benchmark_path).is_dir():
-            continue
-
         metrics_to_print[benchmark] = dict()
         # calculate metrics per prompt
         all_eval_metrics = []
         for prompt_dir in sorted(glob.glob(f"{benchmark_path}/*")):
             prompt_name = str(Path(prompt_dir).name)
-            input_files = glob.glob(f"{prompt_dir}/**/output-rs*.jsonl", recursive=True)
+            input_files = glob.glob(f"{prompt_dir}/**/eval-results/*/output-rs*.jsonl", recursive=True)
+            input_files = [f for f in input_files if Path(f).name != "output.jsonl" and "_chunk_" not in Path(f).name]
             if not input_files:
                 print("No input files found for prompt", prompt_dir)
                 continue
@@ -249,9 +204,6 @@ def summarize_robustness(
                 "num_seeds": len(per_file_metrics),
             }
             all_eval_metrics.extend(per_file_metrics)
-            # calculate consistency rate per prompt
-            consistency_rate = calculate_consistency_rate(input_files)
-            metrics_to_print[benchmark][prompt_name]["CR"] = consistency_rate
 
         # calculate metrics across all prompts and seeds
         metrics_to_print[benchmark]["aggregated"] = {
@@ -262,16 +214,13 @@ def summarize_robustness(
             "num_runs": len(all_eval_metrics),
         }
 
-        input_files = glob.glob(f"{benchmark_path}/**/output-rs*.jsonl", recursive=True)
-        consistency_rate = calculate_consistency_rate(input_files)
-        metrics_to_print[benchmark]["aggregated"]["CR"] = consistency_rate
-
     # calculate the std of prompt averages
     for benchmark, metrics in metrics_to_print.items():
         prompt_avgs = [m["avg"] for k, m in metrics.items() if k != "aggregated"]
-        metrics_to_print[benchmark]["aggregated"]["prompt_sensitivity"] = np.std(prompt_avgs)
+        prompt_std = np.std(prompt_avgs)
+        metrics_to_print[benchmark]["aggregated"]["prompt_sensitivity"] = prompt_std
 
-    header_fields = ["min", "max", "avg", "std", "CR", "prompt_sensitivity"]
+    header_fields = ["min", "max", "avg", "std", "prompt_sensitivity"]
     header = f"{'dataset':<20} | "
     header += " | ".join(f"{stat}".center(7) for stat in header_fields)
     print(header)
@@ -279,14 +228,15 @@ def summarize_robustness(
     # Print aggregated stats
     for benchmark in metrics_to_print.keys():
         bench_runs = f"{benchmark}@{metrics_to_print[benchmark]['aggregated']['num_runs']}"
-        row = f"{bench_runs:<20} | " + " | ".join(
-            f"{metrics_to_print[benchmark]['aggregated'][stat]:.2f}".center(7) for stat in header_fields
-        )
-        print(row)
+        row = f"{bench_runs:<20} | "
+        for stat in header_fields:
+            value = metrics_to_print[benchmark]["aggregated"][stat]
+            row += f"{value:.2f}".center(max(len(stat), 7)) + " | "
+        print(row[:-3])
     print("\n")
 
     # Print stats per prompt
-    header_fields = ["min", "max", "avg", "std", "CR", "no_answer"]
+    header_fields = ["min", "max", "avg", "std", "no_answer"]
     for benchmark, metrics in metrics_to_print.items():
         print(f" {benchmark} ".center(len(header), "-"))
         num_seeds = metrics["aggregated"]["num_runs"] // (len(metrics) - 1)  # excluding aggregated
