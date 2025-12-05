@@ -18,6 +18,7 @@ from importlib import import_module
 from pathlib import Path
 
 import pytest
+from dataset_utils import get_preparable_datasets
 from utils import require_env_var
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
@@ -220,34 +221,7 @@ def test_prepare_and_eval_all_datasets():
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     config_dir = Path(__file__).absolute().parent
-    datasets_dir = Path(__file__).absolute().parents[2] / "nemo_skills" / "dataset"
-    # not testing datasets that don't support max_samples, require explicit parameters or are very heavy to prepare
-    excluded_datasets = {
-        "__pycache__",
-        "ruler",
-        "bigcodebench",
-        "livecodebench",
-        "livebench_coding",
-        "livecodebench-pro",
-        "livecodebench-cpp",
-        "ioi24",
-        "ioi25",
-        "bfcl_v3",
-        "bfcl_v4",
-        "swe-bench",
-        "aai",
-        "human-eval",
-        "human-eval-infilling",
-        "mbpp",
-        "mmau-pro",
-        "aalcr",  # Has tokenization mismatch issues
-    }
-
-    dataset_names = sorted(
-        dataset.name
-        for dataset in datasets_dir.iterdir()
-        if dataset.is_dir() and (dataset / "prepare.py").exists() and dataset.name not in excluded_datasets
-    )
+    dataset_names = get_preparable_datasets()
 
     assert dataset_names, "No datasets found to prepare and evaluate"
 
