@@ -22,10 +22,10 @@ from pathlib import Path
 DEFAULT_SETTINGS = """
 DATASET_GROUP = "long-context"
 METRICS_TYPE = "{metrics_type}"
-EVAL_ARGS = "{eval_args}"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
-)
+    "{eval_args} "
+}
 """
 
 
