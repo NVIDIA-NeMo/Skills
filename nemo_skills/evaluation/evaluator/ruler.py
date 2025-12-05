@@ -67,7 +67,6 @@ def eval_ruler(cfg):
         "part": string_match_part_single,
     }
 
-<<<<<<< HEAD
     jsonl_file = eval_config.input_file
     with open(jsonl_file, "rt", encoding="utf-8") as fin:
         data = [json.loads(line) for line in fin]
@@ -83,18 +82,6 @@ def eval_ruler(cfg):
             fout.write(json.dumps(sample) + "\n")
 
     os.replace(jsonl_file + "-tmp", jsonl_file)
-=======
-    for file in unroll_files(cfg.input_files):
-        with open(file, "rt", encoding="utf-8") as fin:
-            data = [json.loads(line) for line in fin]
-        with open(file, "wt", encoding="utf-8") as fout:
-            for sample in tqdm(data):
-                parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
-                sample["is_correct"] = match_type_funcs[eval_config.match_type](
-                    sample["generation"], sample["expected_answer"]
-                )
-                sample["predicted_answer"] = parse_result
-                fout.write(json.dumps(sample) + "\n")
 
 
 def eval_ruler2(cfg):
@@ -176,15 +163,19 @@ def eval_ruler2(cfg):
         "2steps": string_match_2steps_single,
     }
 
-    for file in unroll_files(cfg.input_files):
-        with open(file, "rt", encoding="utf-8") as fin:
-            data = [json.loads(line) for line in fin]
-        with open(file, "wt", encoding="utf-8") as fout:
-            for sample in tqdm(data):
-                parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
-                sample["is_correct"] = match_type_funcs[eval_config.match_type](
-                    sample["generation"], sample["expected_answer"]
-                )
-                sample["predicted_answer"] = parse_result
-                fout.write(json.dumps(sample) + "\n")
->>>>>>> 2f7a3a33 (add initial ruler2)
+
+    jsonl_file = eval_config.input_file
+    with open(jsonl_file, "rt", encoding="utf-8") as fin:
+        data = [json.loads(line) for line in fin]
+        for sample in tqdm(data):
+            parse_result = parse_funcs[eval_config.parse_func](sample["generation"])
+            sample["is_correct"] = match_type_funcs[eval_config.match_type](
+                sample["generation"], sample["expected_answer"]
+            )
+            sample["predicted_answer"] = parse_result
+
+    with open(jsonl_file + "-tmp", "wt", encoding="utf-8") as fout:
+        for sample in data:
+            fout.write(json.dumps(sample) + "\n")
+
+    os.replace(jsonl_file + "-tmp", jsonl_file)
