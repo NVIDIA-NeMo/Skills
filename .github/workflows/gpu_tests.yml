@@ -52,7 +52,7 @@ jobs:
         # Get dataset list from the same source as test_prepare_and_eval_all_datasets
         DATASETS=$(python tests/gpu-tests/dataset_utils.py)
         echo "Preparing datasets: $DATASETS"
-        ns prepare_data $DATASETS --cluster test-local
+        ns prepare_data $DATASETS --cluster test-local --config_dir $(pwd)/tests/gpu-tests
     - name: Run GPU tests
       timeout-minutes: 240
       env:
