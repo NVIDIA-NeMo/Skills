@@ -25,7 +25,7 @@ METRICS_TYPE = "{metrics_type}"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
     "{eval_args} "
-}
+)
 """
 
 
