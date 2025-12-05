@@ -59,6 +59,7 @@ COPY pyproject.toml README.md /opt/NeMo-Skills/
 COPY requirements /opt/NeMo-Skills/requirements/
 # installing sdp in container only
 RUN pip install git+https://github.com/NVIDIA/NeMo-speech-data-processor@29b9b1ec0ceaf3ffa441c1d01297371b3f8e11d2
+ARG CACHEBUST=1
 RUN pip install --no-cache-dir -r /opt/NeMo-Skills/requirements/main.txt
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
