@@ -13,19 +13,31 @@
 # limitations under the License.
 
 import json
+import os
 from pathlib import Path
 
 from datasets import load_dataset
 
-if __name__ == "__main__":
-    data_dir = Path(__file__).absolute().parent
-    output_file = str(data_dir / "test.jsonl")
+DEFAULT_SPLITS = [
+    ("24q4", "quater_2024_10_12", 207),
+    ("25q1", "quater_2025_1_3", 166),
+    ("25q2", "quater_2025_4_6", 167),
+    ("25q3", "quater_2025_7_9", 144),
+]
 
-    dataset = load_dataset("anonymous1926/anonymous_dataset")
-    with open(output_file, "w") as f:
-        for split_name, split in dataset.items():
-            for row in split:
-                row["task_id"] = row.pop("problem_id")
-                row["question"] = row.pop("problem_statement")
-                row["split"] = split_name
-                f.write(json.dumps(row) + "\n")
+if __name__ == "__main__":
+    if not os.environ.get("HF_TOKEN"):
+        raise ValueError("HF_TOKEN environment variable required for LiveCodeBench-Pro download.")
+
+    data_dir = Path(__file__).absolute().parent
+    for tag, split, sample_size in DEFAULT_SPLITS:
+        dataset = load_dataset("QAQAQAQAQ/LiveCodeBench-Pro", split=split, token=os.environ["HF_TOKEN"])
+        assert len(dataset) == sample_size
+        output_file = str(data_dir / f"test_{tag}.jsonl")
+        with open(output_file, "w") as f:
+            for row in dataset:
+                output_record = dict()
+                output_record["task_id"] = row["problem_id"]
+                output_record["question"] = row["problem_statement"]
+                output_record["subset_for_metrics"] = row["difficulty"]
+                f.write(json.dumps(output_record) + "\n")
