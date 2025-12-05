@@ -27,10 +27,10 @@ DATASET_GROUP = "long-context"
 METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
-    "++inference.tokens_to_generate={tokens_to_generate} "
+    # "++inference.tokens_to_generate={tokens_to_generate} "
     # ruler is adding prefix for assistant response, so it has to go through completions api
-    "++start_assistant_response_key=generation "
-    "++inference.endpoint_type=text "
+    # "++start_assistant_response_key=generation "
+    # "++inference.endpoint_type=text "
     "++eval_type=ruler ++eval_config.match_type={match_type} "
 )
 """
@@ -48,10 +48,10 @@ def prepare_task_for_ns(task, data_dir, setup):
             original_entry = json.loads(line)
             new_entry = {
                 "index": original_entry["index"],
-                "question": original_entry["input"],
+                "question": original_entry["input"] + original_entry["answer_prefix"],
                 "expected_answer": original_entry["outputs"],
                 "length": original_entry["length"],
-                "generation": original_entry["answer_prefix"].strip(),
+                # "generation": original_entry["answer_prefix"].strip(),
             }
             fout.write(json.dumps(new_entry) + "\n")
 
@@ -60,7 +60,7 @@ def prepare_task_for_ns(task, data_dir, setup):
         init_file.write(
             DEFAULT_SETTINGS.format(
                 match_type=MATCH_TYPE[short_name],
-                tokens_to_generate=TOKENS_TO_GENERATE[short_name],
+                # tokens_to_generate=TOKENS_TO_GENERATE[short_name],
             )
         )
 
