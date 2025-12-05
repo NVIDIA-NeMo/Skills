@@ -16,7 +16,7 @@ executor: local
 
 containers:
   trtllm: nvcr.io/nvidia/tensorrt-llm/release:1.0.0
-  vllm: vllm/vllm-openai:v0.10.1.1
+  vllm: dockerfile:dockerfiles/Dockerfile.vllm
   sglang: lmsysorg/sglang:v0.5.4
   sandbox: dockerfile:dockerfiles/Dockerfile.sandbox
   nemo-skills: dockerfile:dockerfiles/Dockerfile.nemo-skills

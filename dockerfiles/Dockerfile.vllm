@@ -1,0 +1,2 @@
+FROM vllm/vllm-openai:v0.10.2
+RUN pip install "vllm[audio]"
