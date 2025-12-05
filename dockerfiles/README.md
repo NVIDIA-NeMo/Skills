@@ -36,4 +36,4 @@ We directly use official `lmsysorg/sglang:v0.5.4` image.
 
 ## Building vllm image
 
-We directly use official `vllm/vllm-openai:v0.10.2` image.
+We use official `vllm/vllm-openai:v0.10.2` image with the additional `vllm[audio]` dependencies.
