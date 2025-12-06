@@ -27,10 +27,6 @@ DATASET_GROUP = "long-context"
 METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
-    # "++inference.tokens_to_generate={tokens_to_generate} "
-    # ruler is adding prefix for assistant response, so it has to go through completions api
-    # "++start_assistant_response_key=generation "
-    # "++inference.endpoint_type=text "
     "++eval_type=ruler ++eval_config.match_type={match_type} "
 )
 """
@@ -115,7 +111,7 @@ def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_
             subprocess.run(
                 f"python prepare.py --save_dir {tmpdirname}/ruler_data --benchmark synthetic "
                 f"    --subset test --task {task} --tokenizer_type hf --model_template_type base --prepare_for_ns "
-                f"    --num_samples 500 --max_seq_length {max_seq_length} {ruler_prepare_args}",
+                f"    --num_samples 100 --max_seq_length {max_seq_length} {ruler_prepare_args}",
                 shell=True,
                 check=True,
                 cwd=Path(tmpdirname) / "RULER" / "scripts" / "data",
