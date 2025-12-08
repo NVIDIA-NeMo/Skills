@@ -21,6 +21,13 @@ from dataclasses import asdict, is_dataclass
 import hydra
 from transformers import AutoTokenizer
 
+from nemo_skills.code_execution.proof_utils import (
+    extract_code,
+    get_error_str,
+    parse_error,
+    refine_by_sorry,
+    replace_statement_in_proof,
+)
 from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
 from nemo_skills.inference.model import get_model, server_params
 from nemo_skills.inference.model.base import EndpointType
@@ -34,13 +41,6 @@ from nemo_skills.utils import (
 )
 
 from .generate import GenerateSolutionsConfig, GenerationTask
-from .lean4_utils import (
-    extract_code,
-    get_error_str,
-    parse_error,
-    refine_by_sorry,
-    replace_statement_in_proof,
-)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
