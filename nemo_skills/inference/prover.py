@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -71,19 +71,23 @@ class ProverConfig(GenerateSolutionsConfig):
 
     def _post_init_validate_params(self):
         """Validate that certain parameters are restricted to certain values"""
-        if self.prompt_format not in ["ns", "openai"]:
-            raise ValueError(f"prompt_format must be either 'ns' or 'openai', got '{self.prompt_format}'")
-
         if self.prompt_format == "openai":
-            assert self.prompt_config is None, "prompt_config is not supported for prompt_format == 'openai'"
-        else:
-            assert self.prompt_config is not None, "prompt_config is required when prompt_format == 'ns'"
+            raise ValueError(
+                "prompt_format='openai' is not supported for lean4_prover. Use prompt_format='ns' with a prompt_config."
+            )
+        if self.prompt_format != "ns":
+            raise ValueError(f"prompt_format must be 'ns', got '{self.prompt_format}'")
+
+        assert self.prompt_config is not None, "prompt_config is required for lean4_prover"
+
         for param, default_value in self._get_disallowed_params():
             if getattr(self, param) != default_value:
                 raise ValueError(f"{param} must be {default_value}")
 
         if self.n_pass > 32:
-            raise ValueError("Please consider using num_random_seeds instead")
+            LOG.warning(
+                "n_pass=%d exceeds recommended maximum of 32. Consider using num_random_seeds instead.", self.n_pass
+            )
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
@@ -122,19 +126,6 @@ class ProverTask(GenerationTask):
         llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
         return llm
 
-    def setup_prompt(self):
-        if self.cfg.prompt_format == "openai":
-            return None
-        prompt = get_prompt(
-            prompt_config=self.cfg.prompt_config,
-            tokenizer=self.tokenizer,
-            code_tags=self.cfg.code_tags,
-            examples_type=self.cfg.examples_type,
-            system_message=self.cfg.system_message,
-        )
-        LOG.info("Prompt used: %s", prompt)
-        return prompt
-
     def setup_refine_prompt(self):
         assert self.cfg.refinement_prompt_config is not None, (
             "refinement_prompt_config is required when refinement is enabled. Please set refinement=False to disable refinement."
@@ -147,8 +138,8 @@ class ProverTask(GenerationTask):
             )
             self.nemotron_refine_prompt = get_prompt(self.cfg.nemotron_refinement_prompt_config)
 
-    # with adaptive reasoning
     async def _generate_single_completion(self, prompt: str, **kwargs):
+        """Generate a single completion with semaphore-controlled concurrency."""
         if is_dataclass(self.cfg.inference):
             inference_params = asdict(self.cfg.inference)
         else:
@@ -164,21 +155,26 @@ class ProverTask(GenerationTask):
         generation_params["endpoint_type"] = EndpointType.text
         for key, value in kwargs.items():
             generation_params[key] = value
-        generation = await self.llm.generate_async(**generation_params)
-        if self.cfg.adaptive_reasoning:
-            assert generation_params["extra_body"].get("reasoning_effort", None) is not None, (
-                "reasoning_effort is required when adaptive_reasoning is enabled"
-            )
-            reasoning_effort_index = reasoning_effort_list.index(
-                generation_params["extra_body"].get("reasoning_effort", None)
-            )
-            while len(generation["generation"]) == 0 and reasoning_effort_index > 0:
-                LOG.info(
-                    "Reasoning effort is too high, reducing to %s", reasoning_effort_list[reasoning_effort_index - 1]
+
+        # Use semaphore for concurrency control (inherited from GenerationTask)
+        async with self.semaphore:
+            generation = await self.llm.generate_async(**generation_params)
+            if self.cfg.adaptive_reasoning:
+                assert generation_params["extra_body"].get("reasoning_effort", None) is not None, (
+                    "reasoning_effort is required when adaptive_reasoning is enabled"
                 )
-                reasoning_effort_index = reasoning_effort_index - 1
-                generation_params["extra_body"]["reasoning_effort"] = reasoning_effort_list[reasoning_effort_index]
-                generation = await self.llm.generate_async(**generation_params)
+                reasoning_effort_index = reasoning_effort_list.index(
+                    generation_params["extra_body"].get("reasoning_effort", None)
+                )
+                while len(generation["generation"]) == 0 and reasoning_effort_index > 0:
+                    LOG.info(
+                        "Reasoning effort is too high, reducing to %s",
+                        reasoning_effort_list[reasoning_effort_index - 1],
+                    )
+                    reasoning_effort_index = reasoning_effort_index - 1
+                    generation_params["extra_body"]["reasoning_effort"] = reasoning_effort_list[reasoning_effort_index]
+                    generation = await self.llm.generate_async(**generation_params)
+
         if self.cfg.parse_generation:
             parse_reasoning(
                 generation,
@@ -308,6 +304,11 @@ class ProverTask(GenerationTask):
                 feedback = self.refine_prompt.fill({"error_message": last_error_message})
                 results_dict["feedback"] = feedback[0]["content"]
             else:
+                if self.sandbox is None:
+                    raise RuntimeError(
+                        "Sandbox is required for Lean4 code execution but was not configured. "
+                        "Please provide sandbox configuration."
+                    )
                 # execute_code returns (result_dict, session_id) tuple
                 execution_result, _ = await self.sandbox.execute_code(
                     full_code, language="lean4", timeout=600.0, max_output_characters=1000000
