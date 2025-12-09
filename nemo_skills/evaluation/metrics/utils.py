@@ -13,6 +13,7 @@
 
 import json
 import logging
+import re
 from typing import Union
 
 from nemo_skills.utils import get_logger_name
@@ -34,8 +35,10 @@ def read_predictions(predictions, line_idx, file_handles):
 
 
 def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
-    if "Judgement:" in judgement:
-        verdict = judgement.split("Judgement:")[-1].strip()
+    # Match both plain "Judgement:" and markdown bold "**Judgement**:" formats, this happens for gpt-4o which is AA Judge model.
+    match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
+    if match:
+        verdict = judgement[match.end() :].strip()
         if verdict.lower().startswith("yes"):
             return True
         elif verdict.lower().startswith("no"):
