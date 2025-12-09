@@ -28,8 +28,8 @@ from nemo_skills.code_execution.proof_utils import (
     refine_by_sorry,
     replace_statement_in_proof,
 )
-from nemo_skills.code_execution.sandbox import get_sandbox, sandbox_params
-from nemo_skills.inference.model import get_model, server_params
+from nemo_skills.code_execution.sandbox import sandbox_params
+from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.base import EndpointType
 from nemo_skills.prompt.utils import get_prompt
 from nemo_skills.utils import (
@@ -120,11 +120,8 @@ class ProverTask(GenerationTask):
 
     def setup_llm(self):
         if self.cfg.code_execution:
-            raise ValueError("Code execution is not supported for prover")
-        # Store sandbox directly on self for Lean4 code execution
-        self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
-        llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
-        return llm
+            raise ValueError("Code execution is not supported for prover. Use sandbox config for Lean4 execution.")
+        return super().setup_llm()
 
     def setup_refine_prompt(self):
         assert self.cfg.refinement_prompt_config is not None, (
