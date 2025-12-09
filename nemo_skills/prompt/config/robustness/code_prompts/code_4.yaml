@@ -1,0 +1,19 @@
+user: |-
+  PROBLEM DESCRIPTION:
+  You will be provided with the description of a python coding problem. Your task is to solve the problem step by step.
+
+  RESPONSE GUIDELINES:
+  1. Start with the knowledge required for the solution and the plan on how you will solve the problem..
+  2. Then write the complete and executable Python program.
+  3. Your response should be correct and pass all tests.
+  4. DO NOT include example usage or test code in your response.
+  5. Ensure your response is in the format of ```python``` and includes the necessary background as a comment at the top.
+
+  Example:
+  ```python
+  # Background: [Here, insert the necessary knowledge required for the solution and the plan on how you will solve the problem.]
+
+  [Insert the Python code here.]
+  ```
+
+  {question}
