@@ -13,6 +13,7 @@
 # limitations under the License.
 import inspect
 import logging
+import shlex
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -115,7 +116,11 @@ def robust_eval(
                 prompt_context = deepcopy(ctx)
                 prompt = PromptConfig(**prompt)
                 if prompt.extract_regex:
-                    prompt_context.args.append(f"++eval_config.extract_regex='\"{prompt.extract_regex}\"'")
+                    hydra_arg = f"++eval_config.extract_regex='{prompt.extract_regex}'"
+                    # Quote properly for it to be correct passed to ns eval in terminal
+                    shell_safe_arg = shlex.quote(shlex.quote(hydra_arg))
+                    prompt_context.args.append(shell_safe_arg)
+
                 prompt_context.args.append(f"++prompt_config={prompt.prompt_config}")
 
                 prompt_kwargs = deepcopy(ns_eval_kwargs)
