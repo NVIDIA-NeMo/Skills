@@ -28,3 +28,13 @@ comp-math-24-25:
   - prompt_config: robustness/math_prompts/boxed_8
   - prompt_config: robustness/math_prompts/boxed_aai
   - prompt_config: robustness/math_prompts/boxed_general
+
+
+livecodebench:
+  - prompt_config: robustness/code_prompts/aai_prompt
+  - prompt_config: robustness/code_prompts/ns_gen_codegen
+  - prompt_config: robustness/code_prompts/ns_python_codegen
+  - prompt_config: robustness/code_prompts/code_1
+  - prompt_config: robustness/code_prompts/code_2
+  - prompt_config: robustness/code_prompts/code_3
+  - prompt_config: robustness/code_prompts/code_4
