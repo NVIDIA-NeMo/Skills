@@ -126,10 +126,12 @@ def main():
     tables_info = read_tables_file(dev_dir)
     print("Finished reading tables.")
 
+    # Naming the input and output files the nearly same thing is likely
+    # confusing, but <split>.jsonl is the expected format
     format_entries(
         Path(dev_dir, "dev.json"),
         tables_info,
-        Path(dev_dir, "dev_reformatted.json")
+        Path(output_dir, "dev.jsonl")
     )
     print("Finished formatting entries. All done!")
 
