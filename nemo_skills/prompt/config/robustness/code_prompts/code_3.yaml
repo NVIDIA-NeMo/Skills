@@ -1,0 +1,8 @@
+user: |-
+  You are a helpful and harmless assistant. Analyze the following problem, think step-by-step before solving the problem below.
+  {question}
+  Please use python programming language only.
+  You must use ```python for just the final solution code block with the following format:
+  ```python
+  # Your code here
+  ```
