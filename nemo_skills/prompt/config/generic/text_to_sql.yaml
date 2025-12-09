@@ -1,4 +1,4 @@
-# Prompt used by Qwen models for SQL benchmarks
+# Prompt used for text-to-SQL
 
 system: Please reason step by step, and put your final answer within the tags "```sql" and "```".
 
