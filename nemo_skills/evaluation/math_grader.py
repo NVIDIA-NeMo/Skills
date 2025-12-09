@@ -103,11 +103,11 @@ def extract_answer(
     string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$", relaxed=False
 ):
     """Extract Answer String from \\boxed expression or based on regex
-    If relaxed=True: try both methods, boxed first.
+    If relaxed=True: try both methods, regex first.
     If relaxed=False: use only one method based on extract_from_boxed flag.
     """
     if relaxed:
-        return search_boxed(string) or search_regex(string, extract_regex)
+        return search_regex(string, extract_regex) or search_boxed(string)
 
     if extract_from_boxed:
         return search_boxed(string)
