@@ -44,7 +44,7 @@ TAVILY_API_KEY: str | None = None
 @mcp.tool(name="tavily-search")
 async def answer(
     query: Annotated[str, Field(description="Search query.")],
-) -> ExecutionResult:
+):
     """Get a summary of search results from the web using Tavily."""
 
     api_url = "https://api.tavily.com/search"
@@ -68,7 +68,7 @@ async def answer(
 
     result = response.json()["answer"]
 
-    return {"result": result}
+    return result
 
 
 class TavilySearchTool(MCPClientTool):
