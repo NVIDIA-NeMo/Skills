@@ -279,7 +279,9 @@ def evaluate_pc_rate(reference: str, hypothesis: str) -> dict[str, Any]:
     if len(ref_words) != len(hyp_words):
         cap_accuracy = 0.0
     else:
-        cap_matches = sum(1 for r, h in zip(ref_words, hyp_words) if r[0].isupper() == h[0].isupper())
+        cap_matches = sum(
+            1 for r, h in zip(ref_words, hyp_words, strict=True) if r and h and r[0].isupper() == h[0].isupper()
+        )
         cap_accuracy = cap_matches / len(ref_words) if ref_words else 0.0
 
     # Overall PC rate (average of punct F1 and cap accuracy)

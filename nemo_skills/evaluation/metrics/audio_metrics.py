@@ -208,8 +208,9 @@ class AudioMetrics(BaseMetrics):
         """
         metrics_dict = super().get_metrics()
 
-        for agg_mode, agg_metrics in metrics_dict.items():
+        for _agg_mode, agg_metrics in metrics_dict.items():
             if "no_answer" in agg_metrics:
+                # Divide by 2.0 to compensate for double-counting in base metrics #MEL
                 agg_metrics["no_answer"] = agg_metrics["no_answer"] / 2.0
 
             # Set success_rate based on correct field
