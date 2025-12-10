@@ -30,6 +30,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 @nested_dataclass(kw_only=True)
 class AudioEvaluatorConfig:
     """Configuration for audio evaluation."""
+
     prompt_config: str = "eval/speechlm/audio"
     apply_whisper_normalization: bool = True
     normalize_asr_pc_standard_wer: bool = True
@@ -61,7 +62,7 @@ def calculate_per(reference: str, hypothesis: str) -> float:
         return 0.0
 
     dp = np.zeros((len_r + 1, len_h + 1, 4), dtype=int)
-    
+
     for i in range(1, len_r + 1):
         dp[i, 0][2] = i
     for j in range(1, len_h + 1):
@@ -108,7 +109,7 @@ def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: boo
     else:
         ref_std = normalize_whitespace(re.sub(r"[^\w\s]", "", reference.lower()))
         hyp_std = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis.lower()))
-    
+
     wer_std = jiwer.wer(ref_std, hyp_std)
     per = calculate_per(reference, hypothesis)
 
@@ -135,11 +136,11 @@ def preprocess_asr_text(text: str) -> str:
 def preprocess_hf_leaderboard(text: str) -> str:
     """Apply HuggingFace leaderboard normalization: lowercase, remove punctuation, normalize unicode."""
     import unicodedata
-    
-    text = unicodedata.normalize('NFC', text)
+
+    text = unicodedata.normalize("NFC", text)
     text = text.lower()
-    text = re.sub(r'[^\w\s]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"[^\w\s]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
     return text
 
 
@@ -170,17 +171,17 @@ def evaluate_asr(reference: str, hypothesis: str, apply_normalization: bool = Tr
 def evaluate_asr_leaderboard(reference: str, hypothesis: str) -> dict[str, Any]:
     """Evaluate ASR with HuggingFace leaderboard preprocessing for direct comparison."""
     import jiwer
-    
+
     ref = preprocess_hf_leaderboard(reference)
     hyp = preprocess_hf_leaderboard(hypothesis)
-    
+
     if not ref:
         ref = "empty"
     if not hyp:
         hyp = "empty"
-    
+
     wer_score = jiwer.wer(ref, hyp)
-    
+
     return {
         "wer": wer_score,
         "is_correct": wer_score < 0.5,
@@ -212,7 +213,7 @@ def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:
 def evaluate_cer(reference: str, hypothesis: str) -> dict[str, Any]:
     """Evaluate CER: character-level edit distance."""
     import jiwer
-    
+
     cer_score = jiwer.cer(reference, hypothesis)
     return {
         "cer": cer_score,
@@ -222,12 +223,12 @@ def evaluate_cer(reference: str, hypothesis: str) -> dict[str, Any]:
 
 def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict = None) -> dict[str, Any]:
     """Detect potential hallucinations via speaking rate anomaly.
-    
+
     Normal speech: ~10-15 chars/second. Higher rates suggest repetition/hallucination.
     Requires audio_duration in audio_context.
     """
     audio_duration = audio_context.get("audio_duration") if audio_context else None
-    
+
     if not audio_duration or audio_duration <= 0:
         return {
             "hallucination_rate": 0.0,
@@ -235,13 +236,13 @@ def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict 
             "is_correct": True,
             "error": "missing_audio_duration",
         }
-    
+
     char_count = len(hypothesis)
     char_rate = char_count / audio_duration
-    
+
     # Hallucination threshold: >25 chars/sec (too fast = likely repetition)
     is_hallucinating = char_rate > 25.0
-    
+
     return {
         "hallucination_rate": 1.0 if is_hallucinating else 0.0,
         "char_rate": round(char_rate, 2),
@@ -252,9 +253,9 @@ def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict 
 def evaluate_pc_rate(reference: str, hypothesis: str) -> dict[str, Any]:
     """Evaluate detailed Punctuation and Capitalization metrics."""
     # Extract punctuation with positions
-    ref_puncts = [(m.group(), m.start()) for m in re.finditer(r'[.,!?;:\-]', reference)]
-    hyp_puncts = [(m.group(), m.start()) for m in re.finditer(r'[.,!?;:\-]', hypothesis)]
-    
+    ref_puncts = [(m.group(), m.start()) for m in re.finditer(r"[.,!?;:\-]", reference)]
+    hyp_puncts = [(m.group(), m.start()) for m in re.finditer(r"[.,!?;:\-]", hypothesis)]
+
     # Punctuation matching (within 2 char tolerance)
     matched = 0
     for ref_p, ref_pos in ref_puncts:
@@ -262,24 +263,28 @@ def evaluate_pc_rate(reference: str, hypothesis: str) -> dict[str, Any]:
             if ref_p == hyp_p and abs(ref_pos - hyp_pos) <= 2:
                 matched += 1
                 break
-    
+
     punct_precision = matched / len(hyp_puncts) if hyp_puncts else 0.0
     punct_recall = matched / len(ref_puncts) if ref_puncts else 0.0
-    punct_f1 = 2 * punct_precision * punct_recall / (punct_precision + punct_recall) if (punct_precision + punct_recall) > 0 else 0.0
-    
+    punct_f1 = (
+        2 * punct_precision * punct_recall / (punct_precision + punct_recall)
+        if (punct_precision + punct_recall) > 0
+        else 0.0
+    )
+
     # Capitalization: check sentence starts and word capitals
     ref_words = reference.split()
     hyp_words = hypothesis.split()
-    
+
     if len(ref_words) != len(hyp_words):
         cap_accuracy = 0.0
     else:
         cap_matches = sum(1 for r, h in zip(ref_words, hyp_words) if r[0].isupper() == h[0].isupper())
         cap_accuracy = cap_matches / len(ref_words) if ref_words else 0.0
-    
+
     # Overall PC rate (average of punct F1 and cap accuracy)
     pc_rate = (punct_f1 + cap_accuracy) / 2.0
-    
+
     return {
         "pc_rate": round(pc_rate, 3),
         "punct_precision": round(punct_precision, 3),
@@ -336,19 +341,13 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
 
     if task_type == "ASR-PC":
         metrics = evaluate_asr_pc(
-            expected_answer, 
-            generation,
-            normalize_standard_wer=config.normalize_asr_pc_standard_wer
+            expected_answer, generation, normalize_standard_wer=config.normalize_asr_pc_standard_wer
         )
         sample.update(metrics)
         sample["predicted_answer"] = generation
 
     elif task_type == "ASR":
-        metrics = evaluate_asr(
-            expected_answer, 
-            generation,
-            apply_normalization=config.apply_whisper_normalization
-        )
+        metrics = evaluate_asr(expected_answer, generation, apply_normalization=config.apply_whisper_normalization)
         sample.update(metrics)
         sample["predicted_answer"] = generation
 
@@ -392,4 +391,3 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         sample["char_rate_diff"] = abs(sample["hyp_char_rate"] - sample["ref_char_rate"])
 
     return sample
-

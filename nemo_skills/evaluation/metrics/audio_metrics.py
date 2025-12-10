@@ -42,7 +42,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 class AudioMetrics(BaseMetrics):
     """Metrics class for audio evaluation tasks.
-    
+
     This class tracks and aggregates various audio-specific metrics including
     error rates (WER, CER, PER), quality scores (BLEU), and advanced metrics
     like hallucination detection. It extends BaseMetrics to provide consistent
@@ -51,21 +51,21 @@ class AudioMetrics(BaseMetrics):
 
     def __init__(self, compute_no_answer: bool = True, max_k: int = 1):
         """Initialize audio metrics with tracking lists for all supported metrics.
-        
+
         Args:
             compute_no_answer: Whether to compute no_answer statistics
             max_k: Maximum k for pass@k and majority@k evaluation
         """
         super().__init__(compute_no_answer=compute_no_answer)
         self.max_k = max_k
-        
+
         # Core audio metrics
         self.wer_scores = []
         self.wer_c_scores = []
         self.wer_pc_scores = []
         self.per_scores = []
         self.bleu_scores = []
-        
+
         # Extended metrics
         self.cer_scores = []
         self.hallucination_scores = []
@@ -76,12 +76,12 @@ class AudioMetrics(BaseMetrics):
 
     def _extract_judge_result(self, judgement_text: str) -> bool:
         """Extract judge result from judgement text.
-        
+
         Parses LLM judge output to determine if the response is correct.
-        
+
         Args:
             judgement_text: Text output from LLM judge
-            
+
         Returns:
             True if judge indicates correct, False otherwise
         """
@@ -96,13 +96,13 @@ class AudioMetrics(BaseMetrics):
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         """Extract correctness scores from prediction.
-        
+
         Handles both automatic metrics and judge-based evaluation,
         determining the overall correctness of a prediction.
-        
+
         Args:
             prediction: Prediction dictionary with metrics and/or judgement
-            
+
         Returns:
             Dictionary with correctness scores
         """
@@ -125,12 +125,12 @@ class AudioMetrics(BaseMetrics):
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         """Return a sample marked as incorrect for all metrics.
-        
+
         Used for handling error cases or missing predictions.
-        
+
         Args:
             prediction: Prediction dictionary
-            
+
         Returns:
             Updated prediction marked as incorrect
         """
@@ -143,9 +143,9 @@ class AudioMetrics(BaseMetrics):
 
     def update_common_metrics(self, agg_dict):
         """Override to always include avg_tokens even if 0 since it's in metrics_to_print.
-        
+
         Updates common metrics like number of entries, average tokens, and generation time.
-        
+
         Args:
             agg_dict: Dictionary to update with common metrics
         """
@@ -156,10 +156,10 @@ class AudioMetrics(BaseMetrics):
 
     def update(self, predictions):
         """Update metrics with new predictions.
-        
+
         Collects all metric scores from predictions and updates internal tracking lists.
         Supports both existing metrics (WER, BLEU) and new metrics (CER, hallucination, PC rate).
-        
+
         Args:
             predictions: List of prediction dictionaries with computed metrics
         """
@@ -179,7 +179,7 @@ class AudioMetrics(BaseMetrics):
                 self.per_scores.append(pred["per"])
             if "bleu" in pred and pred["bleu"] is not None:
                 self.bleu_scores.append(pred["bleu"])
-            
+
             # Collect extended metrics
             if "cer" in pred and pred["cer"] is not None:
                 self.cer_scores.append(pred["cer"])
@@ -199,10 +199,10 @@ class AudioMetrics(BaseMetrics):
 
     def get_metrics(self):
         """Get computed metrics.
-        
+
         Aggregates all collected metric scores and computes averages.
         Converts error rates and scores to percentages for reporting.
-        
+
         Returns:
             Dictionary of aggregated metrics by evaluation mode
         """
@@ -229,18 +229,22 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["per"] = round(100.0 * sum(self.per_scores) / len(self.per_scores), 2)
             if self.bleu_scores:
                 agg_metrics["bleu"] = round(100.0 * sum(self.bleu_scores) / len(self.bleu_scores), 2)
-            
+
             # Add extended metrics if available
             if self.cer_scores:
                 agg_metrics["cer"] = round(100.0 * sum(self.cer_scores) / len(self.cer_scores), 2)
             if self.hallucination_scores:
-                agg_metrics["hallucination_rate"] = round(100.0 * sum(self.hallucination_scores) / len(self.hallucination_scores), 2)
+                agg_metrics["hallucination_rate"] = round(
+                    100.0 * sum(self.hallucination_scores) / len(self.hallucination_scores), 2
+                )
             if self.pc_rate_scores:
                 agg_metrics["pc_rate"] = round(100.0 * sum(self.pc_rate_scores) / len(self.pc_rate_scores), 2)
             if self.punct_f1_scores:
                 agg_metrics["punct_f1"] = round(100.0 * sum(self.punct_f1_scores) / len(self.punct_f1_scores), 2)
             if self.cap_accuracy_scores:
-                agg_metrics["cap_accuracy"] = round(100.0 * sum(self.cap_accuracy_scores) / len(self.cap_accuracy_scores), 2)
+                agg_metrics["cap_accuracy"] = round(
+                    100.0 * sum(self.cap_accuracy_scores) / len(self.cap_accuracy_scores), 2
+                )
             if self.char_rate_scores:
                 agg_metrics["char_rate"] = round(sum(self.char_rate_scores) / len(self.char_rate_scores), 2)
 
@@ -248,7 +252,7 @@ class AudioMetrics(BaseMetrics):
 
     def evaluations_to_print(self):
         """Specify which evaluation modes to print.
-        
+
         Returns:
             List of evaluation mode names for display
         """
@@ -259,10 +263,10 @@ class AudioMetrics(BaseMetrics):
 
     def metrics_to_print(self):
         """Specify which metrics to print.
-        
+
         Dynamically includes only the metrics that were actually computed
         based on the task types in the evaluation.
-        
+
         Returns:
             Dictionary mapping metric names to formatting functions
         """
@@ -286,7 +290,7 @@ class AudioMetrics(BaseMetrics):
             base_metrics["per"] = as_percentage
         if self.bleu_scores:
             base_metrics["bleu"] = as_percentage
-        
+
         # Add extended metrics if they were computed
         if self.cer_scores:
             base_metrics["cer"] = as_percentage
@@ -309,7 +313,7 @@ class AudioMetrics(BaseMetrics):
 def compute_score(combined_metrics: dict) -> dict:
     """
     Aggregate metrics from multiple sub-benchmarks into a single group score.
-    
+
     This function is used for benchmark groups that contain multiple sub-benchmarks.
     It computes weighted averages across all sub-benchmarks based on the number of entries.
 
@@ -368,4 +372,3 @@ def compute_score(combined_metrics: dict) -> dict:
         }
 
     return aggregated
-
