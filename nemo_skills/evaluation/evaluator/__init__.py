@@ -15,6 +15,7 @@
 import asyncio
 from typing import Any, Callable, Dict
 
+from nemo_skills.evaluation.evaluator.audio import eval_audio
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator
 from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
 from nemo_skills.evaluation.evaluator.code import (
@@ -56,6 +57,8 @@ EVALUATOR_MAP = {
     "bigcodebench": eval_bigcodebench,
     "human_eval_infilling": eval_human_eval_infilling,
     "mmau-pro": eval_mmau_pro,
+    # Audio evaluation
+    "audio": eval_audio,
 }
 
 # Evaluator class mapping, other evaluators can be added here as they're converted to classes
