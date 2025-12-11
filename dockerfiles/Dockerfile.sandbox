@@ -63,6 +63,24 @@ ENV PATH="/lean4/my_project:$PATH"
 COPY requirements/code_execution.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+
+# Install STEM related libraries
+COPY requirements/stem.txt /app/stem_requirements.txt
+
+
+# Speed/size/env hygiene
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_SYSTEM_PYTHON=1 \
+    PATH="/root/.local/bin:${PATH}"
+
+
+# Install uv (adds to ~/.local/bin), then install deps
+RUN if [ "$GITHUB_CI" != "1" ]; then \
+        curl -LsSf https://astral.sh/uv/install.sh | sh  && \
+        uv pip install --upgrade pip && \
+        uv pip install -r /app/stem_requirements.txt --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu; \
+    fi
+
 # For scicode eval - create data directory and download test data
 # Set GITHUB_CI=1 build arg to skip download (useful for CI when download fails)
 # If skipped, scicode evaluations will fail unless the file is manually mounted
