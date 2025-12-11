@@ -521,10 +521,10 @@ class SweBenchGenerationTask(GenerationTask):
 
         config_str = tomlkit.dumps(config)
 
-        # Folder to copy the dataset into.
-        # It's important that the name includes the original HF dataset name,
-        # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
-        data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
+        # # Folder to copy the dataset into.
+        # # It's important that the name includes the original HF dataset name,
+        # # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
+        # data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
 
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
@@ -551,9 +551,9 @@ class SweBenchGenerationTask(GenerationTask):
             "export NO_CLEANUP=1 && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
-            # copy dataset
-            f"mkdir {data_dir} && "
-            f"cp {self.cfg.input_file} {data_dir} && "
+            # # copy dataset
+            # f"mkdir {data_dir} && "
+            # f"cp {self.cfg.input_file} {data_dir} && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
             f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/swe_bench/config.toml && "
@@ -569,7 +569,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"    1 "  # number of instances
             f"    {self.cfg.agent_max_turns} "  # max agent iterations
             f"    1 "  # number of workers
-            f"    {data_dir} "  # dataset path
+            f"    {self.cfg.input_file} "  # path to input file (multi-swe-bench expects a path to file and not dir)
             f"    {data_point['language']} && "  # language
             # move outputs to the mounted directory
             f"mkdir -p /trajectories_mount/trajectories && "
