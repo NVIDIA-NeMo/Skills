@@ -45,6 +45,13 @@ def download_data(output_dir):
     return dev_dir
 
 
+def download_evaluation_file(output_dir):
+    url = "https://raw.githubusercontent.com/AlibabaResearch/DAMO-ConvAI/refs/heads/main/bird/llm/src/evaluation.py"
+    filename = wget.download(url, out=output_dir)
+
+    return Path(output_dir, filename)
+
+
 def read_tables_file(base_dir):
     """
     Gets each db's information by using sqlite3 to get a table dump.
@@ -119,6 +126,10 @@ def main():
 
     #dev_dir = download_data(args.output_dir)
     dev_dir = Path(args.output_dir, "dev_20240627/")
+    print(f"\nData downloaded to: {dev_dir}")
+
+    evaluation_filepath = download_evaluation_file(args.output_dir)
+    print(f"\nEvaluation file downloaded to: {evaluation_filepath}")
 
     print("Starting processing...")
 
