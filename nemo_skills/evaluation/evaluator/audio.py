@@ -14,21 +14,21 @@
 
 """Audio evaluation framework supporting ASR, ASR-PC, Translation, CER, and more."""
 
-import json
+import asyncio
 import logging
 import re
 from typing import Any
 
 import numpy as np
-from tqdm import tqdm
 
+from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class AudioEvaluatorConfig:
+class AudioEvaluatorConfig(BaseEvaluatorConfig):
     """Configuration for audio evaluation."""
 
     prompt_config: str = "eval/speechlm/audio"
@@ -297,99 +297,91 @@ def evaluate_pc_rate(reference: str, hypothesis: str) -> dict[str, Any]:
     }
 
 
+class AudioEvaluator(BaseEvaluator):
+    """Audio evaluator supporting ASR, ASR-PC, Translation, CER, etc."""
+
+    def __init__(self, config: dict, num_parallel_requests=10):
+        super().__init__(config, num_parallel_requests)
+        self.eval_config = AudioEvaluatorConfig(**self.config)
+
+    async def eval_single(self, data_point: dict[str, any]) -> dict[str, any]:
+        """Evaluate single audio sample - can be called during generation.
+
+        Returns dict of updates to be merged into data_point by BaseEvaluator.
+        """
+        return evaluate_sample(data_point, self.eval_config)
+
+
 def eval_audio(cfg):
-    """Evaluate audio tasks: ASR, ASR-PC, Translation, CER, etc."""
-    config_fields = {"prompt_config"}
-    config_kwargs = {k: v for k, v in cfg.items() if k in config_fields}
-    eval_config = AudioEvaluatorConfig(**config_kwargs)
-
-    jsonl_file = cfg["input_file"]
-    LOG.info(f"Evaluating {jsonl_file}")
-
-    with open(jsonl_file, "rt", encoding="utf-8") as fin:
-        data = [json.loads(line) for line in fin]
-
-    samples_already_evaluated = sum(1 for sample in data if "is_correct" in sample)
-    if samples_already_evaluated > 0:
-        LOG.info(f"Resuming: {samples_already_evaluated}/{len(data)} already evaluated")
-
-    for idx, sample in enumerate(tqdm(data, desc="Evaluating")):
-        data[idx] = evaluate_sample(sample, eval_config)
-
-    with open(jsonl_file, "wt", encoding="utf-8") as fout:
-        for sample in data:
-            fout.write(json.dumps(sample) + "\n")
-
-    LOG.info(f"Completed: {jsonl_file}")
+    """Function wrapper for backward compatibility."""
+    evaluator = AudioEvaluator(cfg)
+    asyncio.run(evaluator.eval_full())
 
 
 def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dict[str, Any]:
-    """Evaluate single sample based on task_type."""
-    sample = sample.copy()
+    """Evaluate single sample based on task_type. Returns dict of updates to merge."""
+    updates = {}
     task_type = sample.get("task_type", "unknown")
     generation = sample.get("generation", "").strip()
     expected_answer = sample.get("expected_answer", "").strip()
 
     if task_type in ["ASR", "ASR-PC", "AST", "CER", "ASR_LEADERBOARD"] and not generation:
-        sample.update(
-            {
-                "is_correct": False,
-                "wer": 1.0,
-                "error": "missing_generation",
-                "predicted_answer": "",
-            }
-        )
-        return sample
+        return {
+            "is_correct": False,
+            "wer": 1.0,
+            "error": "missing_generation",
+            "predicted_answer": "",
+        }
 
     if task_type == "ASR-PC":
         metrics = evaluate_asr_pc(
             expected_answer, generation, normalize_standard_wer=config.normalize_asr_pc_standard_wer
         )
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     elif task_type == "ASR":
         metrics = evaluate_asr(expected_answer, generation, apply_normalization=config.apply_whisper_normalization)
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     elif task_type == "ASR_LEADERBOARD":
         metrics = evaluate_asr_leaderboard(expected_answer, generation)
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     elif task_type == "AST":
         metrics = evaluate_translation(expected_answer, generation)
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     elif task_type == "CER":
         metrics = evaluate_cer(expected_answer, generation)
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     elif task_type == "Hallucination":
         audio_context = {"audio_duration": sample.get("audio_duration")}
         metrics = evaluate_hallucination(expected_answer, generation, audio_context)
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     elif task_type == "PC-Rate":
         metrics = evaluate_pc_rate(expected_answer, generation)
-        sample.update(metrics)
-        sample["predicted_answer"] = generation
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
 
     else:
         if "requires_judge" not in sample:
-            sample["requires_judge"] = True
-            sample["predicted_answer"] = generation
+            updates["requires_judge"] = True
+            updates["predicted_answer"] = generation
         if "is_correct" not in sample:
-            sample["is_correct"] = False
+            updates["is_correct"] = False
 
     audio_duration = sample.get("audio_duration", None)
     if audio_duration and audio_duration > 0 and expected_answer and generation:
-        sample["ref_char_rate"] = len(expected_answer) / audio_duration
-        sample["hyp_char_rate"] = len(generation) / audio_duration
-        sample["char_rate_diff"] = abs(sample["hyp_char_rate"] - sample["ref_char_rate"])
+        updates["ref_char_rate"] = len(expected_answer) / audio_duration
+        updates["hyp_char_rate"] = len(generation) / audio_duration
+        updates["char_rate_diff"] = abs(updates["hyp_char_rate"] - updates["ref_char_rate"])
 
-    return sample
+    return updates
