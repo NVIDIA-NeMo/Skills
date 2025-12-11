@@ -77,7 +77,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 # Install uv (adds to ~/.local/bin), then install deps
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 RUN uv pip install --upgrade pip
-RUN uv pip install -r /app/stem_requirements.txt
+RUN uv pip install -r /app/stem_requirements.txt --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu
 
 # For scicode eval - create data directory and download test data
 # Set GITHUB_CI=1 build arg to skip download (useful for CI when download fails)
