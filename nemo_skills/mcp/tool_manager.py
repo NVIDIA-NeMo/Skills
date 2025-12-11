@@ -60,6 +60,9 @@ class Tool(ABC):
     async def shutdown(self) -> None:  # Optional hook
         return None
 
+    def post_configure(self) -> None:
+        return None
+
 
 class ToolManager:
     """Registry/Router for module-based tools.
@@ -98,6 +101,7 @@ class ToolManager:
                 raise ValueError(f"Duplicate tool class registered: '{provider_key}'")
 
             tool.configure((overrides.get(provider_key) if overrides else None), context)
+            tool.post_configure()
             self._tools[provider_key] = tool
 
     async def shutdown(self) -> None:
