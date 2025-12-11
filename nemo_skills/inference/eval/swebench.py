@@ -562,7 +562,7 @@ class SweBenchGenerationTask(GenerationTask):
             "export LOG_ALL_EVENTS=true && "
             "export LOG_LEVEL=DEBUG && "
             # run the agent
-            f"./evaluation/benchmarks/swe_bench/scripts/run_infer.sh "
+            f"./evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh "
             f"    llm.model "  # name of llm config section in config.toml
             f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
             f"    CodeActAgent "  # agent
@@ -570,7 +570,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"    {self.cfg.agent_max_turns} "  # max agent iterations
             f"    1 "  # number of workers
             f"    {data_dir} "  # dataset path
-            f"    train && "  # dataset split (always "train" for local datasets)
+            f"    {data_point['language']} && "  # language
             # move outputs to the mounted directory
             f"mkdir -p /trajectories_mount/trajectories && "
             f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
