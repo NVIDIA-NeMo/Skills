@@ -13,10 +13,12 @@
 # limitations under the License.
 
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 from nemo_skills.pipeline.utils import get_mounted_path
+from nemo_skills.pipeline.utils.eval import get_benchmark_args_from_module
 
 
 def test_error_on_extra_params():
@@ -78,3 +80,42 @@ def test_get_mounted_path(mount_source, mount_dest, input_path, expected):
 
     result = get_mounted_path(cluster_config, input_path)
     assert result == expected
+
+
+def test_get_benchmark_args_input_file_should_be_local_path_for_executor_none(tmp_path):
+    """For executor='none', input_file should be a real local path, not a container path."""
+    # Setup: create a local data file
+    benchmark_dir = tmp_path / "gsm8k"
+    benchmark_dir.mkdir()
+    (benchmark_dir / "test.jsonl").write_text('{"problem": "test"}\n')
+
+    cluster_config = {"executor": "none", "containers": {}}
+    mock_module = SimpleNamespace(
+        EVAL_SPLIT="test",
+        PROMPT_CONFIG="",
+        GENERATION_ARGS="",
+        EVAL_ARGS="",
+        REQUIRES_SANDBOX=False,
+        KEEP_MOUNTS_FOR_SANDBOX=False,
+        GENERATION_MODULE="nemo_skills.inference.generate",
+        JUDGE_PIPELINE_ARGS={},
+        JUDGE_ARGS="",
+        NUM_SAMPLES=0,
+        NUM_CHUNKS=0,
+    )
+
+    result = get_benchmark_args_from_module(
+        benchmark_module=mock_module,
+        benchmark="gsm8k",
+        split="test",
+        cluster_config=cluster_config,
+        data_path=str(tmp_path),  # local path like /tmp/pytest-xxx
+        is_on_cluster=False,
+        eval_requires_judge=False,
+    )
+
+    # For executor='none' (no container), input_file should be the actual local path
+    expected_input_file = str(tmp_path / "gsm8k" / "test.jsonl")
+    assert result.input_file == expected_input_file, (
+        f"Expected local path {expected_input_file}, got {result.input_file}"
+    )
