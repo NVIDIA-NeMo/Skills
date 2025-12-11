@@ -1,0 +1,10 @@
+# https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/aai/livecodebench.yaml
+# almost identical to https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview
+# except we don't add ### before Format.
+# The starter code and formatting instructions are already included inside question by prepare.py
+
+user: |-
+  ### Question:
+  {question}
+
+  ### Answer: (use the provided format with backticks)
