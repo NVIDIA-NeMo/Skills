@@ -556,7 +556,7 @@ class SweBenchGenerationTask(GenerationTask):
             # f"cp {self.cfg.input_file} {data_dir} && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
-            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/swe_bench/config.toml && "
+            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/multi_swe_bench/config.toml && "
             # set local runtime & force verbose logs
             "export RUNTIME=local && "
             "export LOG_ALL_EVENTS=true && "
