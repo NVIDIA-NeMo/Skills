@@ -26,7 +26,7 @@ if __name__ == "__main__":
         help="Container formatter string. You can download .sif containers and store them in a mounted "
         "directory which you can reference here to avoid redownloading all the time.",
     )  # TODO: add download script
-    parser.add_argument("--split", type=str, default="test", help="Swe-rebench dataset split to use")
+    parser.add_argument("--split", type=str, default="test", help="Swe-bench dataset split to use")
     parser.add_argument(
         "--setup", type=str, default="default", help="Setup name (used as nemo-skills split parameter)."
     )
