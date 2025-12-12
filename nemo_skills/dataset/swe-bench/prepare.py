@@ -33,7 +33,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="nebius/SWE-rebench-leaderboard",
+        default="princeton-nlp/SWE-bench_Verified",
         help="Dataset name to load",
     )
     args = parser.parse_args()
