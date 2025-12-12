@@ -64,6 +64,9 @@ class TranslationMetrics(BaseMetrics):
             generation = pred["generation"]
             ground_truth = pred["translation"]
 
+            if generation is None:
+                generation = ""
+
             self.translation_dict[f"{src_lang}->{tgt_lang}"]["preds"].append(generation)
             self.translation_dict[f"{src_lang}->{tgt_lang}"]["gts"].append(ground_truth)
 
