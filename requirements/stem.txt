@@ -38,7 +38,6 @@ dipy
 dp_accounting
 duckduckgo_search
 easyocr
-ecdsa
 enchant
 ephem
 ete3
@@ -103,7 +102,6 @@ ocl
 open_tamil
 opencv-python
 openmc_data
-openmm
 openpyxl
 optopy
 ortools
