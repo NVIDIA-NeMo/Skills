@@ -35,3 +35,5 @@ class BirdMetrics(BaseMetrics):
             compute_acc_by_diff(sorted_preds, self.dev_json_path)
 
         print_data([simple_acc, moderate_acc, challenging_acc, acc], count_list)
+        print('===========================================================================================')
+        print("Finished evaluation")
