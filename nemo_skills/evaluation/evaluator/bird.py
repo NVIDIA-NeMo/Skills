@@ -13,13 +13,14 @@
 # limitations under the License.
 
 import asyncio
-from func_timeout import func_timeout, FunctionTimedOut
+import concurrent.futures
 import json
 import logging
 from pathlib import Path
 import os
 import re
 import sys
+import time
 
 from nemo_skills.dataset.birdbench.evaluation import execute_sql
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
@@ -152,20 +153,16 @@ class BirdEvaluator(BaseEvaluator):
         ground_truth = data_point["gt_sql"]
         db_place = data_point["db_path"]
 
-        try:
-            res = func_timeout(
-                self.eval_config.timeout,
-                execute_sql,
-                args=(predicted_sql, ground_truth, db_place)
-            )
-        except KeyboardInterrupt:
-            sys.exit(0)
-        except FunctionTimedOut:
-            result = [(f'timeout',)]
-            res = 0
-        except Exception as e:
-            result = [(f'error',)]  # possibly len(query) > 512 or not executable
-            res = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(execute_sql, predicted_sql, ground_truth, db_place)
+            try:
+                # Wait for result with timeout as set
+                res = future.result(timeout=self.eval_config.timeout)
+            except concurrent.futures.TimeoutError:
+                result = [(f'timeout',)]
+                res = 0
+            except Exception as e:
+                result = [(f'error',)]  # possibly len(query) > 512 or not executable
+                res = 0
         result = {"res": res}
         return result
-
