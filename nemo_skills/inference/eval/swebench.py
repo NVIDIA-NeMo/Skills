@@ -338,9 +338,14 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
-        container_name = data_point["container_formatter"].format(
-            instance_id=data_point["instance_id"].replace("__", "_1776_")
-        )
+        if "container_name" in data_point:
+            container_name = data_point["container_name"]
+        elif "container_formatter" in data_point:
+            container_name = data_point["container_formatter"].format(
+                instance_id=data_point["instance_id"].replace("__", "_1776_")
+            )
+        else:
+            raise ValueError(f"container_name or container_formatter not found in data_point: {data_point}")
 
         # Create logs directory if it doesn't exist
         logs_dir = self.output_dir / "apptainer_logs"

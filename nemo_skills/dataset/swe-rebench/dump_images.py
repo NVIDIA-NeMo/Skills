@@ -28,10 +28,7 @@ def read_container_names(jsonl_file):
         for line in f:
             data = json.loads(line.strip())
             # Use the same logic as in swebench.py
-            container_formatter = data["container_formatter"]
-            instance_id = data["instance_id"]
-
-            container_name = container_formatter.format(instance_id=instance_id.replace("__", "_1776_"))
+            container_name = data["container_name"]
             container_names.add(container_name)
 
     return sorted(list(container_names))
