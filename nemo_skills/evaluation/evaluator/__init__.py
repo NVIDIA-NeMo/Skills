@@ -15,6 +15,7 @@
 import asyncio
 from typing import Any, Callable, Dict
 
+from nemo_skills.evaluation.evaluator.audio import AudioEvaluator
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator
 from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
 from nemo_skills.evaluation.evaluator.code import (
@@ -65,6 +66,7 @@ EVALUATOR_CLASS_MAP = {
     "code_exec": CodeExecEvaluator,
     "ioi": IOIEvaluator,
     "icpc": ICPCEvaluator,
+    "audio": AudioEvaluator,
 }
 
 # Validation: Ensure no overlap between class and function maps
