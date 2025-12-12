@@ -75,7 +75,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 
 # Install uv (adds to ~/.local/bin), then install deps
-RUN if [ "$GITHUB_CI" != "1" ]; then \
+RUN if [ "$GITHUB_CI" != "1" ] && [ "$TARGETARCH" != "arm64" ]; then \
         curl -LsSf https://astral.sh/uv/install.sh | sh  && \
         uv pip install --upgrade pip && \
         uv pip install -r /app/stem_requirements.txt --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu; \
