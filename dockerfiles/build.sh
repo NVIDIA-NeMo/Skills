@@ -115,7 +115,7 @@ if [[ ! -z ${DOCKER_PLATFORM} ]]; then
     __docker_build_args="${__docker_build_args} --platform ${DOCKER_PLATFORM}"
 fi
 
-docker buildx build  ${__docker_build_args} \
+docker build ${__docker_build_args} \
     -f "${__dockerfile}" \
     -t "${DOCKER_NAME}:${DOCKER_TAG}" \
     "${__context_dir}"
