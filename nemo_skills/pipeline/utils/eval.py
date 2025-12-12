@@ -91,7 +91,7 @@ def get_benchmark_args_from_module(
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
 
     if not is_on_cluster:
-        if pipeline_utils.is_mounted_filepath(cluster_config, data_path):
+        if pipeline_utils.is_mounted_filepath(cluster_config, data_path) or cluster_config["executor"] == "none":
             input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
             unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
             unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))

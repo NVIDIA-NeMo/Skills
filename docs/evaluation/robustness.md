@@ -70,12 +70,10 @@ The following metrics are calculated:
 
 * **Aggregated Benchmark Statistics**: For each benchmark across all prompts and seeds, the script calculates:
     - `min`, `max`, `avg`, `std`: Statistical metrics across all runs per benchmark.
-    - `CR` (Consistency Rate): The average rate of agreement of model predictions on the same datapoint across different runs.
     - `prompt_sensitivity`: The standard deviation of the average scores across different prompts, which measures how sensitive the model's accuracy is to prompt variations.
 
 * **Per-Prompt Statistics**: For each prompt across all random seeds, the script calculates:
     - `min`, `max`, `avg`, `std`: Statistical metrics for a single prompt across seeds.
-    - `CR` (Consistency Rate): The average rate of agreement of model predictions on the same question across different runs.
     - `no_answer`: The proportion of questions for which no answer was extracted from the generation, either due to a wrong answer format or no answer at all (can be used to find prompts that break the model predictions).
 
 
@@ -84,34 +82,29 @@ First, for each benchmark, metrics are aggregated across all prompts and seeds. 
 All calculated metrics are also saved to `output_dir/metrics.json`. </br>
 
 ```
-dataset              |   min   |   max   |   avg   |   std   |    CR   | prompt_sensitivity
--------------------------------------------------------------------------------------------
-comp-math-24-25@80   |  48.05  |  53.91  |  51.10  |   1.60  |  55.25  |   0.34
-gpqa@80              |  50.51  |  60.61  |  55.51  |   2.44  |  65.15  |   0.77
-
-
-------------------------------------- comp-math-24-25 -------------------------------------
-prompt@8             |   min   |   max   |   avg   |   std   |    CR   | no_answer
+dataset              |   min   |   max   |   avg   |   std   | prompt_sensitivity
 ----------------------------------------------------------------------------------
-prompt_1             |  48.05  |  53.91  |  50.76  |   1.61  |  55.48  |   1.56
+comp-math-24-25@80   |  48.05  |  53.91  |  51.10  |   1.60  |  0.34
+gpqa@80              |  50.51  |  60.61  |  55.51  |   2.44  |  0.77
+
+
+------------------------------------- comp-math-24-25 ----------------------------
+prompt@8             |   min   |   max   |   avg   |   std   | no_answer
+----------------------------------------------------------------------------------
+prompt_1             |  48.05  |  53.91  |  50.76  |   1.61  | 1.56
 ...
-prompt_10            |  48.44  |  53.91  |  51.44  |   1.52  |  55.13  |   1.66
+prompt_10            |  48.44  |  53.91  |  51.44  |   1.52  | 1.66
 
 
 -------------------------------------- gpqa --------------------------------------
-prompt@8             |   min   |   max   |   avg   |   std   |    CR   | no_answer
+prompt@8             |   min   |   max   |   avg   |   std   |  no_answer
 ----------------------------------------------------------------------------------
-prompt_1             |  50.51  |  60.61  |  54.73  |   2.68  |  64.20  |   3.03
+prompt_1             |  50.51  |  60.61  |  54.73  |   2.68  |  3.03
 ...
-prompt_10            |  53.54  |  60.10  |  56.28  |   1.88  |  66.59  |   2.78
+prompt_10            |  53.54  |  60.10  |  56.28  |   1.88  |  2.78
 ```
 
-### Consistency Rate
-For each datapoint, collect all predictions and calculate the similarity between all possible pairs of predictions.
-The consistency rate is the number of pairs of equivalent prediction pairs divided by the total number of prediction pairs (N choose 2).</br>
-Example: For a datapoint with predictions [A, A, C] across 3 files, it will compare pairs (A, A), (A, C), and (A, C), and the consistency rate will be 1/3 = 33.33%.</br>
-Consistency rate is proposed in [Improving the Robustness of Large Language Models via Consistency Alignment](https://arxiv.org/abs/2403.14221).
 
 ## Notes on Usage
-- There are 10 Math and 10 MCQ prompts in the `prompt/config/robustness` folder, along with the prompt_set_config.yaml. Those prompts vary by prompt wording and problem placement. MCQ prompts also vary by answer formatting instruction, while Math prompts use only \boxed{} format. These prompts can be used with any Math (AIME, comp-math-24-25, etc) and MCQ (GPQA, MMLU-Pro, etc) benchmarks.
-- robust_eval can be used with any dataset that Nemo-Skills supports, but summarize_robustness works on Math and MCQ datasets (for now). If you need evaluations on multiple prompts, you can still use robust_eval. However, the `summarize_robustness` part won't work.
+- There are 10 Math, 10 MCQ and 7 LiveCodeBench prompts in the `prompt/config/robustness` folder, along with the prompt_set_config.yaml. Those prompts vary by prompt wording and problem placement. MCQ prompts also vary by answer formatting instruction, while Math prompts use only \boxed{} format. `prompt/config/robustness/math_prompts` can be used for any Math (AIME, comp-math-24-25, etc) benchmarks, `prompt/config/robustness/mcq_prompts` for any MCQ (GPQA, MMLU-Pro, etc) benchmarks.
+- robust_eval can be used with any dataset that Nemo-Skills supports, but summarize_robustness works on Math, MCQ, LiveCodeBench datasets and any dataset with judge evaluation (for now). If you need evaluations on multiple prompts, you can still use robust_eval. However, the `summarize_robustness` part won't work.

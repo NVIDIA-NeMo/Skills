@@ -1,0 +1,3 @@
+user: |-
+  {question}
+  Generate a correct Python program that matches the specification and passes all tests for this question.
