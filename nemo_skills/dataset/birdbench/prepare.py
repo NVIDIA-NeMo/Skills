@@ -124,12 +124,12 @@ def main():
     parser.add_argument("--output_dir", type=str, default=str(Path(__file__).parent))
     args = parser.parse_args()
 
-    #dev_dir = download_data(args.output_dir)
-    dev_dir = Path(args.output_dir, "dev_20240627/")
+    dev_dir = download_data(args.output_dir)
+    #dev_dir = Path(args.output_dir, "dev_20240627/")
     print(f"\nData downloaded to: {dev_dir}")
 
-    evaluation_filepath = download_evaluation_file(args.output_dir)
-    print(f"\nEvaluation file downloaded to: {evaluation_filepath}")
+    #evaluation_filepath = download_evaluation_file(args.output_dir)
+    #print(f"\nEvaluation file downloaded to: {evaluation_filepath}")
 
     print("Starting processing...")
 
@@ -142,7 +142,7 @@ def main():
     format_entries(
         Path(dev_dir, "dev.json"),
         tables_info,
-        Path(output_dir, "dev.jsonl")
+        Path(args.output_dir, "dev.jsonl")
     )
     print("Finished formatting entries. All done!")
 

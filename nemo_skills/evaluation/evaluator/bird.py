@@ -21,9 +21,10 @@ import os
 import re
 import sys
 
-from nemo_skills.dataset.bird.evaluation import execute_sql
+from nemo_skills.dataset.birdbench.evaluation import execute_sql
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.file_utils import jdump
+from nemo_skills.utils import nested_dataclass
 
 
 @nested_dataclass(kw_only=True)
@@ -132,7 +133,7 @@ class BirdEvaluator(BaseEvaluator):
                 # Attach ground truth and table data
                 line["gt_sql"] = self.gts[i][0]
                 line["db_path"] = self.gts[i][1]
-                line["i"] = i
+                line["sql_index"] = i
 
                 lines.append(line)
                 i+= 1
