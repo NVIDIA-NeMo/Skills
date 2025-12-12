@@ -93,11 +93,6 @@ def eval_ruler2(cfg):
         return pp_predict
 
     def post_process_preds(preds):
-        if "</think>" in preds:
-            preds = preds.split("</think>")[-1]
-
-        if "Answer:" in preds:
-            preds = preds.split("Answer:")[-1]
         return preds
 
 
