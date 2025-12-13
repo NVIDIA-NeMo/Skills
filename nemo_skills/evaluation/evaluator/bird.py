@@ -53,7 +53,7 @@ class BirdEvaluator(BaseEvaluator):
 
     def _get_dev_data(self):
         with open(self.eval_config.dev_json_filepath, 'r') as f_in:
-            contents = json.loads(f_in)
+            contents = json.loads(f_in.read())
 
         for entry in contents:
             entry["db_path"] = Path(
