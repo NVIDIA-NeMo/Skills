@@ -16,4 +16,4 @@
 DATASET_GROUP = "code"
 METRICS_TYPE = "bird"
 EVAL_SPLIT = "dev"
-GENERATION_ARGS = "++prompt_config=generic/text_to_sql.yaml ++eval_type=bird ++inference.tokens_to_generate=10000 ++inference.temperature=0.6 ++inference.top_p=0.95 ++inference.top_k=20 ++eval_config.dev_json_filepath=nemo_skills/dataset/birdbench/dev_20240627/dev.json ++eval_config.db_path=nemo_skills/dataset/birdbench/dev_20240627/dev_databases"
+GENERATION_ARGS = "++prompt_config=generic/text_to_sql ++eval_type=bird ++inference.tokens_to_generate=10000 ++inference.temperature=0.6 ++inference.top_p=0.95 ++inference.top_k=20 ++eval_config.dev_json_filepath=nemo_skills/dataset/birdbench/dev_20240627/dev.json ++eval_config.db_path=nemo_skills/dataset/birdbench/dev_20240627/dev_databases"
