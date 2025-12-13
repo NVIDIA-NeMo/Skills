@@ -38,7 +38,14 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import json
 import sqlite3
+
+def load_json(dir):
+    with open(dir, 'r') as j:
+        contents = json.loads(j.read())
+    return contents
+
 
 def execute_sql(predicted_sql,ground_truth, db_path):
     conn = sqlite3.connect(db_path)

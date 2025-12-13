@@ -39,7 +39,7 @@ class BirdEvaluatorConfig(BaseEvaluatorConfig):
     regex_dotall = False
 
     # Paths needed for ground truth SQL file and database directory
-    gt_filepath = ""
+    dev_json_filepath = ""
     db_path = ""
 
 
@@ -48,38 +48,21 @@ class BirdEvaluator(BaseEvaluator):
         super().__init__(config, num_parallel_requests)
         self.eval_config = BirdEvaluatorConfig(**self.config)
 
-        self.db_ids = self._setup_db_ids()
-        self.gts = self._get_ground_truths()
+        self.dev_data = self._get_dev_data()
 
 
-    """
-    def _setup_db_ids(self):
-        if not self.eval_config.gt_filepath or not os.path.exists(self.eval_config.gt_filepath):
-            logging.error(f"BIRD eval ground truth file path not valid: {self.eval_config.gt_filepath}")
+    def _get_dev_data(self):
+        with open(self.eval_config.dev_json_filepath, 'r') as f_in:
+            contents = json.loads(f_in)
 
-        db_ids = []
-        with open(self.eval_config.gt_filepath, 'r') as f_in:
-            for line in f_in:
-                db_ids.append(line.split()[-1])
+        for entry in contents:
+            entry["db_path"] = Path(
+                self.eval_config.db_path,
+                entry["db_id"],
+                entry["db_id"] + ".sqlite"
+            )
 
-        return db_ids
-    """
-
-
-    def _get_ground_truths(self):
-        """
-        Retrieves ground truth entries in order, in the form (SQL query, db path).
-        """
-        gts = []
-
-        with open(self.eval_config.gt_filepath, 'r') as f_in:
-            for line in f_in:
-                sql, db_name = line.strip().split('\t')
-                db_loc = Path(self.eval_config.db_path, db_name, db_name + ".sqlite")
-
-                gt_queries.append((sql, db_loc))
-
-        return gts
+        return contents
 
         
     def _extract_answer(self, text):
@@ -132,8 +115,9 @@ class BirdEvaluator(BaseEvaluator):
                 line = json.loads(line)
 
                 # Attach ground truth and table data
-                line["gt_sql"] = self.gts[i][0]
-                line["db_path"] = self.gts[i][1]
+                line["gt_sql"] = self.dev_data[i]["SQL"]
+                line["db_path"] = self.gts[i]["db_path"]
+                line["difficulty"] = self.gts[i]["difficulty"]
                 line["sql_index"] = i
 
                 lines.append(line)
