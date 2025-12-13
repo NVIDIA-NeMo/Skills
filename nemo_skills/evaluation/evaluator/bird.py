@@ -30,17 +30,17 @@ from nemo_skills.utils import nested_dataclass
 
 @nested_dataclass(kw_only=True)
 class BirdEvaluatorConfig(BaseEvaluatorConfig):
-    timeout = 30.0
+    timeout: int = 30.0
 
     # Answer format can be "BOXED", "CODEBLOCK", or "USE_REGEX", the last of
     # which uses the given regex in the extraction_regex arg.
-    answer_format = "CODEBLOCK"
-    extraction_regex = None
-    regex_dotall = False
+    answer_format: str = "CODEBLOCK"
+    extraction_regex: str | None = None
+    regex_dotall: bool = False
 
     # Paths needed for ground truth SQL file and database directory
-    dev_json_filepath = ""
-    db_path = ""
+    dev_json_filepath: str = ""
+    db_path: str = ""
 
 
 class BirdEvaluator(BaseEvaluator):
