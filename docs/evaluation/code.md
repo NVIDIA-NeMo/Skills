@@ -224,15 +224,9 @@ ns eval \
 After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/ioi/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/ioi/summarized-results/main_*`. They should look something like this:
 
 ```
----------------------------------- ioi -----------------------------------
-evaluation_mode | total_submissions | total_score | average_number_of_runs
-total           | 1645              | 252         | 274.17
-Nile            | 329               | 82          | 329.00
-Message         | 94                | 29          | 94.00
-Tree            | 329               | 28          | 329.00
-Hieroglyphs     | 282               | 28          | 282.00
-Mosaic          | 376               | 37          | 376.00
-Sphinx's Riddle | 235               | 48          | 235.00
+------------------------------------ ioi24 -------------------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | correct | total_score
+pass@50          | 39          | 52225      | 99630       | 23.08%  | 500
 ```
 
 ### livecodebench
