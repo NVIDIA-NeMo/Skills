@@ -15,7 +15,6 @@
 import asyncio
 import json
 import logging
-import re
 import shutil
 import subprocess
 import sys
@@ -117,58 +116,57 @@ class CodeExecEvaluator(BaseEvaluator):
 
 
 def preprocess_code(generation_dict: dict, language="python", strip_whitespace=True):
-    completion = generation_dict["generation"]
-    if strip_whitespace:
-        completion = completion.strip()
+    completion = generation_dict.get("generation", "") or ""
     completion = completion.replace("\r", "")
 
-    ##### To handle code generation by reasoning models
-    # check for <think> and </think> tags
+    # ---------------------------------------------------------
+    # 1. Handle reasoning traces: <think>...</think>
+    # ---------------------------------------------------------
     if "<think>" in completion:
-        if "</think>" in completion:
-            # thinking trace completed, solution in after the trace
-            match = re.search(r"</think>\s*(.*)", completion, re.DOTALL)
-            completion = match.group(1).strip() if match else None
+        # partition is faster than regex and avoids imports
+        _, separator, post_thought = completion.partition("</think>")
+        if separator:
+            # Keep content after the closing tag
+            completion = post_thought
         else:
-            completion = None
+            # <think> opened but never closed -> Invalid generation
+            generation_dict["completion"] = ""
+            return generation_dict
 
-    if completion is None:
-        generation_dict["completion"] = ""  # no valid solution generated
-        return generation_dict
-    #####
+    # ---------------------------------------------------------
+    # 2. Extract fenced code block
+    # ---------------------------------------------------------
+    specific_fence = f"```{language}"
+    generic_fence = "```"
 
-    start_with_lang_tag = f"```{language}"
-    generic_start_end_tag = "```"
+    # Find the *last* occurrence of the code block (handles CoT steps)
+    start_index = completion.rfind(specific_fence)
+    fence_len = len(specific_fence)
 
-    if start_with_lang_tag in completion:
-        def_line = completion.index(start_with_lang_tag) + len(start_with_lang_tag)
-        completion = completion[def_line:]
-        if strip_whitespace:
-            completion = completion.strip()
-        try:
-            next_line = completion.index(generic_start_end_tag)
-            completion = completion[:next_line]
-            if strip_whitespace:
-                completion = completion.strip()
-        except Exception:
-            print(completion)
-            print("================\n")
+    # Fallback to generic fence if specific language tag is missing
+    if start_index == -1:
+        start_index = completion.rfind(generic_fence)
+        fence_len = len(generic_fence)
 
-    elif generic_start_end_tag in completion:
-        def_line = completion.index(generic_start_end_tag) + len(generic_start_end_tag)
-        completion = completion[def_line:]
-        if strip_whitespace:
-            completion = completion.strip()
-        try:
-            next_line = completion.index(generic_start_end_tag)
-            completion = completion[:next_line]
-            if strip_whitespace:
-                completion = completion.strip()
-        except Exception:
-            print(completion)
-            print("================\n")
+    if start_index != -1:
+        # Move past the opening fence
+        content_start = start_index + fence_len
+        completion = completion[content_start:]
 
-    if completion.startswith(" ") and strip_whitespace:
+        # Check for closing fence
+        end_index = completion.find(generic_fence)
+        if end_index != -1:
+            # Valid block found
+            completion = completion[:end_index]
+        else:
+            # STRICT MODE: Opening fence found, but no closing fence.
+            # The generation is truncated/incomplete. Discard it.
+            completion = ""
+
+    # ---------------------------------------------------------
+    # 3. Final Cleanup (The only strip that matters)
+    # ---------------------------------------------------------
+    if strip_whitespace:
         completion = completion.strip()
 
     generation_dict["completion"] = completion
