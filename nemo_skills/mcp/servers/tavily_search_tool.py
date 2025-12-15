@@ -40,6 +40,7 @@ mcp = FastMCP(name="tavily")
 TAVILY_API_KEY: str | None = None
 
 EXCLUDE_DOMAINS: list[str] | None = None
+MAX_NUM_RESULTS: int = 20
 
 
 ## See docs https://docs.tavily.com/documentation/api-reference/endpoint/search
@@ -60,6 +61,7 @@ async def answer(
 
     api_url = "https://api.tavily.com/search"
     assert answer_type in ["answer", "results"], "Invalid answer type. Choose 'answer' or 'results'."
+    assert num_results <= MAX_NUM_RESULTS, f"Number of results must be less than or equal to {MAX_NUM_RESULTS}."
 
     headers = {
         "Authorization": f"Bearer {TAVILY_API_KEY}",
