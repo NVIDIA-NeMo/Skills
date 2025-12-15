@@ -17,7 +17,6 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from enum import Enum
 from typing import Annotated, Any
 
 import httpx
@@ -43,11 +42,6 @@ TAVILY_API_KEY: str | None = None
 EXCLUDE_DOMAINS: list[str] | None = None
 
 
-class AnswerType(str, Enum):
-    results = "results"
-    answer = "answer"
-
-
 ## See docs https://docs.tavily.com/documentation/api-reference/endpoint/search
 ## There is also a hosted MCP that can be used instead of this tool: https://github.com/tavily-ai/tavily-mcp?tab=readme-ov-file#remote-mcp-server
 @mcp.tool(name="web-search")
@@ -55,11 +49,17 @@ async def answer(
     query: Annotated[str, Field(description="Search query.")],
     exclude_domains: Annotated[list[str], Field(description="Domains to exclude from the search.")] = [],
     num_results: Annotated[int, Field(description="Number of results to return.")] = 10,
-    answer_type: Annotated[AnswerType, Field(description="Type of results to return.")] = AnswerType.answer,
+    answer_type: Annotated[
+        str,
+        Field(
+            description='Type of results to return. Choose "answer" for a concise answer or "results" for a list of results.'
+        ),
+    ] = "answer",
 ):
     """Search the web for a query"""
 
     api_url = "https://api.tavily.com/search"
+    assert answer_type in ["answer", "results"], "Invalid answer type. Choose 'answer' or 'results'."
 
     headers = {
         "Authorization": f"Bearer {TAVILY_API_KEY}",
