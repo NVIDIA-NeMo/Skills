@@ -1,5 +1,5 @@
 ---
-date: 2025-XX-XX
+date: 2025-12-15
 ---
 
 # Nemotron-Math-Proofs
@@ -33,11 +33,11 @@ We compare a Qwen3-8B model fine-tuned on this dataset against Goedel-Prover-V2-
 | Goedel-Prover-V2-8B | 84.6% | 86.7% |
 | Qwen3-8B SFT on Nemotron-Math-Proofs-v1 | 85.3% | 90.2% |
 
-Nemotron-Nano-3 (which includes this dataset in its training) achieves the following on miniF2F:
+Nemotron-Nano-v3 (which includes this dataset in its training) achieves the following on miniF2F:
 
 | Model | pass@32 (no self-correction) | pass@32 (with self-correction) |
 |-------|------------------------------|-------------------------------|
-| Nemotron-Nano-3 | 79.92% | 86.89% |
+| Nemotron-Nano-v3 | 79.92% | 86.89% |
 | gpt-oss-20b | 43.03% | - |
 | Qwen3-30B-A3B-Thinking | 16.80% | - |
 
@@ -50,8 +50,7 @@ Nemotron-Nano-3 (which includes this dataset in its training) achieves the follo
 | `formal_statement` | `str \| null` | Lean 4 theorem code (null for ~4% of entries) |
 | `lean_header` | `str \| null` | Lean import statements and setup |
 | `sft_messages` | `list` | Verified proof attempts as chat conversations; each entry produces correct Lean 4 code (empty list if none) |
-| `sft_messages[i].messages` | `list` | List of `{role: str, content: str}` message dicts |
-| `used_in_training` | `list[bool]` | Whether each `sft_messages` entry was used in Nemotron-Nano-v3 training |
+| `used_in_training` | `bool` | Whether each `sft_messages` entry was used in Nemotron-Nano-v3 training |
 | `url` | `str \| null` | Original post URL (mathstack only) |
 | `user_name` | `str \| null` | Original poster's username (mathstack only) |
 | `user_url` | `str \| null` | Original poster's profile URL (mathstack only) |
@@ -68,7 +67,8 @@ Browse the sections below to see commands for autoformalization, theorem proving
 ### Autoformalization
 
 The autoformalization pipeline translates natural language theorems into Lean 4 formal statements using an iterative
-refinement process with backtranslation verification.
+refinement process with backtranslation verification. The input is natural language math problems—see
+[OpenMathReasoning dataset construction](../openmathreasoning/dataset.md) for how to prepare these.
 
 === "CLI"
 
@@ -76,13 +76,13 @@ refinement process with backtranslation verification.
     ns generate \
         --cluster=slurm \
         --generation_module=nemo_skills.inference.autoformalize \
-        --model=/path/to/model \
+        --model=openai/gpt-oss-120b \
         --server_type=vllm \
         --server_gpus=8 \
-        --input_file=/workspace/data/problems.jsonl \
+        --input_file=/workspace/data/problems.jsonl \  # Natural language problems (see OpenMathReasoning dataset construction)
         --output_dir=/workspace/data/autoformalize_output \
         --with_sandbox \
-        --num_random_seeds=32 \
+        --num_random_seeds=1 \
         ++prompt_config=lean4/deepseek-R1-autoformalization \
         ++inference.tokens_to_generate=120000 \
         ++inference.temperature=1.0 \
@@ -123,12 +123,12 @@ refinement process with backtranslation verification.
         cluster="slurm",
         server_gpus=8,
         server_nodes=1,
-        input_file="/workspace/data/problems.jsonl",
+        input_file="/workspace/data/problems.jsonl",  # Natural language problems (see OpenMathReasoning dataset construction)
         output_dir="/workspace/data/autoformalize_output",
         server_type="vllm",
-        model="/path/to/model",
+        model="openai/gpt-oss-120b",
         with_sandbox=True,
-        num_random_seeds=32,
+        num_random_seeds=1,
     )
     ```
 
@@ -150,18 +150,19 @@ The prover pipeline generates proofs for formalized statements with iterative er
     ns generate \
         --cluster=slurm \
         --generation_module=nemo_skills.inference.prover \
-        --model=/path/to/prover-model \
+        --model=Goedel-LM/Goedel-Prover-V2-32B \
         --server_type=vllm \
         --server_gpus=8 \
-        --input_file=/workspace/data/formal_statements.jsonl \
+        --server_args="--max-model-len 40960" \
+        --input_file=/workspace/data/formal_statements.jsonl \  # Output from autoformalization step
         --output_dir=/workspace/data/proofs_output \
         --with_sandbox \
-        --num_random_seeds=32 \
+        --num_random_seeds=1 \
         --dependent_jobs=2 \
-        ++prompt_config=lean4/goedel-prover-v2-nemotron \
-        ++inference.tokens_to_generate=120000 \
+        ++prompt_config=lean4/goedel-prover-v2 \
+        ++inference.tokens_to_generate=38912 \
         ++inference.temperature=1.0 \
-        ++inference.top_p=1.0 \
+        ++inference.top_p=0.95 \
         ++refinement=True \
         ++refinement_max_turns=8 \
         ++remove_cot=True \
@@ -178,10 +179,10 @@ The prover pipeline generates proofs for formalized statements with iterative er
 
     generate(
         ctx=wrap_arguments(
-            "++inference.tokens_to_generate=120000 "
+            "++inference.tokens_to_generate=38912 "
             "++inference.temperature=1.0 "
-            "++inference.top_p=1.0 "
-            "++prompt_config=lean4/goedel-prover-v2-nemotron "
+            "++inference.top_p=0.95 "
+            "++prompt_config=lean4/goedel-prover-v2 "
             "++refinement=True "
             "++refinement_max_turns=8 "
             "++remove_cot=True "
@@ -192,12 +193,13 @@ The prover pipeline generates proofs for formalized statements with iterative er
         ),
         generation_module="nemo_skills.inference.prover",
         cluster="slurm",
-        input_file="/workspace/data/formal_statements.jsonl",
+        input_file="/workspace/data/formal_statements.jsonl",  # Output from autoformalization step
         output_dir="/workspace/data/proofs_output",
-        model="/path/to/prover-model",
+        model="Goedel-LM/Goedel-Prover-V2-32B",
         server_type="vllm",
         server_gpus=8,
-        num_random_seeds=32,
+        server_args="--max-model-len 40960",
+        num_random_seeds=1,
         dependent_jobs=2,
         with_sandbox=True,
     )
@@ -222,7 +224,7 @@ To fine-tune a model on the Nemotron-Math-Proofs dataset:
         --expname=qwen3-8b-lean-sft \
         --output_dir=/workspace/training/qwen3-8b-lean-sft \
         --hf_model=Qwen/Qwen3-8B \
-        --training_data=/workspace/data/sft_data.jsonl \
+        --training_data=/workspace/data/sft_data.jsonl \  # Processed output from theorem proving step
         --num_nodes=32 \
         --num_gpus=8 \
         --backend=megatron \
@@ -263,7 +265,7 @@ To fine-tune a model on the Nemotron-Math-Proofs dataset:
         backend="megatron",
         output_dir="/workspace/training/qwen3-8b-lean-sft",
         hf_model="Qwen/Qwen3-8B",
-        training_data="/workspace/data/sft_data.jsonl",
+        training_data="/workspace/data/sft_data.jsonl",  # Processed output from theorem proving step
         num_gpus=8,
         num_nodes=32,
     )
@@ -271,7 +273,7 @@ To fine-tune a model on the Nemotron-Math-Proofs dataset:
 
 ### Model Evaluation on miniF2F
 
-To evaluate a model on the miniF2F benchmark with 32 samples per problem:
+To evaluate a model on the miniF2F benchmark with 32 samples per problem (without self-correction):
 
 === "CLI"
 
@@ -310,6 +312,67 @@ To evaluate a model on the miniF2F benchmark with 32 samples per problem:
         benchmarks="minif2f:32",
         output_dir="/workspace/evals/nemotron-nano-3-minif2f",
         extra_eval_args="++eval_config.timeout=600",
+        with_sandbox=True,
+    )
+    ```
+
+To evaluate with self-correction (iterative refinement based on compiler feedback):
+
+=== "CLI"
+
+    ```bash
+    ns generate \
+        --cluster=slurm \
+        --generation_module=nemo_skills.inference.prover \
+        --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+        --server_type=vllm \
+        --server_gpus=8 \
+        --input_file=/nemo_run/code/nemo_skills/dataset/minif2f/test.jsonl \
+        --output_dir=/workspace/evals/nemotron-nano-3-minif2f-self-correction \
+        --with_sandbox \
+        --num_random_seeds=32 \
+        --dependent_jobs=2 \
+        ++prompt_config=lean4/goedel-prover-v2-nemotron \
+        ++inference.tokens_to_generate=120000 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=1.0 \
+        ++refinement=True \
+        ++refinement_max_turns=8 \
+        ++remove_cot=True \
+        ++n_pass=1 \
+        ++refinement_prompt_config=lean4/goedel-prover-v2-refinement \
+        ++delete_wrong_turns=True \
+        ++max_concurrent_requests=512
+    ```
+
+=== "Python"
+
+    ```python
+    from nemo_skills.pipeline.cli import generate, wrap_arguments
+
+    generate(
+        ctx=wrap_arguments(
+            "++inference.tokens_to_generate=120000 "
+            "++inference.temperature=1.0 "
+            "++inference.top_p=1.0 "
+            "++prompt_config=lean4/goedel-prover-v2-nemotron "
+            "++refinement=True "
+            "++refinement_max_turns=8 "
+            "++remove_cot=True "
+            "++n_pass=1 "
+            "++refinement_prompt_config=lean4/goedel-prover-v2-refinement "
+            "++delete_wrong_turns=True "
+            "++max_concurrent_requests=512 "
+        ),
+        generation_module="nemo_skills.inference.prover",
+        cluster="slurm",
+        input_file="/nemo_run/code/nemo_skills/dataset/minif2f/test.jsonl",
+        output_dir="/workspace/evals/nemotron-nano-3-minif2f-self-correction",
+        model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        server_type="vllm",
+        server_gpus=8,
+        num_random_seeds=32,
+        dependent_jobs=2,
         with_sandbox=True,
     )
     ```
