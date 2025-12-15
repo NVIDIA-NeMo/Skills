@@ -21,7 +21,7 @@ def load_schema_overrides(schema_overrides: dict | None) -> Dict[str, Dict[str, 
 
     Args:
         schema_overrides: Dict keyed by provider class name, then tool name, or None.
-            Format: {ProviderClassName: {tool_name: {name, description, parameters}}}
+            Format: ProviderClassName -> tool_name -> (name, description, parameters)
             Hydra handles file loading (e.g., ++schema_overrides=@file.yaml),
             so we only need to accept the resulting dict.
 

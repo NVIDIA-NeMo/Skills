@@ -589,6 +589,11 @@ async def test_tool_manager_with_schema_overrides():
     renamed_tool = next((t for t in formatted_tools if t["function"]["name"] == "renamed_execute"), None)
     assert renamed_tool is not None, "Renamed tool should be present"
 
-    # Verify parameter mapping
+    # Verify schema change (model sees `script`, original tool expects `code`)
+    props = renamed_tool["function"]["parameters"]["properties"]
+    assert "script" in props
+    assert "code" not in props
+
+    # Verify parameter mapping direction: model_arg -> original_arg
     assert "renamed_execute" in parameter_mapping
     assert parameter_mapping["renamed_execute"] == {"script": "code"}

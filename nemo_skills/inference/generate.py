@@ -180,7 +180,7 @@ class GenerateSolutionsConfig:
     #
     #   Schema overrides allow customizing tool schemas shown to the model.
     #   Dict keyed by provider class name (like tool_overrides), then tool name.
-    #   Format: {ProviderClassName: {tool_name: {name, description, parameters}}}
+    #   Format: ProviderClassName -> tool_name -> (name, description, parameters)
     #
     #   Examples:
     #     - Inline dict (via Hydra):

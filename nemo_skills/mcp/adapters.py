@@ -179,11 +179,11 @@ def format_tool_list_by_endpoint_type(
         tools: List of tool dicts with keys: name, description, input_schema, server
         endpoint_type: The endpoint type (chat or responses)
         schema_overrides: Optional dict keyed by provider class name, then tool name.
-            Format: {ProviderClassName: {tool_name: {name, description, parameters}}}
+            Format: ProviderClassName -> tool_name -> (name, description, parameters)
 
     Returns:
         Tuple of (formatted_tools_list, parameter_mapping_dict)
-        where parameter_mapping_dict is {tool_name: {new_param: original_param}}
+        where parameter_mapping_dict is tool_name -> (new_param -> original_param)
     """
     schema_overrides = schema_overrides or {}
     parameter_mapping = {}
