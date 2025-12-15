@@ -41,15 +41,21 @@ TAVILY_API_KEY: str | None = None
 
 EXCLUDE_DOMAINS: list[str] | None = None
 
+SUPPORTED_SEARCH_ANSWER_TYPES = ["results", "answer"]
+
 
 ## See docs https://docs.tavily.com/documentation/api-reference/endpoint/search
 ## There is also a hosted MCP that can be used instead of this tool: https://github.com/tavily-ai/tavily-mcp?tab=readme-ov-file#remote-mcp-server
-@mcp.tool(name="tavily-search")
+@mcp.tool(name="web-search")
 async def answer(
     query: Annotated[str, Field(description="Search query.")],
     exclude_domains: Annotated[list[str], Field(description="Domains to exclude from the search.")] = [],
+    num_results: Annotated[int, Field(description="Number of results to return.")] = 10,
+    answer_type: Annotated[
+        str, Field(description="Type of results to return.", choices=SUPPORTED_SEARCH_ANSWER_TYPES)
+    ] = "answer",
 ):
-    """Get a summary of search results from the web using Tavily."""
+    """Search the web for a query"""
 
     api_url = "https://api.tavily.com/search"
 
@@ -63,6 +69,7 @@ async def answer(
         # "auto_parameters": False,
         "search_depth": "basic",
         "include_answer": "basic",  ## or advanced.
+        "num_results": num_results,
         # this should be statically set to the domains we want to exclude
         "exclude_domains": exclude_domains,
     }
@@ -72,7 +79,7 @@ async def answer(
         if response.status_code != 200:
             return {"error": response.json()["error"]}
 
-    result = response.json()["answer"]
+    result = response.json()[answer_type]
 
     return result
 
@@ -99,7 +106,7 @@ class TavilySearchTool(MCPClientTool):
                     "args": ["-m", "nemo_skills.mcp.servers.tavily_search_tool"],
                 },
                 "hide_args": {
-                    "tavily-search": ["exclude_domains"],
+                    "tavily-search": ["exclude_domains", "num_results", "answer_type"],
                 },
                 "exclude_domains_config": None,
             }
@@ -120,6 +127,9 @@ class TavilySearchTool(MCPClientTool):
         if not hasattr(self, "exclude_domains"):
             raise ValueError("exclude_domains_config is not set")
         merged_extra["exclude_domains"] = self.exclude_domains
+        for key in ["num_results", "answer_type"]:
+            if key in self._config:
+                merged_extra[key] = self._config[key]
         result = await self._client.call_tool(tool=tool_name, args=arguments, extra_args=merged_extra)
         return result
 
