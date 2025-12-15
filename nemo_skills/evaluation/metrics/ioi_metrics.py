@@ -110,23 +110,23 @@ class IOIMetrics(BaseMetrics):
         for name, submissions in self.predictions_by_problem.items():
             # Cluster the submissions if requested
             if self.cluster_folder:
-                clusters, id = self.get_clusters(submissions)
-                # Ensure directory exists
                 os.makedirs(self.cluster_folder, exist_ok=True)
-
-                # Prepare final clustered data
-                final_clusters = {}
-                for i, (output_key, cluster) in enumerate(clusters.items()):
-                    final_clusters[f"cluster_{i + 1}"] = {
-                        "output": output_key,
-                        "codes": cluster["codes"],
-                        "max_score": cluster["max_score"],
-                        "max_score_solutions": cluster["max_score_solutions"],
-                    }
-
-                output_file = os.path.join(self.cluster_folder, f"{id}_cluster.jsonl")
-                with open(output_file, "w") as f:
-                    json.dump(final_clusters, f, indent=4)
+                submissions_by_id = defaultdict(list)
+                for sub in submissions:
+                    submissions_by_id[sub["id"]].append(sub)
+                for sid, sid_submissions in submissions_by_id.items():
+                    clusters, _ = self.get_clusters(sid_submissions)
+                    final_clusters = {}
+                    for i, (output_key, cluster) in enumerate(clusters.items()):
+                        final_clusters[f"cluster_{i + 1}"] = {
+                            "output": output_key,
+                            "codes": cluster["codes"],
+                            "max_score": cluster["max_score"],
+                            "max_score_solutions": cluster["max_score_solutions"],
+                        }
+                    output_file = os.path.join(self.cluster_folder, f"{sid}_cluster.jsonl")
+                    with open(output_file, "w") as f:
+                        json.dump(final_clusters, f, indent=4)
 
             score, subtasks = self.get_problem_score(submissions)
             self.problem_scores[name] = (score, subtasks)
