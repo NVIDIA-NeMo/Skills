@@ -106,7 +106,7 @@ class TavilySearchTool(MCPClientTool):
                     "args": ["-m", "nemo_skills.mcp.servers.tavily_search_tool"],
                 },
                 "hide_args": {
-                    "tavily-search": ["exclude_domains", "num_results", "answer_type"],
+                    "web-search": ["exclude_domains", "num_results", "answer_type"],
                 },
                 "exclude_domains_config": None,
             }
