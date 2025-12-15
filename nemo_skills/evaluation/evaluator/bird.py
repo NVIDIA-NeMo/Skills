@@ -56,10 +56,12 @@ class BirdEvaluator(BaseEvaluator):
             contents = json.loads(f_in.read())
 
         for entry in contents:
-            entry["db_path"] = Path(
-                self.eval_config.db_path,
-                entry["db_id"],
-                entry["db_id"] + ".sqlite"
+            entry["db_path"] = str(
+                Path(
+                    self.eval_config.db_path,
+                    entry["db_id"],
+                    entry["db_id"] + ".sqlite"
+                )
             )
 
         return contents
