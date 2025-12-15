@@ -2,7 +2,21 @@
 
 This section details how to evaluate speech and audio benchmarks, including understanding tasks that test models' ability to reason about audio content (speech, music, environmental sounds) and ASR tasks for transcription.
 
+!!! note
+    Currently supports only Megatron server type (`--server_type=megatron`).
+
 ## Supported benchmarks
+
+### ASR Leaderboard
+
+ASR benchmark based on the [HuggingFace Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard). Evaluates transcription quality using Word Error Rate (WER).
+
+**Datasets:** `librispeech_clean`, `librispeech_other`, `voxpopuli`, `tedlium`, `gigaspeech`, `spgispeech`, `earnings22`, `ami`
+
+#### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/asr-leaderboard/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/asr-leaderboard/__init__.py)
+- Original datasets are hosted on HuggingFace (downloaded automatically during preparation)
 
 ### MMAU-Pro
 
@@ -17,46 +31,79 @@ MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for
 - Benchmark is defined in [`nemo_skills/dataset/mmau-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmau-pro/__init__.py)
 - Original benchmark source is hosted on [HuggingFace](https://huggingface.co/datasets/gamma-lab-umd/MMAU-Pro)
 
-## Preparing MMAU-Pro Data
+## Preparing Data
 
-MMAU-Pro requires audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.
+These benchmarks require audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.
 
 !!! warning "Running without audio files"
-    If you want to evaluation without audio files (not recommended) use
+    If you want to evaluate without audio files (not recommended) use
     `--no-audio` flag. In this case you can also set `--skip_data_dir_check`
     as data is very lightweight when audio files aren't being used.
 
-### Data Preparation
-
-To prepare the dataset with audio files:
+### ASR Leaderboard
 
 ```bash
-export HF_TOKEN=your_huggingface_token
+ns prepare_data asr-leaderboard --data_dir=/path/to/data --cluster=<cluster>
+```
+
+Prepare specific datasets only:
+
+```bash
+ns prepare_data asr-leaderboard --datasets librispeech_clean ami
+```
+
+### MMAU-Pro
+
+```bash
 ns prepare_data mmau-pro --data_dir=/path/to/data --cluster=<cluster_name>
 ```
 
-**What happens:**
-
-- Requires authentication (HuggingFace token via `HF_TOKEN` environment variable)
-- Downloads audio archive from HuggingFace and extracts
-- Prepares the dataset files for evaluation
-
-### Text-Only Mode (Not Recommended)
-
-If you need to prepare without audio files:
-
-```bash
-ns prepare_data mmau-pro --no-audio
-```
-
-Note: The git repository check is automatically skipped with `--no-audio`.
-
 ## Running Evaluation
 
-!!! note
-    Currently supports only Megatron server type (`--server_type=megatron`).
+### ASR Leaderboard
 
-### Evaluation Example
+```python
+from nemo_skills.pipeline.cli import wrap_arguments, eval
+
+eval(
+    ctx=wrap_arguments(""),
+    cluster="oci_iad",
+    output_dir="/workspace/asr-leaderboard-eval",
+    benchmarks="asr-leaderboard",
+    server_type="megatron",
+    server_gpus=1,
+    model="/workspace/checkpoint",
+    server_entrypoint="/workspace/megatron-lm/server.py",
+    server_container="/path/to/container.sqsh",
+    data_dir="/dataset",
+    installation_command="pip install sacrebleu jiwer openai-whisper"
+    server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
+)
+```
+
+Evaluate a specific dataset:
+
+```python
+eval(benchmarks="asr-leaderboard", split="librispeech_clean", ...)
+```
+
+??? note "Alternative: Command-line usage"
+
+    ```bash
+    ns eval \
+        --cluster=oci_iad \
+        --output_dir=/workspace/path/to/asr-leaderboard-eval \
+        --benchmarks=asr-leaderboard \
+        --server_type=megatron \
+        --server_gpus=1 \
+        --model=/workspace/path/to/checkpoint \
+        --server_entrypoint=/workspace/megatron-lm/server.py \
+        --server_container=/path/to/container.sqsh \
+        --data_dir=/dataset
+        --installation_command="pip install sacrebleu jiwer openai-whisper"
+    ```
+
+### MMAU-Pro
 
 ```python
 import os
@@ -65,7 +112,7 @@ from nemo_skills.pipeline.cli import wrap_arguments, eval
 os.environ["NVIDIA_API_KEY"] = "your_nvidia_api_key"  # For LLM judge
 
 eval(
-    ctx=wrap_arguments("++prompt_suffix='/no_think'"),
+    ctx=wrap_arguments(""),
     cluster="oci_iad",
     output_dir="/workspace/mmau-pro-eval",
     benchmarks="mmau-pro",
@@ -80,46 +127,6 @@ eval(
 )
 ```
 
-??? note "Alternative: Command-line usage"
-
-    If you prefer using the command-line interface, you can run:
-
-    ```bash
-    export HF_TOKEN=your_huggingface_token
-    export NVIDIA_API_KEY=your_nvidia_api_key
-    export MEGATRON_PATH=/workspace/path/to/megatron-lm
-
-    ns eval \
-        --cluster=oci_iad \
-        --output_dir=/workspace/path/to/mmau-pro-eval \
-        --benchmarks=mmau-pro \
-        --server_type=megatron \
-        --server_gpus=1 \
-        --model=/workspace/path/to/checkpoint-tp1 \
-        --server_entrypoint=$MEGATRON_PATH/path/to/server.py \
-        --server_container=/path/to/server_container.sqsh \
-        --data_dir=/dataset \
-        --installation_command="pip install sacrebleu" \
-        ++prompt_suffix='/no_think' \
-        --server_args="--inference-max-requests 1 \
-                       --model-config /workspace/path/to/checkpoint-tp1/config.yaml \
-                       --num-tokens-to-generate 256 \
-                       --temperature 1.0 \
-                       --top_p 1.0"
-    ```
-
-## How Evaluation Works
-
-Each category uses a different evaluation strategy:
-
-| Category | Evaluation Method | How It Works |
-|----------|-------------------|--------------|
-| **Closed-Form** | NVEmbed similarity matching | Model generates short answer; compared to expected answer using embeddings |
-| **Open-Ended** | LLM-as-a-judge (Qwen 2.5 7B) | Model generates detailed response; Qwen 2.5 judges quality and correctness |
-| **Instruction Following** | Custom evaluation logic | Model follows instructions; evaluator checks adherence |
-
-### Sub-benchmarks
-
 Evaluate individual categories:
 
 - `mmau-pro.closed_form`
@@ -129,6 +136,24 @@ Evaluate individual categories:
 ```python
 eval(benchmarks="mmau-pro.closed_form", ...)
 ```
+
+??? note "Alternative: Command-line usage"
+
+    ```bash
+    export NVIDIA_API_KEY=your_nvidia_api_key
+
+    ns eval \
+        --cluster=oci_iad \
+        --output_dir=/workspace/path/to/mmau-pro-eval \
+        --benchmarks=mmau-pro \
+        --server_type=megatron \
+        --server_gpus=1 \
+        --model=/workspace/path/to/checkpoint \
+        --server_entrypoint=/workspace/megatron-lm/server.py \
+        --server_container=/path/to/container.sqsh \
+        --data_dir=/dataset \
+        --installation_command="pip install sacrebleu"
+    ```
 
 ### Using Custom Judge Models
 
@@ -143,7 +168,7 @@ The open-ended questions subset uses an LLM-as-a-judge (by default, Qwen 2.5 7B 
     os.environ["NVIDIA_API_KEY"] = "your_nvidia_api_key"
 
     eval(
-        ctx=wrap_arguments("++prompt_suffix='/no_think'"),
+        ctx=wrap_arguments(""),
         cluster="oci_iad",
         output_dir="/workspace/path/to/mmau-pro-eval",
         benchmarks="mmau-pro.open_ended",  # Only open-ended uses LLM judge
@@ -180,7 +205,58 @@ The open-ended questions subset uses an LLM-as-a-judge (by default, Qwen 2.5 7B 
 
 ## Understanding Results
 
-After evaluation completes, results are saved in your output directory under `eval-results/`:
+After evaluation completes, results are saved in your output directory under `eval-results/`.
+
+### ASR Leaderboard Results
+
+```
+<output_dir>/
+└── eval-results/
+    └── asr-leaderboard/
+        └──metrics.json
+```
+
+Example output:
+
+```
+------------------------------------- asr-leaderboard --------------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer    | num_entries
+pass@1          | 736        | 233522      | 86.70%       | 0.00%     | 7.82%  | 143597
+
+----------------------------------- asr-leaderboard-ami ------------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer    | num_entries
+pass@1          | 732        | 3680        | 81.27%       | 0.00%     | 18.45% | 12620
+
+-------------------------------- asr-leaderboard-earnings22 --------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer    | num_entries
+pass@1          | 736        | 3522        | 83.97%       | 0.00%     | 14.72% | 57390
+
+-------------------------------- asr-leaderboard-gigaspeech --------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer    | num_entries
+pass@1          | 736        | 233469      | 71.86%       | 0.00%     | 12.34% | 25376
+
+---------------------------- asr-leaderboard-librispeech_clean ----------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer   | num_entries
+pass@1          | 735        | 3607        | 99.62%       | 0.00%     | 2.06% | 2620
+
+---------------------------- asr-leaderboard-librispeech_other ----------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer   | num_entries
+pass@1          | 733        | 3927        | 98.67%       | 0.00%     | 4.34% | 2939
+
+-------------------------------- asr-leaderboard-spgispeech -------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer   | num_entries
+pass@1          | 740        | 4510        | 99.99%       | 0.00%     | 3.81% | 39341
+
+--------------------------------- asr-leaderboard-tedlium ----------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer   | num_entries
+pass@1          | 732        | 3878        | 77.74%       | 0.00%     | 7.89% | 1469
+
+-------------------------------- asr-leaderboard-voxpopuli --------------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer   | num_entries
+pass@1          | 741        | 4007        | 99.51%       | 0.00%     | 6.47% | 1842
+```
+
+### MMAU-Pro Results
 
 ```
 <output_dir>/
@@ -195,9 +271,7 @@ After evaluation completes, results are saved in your output directory under `ev
 │           └── metrics.json
 ```
 
-### Evaluation Output Format
-
-When evaluation completes, results are displayed in formatted tables in the logs:
+Example output:
 
 **Open-Ended Questions:**
 
@@ -213,7 +287,6 @@ pass@1          | 82         | 196         | 14.88%       | 0.00%     | 625
 -------------------------- mmau-pro.instruction_following -------------------------
 evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | num_entries
 pass@1          | 0          | 102         | 21.84%       | 0.00%     | 87
-
 ```
 
 **Closed-Form Questions (Main Category + Sub-categories):**
