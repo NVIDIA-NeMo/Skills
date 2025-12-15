@@ -195,6 +195,17 @@ class ProverTask(GenerationTask):
             }
         )
 
+    def _make_assistant_message(self, content: str, reasoning_content: str | None = None) -> dict:
+        """Create an assistant message dict, optionally with thinking/reasoning content.
+
+        Some models (e.g., gpt-oss) output <|channel|> tags that need to be in a separate
+        'thinking' field rather than in 'content' for the chat template to work correctly.
+        """
+        message = {"role": "assistant", "content": content}
+        if reasoning_content:
+            message["thinking"] = reasoning_content
+        return message
+
     async def _single_data_point_generate(self, data_point, data):
         formal_statement = (
             (data_point["header"].strip() + "\n")
@@ -243,8 +254,11 @@ class ProverTask(GenerationTask):
                 ),
             )
 
+            # Get reasoning_content if available (e.g., from gpt-oss models)
+            reasoning_content = generation.get("reasoning_content")
+
             new_prompt_turn_list = deepcopy(prompt_turn_list)
-            new_prompt_turn_list += [{"role": "assistant", "content": generation["generation"]}]
+            new_prompt_turn_list.append(self._make_assistant_message(generation["generation"], reasoning_content))
 
             prompt_turn_list_list.append(
                 new_prompt_turn_list
@@ -259,22 +273,15 @@ class ProverTask(GenerationTask):
             ):  # check if successfully parse the code. We do not want to delete the turn if there is a parsing error.
                 if self.cfg.delete_wrong_turns:
                     prompt_turn_list = deepcopy(base_prompt_turn_list) + [
-                        {
-                            "role": "assistant",
-                            "content": f"```lean4\n{full_code.strip()}\n```",
-                        }
+                        self._make_assistant_message(f"```lean4\n{full_code.strip()}\n```")
                     ]  # only keep the latest turn
                 else:
-                    prompt_turn_list += [
-                        {
-                            "role": "assistant",
-                            "content": f"```lean4\n{full_code.strip()}\n```",
-                        }
-                    ]
-                full_prompt_turn_list += [{"role": "assistant", "content": generation["generation"]}]
+                    prompt_turn_list.append(self._make_assistant_message(f"```lean4\n{full_code.strip()}\n```"))
+                full_prompt_turn_list.append(self._make_assistant_message(generation["generation"], reasoning_content))
             else:
-                prompt_turn_list += [{"role": "assistant", "content": generation["generation"]}]
-                full_prompt_turn_list += [{"role": "assistant", "content": generation["generation"]}]
+                assistant_msg = self._make_assistant_message(generation["generation"], reasoning_content)
+                prompt_turn_list.append(assistant_msg)
+                full_prompt_turn_list.append(assistant_msg)
 
             if code == "None" or "**Error**" in full_code:
                 if code == "None":
