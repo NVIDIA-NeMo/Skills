@@ -185,14 +185,16 @@ class GenerateSolutionsConfig:
     #   Examples:
     #     - Inline dict (via Hydra):
     #         ++schema_overrides.PythonTool.stateful_python_code_exec.name="python_executor"
-    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.original_name="script"
+    #         ++schema_overrides.PythonTool.stateful_python_code_exec.description="Execute Python code"
+    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.name="script"
+    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.description="Script to execute"
     #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.type="string"
     #     - Tool names with dashes require quotes (Hydra limitation):
-    #         ++schema_overrides.TavilySearchTool.'tavily-search'.name="web_search"
+    #         ++schema_overrides.TavilySearchTool.'web-search'.name="web_search"
     #       Or use a YAML file where dashes work without quotes:
     #         schema_overrides:
     #           TavilySearchTool:
-    #             tavily-search:
+    #             web-search:
     #               name: "web_search"
     #     - File via Hydra:
     #         ++schema_overrides=@path/to/schema_overrides.yaml

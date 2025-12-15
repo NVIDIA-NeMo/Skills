@@ -86,7 +86,6 @@ def apply_schema_overrides(
         original_schema = transformed.get("input_schema", {})
         original_properties = original_schema.get("properties", {})
         original_required = original_schema.get("required", [])
-        original_param_names = list(original_properties.keys())
 
         # Build new properties dict and parameter mapping
         new_properties = {}
@@ -98,39 +97,36 @@ def apply_schema_overrides(
 
         for idx, (new_param_name, param_config) in enumerate(override_param_list):
             # Find the original parameter name
-            # 1. Check for explicit "original_name" in param_config
-            # 2. If new_param_name exists in original, use it (no rename, just override properties)
-            # 3. If only one param in each, map 1:1
-            # 4. Otherwise, match by position
+            # Supported schema override mapping:
+            # 1) Preferred: parameters.code.name="script" -> code maps to script
+            # 2) If new_param_name exists in original, treat as same-name override (no rename)
             original_param_name = None
-            if isinstance(param_config, dict):
-                original_param_name = param_config.get("original_name")
+
+            if not isinstance(param_config, dict):
+                raise ValueError(
+                    f"Parameter override for '{new_param_name}' must be a dict. "
+                    f"Use parameters.{new_param_name}.name='<original_param_name>' to rename."
+                )
+
+            # If rename, require param_config['name'] to point to the original parameter name.
+            # Otherwise, allow same-name override when new_param_name exists in original.
+            original_param_name = param_config.get("name")
 
             if original_param_name is None:
-                # Check if new_param_name exists in original (no rename, just property override)
                 if new_param_name in original_properties:
                     original_param_name = new_param_name
-                elif len(override_param_list) == 1 and len(original_param_names) == 1:
-                    # Single parameter: map 1:1
-                    original_param_name = original_param_names[0]
-                elif idx < len(original_param_names):
-                    # Match by position
-                    original_param_name = original_param_names[idx]
                 else:
-                    # New parameter not in original, or can't determine mapping
-                    # Assume it's a new parameter (no mapping needed)
-                    original_param_name = None
+                    raise ValueError(
+                        f"Parameter override '{new_param_name}' does not exist in original schema; "
+                        f"provide parameters.{new_param_name}.name='<original_param_name>' to rename."
+                    )
 
             # Build new parameter schema
             if original_param_name and original_param_name in original_properties:
                 original_param = original_properties[original_param_name]
                 new_param = copy.deepcopy(original_param)
-                # Override with new config (excluding original_name)
-                if isinstance(param_config, dict):
-                    new_param.update({k: v for k, v in param_config.items() if k != "original_name"})
-                else:
-                    # If param_config is not a dict, it might be just the type
-                    new_param["type"] = param_config
+                # Override with new config (excluding mapping key: name)
+                new_param.update({k: v for k, v in param_config.items() if k != "name"})
 
                 # Track mapping if names differ
                 if new_param_name != original_param_name:
@@ -140,15 +136,9 @@ def apply_schema_overrides(
                 if original_param_name in original_required:
                     new_required.append(new_param_name)
             else:
-                # New parameter not in original - use param_config directly
-                if isinstance(param_config, dict):
-                    new_param = copy.deepcopy(param_config)
-                    new_param.pop("original_name", None)
-                else:
-                    new_param = {"type": param_config}
-                # New parameters are not required unless explicitly specified
-                if isinstance(param_config, dict) and param_config.get("required", False):
-                    new_required.append(new_param_name)
+                raise ValueError(
+                    f"Cannot map '{new_param_name}': original parameter '{original_param_name}' not found in schema."
+                )
 
             new_properties[new_param_name] = new_param
 

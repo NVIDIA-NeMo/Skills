@@ -574,7 +574,7 @@ async def test_tool_manager_with_schema_overrides():
         "DummyTool": {
             "execute": {
                 "name": "renamed_execute",
-                "parameters": {"script": {"original_name": "code", "type": "string", "description": "Script to run"}},
+                "parameters": {"script": {"name": "code"}},  # script maps to code
             }
         }
     }
