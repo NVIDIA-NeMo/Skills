@@ -556,3 +556,39 @@ async def test_streamable_http_client_enforcement(monkeypatch):
     client = MCPStreamableHttpClient(base_url="https://example.com/mcp", enabled_tools=["only_t2"])  # not including t1
     with pytest.raises(PermissionError):
         await client.call_tool("t1", {})
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_with_schema_overrides():
+    """Test ToolManager integration with schema overrides."""
+    # Import here to avoid circular import
+    from nemo_skills.inference.model.base import EndpointType
+    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type
+    from nemo_skills.mcp.schema_overrides import load_schema_overrides
+
+    tm = ToolManager(module_specs=[f"{__name__}::DummyTool"], overrides={}, context={})
+    tools = await tm.list_all_tools(use_cache=False)
+
+    # Apply schema overrides (keyed by provider class name)
+    schema_overrides = {
+        "DummyTool": {
+            "execute": {
+                "name": "renamed_execute",
+                "parameters": {"script": {"original_name": "code", "type": "string", "description": "Script to run"}},
+            }
+        }
+    }
+    loaded_overrides = load_schema_overrides(schema_overrides)
+
+    # Format tools with overrides
+    formatted_tools, parameter_mapping = format_tool_list_by_endpoint_type(
+        tools, EndpointType.chat, schema_overrides=loaded_overrides
+    )
+
+    # Find the renamed tool
+    renamed_tool = next((t for t in formatted_tools if t["function"]["name"] == "renamed_execute"), None)
+    assert renamed_tool is not None, "Renamed tool should be present"
+
+    # Verify parameter mapping
+    assert "renamed_execute" in parameter_mapping
+    assert parameter_mapping["renamed_execute"] == {"script": "code"}

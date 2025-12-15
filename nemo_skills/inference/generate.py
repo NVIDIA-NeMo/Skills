@@ -177,6 +177,26 @@ class GenerateSolutionsConfig:
     #     - Set an ExampleTool server-only arg:
     #         ++tool_overrides.ExampleTool.foo_argument='[TEST] '
     tool_overrides: dict | None = field(default_factory=dict)
+    #
+    #   Schema overrides allow customizing tool schemas shown to the model.
+    #   Dict keyed by provider class name (like tool_overrides), then tool name.
+    #   Format: {ProviderClassName: {tool_name: {name, description, parameters}}}
+    #
+    #   Examples:
+    #     - Inline dict (via Hydra):
+    #         ++schema_overrides.PythonTool.stateful_python_code_exec.name="python_executor"
+    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.original_name="script"
+    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.type="string"
+    #     - Tool names with dashes require quotes (Hydra limitation):
+    #         ++schema_overrides.TavilySearchTool.'tavily-search'.name="web_search"
+    #       Or use a YAML file where dashes work without quotes:
+    #         schema_overrides:
+    #           TavilySearchTool:
+    #             tavily-search:
+    #               name: "web_search"
+    #     - File via Hydra:
+    #         ++schema_overrides=@path/to/schema_overrides.yaml
+    schema_overrides: dict | None = None
 
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
@@ -387,6 +407,7 @@ class GenerationTask:
                 **self.cfg.server,
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
+                schema_overrides=self.cfg.schema_overrides,
                 tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
             )
