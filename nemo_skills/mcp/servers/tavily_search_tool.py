@@ -17,6 +17,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Annotated, Any
 
 import httpx
@@ -41,7 +42,10 @@ TAVILY_API_KEY: str | None = None
 
 EXCLUDE_DOMAINS: list[str] | None = None
 
-SUPPORTED_SEARCH_ANSWER_TYPES = ["results", "answer"]
+
+class AnswerType(str, Enum):
+    results = "results"
+    answer = "answer"
 
 
 ## See docs https://docs.tavily.com/documentation/api-reference/endpoint/search
@@ -51,9 +55,7 @@ async def answer(
     query: Annotated[str, Field(description="Search query.")],
     exclude_domains: Annotated[list[str], Field(description="Domains to exclude from the search.")] = [],
     num_results: Annotated[int, Field(description="Number of results to return.")] = 10,
-    answer_type: Annotated[
-        str, Field(description="Type of results to return.", choices=SUPPORTED_SEARCH_ANSWER_TYPES)
-    ] = "answer",
+    answer_type: Annotated[AnswerType, Field(description="Type of results to return.")] = AnswerType.answer,
 ):
     """Search the web for a query"""
 
