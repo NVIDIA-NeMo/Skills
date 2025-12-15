@@ -99,6 +99,7 @@ def format_entries(file_path, tables_info, out_file):
             f_in.readline() # Discard first square bracket
             end_entry = r"  }"
             entry_str = ""
+            i = 0
 
             for line in f_in:
                 # Flatten & grab relevant key/values if end of entry reached
@@ -111,12 +112,14 @@ def format_entries(file_path, tables_info, out_file):
                     final_entry = {
                         "question": entry["question"],
                         "solution": entry["SQL"],      #TODO: Check key for this
-                        "sql_context": tables_info[entry["db_id"]]
+                        "sql_context": tables_info[entry["db_id"]],
+                        "id": i,
                     }
                     f_out.write(json.dumps(final_entry))
                     f_out.write("\n")
 
                     entry_str = ""
+                    i += 1
 
 
 def main():
@@ -127,9 +130,6 @@ def main():
     dev_dir = download_data(args.output_dir)
     #dev_dir = Path(args.output_dir, "dev_20240627/")
     print(f"\nData downloaded to: {dev_dir}")
-
-    #evaluation_filepath = download_evaluation_file(args.output_dir)
-    #print(f"\nEvaluation file downloaded to: {evaluation_filepath}")
 
     print("Starting processing...")
 

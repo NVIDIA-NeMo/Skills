@@ -68,6 +68,7 @@ class BirdEvaluator(BaseEvaluator):
     def _extract_answer(self, text):
         regex = ""
         dotall = False
+        answer_format = self.eval_config.answer_format
 
         if answer_format == "CODEBLOCK":
             regex = r"(?:```sql)(.*?[a-zA-Z].*?)(?:```)"
@@ -114,11 +115,7 @@ class BirdEvaluator(BaseEvaluator):
             for line in f_in:
                 line = json.loads(line)
 
-                # Attach ground truth and table data
-                line["gt_sql"] = self.dev_data[i]["SQL"]
-                line["db_path"] = self.gts[i]["db_path"]
-                line["difficulty"] = self.gts[i]["difficulty"]
-                line["sql_index"] = i
+                assert line["id"] == i   # This should match up with dev_data indices
 
                 lines.append(line)
                 i+= 1
@@ -133,7 +130,14 @@ class BirdEvaluator(BaseEvaluator):
 
 
     async def eval_single(self, data_point: dict):
-        predicted_sql = extract_answer(data_point["generation"])
+        # Attach dev_data info to data point
+        i = data_point["id"]
+        data_point["gt_sql"] = self.dev_data[i]["SQL"]
+        data_point["db_path"] = self.dev_data[i]["db_path"]
+        data_point["difficulty"] = self.dev_data[i]["difficulty"]
+
+        # Retrieve pred and gt
+        predicted_sql = self._extract_answer(data_point["generation"])
         ground_truth = data_point["gt_sql"]
         db_place = data_point["db_path"]
 
