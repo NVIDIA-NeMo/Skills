@@ -59,7 +59,7 @@ def apply_schema_overrides(
 
     transformed = copy.deepcopy(tool)
     for key in ("name", "description"):
-        if key in override_config:
+        if override_config.get(key) is not None:
             transformed[key] = override_config[key]
 
     param_overrides = override_config.get("parameters", {})
