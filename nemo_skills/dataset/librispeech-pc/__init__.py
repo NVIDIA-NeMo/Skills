@@ -22,5 +22,8 @@ Test sets (evaluation only):
 DATASET_GROUP = "speechlm"
 METRICS_TYPE = "audio"
 DEFAULT_SPLIT = "test-clean"
+
+
+EVAL_SPLIT = "test-clean"
 EVAL_ARGS = "++eval_type=audio "
 GENERATION_ARGS = "++prompt_format=openai "
