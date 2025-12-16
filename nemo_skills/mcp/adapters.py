@@ -91,67 +91,43 @@ def apply_schema_overrides(
         new_properties = {}
         new_required = []
 
-        # Map new parameter names to original parameter names
+        # Map original parameter names to new parameter names
+        # Format: parameters.<original_param>.name = <new_param_name>
         override_params = override_config["parameters"]
-        override_param_list = list(override_params.items())
 
-        for idx, (new_param_name, param_config) in enumerate(override_param_list):
-            # Find the original parameter name
-            # Supported schema override mapping:
-            # 1) Preferred: parameters.code.name="script" -> code maps to script
-            # 2) If new_param_name exists in original, treat as same-name override (no rename)
-            original_param_name = None
-
+        for original_param_name, param_config in override_params.items():
             if not isinstance(param_config, dict):
                 raise ValueError(
-                    f"Parameter override for '{new_param_name}' must be a dict. "
-                    f"Use parameters.{new_param_name}.name='<original_param_name>' to rename."
+                    f"Parameter override for '{original_param_name}' must be a dict. "
+                    f"Use parameters.{original_param_name}.name='<new_param_name>' to rename."
                 )
 
-            # If rename, require param_config['name'] to point to the original parameter name.
-            # Otherwise, allow same-name override when new_param_name exists in original.
-            original_param_name = param_config.get("name")
+            # Validate original parameter exists
+            if original_param_name not in original_properties:
+                raise ValueError(f"Parameter override '{original_param_name}' does not exist in original schema.")
 
-            if original_param_name is None:
-                if new_param_name in original_properties:
-                    original_param_name = new_param_name
-                else:
-                    raise ValueError(
-                        f"Parameter override '{new_param_name}' does not exist in original schema; "
-                        f"provide parameters.{new_param_name}.name='<original_param_name>' to rename."
-                    )
+            # Get new name (if renaming) or keep original name
+            new_param_name = param_config.get("name", original_param_name)
 
-            # Build new parameter schema
-            if original_param_name and original_param_name in original_properties:
-                original_param = original_properties[original_param_name]
-                new_param = copy.deepcopy(original_param)
-                # Override with new config (excluding mapping key: name)
-                new_param.update({k: v for k, v in param_config.items() if k != "name"})
+            # Build new parameter schema from original
+            original_param = original_properties[original_param_name]
+            new_param = copy.deepcopy(original_param)
+            # Override with new config (excluding mapping key: name)
+            new_param.update({k: v for k, v in param_config.items() if k != "name"})
 
-                # Track mapping if names differ
-                if new_param_name != original_param_name:
-                    parameter_mapping[new_param_name] = original_param_name
+            # Track mapping if names differ (new_name -> original_name for reverse mapping)
+            if new_param_name != original_param_name:
+                parameter_mapping[new_param_name] = original_param_name
 
-                # Preserve required status
-                if original_param_name in original_required:
-                    new_required.append(new_param_name)
-            else:
-                raise ValueError(
-                    f"Cannot map '{new_param_name}': original parameter '{original_param_name}' not found in schema."
-                )
+            # Preserve required status
+            if original_param_name in original_required:
+                new_required.append(new_param_name)
 
             new_properties[new_param_name] = new_param
 
         # Add any original parameters not overridden
-        # Track which original params were handled (either renamed or updated in place)
-        handled_original_params = set(parameter_mapping.values())
-        # Also track params that were updated in place (same name)
-        for new_name, orig_name in parameter_mapping.items():
-            handled_original_params.add(orig_name)
-        # Also check if any override params have the same name as original (updated in place)
-        for new_param_name in override_params.keys():
-            if new_param_name in original_properties:
-                handled_original_params.add(new_param_name)
+        # Track which original params were handled (keys in override_params are original names)
+        handled_original_params = set(override_params.keys())
 
         for orig_param_name, orig_param in original_properties.items():
             if orig_param_name not in handled_original_params:

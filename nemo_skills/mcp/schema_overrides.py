@@ -14,6 +14,8 @@
 
 from typing import Any, Dict
 
+from omegaconf import DictConfig, OmegaConf
+
 
 def load_schema_overrides(schema_overrides: dict | None) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """
@@ -33,6 +35,11 @@ def load_schema_overrides(schema_overrides: dict | None) -> Dict[str, Dict[str, 
     """
     if schema_overrides is None:
         return {}
+
+    # Hydra/OmegaConf will often materialize configs as DictConfig. Normalize to a plain dict
+    # before validating structure.
+    if isinstance(schema_overrides, DictConfig):
+        schema_overrides = OmegaConf.to_container(schema_overrides, resolve=True)
 
     if not isinstance(schema_overrides, dict):
         raise ValueError(f"schema_overrides must be dict or None, got {type(schema_overrides)}")

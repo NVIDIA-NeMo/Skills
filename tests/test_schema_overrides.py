@@ -237,8 +237,8 @@ def test_parameter_mapping_multiple_params():
     )
     override_config = {
         "parameters": {
-            "new1": {"name": "param1"},
-            "new2": {"name": "param2", "type": "integer"},
+            "param1": {"name": "new1"},
+            "param2": {"name": "new2", "type": "integer"},
         }
     }
     transformed, mapping = apply_schema_overrides(tool, override_config)
@@ -255,7 +255,7 @@ def test_parameter_mapping_missing_param():
             "param2": {"type": "string"},
         },
     )
-    override_config = {"parameters": {"new1": {"name": "param1"}}}
+    override_config = {"parameters": {"param1": {"name": "new1"}}}
     transformed, mapping = apply_schema_overrides(tool, override_config)
     # param2 should still be in properties
     assert "param2" in transformed["input_schema"]["properties"]
@@ -390,7 +390,7 @@ async def test_tool_calling_wrapper_with_overrides():
         "MockToolProvider": {
             "test_tool": {
                 "name": "renamed_tool",
-                "parameters": {"code": {"name": "script"}},
+                "parameters": {"script": {"name": "code"}},
             }
         }
     }
@@ -451,7 +451,7 @@ async def test_schema_override_end_to_end():
         "TrackingTestToolProvider": {
             "stateful_python_code_exec": {
                 "name": "python_executor",
-                "parameters": {"code": {"name": "script"}},
+                "parameters": {"script": {"name": "code"}},
             }
         }
     }
@@ -482,7 +482,7 @@ async def test_schema_override_end_to_end():
 # Edge Cases and Error Handling
 def test_schema_override_required_params(sample_tool):
     """Verify required parameters are preserved after override."""
-    override_config = {"parameters": {"code": {"name": "script"}}}
+    override_config = {"parameters": {"script": {"name": "code"}}}
     transformed, mapping = apply_schema_overrides(sample_tool, override_config)
     assert "code" in transformed["input_schema"]["required"]
 
