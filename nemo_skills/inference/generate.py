@@ -198,7 +198,7 @@ class GenerateSolutionsConfig:
     #               name: "web_search"
     #     - File via Hydra:
     #         ++schema_overrides=@path/to/schema_overrides.yaml
-    schema_overrides: dict | None = None
+    schema_overrides: dict | None = field(default_factory=dict)
 
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
