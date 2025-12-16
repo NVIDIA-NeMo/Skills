@@ -18,8 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nemo_skills.inference.model.base import EndpointType
-from nemo_skills.mcp.adapters import apply_schema_overrides, format_tool_list_by_endpoint_type
-from nemo_skills.mcp.schema_overrides import load_schema_overrides
+from nemo_skills.mcp.adapters import apply_schema_overrides, format_tool_list_by_endpoint_type, load_schema_overrides
 from nemo_skills.mcp.tool_manager import Tool, ToolManager
 
 
@@ -404,8 +403,7 @@ async def test_tool_calling_wrapper_with_overrides():
 
     # List tools and verify override applied
     raw_tools = await wrapper.tool_manager.list_all_tools(use_cache=False)
-    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type
-    from nemo_skills.mcp.schema_overrides import load_schema_overrides
+    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type, load_schema_overrides
 
     loaded_overrides = load_schema_overrides(schema_overrides)
     tools, mappings = format_tool_list_by_endpoint_type(raw_tools, EndpointType.chat, loaded_overrides)

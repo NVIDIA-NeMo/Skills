@@ -563,8 +563,7 @@ async def test_tool_manager_with_schema_overrides():
     """Test ToolManager integration with schema overrides."""
     # Import here to avoid circular import
     from nemo_skills.inference.model.base import EndpointType
-    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type
-    from nemo_skills.mcp.schema_overrides import load_schema_overrides
+    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type, load_schema_overrides
 
     tm = ToolManager(module_specs=[f"{__name__}::DummyTool"], overrides={}, context={})
     tools = await tm.list_all_tools(use_cache=False)

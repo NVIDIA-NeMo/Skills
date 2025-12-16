@@ -24,9 +24,9 @@ from nemo_skills.mcp.adapters import (
     format_tool_list_by_endpoint_type,
     format_tool_response_by_endpoint_type,
     get_tool_details_by_endpoint_type,
+    load_schema_overrides,
     remap_tool_call,
 )
-from nemo_skills.mcp.schema_overrides import load_schema_overrides
 from nemo_skills.mcp.tool_manager import ToolManager
 from nemo_skills.utils import get_logger_name
 

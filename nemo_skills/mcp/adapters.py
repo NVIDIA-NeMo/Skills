@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 from litellm.types.utils import ChatCompletionMessageToolCall
+from omegaconf import DictConfig, OmegaConf
 
 from nemo_skills.inference.model.base import EndpointType
 
@@ -48,6 +49,44 @@ class ToolResponseFormatter(ABC):
 # ==============================
 # ADAPTER IMPLEMENTATIONS
 # ==============================
+
+
+def load_schema_overrides(schema_overrides: dict | None) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """
+    Normalize schema overrides dict from Hydra/OmegaConf.
+
+    Args:
+        schema_overrides: Dict keyed by provider class name, then tool name, or None.
+            Format: ProviderClassName -> tool_name -> (name, description, parameters)
+
+    Returns:
+        Normalized dict ready for use with format_tool_list_by_endpoint_type
+    """
+    if schema_overrides is None:
+        return {}
+
+    if isinstance(schema_overrides, DictConfig):
+        schema_overrides = OmegaConf.to_container(schema_overrides, resolve=True)
+
+    if not isinstance(schema_overrides, dict):
+        raise ValueError(f"schema_overrides must be dict or None, got {type(schema_overrides)}")
+
+    normalized = {}
+    for provider_class, provider_overrides in schema_overrides.items():
+        if not isinstance(provider_overrides, dict):
+            raise ValueError(f"Override for provider '{provider_class}' must be a dict")
+
+        normalized[provider_class] = {}
+        for tool_name, cfg in provider_overrides.items():
+            if not isinstance(cfg, dict):
+                raise ValueError(f"Override for tool '{tool_name}' in '{provider_class}' must be a dict")
+            normalized[provider_class][tool_name] = {
+                "name": cfg.get("name"),
+                "description": cfg.get("description"),
+                "parameters": cfg.get("parameters"),
+            }
+
+    return normalized
 
 
 def apply_schema_overrides(
