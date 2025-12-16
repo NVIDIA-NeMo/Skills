@@ -5,7 +5,7 @@ Nemotron-Math-v2 dataset consists of mathematical problems collected from unique
 
 
 
-## Data scraping
+## Data Overview
 
 This dataset is constructed from AoPS and StackExchange-Math forums, but we do not use raw posts directly. Because forum threads contain discussion, commentary, and sometimes multiple or incomplete questions, we first use an LLM to perform problem extraction, isolating explicit mathematical problem statements from the original threads. Each extracted problem is then passed through a series of LLM-based classifiers to determine whether it is a proof-style question, a multiple-choice question, a binary yes/no question, or an invalid or context-dependent prompt; all such items are removed. For questions originally posed in proof format, we apply a proof-to-answer transformation that attempts to rewrite them into answer-based tasks while preserving conceptual difficulty, whereas for non-proof questions we attempt to extract the final answer from the discussion rather than the full solution. We further perform benchmark decontamination by removing problems that overlap with public math datasets. Although our pipeline includes a proof-conversion step, we ultimately discard all converted proof questions, as our goal is to retain only problems that admit clearly verifiable final answers. The final dataset therefore consists solely of nontrivial, high-quality mathematical problems.
 
@@ -102,8 +102,8 @@ generate(
 ## Prepare SFT Data
 
 After generating all data from the previous steps for both AoPS and
-StackExchange-Math problems, follow the steps below to (1) construct reliable
-expected answers and (2) filter solutions for supervised fine-tuning (SFT).
+StackExchange-Math problems, follow the steps below to construct reliable
+expected answers and filter solutions for supervised fine-tuning (SFT).
 
 ### Prepare Expected Answers
 
@@ -146,10 +146,81 @@ implemented in
 via the `fill_majority_answer` stage.
 
 #### 5) Re-judge against the finalized expected answer (filtering for SFT)
-After the expected answer is finalized in Step 4, we run `judge_answers` again
+After the expected answer is finalized in Step 4, we run [judge_answers](../../pipelines/llm-as-a-judge.md) again
 to judge each model-generated solution’s **final answer** against the finalized
 expected answer. The resulting labels are used to filter out incorrect solutions before preparing the SFT dataset.
 
 
 
 ## Prepare Data for SFT
+
+Use the following script to prepare **6 types of SFT data**:
+
+- **Reasoning effort** (`EFFORT`)
+  - `high`
+  - `medium`
+  - `low`
+
+- **Execution mode** (`USE_TOOL`)
+  - `True`: with **Python TIR**
+  - `False`: without **Python TIR**
+
+### Configuration
+
+You can control the behavior **directly in the script below** by setting the following variables:
+
+- `EFFORT`: one of `high | medium | low`
+- `USE_TOOL`: `True` (with Python TIR) or `False` (without Python TIR)
+
+
+```python
+import os
+from nemo_skills.pipeline.cli import wrap_arguments, run_cmd
+
+
+
+CLUSTER = "slurm"
+
+
+INPUT_PATH = "/path/to/input.jsonl"
+OUTPUT_PATH = "/path/to/output.jsonl"
+LOG_DIR = "/path/to/logs"
+
+EFFORT = "low"      # high | medium | low
+USE_TOOL = False    #True| False
+
+EXPNAME = "prepare-sft-data"
+
+EXTRA_ARGS_CODE = (
+    "    ++chat_template_kwargs.builtin_tools=[python] "
+    "    ++assistant_end=\"'<|return|>'\" "
+)
+
+extra_args = EXTRA_ARGS_CODE if USE_TOOL else ""
+
+cmd = (
+    f"python -m nemo_skills.training.prepare_data "
+    f"    ++input_files='{INPUT_PATH}' "
+    f"    ++output_path={OUTPUT_PATH} "
+    f"    ++filters.drop_multi_boxed=false "
+    f"    ++filters.trim_prefix=false "
+    f"    ++filters.remove_no_think_tags=false "
+    f"    ++filters.remove_contaminated=false "
+    f"    ++filters.remove_len_outlier_solutions=false "
+    f"    ++filters.remove_len_outlier_problems=false "
+    f"    ++use_judgement=true "
+    f"    ++prompt_config=gpt-oss/math "
+    f"    ++tokenizer=openai/gpt-oss-120b "
+    f"    ++exclude_optional_keys=False "
+    f"    ++chat_template_kwargs.reasoning_effort={EFFORT} "
+    f"    {extra_args} "
+)
+
+run_cmd(
+    ctx=wrap_arguments(cmd),
+    cluster=CLUSTER,
+    log_dir=LOG_DIR,
+    expname=EXPNAME,
+)
+
+```
