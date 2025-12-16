@@ -168,7 +168,11 @@ def main():
         "--data_dir",
         type=str,
         default=os.getenv("NEMO_SKILLS_DATA_DIR"),
-        help="Base data dir (defaults to $NEMO_SKILLS_DATA_DIR). Output goes under <data_dir>/librispeech-pc.",
+        help=(
+            "Base data dir (defaults to $NEMO_SKILLS_DATA_DIR). "
+            "If provided, output goes under <data_dir>/librispeech-pc. "
+            "If omitted, writes into this package's dataset directory (only allowed outside site-packages)."
+        ),
     )
     parser.add_argument(
         "--split",
@@ -183,9 +187,19 @@ def main():
     )
     args = parser.parse_args()
 
-    if not args.data_dir:
-        raise SystemExit("Missing --data_dir and NEMO_SKILLS_DATA_DIR is not set.")
-    data_dir = Path(args.data_dir) / "librispeech-pc"
+    if args.data_dir:
+        data_dir = Path(args.data_dir) / "librispeech-pc"
+    else:
+        pkg_dir = Path(__file__).parent
+        pkg_dir_str = str(pkg_dir)
+        if "site-packages" in pkg_dir_str or "dist-packages" in pkg_dir_str:
+            raise SystemExit(
+                "Missing --data_dir and NEMO_SKILLS_DATA_DIR is not set. "
+                "Refusing to write into the installed package directory; please set NEMO_SKILLS_DATA_DIR "
+                "or pass --data_dir."
+            )
+        data_dir = pkg_dir
+
     audio_dir = data_dir
     audio_dir.mkdir(parents=True, exist_ok=True)
 
