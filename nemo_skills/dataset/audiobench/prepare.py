@@ -230,8 +230,7 @@ def process_dataset(
         from datasets import load_dataset
     except Exception as e:
         raise ImportError(
-            "Failed to import HuggingFace 'datasets'. Please ensure it is installed.\n"
-            f"Original error: {e}"
+            f"Failed to import HuggingFace 'datasets'. Please ensure it is installed.\nOriginal error: {e}"
         )
 
     # Upstream reference: https://github.com/AudioLLMs/AudioBench
@@ -244,40 +243,109 @@ def process_dataset(
             "openhermes_audio_test": {"repo": "AudioLLMs/openhermes_instruction_test", "split": "test"},
             "iemocap_emotion_test": {"repo": "AudioLLMs/iemocap_emotion_recognition", "split": "test"},
             "iemocap_gender_test": {"repo": "AudioLLMs/iemocap_gender_recognition", "split": "test"},
-
-            "mmau_mini": {"repo": "AudioLLMs/MMAU-mini", "split": "test", "fallback_repo": "AudioLLMs/MMAU-mini-do-not-use"},
-
+            "mmau_mini": {
+                "repo": "AudioLLMs/MMAU-mini",
+                "split": "test",
+                "fallback_repo": "AudioLLMs/MMAU-mini-do-not-use",
+            },
             # GigaSpeech2 variants (one repo with data_dir selector)
             "gigaspeech2_thai": {"repo": "AudioLLMs/gigaspeech2-test", "split": "train", "data_dir": "th-test"},
             "gigaspeech2_indo": {"repo": "AudioLLMs/gigaspeech2-test", "split": "train", "data_dir": "id-test"},
             "gigaspeech2_viet": {"repo": "AudioLLMs/gigaspeech2-test", "split": "train", "data_dir": "vi-test"},
-
             "spoken-mqa_short_digit": {"repo": "amao0o0/spoken-mqa", "split": "short_digit"},
             "spoken-mqa_long_digit": {"repo": "amao0o0/spoken-mqa", "split": "long_digit"},
             "spoken-mqa_single_step_reasoning": {"repo": "amao0o0/spoken-mqa", "split": "single_step_reasoning"},
             "spoken-mqa_multi_step_reasoning": {"repo": "amao0o0/spoken-mqa", "split": "multi_step_reasoning"},
-
-
-            "imda_part1_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART1-Test"},
-            "imda_part2_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART2-Test"},
-            "imda_part3_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART3-Test"},
-            "imda_part4_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART4-Test"},
-            "imda_part5_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART5-Test"},
-            "imda_part6_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART6-Test"},
-            "imda_part3_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART3-Test"},
-            "imda_part4_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART4-Test"},
-            "imda_part5_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART5-Test"},
-            "imda_part6_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART6-Test"},
-
-            "imda_part3_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART3-Test"},
-            "imda_part4_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART4-Test"},
-            "imda_part5_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART5-Test"},
-            "imda_part6_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART6-Test"},
-
-            "imda_ar_sentence": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-AR-Sentence-Test"},
-            "imda_ar_dialogue": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-AR-Dialogue-Test"},
-            "imda_gr_sentence": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-GR-Sentence-Test"},
-            "imda_gr_dialogue": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-GR-Dialogue-Test"},
+            "imda_part1_asr_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "ASR-PART1-Test",
+            },
+            "imda_part2_asr_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "ASR-PART2-Test",
+            },
+            "imda_part3_30s_asr_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "ASR-PART3-Test",
+            },
+            "imda_part4_30s_asr_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "ASR-PART4-Test",
+            },
+            "imda_part5_30s_asr_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "ASR-PART5-Test",
+            },
+            "imda_part6_30s_asr_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "ASR-PART6-Test",
+            },
+            "imda_part3_30s_sqa_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SQA-PART3-Test",
+            },
+            "imda_part4_30s_sqa_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SQA-PART4-Test",
+            },
+            "imda_part5_30s_sqa_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SQA-PART5-Test",
+            },
+            "imda_part6_30s_sqa_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SQA-PART6-Test",
+            },
+            "imda_part3_30s_ds_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SDS-PART3-Test",
+            },
+            "imda_part4_30s_ds_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SDS-PART4-Test",
+            },
+            "imda_part5_30s_ds_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SDS-PART5-Test",
+            },
+            "imda_part6_30s_ds_human_test": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "SDS-PART6-Test",
+            },
+            "imda_ar_sentence": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "PQA-AR-Sentence-Test",
+            },
+            "imda_ar_dialogue": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "PQA-AR-Dialogue-Test",
+            },
+            "imda_gr_sentence": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "PQA-GR-Sentence-Test",
+            },
+            "imda_gr_dialogue": {
+                "repo": "MERaLiON/Multitask-National-Speech-Corpus-v1",
+                "split": "train",
+                "data_dir": "PQA-GR-Dialogue-Test",
+            },
         }
 
         spec = hf_map.get(dataset_name)
@@ -328,7 +396,7 @@ def process_dataset(
     else:
         category = "unknown"
 
-    #Output directories
+    # Output directories
     audio_dir = output_dir / category / "audio" / dataset_name
     dataset_dir = output_dir / category / dataset_name
     os.makedirs(audio_dir, exist_ok=True)
