@@ -25,6 +25,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
 import tarfile
 import urllib.request
@@ -65,12 +66,17 @@ def download_manifests(output_dir: Path) -> Path:
     download_with_progress(MANIFESTS_URL, tar_path, "Downloading manifests")
 
     with tarfile.open(tar_path, "r:gz") as tar:
+        wanted = {"test-clean.json", "test-other.json"}
         for member in tar.getmembers():
-            if member.name in ["test-clean.json", "test-other.json"]:
-                if sys.version_info >= (3, 11, 4):
-                    tar.extract(member, output_dir, filter="data")
-                else:
-                    tar.extract(member, output_dir)
+            name = Path(member.name).name
+            if name not in wanted:
+                continue
+            fobj = tar.extractfile(member)
+            if fobj is None:
+                continue
+            out_path = output_dir / name
+            with open(out_path, "wb") as fout:
+                shutil.copyfileobj(fobj, fout)
     os.remove(tar_path)
 
     print("✓ Manifests ready\n")
