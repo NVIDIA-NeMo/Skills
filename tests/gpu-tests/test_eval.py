@@ -43,6 +43,7 @@ EXCLUDED_DATASETS = {
     "human-eval-infilling",
     "mbpp",
     "mmau-pro",
+    "asr-leaderboard",
     "aalcr",  # Has tokenization mismatch issues
 }
 
