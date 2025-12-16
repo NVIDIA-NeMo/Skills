@@ -91,6 +91,7 @@ nav:
     - tutorials/index.md
   - Papers & Releases:
     - releases/index.md
+    - Nemotron-Math-Proofs: releases/nemotronmathproofs/index.md
     - OpenReasoning:
       - releases/openreasoning/index.md
       - Model Evaluation: releases/openreasoning/evaluation.md
