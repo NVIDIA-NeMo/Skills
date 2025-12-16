@@ -556,3 +556,52 @@ async def test_streamable_http_client_enforcement(monkeypatch):
     client = MCPStreamableHttpClient(base_url="https://example.com/mcp", enabled_tools=["only_t2"])  # not including t1
     with pytest.raises(PermissionError):
         await client.call_tool("t1", {})
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_with_schema_overrides():
+    """Test ToolManager integration with schema overrides."""
+    from nemo_skills.inference.model.base import EndpointType
+    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type, load_schema_overrides
+
+    tm = ToolManager(module_specs=[f"{__name__}::DummyTool"], overrides={}, context={})
+    tools = await tm.list_all_tools(use_cache=False)
+
+    schema_overrides = {
+        "DummyTool": {
+            "execute": {
+                "name": "renamed_execute",
+                "parameters": {"code": {"name": "script"}},  # rename 'code' -> 'script' for model
+            }
+        }
+    }
+    loaded_overrides = load_schema_overrides(schema_overrides)
+    formatted_tools, mappings = format_tool_list_by_endpoint_type(
+        tools, EndpointType.chat, schema_overrides=loaded_overrides
+    )
+
+    renamed_tool = next((t for t in formatted_tools if t["function"]["name"] == "renamed_execute"), None)
+    assert renamed_tool is not None
+    assert "script" in renamed_tool["function"]["parameters"]["properties"]
+    assert "code" not in renamed_tool["function"]["parameters"]["properties"]
+    assert mappings["parameters"]["renamed_execute"] == {"script": "code"}
+    assert mappings["tool_names"]["renamed_execute"] == "execute"
+
+
+def test_schema_override_nonexistent_param_fails():
+    """Overriding a parameter that doesn't exist in the schema must fail early.
+
+    This also covers the hidden-arg case: when hide_args removes a param from the
+    schema before overrides are applied, attempting to override that (now-missing)
+    param will trigger the same error.
+    """
+    from nemo_skills.mcp.adapters import apply_schema_overrides
+
+    tool = {
+        "name": "test",
+        "description": "Test",
+        "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": []},
+    }
+    # Try to override 'script' which doesn't exist (tool only has 'code')
+    with pytest.raises(ValueError, match="Parameter 'script' not in schema"):
+        apply_schema_overrides(tool, {"parameters": {"script": {"name": "renamed"}}})
