@@ -15,14 +15,14 @@
 import argparse
 import glob
 import json
-from pathlib import Path
 import os
 import re
 import sqlite3
-import wget
 import zipfile
+from pathlib import Path
 
-from datasets import load_dataset
+import wget
+
 
 def download_data(output_dir):
     # Download zip directly (HF Dataset is missing SQL files and table info)
@@ -71,7 +71,7 @@ def read_tables_file(base_dir):
         for line in con.iterdump():
             if line[:6] == "INSERT":
                 line = line.replace('\n', ' ')
-            line = re.sub(f" +", ' ', line)
+            line = re.sub(" +", ' ', line)
             table_info += line + '\n'
 
         # Time to truncate any long INSERT chains (allow 10 max at once)

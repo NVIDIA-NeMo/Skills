@@ -14,6 +14,7 @@
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float
 
+
 class BirdMetrics(BaseMetrics):
     """Metrics for BIRD text-to-SQL evaluation."""
 
@@ -53,7 +54,6 @@ class BirdMetrics(BaseMetrics):
         simple_acc = sum(sr)/len(sr) if sr else 0
         moderate_acc = sum(mr)/len(mr) if mr else 0
         challenging_acc = sum(cr)/len(cr) if cr else 0
-        count_lists = [len(self.simple_results), len(self.moderate_results), len(self.challenging_results), self.n]
 
         acc = self.correct / self.n
 

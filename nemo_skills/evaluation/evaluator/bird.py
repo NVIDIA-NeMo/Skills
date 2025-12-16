@@ -13,16 +13,12 @@
 # limitations under the License.
 
 import asyncio
-import concurrent.futures
-from func_timeout import func_timeout, FunctionTimedOut
 import json
 import logging
-from pathlib import Path
-import os
 import re
-import signal
-import sys
-import time
+from pathlib import Path
+
+from func_timeout import FunctionTimedOut, func_timeout
 
 from nemo_skills.dataset.birdbench.evaluation import execute_sql
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
@@ -83,7 +79,7 @@ class BirdEvaluator(BaseEvaluator):
             dotall = True
         elif answer_format == "USE_REGEX":
             regex = self.eval_config.extraction_regex
-            regex_dotall = self.eval_config.regex_dotall
+            dotall = self.eval_config.regex_dotall
 
         if not regex:
             logging.error(
@@ -116,7 +112,7 @@ class BirdEvaluator(BaseEvaluator):
 
         lines = []
         with open(infile, 'w') as f_out:
-            for line in f_in:
+            for line in f_out:
                 line = json.loads(line)
                 lines.append(line)
 
@@ -150,7 +146,7 @@ class BirdEvaluator(BaseEvaluator):
             )
         except FunctionTimedOut:
             res = 0
-        except Exception as e:
+        except Exception:
             res = 0
         result = {"res": res}
         return result

@@ -40,6 +40,7 @@
 import json
 import sqlite3
 
+
 def load_json(dir):
     with open(dir, 'r') as j:
         contents = json.loads(j.read())
