@@ -14,11 +14,13 @@
 
 import asyncio
 import concurrent.futures
+from func_timeout import func_timeout, FunctionTimedOut
 import json
 import logging
 from pathlib import Path
 import os
 import re
+import signal
 import sys
 import time
 
@@ -30,7 +32,7 @@ from nemo_skills.utils import nested_dataclass
 
 @nested_dataclass(kw_only=True)
 class BirdEvaluatorConfig(BaseEvaluatorConfig):
-    timeout: int = 30.0
+    timeout: int = 2 #30
 
     # Answer format can be "BOXED", "CODEBLOCK", or "USE_REGEX", the last of
     # which uses the given regex in the extraction_regex arg.
@@ -112,15 +114,10 @@ class BirdEvaluator(BaseEvaluator):
         infile = self.eval_cfg.input_file
 
         lines = []
-        i = 0
         with open(infile, 'w') as f_out:
             for line in f_in:
                 line = json.loads(line)
-
-                assert line["id"] == i   # This should match up with dev_data indices
-
                 lines.append(line)
-                i+= 1
 
         tasks = [self.eval_single(line) for line in lines]
         outputs = await asyncio.gather(*tasks)
@@ -129,6 +126,10 @@ class BirdEvaluator(BaseEvaluator):
             line["res"] = output["res"]
 
         jdump(lines, infile, mode="wt")
+
+
+    def _handle_timeout(self, signum, frame):
+        raise TimeoutError()
 
 
     async def eval_single(self, data_point: dict):
@@ -143,16 +144,16 @@ class BirdEvaluator(BaseEvaluator):
         ground_truth = data_point["gt_sql"]
         db_place = data_point["db_path"]
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(execute_sql, predicted_sql, ground_truth, db_place)
-            try:
-                # Wait for result with timeout as set
-                res = future.result(timeout=self.eval_config.timeout)
-            except concurrent.futures.TimeoutError:
-                result = [(f'timeout',)]
-                res = 0
-            except Exception as e:
-                result = [(f'error',)]  # possibly len(query) > 512 or not executable
-                res = 0
+        try:
+            # Wait for result with timeout as set
+            res = func_timeout(
+                self.eval_config.timeout,
+                execute_sql,
+                args=(predicted_sql, ground_truth, db_place)
+            )
+        except FunctionTimedOut:
+            res = 0
+        except Exception as e:
+            res = 0
         result = {"res": res}
         return result

@@ -18,10 +18,12 @@ METRICS_TYPE = "bird"
 EVAL_SPLIT = "dev"
 GENERATION_ARGS = (
     "++prompt_config=generic/text_to_sql "
-    "++eval_type=bird ++inference.tokens_to_generate=10000 "
+    "++eval_type=bird "
+    "++inference.tokens_to_generate=10000 "
     "++inference.temperature=0.6 "
     "++inference.top_p=0.95 "
     "++inference.top_k=20 "
+    "++max_concurrent_requests=1024 "
     "++eval_config.dev_json_filepath=/sql_data/BIRD/dev.json "
     "++eval_config.db_path=/sql_data/BIRD/dev_databases"
 )
