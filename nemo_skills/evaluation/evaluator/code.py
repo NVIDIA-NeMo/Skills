@@ -116,13 +116,13 @@ class CodeExecEvaluator(BaseEvaluator):
 
 
 def preprocess_code(generation_dict: dict, language: str = "python", strip_whitespace: bool = True):
-    completion = generation_dict.get("generation", "") or ""
+    completion = generation_dict.get("generation", "")
     completion = completion.replace("\r", "")
 
     # ---------------------------------------------------------
     # 1. Handle reasoning traces: <think>...</think>
     # ---------------------------------------------------------
-    if "<think>" in completion or "</think>" in completion:
+    if "</think>" in completion:
         # partition is faster than regex and avoids imports
         _, separator, post_thought = completion.partition("</think>")
         if separator:
