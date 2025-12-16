@@ -28,8 +28,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -121,6 +119,20 @@ def save_audio_file(audio_array: np.ndarray, sampling_rate: int, output_path: st
     sf.write(output_path, audio_array, sampling_rate)
 
 
+def extract_audio_dict(sample: Dict) -> Dict | None:
+    """Extract an Audio feature dict from a HuggingFace sample.
+
+    AudioLLMs-hosted AudioBench datasets commonly store audio under the `context`
+    column (HF Audio feature), while other sources may use `audio`.
+    """
+    # Prefer official HF Audio feature columns if present
+    for key in ("context", "audio"):
+        audio_dict = sample.get(key)
+        if isinstance(audio_dict, dict):
+            return audio_dict
+    return None
+
+
 def create_manifest_entry(
     sample: Dict,
     audio_filename: str,
@@ -191,47 +203,11 @@ def create_manifest_entry(
     return entry
 
 
-def clone_audiobench_repo(target_dir: Path) -> bool:
-    """Clone AudioBench repository if it doesn't exist.
-
-    Args:
-        target_dir: Directory where AudioBench should be cloned
-
-    Returns:
-        True if successful, False otherwise
-    """
-    audiobench_url = "https://github.com/AudioLLMs/AudioBench.git"
-
-    if target_dir.exists():
-        print(f"AudioBench already exists at {target_dir}")
-        return True
-
-    print(f"\nCloning AudioBench repository to {target_dir}...")
-    print("This may take a few minutes...")
-
-    try:
-        subprocess.run(
-            ["git", "clone", audiobench_url, str(target_dir)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print("✓ Successfully cloned AudioBench")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to clone AudioBench: {e.stderr}")
-        return False
-    except FileNotFoundError:
-        print("✗ git command not found. Please install git or manually clone AudioBench.")
-        return False
-
-
 def process_dataset(
     dataset_name: str,
     output_dir: Path,
     save_audio: bool = True,
     split: str = "test",
-    audiobench_path: Path = None,
     max_samples: int = -1,
 ) -> tuple[int, List[Dict]]:
     """Process a single AudioBench dataset.
@@ -241,7 +217,7 @@ def process_dataset(
         output_dir: Base output directory
         save_audio: Whether to save audio files
         split: Dataset split (default: "test")
-        audiobench_path: Path to AudioBench repository
+        max_samples: Max number of samples to process (-1 for all)
 
     Returns:
         Tuple of (num_samples, manifest_entries)
@@ -250,26 +226,100 @@ def process_dataset(
     print(f"Processing: {dataset_name}")
     print(f"{'=' * 60}")
 
-    # Import AudioBench Dataset class
-    sys.path.insert(0, str(audiobench_path / "src"))
     try:
-        from dataset import Dataset
-    except ImportError as e:
+        from datasets import load_dataset
+    except Exception as e:
         raise ImportError(
-            f"Failed to import AudioBench Dataset class: {e}\n"
-            f"AudioBench path: {audiobench_path}\n"
-            f"Make sure AudioBench repository is properly set up."
+            "Failed to import HuggingFace 'datasets'. Please ensure it is installed.\n"
+            f"Original error: {e}"
         )
 
-    # Load dataset
+    # Upstream reference: https://github.com/AudioLLMs/AudioBench
     try:
-        dataset = Dataset(dataset_name, number_of_samples=max_samples)
-        data_samples = dataset.input_data
-        print(f"Loaded {len(data_samples)} samples via AudioBench")
-    except Exception as e:
-        raise Exception(f"Failed to load dataset {dataset_name}: {e}")
+        # AudioBench mapping for datasets that are not 1:1 AudioLLMs/<dataset_name>.
+        hf_map = {
+            # AudioLLMs org aliases
+            "aishell_asr_zh_test": {"repo": "AudioLLMs/aishell_1_zh_test", "split": "test"},
+            "muchomusic_test": {"repo": "AudioLLMs/mu_chomusic_test", "split": "test"},
+            "openhermes_audio_test": {"repo": "AudioLLMs/openhermes_instruction_test", "split": "test"},
+            "iemocap_emotion_test": {"repo": "AudioLLMs/iemocap_emotion_recognition", "split": "test"},
+            "iemocap_gender_test": {"repo": "AudioLLMs/iemocap_gender_recognition", "split": "test"},
 
-    # Determine category (handle _test suffix variants)
+            "mmau_mini": {"repo": "AudioLLMs/MMAU-mini", "split": "test", "fallback_repo": "AudioLLMs/MMAU-mini-do-not-use"},
+
+            # GigaSpeech2 variants (one repo with data_dir selector)
+            "gigaspeech2_thai": {"repo": "AudioLLMs/gigaspeech2-test", "split": "train", "data_dir": "th-test"},
+            "gigaspeech2_indo": {"repo": "AudioLLMs/gigaspeech2-test", "split": "train", "data_dir": "id-test"},
+            "gigaspeech2_viet": {"repo": "AudioLLMs/gigaspeech2-test", "split": "train", "data_dir": "vi-test"},
+
+            "spoken-mqa_short_digit": {"repo": "amao0o0/spoken-mqa", "split": "short_digit"},
+            "spoken-mqa_long_digit": {"repo": "amao0o0/spoken-mqa", "split": "long_digit"},
+            "spoken-mqa_single_step_reasoning": {"repo": "amao0o0/spoken-mqa", "split": "single_step_reasoning"},
+            "spoken-mqa_multi_step_reasoning": {"repo": "amao0o0/spoken-mqa", "split": "multi_step_reasoning"},
+
+
+            "imda_part1_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART1-Test"},
+            "imda_part2_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART2-Test"},
+            "imda_part3_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART3-Test"},
+            "imda_part4_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART4-Test"},
+            "imda_part5_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART5-Test"},
+            "imda_part6_30s_asr_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "ASR-PART6-Test"},
+            "imda_part3_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART3-Test"},
+            "imda_part4_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART4-Test"},
+            "imda_part5_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART5-Test"},
+            "imda_part6_30s_sqa_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SQA-PART6-Test"},
+
+            "imda_part3_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART3-Test"},
+            "imda_part4_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART4-Test"},
+            "imda_part5_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART5-Test"},
+            "imda_part6_30s_ds_human_test": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "SDS-PART6-Test"},
+
+            "imda_ar_sentence": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-AR-Sentence-Test"},
+            "imda_ar_dialogue": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-AR-Dialogue-Test"},
+            "imda_gr_sentence": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-GR-Sentence-Test"},
+            "imda_gr_dialogue": {"repo": "MERaLiON/Multitask-National-Speech-Corpus-v1", "split": "train", "data_dir": "PQA-GR-Dialogue-Test"},
+        }
+
+        spec = hf_map.get(dataset_name)
+        if spec is None:
+            hf_repo = f"AudioLLMs/{dataset_name}"
+            hf_split = split
+            hf_ds = load_dataset(hf_repo, split=hf_split)
+        else:
+            hf_repo = spec["repo"]
+            hf_split = spec.get("split", split)
+            data_dir = spec.get("data_dir")
+            if data_dir:
+                hf_ds = load_dataset(hf_repo, data_dir=data_dir, split=hf_split)
+            else:
+                hf_ds = load_dataset(hf_repo, split=hf_split)
+
+            fallback_repo = spec.get("fallback_repo")
+            if fallback_repo:
+                # Only try fallback if the primary repo is missing/inaccessible.
+                # (Keep behavior deterministic and close to upstream mapping.)
+                try:
+                    _ = len(hf_ds)
+                except Exception:
+                    hf_repo = fallback_repo
+                    hf_ds = load_dataset(hf_repo, split=hf_split)
+
+        if max_samples is not None and int(max_samples) > 0:
+            hf_ds = hf_ds.select(range(min(int(max_samples), len(hf_ds))))
+        data_samples = hf_ds
+        print(f"Loaded {len(hf_ds)} samples via HuggingFace datasets: {hf_repo} (split={hf_split})")
+    except Exception as e:
+        raise Exception(
+            "Failed to load AudioBench dataset via HuggingFace.\n"
+            f"- Requested dataset_name: {dataset_name}\n"
+            f"- HuggingFace dataset repo attempted: {locals().get('hf_repo', 'UNKNOWN')}\n"
+            f"- Split: {locals().get('hf_split', split)}\n"
+            "Please verify the dataset exists under the AudioLLMs org:\n"
+            "  https://huggingface.co/AudioLLMs/datasets\n"
+            f"Original error: {e}"
+        )
+
+    # Determine category
     dataset_base = dataset_name.replace("_test", "")
     if dataset_name in JUDGE_DATASETS or dataset_base in JUDGE_DATASETS:
         category = "judge"
@@ -278,7 +328,7 @@ def process_dataset(
     else:
         category = "unknown"
 
-    # Create output directories
+    #Output directories
     audio_dir = output_dir / category / "audio" / dataset_name
     dataset_dir = output_dir / category / dataset_name
     os.makedirs(audio_dir, exist_ok=True)
@@ -298,20 +348,15 @@ def process_dataset(
     for idx, sample in enumerate(tqdm(data_samples, desc=f"Processing {dataset_name}")):
         try:
             # Get audio data
-            audio_dict = sample.get("audio")
+            audio_dict = extract_audio_dict(sample)
             if audio_dict is None:
                 print(f"Warning: Sample {idx} has no audio, skipping")
                 failed += 1
                 continue
 
             # Extract audio array and sampling rate
-            if isinstance(audio_dict, dict):
-                audio_array = audio_dict.get("array")
-                sampling_rate = audio_dict.get("sampling_rate", 16000)
-            else:
-                print(f"Warning: Unexpected audio format at sample {idx}")
-                failed += 1
-                continue
+            audio_array = audio_dict.get("array")
+            sampling_rate = audio_dict.get("sampling_rate", 16000)
 
             if audio_array is None or len(audio_array) == 0:
                 print(f"Warning: Empty audio at sample {idx}, skipping")
@@ -401,12 +446,6 @@ def main():
         help="Skip saving audio files (only create manifests)",
     )
     parser.add_argument(
-        "--audiobench-path",
-        type=str,
-        default=None,
-        help="Path to AudioBench repository (will auto-clone if not found)",
-    )
-    parser.add_argument(
         "--max-samples",
         type=int,
         default=-1,
@@ -425,35 +464,10 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine AudioBench repository path
-    if args.audiobench_path:
-        audiobench_path = Path(args.audiobench_path)
-    else:
-        audiobench_path = os.getenv("AUDIOBENCH_REPO_PATH")
-        if audiobench_path:
-            audiobench_path = Path(audiobench_path)
-        else:
-            # Default to AudioBench directory (same level as this script)
-            audiobench_path = Path(__file__).parent / "AudioBench"
-
-    # Clone AudioBench if it doesn't exist
-    if not audiobench_path.exists():
-        print(f"\nAudioBench not found at {audiobench_path}")
-        if not clone_audiobench_repo(audiobench_path):
-            print("\nFailed to clone AudioBench. Please clone it manually:")
-            print("  git clone https://github.com/AudioLLMs/AudioBench.git")
-            sys.exit(1)
-
-    # Verify AudioBench structure
-    if not (audiobench_path / "src" / "dataset.py").exists():
-        print(f"\nError: AudioBench repository at {audiobench_path} is missing src/dataset.py")
-        print("Please ensure the repository is properly cloned.")
-        sys.exit(1)
-
     print("\n" + "=" * 60)
     print("AudioBench Dataset Preparation")
     print("=" * 60)
-    print(f"AudioBench path: {audiobench_path}")
+    print("AudioBench source: HuggingFace datasets (AudioLLMs/AudioBench)")
     print(f"Output directory: {output_dir}")
     print(f"Save audio files: {args.save_audio}")
     print(f"Split: {args.split}")
@@ -476,7 +490,7 @@ def main():
         category_dir = output_dir / category
         category_dir.mkdir(exist_ok=True)
 
-        # Copy category __init__.py if missing
+        # Copy category __init__.py
         init_file = category_dir / "__init__.py"
         template_init = output_dir / category / "__init__.py"
         if not init_file.exists() and template_init.exists():
@@ -502,7 +516,6 @@ def main():
                 output_dir=output_dir,
                 save_audio=args.save_audio,
                 split=args.split,
-                audiobench_path=audiobench_path,
                 max_samples=args.max_samples,
             )
             total_samples += num_samples
