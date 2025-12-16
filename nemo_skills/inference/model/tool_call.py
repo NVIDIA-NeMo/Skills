@@ -64,7 +64,12 @@ class ToolCallingWrapper:
         self.schema_mappings = {}  # Built when tools are listed
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
+        ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
         tool_name, tool_args = get_tool_details_by_endpoint_type(tool_call, endpoint_type)
+
+        ##
+        # TODO(sanyamk): Not all tool arguments might necessarily be in JSON format.
+        #   Kept here to handle errors for now.
 
         try:
             tool_args = json.loads(tool_args)
@@ -73,10 +78,12 @@ class ToolCallingWrapper:
             LOG.exception(e)
             return {"error": "Tool argument parsing failed."}
 
+        ## TODO(sanyamk): Only exceptions related to tool execution here, all others must fail.
         # Remap model's tool name/args back to original schema
         original_tool_name, tool_args = remap_tool_call(tool_name, tool_args, self.schema_mappings)
 
         try:
+            # Allow providers to specify extra_args behavior internally if needed in the future
             result = await self.tool_manager.execute_tool(
                 original_tool_name, tool_args, extra_args={"request_id": request_id}
             )
