@@ -8,6 +8,10 @@ On this page you can find a list of papers, model and dataset releases that were
 
 ## Releases
 
+* [Nemotron-Math-v2](nemotron-math-v2/index.md) dataset
+
+* [Nemotron-Math-Proofs](nemotronmathproofs/index.md) dataset
+
 * [OpenReasoning](openreasoning/index.md) models
 
 * [OpenCodeReasoning](opencodereasoning/index.md) dataset and models
@@ -17,6 +21,8 @@ On this page you can find a list of papers, model and dataset releases that were
 * [OpenMathInstruct-2](openmathinstruct2/index.md) dataset and models
 
 ## Papers
+
+* [Nemotron-Math: Efficient Long-Context Distillation of Mathematical Reasoning from Multi-Mode Supervision](./nemotron-math-v2/paper.pdf){:target="_blank"} (2025)
 
 * [Scaling Generative Verifiers For Natural Language Mathematical Proof Verification And Selection](https://arxiv.org/abs/2511.13027){:target="_blank"} (2025)
 
