@@ -65,7 +65,7 @@ def sample_override_dict():
             "stateful_python_code_exec": {
                 "name": "python_executor",
                 "description": "Call this function to execute Python code in a stateful Jupyter notebook environment.",
-                "parameters": {"code": {"name": "script"}},
+                "parameters": {"script": {"name": "code"}},
             }
         }
     }
@@ -120,7 +120,7 @@ def test_apply_schema_override_description(sample_tool):
 
 def test_apply_schema_override_parameter_names(sample_tool):
     """Override parameter name."""
-    override_config = {"parameters": {"code": {"name": "script"}}}
+    override_config = {"parameters": {"script": {"name": "code"}}}
     transformed, mapping = apply_schema_overrides(sample_tool, override_config)
     assert "code" in transformed["input_schema"]["properties"]
     assert "script" not in transformed["input_schema"]["properties"]
@@ -156,8 +156,8 @@ def test_apply_schema_override_multiple_parameters():
     )
     override_config = {
         "parameters": {
-            "new_param1": {"name": "param1", "type": "string"},
-            "new_param2": {"name": "param2", "type": "integer"},
+            "param1": {"name": "new_param1", "type": "string"},
+            "param2": {"name": "new_param2", "type": "integer"},
         }
     }
     transformed, mapping = apply_schema_overrides(tool, override_config)
@@ -220,7 +220,7 @@ def test_parameter_mapping_single_param():
         description="Test",
         parameters={"script": {"type": "string"}},
     )
-    override_config = {"parameters": {"code": {"name": "script"}}}
+    override_config = {"parameters": {"script": {"name": "code"}}}
     transformed, mapping = apply_schema_overrides(tool, override_config)
     assert mapping == {"code": "script"}
 
@@ -533,7 +533,7 @@ def test_schema_override_with_dash_in_tool_name():
             "web-search": {
                 "name": "web_search",
                 "description": "Search the web using Tavily",
-                "parameters": {"search_query": {"name": "query"}},
+                "parameters": {"query": {"name": "search_query"}},
             }
         }
     }
