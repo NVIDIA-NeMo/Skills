@@ -325,13 +325,18 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     generation = sample.get("generation", "").strip()
     expected_answer = sample.get("expected_answer", "").strip()
 
-    if task_type in ["ASR", "ASR-PC", "AST", "CER", "ASR_LEADERBOARD"] and not generation:
-        return {
+    if task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD", "AST", "Translation", "CER"] and not generation:
+        base = {
             "is_correct": False,
-            "wer": 1.0,
             "error": "missing_generation",
             "predicted_answer": "",
         }
+        if task_type in ["AST", "Translation"]:
+            return {**base, "bleu": 0.0}
+        if task_type == "CER":
+            return {**base, "cer": 1.0}
+        # ASR / ASR-PC / ASR_LEADERBOARD
+        return {**base, "wer": 1.0}
 
     if task_type == "ASR-PC":
         metrics = evaluate_asr_pc(
@@ -350,7 +355,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         updates.update(metrics)
         updates["predicted_answer"] = generation
 
-    elif task_type == "AST":
+    elif task_type in ["AST", "Translation"]:
         metrics = evaluate_translation(expected_answer, generation)
         updates.update(metrics)
         updates["predicted_answer"] = generation
