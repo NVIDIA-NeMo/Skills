@@ -53,96 +53,40 @@ class ToolResponseFormatter(ABC):
 def apply_schema_overrides(
     tool: Dict[str, Any], override_config: Dict[str, Any] | None
 ) -> tuple[Dict[str, Any], Dict[str, str]]:
-    """
-    Apply schema overrides to a single tool and build parameter mapping.
-
-    Args:
-        tool: Original tool dict with keys: name, description, input_schema
-        override_config: Override configuration dict with optional keys:
-            - name: Override tool name
-            - description: Override tool description
-            - parameters: Dict mapping new parameter names to parameter configs
-
-    Returns:
-        Tuple of (transformed_tool_dict, parameter_mapping)
-        where parameter_mapping is {new_param_name: original_param_name}
-    """
-    if override_config is None:
+    """Apply schema overrides to a tool. Returns (transformed_tool, {new_param: orig_param})."""
+    if not override_config:
         return tool, {}
 
     transformed = copy.deepcopy(tool)
-    parameter_mapping = {}
+    for key in ("name", "description"):
+        if key in override_config:
+            transformed[key] = override_config[key]
 
-    # Override tool name
-    if override_config.get("name") is not None:
-        transformed["name"] = override_config["name"]
+    param_overrides = override_config.get("parameters", {})
+    if not param_overrides:
+        return transformed, {}
 
-    # Override tool description
-    if override_config.get("description") is not None:
-        transformed["description"] = override_config["description"]
+    schema = transformed.get("input_schema", {})
+    props, required = schema.get("properties", {}), set(schema.get("required", []))
 
-    # Override parameters
-    if override_config.get("parameters") is not None:
-        original_schema = transformed.get("input_schema", {})
-        original_properties = original_schema.get("properties", {})
-        original_required = original_schema.get("required", [])
+    for name, cfg in param_overrides.items():
+        if name not in props:
+            raise ValueError(f"Parameter '{name}' not in schema")
+        if not isinstance(cfg, dict):
+            raise ValueError(f"Override for '{name}' must be a dict")
 
-        # Build new properties dict and parameter mapping
-        new_properties = {}
-        new_required = []
+    new_props, new_required, mapping = {}, [], {}
+    for orig, param in props.items():
+        ovr = param_overrides.get(orig, {})
+        new = ovr.get("name", orig)
+        new_props[new] = {**param, **{k: v for k, v in ovr.items() if k != "name"}}
+        if new != orig:
+            mapping[new] = orig
+        if orig in required:
+            new_required.append(new)
 
-        # Map original parameter names to new parameter names
-        # Format: parameters.<original_param>.name = <new_param_name>
-        override_params = override_config["parameters"]
-
-        for original_param_name, param_config in override_params.items():
-            if not isinstance(param_config, dict):
-                raise ValueError(
-                    f"Parameter override for '{original_param_name}' must be a dict. "
-                    f"Use parameters.{original_param_name}.name='<new_param_name>' to rename."
-                )
-
-            # Validate original parameter exists
-            if original_param_name not in original_properties:
-                raise ValueError(f"Parameter override '{original_param_name}' does not exist in original schema.")
-
-            # Get new name (if renaming) or keep original name
-            new_param_name = param_config.get("name", original_param_name)
-
-            # Build new parameter schema from original
-            original_param = original_properties[original_param_name]
-            new_param = copy.deepcopy(original_param)
-            # Override with new config (excluding mapping key: name)
-            new_param.update({k: v for k, v in param_config.items() if k != "name"})
-
-            # Track mapping if names differ (new_name -> original_name for reverse mapping)
-            if new_param_name != original_param_name:
-                parameter_mapping[new_param_name] = original_param_name
-
-            # Preserve required status
-            if original_param_name in original_required:
-                new_required.append(new_param_name)
-
-            new_properties[new_param_name] = new_param
-
-        # Add any original parameters not overridden
-        # Track which original params were handled (keys in override_params are original names)
-        handled_original_params = set(override_params.keys())
-
-        for orig_param_name, orig_param in original_properties.items():
-            if orig_param_name not in handled_original_params:
-                new_properties[orig_param_name] = copy.deepcopy(orig_param)
-                if orig_param_name in original_required:
-                    new_required.append(orig_param_name)
-
-        # Update input_schema
-        transformed["input_schema"] = {
-            **original_schema,
-            "properties": new_properties,
-            "required": new_required,
-        }
-
-    return transformed, parameter_mapping
+    transformed["input_schema"] = {**schema, "properties": new_props, "required": new_required}
+    return transformed, mapping
 
 
 def format_tool_list_by_endpoint_type(
