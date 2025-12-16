@@ -1,6 +1,3 @@
-# TODO: how to properly add licensing information for this file?
-
-
 # Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +13,9 @@
 # limitations under the License.
 
 # Copied from https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py
+
 # Original license as follows:
+
 # MIT License
 # 
 # Copyright (c) 2022 Alibaba Research
@@ -59,12 +58,3 @@ def execute_sql(predicted_sql,ground_truth, db_path):
     if set(predicted_res) == set(ground_truth_res):
         res = 1
     return res
-
-
-def print_data(score_lists,count_lists):
-    levels = ['simple', 'moderate', 'challenging', 'total']
-    print("{:20} {:20} {:20} {:20} {:20}".format("", *levels))
-    print("{:20} {:<20} {:<20} {:<20} {:<20}".format('count', *count_lists))
-
-    print('======================================    ACCURACY    =====================================')
-    print("{:20} {:<20.2f} {:<20.2f} {:<20.2f} {:<20.2f}".format('accuracy', *score_lists))

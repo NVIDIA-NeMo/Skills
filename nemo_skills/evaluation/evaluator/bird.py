@@ -70,6 +70,7 @@ class BirdEvaluator(BaseEvaluator):
 
         
     def _extract_answer(self, text):
+        """Uses the specified format/regex to get the answer from the output text."""
         regex = ""
         dotall = False
         answer_format = self.eval_config.answer_format
@@ -98,7 +99,7 @@ class BirdEvaluator(BaseEvaluator):
             code_matches = re.findall(regex, text)
 
         if not code_matches:
-            return "SELECT 1"
+            return "SELECT 1"   # No-op filler
 
         # Remove comments first
         ans = re.sub(r"--.*", "", code_matches[-1])  # Use last match
@@ -126,10 +127,6 @@ class BirdEvaluator(BaseEvaluator):
             line["res"] = output["res"]
 
         jdump(lines, infile, mode="wt")
-
-
-    def _handle_timeout(self, signum, frame):
-        raise TimeoutError()
 
 
     async def eval_single(self, data_point: dict):

@@ -25,8 +25,6 @@ import zipfile
 from datasets import load_dataset
 
 def download_data(output_dir):
-    #dataset = load_dataset("birdsql/bird_sql_dev_20251106", split="dev_20251106")
-
     # Download zip directly (HF Dataset is missing SQL files and table info)
     print("Downloading and extracting data file...")
     url = "https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip"
@@ -111,7 +109,7 @@ def format_entries(file_path, tables_info, out_file):
 
                     final_entry = {
                         "question": entry["question"],
-                        "solution": entry["SQL"],      #TODO: Check key for this
+                        "solution": entry["SQL"],
                         "sql_context": tables_info[entry["db_id"]],
                         "id": i,
                     }
@@ -128,7 +126,7 @@ def main():
     args = parser.parse_args()
 
     dev_dir = download_data(args.output_dir)
-    #dev_dir = Path(args.output_dir, "dev_20240627/")
+    #If already downloaded: dev_dir = Path(args.output_dir, "dev_20240627/")
     print(f"\nData downloaded to: {dev_dir}")
 
     print("Starting processing...")
@@ -138,14 +136,14 @@ def main():
     print("Finished reading tables.")
 
     # Naming the input and output files the nearly same thing is likely
-    # confusing, but <split>.jsonl is the expected format
+    # confusing, but <split>.jsonl is the expected format so we'll just
+    # keep the result in the output directory.
     format_entries(
         Path(dev_dir, "dev.json"),
         tables_info,
         Path(args.output_dir, "dev.jsonl")
     )
     print("Finished formatting entries. All done!")
-
 
 
 if __name__ == "__main__":

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.dataset.birdbench.evaluation import print_data
 from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float
 
 class BirdMetrics(BaseMetrics):
@@ -57,10 +56,6 @@ class BirdMetrics(BaseMetrics):
         count_lists = [len(self.simple_results), len(self.moderate_results), len(self.challenging_results), self.n]
 
         acc = self.correct / self.n
-
-        print_data([simple_acc, moderate_acc, challenging_acc, acc], count_lists)
-        print("===========================================================================================")
-        print("Finished evaluation")
 
         metrics_dict = {}
         metrics_dict["total"] = {
