@@ -355,7 +355,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Launch Apptainer container and execute the command
         apptainer_cmd = (
-            f"apptainer exec --writable-tmpfs --no-mount home,tmp,bind-paths "
+            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
             f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
             f"--mount type=bind,src=/root,dst=/root_mount,ro "
             f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
