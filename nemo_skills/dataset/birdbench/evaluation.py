@@ -60,9 +60,6 @@ def execute_sql(predicted_sql,ground_truth, db_path):
         res = 1
     return res
 
-def sort_results(list_of_dicts):
-  return sorted(list_of_dicts, key=lambda x: x['sql_idx'])
-
 def compute_acc_by_diff(exec_results,diff_json_path):
     num_queries = len(exec_results)
     results = [res['res'] for res in exec_results]

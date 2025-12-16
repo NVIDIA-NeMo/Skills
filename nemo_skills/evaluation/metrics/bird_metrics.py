@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.dataset.birdbench.evaluation import sort_results, print_data
+from nemo_skills.dataset.birdbench.evaluation import print_data
 from nemo_skills.evaluation.metrics.base import BaseMetrics
 
 class BirdMetrics(BaseMetrics):
@@ -23,11 +23,12 @@ class BirdMetrics(BaseMetrics):
         return {"execution_accuracy": 1}
 
 
-    def _compute_acc_by_diff(self, sorted_preds):
-        n = len(exec_results)
+    def _compute_acc_by_diff(self, preds):
+        n = len(preds)
         simple_results, moderate_results, challenging_results = [], [], []
+        total_correct = 0
 
-        for pred in predictions:
+        for pred in preds:
             # Each should be a 0 or 1 value
             if pred["difficulty"] == "simple":
                 simple_results.append(pred["res"])
@@ -53,9 +54,8 @@ class BirdMetrics(BaseMetrics):
     def update(self, predictions):
         super().update(predictions)
 
-        sorted_preds = sort_results(predictions)
         simple_acc, moderate_acc, challenging_acc, acc, count_list = \
-            _compute_acc_by_diff(sorted_preds)
+            self._compute_acc_by_diff(predictions)
 
         print_data([simple_acc, moderate_acc, challenging_acc, acc], count_list)
         print("===========================================================================================")

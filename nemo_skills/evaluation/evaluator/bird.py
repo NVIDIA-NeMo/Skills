@@ -32,7 +32,7 @@ from nemo_skills.utils import nested_dataclass
 
 @nested_dataclass(kw_only=True)
 class BirdEvaluatorConfig(BaseEvaluatorConfig):
-    timeout: int = 2 #30
+    timeout: int = 30
 
     # Answer format can be "BOXED", "CODEBLOCK", or "USE_REGEX", the last of
     # which uses the given regex in the extraction_regex arg.
