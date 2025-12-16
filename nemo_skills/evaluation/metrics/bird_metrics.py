@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from nemo_skills.dataset.birdbench.evaluation import print_data
-from nemo_skills.evaluation.metrics.base import BaseMetrics
+from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float
 
 class BirdMetrics(BaseMetrics):
     """Metrics for BIRD text-to-SQL evaluation."""
@@ -62,7 +62,8 @@ class BirdMetrics(BaseMetrics):
         print("===========================================================================================")
         print("Finished evaluation")
 
-        metrics_dict = {
+        metrics_dict = {}
+        metrics_dict["total"] = {
             "simple_acc": simple_acc * 100,
             "moderate_acc": moderate_acc * 100,
             "challenging_acc": challenging_acc * 100,
@@ -71,3 +72,15 @@ class BirdMetrics(BaseMetrics):
         return metrics_dict
 
 
+    def evaluations_to_print(self):
+        return ["total"]
+
+
+    def metrics_to_print(self):
+        metrics_to_print = {
+            "simple_acc": as_float,
+            "moderate_acc": as_float,
+            "challenging_acc": as_float,
+            "total_acc": as_float,
+        }
+        return metrics_to_print
