@@ -38,22 +38,8 @@ Nemotron-Nano-v3 (which includes this dataset in its training) achieves the foll
 | Model | pass@32 (no self-correction) | pass@32 (with self-correction) |
 |-------|------------------------------|-------------------------------|
 | Nemotron-Nano-v3 | 79.92% | 86.89% |
-| gpt-oss-20b | 43.03% | - |
-| Qwen3-30B-A3B-Thinking | 16.80% | - |
-
-## Dataset Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `problem` | `str` | Natural language problem statement (always present) |
-| `source` | `str` | Problem source: `"aops"` or `"mathstack"` (always present) |
-| `formal_statement` | `str \| null` | Lean 4 theorem code (null for ~4% of entries) |
-| `lean_header` | `str \| null` | Lean import statements and setup |
-| `sft_messages` | `list` | Verified proof attempts as chat conversations; each entry produces correct Lean 4 code (empty list if none) |
-| `used_in_training` | `bool` | Whether each `sft_messages` entry was used in Nemotron-Nano-v3 training |
-| `url` | `str \| null` | Original post URL (mathstack only) |
-| `user_name` | `str \| null` | Original poster's username (mathstack only) |
-| `user_url` | `str \| null` | Original poster's profile URL (mathstack only) |
+| gpt-oss-20b | 43.03% | 59.42% |
+| Qwen3-30B-A3B-Thinking | 16.80% | 32.37% |
 
 ## How to Reproduce
 
@@ -78,12 +64,12 @@ refinement process with backtranslation verification. The input is natural langu
         --generation_module=nemo_skills.inference.autoformalize \
         --model=openai/gpt-oss-120b \
         --server_type=vllm \
-        --server_gpus=8 \
-        --input_file=/workspace/data/problems.jsonl \  # Natural language problems (see OpenMathReasoning dataset construction)
+        --server_gpus=<NUM_GPUS> \
+        --input_file=/workspace/data/problems.jsonl \
         --output_dir=/workspace/data/autoformalize_output \
         --with_sandbox \
         --num_random_seeds=1 \
-        ++prompt_config=lean4/deepseek-R1-autoformalization \
+        ++prompt_config=lean4/autoformalization \
         ++inference.tokens_to_generate=120000 \
         ++inference.temperature=1.0 \
         ++inference.top_p=1.0 \
@@ -91,8 +77,8 @@ refinement process with backtranslation verification. The input is natural langu
         ++refinement=True \
         ++judge_enabled=True \
         ++refinement_max_turns=8 \
-        ++backtranslation_prompt_config=lean4/deepseek-R1-backtranslation \
-        ++judge_prompt_config=lean4/deepseek-R1-judge-backtranslation \
+        ++backtranslation_prompt_config=lean4/backtranslation \
+        ++judge_prompt_config=lean4/judge-backtranslation \
         ++refine_consistent_error_prompt_config=lean4/refinement_consistent_error \
         ++refine_parsing_error_prompt_config=lean4/refinement_parsing_error \
         ++refine_code_error_prompt_config=lean4/refinement_code_error
@@ -106,24 +92,23 @@ refinement process with backtranslation verification. The input is natural langu
     generate(
         ctx=wrap_arguments(
             "++inference.tokens_to_generate=120000 "
-            "++prompt_config=lean4/deepseek-R1-autoformalization "
+            "++prompt_config=lean4/autoformalization "
             "++inference.temperature=1.0 "
             "++inference.top_p=1.0 "
             "++adaptive_reasoning=True "
             "++refinement=True "
             "++judge_enabled=True "
             "++refinement_max_turns=8 "
-            "++backtranslation_prompt_config=lean4/deepseek-R1-backtranslation "
-            "++judge_prompt_config=lean4/deepseek-R1-judge-backtranslation "
+            "++backtranslation_prompt_config=lean4/backtranslation "
+            "++judge_prompt_config=lean4/judge-backtranslation "
             "++refine_consistent_error_prompt_config=lean4/refinement_consistent_error "
             "++refine_parsing_error_prompt_config=lean4/refinement_parsing_error "
             "++refine_code_error_prompt_config=lean4/refinement_code_error "
         ),
         generation_module="nemo_skills.inference.autoformalize",
         cluster="slurm",
-        server_gpus=8,
-        server_nodes=1,
-        input_file="/workspace/data/problems.jsonl",  # Natural language problems (see OpenMathReasoning dataset construction)
+        server_gpus="<NUM_GPUS>",
+        input_file="/workspace/data/problems.jsonl",
         output_dir="/workspace/data/autoformalize_output",
         server_type="vllm",
         model="openai/gpt-oss-120b",
@@ -143,6 +128,7 @@ The pipeline includes:
 ### Theorem Proving
 
 The prover pipeline generates proofs for formalized statements with iterative error correction.
+Input: formal statements from the autoformalization step.
 
 === "CLI"
 
@@ -152,13 +138,12 @@ The prover pipeline generates proofs for formalized statements with iterative er
         --generation_module=nemo_skills.inference.prover \
         --model=Goedel-LM/Goedel-Prover-V2-32B \
         --server_type=vllm \
-        --server_gpus=8 \
+        --server_gpus=<NUM_GPUS> \
         --server_args="--max-model-len 40960" \
-        --input_file=/workspace/data/formal_statements.jsonl \  # Output from autoformalization step
+        --input_file=/workspace/data/formal_statements.jsonl \
         --output_dir=/workspace/data/proofs_output \
         --with_sandbox \
         --num_random_seeds=1 \
-        --dependent_jobs=2 \
         ++prompt_config=lean4/goedel-prover-v2 \
         ++inference.tokens_to_generate=38912 \
         ++inference.temperature=1.0 \
@@ -166,7 +151,7 @@ The prover pipeline generates proofs for formalized statements with iterative er
         ++refinement=True \
         ++refinement_max_turns=8 \
         ++remove_cot=True \
-        ++n_pass=1 \
+        ++n_pass=4 \
         ++refinement_prompt_config=lean4/goedel-prover-v2-refinement \
         ++delete_wrong_turns=True \
         ++max_concurrent_requests=512
@@ -186,21 +171,20 @@ The prover pipeline generates proofs for formalized statements with iterative er
             "++refinement=True "
             "++refinement_max_turns=8 "
             "++remove_cot=True "
-            "++n_pass=1 "
+            "++n_pass=4 "
             "++refinement_prompt_config=lean4/goedel-prover-v2-refinement "
             "++delete_wrong_turns=True "
             "++max_concurrent_requests=512 "
         ),
         generation_module="nemo_skills.inference.prover",
         cluster="slurm",
-        input_file="/workspace/data/formal_statements.jsonl",  # Output from autoformalization step
+        input_file="/workspace/data/formal_statements.jsonl",
         output_dir="/workspace/data/proofs_output",
         model="Goedel-LM/Goedel-Prover-V2-32B",
         server_type="vllm",
-        server_gpus=8,
+        server_gpus="<NUM_GPUS>",
         server_args="--max-model-len 40960",
         num_random_seeds=1,
-        dependent_jobs=2,
         with_sandbox=True,
     )
     ```
@@ -214,7 +198,8 @@ The proving strategy includes:
 
 ### Model Training
 
-To fine-tune a model on the Nemotron-Math-Proofs dataset:
+To fine-tune a model on the Nemotron-Math-Proofs dataset.
+Input: processed SFT data from the theorem proving step.
 
 === "CLI"
 
@@ -224,9 +209,9 @@ To fine-tune a model on the Nemotron-Math-Proofs dataset:
         --expname=qwen3-8b-lean-sft \
         --output_dir=/workspace/training/qwen3-8b-lean-sft \
         --hf_model=Qwen/Qwen3-8B \
-        --training_data=/workspace/data/sft_data.jsonl \  # Processed output from theorem proving step
-        --num_nodes=32 \
-        --num_gpus=8 \
+        --training_data=/workspace/data/sft_data.jsonl \
+        --num_nodes=<NUM_NODES> \
+        --num_gpus=<NUM_GPUS> \
         --backend=megatron \
         ++checkpointing.save_period=250 \
         ++sft.max_num_epochs=2000 \
@@ -265,9 +250,9 @@ To fine-tune a model on the Nemotron-Math-Proofs dataset:
         backend="megatron",
         output_dir="/workspace/training/qwen3-8b-lean-sft",
         hf_model="Qwen/Qwen3-8B",
-        training_data="/workspace/data/sft_data.jsonl",  # Processed output from theorem proving step
-        num_gpus=8,
-        num_nodes=32,
+        training_data="/workspace/data/sft_data.jsonl",
+        num_gpus="<NUM_GPUS>",
+        num_nodes="<NUM_NODES>",
     )
     ```
 
@@ -282,7 +267,7 @@ To evaluate a model on the miniF2F benchmark with 32 samples per problem (withou
         --cluster=slurm \
         --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
         --server_type=vllm \
-        --server_gpus=8 \
+        --server_gpus=<NUM_GPUS> \
         --output_dir=/workspace/evals/nemotron-nano-3-minif2f \
         --benchmarks=minif2f:32 \
         --with_sandbox \
@@ -308,7 +293,7 @@ To evaluate a model on the miniF2F benchmark with 32 samples per problem (withou
         cluster="slurm",
         model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
         server_type="vllm",
-        server_gpus=8,
+        server_gpus="<NUM_GPUS>",
         benchmarks="minif2f:32",
         output_dir="/workspace/evals/nemotron-nano-3-minif2f",
         extra_eval_args="++eval_config.timeout=600",
@@ -326,12 +311,11 @@ To evaluate with self-correction (iterative refinement based on compiler feedbac
         --generation_module=nemo_skills.inference.prover \
         --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
         --server_type=vllm \
-        --server_gpus=8 \
+        --server_gpus=<NUM_GPUS> \
         --input_file=/nemo_run/code/nemo_skills/dataset/minif2f/test.jsonl \
         --output_dir=/workspace/evals/nemotron-nano-3-minif2f-self-correction \
         --with_sandbox \
         --num_random_seeds=32 \
-        --dependent_jobs=2 \
         ++prompt_config=lean4/goedel-prover-v2-nemotron \
         ++inference.tokens_to_generate=120000 \
         ++inference.temperature=1.0 \
@@ -339,7 +323,7 @@ To evaluate with self-correction (iterative refinement based on compiler feedbac
         ++refinement=True \
         ++refinement_max_turns=8 \
         ++remove_cot=True \
-        ++n_pass=1 \
+        ++n_pass=4 \
         ++refinement_prompt_config=lean4/goedel-prover-v2-refinement \
         ++delete_wrong_turns=True \
         ++max_concurrent_requests=512
@@ -359,7 +343,7 @@ To evaluate with self-correction (iterative refinement based on compiler feedbac
             "++refinement=True "
             "++refinement_max_turns=8 "
             "++remove_cot=True "
-            "++n_pass=1 "
+            "++n_pass=4 "
             "++refinement_prompt_config=lean4/goedel-prover-v2-refinement "
             "++delete_wrong_turns=True "
             "++max_concurrent_requests=512 "
@@ -370,9 +354,8 @@ To evaluate with self-correction (iterative refinement based on compiler feedbac
         output_dir="/workspace/evals/nemotron-nano-3-minif2f-self-correction",
         model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
         server_type="vllm",
-        server_gpus=8,
+        server_gpus="<NUM_GPUS>",
         num_random_seeds=32,
-        dependent_jobs=2,
         with_sandbox=True,
     )
     ```
