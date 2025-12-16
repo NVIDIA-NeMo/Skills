@@ -89,32 +89,27 @@ def apply_schema_overrides(
     return transformed, mapping
 
 
-class SchemaMappings:
-    """Holds mappings needed to translate model tool calls back to original tool schemas."""
-
-    def __init__(self):
-        self.tool_names: Dict[str, str] = {}  # {model_tool_name: original_tool_name}
-        self.parameters: Dict[str, Dict[str, str]] = {}  # {tool_name: {model_param: original_param}}
-
-    def remap_tool_call(self, tool_name: str, args: dict) -> tuple[str, dict]:
-        """Remap a tool call from model names back to original names."""
-        original_tool = self.tool_names.get(tool_name, tool_name)
-        param_mapping = self.parameters.get(tool_name, {})
-        original_args = {param_mapping.get(k, k): v for k, v in args.items()}
-        return original_tool, original_args
+def remap_tool_call(tool_name: str, args: dict, mappings: dict) -> tuple[str, dict]:
+    """Remap a tool call from model names back to original tool schema names."""
+    original_tool = mappings.get("tool_names", {}).get(tool_name, tool_name)
+    param_mapping = mappings.get("parameters", {}).get(tool_name, {})
+    original_args = {param_mapping.get(k, k): v for k, v in args.items()}
+    return original_tool, original_args
 
 
 def format_tool_list_by_endpoint_type(
     tools, endpoint_type: EndpointType, schema_overrides: Dict[str, Dict[str, Dict[str, Any]]] | None = None
-) -> tuple[list[Dict[str, Any]], SchemaMappings]:
+) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
     """
     Format tool list for the given endpoint type, applying schema overrides.
 
     Returns:
-        Tuple of (formatted_tools, schema_mappings) where schema_mappings can remap tool calls.
+        Tuple of (formatted_tools, mappings_dict) where mappings_dict has:
+        - "tool_names": {model_name: original_name}
+        - "parameters": {tool_name: {model_param: original_param}}
     """
     schema_overrides = schema_overrides or {}
-    mappings = SchemaMappings()
+    mappings = {"tool_names": {}, "parameters": {}}
     transformed_tools = []
 
     for tool in tools:
@@ -127,9 +122,9 @@ def format_tool_list_by_endpoint_type(
 
         new_name = transformed["name"]
         if new_name != original_name:
-            mappings.tool_names[new_name] = original_name
+            mappings["tool_names"][new_name] = original_name
         if param_mapping:
-            mappings.parameters[new_name] = param_mapping
+            mappings["parameters"][new_name] = param_mapping
 
     # Format for endpoint type
     if endpoint_type == EndpointType.chat:

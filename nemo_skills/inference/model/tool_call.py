@@ -21,10 +21,10 @@ from collections import defaultdict
 from typing import Dict, List
 
 from nemo_skills.mcp.adapters import (
-    SchemaMappings,
     format_tool_list_by_endpoint_type,
     format_tool_response_by_endpoint_type,
     get_tool_details_by_endpoint_type,
+    remap_tool_call,
 )
 from nemo_skills.mcp.schema_overrides import load_schema_overrides
 from nemo_skills.mcp.tool_manager import ToolManager
@@ -61,7 +61,7 @@ class ToolCallingWrapper:
         )
 
         self.schema_overrides = load_schema_overrides(schema_overrides)
-        self.schema_mappings = SchemaMappings()  # Built when tools are listed
+        self.schema_mappings = {}  # Built when tools are listed
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
         tool_name, tool_args = get_tool_details_by_endpoint_type(tool_call, endpoint_type)
@@ -74,7 +74,7 @@ class ToolCallingWrapper:
             return {"error": "Tool argument parsing failed."}
 
         # Remap model's tool name/args back to original schema
-        original_tool_name, tool_args = self.schema_mappings.remap_tool_call(tool_name, tool_args)
+        original_tool_name, tool_args = remap_tool_call(tool_name, tool_args, self.schema_mappings)
 
         try:
             result = await self.tool_manager.execute_tool(

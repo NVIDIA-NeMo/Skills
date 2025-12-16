@@ -595,5 +595,5 @@ async def test_tool_manager_with_schema_overrides():
     assert "code" not in props
 
     # Verify mappings: model names -> original names
-    assert mappings.parameters["renamed_execute"] == {"script": "code"}
-    assert mappings.tool_names["renamed_execute"] == "execute"
+    assert mappings["parameters"]["renamed_execute"] == {"script": "code"}
+    assert mappings["tool_names"]["renamed_execute"] == "execute"
