@@ -60,30 +60,6 @@ def execute_sql(predicted_sql,ground_truth, db_path):
         res = 1
     return res
 
-def compute_acc_by_diff(exec_results,diff_json_path):
-    num_queries = len(exec_results)
-    results = [res['res'] for res in exec_results]
-    contents = load_json(diff_json_path)
-    simple_results, moderate_results, challenging_results = [], [], []
-
-    for i,content in enumerate(contents):
-        if content['difficulty'] == 'simple':
-            simple_results.append(exec_results[i])
-
-        if content['difficulty'] == 'moderate':
-            moderate_results.append(exec_results[i])
-
-        if content['difficulty'] == 'challenging':
-            challenging_results.append(exec_results[i])
-
-    simple_acc = sum([res['res'] for res in simple_results])/len(simple_results)
-    moderate_acc = sum([res['res'] for res in moderate_results])/len(moderate_results)
-    challenging_acc = sum([res['res'] for res in challenging_results])/len(challenging_results)
-    all_acc = sum(results)/num_queries
-    count_lists = [len(simple_results), len(moderate_results), len(challenging_results), num_queries]
-    return simple_acc * 100, moderate_acc * 100, challenging_acc * 100, all_acc * 100, count_lists
-
-
 
 def print_data(score_lists,count_lists):
     levels = ['simple', 'moderate', 'challenging', 'total']

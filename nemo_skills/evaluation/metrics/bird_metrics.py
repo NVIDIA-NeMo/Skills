@@ -18,46 +18,56 @@ from nemo_skills.evaluation.metrics.base import BaseMetrics
 class BirdMetrics(BaseMetrics):
     """Metrics for BIRD text-to-SQL evaluation."""
 
+    def __init__(self):
+        self.reset()
 
-    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
-        return {"execution_accuracy": 1}
+    def reset(self):
+        self.n = 0
+        self.correct = 0
+        self.simple_results = []
+        self.moderate_results = []
+        self.challenging_results = []
 
-
-    def _compute_acc_by_diff(self, preds):
-        n = len(preds)
-        print(n)
-        simple_results, moderate_results, challenging_results = [], [], []
-        total_correct = 0
-
-        for pred in preds:
-            # Each should be a 0 or 1 value
-            if pred["difficulty"] == "simple":
-                simple_results.append(pred["res"])
-
-            if pred["difficulty"] == "moderate":
-                moderate_results.append(pred["res"])
-
-            if pred["difficulty"] == "challenging":
-                challenging_results.append(pred["res"])
-
-            total_correct += pred["res"]
-
-        simple_acc = sum(simple_results)/len(simple_results) if simple_results else 0
-        moderate_acc = sum(moderate_results)/len(moderate_results) if moderate_results else 0
-        challenging_acc = sum(challenging_results)/len(challenging_results) if challenging_results else 0
-
-        acc = total_correct/n
-
-        count_lists = [len(simple_results), len(moderate_results), len(challenging_results), n]
-        return simple_acc * 100, moderate_acc * 100, challenging_acc * 100, acc * 100, count_lists
-        
 
     def update(self, predictions):
-        super().update(predictions)
+        self.n += len(predictions)
 
-        simple_acc, moderate_acc, challenging_acc, acc, count_list = \
-            self._compute_acc_by_diff(predictions)
+        for pred in predictions:
+            # Each should be a 0 or 1 value
+            if pred["difficulty"] == "simple":
+                self.simple_results.append(pred["res"])
 
-        print_data([simple_acc, moderate_acc, challenging_acc, acc], count_list)
+            if pred["difficulty"] == "moderate":
+                self.moderate_results.append(pred["res"])
+
+            if pred["difficulty"] == "challenging":
+                self.challenging_results.append(pred["res"])
+
+            self.correct += pred["res"]
+
+
+    def get_metrics(self):
+        sr = self.simple_results
+        mr = self.moderate_results
+        cr = self.challenging_results
+
+        simple_acc = sum(sr)/len(sr) if sr else 0
+        moderate_acc = sum(mr)/len(mr) if mr else 0
+        challenging_acc = sum(cr)/len(cr) if cr else 0
+        count_lists = [len(self.simple_results), len(self.moderate_results), len(self.challenging_results), self.n]
+
+        acc = self.correct / self.n
+
+        print_data([simple_acc, moderate_acc, challenging_acc, acc], count_lists)
         print("===========================================================================================")
         print("Finished evaluation")
+
+        metrics_dict = {
+            "simple_acc": simple_acc * 100,
+            "moderate_acc": moderate_acc * 100,
+            "challenging_acc": challenging_acc * 100,
+            "total_acc": acc * 100
+        }
+        return metrics_dict
+
+
