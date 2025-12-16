@@ -167,5 +167,6 @@ class ToolCallingWrapper:
         result_steps["num_generated_tokens"] = sum(result_steps["num_generated_tokens"])
         result_steps["num_tool_calls"] = sum(result_steps["num_tool_calls"])
         result_steps["conversation"] = conversation
+        result_steps["tools"] = tools  # Schema sent to model (with overrides applied)
 
         return result_steps
