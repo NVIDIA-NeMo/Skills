@@ -20,7 +20,7 @@ We used [Qwen2.5-32B-Instruct](https://huggingface.co/Qwen/Qwen2.5-32B-Instruct)
 
 
 
-See our [paper](TBD) to learn more details!
+See our [paper](Nemotron-Math-V2.pdf) to learn more details!
 
 
 ## How to reproduce our results
