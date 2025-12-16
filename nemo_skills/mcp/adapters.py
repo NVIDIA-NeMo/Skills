@@ -107,26 +107,15 @@ def format_tool_list_by_endpoint_type(
     """
     schema_overrides = schema_overrides or {}
     parameter_mapping = {}
-
-    # Apply schema overrides and collect parameter mappings
     transformed_tools = []
+
     for tool in tools:
-        provider_class = tool.get("server")  # Provider class name (e.g., "PythonTool")
-        original_tool_name = tool["name"]
-
-        # Look up override: first by provider class, then by tool name
-        override_config = None
-        if provider_class and provider_class in schema_overrides:
-            provider_overrides = schema_overrides[provider_class]
-            override_config = provider_overrides.get(original_tool_name)
-
-        transformed_tool, tool_param_mapping = apply_schema_overrides(tool, override_config)
-        transformed_tools.append(transformed_tool)
-
-        # Store parameter mapping keyed by the NEW tool name (after override)
-        new_tool_name = transformed_tool["name"]
-        if tool_param_mapping:
-            parameter_mapping[new_tool_name] = tool_param_mapping
+        provider = schema_overrides.get(tool.get("server")) or {}
+        override = provider.get(tool["name"])
+        transformed, param_mapping = apply_schema_overrides(tool, override)
+        transformed_tools.append(transformed)
+        if param_mapping:
+            parameter_mapping[transformed["name"]] = param_mapping
 
     # Format for endpoint type
     if endpoint_type == EndpointType.chat:
