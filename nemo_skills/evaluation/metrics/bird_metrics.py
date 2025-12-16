@@ -25,10 +25,13 @@ class BirdMetrics(BaseMetrics):
 
     def _compute_acc_by_diff(self, preds):
         n = len(preds)
+        print(n)
         simple_results, moderate_results, challenging_results = [], [], []
         total_correct = 0
 
         for pred in preds:
+            print(pred["id"])
+            print(pred["difficulty"])
             # Each should be a 0 or 1 value
             if pred["difficulty"] == "simple":
                 simple_results.append(pred["res"])
