@@ -323,7 +323,7 @@ To evaluate with self-correction (iterative refinement based on compiler feedbac
         ++refinement=True \
         ++refinement_max_turns=8 \
         ++remove_cot=True \
-        ++n_pass=4 \
+        ++n_pass=1 \
         ++refinement_prompt_config=lean4/goedel-prover-v2-refinement \
         ++delete_wrong_turns=True \
         ++max_concurrent_requests=512
@@ -343,7 +343,7 @@ To evaluate with self-correction (iterative refinement based on compiler feedbac
             "++refinement=True "
             "++refinement_max_turns=8 "
             "++remove_cot=True "
-            "++n_pass=4 "
+            "++n_pass=1 "
             "++refinement_prompt_config=lean4/goedel-prover-v2-refinement "
             "++delete_wrong_turns=True "
             "++max_concurrent_requests=512 "
