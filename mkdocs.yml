@@ -91,23 +91,28 @@ nav:
     - tutorials/index.md
   - Papers & Releases:
     - releases/index.md
+    - Nemotron-Math-v2:
+      - releases/nemotron-math-v2/index.md
+      - Model evaluation: releases/nemotron-math-v2/evaluation.md
+      - Dataset construction: releases/nemotron-math-v2/dataset.md
+      - Model training: releases/nemotron-math-v2/training.md
     - Nemotron-Math-Proofs: releases/nemotronmathproofs/index.md
     - OpenReasoning:
       - releases/openreasoning/index.md
-      - Model Evaluation: releases/openreasoning/evaluation.md
+      - Model evaluation: releases/openreasoning/evaluation.md
       - Dataset construction: releases/openreasoning/dataset.md
       - Model training: releases/openreasoning/training.md
     - OpenCodeReasoning:
       - releases/opencodereasoning/index.md
-      - Model Evaluation: releases/opencodereasoning/evaluation.md
+      - Model evaluation: releases/opencodereasoning/evaluation.md
       - Dataset construction: releases/opencodereasoning/dataset.md
     - OpenMathReasoning:
       - releases/openmathreasoning/index.md
-      - Model Evaluation: releases/openmathreasoning/evaluation.md
+      - Model evaluation: releases/openmathreasoning/evaluation.md
       - Dataset construction: releases/openmathreasoning/dataset.md
       - Model training: releases/openmathreasoning/training.md
     - OpenMathInstruct-2:
       - releases/openmathinstruct2/index.md
-      - Model Evaluation: releases/openmathinstruct2/evaluation.md
+      - Model evaluation: releases/openmathinstruct2/evaluation.md
       - Dataset construction: releases/openmathinstruct2/dataset.md
       - Model training: releases/openmathinstruct2/training.md
