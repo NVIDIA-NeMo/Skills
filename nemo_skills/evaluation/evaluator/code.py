@@ -115,7 +115,7 @@ class CodeExecEvaluator(BaseEvaluator):
         LOG.info("Full evaluation completed successfully")
 
 
-def preprocess_code(generation_dict: dict, language="python", strip_whitespace=True):
+def preprocess_code(generation_dict: dict, language: str = "python", strip_whitespace: bool = True):
     completion = generation_dict.get("generation", "") or ""
     completion = completion.replace("\r", "")
 
@@ -194,7 +194,7 @@ def eval_evalplus(cfg):
 
     jsonl_file = cfg.input_file
     with open(jsonl_file) as f:
-        samples = [preprocess_code(json.loads(line)) for line in f]
+        samples = [preprocess_code(json.loads(line), language="python") for line in f]
     # all changes will be done with a new key "completion", so it's ok to write to the same file
     with open(jsonl_file, "wt", encoding="utf-8") as f:
         for sample in samples:
@@ -264,7 +264,7 @@ def eval_livecodebench_pro(cfg):
     with open(jsonl_file) as f:
         for line in f:
             sample = json.loads(line)
-            sample = preprocess_code(sample, strip_whitespace=True)
+            sample = preprocess_code(sample, language=cfg.language, strip_whitespace=True)
             sample["code_list"] = [sample["completion"]]
             samples.append(sample)
 
@@ -313,12 +313,12 @@ def eval_livebench_coding(cfg):
             sample = json.loads(line)
             if sample["task"] == "coding_completion":
                 assert len(sample["partial_solution"]) > 0
-                sample = preprocess_code(sample, strip_whitespace=False)
+                sample = preprocess_code(sample, language="python", strip_whitespace=False)
                 sample["completion"] = sample["completion"].replace("\t", "    ")
                 full_solution = sample["partial_solution"] + "\n" + sample["completion"]
                 sample["code_list"] = [full_solution]
             else:
-                sample = preprocess_code(sample, strip_whitespace=True)
+                sample = preprocess_code(sample, language="python", strip_whitespace=True)
                 sample["code_list"] = [sample["completion"]]
 
             samples.append(sample)
@@ -374,7 +374,7 @@ def eval_bigcodebench(cfg):
     samples = []
     with open(jsonl_file) as f:
         for line in f:
-            generation_dict = preprocess_code(json.loads(line))
+            generation_dict = preprocess_code(json.loads(line), language="python")
             generation_dict["solution"] = generation_dict.pop("completion")
             samples.append(generation_dict)
     with open(jsonl_file, "wt", encoding="utf-8") as f:
@@ -459,7 +459,7 @@ def eval_human_eval_infilling(cfg):
             elif data_split != sample["split"]:
                 raise ValueError(f"All samples should have the same split, but got {data_split} and {sample['split']}")
 
-            sample = preprocess_code(sample, strip_whitespace=False)
+            sample = preprocess_code(sample, language="python", strip_whitespace=False)
             sample["original_completion"] = sample["completion"]
             sample = postprocess_code(sample)
             samples.append(sample)
