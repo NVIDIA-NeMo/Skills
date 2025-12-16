@@ -16,4 +16,4 @@
 DATASET_GROUP = "code"
 METRICS_TYPE = "code"
 EVAL_SPLIT = "test_25q2"
-GENERATION_ARGS = "++prompt_config=eval/livecodebench/python_codegen ++eval_type=livecodebench_pro"
+GENERATION_ARGS = "++prompt_config=eval/livecodebench/cpp_codegen ++eval_type=livecodebench_pro"
