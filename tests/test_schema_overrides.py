@@ -199,14 +199,15 @@ def test_format_tool_list_with_overrides(sample_tool, sample_override_dict):
     schema_overrides = load_schema_overrides(sample_override_dict)
 
     # Test chat endpoint
-    formatted_chat, mapping_chat = format_tool_list_by_endpoint_type(tools, EndpointType.chat, schema_overrides)
+    formatted_chat, mappings = format_tool_list_by_endpoint_type(tools, EndpointType.chat, schema_overrides)
     assert len(formatted_chat) == 1
     assert formatted_chat[0]["function"]["name"] == "python_executor"
     assert "code" in formatted_chat[0]["function"]["parameters"]["properties"]
-    assert mapping_chat["python_executor"] == {"code": "script"}
+    assert mappings.parameters["python_executor"] == {"code": "script"}
+    assert mappings.tool_names["python_executor"] == "stateful_python_code_exec"
 
     # Test responses endpoint
-    formatted_resp, mapping_resp = format_tool_list_by_endpoint_type(tools, EndpointType.responses, schema_overrides)
+    formatted_resp, mappings_resp = format_tool_list_by_endpoint_type(tools, EndpointType.responses, schema_overrides)
     assert len(formatted_resp) == 1
     assert formatted_resp[0]["name"] == "python_executor"
     assert "code" in formatted_resp[0]["parameters"]["properties"]
@@ -407,10 +408,10 @@ async def test_tool_calling_wrapper_with_overrides():
     from nemo_skills.mcp.schema_overrides import load_schema_overrides
 
     loaded_overrides = load_schema_overrides(schema_overrides)
-    tools, mapping = format_tool_list_by_endpoint_type(raw_tools, EndpointType.chat, loaded_overrides)
+    tools, mappings = format_tool_list_by_endpoint_type(raw_tools, EndpointType.chat, loaded_overrides)
     assert tools[0]["function"]["name"] == "renamed_tool"
     assert "code" in tools[0]["function"]["parameters"]["properties"]
-    assert mapping["renamed_tool"] == {"code": "script"}
+    assert mappings.parameters["renamed_tool"] == {"code": "script"}
 
 
 @pytest.mark.asyncio
@@ -542,11 +543,11 @@ def test_schema_override_with_dash_in_tool_name():
     tool_with_server = {**tool, "server": "TavilySearchTool"}
     tools = [tool_with_server]
 
-    formatted_tools, parameter_mapping = format_tool_list_by_endpoint_type(
+    formatted_tools, mappings = format_tool_list_by_endpoint_type(
         tools, EndpointType.chat, schema_overrides=loaded_overrides
     )
 
     assert len(formatted_tools) == 1
     assert formatted_tools[0]["function"]["name"] == "web_search"
     assert "search_query" in formatted_tools[0]["function"]["parameters"]["properties"]
-    assert parameter_mapping["web_search"] == {"search_query": "query"}
+    assert mappings.parameters["web_search"] == {"search_query": "query"}

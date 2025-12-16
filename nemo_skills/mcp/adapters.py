@@ -89,33 +89,47 @@ def apply_schema_overrides(
     return transformed, mapping
 
 
+class SchemaMappings:
+    """Holds mappings needed to translate model tool calls back to original tool schemas."""
+
+    def __init__(self):
+        self.tool_names: Dict[str, str] = {}  # {model_tool_name: original_tool_name}
+        self.parameters: Dict[str, Dict[str, str]] = {}  # {tool_name: {model_param: original_param}}
+
+    def remap_tool_call(self, tool_name: str, args: dict) -> tuple[str, dict]:
+        """Remap a tool call from model names back to original names."""
+        original_tool = self.tool_names.get(tool_name, tool_name)
+        param_mapping = self.parameters.get(tool_name, {})
+        original_args = {param_mapping.get(k, k): v for k, v in args.items()}
+        return original_tool, original_args
+
+
 def format_tool_list_by_endpoint_type(
     tools, endpoint_type: EndpointType, schema_overrides: Dict[str, Dict[str, Dict[str, Any]]] | None = None
-) -> tuple[list[Dict[str, Any]], Dict[str, Dict[str, str]]]:
+) -> tuple[list[Dict[str, Any]], SchemaMappings]:
     """
-    Format tool list for the given endpoint type, optionally applying schema overrides.
-
-    Args:
-        tools: List of tool dicts with keys: name, description, input_schema, server
-        endpoint_type: The endpoint type (chat or responses)
-        schema_overrides: Optional dict keyed by provider class name, then tool name.
-            Format: ProviderClassName -> tool_name -> (name, description, parameters)
+    Format tool list for the given endpoint type, applying schema overrides.
 
     Returns:
-        Tuple of (formatted_tools_list, parameter_mapping_dict)
-        where parameter_mapping_dict is tool_name -> (new_param -> original_param)
+        Tuple of (formatted_tools, schema_mappings) where schema_mappings can remap tool calls.
     """
     schema_overrides = schema_overrides or {}
-    parameter_mapping = {}
+    mappings = SchemaMappings()
     transformed_tools = []
 
     for tool in tools:
+        original_name = tool["name"]
         provider = schema_overrides.get(tool.get("server")) or {}
-        override = provider.get(tool["name"])
+        override = provider.get(original_name)
+
         transformed, param_mapping = apply_schema_overrides(tool, override)
         transformed_tools.append(transformed)
+
+        new_name = transformed["name"]
+        if new_name != original_name:
+            mappings.tool_names[new_name] = original_name
         if param_mapping:
-            parameter_mapping[transformed["name"]] = param_mapping
+            mappings.parameters[new_name] = param_mapping
 
     # Format for endpoint type
     if endpoint_type == EndpointType.chat:
@@ -144,7 +158,7 @@ def format_tool_list_by_endpoint_type(
     else:
         raise ValueError(f"Unsupported completion type for tool list: {endpoint_type}")
 
-    return formatted, parameter_mapping
+    return formatted, mappings
 
 
 class OpenAICallInterpreter(ToolCallInterpreter):

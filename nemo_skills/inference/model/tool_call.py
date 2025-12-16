@@ -21,6 +21,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 from nemo_skills.mcp.adapters import (
+    SchemaMappings,
     format_tool_list_by_endpoint_type,
     format_tool_response_by_endpoint_type,
     get_tool_details_by_endpoint_type,
@@ -52,9 +53,6 @@ class ToolCallingWrapper:
         self.model = model
         additional_config = additional_config or {}
 
-        self.tool_manager = None
-
-        # Module-based tool loading only
         assert tool_modules, "tool_modules must be provided for tool calling"
         self.tool_manager = ToolManager(
             module_specs=tool_modules,
@@ -62,21 +60,12 @@ class ToolCallingWrapper:
             context=additional_config,
         )
 
-        # Load and store schema overrides
         self.schema_overrides = load_schema_overrides(schema_overrides)
-        # Parameter mapping will be built when tools are listed
-        # Format: {tool_name_seen_by_model: {param_name_seen_by_model: original_param_name}}
-        self.parameter_mapping: Dict[str, Dict[str, str]] = {}
-        # Tool name mapping: {overridden_name: original_name}
-        self.tool_name_mapping: Dict[str, str] = {}
+        self.schema_mappings = SchemaMappings()  # Built when tools are listed
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
-        ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
         tool_name, tool_args = get_tool_details_by_endpoint_type(tool_call, endpoint_type)
 
-        ##
-        # TODO(sanyamk): Not all tool arguments might necessarily be in JSON format.
-        #   Kept here to handle errors for now.
         try:
             tool_args = json.loads(tool_args)
         except json.decoder.JSONDecodeError as e:
@@ -84,22 +73,10 @@ class ToolCallingWrapper:
             LOG.exception(e)
             return {"error": "Tool argument parsing failed."}
 
-        # Map parameter names from model names to original tool names
-        if tool_name in self.parameter_mapping:
-            param_mapping = self.parameter_mapping[tool_name]
-            mapped_args = {}
-            for param_name, param_value in tool_args.items():
-                # Map to original parameter name if mapping exists, otherwise keep as-is
-                original_param_name = param_mapping.get(param_name, param_name)
-                mapped_args[original_param_name] = param_value
-            tool_args = mapped_args
+        # Remap model's tool name/args back to original schema
+        original_tool_name, tool_args = self.schema_mappings.remap_tool_call(tool_name, tool_args)
 
-        # Also need to map tool name if it was overridden
-        original_tool_name = self.tool_name_mapping.get(tool_name, tool_name)
-
-        ## TODO(sanyamk): Only exceptions related to tool execution here, all others must fail.
         try:
-            # Allow providers to specify extra_args behavior internally if needed in the future
             result = await self.tool_manager.execute_tool(
                 original_tool_name, tool_args, extra_args={"request_id": request_id}
             )
@@ -134,19 +111,9 @@ class ToolCallingWrapper:
 
         # This assumes that the available tools do not change during the generation.
         raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
-        tools, parameter_mapping = format_tool_list_by_endpoint_type(
+        tools, self.schema_mappings = format_tool_list_by_endpoint_type(
             raw_tools, endpoint_type, schema_overrides=self.schema_overrides
         )
-        # Store parameter mapping for use during tool execution
-        self.parameter_mapping = parameter_mapping
-        # Build tool name mapping: {overridden_name: original_name}
-        # Schema overrides are keyed by provider class, then tool name
-        self.tool_name_mapping = {}
-        for provider_class, provider_overrides in self.schema_overrides.items():
-            for original_tool_name, override_config in provider_overrides.items():
-                if override_config.get("name"):
-                    overridden_name = override_config["name"]
-                    self.tool_name_mapping[overridden_name] = original_tool_name
         LOG.info("Available Tools: %s", tools)
 
         result_steps = defaultdict(list)

@@ -581,7 +581,7 @@ async def test_tool_manager_with_schema_overrides():
     loaded_overrides = load_schema_overrides(schema_overrides)
 
     # Format tools with overrides
-    formatted_tools, parameter_mapping = format_tool_list_by_endpoint_type(
+    formatted_tools, mappings = format_tool_list_by_endpoint_type(
         tools, EndpointType.chat, schema_overrides=loaded_overrides
     )
 
@@ -594,6 +594,6 @@ async def test_tool_manager_with_schema_overrides():
     assert "script" in props
     assert "code" not in props
 
-    # Verify parameter mapping direction: model_arg -> original_arg
-    assert "renamed_execute" in parameter_mapping
-    assert parameter_mapping["renamed_execute"] == {"script": "code"}
+    # Verify mappings: model names -> original names
+    assert mappings.parameters["renamed_execute"] == {"script": "code"}
+    assert mappings.tool_names["renamed_execute"] == "execute"
