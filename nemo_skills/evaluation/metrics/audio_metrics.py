@@ -82,30 +82,31 @@ class AudioMetrics(BaseMetrics):
 
         Supports two formats:
         1. AudioBench format: 'Rating: X' where X is 0-5 (returns rating as float)
-        2. Legacy/binary format: 'Judgement: Yes/No' (returns 1.0 for Yes, 0.0 for No)
+        2. Legacy/binary format: 'Judgement: Yes/No' (mapped to 5.0/0.0 for consistent 0-100 scaling)
 
         Returns:
             Tuple of (is_correct, rating_score)
             - is_correct: True if rating >= 3 (or Yes for legacy)
-            - rating_score: 0-5 rating (or 0/1 for legacy binary)
+            - rating_score: 0-5 rating (or 0/5 for legacy binary)
         """
         import re
 
         # Try AudioBench format first: 'Rating: X'
-        rating_match = re.search(r"Rating:\s*(\d+)", judgement_text, re.IGNORECASE)
+        rating_match = re.search(r"Rating:\s*([0-9]+(?:\.[0-9]+)?)", judgement_text, re.IGNORECASE)
         if rating_match:
             rating = float(rating_match.group(1))
-            return rating >= 3, rating
+            rating = max(0.0, min(5.0, rating))
+            return rating >= 3.0, rating
 
         # Try explicit Judgement: Yes/No format
         judgement_match = re.search(r"Judgement:\s*(Yes|No)", judgement_text, re.IGNORECASE)
         if judgement_match:
             is_yes = judgement_match.group(1).lower() == "yes"
-            return is_yes, 1.0 if is_yes else 0.0
+            return is_yes, 5.0 if is_yes else 0.0
 
         # Last-resort: accept plain 'yes'/'no' anywhere in text
         if re.search(r"\byes\b", judgement_text, re.IGNORECASE):
-            return True, 1.0
+            return True, 5.0
         if re.search(r"\bno\b", judgement_text, re.IGNORECASE):
             return False, 0.0
 
