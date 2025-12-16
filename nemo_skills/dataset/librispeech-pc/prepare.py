@@ -25,6 +25,7 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -39,7 +40,8 @@ def download_with_progress(url: str, output_path: Path, desc: str):
         def reporthook(blocknum, blocksize, totalsize):
             if pbar.total != totalsize:
                 pbar.total = totalsize
-            pbar.update(blocksize)
+            downloaded = blocknum * blocksize
+            pbar.update(max(0, downloaded - pbar.n))
 
         urllib.request.urlretrieve(url, output_path, reporthook)
 
@@ -56,7 +58,7 @@ AUDIO_URLS = {
 
 def download_manifests(output_dir: Path) -> Path:
     """Download LibriSpeech-PC manifests if not already present."""
-    if (output_dir / "test-clean.json").exists():
+    if (output_dir / "test-clean.json").exists() and (output_dir / "test-other.json").exists():
         return output_dir
 
     tar_path = output_dir / "manifests.tar.gz"
@@ -65,7 +67,10 @@ def download_manifests(output_dir: Path) -> Path:
     with tarfile.open(tar_path, "r:gz") as tar:
         for member in tar.getmembers():
             if member.name in ["test-clean.json", "test-other.json"]:
-                tar.extract(member, output_dir, filter="data")
+                if sys.version_info >= (3, 11, 4):
+                    tar.extract(member, output_dir, filter="data")
+                else:
+                    tar.extract(member, output_dir)
     os.remove(tar_path)
 
     print("✓ Manifests ready\n")
@@ -82,7 +87,10 @@ def download_audio(split: str, audio_dir: Path):
     download_with_progress(AUDIO_URLS[split], tar_path, f"Downloading {split}")
 
     with tarfile.open(tar_path, "r:gz") as tar:
-        tar.extractall(audio_dir, filter="data")
+        if sys.version_info >= (3, 11, 4):
+            tar.extractall(audio_dir, filter="data")
+        else:
+            tar.extractall(audio_dir)
     os.remove(tar_path)
 
 
@@ -115,7 +123,11 @@ def process_split(split: str, data_dir: Path, audio_dir: Path, with_audio: bool)
 
             audio_id = Path(audio_filepath).stem
 
-            container_path = f"/dataset/librispeech-pc/LibriSpeech/{audio_filepath}"
+            audio_root = os.getenv("NEMO_SKILLS_AUDIO_ROOT", "/data")
+            rel_audio_path = audio_filepath.lstrip("/")
+            if rel_audio_path.startswith("LibriSpeech/"):
+                rel_audio_path = rel_audio_path[len("LibriSpeech/") :]
+            container_path = f"{audio_root}/librispeech-pc/LibriSpeech/{rel_audio_path}"
 
             user_message = {
                 "role": "user",
@@ -147,6 +159,12 @@ def process_split(split: str, data_dir: Path, audio_dir: Path, with_audio: bool)
 def main():
     parser = argparse.ArgumentParser(description="Prepare LibriSpeech-PC for ASR evaluation")
     parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=os.getenv("NEMO_SKILLS_DATA_DIR"),
+        help="Base data dir (defaults to $NEMO_SKILLS_DATA_DIR). Output goes under <data_dir>/librispeech-pc.",
+    )
+    parser.add_argument(
         "--split",
         default="all",
         choices=["all", "test-clean", "test-other"],
@@ -159,9 +177,11 @@ def main():
     )
     args = parser.parse_args()
 
-    data_dir = Path(__file__).parent
+    if not args.data_dir:
+        raise SystemExit("Missing --data_dir and NEMO_SKILLS_DATA_DIR is not set.")
+    data_dir = Path(args.data_dir) / "librispeech-pc"
     audio_dir = data_dir
-    audio_dir.mkdir(exist_ok=True)
+    audio_dir.mkdir(parents=True, exist_ok=True)
 
     download_manifests(data_dir)
 
