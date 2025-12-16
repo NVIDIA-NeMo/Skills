@@ -2,8 +2,10 @@
 
 This section details how to evaluate speech and audio benchmarks, including understanding tasks that test models' ability to reason about audio content (speech, music, environmental sounds) and ASR tasks for transcription.
 
-!!! note
-    Currently supports only Megatron server type (`--server_type=megatron`).
+!!! warning "Running without audio files"
+    If you want to evaluation without audio files (not recommended) use
+    `--no-audio` flag. In this case you can also set `--skip_data_dir_check`
+    as data is very lightweight when audio files aren't being used.
 
 ## Supported benchmarks
 
@@ -35,12 +37,9 @@ MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for
 
 These benchmarks require audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.
 
-!!! warning "Running without audio files"
-    If you want to evaluate without audio files (not recommended) use
-    `--no-audio` flag. In this case you can also set `--skip_data_dir_check`
-    as data is very lightweight when audio files aren't being used.
+### Data Preparation
 
-### ASR Leaderboard
+To prepare the dataset with audio files:
 
 ```bash
 ns prepare_data asr-leaderboard --data_dir=/path/to/data --cluster=<cluster>
@@ -55,7 +54,7 @@ ns prepare_data asr-leaderboard --datasets librispeech_clean ami
 ### MMAU-Pro
 
 ```bash
-ns prepare_data mmau-pro --data_dir=/path/to/data --cluster=<cluster_name>
+ns prepare_data mmau-pro --no-audio --skip_data_dir_check
 ```
 
 ## Running Evaluation
@@ -344,3 +343,68 @@ pass@1          | 0          | 6580        | 55.52%       | 0.00%     | 290
 evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | num_entries
 pass@1          | 11         | 6879        | 31.44%       | 0.00%     | 5305
 ```
+
+## AudioBench
+
+AudioBench is a comprehensive benchmark for evaluating speech and audio language models across multiple tasks including ASR, translation, speech QA, and audio understanding.
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/audiobench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/audiobench/__init__.py)
+- External source repository is [AudioBench](https://github.com/AudioLLMs/AudioBench)
+
+### Data Preparation
+
+AudioBench can be prepared via the NeMo-Skills data preparation entrypoint. By default it will download/copy audio files into the prepared dataset directory.
+
+```bash
+ns prepare_data audiobench --data_dir=/path/to/data --cluster=<cluster_name>
+```
+
+To prepare without saving audio files (not recommended):
+
+```bash
+ns prepare_data audiobench --no-audio --skip_data_dir_check
+```
+
+## LibriSpeech-PC
+
+LibriSpeech-PC is an Automatic Speech Recognition (ASR) benchmark that evaluates models' ability to transcribe speech with proper punctuation and capitalization. It builds upon the original LibriSpeech corpus with enhanced reference transcripts.
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/librispeech-pc/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/librispeech-pc/__init__.py)
+- Manifests (with punctuation/capitalization) from [OpenSLR-145](https://www.openslr.org/145/)
+- Audio files from original [LibriSpeech OpenSLR-12](https://www.openslr.org/12/)
+
+### Available Splits
+
+- `test-clean`: Clean speech recordings (easier subset)
+- `test-other`: More challenging recordings with varied acoustic conditions
+
+## Preparing LibriSpeech-PC Data
+
+LibriSpeech-PC requires audio files for ASR evaluation. **Audio files are downloaded by default**.
+
+### Data Preparation
+
+To prepare the dataset with audio files:
+
+```bash
+ns prepare_data librispeech-pc --data_dir=/path/to/data --cluster=<cluster_name>
+```
+
+### Preparing Specific Splits
+
+To prepare only one split:
+
+```bash
+ns prepare_data librispeech-pc --split test-clean --data_dir=/path/to/data
+```
+
+or
+
+```bash
+ns prepare_data librispeech-pc --split test-other --data_dir=/path/to/data
+```
+
