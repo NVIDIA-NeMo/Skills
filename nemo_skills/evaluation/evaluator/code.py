@@ -122,7 +122,7 @@ def preprocess_code(generation_dict: dict, language="python", strip_whitespace=T
     # ---------------------------------------------------------
     # 1. Handle reasoning traces: <think>...</think>
     # ---------------------------------------------------------
-    if "<think>" in completion:
+    if "<think>" in completion or "</think>" in completion:
         # partition is faster than regex and avoids imports
         _, separator, post_thought = completion.partition("</think>")
         if separator:
