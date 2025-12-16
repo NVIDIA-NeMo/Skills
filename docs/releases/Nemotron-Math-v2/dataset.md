@@ -55,7 +55,7 @@ generate(
     # We generate 8 solutions with Python TIR for each problem
     num_random_seeds=8,
     # Change the filepath to StackExchange-Math Problems to generate the corresponding solutions
-    input_file=/workspace/aops_problems.jsonl \
+    input_file="/workspace/aops_problems.jsonl",
     output_dir="/your_workspace/with-python",
     # any vllm arguments can be used here
     server_args="--async-scheduling",
@@ -89,7 +89,7 @@ generate(
     # We generate 8 solutions without python TIR for each problem
     num_random_seeds=8,
     # Change the filepath to StackExchange-Math Problems to generate the corresponding solutions
-    input_file=/workspace/aops_problems.jsonl \
+    input_file="/workspace/aops_problems.jsonl",
     output_dir="/your_workspace/no-python",
     # any vllm arguments can be used here
     server_args="--async-scheduling",

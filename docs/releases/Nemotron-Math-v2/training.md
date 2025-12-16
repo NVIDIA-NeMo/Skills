@@ -73,7 +73,7 @@ sft_nemo_rl(
     wandb_project='sft-Qwen3-30B-A3B',
     expname='nemo-rl-sft-Qwen3-30B-A3B',
     backend='megatron',
-    output_dir='/workspace/30b_sft',
+    output_dir='/workspace/final_sft_model',
     hf_model='/workspace/Qwen3-30B-A3B',
     training_data='/workspace/sft.jsonl',
     num_gpus=8,
