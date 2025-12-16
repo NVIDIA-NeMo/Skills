@@ -182,22 +182,19 @@ class GenerateSolutionsConfig:
     #   Dict keyed by provider class name (like tool_overrides), then tool name.
     #   Format: ProviderClassName -> tool_name -> (name, description, parameters)
     #
-    #   Examples:
-    #     - Inline dict (via Hydra):
-    #         ++schema_overrides.PythonTool.stateful_python_code_exec.name="python_executor"
-    #         ++schema_overrides.PythonTool.stateful_python_code_exec.description="Execute Python code"
-    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.name="script"
-    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.description="Script to execute"
-    #         ++schema_overrides.PythonTool.stateful_python_code_exec.parameters.code.type="string"
-    #     - Tool names with dashes require quotes (Hydra limitation):
-    #         ++schema_overrides.TavilySearchTool.'web-search'.name="web_search"
-    #       Or use a YAML file where dashes work without quotes:
-    #         schema_overrides:
-    #           TavilySearchTool:
-    #             web-search:
-    #               name: "web_search"
-    #     - File via Hydra:
-    #         ++schema_overrides=@path/to/schema_overrides.yaml
+    #   Example YAML configuration (config.yaml):
+    #     schema_overrides:
+    #       PythonTool:
+    #         stateful_python_code_exec:
+    #           name: "python_executor"
+    #           description: "Evaluate Python code interactively"
+    #           parameters:
+    #             code:
+    #               name: "script"
+    #               description: "Python code to execute"
+    #
+    #   To use this config with Hydra, launch your script with:
+    #      --config-path /path/to/configs --config-name config
     schema_overrides: dict | None = field(default_factory=dict)
 
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
