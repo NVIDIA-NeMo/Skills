@@ -254,7 +254,7 @@ def eval_livecodebench_pro(cfg):
         from livecodebench.evaluate import evaluate
     except ImportError:
         LOG.info("Package 'livecodebench' not found. Attempting to install...")
-        install_from_git("git+https://github.com/wasiahmad/livecodebench.git@livecodebench-pro")
+        install_from_git("git+https://github.com/wasiahmad/livecodebench.git@livecodebench_pro")
         try:
             from livecodebench.evaluate import evaluate
         except ImportError:
