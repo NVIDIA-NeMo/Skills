@@ -1,25 +1,22 @@
 # Dataset construction
 
-Nemotron-Math-v2 dataset consists of mathematical problems collected from unique mathematical problems sourced from [AoPS forums](https://artofproblemsolving.com/community) and [Math Stack Exchange](https://math.stackexchange.com/) and [MathOverflow](https://mathoverflow.net/).
-
-
+Nemotron-Math-v2 dataset consists of mathematical problems collected from [AoPS forums](https://artofproblemsolving.com/community) and [Math Stack Exchange](https://math.stackexchange.com/) and [MathOverflow](https://mathoverflow.net/).
 
 
 ## Data Overview
 
-This dataset is constructed from AoPS and StackExchange-Math forums, but we do not use raw posts directly. Because forum threads contain discussion, commentary, and sometimes multiple or incomplete questions, we first use an LLM to perform problem extraction, isolating explicit mathematical problem statements from the original threads. Each extracted problem is then passed through a series of LLM-based classifiers to determine whether it is a proof-style question, a multiple-choice question, a binary yes/no question, or an invalid or context-dependent prompt; all such items are removed. For questions originally posed in proof format, we apply a proof-to-answer transformation that attempts to rewrite them into answer-based tasks while preserving conceptual difficulty, whereas for non-proof questions we attempt to extract the final answer from the discussion rather than the full solution. We further perform benchmark decontamination by removing problems that overlap with public math datasets. Although our pipeline includes a proof-conversion step, we ultimately discard all converted proof questions, as our goal is to retain only problems that admit clearly verifiable final answers. The final dataset therefore consists solely of nontrivial, high-quality mathematical problems.
-
+This dataset is constructed from AoPS and StackExchange-Math forums. Because forum threads contain discussion, commentary, and sometimes multiple or incomplete questions, we first use an LLM to perform problem extraction, isolating explicit mathematical problem statements from the original threads. Each extracted problem is then passed through a series of LLM-based classifiers to determine whether it is a proof-style question, a multiple-choice question, a binary yes/no question, or an invalid or context-dependent prompt; all such items are removed. We then attempt to extract the final answer to each problem if it's been identified in the forum discussion. We further perform benchmark decontamination by removing problems that overlap with public math datasets.
 
 ### AoPS Problems
-We directly use the math problems subset of [nvidia/Nemotron-Post-Training-Dataset-v1](https://huggingface.co/datasets/nvidia/Nemotron-Post-Training-Dataset-v1/viewer/default/math), filtering out all proof-based questions that were converted into problem form.
+We directly a subset of [nvidia/OpenMathReasoning](https://huggingface.co/datasets/nvidia/OpenMathReasoning) dataset, removing all converted proofs (we found them to be low quality) as well as doing further difficulty filtering as described below.
 
 
 ### StackExchange-Math Problems
 
-We collect all math problems from StackExchange, including content from [Math Stack Exchange](https://math.stackexchange.com/) and [MathOverflow](https://mathoverflow.net/). We first preprocess the raw crawled XML files and extract the problem description as the key `forum_post` and the associated discussions as the key `forum_discussions`, matching the exact data format produced by [`prepare_raw_data.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/openmathreasoning/scripts/prepare_raw_data.py). This allows us to reuse the full [problem generation pipeline](https://github.com/NVIDIA-NeMo/Skills/blob/main/docs/releases/openmathreasoning/dataset.md?plain=1#L54), using only the ‘extract_problems’, ‘classify_problems’, ‘extract_answers’, and ‘decontaminate’ stages, while excluding 'convert_proofs' stage. Accordingly, we base our data processing on this release, as we do not intend to include any converted proof problems. We further remove all binary, multiple-choice, and invalid problems.
+We collect all math problems from StackExchange, including content from [Math Stack Exchange](https://math.stackexchange.com/) and [MathOverflow](https://mathoverflow.net/). We first preprocess the raw crawled XML files and extract the problem description as the key `forum_post` and the associated discussions as the key `forum_discussions`, matching the exact data format produced by [`prepare_raw_data.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/openmathreasoning/scripts/prepare_raw_data.py). This allows us to reuse the full [problem generation pipeline](https://github.com/NVIDIA-NeMo/Skills/blob/main/docs/releases/openmathreasoning/dataset.md?plain=1#L54), using only the ‘extract_problems’, ‘classify_problems’, ‘extract_answers’, and ‘decontaminate’ stages, while excluding 'convert_proofs' stage. We further remove all binary, multiple-choice, and invalid problems.
 
-**Note:** All StackExchange data used in this dataset comes from official data dumps released prior to the July 2024 policy change, when the content was licensed under CC BY-SA without additional usage restrictions. We do not include any content released after this change.
-
+... note::
+    All StackExchange data used in this dataset comes from official data dumps released prior to the July 2024 policy change, when the content was licensed under CC BY-SA without additional usage restrictions. We do not include any content released after this change.
 
 
 ## Solution generation pipeline
@@ -56,7 +53,7 @@ generate(
     num_random_seeds=8,
     # Change the filepath to StackExchange-Math Problems to generate the corresponding solutions
     input_file="/workspace/aops_problems.jsonl",
-    output_dir="/your_workspace/with-python",
+    output_dir="/workspace/with-python",
     # any vllm arguments can be used here
     server_args="--async-scheduling",
     with_sandbox=True,
@@ -90,7 +87,7 @@ generate(
     num_random_seeds=8,
     # Change the filepath to StackExchange-Math Problems to generate the corresponding solutions
     input_file="/workspace/aops_problems.jsonl",
-    output_dir="/your_workspace/no-python",
+    output_dir="/workspace/no-python",
     # any vllm arguments can be used here
     server_args="--async-scheduling",
     num_jobs=1,
