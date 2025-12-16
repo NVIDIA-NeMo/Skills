@@ -15,7 +15,7 @@ We directly a subset of [nvidia/OpenMathReasoning](https://huggingface.co/datase
 
 We collect all math problems from StackExchange, including content from [Math Stack Exchange](https://math.stackexchange.com/) and [MathOverflow](https://mathoverflow.net/). We first preprocess the raw crawled XML files and extract the problem description as the key `forum_post` and the associated discussions as the key `forum_discussions`, matching the exact data format produced by [`prepare_raw_data.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/openmathreasoning/scripts/prepare_raw_data.py). This allows us to reuse the full [problem generation pipeline](https://github.com/NVIDIA-NeMo/Skills/blob/main/docs/releases/openmathreasoning/dataset.md?plain=1#L54), using only the ‘extract_problems’, ‘classify_problems’, ‘extract_answers’, and ‘decontaminate’ stages, while excluding 'convert_proofs' stage. We further remove all binary, multiple-choice, and invalid problems.
 
-... note::
+!!! note
     All StackExchange data used in this dataset comes from official data dumps released prior to the July 2024 policy change, when the content was licensed under CC BY-SA without additional usage restrictions. We do not include any content released after this change.
 
 
@@ -104,17 +104,20 @@ expected answers and filter solutions for supervised fine-tuning (SFT).
 
 ### Prepare Expected Answers
 
-#### 1) Aggregate candidate solutions
+**1. Aggregate candidate solutions**
+
 For each problem, we aggregate previously generated solutions into a single
 candidate set:
 - 8 solutions with **Python TIR**
 - 8 solutions without **Python TIR**
 
-#### 2) Initialize expected answers
+**2. Initialize expected answers**
+
 Each problem starts with an initial expected answer:
 - the forum-extracted answer (if available), otherwise **missing / unknown**.
 
-#### 3) Answer-level judgment
+**3. Answer-level judgment**
+
 We judge **answer agreement only** by comparing the **final answer** of each of
 the 16 model-generated solutions against the current expected answer.
 
@@ -123,7 +126,8 @@ the 16 model-generated solutions against the current expected answer.
 This step is performed using the
 [`judge_answers`](../../pipelines/llm-as-a-judge.md) stage.
 
-#### 4) Majority vote and expected-answer repair
+**4. Majority vote and expected-answer repair**
+
 Based on the judgments in Step 3, we finalize (or repair) the expected answer:
 
 - **If the forum-extracted expected answer is missing**:
@@ -142,7 +146,8 @@ implemented in
 [`aggregate_answers.py`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/evaluation/aggregate_answers.py)
 via the `fill_majority_answer` stage.
 
-#### 5) Re-judge against the finalized expected answer (filtering for SFT)
+**5. Re-judge against the finalized expected answer (filtering for SFT)**
+
 After the expected answer is finalized in Step 4, we run [judge_answers](../../pipelines/llm-as-a-judge.md) again
 to judge each model-generated solution’s **final answer** against the finalized
 expected answer. The resulting labels are used to filter out incorrect solutions before preparing the SFT dataset.
@@ -154,13 +159,13 @@ expected answer. The resulting labels are used to filter out incorrect solutions
 Use the following script to prepare **6 types of SFT data**:
 
 - **Reasoning effort** (`EFFORT`)
-  - `high`
-  - `medium`
-  - `low`
+    - `high`
+    - `medium`
+    - `low`
 
 - **Execution mode** (`USE_TOOL`)
-  - `True`: with **Python TIR**
-  - `False`: without **Python TIR**
+    - `True`: with **Python TIR**
+    - `False`: without **Python TIR**
 
 ### Configuration
 

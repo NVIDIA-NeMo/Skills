@@ -20,7 +20,7 @@ We used [Qwen2.5-32B-Instruct](https://huggingface.co/Qwen/Qwen2.5-32B-Instruct)
 
 
 
-See our [paper](Nemotron-Math-V2.pdf) to learn more details!
+See our [paper](paper.pdf) to learn more details!
 
 
 ## How to reproduce our results
@@ -30,6 +30,6 @@ Browse the sections below to see all commands needed to fully reproduce our resu
 Please note that unless you have an access to a large GPU cluster, it might take a very long time
 for some of the commands to complete!
 
-- [Model evaluation](evaluation.md)
-- [Dataset construction](dataset.md)
-- [Model training](training.md)
+- [Model evaluation](./evaluation.md)
+- [Dataset construction](./dataset.md)
+- [Model training](./training.md)
