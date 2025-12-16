@@ -74,25 +74,43 @@ class AudioMetrics(BaseMetrics):
         self.cap_accuracy_scores = []
         self.char_rate_scores = []
 
-    def _extract_judge_result(self, judgement_text: str) -> bool:
+        # Judge scores (AudioBench-style rating 0-5, or legacy binary Yes/No mapped to 1/0)
+        self.judge_ratings = []
+
+    def _extract_judge_result(self, judgement_text: str) -> tuple[bool, float]:
         """Extract judge result from judgement text.
 
-        Parses LLM judge output to determine if the response is correct.
-
-        Args:
-            judgement_text: Text output from LLM judge
+        Supports two formats:
+        1. AudioBench format: 'Rating: X' where X is 0-5 (returns rating as float)
+        2. Legacy/binary format: 'Judgement: Yes/No' (mapped to 5.0/0.0 for consistent 0-100 scaling)
 
         Returns:
-            True if judge indicates correct, False otherwise
+            Tuple of (is_correct, rating_score)
+            - is_correct: True if rating >= 3 (or Yes for legacy)
+            - rating_score: 0-5 rating (or 0/5 for legacy binary)
         """
         import re
 
+        # Try AudioBench format first: 'Rating: X'
+        rating_match = re.search(r"Rating:\s*([0-9]+(?:\.[0-9]+)?)", judgement_text, re.IGNORECASE)
+        if rating_match:
+            rating = float(rating_match.group(1))
+            rating = max(0.0, min(5.0, rating))
+            return rating >= 3.0, rating
+
+        # Try explicit Judgement: Yes/No format
+        judgement_match = re.search(r"Judgement:\s*(Yes|No)", judgement_text, re.IGNORECASE)
+        if judgement_match:
+            is_yes = judgement_match.group(1).lower() == "yes"
+            return is_yes, 5.0 if is_yes else 0.0
+
+        # Last-resort: accept plain 'yes'/'no' anywhere in text
         if re.search(r"\byes\b", judgement_text, re.IGNORECASE):
-            return True
-        elif re.search(r"\bno\b", judgement_text, re.IGNORECASE):
-            return False
-        else:
-            return False
+            return True, 5.0
+        if re.search(r"\bno\b", judgement_text, re.IGNORECASE):
+            return False, 0.0
+
+        return False, 0.0
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         """Extract correctness scores from prediction.
@@ -111,8 +129,9 @@ class AudioMetrics(BaseMetrics):
         category = prediction.get("category", "unknown")
 
         if "judgement" in prediction and category == "open":
-            judge_result = self._extract_judge_result(prediction["judgement"])
-            score_dict["judge_correct"] = judge_result
+            judge_correct, judge_rating = self._extract_judge_result(prediction["judgement"])
+            score_dict["judge_correct"] = judge_correct
+            score_dict["judge_rating"] = judge_rating
 
         if category == "open" and "judge_correct" in score_dict:
             score_dict["correct"] = score_dict["judge_correct"]
@@ -194,6 +213,11 @@ class AudioMetrics(BaseMetrics):
             if "char_rate" in pred and pred["char_rate"] is not None:
                 self.char_rate_scores.append(pred["char_rate"])
 
+            # Collect judge ratings (0-5) from judge datasets if available
+            score_dict = self._get_score_dict(pred)
+            if "judge_rating" in score_dict:
+                self.judge_ratings.append(score_dict["judge_rating"])
+
         self._compute_pass_at_k(predictions=predictions, predicted_answers=predicted_answers)
         self._compute_majority_at_k(predictions=predictions, predicted_answers=predicted_answers)
 
@@ -218,6 +242,12 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["success_rate"] = agg_metrics["correct"]
             elif "judge_correct" in agg_metrics:
                 agg_metrics["success_rate"] = agg_metrics["judge_correct"]
+
+            # Add AudioBench-style judge_score if rating outputs were used.
+            # Formula: judge_score = mean(ratings) * 20 (converts 0-5 scale to 0-100)
+            if self.judge_ratings:
+                avg_rating = sum(self.judge_ratings) / len(self.judge_ratings)
+                agg_metrics["judge_score"] = avg_rating * 20
 
             # Add existing metrics: WER, PnC, and BLEU if available (convert to percentages and round to 2 decimals)
             if self.wer_scores:
@@ -279,6 +309,10 @@ class AudioMetrics(BaseMetrics):
 
         if self.compute_no_answer:
             base_metrics["no_answer"] = as_percentage
+
+        # AudioBench-style judge_score (0-100, not a percent)
+        if self.judge_ratings:
+            base_metrics["judge_score"] = lambda _k, v, _all: f"{v:.2f}"
 
         # Add existing metrics if they were computed
         if self.wer_scores:

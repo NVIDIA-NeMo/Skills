@@ -1,0 +1,29 @@
+# Judge prompt configuration for AudioBench evaluation
+# Based on AudioBench's official llama3_70b_as_judge_binary prompt
+# (Adapted to nemo-skills Yes/No format (instead of 0/1 Rating))
+
+user: |-
+  [Reference Answer]
+  {expected_answer}
+
+  [Model Answer]
+  {generation}
+
+  [Question]
+  {question}
+
+  [Task]
+  Rate the model's answer based on its alignment with the reference answer, focusing on accuracy and relevance to the reference provided. Please be critical on the details.
+
+  Criteria: Assess if the model's response mirrors the reference in terms of content, accuracy, and relevance.
+
+  The answer is INCORRECT if:
+  - The answer is refusing to give concrete results, providing something like 'cannot decide'
+  - The answer is wrong, providing incorrect or irrelevant information compared to the reference
+
+  The answer is CORRECT if:
+  - The answer is correct, capturing or covering the meaning from the reference
+
+  Your response should be formatted as follows:
+  Reasoning: (Provide a concise explanation of your rating, comparing the reference answer with the model's response. "The reference answer is [XXX], while the model's answer is [YYY]. I think ...")
+  Judgement: [Yes or No]
