@@ -30,8 +30,6 @@ class BirdMetrics(BaseMetrics):
         total_correct = 0
 
         for pred in preds:
-            print(pred["id"])
-            print(pred["difficulty"])
             # Each should be a 0 or 1 value
             if pred["difficulty"] == "simple":
                 simple_results.append(pred["res"])
@@ -44,9 +42,9 @@ class BirdMetrics(BaseMetrics):
 
             total_correct += pred["res"]
 
-        simple_acc = sum(simple_results)/len(simple_results)
-        moderate_acc = sum(moderate_results)/len(moderate_results)
-        challenging_acc = sum(challenging_results)/len(challenging_results)
+        simple_acc = sum(simple_results)/len(simple_results) if simple_results else 0
+        moderate_acc = sum(moderate_results)/len(moderate_results) if moderate_results else 0
+        challenging_acc = sum(challenging_results)/len(challenging_results) if challenging_results else 0
 
         acc = total_correct/n
 
