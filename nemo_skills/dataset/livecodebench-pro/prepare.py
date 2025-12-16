@@ -35,14 +35,7 @@ def download_testcases(local_dir, token):
     """
     print(f"Downloading testcases from {TESTCASE_REPO} to {local_dir}...")
     try:
-        path = snapshot_download(
-            repo_id=TESTCASE_REPO,
-            repo_type="dataset",
-            local_dir=local_dir,
-            local_dir_use_symlinks=False,  # Ensure actual files are present, not symlinks
-            token=token,
-            resume_download=True,
-        )
+        path = snapshot_download(repo_id=TESTCASE_REPO, repo_type="dataset", local_dir=local_dir, token=token)
         print(f"Testcases successfully downloaded to: {path}")
     except Exception as e:
         print(f"Failed to download testcases: {e}")
