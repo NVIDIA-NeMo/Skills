@@ -46,6 +46,7 @@ EXCLUDED_DATASETS = {
     "asr-leaderboard",
     "aalcr",  # Has tokenization mismatch issues
     "audiobench",
+    "librispeech-pc",  
 }
 
 
