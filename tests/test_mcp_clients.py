@@ -605,3 +605,32 @@ def test_schema_override_nonexistent_param_fails():
     # Try to override 'script' which doesn't exist (tool only has 'code')
     with pytest.raises(ValueError, match="Parameter 'script' not in schema"):
         apply_schema_overrides(tool, {"parameters": {"script": {"name": "renamed"}}})
+
+
+@pytest.mark.asyncio
+async def test_stdio_client_returns_list_for_multiple_content_items(tmp_path):
+    """Tool without return type hint that returns a list should produce multiple content items."""
+    # FastMCP without return type hint - returns list as multiple TextContent items
+    server_code = """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP(name="multi_result_tool")
+
+@mcp.tool()
+async def get_items(count: int):
+    # No return type hint - FastMCP will serialize list items as separate TextContent
+    return [{"id": i} for i in range(1, count + 1)]
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+"""
+    script_path = tmp_path / "multi_result_server.py"
+    script_path.write_text(server_code)
+
+    client = MCPStdioClient(command="python", args=[str(script_path)])
+    result = await client.call_tool("get_items", {"count": 3})
+
+    # Should return all items, not just the first one
+    assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
+    assert len(result) == 3
+    assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
