@@ -126,6 +126,7 @@ def _extract_tool_result(result) -> Any:
         return struct
     # Fallback: try to parse first content item as JSON, else return text
     content = getattr(result, "content", None)
+    LOG.info(f"Content: {content}")
     if content:
         first = content[0]
         text = getattr(first, "text", None)
