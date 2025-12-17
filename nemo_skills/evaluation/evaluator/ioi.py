@@ -12,23 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import hashlib
 import json
 import multiprocessing
 import os
 import re
+import shutil
 import threading
 import time
-from typing import Dict
 
 from nemo_skills.code_execution.sandbox import LocalSandbox
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.file_utils import jdump
-from nemo_skills.utils import nested_dataclass
+from nemo_skills.utils import nested_dataclass, unroll_files
 
 
 @nested_dataclass(kw_only=True)
 class IOIEvaluatorConfig(BaseEvaluatorConfig):
     test_file: str = "test_metadata.json"
+    input_file: str | None = None
     num_workers: int = 16  # number of test workers
     test_batch_size: int = 16  # number of tests to run concurrently
     overwrite: bool = False
@@ -38,6 +40,10 @@ _precompile_loop_tls = threading.local()
 worker_sandbox = None  # type: ignore
 worker_loop = asyncio.new_event_loop()
 asyncio.set_event_loop(worker_loop)
+
+
+def sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _sandbox_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shell", timeout: int = 120):
@@ -88,29 +94,31 @@ def _precompile_grader(
         wait_for_sandbox(sandbox)
         sandbox._owner_tid = threading.get_ident()
 
-    pre_dir = f"/tmp/ioi_pre_{problem_name}_{os.getpid()}"
-    # Build shell script to create files and invoke compile.sh.
-    creation_cmds = [
-        f"mkdir -p {pre_dir}/graders",
-    ]
-    # Dump grader related files
+    pre_dir = f"/nemo_run/ioi_pre_{problem_name}_{os.getpid()}"
+    # Create directories and files locally; sandbox shares the same filesystem
+    os.makedirs(os.path.join(pre_dir, "graders"), exist_ok=True)
+
+    # Dump grader related files locally
     for filepath, content in grader_files:
-        dir_name = os.path.dirname(filepath)
-        if dir_name:
-            creation_cmds.append(f"mkdir -p {pre_dir}/{dir_name}")
-        creation_cmds.append(f"cat <<'_EOT_' > {pre_dir}/{filepath}\n{content}\n_EOT_\n")
+        target_path = os.path.join(pre_dir, filepath)
+        target_dir = os.path.dirname(target_path)
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write(content)
 
-    # Write compile.sh and run.sh as provided (needed later in workers)
-    creation_cmds.append(
-        f"cat <<'_EOT_' > {pre_dir}/compile.sh\n{compile_code}\n_EOT_\nchmod +x {pre_dir}/compile.sh\n"
-    )
-    creation_cmds.append(f"cat <<'_EOT_' > {pre_dir}/run.sh\n{run_code}\n_EOT_\nchmod +x {pre_dir}/run.sh\n")
+    # Write compile.sh and run.sh locally and make them executable
+    compile_path = os.path.join(pre_dir, "compile.sh")
+    with open(compile_path, "w", encoding="utf-8") as f:
+        f.write(compile_code)
+    os.chmod(compile_path, 0o755)
 
-    setup_script = "\n".join(creation_cmds)
-    # 1. create files
-    _sandbox_exec_sync(sandbox, setup_script, language="shell", timeout=120)
+    run_path = os.path.join(pre_dir, "run.sh")
+    with open(run_path, "w", encoding="utf-8") as f:
+        f.write(run_code)
+    os.chmod(run_path, 0o755)
 
-    # 2. run compile.sh but ignore final failure when problem cpp missing
+    # Run compile.sh inside the sandbox (same filesystem)
     _sandbox_exec_sync(sandbox, f"cd {pre_dir} && ./compile.sh || true", language="shell", timeout=120)
 
     return pre_dir
@@ -118,46 +126,28 @@ def _precompile_grader(
 
 def run_test_case(task_args: dict, worker_id: int) -> dict:
     # Use high-resolution timestamp to guarantee uniqueness across parallel calls.
-    unique_dir = f"/tmp/ioi_run_{worker_id}_{os.getpid()}_{time.time_ns()}"
+    unique_dir = f"/nemo_run/ioi_run_{worker_id}_{os.getpid()}_{time.time_ns()}"
 
     try:
-        # 1. Create all necessary files in one batch command
+        # 1. Create all necessary files locally (sandbox shares filesystem)
         precompiled_dir = task_args.get("precompiled_dir")
-        # Step 1: prepare the working directory and copy shared pre-compiled artifacts first
-        file_creation_commands = [
-            # Create the unique run directory itself
-            f"mkdir -p {unique_dir}",
-            # Ensure `graders/` directory exists
-            f"mkdir -p {unique_dir}/graders",
-            f"cp -r {precompiled_dir}/* {unique_dir}/",
-            # Next write the contestant's generated solution into the graders folder so it is not overwritten
-            f"cat <<'_EOT_' > {unique_dir}/graders/{task_args['problem_id']}.cpp\n{task_args['generated_code']}\n_EOT_\n",
-        ]
-
+        os.makedirs(unique_dir, exist_ok=True)
+        os.makedirs(os.path.join(unique_dir, "graders"), exist_ok=True)
+        # Copy precompiled assets into unique run directory
+        if precompiled_dir and os.path.isdir(precompiled_dir):
+            shutil.copytree(precompiled_dir, unique_dir, dirs_exist_ok=True)
+        # Write contestant solution
+        with open(os.path.join(unique_dir, "graders", f"{task_args['problem_id']}.cpp"), "w", encoding="utf-8") as f:
+            f.write(task_args["generated_code"])
         # Prepare input and expected output files
-        file_creation_commands.append(f"cat <<'_EOT_' > {unique_dir}/input.txt\n{task_args['test_input']}\n_EOT_\n")
-        file_creation_commands.append(
-            f"cat <<'_EOT_' > {unique_dir}/correct_output.txt\n{task_args['test_output']}\n_EOT_\n"
-        )
-
-        setup_script = "\n".join(file_creation_commands)
-        sandbox = LocalSandbox()
-        setup_result, _ = worker_loop.run_until_complete(
-            sandbox.execute_code(setup_script, language="shell", timeout=120)
-        )
-        if setup_result.get("stderr"):
-            raise Exception(f"File setup failed: {setup_result['stderr']}")
+        with open(os.path.join(unique_dir, "input.txt"), "w", encoding="utf-8") as f:
+            f.write(task_args["test_input"])
+        with open(os.path.join(unique_dir, "correct_output.txt"), "w", encoding="utf-8") as f:
+            f.write(task_args["test_output"])
 
         # 2. Compile only the problem solution (skip checker/grader recompilation)
-        # Compile the solution together with optional grader/stub sources without
-        # recompiling the checker/manager again.
-        compile_command = (
-            f"cd {unique_dir} && "
-            f'SRC="graders/{task_args["problem_id"]}.cpp"; '
-            f'[ -e graders/grader.cpp ] && SRC="$SRC graders/grader.cpp"; '
-            f'[ -e graders/stub.cpp ] && SRC="$SRC graders/stub.cpp"; '
-            f"g++ -DEVAL -std=gnu++17 -O2 -pipe -s -o graders/{task_args['problem_id']} $SRC"
-        )
+        compile_command = f"cd {unique_dir} && ./compile.sh"
+        sandbox = LocalSandbox()
         compile_result, _ = worker_loop.run_until_complete(
             sandbox.execute_code(compile_command, language="shell", timeout=120)
         )
@@ -202,11 +192,80 @@ def run_test_case(task_args: dict, worker_id: int) -> dict:
         return {"score": 0.0, "output": "", "error": str(e)}
 
     finally:
-        # 4. Clean up the directory
-        # Fire and forget; ignore return values
+        # 4. Clean up the directory locally
         try:
-            sandbox = LocalSandbox()
-            worker_loop.run_until_complete(sandbox.execute_code(f"rm -rf {unique_dir}", language="shell", timeout=120))
+            shutil.rmtree(unique_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+def run_input_case(task_args: dict, worker_id: int) -> dict:
+    # Use high-resolution timestamp to guarantee uniqueness across parallel calls.
+    unique_dir = f"/nemo_run/ioi_run_{worker_id}_{os.getpid()}_{time.time_ns()}"
+
+    try:
+        # 1. Create all necessary files locally (sandbox shares filesystem)
+        os.makedirs(unique_dir, exist_ok=True)
+        for filepath, content in task_args.get("run_files", []):
+            target_path = os.path.join(unique_dir, os.path.basename(filepath))
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        for fname in ("compile", "run"):
+            fpath = os.path.join(unique_dir, fname)
+            if os.path.exists(fpath):
+                os.chmod(fpath, 0o755)
+        # Write contestant solution into problem solution file
+        solution_path = os.path.join(unique_dir, f"{task_args['problem_id']}.cpp")
+        with open(solution_path, "w", encoding="utf-8") as f:
+            f.write(task_args["generated_code"])
+        # Prepare only input file (no ground-truth for input-only runs)
+        with open(os.path.join(unique_dir, "input.txt"), "w", encoding="utf-8") as f:
+            f.write(task_args["test_input"])
+
+        # 2. Compile using run_files toolchain
+        compile_command = f"cd {unique_dir} && ./compile"
+        sandbox = LocalSandbox()
+        compile_result, _ = worker_loop.run_until_complete(
+            sandbox.execute_code(compile_command, language="shell", timeout=120)
+        )
+
+        result = {
+            "compile_success": not compile_result.get("stderr"),
+            "compile_stdout": compile_result.get("stdout", ""),
+            "compile_stderr": compile_result.get("stderr", ""),
+            "run_stdout": "",
+            "run_stderr": "",
+            "error": "",
+        }
+
+        if not result["compile_success"]:
+            return result
+
+        # 3. Run the code using run_files runner
+        run_command = f"cd {unique_dir} && ./run < input.txt"
+        run_result, _ = worker_loop.run_until_complete(
+            sandbox.execute_code(run_command, language="shell", timeout=120, max_output_characters=1000000)
+        )
+
+        run_stdout = sha256_hex(run_result.get("stdout", ""))
+        run_stderr = run_result.get("stderr", "")
+
+        result.update(
+            {
+                "run_stdout": run_stdout,
+                "run_stderr": run_stderr,
+            }
+        )
+
+        return result
+
+    except Exception as e:
+        return {"run_stdout": "", "run_stderr": "", "error": str(e)}
+
+    finally:
+        # 4. Clean up the directory locally
+        try:
+            shutil.rmtree(unique_dir, ignore_errors=True)
         except Exception:
             pass
 
@@ -250,10 +309,11 @@ class IOIEvaluator(BaseEvaluator):
         self.eval_cfg = IOIEvaluatorConfig(_init_nested=True, **config)
 
         # Heavy runtime resources are lazily initialized within _evaluate_entry.
-        self.sandbox = None  # type: ignore
-        self.metadata = None  # type: ignore
-        self.precompiled_cache: Dict[str, str] = {}
-        self.pool = None  # type: ignore
+        self.sandbox = None
+        self.metadata = None
+        self.inputdata = None
+        self.precompiled_cache = {}
+        self.pool = None
 
     async def _initialize_runtime(self):
         """Asynchronously create sandbox and related runtime state on first use."""
@@ -275,14 +335,23 @@ class IOIEvaluator(BaseEvaluator):
                 )
             with open(self.eval_cfg.test_file, "r") as f:
                 metadata_local = json.load(f)
+            input_local = None
+            if self.eval_cfg.input_file:
+                if not os.path.exists(self.eval_cfg.input_file):
+                    raise FileNotFoundError(
+                        f"Input file {self.eval_cfg.input_file} does not exist."
+                        " Please provide a valid parameter for ++eval_config.input_file=x when running IOI Evaluation."
+                    )
+                with open(self.eval_cfg.input_file, "r") as f:
+                    input_local = json.load(f)
             pool_local = multiprocessing.Pool(
                 processes=self.eval_cfg.test_batch_size,
                 initializer=init_worker,
             )
 
-            return sbox, metadata_local, pool_local
+            return sbox, metadata_local, input_local, pool_local
 
-        self.sandbox, self.metadata, self.pool = await asyncio.to_thread(_setup)
+        self.sandbox, self.metadata, self.inputdata, self.pool = await asyncio.to_thread(_setup)
 
     # Internal helper
     async def _evaluate_entry(self, entry: dict) -> dict:
@@ -298,9 +367,10 @@ class IOIEvaluator(BaseEvaluator):
         compile_code = subtask_meta["compile"]
         run_code = subtask_meta["run"]
         grader_files = subtask_meta["grader_files"]
+        run_files = subtask_meta.get("run_files", [])
 
         if pid not in self.precompiled_cache:
-            self.precompiled_cache[pid] = await asyncio.to_thread(
+            grader_dir = await asyncio.to_thread(
                 _precompile_grader,
                 pid,
                 grader_files,
@@ -308,7 +378,8 @@ class IOIEvaluator(BaseEvaluator):
                 run_code,
                 self.sandbox,
             )
-        pre_dir = self.precompiled_cache[pid]
+            self.precompiled_cache[pid] = {"grader": grader_dir}
+        pre_dir = self.precompiled_cache[pid]["grader"]
 
         subtask_state = {
             st: {
@@ -368,25 +439,53 @@ class IOIEvaluator(BaseEvaluator):
             score = round(min(data["scores"]) * data["score"], data["precision"]) if data["scores"] else 0.0
             test_case_results[st] = {"score": score, "outputs": data["outputs"]}
 
+        # Optionally run custom input cases
+        input_outputs = []
+        if self.inputdata is not None:
+            problem_inputs = self.inputdata[str(entry["id"])]
+            for i in range(0, len(problem_inputs), batch_size):
+                batch = problem_inputs[i : i + batch_size]
+                tasks = []
+                for test_data in batch:
+                    tasks.append(
+                        {
+                            "generated_code": completion,
+                            "problem_id": pid,
+                            "run_files": run_files,
+                            "test_input": test_data["content"],
+                        }
+                    )
+                # map with unique worker id argument
+                results = await asyncio.to_thread(
+                    self.pool.starmap, run_input_case, [(ta, idx) for idx, ta in enumerate(tasks)]
+                )
+                for test_data, result in zip(batch, results):
+                    test_name = test_data["file_name"]
+                    test_type = "input"
+                    result["test_name"] = test_name
+                    result["test_type"] = test_type
+                    input_outputs.append(result)
+
         return {
             "name": entry["name"],
             "subtask": entry["subtask"],
             "test_case_results": test_case_results,
+            "input_case_results": input_outputs,
         }
 
-    async def eval_full(self):  # type: ignore[override]
-        jsonl_file = self.eval_cfg.input_file
-        with open(jsonl_file, "r", encoding="utf-8") as f:
-            all_samples = [json.loads(line) for line in f]
+    async def eval_full(self, input_files):  # type: ignore[override]
+        for jsonl_file in unroll_files(input_files):
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                all_samples = [json.loads(line) for line in f]
 
-        tasks = [self._evaluate_entry(s) for s in all_samples]
-        outputs = await asyncio.gather(*tasks)
+            tasks = [self._evaluate_entry(s) for s in all_samples]
+            outputs = await asyncio.gather(*tasks)
 
-        for s, o in zip(all_samples, outputs):
-            s["test_case_results"] = o["test_case_results"]
-            s["eval_status"] = o["eval_status"]
+            for s, o in zip(all_samples, outputs):
+                s["test_case_results"] = o["test_case_results"]
+                s["input_case_results"] = o["input_case_results"]
 
-        jdump(all_samples, jsonl_file, mode="wt")
+            jdump(all_samples, jsonl_file, mode="wt")
 
         if self.pool is not None:
             self.pool.close()
