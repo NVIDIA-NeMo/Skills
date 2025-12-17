@@ -14,6 +14,7 @@
 import copy
 import functools
 import json
+import logging
 import os
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List
@@ -21,6 +22,10 @@ from typing import Any, Callable, Dict, List
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client
+
+from nemo_skills.utils import get_logger_name
+
+LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def _process_hide_args(result, hide_args):
@@ -129,9 +134,11 @@ def _extract_tool_result(result) -> Any:
                 return json.loads(text)
             except Exception:
                 return text
+        LOG.error("Unsupported content type in tool result: %s", content)
         return {"error": "Unsupported content type returned from tool"}
     # No content at all
     # This could happen due to a tool failure (like hitting uncaught API limits)
+    LOG.error("No content in tool result. Full result: %s", result)
     return {"error": "No content returned from tool"}
 
 
