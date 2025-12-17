@@ -35,21 +35,26 @@ _TYPE_ADAPTER = TypeAdapter(Annotated[CudaCppProblem | CudaPythonProblem, Field(
 
 
 class ComputeEvalGenerationTask(GenerationTask):
+    _params: dict
     _system_prompt: str
     _model: str
 
     def __init__(self, cfg: GenerateSolutionsConfig):
         super().__init__(cfg)
+        self._params = {
+            "temperature": cfg.inference.temperature,
+            "top_p": cfg.inference.top_p,
+            "max_tokens": cfg.inference.tokens_to_generate,
+        }
         self._system_prompt = cfg.system_message or SYSTEM_PROMPT
+
         self._model = cfg.server.get("model", "")
         if self._model == "":
-            _LOG.error("Model must be specified in server configuration.")
-            raise RuntimeError
+            raise RuntimeError("Model must be specified in server configuration.")
 
         self._base_url = cfg.server.get("base_url", "")
         if self._base_url == "":
-            _LOG.error("Base URL must be specified in server configuration.")
-            raise RuntimeError
+            raise RuntimeError("Base URL must be specified in server configuration.")
 
     def log_example_prompt(self, data):
         return
@@ -67,20 +72,30 @@ class ComputeEvalGenerationTask(GenerationTask):
         return
 
     async def process_single_datapoint(self, data_point, data):
-        problem = _TYPE_ADAPTER.validate_python(data_point["problem"])
-        solution = await asyncio.to_thread(
-            generate_model_completions,
-            system_prompt=self._system_prompt,
-            problem=problem,
-            model=self._model,
-            base_url=self._base_url,
-            params=None,
-        )
+        try:
+            problem = _TYPE_ADAPTER.validate_python(data_point["problem"])
+            solution = await asyncio.to_thread(
+                generate_model_completions,
+                system_prompt=self._system_prompt,
+                problem=problem,
+                model=self._model,
+                base_url=self._base_url,
+                params=self._params,
+                debug=True,
+            )
 
-        return {
-            "solution": solution.model_dump(),
-            "generation": "",
-        }
+            solution_dict = solution.model_dump()
+            return {
+                "solution": solution.model_dump(),
+                "generation": solution_dict.get("generated_completion", ""),
+            }
+        except Exception as e:
+            _LOG.error(f"Error processing data point {data_point}: {e}")
+            return {
+                "solution": None,
+                "generation": "",
+                "error": str(e),
+            }
 
 
 GENERATION_TASK_CLASS = ComputeEvalGenerationTask

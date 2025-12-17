@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
-import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from compute_eval.data.data_model import CudaCppProblem, CudaPythonProblem, FileSolution, PatchSolution
 from compute_eval.execution import evaluate_solution
@@ -21,9 +20,7 @@ from compute_eval.utils.eval_utils import get_nvcc_version, parse_semver
 from pydantic import Field, TypeAdapter
 
 from nemo_skills.evaluation.evaluator import BaseEvaluator
-from nemo_skills.utils import get_logger_name
 
-_LOG = logging.getLogger(get_logger_name(__file__))
 _PROBLEM_ADAPTER = TypeAdapter(Annotated[CudaCppProblem | CudaPythonProblem, Field(discriminator="type")])
 _SOLUTION_ADAPTER = TypeAdapter(Annotated[FileSolution | PatchSolution, Field(discriminator="type")])
 
@@ -36,12 +33,13 @@ class ComputeEvalEvaluator(BaseEvaluator):
         super().__init__(config, num_parallel_requests)
         nvcc_version = get_nvcc_version()
         if not nvcc_version:
-            _LOG.error("NVCC not found. Please ensure that the CUDA Toolkit is installed and nvcc is in your PATH.")
-            raise RuntimeError
+            raise RuntimeError(
+                "NVCC not found. Please ensure that the CUDA Toolkit is installed and nvcc is in your PATH."
+            )
 
         self._installed_ctk_major, self._installed_ctk_minor, _ = parse_semver(nvcc_version)
 
-    async def eval_single(self, data_point: dict[str, any]) -> dict[str, any]:
+    async def eval_single(self, data_point: dict[str, Any]) -> dict[str, Any]:
         problem = _PROBLEM_ADAPTER.validate_python(data_point["problem"])
         solution = _SOLUTION_ADAPTER.validate_python(data_point["solution"])
 
