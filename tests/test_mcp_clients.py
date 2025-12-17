@@ -482,8 +482,8 @@ async def test_streamable_http_client_list_and_call_tool(monkeypatch):
         async def call_tool(self, tool, arguments):
             if tool == "t1":
                 return ResultObj({"ok": True})
-            # No structured content -> client should return raw object
-            return types.SimpleNamespace(structuredContent=None, raw=True, tool=tool, arguments=arguments)
+            # No structured content and no text content -> client should return error dict
+            return types.SimpleNamespace(structuredContent=None, content=None)
 
     class FakeHttpCtx:
         async def __aenter__(self):
@@ -505,9 +505,9 @@ async def test_streamable_http_client_list_and_call_tool(monkeypatch):
     out1 = await client.call_tool("t1", {})
     assert out1 == {"ok": True}
 
-    # structured content absent -> return raw
+    # structured content absent and no text content -> return error dict (not raw object)
     out2 = await client.call_tool("t2", {"x": 1})
-    assert getattr(out2, "raw", False) is True and getattr(out2, "tool", "") == "t2"
+    assert out2 == {"error": "No content returned from tool"}
 
 
 @pytest.mark.asyncio
