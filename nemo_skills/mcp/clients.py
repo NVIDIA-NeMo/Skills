@@ -14,6 +14,7 @@
 import copy
 import functools
 import json
+import logging
 import os
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List
@@ -21,6 +22,10 @@ from typing import Any, Callable, Dict, List
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client
+
+from nemo_skills.utils import get_logger_name
+
+LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def _process_hide_args(result, hide_args):
@@ -99,6 +104,42 @@ def _sanitize_input_args_for_tool(args_dict, tool_name, hide_args):
     if not hidden_keys:
         return args_dict
     return {k: v for k, v in args_dict.items() if k not in hidden_keys}
+
+
+def _extract_tool_result(result) -> Any:
+    """Extract a JSON-serializable result from an MCP CallToolResult.
+
+    Handles various response formats:
+    - structuredContent: Returns directly if present
+    - content[].text: Parses as JSON or returns as string
+    - Fallback: Returns error dict to avoid returning raw CallToolResult objects
+
+    This ensures the return value is always JSON-serializable.
+    """
+    # Check if tool explicitly returned an error - return generic message to avoid leaking details
+    is_error = getattr(result, "isError", False)
+    if is_error:
+        return {"error": "Tool execution failed"}
+
+    struct = getattr(result, "structuredContent", None)
+    if struct is not None:
+        return struct
+    # Fallback: try to parse first content item as JSON, else return text
+    content = getattr(result, "content", None)
+    if content:
+        first = content[0]
+        text = getattr(first, "text", None)
+        if isinstance(text, str):
+            try:
+                return json.loads(text)
+            except Exception:
+                return text
+        LOG.error("Unsupported content type in tool result: %s", content)
+        return {"error": "Unsupported content type returned from tool"}
+    # No content at all
+    # This could happen due to a tool failure (like hitting uncaught API limits)
+    LOG.error("No content in tool result. Full result: %s", result)
+    return {"error": "No content returned from tool"}
 
 
 def _wrap_call_tool_output_formatter(method):
@@ -355,7 +396,7 @@ class MCPStreamableHttpClient(MCPClient):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(tool, arguments=args)
-                return struct if (struct := result.structuredContent) is not None else result
+                return _extract_tool_result(result)
 
 
 class MCPStdioClient(MCPClient):
@@ -415,17 +456,4 @@ class MCPStdioClient(MCPClient):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(tool, arguments=args)
-                struct = getattr(result, "structuredContent", None)
-                if struct is not None:
-                    return struct
-                # Fallback: try to parse first content item as JSON, else return text
-                content = getattr(result, "content", None)
-                if content:
-                    first = content[0]
-                    text = getattr(first, "text", None)
-                    if isinstance(text, str):
-                        try:
-                            return json.loads(text)
-                        except Exception:
-                            return text
-                return result
+                return _extract_tool_result(result)
