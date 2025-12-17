@@ -185,10 +185,10 @@ We currently support IOI24 and are working to support IOI25 for evaluation. The 
 
 #### Data Preparation
 
-First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `test.jsonl` and `test_metadata.json`.
+First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `ioi24.jsonl` and `ioi24_metadata.json`.
 
 ```
-ns prepare_data ioi24
+ns prepare_data ioi
 ```
 
 #### Running the Evaluation
@@ -209,10 +209,11 @@ ns eval \
     --server_gpus=8 \
     --benchmarks=ioi24:50 \
     --with_sandbox \
-    --split=test \
+    --split=ioi24 \
     --data_dir=<DATA_DIR> \
     --output_dir=<OUTPUT_DIR> \
-    --extra_eval_args="++eval_config.test_file=<PATH_TO_METADATA_TEST_FILE>" \
+    --eval_subfolder=eval-results/ioi24/ \ # set the folder if you want to differentiate subsets.
+    --extra_eval_args="++eval_config.test_file=<PATH_TO_METADATA_TEST_DIR>/ioi24_metadata.json" \
     ++inference.temperature=0.6 \
     ++inference.top_p=0.95 \
     ++inference.tokens_to_generate=65536
@@ -220,13 +221,12 @@ ns eval \
 
 ##### Verifying Results
 
-After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/summarized-results/main_*`. They should look something like this:
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/ioi/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/ioi/summarized-results/main_*`. They should look something like this:
 
 ```
------------------------------------------------------- ioi24 ------------------------------------------------------
-evaluation_mode   | num_entries | avg_tokens | gen_seconds | correct       | total_score        | round_robin_score
-pass@1[avg-of-50] | 39          | 40387      | 7410        | 0.51% ± 1.04% | 303.47             | 261.01
-pass@50           | 39          | 40387      | 7410        | 2.56%         | 303.47             | 261.01
+------------------------------------ ioi24 -------------------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | correct | total_score
+pass@50          | 39          | 52225      | 99630       | 23.08%  | 500
 ```
 
 ### livecodebench

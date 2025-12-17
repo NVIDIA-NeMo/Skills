@@ -52,7 +52,15 @@ jobs:
         cd ${{ github.run_id }}
         nvidia-smi
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
-        ./tests/gpu-tests/run_qwen.sh
+        # Run heartbeat in background, capture its PID, and ensure cleanup
+        (while true; do sleep 60; echo "[HEARTBEAT] $(date '+%Y-%m-%d %H:%M:%S') - still running..."; done) &
+        HEARTBEAT_PID=$!
+        # Run tests and capture exit code
+        EXIT_CODE=0
+        ./tests/gpu-tests/run_qwen.sh || EXIT_CODE=$?
+        # Kill heartbeat and exit with test result
+        kill $HEARTBEAT_PID 2>/dev/null || true
+        exit $EXIT_CODE
     - name: Cleanup
       if: always()
       run: |

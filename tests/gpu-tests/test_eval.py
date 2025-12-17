@@ -44,6 +44,7 @@ EXCLUDED_DATASETS = {
     "mbpp",
     "mmau-pro",
     "asr-leaderboard",
+    "mrcr",
     "audiobench",
     "librispeech-pc",
 }
