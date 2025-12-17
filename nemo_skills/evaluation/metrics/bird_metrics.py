@@ -35,11 +35,9 @@ class BirdMetrics(BaseMetrics):
             # Each should be a 0 or 1 value
             if pred["difficulty"] == "simple":
                 self.simple_results.append(pred["res"])
-
-            if pred["difficulty"] == "moderate":
+            elif pred["difficulty"] == "moderate":
                 self.moderate_results.append(pred["res"])
-
-            if pred["difficulty"] == "challenging":
+            elif pred["difficulty"] == "challenging":
                 self.challenging_results.append(pred["res"])
 
             self.correct += pred["res"]
@@ -53,7 +51,7 @@ class BirdMetrics(BaseMetrics):
         moderate_acc = sum(mr) / len(mr) if mr else 0
         challenging_acc = sum(cr) / len(cr) if cr else 0
 
-        acc = self.correct / self.n
+        acc = self.correct / self.n if self.n else 0
 
         metrics_dict = {}
         metrics_dict["total"] = {

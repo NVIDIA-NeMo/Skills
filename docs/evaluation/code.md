@@ -324,7 +324,7 @@ The [BIRD benchmark](https://bird-bench.github.io/) is currently the only text-t
 
 
 First, the data must be downloaded and prepared, which you can do by running:
-```
+```bash
 ns prepare_data birdbench
 ```
 
@@ -336,7 +336,7 @@ The script will also process the original manifest into `<output_directory>/dev.
 
 The following command runs an evaluation of [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) on a Slurm cluster.
 
-```
+```bash
 ns eval \
      --cluster=<CLUSTER_NAME> \
      --server_type='sglang' \

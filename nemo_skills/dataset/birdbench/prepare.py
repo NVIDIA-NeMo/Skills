@@ -43,13 +43,6 @@ def download_data(output_dir):
     return dev_dir
 
 
-def download_evaluation_file(output_dir):
-    url = "https://raw.githubusercontent.com/AlibabaResearch/DAMO-ConvAI/refs/heads/main/bird/llm/src/evaluation.py"
-    filename = wget.download(url, out=output_dir)
-
-    return Path(output_dir, filename)
-
-
 def read_tables_file(base_dir):
     """
     Gets each db's information by using sqlite3 to get a table dump.
@@ -66,13 +59,13 @@ def read_tables_file(base_dir):
         sqlite_file = os.path.join(full_db_dir, db_dir + ".sqlite")
         assert os.path.exists(sqlite_file)
 
-        con = sqlite3.connect(os.path.join(full_db_dir, db_dir + ".sqlite"))
-        con.text_factory = lambda b: b.decode(errors = "ignore")
-        for line in con.iterdump():
-            if line[:6] == "INSERT":
-                line = line.replace("\n", " ")
-            line = re.sub(" +", " ", line)
-            table_info += line + "\n"
+        with sqlite3.connect(os.path.join(full_db_dir, db_dir + '.sqlite')) as con:
+            con.text_factory = lambda b: b.decode(errors = "ignore")
+            for line in con.iterdump():
+                if line[:6] == "INSERT":
+                    line = line.replace("\n", " ")
+                line = re.sub(" +", " ", line)
+                table_info += line + "\n"
 
         # Time to truncate any long INSERT chains (allow 10 max at once)
         insert_chain = r"((INSERT.*$\n){10})((INSERT.*\n)*)"
@@ -94,30 +87,20 @@ def format_entries(file_path, tables_info, out_file):
     """
     with open(out_file, "w") as f_out:
         with open(file_path, "r") as f_in:
-            f_in.readline()  # Discard first square bracket
-            end_entry = r"  }"
-            entry_str = ""
-            i = 0
+            entries = json.load(f_in)
 
-            for line in f_in:
-                # Flatten & grab relevant key/values if end of entry reached
-                entry_str += line.strip()
-                if re.match(end_entry, line) is not None:
-                    if entry_str[-1] == ",":
-                        entry_str = entry_str[:-1]
-                    entry = json.loads(entry_str)
+        for i, entry in enumerate(entries):
+            new_entry = {
+                "question": entry["question"],
+                "gt_sql": entry["SQL"],
+                "sql_context": tables_info[entry["db_id"]],
+                "difficulty": entry["difficulty"],
+                "db_id": entry["db_id"],
+                "id": i,
+            }
 
-                    final_entry = {
-                        "question": entry["question"],
-                        "solution": entry["SQL"],
-                        "sql_context": tables_info[entry["db_id"]],
-                        "id": i,
-                    }
-                    f_out.write(json.dumps(final_entry))
-                    f_out.write("\n")
-
-                    entry_str = ""
-                    i += 1
+            f_out.write(json.dumps(new_entry))
+            f_out.write("\n")
 
 
 def main():

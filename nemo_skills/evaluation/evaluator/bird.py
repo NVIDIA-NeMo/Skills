@@ -36,8 +36,6 @@ class BirdEvaluatorConfig(BaseEvaluatorConfig):
     extraction_regex: str | None = None
     regex_dotall: bool = False
 
-    # Paths needed for ground truth SQL file and database directory
-    dev_json_filepath: str = ""
     db_path: str = ""
 
 
@@ -46,17 +44,6 @@ class BirdEvaluator(BaseEvaluator):
         super().__init__(config, num_parallel_requests)
         self.eval_config = BirdEvaluatorConfig(**self.config)
 
-        self.dev_data = self._get_dev_data()
-
-    def _get_dev_data(self):
-        with open(self.eval_config.dev_json_filepath, "r") as f_in:
-            contents = json.loads(f_in.read())
-
-        for entry in contents:
-            entry["db_path"] = str(Path(self.eval_config.db_path, entry["db_id"], entry["db_id"] + ".sqlite"))
-
-        return contents
-        
     def _extract_answer(self, text):
         """Uses the specified format/regex to get the answer from the output text."""
         regex = ""
@@ -99,40 +86,39 @@ class BirdEvaluator(BaseEvaluator):
         return ans
 
     async def eval_full(self):  # type: ignore[override]
-        infile = self.eval_cfg.input_file
+        infile = self.eval_config.input_file
 
         lines = []
-        with open(infile, "w") as f_out:
-            for line in f_out:
+        with open(infile, "r") as f_in:
+            for line in f_in:
                 line = json.loads(line)
                 lines.append(line)
 
         tasks = [self.eval_single(line) for line in lines]
         outputs = await asyncio.gather(*tasks)
 
-        for line, output in zip(lines, outputs):
+        for line, output in zip(lines, outputs, strict=True):
             line["res"] = output["res"]
 
         jdump(lines, infile, mode="wt")
 
     async def eval_single(self, data_point: dict):
-        # Attach dev_data info to data point
         i = data_point["id"]
-        data_point["gt_sql"] = self.dev_data[i]["SQL"]
-        data_point["db_path"] = self.dev_data[i]["db_path"]
-        data_point["difficulty"] = self.dev_data[i]["difficulty"]
+        db_id = data_point["db_id"]
 
         # Retrieve pred and gt
         predicted_sql = self._extract_answer(data_point["generation"])
         ground_truth = data_point["gt_sql"]
-        db_place = data_point["db_path"]
+        db_place = str(Path(self.eval_config.db_path, db_id, db_id + ".sqlite"))
 
         try:
             # Wait for result with timeout as set
             res = func_timeout(self.eval_config.timeout, execute_sql, args=(predicted_sql, ground_truth, db_place))
         except FunctionTimedOut:
+            logging.info(f"SQL execution timed out for entry {i}")
             res = 0
-        except Exception:
+        except Exception as e:
+            logging.info(f"SQL execution failed for entry {i}:\n{e}")
             res = 0
         result = {"res": res}
         return result

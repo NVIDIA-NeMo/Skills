@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Copied from https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py
+# Original code from https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py
 
 # Original license as follows:
 
@@ -50,12 +50,12 @@ def load_json(dir):
 def execute_sql(predicted_sql, ground_truth, db_path):
     conn = sqlite3.connect(db_path)
     # Connect to the database
-    cursor = conn.cursor()
-    cursor.execute(predicted_sql)
-    predicted_res = cursor.fetchall()
-    cursor.execute(ground_truth)
-    ground_truth_res = cursor.fetchall()
-    res = 0
-    if set(predicted_res) == set(ground_truth_res):
-        res = 1
+    with conn.cursor() as cursor:
+        cursor.execute(predicted_sql)
+        predicted_res = cursor.fetchall()
+        cursor.execute(ground_truth)
+        ground_truth_res = cursor.fetchall()
+        res = 0
+        if set(predicted_res) == set(ground_truth_res):
+            res = 1
     return res

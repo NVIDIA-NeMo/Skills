@@ -24,6 +24,6 @@ GENERATION_ARGS = (
     "++inference.top_p=0.95 "
     "++inference.top_k=20 "
     "++max_concurrent_requests=1024 "
-    "++eval_config.dev_json_filepath=/sql_data/BIRD/dev.json "
+    # Note: Override this path via ++eval_config.db_path
     "++eval_config.db_path=/sql_data/BIRD/dev_databases"
 )
