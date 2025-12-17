@@ -18,10 +18,8 @@ from typing import Annotated
 
 import hydra
 from compute_eval.data.data_model import CudaCppProblem, CudaPythonProblem
-from compute_eval.execution import evaluate_solution
 from compute_eval.generate_completions import generate_model_completions
 from compute_eval.prompts import SYSTEM_PROMPT
-from compute_eval.utils.eval_utils import get_nvcc_version, parse_semver
 from pydantic import Field, TypeAdapter
 
 from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask
@@ -37,27 +35,19 @@ _TYPE_ADAPTER = TypeAdapter(Annotated[CudaCppProblem | CudaPythonProblem, Field(
 
 
 class ComputeEvalGenerationTask(GenerationTask):
-    _installed_ctk_major: int
-    _installed_ctk_minor: int
     _system_prompt: str
     _model: str
 
     def __init__(self, cfg: GenerateSolutionsConfig):
         super().__init__(cfg)
-        nvcc_version = get_nvcc_version()
-        if not nvcc_version:
-            _LOG.error("NVCC not found. Please ensure that the CUDA Toolkit is installed and nvcc is in your PATH.")
-            raise RuntimeError
-
-        self._installed_ctk_major, self._installed_ctk_minor, _ = parse_semver(nvcc_version)
         self._system_prompt = cfg.system_message or SYSTEM_PROMPT
-        self._model = cfg.server.get("model", None)
-        if not self._model:
+        self._model = cfg.server.get("model", "")
+        if self._model == "":
             _LOG.error("Model must be specified in server configuration.")
             raise RuntimeError
 
-        self._base_url = cfg.server.get("base_url", None)
-        if not self._base_url:
+        self._base_url = cfg.server.get("base_url", "")
+        if self._base_url == "":
             _LOG.error("Base URL must be specified in server configuration.")
             raise RuntimeError
 
@@ -76,9 +66,6 @@ class ComputeEvalGenerationTask(GenerationTask):
     def cleanup_litellm_cache(self):
         return
 
-    async def evaluate_single_datapoint(self, data_point):
-        return data_point
-
     async def process_single_datapoint(self, data_point, data):
         problem = _TYPE_ADAPTER.validate_python(data_point["problem"])
         solution = await asyncio.to_thread(
@@ -90,20 +77,7 @@ class ComputeEvalGenerationTask(GenerationTask):
             params=None,
         )
 
-        graded = await asyncio.to_thread(
-            evaluate_solution,
-            installed_ctk_major=self._installed_ctk_major,
-            installed_ctk_minor=self._installed_ctk_minor,
-            problem=problem,
-            solution=solution,
-        )
-
         return {
-            "passed": graded.passed,
-            "skipped": graded.skipped,
-            "elapsed_time": graded.elapsed_time,
-            "build_output": graded.build_output,
-            "test_output": graded.test_output,
             "solution": solution.model_dump(),
             "generation": "",
         }
