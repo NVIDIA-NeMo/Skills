@@ -27,7 +27,7 @@ from nemo_skills.mcp.adapters import (
     load_schema_overrides,
     remap_tool_call,
 )
-from nemo_skills.mcp.tool_manager import ToolManager
+from nemo_skills.mcp.tool_manager import FatalToolError, ToolManager
 from nemo_skills.utils import get_logger_name
 
 from .base import BaseModel, EndpointType
@@ -87,6 +87,9 @@ class ToolCallingWrapper:
             result = await self.tool_manager.execute_tool(
                 original_tool_name, tool_args, extra_args={"request_id": request_id}
             )
+        except FatalToolError:
+            # Fatal errors should propagate up and stop the process
+            raise
         except Exception as e:
             LOG.exception(e)
             return {"error": "Tool execution failed."}

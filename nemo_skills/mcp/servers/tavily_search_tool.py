@@ -23,6 +23,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from nemo_skills.mcp.tool_manager import FatalToolError
 from nemo_skills.mcp.tool_providers import MCPClientTool
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,14 @@ MAX_NUM_RESULTS: int = 20
 
 STATUS_CODE_ERRORS = {
     429: "Search rate limit exceeded",
-    401: "Search authentication failed",
-    403: "Search authentication failed",
     500: "Search request failed due to server error",
     502: "Search request failed due to bad gateway",
     503: "Search request failed due to service unavailable",
     504: "Search request failed due to gateway timeout",
 }
+
+# These errors should stop the process - no point continuing with bad credentials
+FATAL_STATUS_CODES = {401, 403}
 
 
 ## See docs https://docs.tavily.com/documentation/api-reference/endpoint/search
@@ -101,6 +103,8 @@ async def answer(
         return {"error": "Search request failed due to network error"}
 
     # Handle non-200 responses
+    if response.status_code in FATAL_STATUS_CODES:
+        return {"error": "Search authentication failed", "fatal": True}
     if response.status_code != 200:
         error_msg = STATUS_CODE_ERRORS.get(
             response.status_code, f"Search request failed with status {response.status_code}"
@@ -168,6 +172,11 @@ class TavilySearchTool(MCPClientTool):
             if key in self._config:
                 merged_extra[key] = self._config[key]
         result = await self._client.call_tool(tool=tool_name, args=arguments, extra_args=merged_extra)
+
+        # Check for fatal errors that should stop the process
+        if isinstance(result, dict) and result.get("fatal"):
+            raise FatalToolError(result.get("error", "Fatal tool error"))
+
         return result
 
 
