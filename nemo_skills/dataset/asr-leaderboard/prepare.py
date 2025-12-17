@@ -34,6 +34,19 @@ from tqdm import tqdm
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
 MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this (causes mel spectrogram errors)
 
+# Speaker IDs to skip in Tedlium dataset
+SKIP_SPEAKER_IDS = {"inter_segment_gap"}
+
+# Non-speech tokens to skip in GigaSpeech dataset
+NONSPEECH_TOKENS = {"<SIL>", "<MUSIC>", "<NOISE>", "<OTHER>"}
+
+
+def is_nonspeech_only(text):
+    """Check if text contains only non-speech tokens."""
+    tokens = set(text.strip().split())
+    return tokens and tokens.issubset(NONSPEECH_TOKENS)
+
+
 # (hf_dataset, hf_config, hf_split, streaming)
 DATASET_CONFIGS = {
     "librispeech_clean": ("librispeech_asr", "clean", "test", False),
@@ -133,12 +146,17 @@ def prepare_dataset(dataset_name, output_dir, with_audio=True):
             if formatted is None:
                 skipped += 1
                 continue
-            if formatted["expected_answer"]:
+            # Skip empty answers, non-speech segments, and non-speech-only samples
+            speaker_id = entry.get("speaker_id", "")
+            expected = formatted["expected_answer"]
+            if expected and speaker_id not in SKIP_SPEAKER_IDS and not is_nonspeech_only(expected):
                 fout.write(json.dumps(formatted) + "\n")
                 count += 1
+            else:
+                skipped += 1
 
     if skipped > 0:
-        print(f"Skipped {skipped} samples with audio < {MIN_AUDIO_DURATION}s")
+        print(f"Skipped {skipped} samples (short audio, non-speech, or invalid)")
 
     print(f"Saved {count} samples to {output_file}")
     return count
