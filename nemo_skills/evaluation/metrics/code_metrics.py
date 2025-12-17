@@ -32,6 +32,7 @@ class EvalPlusMetrics(BaseMetrics):
 
 class LiveCodeBenchMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        print(prediction.keys())
         return {
             "accuracy": prediction["graded_list"][0],
         }
