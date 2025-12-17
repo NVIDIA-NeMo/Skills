@@ -316,6 +316,48 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 --benchmarks=livecodebench:3
 ```
 
+### BIRD
+
+The [BIRD benchmark](https://bird-bench.github.io/) is currently the only text-to-SQL benchmark that is supported. Evaluation is based on the SQL evaluation accuracy calculated in [this file](https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py) provided in the BIRD GitHub repository.
+
+#### Data Preparation
+
+
+First, the data must be downloaded and prepared, which you can do by running:
+```
+ns prepare_data birdbench
+```
+
+This will download and unpack a file into `<output_directory>/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas. By default, `output_directory` will be under `nemo_skills/dataset/birdbench/`, though this can be changed via command line argument.
+
+The script will also process the original manifest into `<output_directory>/dev.jsonl`, which will be the input for evaluation.
+
+#### Running the Evaluation
+
+The following command runs an evaluation of [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) on a Slurm cluster.
+
+```
+ns eval \
+     --cluster=<CLUSTER_NAME> \
+     --server_type='sglang' \
+     --server_gpus=8 \
+     --model=Qwen/Qwen3-8B \
+     --benchmarks=birdbench \
+     --output_dir=<OUTPUT_DIR> \
+     --installation_command="pip install func_timeout" \
+     ++inference.tokens_to_generate=10000 "
+     ++inference.temperature=0.6 \
+     ++inference.top_p=0.95 \
+     ++inference.top_k=20 \
+     ++max_concurrent_requests=1024 \
+     ++eval_config.dev_json_filepath=<DATA_DIR>/dev.json \
+     ++eval_config.db_path=<DATA_DIR>/dev_databases
+```
+!!! note
+    BIRD evaluation requires the `func_timeout` library, so you will need to add the installation argument `--installation_command` seen in this example if it is not included in your container.
+
+The arguments for evaluation also include paths for `++eval_config.dev_json_filepath` and `++eval_config.db_path`. These are used for SQL execution. You should point these to the unmodified `dev.json` file and `dev_databases` directory found in the original downloaded and unzipped data (i.e. `.../dev_20240627/dev.json`, etc.). If using a Slurm cluster, you may need to upload and mount the data directory first.
+
 ### livecodebench-cpp
 
 - Benchmark is defined in [`nemo_skills/dataset/livecodebench-cpp/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/livecodebench-cpp/__init__.py)
