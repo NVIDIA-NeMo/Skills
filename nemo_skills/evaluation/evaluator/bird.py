@@ -48,22 +48,14 @@ class BirdEvaluator(BaseEvaluator):
 
         self.dev_data = self._get_dev_data()
 
-
     def _get_dev_data(self):
-        with open(self.eval_config.dev_json_filepath, 'r') as f_in:
+        with open(self.eval_config.dev_json_filepath, "r") as f_in:
             contents = json.loads(f_in.read())
 
         for entry in contents:
-            entry["db_path"] = str(
-                Path(
-                    self.eval_config.db_path,
-                    entry["db_id"],
-                    entry["db_id"] + ".sqlite"
-                )
-            )
+            entry["db_path"] = str(Path(self.eval_config.db_path, entry["db_id"], entry["db_id"] + ".sqlite"))
 
         return contents
-
         
     def _extract_answer(self, text):
         """Uses the specified format/regex to get the answer from the output text."""
@@ -83,9 +75,9 @@ class BirdEvaluator(BaseEvaluator):
 
         if not regex:
             logging.error(
-                "Answer format underspecified for BIRD evaluation; should be one of " +
-                "{CODEBLOCK, BOXED, USE_REGEX (provide extraction_regex)}.\n" + 
-                f"Got {answer_format} instead."
+                "Answer format underspecified for BIRD evaluation; should be one of "
+                + "{CODEBLOCK, BOXED, USE_REGEX (provide extraction_regex)}.\n"
+                + f"Got {answer_format} instead."
             )
 
         # Use regex to extract answer from text
@@ -95,7 +87,7 @@ class BirdEvaluator(BaseEvaluator):
             code_matches = re.findall(regex, text)
 
         if not code_matches:
-            return "SELECT 1"   # No-op filler
+            return "SELECT 1"  # No-op filler
 
         # Remove comments first
         ans = re.sub(r"--.*", "", code_matches[-1])  # Use last match
@@ -106,12 +98,11 @@ class BirdEvaluator(BaseEvaluator):
 
         return ans
 
-
     async def eval_full(self):  # type: ignore[override]
         infile = self.eval_cfg.input_file
 
         lines = []
-        with open(infile, 'w') as f_out:
+        with open(infile, "w") as f_out:
             for line in f_out:
                 line = json.loads(line)
                 lines.append(line)
@@ -123,7 +114,6 @@ class BirdEvaluator(BaseEvaluator):
             line["res"] = output["res"]
 
         jdump(lines, infile, mode="wt")
-
 
     async def eval_single(self, data_point: dict):
         # Attach dev_data info to data point
@@ -139,11 +129,7 @@ class BirdEvaluator(BaseEvaluator):
 
         try:
             # Wait for result with timeout as set
-            res = func_timeout(
-                self.eval_config.timeout,
-                execute_sql,
-                args=(predicted_sql, ground_truth, db_place)
-            )
+            res = func_timeout(self.eval_config.timeout, execute_sql, args=(predicted_sql, ground_truth, db_place))
         except FunctionTimedOut:
             res = 0
         except Exception:

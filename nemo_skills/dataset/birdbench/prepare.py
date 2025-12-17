@@ -29,14 +29,14 @@ def download_data(output_dir):
     print("Downloading and extracting data file...")
     url = "https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip"
     filename = wget.download(url, out=output_dir)
-    with zipfile.ZipFile(Path(output_dir, filename), 'r') as f_in:
+    with zipfile.ZipFile(Path(output_dir, filename), "r") as f_in:
         f_in.extractall(output_dir)
 
     # Expand tables zipfiles
     print("Extracting databases...")
     dev_dir = Path(output_dir, "dev_20240627/")
     dbs_zipfile = Path(dev_dir, "dev_databases.zip")
-    with zipfile.ZipFile(dbs_zipfile, 'r') as f_dbs:
+    with zipfile.ZipFile(dbs_zipfile, "r") as f_dbs:
         f_dbs.extractall(dev_dir)
 
     print("Extracted all data!")
@@ -66,13 +66,13 @@ def read_tables_file(base_dir):
         sqlite_file = os.path.join(full_db_dir, db_dir + ".sqlite")
         assert os.path.exists(sqlite_file)
 
-        con = sqlite3.connect(os.path.join(full_db_dir, db_dir + '.sqlite'))
-        con.text_factory = lambda b: b.decode(errors = 'ignore')
+        con = sqlite3.connect(os.path.join(full_db_dir, db_dir + ".sqlite"))
+        con.text_factory = lambda b: b.decode(errors = "ignore")
         for line in con.iterdump():
             if line[:6] == "INSERT":
-                line = line.replace('\n', ' ')
-            line = re.sub(" +", ' ', line)
-            table_info += line + '\n'
+                line = line.replace("\n", " ")
+            line = re.sub(" +", " ", line)
+            table_info += line + "\n"
 
         # Time to truncate any long INSERT chains (allow 10 max at once)
         insert_chain = r"((INSERT.*$\n){10})((INSERT.*\n)*)"
@@ -92,9 +92,9 @@ def format_entries(file_path, tables_info, out_file):
     Combines the raw BIRD data entries with corresponding table info and
     ground truth solution to form dev manifest
     """
-    with open(out_file, 'w') as f_out:
-        with open(file_path, 'r') as f_in:
-            f_in.readline() # Discard first square bracket
+    with open(out_file, "w") as f_out:
+        with open(file_path, "r") as f_in:
+            f_in.readline()  # Discard first square bracket
             end_entry = r"  }"
             entry_str = ""
             i = 0
@@ -103,7 +103,7 @@ def format_entries(file_path, tables_info, out_file):
                 # Flatten & grab relevant key/values if end of entry reached
                 entry_str += line.strip()
                 if re.match(end_entry, line) is not None:
-                    if entry_str[-1] == ',':
+                    if entry_str[-1] == ",":
                         entry_str = entry_str[:-1]
                     entry = json.loads(entry_str)
 
@@ -126,7 +126,7 @@ def main():
     args = parser.parse_args()
 
     dev_dir = download_data(args.output_dir)
-    #If already downloaded: dev_dir = Path(args.output_dir, "dev_20240627/")
+    # If already downloaded: dev_dir = Path(args.output_dir, "dev_20240627/")
     print(f"\nData downloaded to: {dev_dir}")
 
     print("Starting processing...")
@@ -138,11 +138,7 @@ def main():
     # Naming the input and output files the nearly same thing is likely
     # confusing, but <split>.jsonl is the expected format so we'll just
     # keep the result in the output directory.
-    format_entries(
-        Path(dev_dir, "dev.json"),
-        tables_info,
-        Path(args.output_dir, "dev.jsonl")
-    )
+    format_entries(Path(dev_dir, "dev.json"), tables_info, Path(args.output_dir, "dev.jsonl"))
     print("Finished formatting entries. All done!")
 
 

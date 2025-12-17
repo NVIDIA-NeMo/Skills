@@ -28,7 +28,6 @@ class BirdMetrics(BaseMetrics):
         self.moderate_results = []
         self.challenging_results = []
 
-
     def update(self, predictions):
         self.n += len(predictions)
 
@@ -45,15 +44,14 @@ class BirdMetrics(BaseMetrics):
 
             self.correct += pred["res"]
 
-
     def get_metrics(self):
         sr = self.simple_results
         mr = self.moderate_results
         cr = self.challenging_results
 
-        simple_acc = sum(sr)/len(sr) if sr else 0
-        moderate_acc = sum(mr)/len(mr) if mr else 0
-        challenging_acc = sum(cr)/len(cr) if cr else 0
+        simple_acc = sum(sr) / len(sr) if sr else 0
+        moderate_acc = sum(mr) / len(mr) if mr else 0
+        challenging_acc = sum(cr) / len(cr) if cr else 0
 
         acc = self.correct / self.n
 
@@ -62,14 +60,12 @@ class BirdMetrics(BaseMetrics):
             "simple_acc": simple_acc * 100,
             "moderate_acc": moderate_acc * 100,
             "challenging_acc": challenging_acc * 100,
-            "total_acc": acc * 100
+            "total_acc": acc * 100,
         }
         return metrics_dict
 
-
     def evaluations_to_print(self):
         return ["total"]
-
 
     def metrics_to_print(self):
         metrics_to_print = {
