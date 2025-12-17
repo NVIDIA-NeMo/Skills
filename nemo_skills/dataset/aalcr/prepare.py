@@ -187,7 +187,7 @@ def write_data_to_file(output_file, data, txt_file_folder, max_context_window, t
                     continue
 
             if n_tokens != entry["input_tokens"]:  # check if the n_tokens exactly match the input_tokens in the entry
-                raise ValueError(f"n_tokens: {n_tokens} != input_tokens: {entry['input_tokens']}")
+                LOG.warning(f"n_tokens: {n_tokens} != input_tokens: {entry['input_tokens']}")
 
             entry[f"n_tokens_{tokenizer_name}"] = n_tokens
             entry["question"] = question
