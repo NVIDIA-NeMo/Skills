@@ -288,7 +288,7 @@ def eval_livecodebench_pro(cfg):
         for sample in samples:
             if sample["problem_id"] in eval_grades["eval"]:
                 sample["graded_list"] = eval_grades["eval"][sample["problem_id"]]["graded_list"]
-            f.write(json.dumps(sample) + "\n")
+                f.write(json.dumps(sample) + "\n")
 
     # moving eval file to ensure metrics are recomputed
     shutil.move(jsonl_file[:-6] + "_eval_results.json", jsonl_file[:-6] + "_eval_results-saved.json")
