@@ -44,9 +44,6 @@ RUN git init "$IFBENCH_DIR" && cd "$IFBENCH_DIR" && git remote add origin "$IFBE
     git fetch --depth 1 origin "${IFBENCH_COMMIT}" && git reset --hard FETCH_HEAD
 RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 
-# birdbench
-RUN pip install func-timeout
-
 # removing on-the-fly installation in ifbench to avoid conflicts from parallel jobs
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
