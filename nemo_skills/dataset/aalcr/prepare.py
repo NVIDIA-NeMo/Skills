@@ -216,7 +216,6 @@ def prepare_aalcr_data(max_context_window, setup, tokenizer_name):
     assert extracted_text_zip_path.exists() and extracted_text_zip_path.is_file()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-
         zipfile.ZipFile(extracted_text_zip_path).extractall(tmpdir)
 
         txt_file_folder = Path(tmpdir) / "lcr"
