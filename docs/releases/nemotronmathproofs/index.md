@@ -14,7 +14,9 @@ culminating in Lean 4 proofs.
 The dataset integrates human-authored problems with systematically generated formalizations and solution traces:
 
 * **Natural Language Problems**: ~580k proof problems sourced from AoPS forums, Math StackExchange, and MathOverflow,
-  semantically deduplicated and decontaminated against popular benchmarks
+  filtered for proof-based problems that can be formulated as theorems, semantically deduplicated, and decontaminated
+  against popular benchmarks (removing ~40% of the original dataset).
+  See [our paper](https://arxiv.org/abs/2512.15489) for details on problem sources and the extraction pipeline.
 * **Formal Statements**: ~550k Lean 4 theorem statements generated via autoformalization
 * **Proof Trajectories**: ~900k verified reasoning traces and proofs
 
@@ -30,10 +32,14 @@ We compare a Qwen3-8B model fine-tuned on this dataset against Goedel-Prover-V2-
 
 | Model | pass@32 (no self-correction) | pass@32 (with self-correction) |
 |-------|------------------------------|-------------------------------|
-| Goedel-Prover-V2-8B | 84.6% | 86.7% |
-| Qwen3-8B SFT on Nemotron-Math-Proofs-v1 | 85.3% | 90.2% |
+| Goedel-Prover-V2-8B | 84.6% | 86.7%* |
+| Qwen3-8B SFT on Nemotron-Math-Proofs-v1 | 85.3% | 90.2%** |
 
-Nemotron-Nano-v3 (which includes this dataset in its training) achieves the following on miniF2F:
+\* Goedel-Prover-V2 uses 3 self-correction attempts (limited by context length).
+\*\* Our modified pipeline supports unbounded attempts; we use 8.
+
+Nemotron-Nano-v3 (which includes this dataset in its training) achieves the following on miniF2F
+(all evaluations use 8 self-correction attempts):
 
 | Model | pass@32 (no self-correction) | pass@32 (with self-correction) |
 |-------|------------------------------|-------------------------------|
@@ -53,7 +59,8 @@ Browse the sections below to see commands for autoformalization, theorem proving
 ### Autoformalization
 
 The autoformalization pipeline translates natural language theorems into Lean 4 formal statements using an iterative
-refinement process with backtranslation verification. The input is natural language math problems—see
+refinement process with backtranslation verification. The input is natural language math problems (the `problem` field
+from the [dataset](https://huggingface.co/datasets/nvidia/Nemotron-Math-Proofs-v1))—see
 [OpenMathReasoning dataset construction](../openmathreasoning/dataset.md) for how to prepare these.
 
 === "CLI"
@@ -128,7 +135,8 @@ The pipeline includes:
 ### Theorem Proving
 
 The prover pipeline generates proofs for formalized statements with iterative error correction.
-Input: formal statements from the autoformalization step.
+Input: formal statements from the autoformalization step (the `formal_statement` and `lean_header` fields
+from the [dataset](https://huggingface.co/datasets/nvidia/Nemotron-Math-Proofs-v1)).
 
 === "CLI"
 
@@ -199,7 +207,8 @@ The proving strategy includes:
 ### Model Training
 
 To fine-tune a model on the Nemotron-Math-Proofs dataset.
-Input: processed SFT data from the theorem proving step.
+Input: processed SFT data from the theorem proving step (the `messages` field from the
+[dataset](https://huggingface.co/datasets/nvidia/Nemotron-Math-Proofs-v1) contains verified proof conversations).
 
 === "CLI"
 
