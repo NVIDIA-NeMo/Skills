@@ -14,7 +14,7 @@
 import importlib
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import typer
 
@@ -23,17 +23,14 @@ from nemo_skills.dataset.utils import import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP, GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.utils.cluster import parse_kwargs
+from nemo_skills.pipeline.utils.commands import sandbox_command
 from nemo_skills.pipeline.utils.declarative import (
     Command,
     CommandGroup,
     HardwareConfig,
     Pipeline,
 )
-from nemo_skills.pipeline.utils.scripts import (
-    GenerationClientScript,
-    SandboxScript,
-    ServerScript,
-)
+from nemo_skills.pipeline.utils.server import get_free_port
 from nemo_skills.utils import (
     compute_chunk_ids,
     get_logger_name,
@@ -47,160 +44,118 @@ LOG = logging.getLogger(get_logger_name(__file__))
 # TODO: add num_jobs here for consistency with eval?
 
 
-def _create_job_unified(
-    models: List[str],
-    server_configs: List[Optional[Dict]],
-    generation_params: Dict,
+def _create_commandgroup_from_config(
+    generation_cmd: str,
+    server_config: Optional[Dict],
+    with_sandbox: bool,
+    sandbox_port: Optional[int],
     cluster_config: Dict,
     installation_command: Optional[str],
-    with_sandbox: bool,
+    get_server_command_fn: Callable,
     partition: Optional[str],
     keep_mounts_for_sandbox: bool,
     task_name: str,
     log_dir: str,
     sbatch_kwargs: Optional[Dict] = None,
     sandbox_env_overrides: Optional[List[str]] = None,
-) -> List[CommandGroup]:
+) -> CommandGroup:
+    """Create a CommandGroup from server_config.
+
+    Component ordering:
+    1. Server (if server_config provided)
+    2. Client command
+    3. Sandbox (if with_sandbox=True)
     """
-    Create CommandGroups for n models (unified for n=1 and n>1).
 
-    Structure:
-    - Group 0: Model 0 server + client + (optional sandbox)
-    - Group 1: Model 1 server (if n>1)
-    - Group N: Model N server (if n>1)
+    components = []
 
-    For n=1, returns a single-element list. The Pipeline automatically
-    optimizes single-group lists to efficient single-group jobs.
-
-    Args:
-        models: List of model paths
-        server_configs: List of server configurations (one per model, None if not hosting)
-        generation_params: Dict of parameters for generation (output_dir, etc.)
-        cluster_config: Cluster configuration
-        installation_command: Installation command to run before client
-        with_sandbox: Whether to include sandbox
-        partition: Slurm partition
-        keep_mounts_for_sandbox: Whether to keep mounts for sandbox
-        task_name: Name for the task
-        log_dir: Directory for logs
-        sbatch_kwargs: Additional sbatch kwargs
-
-    Returns:
-        List of CommandGroup objects (one per het group)
-    """
-    num_models = len(models)
-    groups = []
-    server_scripts = []  # Track server Script objects for cross-component references
-
-    for model_idx, (model_path, server_config) in enumerate(zip(models, server_configs)):
-        components = []
-        server_script = None
-
-        # Track GPU/node requirements for this group (from server config)
-        group_gpus = 0
-        group_nodes = 1
-
-        # 1. Add server if needed
-        if server_config is not None and int(server_config.get("num_gpus", 0)) > 0:
-            server_type = server_config["server_type"]
-            server_container = server_config.get("container") or cluster_config["containers"][server_type]
-
-            # Create ServerScript
-            server_script = ServerScript(
-                server_type=server_type,
-                model_path=server_config["model_path"],
-                cluster_config=cluster_config,
-                num_gpus=server_config["num_gpus"],
-                num_nodes=server_config["num_nodes"],
-                server_args=server_config.get("server_args", ""),
-                server_entrypoint=server_config.get("server_entrypoint"),
-                port=server_config.get("server_port"),
-                allocate_port=(server_config.get("server_port") is None),
-            )
-
-            # Set group GPU/node requirements from server config
-            group_gpus = server_config["num_gpus"]
-            group_nodes = server_config["num_nodes"]
-
-            server_cmd = Command(
-                script=server_script,
-                container=server_container,
-                name=f"{task_name}_model_{model_idx}_server" if num_models > 1 else f"{task_name}_server",
-            )
-            components.append(server_cmd)
-            server_scripts.append(server_script)
+    # 1. Add server if server_config is provided
+    if server_config is not None and int(server_config["num_gpus"]) > 0:
+        server_type = server_config["server_type"]
+        # Get container from server_config if provided, otherwise fall back to cluster config
+        if "container" in server_config:
+            server_container = server_config.pop("container")
         else:
-            # No server for this model (pre-hosted)
-            server_scripts.append(None)
+            server_container = cluster_config["containers"][server_type]
 
-        # 2. Group 0 gets the client and sandbox
-        if model_idx == 0:
-            # Create sandbox script (if with_sandbox)
-            sandbox_script = None
-            if with_sandbox:
-                sandbox_script = SandboxScript(
-                    cluster_config=cluster_config,
-                    keep_mounts=keep_mounts_for_sandbox,
-                    allocate_port=True,  # Always allocate port for sandbox
-                    env_overrides=sandbox_env_overrides,
-                )
+        # Call server command builder directly with cluster_config
+        cmd, num_tasks = get_server_command_fn(**server_config, cluster_config=cluster_config)
 
-                sandbox_cmd = Command(
-                    script=sandbox_script,
-                    container=cluster_config["containers"]["sandbox"],
-                    name=f"{task_name}_sandbox",
-                )
-                components.append(sandbox_cmd)
+        # Create metadata dict
+        metadata = {
+            "num_tasks": num_tasks,
+            "gpus": server_config["num_gpus"],
+            "nodes": server_config["num_nodes"],
+            "log_prefix": "server",
+        }
 
-            # Create client script with cross-component references to all servers
-            client_script = GenerationClientScript(
-                output_dir=generation_params["output_dir"],
-                input_file=generation_params.get("input_file"),
-                input_dir=generation_params.get("input_dir"),
-                extra_arguments=generation_params.get("extra_arguments", ""),
-                random_seed=generation_params.get("random_seed"),
-                chunk_id=generation_params.get("chunk_id"),
-                num_chunks=generation_params.get("num_chunks"),
-                preprocess_cmd=generation_params.get("preprocess_cmd"),
-                postprocess_cmd=generation_params.get("postprocess_cmd"),
-                wandb_parameters=generation_params.get("wandb_parameters"),
-                with_sandbox=with_sandbox,
-                script=generation_params.get("script", "nemo_skills.inference.generate"),
-                # Multi-server support (works for single and multi-model)
-                servers=server_scripts if server_scripts else None,
-                server_addresses_prehosted=generation_params.get("server_addresses_prehosted"),
-                model_names=generation_params.get("model_names"),
-                server_types=generation_params.get("server_types"),
-                sandbox=sandbox_script,
-                installation_command=installation_command,
-            )
+        server_cmd = Command(
+            command=cmd,
+            container=server_container,
+            gpus=server_config["num_gpus"],
+            nodes=server_config["num_nodes"],
+            name=task_name,
+            metadata=metadata,
+        )
+        components.append(server_cmd)
 
-            client_cmd = Command(
-                script=client_script,
-                container=cluster_config["containers"]["nemo-skills"],
-                name=f"{task_name}",
-            )
-            components.append(client_cmd)
+    # 2. Add main generation command
+    # Note: General cluster config env vars are automatically added by get_env_variables() in get_executor()
+    client_env = {}
+    if with_sandbox and sandbox_port is not None:
+        client_env["NEMO_SKILLS_SANDBOX_PORT"] = str(sandbox_port)
 
-        # Only create group if it has components (skip empty groups for pre-hosted models)
-        if components:
-            group_tasks = server_script.num_tasks if (server_config and server_script) else 1
+    client_cmd = Command(
+        command=generation_cmd,
+        container=cluster_config["containers"]["nemo-skills"],
+        name=task_name,
+        installation_command=installation_command,
+        metadata={
+            "log_prefix": "main",
+            "environment": client_env,
+        },
+    )
+    components.append(client_cmd)
 
-            group = CommandGroup(
-                commands=components,
-                hardware=HardwareConfig(
-                    partition=partition,
-                    num_gpus=group_gpus,
-                    num_nodes=group_nodes,
-                    num_tasks=group_tasks,
-                    sbatch_kwargs=sbatch_kwargs,
-                ),
-                name=f"{task_name}_model_{model_idx}_group" if num_models > 1 else task_name,
-                log_dir=log_dir,
-            )
-            groups.append(group)
+    # 3. Add sandbox if requested
+    if with_sandbox:
+        # Call sandbox command builder directly with cluster_config
+        cmd, metadata = sandbox_command(cluster_config=cluster_config, port=sandbox_port)
+        metadata["log_prefix"] = "sandbox"
 
-    return groups
+        # Apply user-specified environment overrides for the sandbox
+        if sandbox_env_overrides:
+            sandbox_env = metadata.get("environment", {})
+            for override in sandbox_env_overrides:
+                key, value = override.split("=", 1)
+                sandbox_env[key] = value
+            metadata["environment"] = sandbox_env
+
+        sandbox_cmd = Command(
+            command=cmd,
+            container=cluster_config["containers"]["sandbox"],
+            name=task_name,
+            metadata=metadata,
+        )
+
+        components.append(sandbox_cmd)
+
+    # Find maximum GPUs/nodes needed by any component for the HardwareConfig
+    # The job-level resource request must be the maximum across all components
+    max_gpus = max((comp.gpus or 0) for comp in components)
+    max_nodes = max((comp.nodes or 1) for comp in components)
+
+    return CommandGroup(
+        commands=components,
+        hardware=HardwareConfig(
+            partition=partition,
+            num_gpus=max_gpus,
+            num_nodes=max_nodes,
+            sbatch_kwargs=sbatch_kwargs,
+        ),
+        name=task_name,
+        log_dir=log_dir,
+    )
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -231,45 +186,21 @@ def generate(
         "If not specified, will use the registered generation module for the "
         "generation type (which is required in this case).",
     ),
-    model: List[str] = typer.Option(
+    model: str = typer.Option(None, help="Path to the model or model name in API"),
+    server_address: str = typer.Option(
+        None, help="Use ip:port for self-hosted models or the API url if using model providers"
+    ),
+    server_type: pipeline_utils.SupportedServers = typer.Option(..., help="Type of server to use"),
+    server_gpus: int = typer.Option(None, help="Number of GPUs to use if hosting the model"),
+    server_nodes: int = typer.Option(1, help="Number of nodes required for hosting LLM server"),
+    server_args: str = typer.Option("", help="Any extra arguments to pass to the server"),
+    server_entrypoint: str = typer.Option(
         None,
-        help="Path to the model(s). CLI: space-separated. Python API: string or list. "
-        "Single value broadcasts to all models for multi-model generation.",
+        help="Path to the entrypoint of the server. "
+        "If not specified, will use the default entrypoint for the server type.",
     ),
-    server_address: List[str] = typer.Option(
-        None,
-        help="Server address(es). CLI: space-separated. Python API: string or list. "
-        "Single value broadcasts to all models.",
-    ),
-    server_type: List[pipeline_utils.SupportedServers] = typer.Option(
-        ...,
-        help="Server type(s). CLI: space-separated. Python API: string or list. "
-        "Single value broadcasts to all models.",
-    ),
-    server_gpus: List[int] = typer.Option(
-        None,
-        help="Number of GPUs per model. CLI: space-separated ints. Python API: int or list. "
-        "Single value broadcasts to all models.",
-    ),
-    server_nodes: List[int] = typer.Option(
-        [1],
-        help="Number of nodes per model. CLI: space-separated ints. Python API: int or list. "
-        "Single value broadcasts to all models.",
-    ),
-    server_args: List[str] = typer.Option(
-        [""],
-        help="Server arguments per model. CLI: space-separated. Python API: string or list. "
-        "Single value broadcasts to all models.",
-    ),
-    server_entrypoint: List[str] = typer.Option(
-        None,
-        help="Server entrypoint(s). CLI: space-separated. Python API: string or list. "
-        "Single value broadcasts to all models.",
-    ),
-    server_container: List[str] = typer.Option(
-        None,
-        help="Container image(s). CLI: space-separated. Python API: string or list. "
-        "Single value broadcasts to all models.",
+    server_container: str = typer.Option(
+        None, help="Override container image for the hosted server (if server_gpus is set)"
     ),
     dependent_jobs: int = typer.Option(0, help="Specify this to launch that number of dependent jobs"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
@@ -365,18 +296,7 @@ def generate(
         None, help="Internal option to specify task dependencies.", hidden=True
     ),
 ):
-    """Generate LLM completions for single or multiple models.
-
-    Supports both single-model and multi-model generation through a unified interface.
-
-    Parameter Types:
-        Multi-model parameters (model, server_*, etc.) use List[T] type hints for Typer CLI
-        compatibility, but accept both scalars and lists when called from Python:
-        - CLI: --model m1 m2 (space-separated) → Typer converts to ["m1", "m2"]
-        - Python API: model="m1" or model=["m1", "m2"] → Both work (normalized internally)
-        - Single values broadcast to all models: server_gpus=8 → [8, 8, 8] for 3 models
-
-    Multi-model usage requires either --generation-type or --generation-module.
+    """Generate LLM completions for a given input file.
 
     Run `python -m nemo_skills.inference.generate --help` for other supported arguments
     (need to be prefixed with ++, since we use Hydra for that script).
@@ -386,42 +306,10 @@ def generate(
     LOG.info("Starting generation job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
 
-    # Normalize model configuration to list
-    models_list = pipeline_utils.normalize_models_config(model)
-    num_models = len(models_list)
-
-    LOG.info(f"Number of models: {num_models}")
-    for model_idx, model_name in enumerate(models_list):
-        LOG.info(f"  Model {model_idx}: {model_name}")
-
-    # Convert server_type enum values to strings
-    def convert_server_type_to_string(server_type):
-        return server_type.value if hasattr(server_type, "value") else server_type
-
-    if isinstance(server_type, list):
-        server_type = [convert_server_type_to_string(st) for st in server_type]
-    else:
-        server_type = convert_server_type_to_string(server_type)
-
-    # Normalize all server parameters to per-model lists
-    server_types_list = pipeline_utils.normalize_parameter(server_type, num_models, "server_type")
-    server_gpus_list = pipeline_utils.normalize_parameter(server_gpus, num_models, "server_gpus")
-    server_nodes_list = pipeline_utils.normalize_parameter(server_nodes, num_models, "server_nodes")
-    server_args_list = pipeline_utils.normalize_parameter(server_args, num_models, "server_args")
-    server_entrypoints_list = pipeline_utils.normalize_parameter(server_entrypoint, num_models, "server_entrypoint")
-    server_containers_list = pipeline_utils.normalize_parameter(server_container, num_models, "server_container")
-
-    if server_address is not None:
-        server_addresses_list = pipeline_utils.normalize_parameter(server_address, num_models, "server_address")
-    else:
-        server_addresses_list = [None] * num_models
-
-    # Validate multi-model requirements
-    if num_models > 1:
-        if generation_type is None and generation_module is None:
-            raise ValueError(
-                "Multi-model generation requires either --generation-type or --generation-module to be specified"
-            )
+    try:
+        server_type = server_type.value
+    except AttributeError:
+        pass
 
     if log_samples:
         wandb_parameters = {
@@ -436,6 +324,8 @@ def generate(
         )
     else:
         wandb_parameters = None
+
+    get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
 
     if random_seeds and num_random_seeds:
         raise ValueError("Cannot specify both random_seeds and num_random_seeds")
@@ -464,6 +354,8 @@ def generate(
         mount_map={output_dir: None},
         check_mounted_paths=check_mounted_paths,
     )
+
+    original_server_address = server_address
 
     if generation_module is not None and generation_type is not None:
         raise ValueError("Cannot specify both generation_module and generation_type. ")
@@ -515,36 +407,36 @@ def generate(
                 chunk_id=None,
             )
         for chunk_id in chunk_ids:
-            # Configure clients for each model
-            server_configs = []
-            server_addresses_resolved = []
-            # For single model: configure_client returns extra_args with server config appended
-            # For multi-model: use original extra_args (server config added as lists in get_generation_cmd)
-            extra_arguments = extra_arguments_original
+            # Configure client (same as before)
+            server_config, server_address, extra_arguments = pipeline_utils.configure_client(
+                model=model,
+                server_type=server_type,
+                server_address=original_server_address,
+                server_gpus=server_gpus,
+                server_nodes=server_nodes,
+                server_args=server_args,
+                server_entrypoint=server_entrypoint,
+                server_container=server_container,
+                extra_arguments=extra_arguments_original,
+                get_random_port=get_random_port,
+            )
 
-            for model_idx in range(num_models):
-                get_random_port_for_server = pipeline_utils.should_get_random_port(
-                    server_gpus_list[model_idx], exclusive
-                )
-
-                srv_config, srv_address, srv_extra_args = pipeline_utils.configure_client(
-                    model=models_list[model_idx],
-                    server_type=server_types_list[model_idx],
-                    server_address=server_addresses_list[model_idx],
-                    server_gpus=server_gpus_list[model_idx],
-                    server_nodes=server_nodes_list[model_idx],
-                    server_args=server_args_list[model_idx],
-                    server_entrypoint=server_entrypoints_list[model_idx],
-                    server_container=server_containers_list[model_idx],
-                    extra_arguments=extra_arguments_original if model_idx == 0 else "",
-                    get_random_port=get_random_port_for_server,
-                )
-                server_configs.append(srv_config)
-                server_addresses_resolved.append(srv_address)
-
-                # For single model, capture the extra_args with server config from configure_client
-                if model_idx == 0 and num_models == 1:
-                    extra_arguments = srv_extra_args
+            # Build generation command (same as before)
+            cmd = pipeline_utils.get_generation_cmd(
+                input_file=input_file,
+                input_dir=input_dir,
+                random_seed=seed,
+                output_dir=output_dir,
+                extra_arguments=extra_arguments,
+                chunk_id=chunk_id,
+                num_chunks=num_chunks,
+                preprocess_cmd=preprocess_cmd,
+                postprocess_cmd=postprocess_cmd,
+                wandb_parameters=wandb_parameters if seed_idx == 0 else None,
+                script=generation_module,
+                with_sandbox=with_sandbox,
+            )
+            cmd = pipeline_utils.wrap_python_path(cmd=cmd)
 
             # Base task name (shared across all dependent jobs in the chain)
             task_name = f"{expname}-rs{seed}" if seed is not None else expname
@@ -556,35 +448,22 @@ def generate(
             prev_job = None
 
             for dep_idx in range(dependent_jobs + 1):
-                # Build generation parameters dict for Script
-                generation_params = {
-                    "output_dir": output_dir,
-                    "input_file": input_file,
-                    "input_dir": input_dir,
-                    "extra_arguments": extra_arguments,
-                    "random_seed": seed,
-                    "chunk_id": chunk_id,
-                    "num_chunks": num_chunks,
-                    "preprocess_cmd": preprocess_cmd,
-                    "postprocess_cmd": postprocess_cmd,
-                    "wandb_parameters": wandb_parameters if seed_idx == 0 else None,
-                    "script": generation_module,
-                    # Multi-model specific fields
-                    "server_addresses_prehosted": server_addresses_resolved,
-                    "model_names": models_list,
-                    "server_types": server_types_list,
-                }
+                # Allocate sandbox port if needed
+                # This must be done BEFORE creating CommandGroup so client knows the port
+                if with_sandbox:
+                    current_sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
+                else:
+                    current_sandbox_port = None
 
-                # Create CommandGroup(s) using Script objects
-                # For multi-model, this creates multiple CommandGroups (one per model + one for client)
-                # For single-model, this creates a single CommandGroup
-                job_groups = _create_job_unified(
-                    models=models_list,
-                    server_configs=[cfg.copy() if cfg else None for cfg in server_configs],
-                    generation_params=generation_params,
+                # Create CommandGroup for this task
+                cmd_group = _create_commandgroup_from_config(
+                    generation_cmd=cmd,
+                    server_config=server_config.copy() if server_config else None,
+                    with_sandbox=with_sandbox,
+                    sandbox_port=current_sandbox_port,
                     cluster_config=cluster_config,
                     installation_command=installation_command,
-                    with_sandbox=with_sandbox,
+                    get_server_command_fn=generation_task.get_server_command_fn(),
                     partition=partition,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                     task_name=task_name,
@@ -608,16 +487,11 @@ def generate(
                     # Subsequent jobs in chain depend on previous job (use job object, not string)
                     job_deps = [prev_job]
 
-                # For multi-group jobs, use "groups" key; for single-group, use "group" key
                 job_spec = {
                     "name": internal_job_name,
+                    "group": cmd_group,
                     "dependencies": job_deps,
                 }
-                if len(job_groups) > 1:
-                    job_spec["groups"] = job_groups
-                else:
-                    job_spec["group"] = job_groups[0]
-
                 jobs.append(job_spec)
                 prev_job = job_spec  # Track for next iteration
 

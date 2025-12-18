@@ -44,7 +44,7 @@ EXCLUDED_DATASETS = {
     "mbpp",
     "mmau-pro",
     "asr-leaderboard",
-    "mrcr",
+    "aalcr",  # Has tokenization mismatch issues
     "audiobench",
     "librispeech-pc",
 }

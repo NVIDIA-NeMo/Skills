@@ -16,12 +16,12 @@ import json
 
 # running most things through subprocess since that's how it's usually used
 import subprocess
+from unittest.mock import MagicMock
 
 import pytest
 
 from nemo_skills.evaluation.metrics import ComputeMetrics
-from nemo_skills.pipeline.generate import _create_job_unified
-from nemo_skills.pipeline.utils.scripts import ServerScript
+from nemo_skills.pipeline.generate import _create_commandgroup_from_config
 
 
 def test_eval_gsm8k_api(tmp_path):
@@ -153,42 +153,36 @@ def test_generate_openai_format(tmp_path, format):
     assert len(data[1]["generation"]) > 0
 
 
-def test_server_metadata_from_num_tasks(tmp_path):
+def test_server_metadata_from_num_tasks():
     """Test that metadata dict is properly created from server command returning (cmd, num_tasks)."""
+    mock_server_fn = MagicMock(return_value=("python server.py", 4))
     cluster_config = {
-        "containers": {
-            "vllm": "apitest/vllm",
-            "nemo-skills": "apitest/nemo-skills",
-            "sandbox": "apitest/sandbox",
-        },
-        "executor": "none",
+        "containers": {"vllm": "nvcr.io/nvidia/nemo:vllm", "nemo-skills": "nvcr.io/nvidia/nemo:skills"},
+        "executor": "slurm",
     }
     server_config = {
         "server_type": "vllm",
         "num_gpus": 8,
         "num_nodes": 1,
-        "model_path": str(tmp_path / "model"),
+        "model_path": "/models/test",
         "server_port": 5000,
-        "server_args": "",
     }
-    generation_params = {"output_dir": "/tmp/out"}
 
-    groups = _create_job_unified(
-        models=[server_config["model_path"]],
-        server_configs=[server_config],
-        generation_params=generation_params,
+    cmd_group = _create_commandgroup_from_config(
+        generation_cmd="python generate.py",
+        server_config=server_config,
+        with_sandbox=False,
+        sandbox_port=None,
         cluster_config=cluster_config,
         installation_command=None,
-        with_sandbox=False,
+        get_server_command_fn=mock_server_fn,
         partition=None,
         keep_mounts_for_sandbox=False,
         task_name="test-task",
         log_dir="/tmp/logs",
     )
 
-    server_cmd = groups[0].commands[0]
-    assert isinstance(server_cmd.script, ServerScript)
-    assert server_cmd.script.num_tasks >= 1
-    assert server_cmd.script.num_gpus == server_config["num_gpus"]
-    assert groups[0].hardware.num_gpus == server_config["num_gpus"]
-    assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
+    server_cmd = cmd_group.commands[0]
+    assert isinstance(server_cmd.metadata, dict)
+    assert server_cmd.metadata["num_tasks"] == 4
+    assert server_cmd.metadata["gpus"] == 8

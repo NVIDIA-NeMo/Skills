@@ -106,40 +106,51 @@ def _sanitize_input_args_for_tool(args_dict, tool_name, hide_args):
     return {k: v for k, v in args_dict.items() if k not in hidden_keys}
 
 
+def _extract_item(item) -> Any:
+    """Extract a JSON-serializable value from a single content item.
+
+    Returns the parsed JSON if text is valid JSON, otherwise the raw text.
+    Raises ValueError if the item doesn't have a text attribute.
+    """
+    text = getattr(item, "text", None)
+    if not isinstance(text, str):
+        raise ValueError(f"Content item has no text attribute: {item}")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+
 def _extract_tool_result(result) -> Any:
     """Extract a JSON-serializable result from an MCP CallToolResult.
 
     Handles various response formats:
     - structuredContent: Returns directly if present
-    - content[].text: Parses as JSON or returns as string
+    - content[].text: Parses as JSON or returns as string (handles single or multiple items)
     - Fallback: Returns error dict to avoid returning raw CallToolResult objects
 
     This ensures the return value is always JSON-serializable.
     """
     # Check if tool explicitly returned an error - return generic message to avoid leaking details
-    is_error = getattr(result, "isError", False)
-    if is_error:
+    if getattr(result, "isError", False):
         return {"error": "Tool execution failed"}
 
     struct = getattr(result, "structuredContent", None)
     if struct is not None:
         return struct
-    # Fallback: try to parse first content item as JSON, else return text
+
     content = getattr(result, "content", None)
-    if content:
-        first = content[0]
-        text = getattr(first, "text", None)
-        if isinstance(text, str):
-            try:
-                return json.loads(text)
-            except Exception:
-                return text
-        LOG.error("Unsupported content type in tool result: %s", content)
+    if not content:
+        LOG.error("No content in tool result. Full result: %s", result)
+        return {"error": "No content returned from tool"}
+
+    try:
+        if len(content) == 1:
+            return _extract_item(content[0])
+        return [_extract_item(item) for item in content]
+    except ValueError as e:
+        LOG.error("Unsupported content type in tool result: %s", e)
         return {"error": "Unsupported content type returned from tool"}
-    # No content at all
-    # This could happen due to a tool failure (like hitting uncaught API limits)
-    LOG.error("No content in tool result. Full result: %s", result)
-    return {"error": "No content returned from tool"}
 
 
 def _wrap_call_tool_output_formatter(method):
