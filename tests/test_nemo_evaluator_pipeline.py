@@ -17,14 +17,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_skills.pipeline.nemo_evaluator import (
-    EvaluatorClientScript,
-)
-from nemo_skills.pipeline.nemo_evaluator import (
-    nemo_evaluator as nemo_evaluator_fn,
-)
+from nemo_skills.pipeline.nemo_evaluator import nemo_evaluator as nemo_evaluator_fn
 from nemo_skills.pipeline.utils.declarative import Command, CommandGroup
-from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
 @pytest.fixture
@@ -137,8 +131,9 @@ def test_no_servers_external_urls(
     # Verify client command
     client_cmd = group.commands[0]
     assert isinstance(client_cmd, Command)
-    assert client_cmd.name.startswith("evaluator-test-client-0")
-    assert isinstance(client_cmd.script, EvaluatorClientScript)
+    assert "evaluator-test-0" in client_cmd.name
+    assert client_cmd.gpus is None  # No GPUs when no hosted servers
+    assert client_cmd.nodes == 1
 
     # Verify hardware config
     assert group.hardware is not None
@@ -186,17 +181,16 @@ def test_main_server_hosted(
     server_cmd = group.commands[0]
     assert isinstance(server_cmd, Command)
     assert "server" in server_cmd.name
-    assert isinstance(server_cmd.script, ServerScript)
-    assert server_cmd.script.num_gpus == 8
-    assert server_cmd.script.log_prefix == "server"
-    assert server_cmd.script.port is not None
+    assert server_cmd.gpus == 8
+    assert server_cmd.nodes == 1
+    assert "port" in server_cmd.metadata
+    assert server_cmd.metadata["log_prefix"] == "server"
 
     # Verify client command
     client_cmd = group.commands[1]
     assert isinstance(client_cmd, Command)
     assert "client" in client_cmd.name
-    assert isinstance(client_cmd.script, EvaluatorClientScript)
-    assert callable(client_cmd.script.inline)  # Should be lambda for cross-component refs
+    assert callable(client_cmd.command)  # Should be lambda for cross-component refs
 
     # Verify hardware config (should use server GPUs)
     assert group.hardware.num_gpus == 8
@@ -241,16 +235,14 @@ def test_judge_server_hosted(
     judge_cmd = group.commands[0]
     assert isinstance(judge_cmd, Command)
     assert "judge-server" in judge_cmd.name
-    assert isinstance(judge_cmd.script, ServerScript)
-    assert judge_cmd.script.num_gpus == 32
-    assert judge_cmd.script.log_prefix == "judge-server"
+    assert judge_cmd.gpus == 32
+    assert judge_cmd.metadata["log_prefix"] == "judge-server"
 
     # Verify client command
     client_cmd = group.commands[1]
     assert isinstance(client_cmd, Command)
     assert "client" in client_cmd.name
-    assert isinstance(client_cmd.script, EvaluatorClientScript)
-    assert callable(client_cmd.script.inline)  # Should be lambda for cross-component refs
+    assert callable(client_cmd.command)  # Should be lambda for cross-component refs
 
     # Verify hardware config (should use judge server GPUs)
     assert group.hardware.num_gpus == 32
@@ -308,22 +300,19 @@ def test_both_servers_hosted_separate_groups(
     server_cmd = server_group.commands[0]
     assert isinstance(server_cmd, Command)
     assert "server" in server_cmd.name
-    assert isinstance(server_cmd.script, ServerScript)
-    assert server_cmd.script.num_gpus == 8
+    assert server_cmd.gpus == 8
 
     # Verify client command in first group
     client_cmd = server_group.commands[1]
     assert isinstance(client_cmd, Command)
     assert "client" in client_cmd.name
-    assert isinstance(client_cmd.script, EvaluatorClientScript)
-    assert callable(client_cmd.script.inline)  # Lambda for cross-component refs
+    assert callable(client_cmd.command)  # Lambda for cross-component refs
 
     # Verify judge server command in second group
     judge_cmd = judge_group.commands[0]
     assert isinstance(judge_cmd, Command)
     assert "judge-server" in judge_cmd.name
-    assert isinstance(judge_cmd.script, ServerScript)
-    assert judge_cmd.script.num_gpus == 32
+    assert judge_cmd.gpus == 32
 
 
 @patch("nemo_skills.pipeline.nemo_evaluator.Pipeline")

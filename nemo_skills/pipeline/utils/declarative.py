@@ -12,71 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
-import logging
-from contextlib import nullcontext
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union
-
-import nemo_run as run
-
-from nemo_skills.pipeline.utils import (
-    get_env_variables,
-    get_executor,
-    get_exp,
-    get_exp_handles,
-    get_registered_external_repo,
-    get_tunnel,
-    run_exp,
-    temporary_env_update,
-)
-from nemo_skills.pipeline.utils.exp import (
-    REUSE_CODE_EXP,
-    get_packaging_job_key,
-    tunnel_hash,
-)
-from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
-from nemo_skills.pipeline.utils.server import wrap_python_path
-from nemo_skills.utils import get_logger_name
-
 """
-Simplified declarative pipeline system using Command with run.Script objects.
+Simplified declarative pipeline system using only Command for all task types.
 
 Basic Example (Single job with multiple commands):
-    from nemo_skills.pipeline.utils.scripts import ServerScript, SandboxScript, GenerationClientScript
+    from nemo_skills.pipeline.utils.commands import vllm_server_command, sandbox_command
     from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
+    from nemo_skills.pipeline.utils.server import get_free_port
 
-    # Create Script objects for server and sandbox
-    # Scripts handle port allocation, cross-component references, and command building
-    server_script = ServerScript(
-        server_type="vllm",
-        model_path="Qwen/Qwen2.5-Math-7B-Instruct",
-        server_args="--tensor-parallel-size 1"
+    # Allocate ports for server and sandbox
+    server_port = get_free_port(strategy="random")
+    sandbox_port = get_free_port(strategy="random")
+
+    # Commands that run together in one SLURM job
+    # Note: Lambdas are needed for cross-component references (hostname_ref, meta_ref)
+    # which aren't resolved until het_group_index is assigned at pipeline execution time.
+    server_cmd, server_meta = vllm_server_command(cluster_cfg, model="Qwen/Qwen3-8B", port=server_port)
+    server = Command(command=server_cmd, gpus=8, name="server", metadata=server_meta)
+
+    sandbox_cmd, sandbox_meta = sandbox_command(cluster_cfg, port=sandbox_port)
+    sandbox = Command(command=sandbox_cmd, name="sandbox", metadata=sandbox_meta)
+
+    # This lambda is ESSENTIAL - server.hostname_ref() and meta_ref() aren't available until runtime
+    # Client needs NEMO_SKILLS_SANDBOX_PORT to connect to sandbox
+    client = Command(
+        command=lambda: f"curl {server.hostname_ref()}:{server.meta_ref('port')}/health",
+        name="client",
+        metadata={"environment": {"NEMO_SKILLS_SANDBOX_PORT": str(sandbox_port)}}
     )
-    sandbox_script = SandboxScript()
 
-    # Create generation client that references server and sandbox
-    # Cross-component references (hostname_ref, port) are resolved at runtime
-    client_script = GenerationClientScript(
-        output_dir="/results/inference",
-        extra_arguments="++prompt_config=math ++split=test",
-        servers=[server_script],  # References server for hostname/port
-        model_names=["Qwen/Qwen2.5-Math-7B-Instruct"],
-        server_types=["vllm"],
-        sandbox=sandbox_script,  # References sandbox for port
-        with_sandbox=True,
-    )
-
-    # Wrap Scripts in Commands with container and resource info
-    server = Command(script=server_script, container="vllm", name="server")
-    sandbox = Command(script=sandbox_script, container="nemo-skills", name="sandbox")
-    client = Command(script=client_script, container="nemo-skills", name="client")
-
-    # Group them together (they run in one SLURM job)
+    # Group them together
     inference_group = CommandGroup(
         commands=[server, sandbox, client],
-        hardware=HardwareConfig(partition="batch", num_gpus=1),
+        hardware=HardwareConfig(partition="batch"),
         name="inference"
     )
 
@@ -89,27 +57,13 @@ Basic Example (Single job with multiple commands):
     pipeline.run()
 
 Advanced Example (Multiple jobs with dependencies and heterogeneous components):
-    from nemo_skills.pipeline.utils.scripts import ServerScript, SandboxScript, GenerationClientScript
-    from nemo_run import Script
-
     log_dir = "/experiments/full_pipeline/logs"
-
-    # Job 1: Preprocessing with custom Script
-    @dataclass(kw_only=True)
-    class PreprocessScript(Script):
-        input_file: str
-        output_file: str
-
-        def __post_init__(self):
-            cmd = f"python preprocess.py --input {self.input_file} --output {self.output_file}"
-            self.inline = cmd
-            object.__setattr__(self, 'entrypoint', 'bash')
-
-    preprocess_script = PreprocessScript(
-        input_file="data.jsonl",
-        output_file="processed.jsonl"
+    # Job 1: Preprocessing
+    preprocess = Command(
+        command="python preprocess.py --input data.jsonl --output processed.jsonl",
+        gpus=0,
+        name="preprocess"
     )
-    preprocess = Command(script=preprocess_script, name="preprocess")
     prep_group = CommandGroup(
         commands=[preprocess],
         hardware=HardwareConfig(partition="cpu"),
@@ -118,76 +72,39 @@ Advanced Example (Multiple jobs with dependencies and heterogeneous components):
     )
     prep_job = {"name": "prep", "group": prep_group}
 
-    # Job 2: Two different model servers (HETEROGENEOUS SLURM job with 2 het groups)
-    # 8B model group
-    server_8b = ServerScript(
-        server_type="vllm",
-        model_path="Qwen/Qwen2.5-Math-7B-Instruct",
-        server_args="--tensor-parallel-size 1"
-    )
-    sandbox_8b = SandboxScript()
-    client_8b = GenerationClientScript(
-        output_dir="/results/eval_8b",
-        extra_arguments="++prompt_config=math",
-        servers=[server_8b],
-        model_names=["Qwen/Qwen2.5-Math-7B-Instruct"],
-        server_types=["vllm"],
-        sandbox=sandbox_8b,
-        with_sandbox=True,
-    )
+    # Job 2: Two different model servers (HETEROGENEOUS SLURM job with 2 het components)
+    # Allocate ports for each server/sandbox pair
+    from nemo_skills.pipeline.utils.server import get_free_port
+    server_8b_port = get_free_port(strategy="random")
+    sandbox_8b_port = get_free_port(strategy="random")
+    server_32b_port = get_free_port(strategy="random")
+    sandbox_32b_port = get_free_port(strategy="random")
 
-    group_8b = CommandGroup(
-        commands=[
-            Command(script=server_8b, container="vllm", name="server_8b"),
-            Command(script=sandbox_8b, container="nemo-skills", name="sandbox_8b"),
-            Command(script=client_8b, container="nemo-skills", name="eval_8b"),
-        ],
-        hardware=HardwareConfig(partition="batch", num_gpus=1),
-        name="eval_8b",
-        log_dir=log_dir
-    )
+    # Build commands with cluster_config
+    server_8b_cmd, server_8b_meta = vllm_server_command(cluster_config, model="Qwen/Qwen3-8B", port=server_8b_port)
+    sandbox_8b_cmd, sandbox_8b_meta = sandbox_command(cluster_config, port=sandbox_8b_port)
+    server_32b_cmd, server_32b_meta = vllm_server_command(cluster_config, model="Qwen/Qwen3-32B", port=server_32b_port)
+    sandbox_32b_cmd, sandbox_32b_meta = sandbox_command(cluster_config, port=sandbox_32b_port)
 
-    # 32B model group
-    server_32b = ServerScript(
-        server_type="vllm",
-        model_path="Qwen/Qwen2.5-Math-32B-Instruct",
-        server_args="--tensor-parallel-size 4"
-    )
-    sandbox_32b = SandboxScript()
-    client_32b = GenerationClientScript(
-        output_dir="/results/eval_32b",
-        extra_arguments="++prompt_config=math",
-        servers=[server_32b],
-        model_names=["Qwen/Qwen2.5-Math-32B-Instruct"],
-        server_types=["vllm"],
-        sandbox=sandbox_32b,
-        with_sandbox=True,
-    )
+    server_8b = Command(command=server_8b_cmd, gpus=8, name="server_8b", metadata=server_8b_meta)
+    sandbox_8b = Command(command=sandbox_8b_cmd, name="sandbox_8b", metadata=sandbox_8b_meta)
+    eval_8b = Command(command="python eval.py --model 8b", gpus=1, name="eval_8b")
 
-    group_32b = CommandGroup(
-        commands=[
-            Command(script=server_32b, container="vllm", name="server_32b"),
-            Command(script=sandbox_32b, container="nemo-skills", name="sandbox_32b"),
-            Command(script=client_32b, container="nemo-skills", name="eval_32b"),
-        ],
-        hardware=HardwareConfig(partition="batch", num_gpus=4),
-        name="eval_32b",
-        log_dir=log_dir
-    )
+    server_32b = Command(command=server_32b_cmd, gpus=8, name="server_32b", metadata=server_32b_meta)
+    sandbox_32b = Command(command=sandbox_32b_cmd, name="sandbox_32b", metadata=sandbox_32b_meta)
+    eval_32b = Command(command="python eval.py --model 32b", gpus=1, name="eval_32b")
+
+    group_8b = CommandGroup(commands=[server_8b, sandbox_8b, eval_8b], name="eval_8b", log_dir=log_dir)
+    group_32b = CommandGroup(commands=[server_32b, sandbox_32b, eval_32b], name="eval_32b", log_dir=log_dir)
 
     evals_job = {"name": "evals", "groups": [group_8b, group_32b], "dependencies": [prep_job]}
 
     # Job 3: Report generation (depends on both evaluations)
-    @dataclass(kw_only=True)
-    class ReportScript(Script):
-        output_file: str
-
-        def __post_init__(self):
-            self.inline = f"python generate_report.py --output {self.output_file}"
-            object.__setattr__(self, 'entrypoint', 'bash')
-
-    report_script = ReportScript(output_file="report.txt")
-    report = Command(script=report_script, name="report")
+    report = Command(
+        command="python generate_report.py --output report.txt",
+        gpus=0,
+        name="report"
+    )
     report_group = CommandGroup(commands=[report], name="report", log_dir=log_dir)
 
     # Create pipeline with dependency graph
@@ -204,56 +121,130 @@ Advanced Example (Multiple jobs with dependencies and heterogeneous components):
     pipeline.run()
 """
 
+import logging
+import shlex
+from contextlib import nullcontext
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+import nemo_run as run
+
+from nemo_skills.pipeline.utils import (
+    get_env_variables,
+    get_executor,
+    get_exp,
+    get_exp_handles,
+    get_tunnel,
+    run_exp,
+    temporary_env_update,
+)
+from nemo_skills.pipeline.utils.commands import wrap_command
+from nemo_skills.pipeline.utils.exp import (
+    REUSE_CODE_EXP,
+    get_packaging_job_key,
+    install_packages_wrap,
+    tunnel_hash,
+)
+from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
+from nemo_skills.pipeline.utils.packager import get_registered_external_repo
+from nemo_skills.utils import get_logger_name
+
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @dataclass
 class Command:
-    """Declarative command for running tasks in containers using run.Script objects.
+    """Declarative command for running tasks in containers.
 
-    Example:
-        server = ServerScript(server_type="vllm", model_path="/models/llama", ...)
-        Command(script=server, container="vllm", name="my_server")
+    The command can be either:
+    - A string: evaluated immediately
+    - A callable (lambda): evaluated lazily when the task is prepared
+
+    Lambdas are ONLY needed for cross-component references (hostname_ref, meta_ref).
+    The het_group_index isn't assigned until pipeline execution, so these must be lazy:
+        # Lambda is ESSENTIAL here - server.hostname_ref() and meta_ref() don't exist yet
+        client = Command(command=lambda: f"curl {server.hostname_ref()}:{server.meta_ref('port')}")
     """
 
-    script: run.Script
+    # Command can be a string or callable (lambda).
+    # Lambdas are primarily used for cross-component references (hostname_ref, meta_ref).
+    command: Union[str, Callable]
     container: str = "nemo-skills"
+    gpus: Optional[int] = None
+    nodes: int = 1
     name: str = "command"
+    working_dir: str = "/nemo_run/code"
+    env_vars: Dict[str, str] = field(default_factory=dict)
+    installation_command: Optional[str] = None
+    port: Optional[int] = None  # Can be set from metadata
+    metadata: Dict[str, any] = field(default_factory=dict)  # Stores metadata from command builders
+    het_group_index: Optional[int] = None  # Set per-job by Pipeline (not global)
 
-    def prepare_for_execution(self, cluster_config: Dict) -> Tuple[run.Script, Dict]:
-        """Prepare script for execution.
+    def __post_init__(self):
+        # Wrap plain strings with environment setup
+        if isinstance(self.command, str) and (self.env_vars or self.working_dir):
+            self.command = wrap_command(self.command, self.working_dir, self.env_vars)
+
+    def hostname_ref(self) -> str:
+        """Get hostname reference for hetjob cross-component communication."""
+        if self.het_group_index is None:
+            return "127.0.0.1"  # Local fallback
+        # For heterogeneous SLURM jobs, resolve nodelist to actual hostname
+        return f"$(scontrol show hostnames $SLURM_JOB_NODELIST_HET_GROUP_{self.het_group_index} | head -n1)"
+
+    def meta_ref(self, key: str) -> str:
+        """Get metadata value (like port). Fails if key not found."""
+        if key not in self.metadata:
+            raise KeyError(
+                f"Metadata key '{key}' not found in Command '{self.name}'. "
+                f"Available keys: {list(self.metadata.keys())}"
+            )
+        return str(self.metadata[key])
+
+    def prepare_for_execution(self, cluster_config: Dict) -> Tuple[str, Dict]:
+        """Prepare command for execution.
 
         This method:
-        1. Evaluates lazy commands (if script.inline is callable)
-        2. Builds execution config from Script fields
+        1. Evaluates callables (resolves cross-component references)
+        2. Wraps with installation_command if provided
 
         Returns:
-            Tuple of (Script_object, execution_config)
+            Tuple of (final_command, execution_config)
         """
-        runtime_metadata = {}
-
-        # If script.inline is callable (lazy command building), evaluate it now
-        if callable(self.script.inline):
-            result = self.script.inline()
+        # 1. Evaluate if callable (for cross-component references like hostname_ref)
+        if callable(self.command):
+            result = self.command()
 
             if isinstance(result, tuple):
-                evaluated_command, runtime_metadata = result
+                final_command, runtime_metadata = result
+                # Deep merge metadata, especially environment dict
+                for key, value in runtime_metadata.items():
+                    if key == "environment" and key in self.metadata:
+                        # Merge environment dicts instead of replacing
+                        self.metadata[key].update(value)
+                    else:
+                        self.metadata[key] = value
             else:
-                evaluated_command = result
+                final_command = result
+        else:
+            final_command = self.command
 
-            # Update script.inline with evaluated command
-            self.script.set_inline(evaluated_command)
+        # 2. Wrap with installation_command if provided
+        if self.installation_command:
+            final_command = install_packages_wrap(final_command, self.installation_command)
 
-        # Build execution config from Script fields
+        # 3. Build execution config from metadata
         execution_config = {
-            "log_prefix": getattr(self.script, "log_prefix", "main"),
-            "environment": runtime_metadata.get("environment", {}),
-            "mounts": None,  # Mounts not currently exposed by Scripts
-            "container": self.container,
+            "num_tasks": self.metadata.get("num_tasks", 1),
+            "num_gpus": self.metadata.get("gpus", self.gpus or 0),
+            "num_nodes": self.metadata.get("nodes", self.nodes),
+            "environment": self.metadata.get("environment", {}),
+            "log_prefix": self.metadata.get("log_prefix", "main"),
+            "mounts": self.metadata.get("mounts"),
+            "container": self.metadata.get("container", self.container),  # Use container from metadata if available
         }
 
-        # Return the Script object itself
-        return self.script, execution_config
+        return final_command, execution_config
 
     def get_name(self) -> str:
         return self.name
@@ -266,7 +257,6 @@ class HardwareConfig:
     partition: Optional[str] = None
     num_gpus: Optional[int] = None
     num_nodes: Optional[int] = None
-    num_tasks: Optional[int] = 1
     sbatch_kwargs: Optional[dict] = None
 
 
@@ -492,49 +482,16 @@ class Pipeline:
 
             return exp
 
-    def _prepare_command(self, command, cluster_config: Dict) -> Tuple[run.Script, Dict]:
-        """Prepare command for execution.
+    def _prepare_command(self, command, cluster_config: Dict) -> Tuple[str, Dict]:
+        """Prepare command and handle mpirun wrapping."""
+        final_cmd, exec_config = command.prepare_for_execution(cluster_config)
 
-        Returns:
-            Tuple of (Script_object, exec_config)
-        """
-        script, exec_config = command.prepare_for_execution(cluster_config)
-        # Only rewrite paths for "none" executor (native execution without containers)
-        # For "local" executor (Docker), paths should stay as /nemo_run/code/... since
-        # that's where the code is mounted inside the container
-        if cluster_config.get("executor") == "none":
-            script = self._rewrite_local_paths(script)
-        # Note: mpirun wrapping for multi-task scripts is handled by the executor
-        return script, exec_config
+        # Handle mpirun wrapping for non-SLURM executors
+        num_tasks = exec_config["num_tasks"]
+        if cluster_config["executor"] != "slurm" and num_tasks > 1:
+            final_cmd = f"mpirun --allow-run-as-root -np {num_tasks} bash -c {shlex.quote(final_cmd)}"
 
-    def _rewrite_local_paths(self, script: run.Script) -> run.Script:
-        """For executor='none', replace /nemo_run/code paths with local repo paths."""
-        nemo_repo = get_registered_external_repo("nemo_skills")
-        if nemo_repo is None:
-            return script
-
-        pkg_path = str(nemo_repo.path)
-        repo_root = str(nemo_repo.path.parent)
-
-        def _replace(cmd: str) -> str:
-            return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
-
-        inline_cmd = script.inline
-        if isinstance(inline_cmd, str):
-            script.set_inline(_replace(inline_cmd))
-        elif callable(inline_cmd):
-            original_inline = inline_cmd
-
-            def wrapped_inline():
-                result = original_inline()
-                if isinstance(result, tuple):
-                    cmd, metadata = result
-                    return _replace(cmd), metadata
-                return _replace(result)
-
-            script.set_inline(wrapped_inline)
-
-        return script
+        return final_cmd, exec_config
 
     def _resolve_container(self, exec_config: Dict, command, cluster_config: Dict) -> str:
         """Resolve container name to image path."""
@@ -556,7 +513,6 @@ class Pipeline:
         total_het_groups: int,
         overlap: bool,
         dependencies: Optional[List] = None,
-        job_name_override: Optional[str] = None,
     ):
         """Create executor with optional environment update."""
         env_context = (
@@ -569,10 +525,10 @@ class Pipeline:
             return get_executor(
                 cluster_config=cluster_config,
                 container=container_image,
-                num_nodes=hardware.num_nodes if hardware and hardware.num_nodes is not None else 1,
-                tasks_per_node=hardware.num_tasks if hardware and hardware.num_tasks is not None else 1,
-                gpus_per_node=hardware.num_gpus if hardware and hardware.num_gpus is not None else 0,
-                job_name=job_name_override if job_name_override else command.name,
+                num_nodes=exec_config["num_nodes"],
+                tasks_per_node=exec_config["num_tasks"],
+                gpus_per_node=exec_config["num_gpus"],
+                job_name=command.name,
                 log_dir=log_dir,
                 log_prefix=exec_config["log_prefix"],
                 partition=hardware.partition if hardware else None,
@@ -611,105 +567,81 @@ class Pipeline:
         if log_dir is None:
             raise ValueError(f"CommandGroup '{groups[0].name}' must have log_dir set, or provide it to pipeline.run()")
 
-        scripts: List[run.Script] = []
+        commands: List[str] = []
         executors: List = []
         het_group_indices: List[int] = []
 
-        # Assign het_group_index values before evaluating any commands so cross-references
-        # (e.g., hostname_ref) see the correct indices regardless of processing order.
-        for het_idx, group in enumerate(groups):
-            for command in group.commands:
-                command.script.het_group_index = het_idx if heterogeneous else None
-
-        # Prepare commands once and collect runtime data for a second pass where we
-        # construct executors. This ensures all scripts have resolved cross-references.
-        prepared_commands: List[Dict] = []
+        # In heterogeneous jobs, collect environment from all commands for cross-component refs
         shared_env_vars: Dict[str, str] = {}
+        if heterogeneous:
+            for het_idx, group in enumerate(groups):
+                for command in group.commands:
+                    _, exec_config_probe = command.prepare_for_execution(cluster_config)
+                    shared_env_vars.update(exec_config_probe.get("environment", {}))
 
+        # Share packager across executors for efficiency (single-group only)
+        shared_packager = None
+
+        # Build commands and executors
         for het_idx, group in enumerate(groups):
             has_multiple_components = len(group.commands) > 1
             total_het_groups = (
                 len(groups) if heterogeneous else (len(group.commands) if has_multiple_components else 1)
             )
 
-            for comp_idx, command in enumerate(group.commands):
-                script, exec_config = self._prepare_command(command, cluster_config)
-
-                if isinstance(script.inline, str):
-                    if cluster_config.get("executor") not in ("none", "local"):
-                        script.set_inline(wrap_python_path(script.inline))
-
-                prepared_commands.append(
-                    {
-                        "het_idx": het_idx,
-                        "comp_idx": comp_idx,
-                        "group": group,
-                        "command": command,
-                        "script": script,
-                        "exec_config": exec_config,
-                        "total_het_groups": total_het_groups,
-                        "overlap": len(group.commands) > 1,
-                    }
-                )
-
-                if heterogeneous:
-                    shared_env_vars.update(exec_config.get("environment", {}))
-
-        # Share packager across executors for efficiency (single-group only)
-        shared_packager = None
-
-        # Build commands and executors using prepared data
-        for entry in prepared_commands:
-            het_idx = entry["het_idx"]
-            comp_idx = entry["comp_idx"]
-            group = entry["group"]
-            command = entry["command"]
-            script = entry["script"]
-            exec_config = entry["exec_config"]
-            total_het_groups = entry["total_het_groups"]
-            overlap = entry["overlap"]
-
-            scripts.append(script)
-
-            # Merge shared environment for heterogeneous jobs
-            if heterogeneous and shared_env_vars:
-                exec_config["environment"].update(shared_env_vars)
-
-            # Resolve container and create executor
-            container_image = self._resolve_container(exec_config, command, cluster_config)
-            # Pass external dependencies only to the first executor (SLURM doesn't support per-component dependencies in hetjobs)
-            exec_dependencies = external_deps if (het_idx == 0 and comp_idx == 0) else None
-
-            # Always use group.name for SLURM job name (consistent across all components)
-            # The group name is set to task_name in generate.py, without component suffixes
-            # Component names (like {task_name}_server, {task_name}_sandbox) are only used for log_prefix
-            job_name_for_slurm = group.name
-
-            executor = self._create_executor(
-                command,
-                exec_config,
-                container_image,
-                cluster_config,
-                log_dir,
-                group.hardware,
-                heterogeneous,
-                het_idx if heterogeneous else comp_idx,
-                total_het_groups,
-                overlap,
-                dependencies=exec_dependencies,
-                job_name_override=job_name_for_slurm,
+            # For single-group jobs with multiple components, allow job-level GPU override for sbatch allocation
+            job_level_gpus = (
+                group.hardware.num_gpus if (not heterogeneous and has_multiple_components and group.hardware) else None
             )
 
-            # Share packager across executors for single-group jobs
-            if not heterogeneous:
-                if comp_idx == 0 and het_idx == 0:
-                    shared_packager = executor.packager
+            for comp_idx, command in enumerate(group.commands):
+                # Assign het_group_index ONLY for heterogeneous jobs (per-job, not global)
+                # Non-heterogeneous jobs use localhost, so het_group_index should remain None
+                if heterogeneous:
+                    command.het_group_index = het_idx
                 else:
-                    executor.packager = shared_packager
+                    command.het_group_index = None
 
-            executors.append(executor)
-            if heterogeneous:
-                het_group_indices.append(het_idx)
+                final_cmd, exec_config = self._prepare_command(command, cluster_config)
+                commands.append(final_cmd)
+
+                # Adjust GPU allocation (first component gets job-level GPUs for sbatch) for single-group jobs
+                exec_config["num_gpus"] = exec_config["num_gpus"] or 0
+                if (not heterogeneous) and (comp_idx == 0) and (job_level_gpus is not None):
+                    exec_config["num_gpus"] = job_level_gpus
+
+                # Merge shared environment for heterogeneous jobs
+                if heterogeneous and shared_env_vars:
+                    exec_config["environment"].update(shared_env_vars)
+
+                # Resolve container and create executor
+                container_image = self._resolve_container(exec_config, command, cluster_config)
+                # Pass external dependencies only to the first executor (SLURM doesn't support per-component dependencies in hetjobs)
+                exec_dependencies = external_deps if (het_idx == 0 and comp_idx == 0) else None
+                executor = self._create_executor(
+                    command,
+                    exec_config,
+                    container_image,
+                    cluster_config,
+                    log_dir,
+                    group.hardware,
+                    heterogeneous,
+                    het_idx if heterogeneous else comp_idx,
+                    total_het_groups,
+                    (len(group.commands) > 1),
+                    dependencies=exec_dependencies,
+                )
+
+                # Share packager across executors for single-group jobs
+                if not heterogeneous:
+                    if comp_idx == 0 and het_idx == 0:
+                        shared_packager = executor.packager
+                    else:
+                        executor.packager = shared_packager
+
+                executors.append(executor)
+                if heterogeneous:
+                    het_group_indices.append(het_idx)
 
         # For heterogeneous jobs, set het_group_indices on the first executor
         if heterogeneous and executors:
@@ -744,7 +676,13 @@ class Pipeline:
                 # If reuse_code=False, clear cache
                 REUSE_CODE_EXP.pop(tunnel_hash(tunnel), None)
 
-        # Note: Path replacements for executor="none" are no longer needed with Script interface
+        # Handle executor="none" path replacements (single-group only)
+        if (not heterogeneous) and cluster_config["executor"] == "none":
+            for idx in range(len(commands)):
+                commands[idx] = commands[idx].replace(
+                    "/nemo_run/code/nemo_skills", str(get_registered_external_repo("nemo_skills").path)
+                )
+                commands[idx] = commands[idx].replace("/nemo_run/code", "./")
 
         # Ray metadata handling
         if self.with_ray and cluster_config["executor"] == "slurm":
@@ -755,24 +693,19 @@ class Pipeline:
         # Add to experiment and return task ID
         # Note: Internal dependencies (task handles from same experiment) go to exp.add()
         #       External dependencies (SLURM job IDs from other experiments) go to executor
-        if (not heterogeneous) and len(scripts) == 1:
-            # Single script - pass directly to exp.add()
-            if metadata:
-                scripts[0].metadata = metadata
+        if (not heterogeneous) and len(commands) == 1:
             task_id = exp.add(
-                scripts[0],
+                run.Script(inline=commands[0], metadata=metadata),
                 executor=executors[0],
                 name="nemo-run",
                 dependencies=internal_deps,
             )
         else:
-            # Multiple scripts or heterogeneous job
-            # Apply metadata to first script only
-            if metadata:
-                scripts[0].metadata = metadata
-
             task_id = exp.add(
-                scripts,
+                [
+                    run.Script(inline=cmd, metadata=(metadata if idx == 0 else None))
+                    for idx, cmd in enumerate(commands)
+                ],
                 executor=executors,
                 name="nemo-run",
                 dependencies=internal_deps,
