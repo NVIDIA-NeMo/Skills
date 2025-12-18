@@ -19,9 +19,11 @@ class BirdMetrics(BaseMetrics):
     """Metrics for BIRD text-to-SQL evaluation."""
 
     def __init__(self):
+        super().__init__()
         self.reset()
 
     def reset(self):
+        super().reset()
         self.n = 0
         self.correct = 0
         self.simple_results = []
