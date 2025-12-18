@@ -20,7 +20,7 @@ We used [Qwen2.5-32B-Instruct](https://huggingface.co/Qwen/Qwen2.5-32B-Instruct)
 
 
 
-See our [paper](paper.pdf) to learn more details!
+See our [paper](https://arxiv.org/abs/2512.15489) to learn more details!
 
 
 ## How to reproduce our results
