@@ -308,7 +308,12 @@ class BaseModel:
                             continue
 
                         LOG.error(f"BadRequestError after {max_retries} retries, returning empty response: {e}")
-                        return {"generation": "", "reasoning_content": "", "num_generated_tokens": 0}
+                        return {
+                            "generation": "",
+                            "reasoning_content": "",
+                            "num_generated_tokens": 0,
+                            "serialized_output": [],
+                        }
                     else:
                         raise e
 
