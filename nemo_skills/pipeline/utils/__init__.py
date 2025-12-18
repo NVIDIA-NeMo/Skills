@@ -49,8 +49,6 @@ from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_generation_cmd,
     get_remaining_jobs,
-    normalize_models_config,
-    normalize_parameter,
     wrap_cmd,
 )
 from nemo_skills.pipeline.utils.mounts import (

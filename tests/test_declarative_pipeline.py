@@ -16,7 +16,6 @@
 
 import json
 import os
-from typing import Callable, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,83 +26,127 @@ from nemo_skills.pipeline.run_cmd import run_cmd
 from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
 
 
-class DummyScript:
-    """Minimal run.Script stand-in for unit tests."""
-
-    def __init__(self, inline: str | Callable | None = "echo test"):
-        self.inline = inline
-        self.log_prefix = "main"
-        self.metadata = {}
-        self.het_group_index: Optional[int] = None
-
-    def set_inline(self, inline):
-        self.inline = inline
-
-    def hostname_ref(self) -> str:
-        if self.het_group_index is None:
-            return "127.0.0.1"
-        return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
-
-
-def make_command(*, inline: str | Callable | None = "echo test", name: str = "cmd", script: DummyScript | None = None):
-    """Helper to build Command objects with DummyScript instances."""
-    script_obj = script or DummyScript(inline=inline)
-    return Command(script=script_obj, name=name)
-
-
 class TestCommand:
-    """Tests for the new Script-based Command wrapper."""
+    """Test Command class functionality."""
 
-    def test_command_basic_script(self):
-        cmd = make_command(inline="echo hello", name="test")
+    def test_command_basic_string(self):
+        """Test creating a Command with a simple string."""
+        cmd = Command(command="echo hello", name="test")
         assert cmd.name == "test"
         assert cmd.container == "nemo-skills"
-        assert cmd.script.inline == "echo hello"
+        assert cmd.gpus is None
+        assert cmd.nodes == 1
+
+    def test_command_with_metadata(self):
+        """Test Command with metadata passed separately."""
+        cmd = Command(command="echo hello", name="server", metadata={"port": 8080, "log_prefix": "server"})
+        assert cmd.metadata["port"] == 8080
+        assert cmd.metadata["log_prefix"] == "server"
+        # Command gets wrapped with working_dir by default
+        assert "echo hello" in cmd.command
+
+    def test_command_with_callable(self):
+        """Test Command with callable that returns tuple."""
+
+        def make_cmd():
+            return ("echo world", {"port": 5000})
+
+        cmd = Command(command=make_cmd, name="dynamic")
+        assert callable(cmd.command)
+        assert cmd.name == "dynamic"
 
     def test_command_prepare_for_execution_string(self):
-        cmd = make_command(inline="python script.py", name="test")
+        """Test prepare_for_execution with string command."""
+        cmd = Command(command="python script.py", gpus=2, name="test")
         cluster_config = {"executor": "local", "containers": {}}
 
-        script_obj, exec_config = cmd.prepare_for_execution(cluster_config)
+        final_cmd, exec_config = cmd.prepare_for_execution(cluster_config)
 
-        assert script_obj.inline == "python script.py"
-        assert exec_config["log_prefix"] == "main"
-        assert exec_config["environment"] == {}
+        assert "python script.py" in final_cmd
+        assert exec_config["num_gpus"] == 2
+        assert exec_config["num_nodes"] == 1
+        assert exec_config["num_tasks"] == 1
 
     def test_command_prepare_for_execution_callable(self):
-        script = DummyScript(inline=lambda: "echo test")
-        cmd = make_command(name="test", script=script)
+        """Test prepare_for_execution with callable command."""
+
+        def make_cmd():
+            return "echo test"
+
+        cmd = Command(command=make_cmd, name="test")
         cluster_config = {"executor": "local", "containers": {}}
 
-        script_obj, _ = cmd.prepare_for_execution(cluster_config)
-        assert script_obj.inline == "echo test"
+        final_cmd, exec_config = cmd.prepare_for_execution(cluster_config)
+
+        assert final_cmd == "echo test"
 
     def test_command_prepare_for_execution_callable_with_metadata(self):
-        def make_cmd():
-            return ("echo metadata", {"environment": {"VAR": "value"}})
+        """Test prepare_for_execution with callable returning tuple."""
 
-        script = DummyScript(inline=make_cmd)
-        cmd = make_command(name="test", script=script)
+        def make_cmd():
+            return ("echo metadata", {"num_tasks": 4, "environment": {"VAR": "value"}})
+
+        cmd = Command(command=make_cmd, name="test")
         cluster_config = {"executor": "local", "containers": {}}
 
-        _, exec_config = cmd.prepare_for_execution(cluster_config)
+        final_cmd, exec_config = cmd.prepare_for_execution(cluster_config)
 
+        assert final_cmd == "echo metadata"
+        assert exec_config["num_tasks"] == 4
         assert exec_config["environment"]["VAR"] == "value"
 
-    def test_command_hostname_ref_none(self):
-        script = DummyScript()
-        cmd = make_command(name="test", script=script)
+    def test_command_meta_ref(self):
+        """Test meta_ref for accessing metadata."""
+        cmd = Command(command="echo test", name="server", metadata={"port": 8080, "host": "localhost"})
 
-        assert script.hostname_ref() == "127.0.0.1"
-        assert cmd.get_name() == "test"
+        assert cmd.meta_ref("port") == "8080"
+        assert cmd.meta_ref("host") == "localhost"
+
+    def test_command_meta_ref_missing_key(self):
+        """Test meta_ref with missing key raises KeyError."""
+        cmd = Command(command="echo test", name="test")
+
+        with pytest.raises(KeyError, match="Metadata key 'port' not found"):
+            cmd.meta_ref("port")
+
+    def test_command_hostname_ref_none(self):
+        """Test hostname_ref returns localhost when het_group_index is None."""
+        cmd = Command(command="echo test", name="test")
+        assert cmd.het_group_index is None
+        assert cmd.hostname_ref() == "127.0.0.1"
 
     def test_command_hostname_ref_heterogeneous(self):
-        script = DummyScript()
-        script.het_group_index = 2
-        make_command(name="test", script=script)
+        """Test hostname_ref returns SLURM variable when het_group_index is set."""
+        cmd = Command(command="echo test", name="test")
+        cmd.het_group_index = 2
 
-        hostname = script.hostname_ref()
-        assert "${SLURM_MASTER_NODE_HET_GROUP_2" in hostname
+        hostname = cmd.hostname_ref()
+        assert "$SLURM_JOB_NODELIST_HET_GROUP_2" in hostname
+        assert "scontrol" in hostname
+
+    def test_command_with_installation_command(self):
+        """Test Command with installation_command."""
+        cmd = Command(command="python script.py", installation_command="pip install package", name="test")
+        cluster_config = {"executor": "local", "containers": {}}
+
+        final_cmd, _ = cmd.prepare_for_execution(cluster_config)
+
+        # Installation command should be wrapped around the main command
+        assert "pip install package" in final_cmd
+        assert "python script.py" in final_cmd
+
+    def test_command_env_vars_wrapping(self):
+        """Test that env_vars and working_dir are applied to string commands."""
+        cmd = Command(
+            command="python script.py",
+            env_vars={"MY_VAR": "value"},
+            working_dir="/custom/path",
+            name="test",
+        )
+
+        # The command should be wrapped with env setup
+        assert "export MY_VAR=value" in cmd.command
+        assert "cd /custom/path" in cmd.command
 
 
 class TestCommandGroup:
@@ -111,8 +154,8 @@ class TestCommandGroup:
 
     def test_commandgroup_basic(self):
         """Test creating a basic CommandGroup."""
-        cmd1 = make_command(inline="echo 1", name="cmd1")
-        cmd2 = make_command(inline="echo 2", name="cmd2")
+        cmd1 = Command(command="echo 1", name="cmd1")
+        cmd2 = Command(command="echo 2", name="cmd2")
 
         group = CommandGroup(commands=[cmd1, cmd2], name="test_group")
 
@@ -122,7 +165,7 @@ class TestCommandGroup:
 
     def test_commandgroup_with_hardware(self):
         """Test CommandGroup with HardwareConfig."""
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         hardware = HardwareConfig(partition="batch", sbatch_kwargs={"time_min": "01:00:00"}, num_gpus=8)
 
         group = CommandGroup(commands=[cmd], hardware=hardware, name="gpu_group")
@@ -133,7 +176,7 @@ class TestCommandGroup:
 
     def test_commandgroup_with_log_dir(self):
         """Test CommandGroup with log_dir."""
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], log_dir="/logs/test", name="group")
 
         assert group.log_dir == "/logs/test"
@@ -144,7 +187,7 @@ class TestPipeline:
 
     def test_pipeline_with_single_job(self):
         """Test Pipeline with single job."""
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group")
         cluster_config = {"executor": "local", "containers": {}}
 
@@ -161,10 +204,10 @@ class TestPipeline:
 
     def test_pipeline_with_jobs(self):
         """Test Pipeline with jobs parameter (full format with dependencies)."""
-        cmd1 = make_command(inline="echo 1", name="cmd1")
+        cmd1 = Command(command="echo 1", name="cmd1")
         group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/logs")
 
-        cmd2 = make_command(inline="echo 2", name="cmd2")
+        cmd2 = Command(command="echo 2", name="cmd2")
         group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/logs")
 
         job1 = {"name": "job1", "group": group1}
@@ -189,7 +232,7 @@ class TestPipeline:
 
     def test_pipeline_with_run_after(self):
         """Test Pipeline with run_after parameter."""
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group")
         cluster_config = {"executor": "local", "containers": {}}
 
@@ -205,7 +248,7 @@ class TestPipeline:
 
     def test_pipeline_with_run_after_list(self):
         """Test Pipeline with run_after as list."""
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group")
         cluster_config = {"executor": "local", "containers": {}}
 
@@ -221,7 +264,7 @@ class TestPipeline:
 
     def test_pipeline_cluster_config_passed_directly(self):
         """Test that cluster_config is passed directly (no more string resolution)."""
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group")
         cluster_config = {"executor": "local", "containers": {}}
 
@@ -256,7 +299,7 @@ class TestPipelineExecution:
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
         # Create pipeline
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group", log_dir="/logs")
         pipeline = Pipeline(
             name="test", cluster_config=mock_config, jobs=[{"name": "job1", "group": group}], skip_hf_home_check=True
@@ -286,10 +329,10 @@ class TestPipelineExecution:
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
         # Create pipeline with internal dependencies
-        cmd1 = make_command(inline="echo 1", name="cmd1")
+        cmd1 = Command(command="echo 1", name="cmd1")
         group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/logs")
 
-        cmd2 = make_command(inline="echo 2", name="cmd2")
+        cmd2 = Command(command="echo 2", name="cmd2")
         group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/logs")
 
         job1 = {"name": "job1", "group": group1, "dependencies": []}
@@ -332,7 +375,7 @@ class TestPipelineExecution:
         mock_exp.add.return_value = "handle"
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group", log_dir="/logs")
         pipeline = Pipeline(name="test", cluster_config=mock_config, jobs=[{"name": "job1", "group": group}])
 
@@ -348,7 +391,7 @@ class TestPipelineExecution:
         mock_config = {"executor": "slurm", "containers": {}}
         mock_env_vars.return_value = {}  # No HF_HOME
 
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group", log_dir="/logs")
 
         # Should raise in __init__ now, not run()
@@ -363,7 +406,7 @@ class TestPipelineExecution:
         mock_env_vars.return_value = {"HF_HOME": "/hf"}
         mock_is_mounted.return_value = False
 
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group", log_dir="/logs")
 
         # Should raise in __init__ now, not run()
@@ -389,8 +432,8 @@ class TestHetGroupIndices:
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
         # Create single-group job with multiple components
-        cmd1 = make_command(inline="echo 1", name="cmd1")
-        cmd2 = make_command(inline="echo 2", name="cmd2")
+        cmd1 = Command(command="echo 1", name="cmd1")
+        cmd2 = Command(command="echo 2", name="cmd2")
         group = CommandGroup(commands=[cmd1, cmd2], name="group", log_dir="/logs")
 
         pipeline = Pipeline(
@@ -399,10 +442,10 @@ class TestHetGroupIndices:
         pipeline.run(dry_run=True)
 
         # Both commands should have None het_group_index (localhost communication)
-        assert cmd1.script.het_group_index is None
-        assert cmd2.script.het_group_index is None
-        assert cmd1.script.hostname_ref() == "127.0.0.1"
-        assert cmd2.script.hostname_ref() == "127.0.0.1"
+        assert cmd1.het_group_index is None
+        assert cmd2.het_group_index is None
+        assert cmd1.hostname_ref() == "127.0.0.1"
+        assert cmd2.hostname_ref() == "127.0.0.1"
 
     @patch("nemo_skills.pipeline.utils.declarative.get_exp")
     @patch("nemo_skills.pipeline.utils.declarative.get_env_variables")
@@ -419,10 +462,10 @@ class TestHetGroupIndices:
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
         # Create multi-group heterogeneous job
-        cmd1 = make_command(inline="echo 1", name="cmd1")
+        cmd1 = Command(command="echo 1", name="cmd1")
         group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/logs")
 
-        cmd2 = make_command(inline="echo 2", name="cmd2")
+        cmd2 = Command(command="echo 2", name="cmd2")
         group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/logs")
 
         jobs = [{"name": "hetjob", "groups": [group1, group2]}]
@@ -430,10 +473,10 @@ class TestHetGroupIndices:
         pipeline.run(dry_run=True)
 
         # Commands should have het_group_index 0 and 1
-        assert cmd1.script.het_group_index == 0
-        assert cmd2.script.het_group_index == 1
-        assert "SLURM_MASTER_NODE_HET_GROUP_0" in cmd1.script.hostname_ref()
-        assert "SLURM_MASTER_NODE_HET_GROUP_1" in cmd2.script.hostname_ref()
+        assert cmd1.het_group_index == 0
+        assert cmd2.het_group_index == 1
+        assert "$SLURM_JOB_NODELIST_HET_GROUP_0" in cmd1.hostname_ref()
+        assert "$SLURM_JOB_NODELIST_HET_GROUP_1" in cmd2.hostname_ref()
 
     @patch("nemo_skills.pipeline.utils.declarative.get_exp")
     @patch("nemo_skills.pipeline.utils.declarative.get_env_variables")
@@ -450,16 +493,16 @@ class TestHetGroupIndices:
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
         # Create two separate heterogeneous jobs
-        cmd1 = make_command(inline="echo 1", name="cmd1")
+        cmd1 = Command(command="echo 1", name="cmd1")
         group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/logs")
 
-        cmd2 = make_command(inline="echo 2", name="cmd2")
+        cmd2 = Command(command="echo 2", name="cmd2")
         group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/logs")
 
-        cmd3 = make_command(inline="echo 3", name="cmd3")
+        cmd3 = Command(command="echo 3", name="cmd3")
         group3 = CommandGroup(commands=[cmd3], name="group3", log_dir="/logs")
 
-        cmd4 = make_command(inline="echo 4", name="cmd4")
+        cmd4 = Command(command="echo 4", name="cmd4")
         group4 = CommandGroup(commands=[cmd4], name="group4", log_dir="/logs")
 
         jobs = [
@@ -470,10 +513,10 @@ class TestHetGroupIndices:
         pipeline.run(dry_run=True)
 
         # Both jobs should have het_group_index starting from 0
-        assert cmd1.script.het_group_index == 0
-        assert cmd2.script.het_group_index == 1
-        assert cmd3.script.het_group_index == 0  # Starts from 0 again!
-        assert cmd4.script.het_group_index == 1
+        assert cmd1.het_group_index == 0
+        assert cmd2.het_group_index == 1
+        assert cmd3.het_group_index == 0  # Starts from 0 again!
+        assert cmd4.het_group_index == 1
 
 
 class TestDependencyResolution:
@@ -493,7 +536,7 @@ class TestDependencyResolution:
         mock_exp.add.return_value = "handle"
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group", log_dir="/logs")
 
         jobs = [{"name": "job", "group": group, "dependencies": None}]
@@ -516,7 +559,7 @@ class TestDependencyResolution:
         mock_exp.add.return_value = "handle"
         mock_get_exp.return_value.__enter__.return_value = mock_exp
 
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group", log_dir="/logs")
 
         pipeline = Pipeline(
@@ -546,7 +589,7 @@ class TestErrorHandling:
     def test_commandgroup_missing_log_dir(self):
         """Test that CommandGroup without log_dir raises error during execution."""
         mock_config = {"executor": "none", "containers": {}}
-        cmd = make_command(inline="echo test", name="cmd")
+        cmd = Command(command="echo test", name="cmd")
         group = CommandGroup(commands=[cmd], name="group")  # No log_dir
 
         pipeline = Pipeline(name="test", cluster_config=mock_config, jobs=[{"name": "job1", "group": group}])
@@ -583,14 +626,14 @@ class TestJobDependencies:
                     }
 
                     # Job 1 and Job 2: independent
-                    cmd1 = make_command(inline="echo job1", name="job1")
+                    cmd1 = Command(command="echo job1", name="job1")
                     group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/tmp/logs")
 
-                    cmd2 = make_command(inline="echo job2", name="job2")
+                    cmd2 = Command(command="echo job2", name="job2")
                     group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/tmp/logs")
 
                     # Job 3: depends on both job1 and job2
-                    cmd3 = make_command(inline="echo job3", name="job3")
+                    cmd3 = Command(command="echo job3", name="job3")
                     group3 = CommandGroup(commands=[cmd3], name="group3", log_dir="/tmp/logs")
 
                     job1_spec = {"name": "job1", "group": group1}
@@ -672,11 +715,11 @@ class TestJobDependencies:
                         }
 
                         # Job 1: depends on external experiment
-                        cmd1 = make_command(inline="echo job1", name="job1")
+                        cmd1 = Command(command="echo job1", name="job1")
                         group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/tmp/logs")
 
                         # Job 2: depends on job1 (internal) AND external experiment
-                        cmd2 = make_command(inline="echo job2", name="job2")
+                        cmd2 = Command(command="echo job2", name="job2")
                         group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/tmp/logs")
 
                         job1_spec = {
@@ -888,38 +931,35 @@ class TestGenerateEnvironmentVariables:
                     # Debug: print what we captured
                     print(f"Captured env updates: {env_updates_captured}")
 
-                    # Verify both sandbox and client environment variables are captured
-                    assert len(env_updates_captured) >= 2, (
-                        f"Expected at least 2 environment updates (sandbox + client), got {len(env_updates_captured)}: {env_updates_captured}"
-                    )
-
-                    # Find the sandbox and client environment updates
-                    sandbox_env = None
+                    # Find the client and sandbox environment updates
                     client_env = None
+                    sandbox_env = None
+
                     for env_update in env_updates_captured:
-                        if "LISTEN_PORT" in env_update and "NGINX_PORT" in env_update:
-                            sandbox_env = env_update
                         if "NEMO_SKILLS_SANDBOX_PORT" in env_update:
                             client_env = env_update
+                        elif "LISTEN_PORT" in env_update and "NGINX_PORT" in env_update:
+                            sandbox_env = env_update
 
-                    # Verify sandbox got LISTEN_PORT and NGINX_PORT
-                    assert sandbox_env is not None, (
-                        f"LISTEN_PORT/NGINX_PORT not set for sandbox command: {env_updates_captured}"
-                    )
-                    assert sandbox_env["LISTEN_PORT"] == sandbox_env["NGINX_PORT"], (
-                        f"LISTEN_PORT and NGINX_PORT should match: {sandbox_env}"
-                    )
-
-                    # Verify client got NEMO_SKILLS_SANDBOX_PORT
+                    # Verify client got NEMO_SKILLS_SANDBOX_PORT (old behavior: exp.py line 493)
+                    # This is the key fix - ensuring sandbox port is passed to client
                     assert client_env is not None, (
-                        f"NEMO_SKILLS_SANDBOX_PORT not set for client command: {env_updates_captured}"
+                        f"Client environment update not found. Captured updates: {env_updates_captured}\n"
+                        f"This means NEMO_SKILLS_SANDBOX_PORT was not set for the client command, "
+                        f"so the Sandbox class cannot connect to the sandbox server."
+                    )
+                    assert "NEMO_SKILLS_SANDBOX_PORT" in client_env, (
+                        "NEMO_SKILLS_SANDBOX_PORT not set for client command"
                     )
 
-                    # Verify the ports match between sandbox and client
-                    assert client_env["NEMO_SKILLS_SANDBOX_PORT"] == sandbox_env["LISTEN_PORT"], (
-                        f"Sandbox port mismatch: client has {client_env['NEMO_SKILLS_SANDBOX_PORT']}, "
-                        f"sandbox has {sandbox_env['LISTEN_PORT']}"
+                    # Verify sandbox got its environment vars (old behavior: exp.py lines 525-538)
+                    assert sandbox_env is not None, (
+                        f"Sandbox environment update not found. Captured: {env_updates_captured}"
                     )
+                    assert "LISTEN_PORT" in sandbox_env, "LISTEN_PORT not set for sandbox"
+                    assert "NGINX_PORT" in sandbox_env, "NGINX_PORT not set for sandbox"
+
+                    # This test verifies the fix works end-to-end through the actual generate() function
 
 
 if __name__ == "__main__":
