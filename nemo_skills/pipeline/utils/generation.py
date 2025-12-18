@@ -17,7 +17,6 @@ import os
 import shlex
 import subprocess
 from collections import defaultdict
-from typing import Any, List, Optional, Union
 
 from nemo_skills.pipeline.utils.cluster import get_tunnel
 from nemo_skills.pipeline.utils.mounts import get_unmounted_path
@@ -25,81 +24,6 @@ from nemo_skills.pipeline.utils.server import get_free_port
 from nemo_skills.utils import get_chunked_filename, get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-def normalize_models_config(
-    model: Optional[Union[str, List[str]]],
-) -> List[str]:
-    """
-    Normalize model specification to list.
-
-    Handles both scalar and list inputs:
-    - CLI (Typer): Converts single values to single-element lists automatically
-    - Python API: Accepts both strings and lists
-
-    Args:
-        model: Model path(s) - string or list from Python API, list from CLI
-
-    Returns:
-        List of model paths
-
-    Raises:
-        ValueError: If model is None or empty
-    """
-    if model is None:
-        raise ValueError("Must specify --model")
-
-    # Handle string (Python API with single model)
-    if isinstance(model, str):
-        return [model]
-
-    # Handle list
-    if len(model) == 0:
-        raise ValueError("Must specify --model")
-    return list(model)
-
-
-def normalize_parameter(
-    param_value: Any,
-    num_models: int,
-    param_name: str,
-) -> List[Any]:
-    """
-    Normalize a parameter to a per-model list.
-
-    Handles both scalar and list inputs for flexible usage:
-    - CLI (Typer): Converts single values to single-element lists automatically
-    - Python API: Accepts both scalars and lists directly
-
-    Broadcast logic:
-    - Scalar value: Broadcast to all models [value] * num_models
-    - Single-element list: Broadcast to all models
-    - Multi-element list: Must match num_models exactly
-
-    Args:
-        param_value: Parameter value (scalar or list)
-        num_models: Number of models
-        param_name: Name of parameter (for error messages)
-
-    Returns:
-        List of parameter values (one per model)
-
-    Raises:
-        ValueError: If list length doesn't match num_models
-    """
-    if not isinstance(param_value, list):
-        return [param_value] * num_models
-
-    if len(param_value) == num_models:
-        return list(param_value)
-
-    if len(param_value) == 1:
-        return param_value * num_models
-
-    raise ValueError(
-        f"Parameter {param_name} has {len(param_value)} values but {num_models} models specified. "
-        f"Must be 1 value (broadcast) or {num_models} values (per-model)."
-    )
 
 
 def get_chunked_rs_filename(
@@ -370,20 +294,8 @@ def get_generation_cmd(
     wandb_parameters=None,
     with_sandbox: bool = False,
     script: str = "nemo_skills.inference.generate",
-    # Optional: for multi-model generation
-    server_addresses: Optional[List[str]] = None,
-    model_names: Optional[List[str]] = None,
-    server_types: Optional[List[str]] = None,
 ):
-    """Construct the generation command for language model inference.
-
-    Supports both single-model and multi-model generation. For multi-model:
-    - server_addresses: List of server addresses (one per model)
-    - model_names: List of model names (one per model)
-    - server_types: List of server types (one per model)
-
-    For single-model, server config is passed via extra_arguments.
-    """
+    """Construct the generation command for language model inference."""
     if input_file is None and input_dir is None:
         raise ValueError("Either input_file or input_dir must be provided.")
     if input_file is not None and input_dir is not None:
@@ -401,7 +313,6 @@ def get_generation_cmd(
         output_dir=output_dir,
         random_seed=random_seed,
     )
-    # Preamble for generation commands: added at executor/declarative level
     cmd = "export HYDRA_FULL_ERROR=1 && "
 
     # Separate Hydra config args (--config-*) from override args (++)
@@ -416,22 +327,6 @@ def get_generation_cmd(
     else:
         # It's a module name, use -m flag
         cmd += f"python -m {script} {hydra_config_args} {common_args} "
-
-    # Add multi-model configuration if provided
-    if server_addresses is not None and model_names is not None:
-        num_models = len(model_names)
-        if num_models > 1:
-            # Multi-model: pass server configuration as lists
-            model_names_arg = ",".join(model_names)
-            cmd += f"++server.model=[{model_names_arg}] "
-
-            server_types_arg = ",".join(server_types)
-            cmd += f"++server.server_type=[{server_types_arg}] "
-
-            server_addresses_arg = ",".join(server_addresses)
-            cmd += f"++server.base_url=[{server_addresses_arg}] "
-        # For n=1: server config is already in extra_arguments from configure_client
-
     job_end_cmd = ""
 
     if random_seed is not None and input_dir is None:  # if input_dir is not None, we default to greedy generations
