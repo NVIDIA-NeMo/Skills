@@ -60,7 +60,7 @@ def read_tables_file(base_dir):
         assert os.path.exists(sqlite_file)
 
         with sqlite3.connect(os.path.join(full_db_dir, db_dir + ".sqlite")) as con:
-            con.text_factory = lambda b: b.decode(errors = "ignore")
+            con.text_factory = lambda b: b.decode(errors="ignore")
             for line in con.iterdump():
                 if line[:6] == "INSERT":
                     line = line.replace("\n", " ")
