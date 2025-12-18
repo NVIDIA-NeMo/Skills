@@ -15,10 +15,13 @@ import argparse
 import json
 import logging
 import os
+import tempfile
+import zipfile
 from pathlib import Path
 
 import tiktoken
 from datasets import load_dataset
+from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
 from nemo_skills.utils import get_logger_name, setup_logging
@@ -203,24 +206,27 @@ def write_data_to_file(output_file, data, txt_file_folder, max_context_window, t
 def prepare_aalcr_data(max_context_window, setup, tokenizer_name):
     # download the provied extracted text files
     # https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR/resolve/main/extracted_text/AA-LCR_extracted-text.zip
+    extracted_text_zip_path = hf_hub_download(
+        repo_id="ArtificialAnalysis/AA-LCR",
+        filename="extracted_text/AA-LCR_extracted-text.zip",
+        repo_type="dataset",
+    )
 
-    if not os.path.exists(Path(__file__).absolute().parent / "lcr"):
-        import zipfile
+    extracted_text_zip_path = Path(extracted_text_zip_path)
+    assert extracted_text_zip_path.exists() and extracted_text_zip_path.is_file()
 
-        import wget
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zipfile.ZipFile(extracted_text_zip_path).extractall(tmpdir)
 
-        wget.download(URL)
-        zipfile.ZipFile("AA-LCR_extracted-text.zip").extractall(Path(__file__).absolute().parent)
-        os.remove("AA-LCR_extracted-text.zip")
+        txt_file_folder = Path(tmpdir) / "lcr"
+        assert txt_file_folder.exists() and txt_file_folder.is_dir()
 
-    txt_file_folder = Path(__file__).absolute().parent / "lcr"
+        dataset = load_dataset("ArtificialAnalysis/AA-LCR")["test"]
 
-    dataset = load_dataset("ArtificialAnalysis/AA-LCR")["test"]
+        data_dir = Path(__file__).absolute().parent
+        output_file = data_dir / f"{setup}.jsonl"
 
-    data_dir = Path(__file__).absolute().parent
-
-    output_file = data_dir / f"{setup}.jsonl"
-    write_data_to_file(output_file, dataset, txt_file_folder, max_context_window, tokenizer_name)
+        write_data_to_file(output_file, dataset, txt_file_folder, max_context_window, tokenizer_name)
 
 
 if __name__ == "__main__":
