@@ -345,7 +345,7 @@ ns eval \
      --benchmarks=birdbench \
      --output_dir=<OUTPUT_DIR> \
      --installation_command="pip install func_timeout" \
-     ++inference.tokens_to_generate=10000 "
+     ++inference.tokens_to_generate=10000 \
      ++inference.temperature=0.6 \
      ++inference.top_p=0.95 \
      ++inference.top_k=20 \

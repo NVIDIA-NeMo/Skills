@@ -41,14 +41,7 @@ import json
 import sqlite3
 
 
-def load_json(dir):
-    with open(dir, "r") as j:
-        contents = json.loads(j.read())
-    return contents
-
-
 def execute_sql(predicted_sql, ground_truth, db_path):
-    conn = sqlite3.connect(db_path)
     # Connect to the database
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()

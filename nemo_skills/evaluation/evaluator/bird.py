@@ -100,7 +100,10 @@ class BirdEvaluator(BaseEvaluator):
         for line, output in zip(lines, outputs, strict=True):
             line["res"] = output["res"]
 
-        jdump(lines, infile, mode="wt")
+        # Write to temp file first and then replace the original to avoid data corruption
+        temp_file = self.config.input_file + "-tmp"
+        jdump(lines, temp_file, mode="wt")
+        os.replace(temp_file, self.config.input_file)
 
     async def eval_single(self, data_point: dict):
         i = data_point["id"]
@@ -108,21 +111,17 @@ class BirdEvaluator(BaseEvaluator):
 
         # Retrieve pred and gt
         predicted_sql = self._extract_answer(data_point["generation"])
-        data_point["pred"] = predicted_sql
         ground_truth = data_point["gt_sql"]
         db_place = str(Path(self.eval_config.db_path, db_id, db_id + ".sqlite"))
 
         try:
             # Wait for result with timeout as set
             res = func_timeout(self.eval_config.timeout, execute_sql, args=(predicted_sql, ground_truth, db_place))
-            data_point["sql_result"] = "finish"
         except FunctionTimedOut:
             logging.info(f"SQL execution timed out for entry {i}")
             res = 0
-            data_point["sql_result"] = "timeout"
         except Exception as e:
             logging.info(f"SQL execution failed for entry {i}:\n{e}")
             res = 0
-            data_point["sql_result"] = "exception"
         result = {"res": res}
         return result
