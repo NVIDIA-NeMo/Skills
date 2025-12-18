@@ -50,7 +50,8 @@ def load_json(dir):
 def execute_sql(predicted_sql, ground_truth, db_path):
     conn = sqlite3.connect(db_path)
     # Connect to the database
-    with conn.cursor() as cursor:
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
         cursor.execute(predicted_sql)
         predicted_res = cursor.fetchall()
         cursor.execute(ground_truth)
