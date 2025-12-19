@@ -17,22 +17,6 @@ import os
 from pathlib import Path
 
 from datasets import load_dataset
-from huggingface_hub import HfApi
-
-
-def _get_hf_token():
-    token = os.getenv("HF_TOKEN")
-    if token:
-        return token
-
-    # noinspection PyBroadException
-    try:
-        api = HfApi()
-        api.whoami()
-        return None
-    except Exception:
-        return None
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download and prepare nvidia/compute-eval dataset")
@@ -45,7 +29,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    dataset = load_dataset("nvidia/compute-eval", args.release, token=_get_hf_token())
+    dataset = load_dataset("nvidia/compute-eval", args.release, token=os.getenv("HF_TOKEN", None))
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
 
