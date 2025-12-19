@@ -22,7 +22,6 @@ from func_timeout import FunctionTimedOut, func_timeout
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.utils import nested_dataclass
 
-
 # The following code was modified from:
 # https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py
 
