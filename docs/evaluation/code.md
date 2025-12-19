@@ -328,6 +328,38 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 - Benchmark is defined in [`nemo_skills/dataset/livecodebench-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/livecodebench-pro/__init__.py)
 - Original benchmark source is [here](https://github.com/GavinZhengOI/LiveCodeBench-Pro).
 
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `test_24q4.jsonl`, `test_25q1.jsonl`, `test_25q2.jsonl`, and `test_25q3.jsonl` files.
+
+```
+ns prepare_data livecodebench-pro --cluster=local --data_dir=/workspace/ns-data
+```
+
+Note that, this will also download testcases and keep it at `/workspace/ns-data/livecodebench-pro/testcases`. We recommend using a cluster data location since the testcases directory would be of size 15GB.
+
+#### Running the Evaluation
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=livecodebench-pro \
+    --split=test_25q2 \
+    --data_dir=/workspace/ns-data/livecodebench-pro \
+    --output_dir=<OUTPUT_DIR> \
+    ++parse_reasoning=True \
+    ++eval_config.test_file=/workspace/ns-data/livecodebench-pro/test_25q2.jsonl \
+    ++eval_config.test_dir=/workspace/ns-data/livecodebench-pro/testcases \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=65536
+```
+
 ### human-eval
 
 - Benchmark is defined in [`nemo_skills/dataset/human-eval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/human-eval/__init__.py)
