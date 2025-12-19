@@ -23,6 +23,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from nemo_skills.mcp.tool_manager import FatalToolError
 from nemo_skills.mcp.tool_providers import MCPClientTool
 
 logger = logging.getLogger(__name__)
@@ -40,18 +41,43 @@ mcp = FastMCP(name="tavily")
 TAVILY_API_KEY: str | None = None
 
 EXCLUDE_DOMAINS: list[str] | None = None
+MAX_NUM_RESULTS: int = 20
+
+STATUS_CODE_ERRORS = {
+    429: "Search rate limit exceeded",
+    500: "Search request failed due to server error",
+    502: "Search request failed due to bad gateway",
+    503: "Search request failed due to service unavailable",
+    504: "Search request failed due to gateway timeout",
+}
+
+# These errors should stop the process - no point continuing with bad credentials
+FATAL_STATUS_CODES = {401, 403}
 
 
 ## See docs https://docs.tavily.com/documentation/api-reference/endpoint/search
 ## There is also a hosted MCP that can be used instead of this tool: https://github.com/tavily-ai/tavily-mcp?tab=readme-ov-file#remote-mcp-server
-@mcp.tool(name="tavily-search")
+@mcp.tool(name="web-search")
 async def answer(
     query: Annotated[str, Field(description="Search query.")],
     exclude_domains: Annotated[list[str], Field(description="Domains to exclude from the search.")] = [],
+    num_results: Annotated[int, Field(description="Number of results to return.")] = 10,
+    answer_type: Annotated[
+        str,
+        Field(
+            description='Type of results to return. Choose "answer" for a concise answer or "results" for a list of results.'
+        ),
+    ] = "answer",
 ):
-    """Get a summary of search results from the web using Tavily."""
+    """Search the web for a query"""
 
     api_url = "https://api.tavily.com/search"
+
+    # Validate inputs
+    if answer_type not in ["answer", "results"]:
+        return {"error": "Invalid answer type. Choose 'answer' or 'results'."}
+    if num_results > MAX_NUM_RESULTS:
+        return {"error": f"Number of results must be less than or equal to {MAX_NUM_RESULTS}."}
 
     headers = {
         "Authorization": f"Bearer {TAVILY_API_KEY}",
@@ -63,16 +89,38 @@ async def answer(
         # "auto_parameters": False,
         "search_depth": "basic",
         "include_answer": "basic",  ## or advanced.
+        "num_results": num_results,
         # this should be statically set to the domains we want to exclude
         "exclude_domains": exclude_domains,
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=payload)
-        if response.status_code != 200:
-            return {"error": response.json()["error"]}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(api_url, headers=headers, json=payload)
+    except httpx.TimeoutException:
+        return {"error": "Search request timed out"}
+    except httpx.RequestError:
+        return {"error": "Search request failed due to network error"}
 
-    result = response.json()["answer"]
+    # Handle non-200 responses
+    if response.status_code in FATAL_STATUS_CODES:
+        return {"error": "Search authentication failed", "fatal": True}
+    if response.status_code != 200:
+        error_msg = STATUS_CODE_ERRORS.get(
+            response.status_code, f"Search request failed with status {response.status_code}"
+        )
+        return {"error": error_msg}
+
+    # Parse response
+    try:
+        data = response.json()
+    except json.JSONDecodeError:
+        return {"error": "Search returned invalid response"}
+
+    # Extract result
+    result = data.get(answer_type)
+    if result is None:
+        return {"error": "Search response is missing required field"}
 
     return result
 
@@ -99,7 +147,7 @@ class TavilySearchTool(MCPClientTool):
                     "args": ["-m", "nemo_skills.mcp.servers.tavily_search_tool"],
                 },
                 "hide_args": {
-                    "tavily-search": ["exclude_domains"],
+                    "web-search": ["exclude_domains", "num_results", "answer_type"],
                 },
                 "exclude_domains_config": None,
             }
@@ -120,7 +168,15 @@ class TavilySearchTool(MCPClientTool):
         if not hasattr(self, "exclude_domains"):
             raise ValueError("exclude_domains_config is not set")
         merged_extra["exclude_domains"] = self.exclude_domains
+        for key in ["num_results", "answer_type"]:
+            if key in self._config:
+                merged_extra[key] = self._config[key]
         result = await self._client.call_tool(tool=tool_name, args=arguments, extra_args=merged_extra)
+
+        # Check for fatal errors that should stop the process
+        if isinstance(result, dict) and result.get("fatal"):
+            raise FatalToolError(result.get("error", "Fatal tool error"))
+
         return result
 
 

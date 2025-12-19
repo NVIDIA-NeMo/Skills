@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "code"
-METRICS_TYPE = "livecodebench_pro"
-EVAL_SPLIT = "test_25q2"
-GENERATION_ARGS = "++prompt_config=eval/livecodebench/cpp_codegen ++eval_type=livecodebench_pro"
+# Configuration for proving formal theorems in Lean 4.
+# This file is tailored for tasks that involve constructing and verifying proofs
+# of theorems within the Lean 4 formal system.
+
+user: |-
+  Please include appropriate headers and wrap the code in ```lean4 and ```.

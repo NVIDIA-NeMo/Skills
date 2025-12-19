@@ -12,20 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-todo: We are working on providing the data files that are necessary to run IOI25 evaluation.
-"""
+# Configuration for proving formal theorems in Lean 4.
+# This file is tailored for tasks that involve constructing and verifying proofs
+# of theorems within the Lean 4 formal system.
 
-# settings that define how evaluation should be done by default (all can be changed from cmdline)
-GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=ioi"
-DATASET_GROUP = "code"
-METRICS_TYPE = "ioi"
+user: |-
+  The code passed the compilation but it looks like the lean4 code is different from the natural language problem.
 
-# environment variables required by this benchmark
-SANDBOX_ENV_VARS = [
-    "UWSGI_PROCESSES=1024",
-    "UWSGI_CPU_AFFINITY=8",
-    "UWSGI_CHEAPER=1023",
-    "NUM_WORKERS=1",
-    "STATEFUL_SANDBOX=0",
-]
+  {reason}
+
+  Please try again to formalize the problem and make sure the lean4 code is consistent with the natural language problem.
+
+  Again, please include appropriate headers and wrap the code in ```lean4 and ```.

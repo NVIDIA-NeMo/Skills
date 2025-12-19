@@ -31,6 +31,16 @@ from typing import Any, Dict, Iterable, List
 from nemo_skills.mcp.utils import locate
 
 
+class FatalToolError(Exception):
+    """Exception for fatal tool errors that should stop the entire process.
+
+    Use this for unrecoverable errors like authentication failures where
+    continuing would be pointless (e.g., invalid API keys).
+    """
+
+    pass
+
+
 class Tool(ABC):
     """Abstract base for module-based tools.
 

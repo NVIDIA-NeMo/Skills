@@ -33,8 +33,7 @@ EXCLUDED_DATASETS = {
     "livebench_coding",
     "livecodebench-pro",
     "livecodebench-cpp",
-    "ioi24",
-    "ioi25",
+    "ioi",
     "bfcl_v3",
     "bfcl_v4",
     "swe-bench",
@@ -43,7 +42,10 @@ EXCLUDED_DATASETS = {
     "human-eval-infilling",
     "mbpp",
     "mmau-pro",
+    "asr-leaderboard",
     "aalcr",  # Has tokenization mismatch issues
+    "audiobench",
+    "librispeech-pc",
 }
 
 
