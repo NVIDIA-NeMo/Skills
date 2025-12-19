@@ -129,19 +129,39 @@ class AudioProcessor:
 
     Example usage:
         model = get_model(server_type="vllm", ...)
-        audio_model = AudioProcessor(model, AudioProcessorConfig(data_dir="/path/to/audio"))
+        audio_model = AudioProcessor(model, AudioProcessorConfig(), eval_config={...}, eval_type="audio")
         result = await audio_model.generate_async(prompt=messages, ...)
     """
 
-    def __init__(self, model, config: AudioProcessorConfig):
+    def __init__(
+        self,
+        model,
+        config: AudioProcessorConfig,
+        eval_config: dict | None = None,
+        eval_type: str | None = None,
+    ):
         """Initialize AudioProcessor wrapper.
 
         Args:
             model: The underlying model to wrap (must have generate_async method)
             config: Audio processing configuration
+            eval_config: Optional eval config dict (contains "data_dir" key) for inferring data_dir
+            eval_type: Optional eval type string for inferring data_dir
         """
         self.model = model
         self.config = config
+
+        # Resolve data_dir: explicit config takes precedence, then infer from eval_config
+        if config.data_dir:
+            self.data_dir = config.data_dir
+        elif eval_config is not None and eval_type is not None:
+            eval_data_dir = eval_config.get("data_dir")
+            if eval_data_dir is not None:
+                self.data_dir = os.path.join(eval_data_dir, eval_type)
+            else:
+                self.data_dir = ""
+        else:
+            self.data_dir = ""
 
         # Expose common model attributes for compatibility
         if hasattr(model, "model_name_or_path"):
@@ -213,7 +233,7 @@ class AudioProcessor:
 
             if "audio" in msg:
                 audio = msg["audio"]
-                audio_path = os.path.join(self.config.data_dir, audio["path"])
+                audio_path = os.path.join(self.data_dir, audio["path"])
                 base64_audio = audio_file_to_base64(audio_path)
                 audio_items.append(
                     {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{base64_audio}"}}
@@ -221,7 +241,7 @@ class AudioProcessor:
                 del msg["audio"]
             elif "audios" in msg:
                 for audio in msg["audios"]:
-                    audio_path = os.path.join(self.config.data_dir, audio["path"])
+                    audio_path = os.path.join(self.data_dir, audio["path"])
                     base64_audio = audio_file_to_base64(audio_path)
                     audio_items.append(
                         {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{base64_audio}"}}
@@ -253,7 +273,7 @@ class AudioProcessor:
             if msg.get("role") == "user":
                 audio_info = msg.get("audio") or (msg.get("audios", [{}])[0] if msg.get("audios") else {})
                 if audio_info and "path" in audio_info:
-                    audio_path = os.path.join(self.config.data_dir, audio_info["path"])
+                    audio_path = os.path.join(self.data_dir, audio_info["path"])
 
                     if not os.path.exists(audio_path):
                         return False, None, 0.0

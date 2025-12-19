@@ -15,7 +15,6 @@
 import asyncio
 import json
 import logging
-import os
 import random
 import shutil
 import subprocess
@@ -389,9 +388,6 @@ class GenerationTask:
     def setup_llm(self):
         self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
 
-        # Build audio config if audio processing is enabled
-        audio_config = self._build_audio_config()
-
         # Step 1: Create base model
         llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
 
@@ -413,8 +409,13 @@ class GenerationTask:
             )
 
         # Audio wrapper goes on top (preprocesses messages before they reach inner wrappers)
-        if audio_config is not None:
-            llm = AudioProcessor(llm, audio_config)
+        if self.cfg.audio is not None:
+            llm = AudioProcessor(
+                llm,
+                self.cfg.audio,
+                eval_config=dict(self.cfg.eval_config),
+                eval_type=self.cfg.eval_type,
+            )
 
         if self.cfg.parallel_thinking.mode is not None:
             # We don't want to override these key variables which overlap with self.cfg
@@ -438,24 +439,6 @@ class GenerationTask:
             )
 
         return llm
-
-    def _build_audio_config(self) -> AudioProcessorConfig | None:
-        """Build audio processor config if audio processing is enabled.
-
-        Returns:
-            AudioProcessorConfig if audio config is provided, None otherwise.
-        """
-        if self.cfg.audio is None:
-            return None
-
-        # If data_dir not explicitly set, try to infer from eval_config
-        if not self.cfg.audio.data_dir:
-            if "data_dir" in self.cfg.eval_config and not (
-                isinstance(self.cfg.eval_config["data_dir"], type(None)) or isinstance(self.cfg.eval_type, type(None))
-            ):
-                self.cfg.audio.data_dir = os.path.join(self.cfg.eval_config["data_dir"], self.cfg.eval_type)
-
-        return self.cfg.audio
 
     def log_example_prompt(self, data):
         data_point = deepcopy(data[0])
