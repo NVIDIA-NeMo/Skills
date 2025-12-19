@@ -16,21 +16,12 @@
 
 This module provides:
 - Base model implementations (VLLMModel, OpenAIModel, etc.)
-- Composable wrappers for additional capabilities:
+- Wrappers for additional capabilities:
   - AudioProcessor: Audio file preprocessing and chunking
   - CodeExecutionWrapper: Code execution in sandboxes
   - ToolCallingWrapper: Tool/function calling support
   - ParallelThinkingTask: Parallel thinking/reasoning
-
-Wrappers can be composed manually (EXPERIMENTAL):
-
-    # Example: Audio preprocessing on top of tool calling
-    base_model = get_model(server_type="vllm", model="qwen-audio", ...)
-    with_tools = ToolCallingWrapper(base_model, tool_modules=[...])
-    with_audio = AudioProcessor(with_tools, AudioProcessorConfig(data_dir="/audio"))
-
-Note: Wrapper composition is experimental. Some combinations may have
-unexpected interactions. Test thoroughly before using in production.
+- Factory functions: get_model, get_code_execution_model, get_tool_calling_model, etc.
 """
 
 import dataclasses

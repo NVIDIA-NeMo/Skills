@@ -41,8 +41,10 @@ from nemo_skills.inference.model import (
     AudioProcessor,
     AudioProcessorConfig,
     ParallelThinkingConfig,
+    get_code_execution_model,
     get_model,
     get_parallel_thinking_model,
+    get_tool_calling_model,
     server_params,
 )
 from nemo_skills.inference.model.base import EndpointType
@@ -388,27 +390,20 @@ class GenerationTask:
     def setup_llm(self):
         self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
 
-        # Step 1: Create base model
-        llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
-
-        # Step 2: Apply wrappers in layers (innermost to outermost)
-        # Note: Wrapper composition is experimental - some combinations may have unexpected interactions
         if self.cfg.code_execution:
-            from nemo_skills.inference.model import CodeExecutionConfig, CodeExecutionWrapper
-
-            code_execution_config = CodeExecutionConfig()
-            llm = CodeExecutionWrapper(model=llm, sandbox=self.sandbox, config=code_execution_config)
+            llm = get_code_execution_model(**self.cfg.server, tokenizer=self.tokenizer, sandbox=self.sandbox)
         elif self.cfg.tool_modules is not None:
-            from nemo_skills.inference.model import ToolCallingWrapper
-
-            llm = ToolCallingWrapper(
-                llm,
+            llm = get_tool_calling_model(
+                **self.cfg.server,
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
+                tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
             )
+        else:
+            llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
 
-        # Audio wrapper goes on top (preprocesses messages before they reach inner wrappers)
+        # Audio wrapper (preprocesses messages before they reach the model)
         if self.cfg.audio is not None:
             llm = AudioProcessor(
                 llm,
