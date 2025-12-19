@@ -58,6 +58,7 @@ METRICS_MAP = {
     "ruler": RulerMetrics,
     "ruler2": RulerMetrics,
     "livecodebench": LiveCodeBenchMetrics,
+    "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
     "scicode": SciCodeMetrics,
     "bigcodebench": BigCodeBenchMetrics,
