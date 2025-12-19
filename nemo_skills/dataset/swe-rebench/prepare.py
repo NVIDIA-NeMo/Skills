@@ -13,13 +13,34 @@
 # limitations under the License.
 
 import argparse
+import json
 from pathlib import Path
 
 import datasets
 
+
+def get_date_range(start_str, end_str):
+    """Generates a list of YYYY_MM strings between start and end inclusive."""
+    start_year, start_month = map(int, start_str.split("_"))
+    end_year, end_month = map(int, end_str.split("_"))
+
+    dates = []
+    current_year, current_month = start_year, start_month
+
+    while (current_year < end_year) or (current_year == end_year and current_month <= end_month):
+        dates.append(f"{current_year}_{current_month:02d}")
+
+        current_month += 1
+        if current_month > 12:
+            current_month = 1
+            current_year += 1
+    return dates
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--split", type=str, default="test", help="Swe-Bench dataset split to use")
+    parser.add_argument("--start_date", type=str, required=True, help="Start date in YYYY_MM format")
+    parser.add_argument("--end_date", type=str, required=True, help="End date in YYYY_MM format")
     parser.add_argument(
         "--setup", type=str, default="default", help="Setup name (used as nemo-skills split parameter)."
     )
@@ -32,12 +53,33 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset_name = args.dataset_name
-    split = args.split
-
-    dataset = datasets.load_dataset(path=dataset_name, split=split)
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
-    dataset = dataset.map(lambda example: {**example, "container_name": f"docker://{example['docker_image']}"})
-    dataset = dataset.add_column("container_id", list(range(len(dataset))))
-    dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
-    dataset = dataset.add_column("split", [split] * len(dataset))
-    dataset.to_json(output_file, orient="records", lines=True)
+
+    splits_to_load = get_date_range(args.start_date, args.end_date)
+
+    all_data = []
+    global_id_counter = 0
+
+    for split in splits_to_load:
+        print(f"Loading split: {split}...")
+        try:
+            ds = datasets.load_dataset(path=dataset_name, split=split)
+            for item in ds:
+                processed_item = {
+                    **item,
+                    "container_name": f"docker://{item['docker_image']}",
+                    "container_id": global_id_counter,
+                    "dataset_name": dataset_name,
+                    "split": split,
+                }
+                all_data.append(processed_item)
+                global_id_counter += 1
+
+        except Exception as e:
+            print(f"Warning: Could not load split {split}. Error: {e}")
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        for entry in all_data:
+            f.write(json.dumps(entry) + "\n")
+
+    print(f"Successfully saved {len(all_data)} samples to {output_file}")
