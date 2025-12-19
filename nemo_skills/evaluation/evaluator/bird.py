@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import json
 import logging
-import os
 import re
 import sqlite3
 from pathlib import Path
@@ -23,7 +20,6 @@ from pathlib import Path
 from func_timeout import FunctionTimedOut, func_timeout
 
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
-from nemo_skills.file_utils import jdump
 from nemo_skills.utils import nested_dataclass
 
 
@@ -54,6 +50,7 @@ from nemo_skills.utils import nested_dataclass
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+
 def execute_sql(predicted_sql, ground_truth, db_path):
     # Connect to the database
     with sqlite3.connect(db_path) as conn:
@@ -67,7 +64,9 @@ def execute_sql(predicted_sql, ground_truth, db_path):
             res = 1
     return res
 
+
 # ===== End of copied and modified code. =====
+
 
 @nested_dataclass(kw_only=True)
 class BirdEvaluatorConfig(BaseEvaluatorConfig):
@@ -89,7 +88,7 @@ class BirdEvaluator(BaseEvaluator):
 
         if not self.eval_config.db_path:
             logging.error(
-                "BirdEvaluatorConfig's \"db_path\" needs to be specified via e.g. "
+                'BirdEvaluatorConfig\'s "db_path" needs to be specified via e.g. '
                 + "++eval_config.db_path=<BIRD_DEV_DIRECTORY>/dev_databases"
             )
 
