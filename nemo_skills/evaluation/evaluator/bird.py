@@ -77,19 +77,14 @@ class BirdEvaluatorConfig(BaseEvaluatorConfig):
     extraction_regex: str | None = None
     regex_dotall: bool = False
 
-    db_path: str = ""
+    # Path pointing to the `dev_databases` directory containing SQL files for BIRD
+    db_path: str
 
 
 class BirdEvaluator(BaseEvaluator):
     def __init__(self, config: dict, num_parallel_requests=10):
         super().__init__(config, num_parallel_requests)
         self.eval_config = BirdEvaluatorConfig(**self.config)
-
-        if not self.eval_config.db_path:
-            logging.error(
-                'BirdEvaluatorConfig\'s "db_path" needs to be specified via e.g. '
-                + "++eval_config.db_path=<BIRD_DEV_DIRECTORY>/dev_databases"
-            )
 
     def _extract_answer(self, text):
         """Uses the specified format/regex to get the answer from the output text."""
