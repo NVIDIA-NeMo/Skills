@@ -344,19 +344,14 @@ ns eval \
      --model=Qwen/Qwen3-8B \
      --benchmarks=birdbench \
      --output_dir=<OUTPUT_DIR> \
-     --installation_command="pip install func_timeout" \
      ++inference.tokens_to_generate=10000 \
      ++inference.temperature=0.6 \
      ++inference.top_p=0.95 \
      ++inference.top_k=20 \
      ++max_concurrent_requests=1024 \
-     ++eval_config.dev_json_filepath=<DATA_DIR>/dev.json \
      ++eval_config.db_path=<DATA_DIR>/dev_databases
 ```
-!!! note
-    BIRD evaluation requires the `func_timeout` library, so you will need to add the installation argument `--installation_command` seen in this example if it is not included in your container.
-
-The arguments for evaluation also include paths for `++eval_config.dev_json_filepath` and `++eval_config.db_path`. These are used for SQL execution. You should point these to the unmodified `dev.json` file and `dev_databases` directory found in the original downloaded and unzipped data (i.e. `.../dev_20240627/dev.json`, etc.). If using a Slurm cluster, you may need to upload and mount the data directory first.
+The arguments for evaluation include `++eval_config.db_path`, which should point to the base directory of the SQL database files used for SQL execution. This should be a directory called `dev_databases` in the original downloaded and unzipped data (i.e. `.../dev_20240627/dev_databases`). If using a Slurm cluster, you may need to upload and mount this directory first.
 
 ### livecodebench-cpp
 

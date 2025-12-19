@@ -24,6 +24,6 @@ GENERATION_ARGS = (
     "++inference.top_p=0.95 "
     "++inference.top_k=20 "
     "++max_concurrent_requests=1024 "
-    # Note: Override this path via ++eval_config.db_path
-    "++eval_config.db_path=/sql_data/BIRD/dev_databases"
+    # Note: Override this path via ++eval_config.db_path, e.g.:
+    # "++eval_config.db_path=<BIRD_DEV_DIRECTORY>/dev_databases"
 )

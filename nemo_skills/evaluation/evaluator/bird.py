@@ -17,15 +17,57 @@ import json
 import logging
 import os
 import re
+import sqlite3
 from pathlib import Path
 
 from func_timeout import FunctionTimedOut, func_timeout
 
-from nemo_skills.dataset.birdbench.evaluation import execute_sql
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.file_utils import jdump
 from nemo_skills.utils import nested_dataclass
 
+
+# The following code was modified from:
+# https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py
+
+# Original license as follows:
+
+# MIT License
+#
+# Copyright (c) 2022 Alibaba Research
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+def execute_sql(predicted_sql, ground_truth, db_path):
+    # Connect to the database
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(predicted_sql)
+        predicted_res = cursor.fetchall()
+        cursor.execute(ground_truth)
+        ground_truth_res = cursor.fetchall()
+        res = 0
+        if set(predicted_res) == set(ground_truth_res):
+            res = 1
+    return res
+
+# ===== End of copied and modified code. =====
 
 @nested_dataclass(kw_only=True)
 class BirdEvaluatorConfig(BaseEvaluatorConfig):
@@ -44,6 +86,12 @@ class BirdEvaluator(BaseEvaluator):
     def __init__(self, config: dict, num_parallel_requests=10):
         super().__init__(config, num_parallel_requests)
         self.eval_config = BirdEvaluatorConfig(**self.config)
+
+        if not self.eval_config.db_path:
+            logging.error(
+                "BirdEvaluatorConfig's \"db_path\" needs to be specified via e.g. "
+                + "++eval_config.db_path=<BIRD_DEV_DIRECTORY>/dev_databases"
+            )
 
     def _extract_answer(self, text):
         """Uses the specified format/regex to get the answer from the output text."""
@@ -86,26 +134,6 @@ class BirdEvaluator(BaseEvaluator):
 
         return ans
 
-    async def eval_full(self):  # type: ignore[override]
-        infile = self.eval_config.input_file
-
-        lines = []
-        with open(infile, "r") as f_in:
-            for line in f_in:
-                line = json.loads(line)
-                lines.append(line)
-
-        tasks = [self.eval_single(line) for line in lines]
-        outputs = await asyncio.gather(*tasks)
-
-        for line, output in zip(lines, outputs, strict=True):
-            line["res"] = output["res"]
-
-        # Write to temp file first and then replace the original to avoid data corruption
-        temp_file = self.config.input_file + "-tmp"
-        jdump(lines, temp_file, mode="wt")
-        os.replace(temp_file, self.config.input_file)
-
     async def eval_single(self, data_point: dict):
         i = data_point["id"]
         db_id = data_point["db_id"]
@@ -124,5 +152,6 @@ class BirdEvaluator(BaseEvaluator):
         except Exception as e:
             logging.info(f"SQL execution failed for entry {i}:\n{e}")
             res = 0
-        result = {"res": res}
-        return result
+
+        data_point["res"] = res
+        return data_point
