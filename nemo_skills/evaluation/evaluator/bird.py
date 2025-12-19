@@ -77,9 +77,6 @@ class BirdEvaluatorConfig(BaseEvaluatorConfig):
     extraction_regex: str | None = None
     regex_dotall: bool = False
 
-    # Path pointing to the `dev_databases` directory containing SQL files for BIRD
-    #db_path: str
-
 
 class BirdEvaluator(BaseEvaluator):
     def __init__(self, config: dict, num_parallel_requests=10):
