@@ -12,6 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Model wrappers and factories for inference.
+
+This module provides:
+- Base model implementations (VLLMModel, OpenAIModel, etc.)
+- Composable wrappers for additional capabilities:
+  - AudioProcessor: Audio file preprocessing and chunking
+  - CodeExecutionWrapper: Code execution in sandboxes
+  - ToolCallingWrapper: Tool/function calling support
+  - ParallelThinkingTask: Parallel thinking/reasoning
+
+Wrappers can be composed manually (EXPERIMENTAL):
+
+    # Example: Audio preprocessing on top of tool calling
+    base_model = get_model(server_type="vllm", model="qwen-audio", ...)
+    with_tools = ToolCallingWrapper(base_model, tool_modules=[...])
+    with_audio = AudioProcessor(with_tools, AudioProcessorConfig(data_dir="/audio"))
+
+Note: Wrapper composition is experimental. Some combinations may have
+unexpected interactions. Test thoroughly before using in production.
+"""
+
 import dataclasses
 
 from nemo_skills.mcp.utils import locate
@@ -19,6 +40,9 @@ from nemo_skills.utils import python_doc_to_cmd_help
 
 # NIM models (speech)
 from .asr_nim import ASRNIMModel
+
+# Audio processing
+from .audio_processor import AudioProcessor, AudioProcessorConfig
 from .azure import AzureOpenAIModel
 
 # Base classes
@@ -78,6 +102,33 @@ def get_model(server_type, tokenizer=None, model_class: str | None = None, **kwa
         if kwargs.get("context_limit_retry_strategy", None) is not None:
             raise ValueError("context_limit_retry_strategy is not supported for trtllm")
     return loaded_class(tokenizer=tokenizer, **kwargs)
+
+
+def get_audio_model(server_type, audio_config: dict | AudioProcessorConfig | None = None, **kwargs):
+    """A helper function to create a model with audio processing capabilities.
+
+    This wraps the base model with AudioProcessor for handling audio files in messages.
+
+    Args:
+        server_type: The type of server (vllm, sglang, openai, etc.)
+        audio_config: Audio processing configuration. Can be:
+            - None: No audio processing (returns base model)
+            - dict: Will be converted to AudioProcessorConfig
+            - AudioProcessorConfig: Used directly
+        **kwargs: Additional arguments passed to get_model()
+
+    Returns:
+        Model optionally wrapped with AudioProcessor
+    """
+    model = get_model(server_type=server_type, **kwargs)
+
+    if audio_config is None:
+        return model
+
+    if isinstance(audio_config, dict):
+        audio_config = AudioProcessorConfig(**audio_config)
+
+    return AudioProcessor(model, audio_config)
 
 
 def get_code_execution_model(server_type, tokenizer=None, code_execution=None, sandbox=None, **kwargs):
