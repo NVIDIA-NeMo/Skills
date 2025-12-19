@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 import glob
 import json
 import os
@@ -24,17 +23,17 @@ from pathlib import Path
 import wget
 
 
-def download_data(output_dir):
+def download_data(data_dir):
     # Download zip directly (HF Dataset is missing SQL files and table info)
     print("Downloading and extracting data file...")
     url = "https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip"
-    filename = wget.download(url, out=output_dir)
-    with zipfile.ZipFile(Path(output_dir, filename), "r") as f_in:
-        f_in.extractall(output_dir)
+    filename = wget.download(url, out=data_dir)
+    with zipfile.ZipFile(Path(data_dir, filename), "r") as f_in:
+        f_in.extractall(data_dir)
 
     # Expand tables zipfiles
     print("Extracting databases...")
-    dev_dir = Path(output_dir, "dev_20240627/")
+    dev_dir = Path(data_dir, "dev_20240627/")
     dbs_zipfile = Path(dev_dir, "dev_databases.zip")
     with zipfile.ZipFile(dbs_zipfile, "r") as f_dbs:
         f_dbs.extractall(dev_dir)
@@ -104,12 +103,10 @@ def format_entries(file_path, tables_info, out_file):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--output_dir", type=str, default=str(Path(__file__).parent))
-    args = parser.parse_args()
+    data_dir = str(Path(__file__).absolute().parent)
 
-    dev_dir = download_data(args.output_dir)
-    # If already downloaded: dev_dir = Path(args.output_dir, "dev_20240627/")
+    dev_dir = download_data(data_dir)
+    # If already downloaded: dev_dir = Path(data_dir, "dev_20240627/")
     print(f"\nData downloaded to: {dev_dir}")
 
     print("Starting processing...")
@@ -120,8 +117,8 @@ def main():
 
     # Naming the input and output files the nearly same thing is likely
     # confusing, but <split>.jsonl is the expected format so we'll just
-    # keep the result in the output directory.
-    format_entries(Path(dev_dir, "dev.json"), tables_info, Path(args.output_dir, "dev.jsonl"))
+    # keep the result in the upper-level directory, outside of dev_dir.
+    format_entries(Path(dev_dir, "dev.json"), tables_info, Path(data_dir, "dev.jsonl"))
     print("Finished formatting entries. All done!")
 
 

@@ -325,12 +325,13 @@ The [BIRD benchmark](https://bird-bench.github.io/) is currently the only text-t
 
 First, the data must be downloaded and prepared, which you can do by running:
 ```bash
-ns prepare_data birdbench
+ns prepare_data birdbench --cluster=<CLUSTER_NAME> --data_dir=<DATA_DIR>
 ```
 
-This will download and unpack a file into `<output_directory>/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas. By default, `output_directory` will be under `nemo_skills/dataset/birdbench/`, though this can be changed via command line argument.
+This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas.  
+The script will also process the original manifest into `<DATA_DIR>/birdbench/dev.jsonl`, which will be the input for evaluation.
 
-The script will also process the original manifest into `<output_directory>/dev.jsonl`, which will be the input for evaluation.
+See [the "Using data on cluster" documentation](./index.md#Using-data-on-cluster) for more information.
 
 #### Running the Evaluation
 
@@ -352,6 +353,7 @@ ns eval \
      ++max_concurrent_requests=1024 \
 ```
 You should specify: `<CLUSTER_NAME>`, which should match your cluster config name; `<DATA_DIR>`, which should be the path to your base `nemo_skills/datasets` directory on the cluster; and `<OUTPUT_DIR>`.
+The former two arguments should match what you used in `prepare_data`.
 
 ### livecodebench-cpp
 
