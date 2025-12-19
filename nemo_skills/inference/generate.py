@@ -405,6 +405,13 @@ class GenerationTask:
 
         # Audio wrapper (preprocesses messages before they reach the model)
         if self.cfg.audio is not None:
+            audio_supported_servers = {"vllm"}
+            server_type = self.cfg.server.get("server_type", "").lower()
+            if server_type not in audio_supported_servers:
+                raise ValueError(
+                    f"Audio processing is not supported for server_type='{server_type}'. "
+                    f"Supported server types: {audio_supported_servers}"
+                )
             llm = AudioProcessor(
                 llm,
                 self.cfg.audio,
