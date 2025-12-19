@@ -78,13 +78,15 @@ class BirdEvaluatorConfig(BaseEvaluatorConfig):
     regex_dotall: bool = False
 
     # Path pointing to the `dev_databases` directory containing SQL files for BIRD
-    db_path: str
+    #db_path: str
 
 
 class BirdEvaluator(BaseEvaluator):
     def __init__(self, config: dict, num_parallel_requests=10):
         super().__init__(config, num_parallel_requests)
         self.eval_config = BirdEvaluatorConfig(**self.config)
+
+        self.db_path = Path(self.eval_config.data_dir, "birdbench", "dev_20240627", "dev_databases")
 
     def _extract_answer(self, text):
         """Uses the specified format/regex to get the answer from the output text."""
@@ -134,7 +136,7 @@ class BirdEvaluator(BaseEvaluator):
         # Retrieve pred and gt
         predicted_sql = self._extract_answer(data_point["generation"])
         ground_truth = data_point["gt_sql"]
-        db_place = str(Path(self.eval_config.db_path, db_id, db_id + ".sqlite"))
+        db_place = str(Path(self.db_path, db_id, db_id + ".sqlite"))
 
         try:
             # Wait for result with timeout as set

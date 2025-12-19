@@ -23,7 +23,5 @@ GENERATION_ARGS = (
     "++inference.temperature=0.6 "
     "++inference.top_p=0.95 "
     "++inference.top_k=20 "
-    "++max_concurrent_requests=1024 "
-    # Note: Override this path via ++eval_config.db_path, e.g.:
-    # "++eval_config.db_path=<BIRD_DEV_DIRECTORY>/dev_databases"
+    "++max_concurrent_requests=1024"
 )

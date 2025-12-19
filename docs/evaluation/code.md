@@ -343,15 +343,15 @@ ns eval \
      --server_gpus=8 \
      --model=Qwen/Qwen3-8B \
      --benchmarks=birdbench \
+     --data_dir=<DATA_DIR> \
      --output_dir=<OUTPUT_DIR> \
      ++inference.tokens_to_generate=10000 \
      ++inference.temperature=0.6 \
      ++inference.top_p=0.95 \
      ++inference.top_k=20 \
      ++max_concurrent_requests=1024 \
-     ++eval_config.db_path=<DATA_DIR>/dev_databases
 ```
-The arguments for evaluation include `++eval_config.db_path`, which should point to the base directory of the SQL database files used for SQL execution. This should be a directory called `dev_databases` in the original downloaded and unzipped data (i.e. `.../dev_20240627/dev_databases`). If using a Slurm cluster, you may need to upload and mount this directory first.
+You should specify: `<CLUSTER_NAME>`, which should match your cluster config name; `<DATA_DIR>`, which should be the path to your base `nemo_skills/datasets` directory on the cluster; and `<OUTPUT_DIR>`.
 
 ### livecodebench-cpp
 
