@@ -328,7 +328,7 @@ First, the data must be downloaded and prepared, which you can do by running:
 ns prepare_data birdbench --cluster=<CLUSTER_NAME> --data_dir=<DATA_DIR>
 ```
 
-This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas.  
+This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas.
 The script will also process the original manifest into `<DATA_DIR>/birdbench/dev.jsonl`, which will be the input for evaluation.
 
 See [the "Using data on cluster" documentation](./index.md#Using-data-on-cluster) for more information.
