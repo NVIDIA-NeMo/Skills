@@ -461,7 +461,16 @@ def eval_human_eval_infilling(cfg):
                 raise ValueError(f"All samples should have the same split, but got {data_split} and {sample['split']}")
 
             sample = preprocess_code(sample, language="python", strip_whitespace=False)
-            sample["original_completion"] = sample["completion"]
+            # ---------------------------------------------------------
+            # remove one leading and trailing "\n" from the completion
+            # because LLM generated solutions are in the form: ```python\n<fill_in_the_middle>\n```
+            completion = sample["completion"]
+            if completion.startswith("\n"):
+                completion = completion[1:]
+            if completion.endswith("\n"):
+                completion = completion[:-1]
+            # ---------------------------------------------------------
+            sample["original_completion"] = completion
             sample = postprocess_code(sample)
             samples.append(sample)
 
