@@ -470,6 +470,7 @@ def eval_human_eval_infilling(cfg):
             if completion.endswith("\n"):
                 completion = completion[:-1]
             # ---------------------------------------------------------
+            sample["completion"] = completion
             sample["original_completion"] = completion
             sample = postprocess_code(sample)
             samples.append(sample)
