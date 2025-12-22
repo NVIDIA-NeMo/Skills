@@ -72,6 +72,7 @@ class AudioMetrics(BaseMetrics):
         self.pc_rate_scores = []
         self.punct_f1_scores = []
         self.cap_accuracy_scores = []
+        # Stored as chars/minute (see evaluator/audio.py).
         self.char_rate_scores = []
 
         # Judge scores (AudioBench-style rating 0-5, or legacy binary Yes/No mapped to 1/0)
@@ -337,8 +338,9 @@ class AudioMetrics(BaseMetrics):
             base_metrics["punct_f1"] = as_percentage
         if self.cap_accuracy_scores:
             base_metrics["cap_accuracy"] = as_percentage
+        # char_rate is chars/minute (not a percent).
         if self.char_rate_scores:
-            base_metrics["char_rate"] = as_int
+            base_metrics["char_rate"] = lambda _k, v, _all: f"{v:.2f}"
 
         base_metrics["num_entries"] = as_int  # Add at end for better display order
 

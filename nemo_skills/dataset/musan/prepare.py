@@ -33,12 +33,11 @@ import os
 import tarfile
 import urllib.request
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 import soundfile as sf
 from tqdm import tqdm
-
 
 # HuggingFace dataset label mappings
 CATEGORY_LABELS = {
@@ -58,9 +57,9 @@ def download_from_kaggle(output_dir: Path) -> Path:
         import kagglehub
     except ImportError:
         raise ImportError("kagglehub not installed. Run: pip install kagglehub")
-    
+
     print("Downloading from Kaggle (requires API key in ~/.kaggle/kaggle.json)")
-    
+
     try:
         path = kagglehub.dataset_download("dogrose/musan-dataset")
         print(f"Downloaded to: {path}")
@@ -74,32 +73,33 @@ def download_from_openslr(output_dir: Path) -> Path:
     url = "https://www.openslr.org/resources/17/musan.tar.gz"
     download_path = output_dir / "musan.tar.gz"
     extract_path = output_dir / "musan_openslr"
-    
-    print(f"Downloading from OpenSLR (~11 GB)")
+
+    print("Downloading from OpenSLR (~11 GB)")
     print(f"URL: {url}")
-    
+
     if not download_path.exists():
+
         def reporthook(block_num, block_size, total_size):
             downloaded = block_num * block_size
             percent = min(downloaded / total_size * 100, 100)
             mb_downloaded = downloaded / (1024 * 1024)
             mb_total = total_size / (1024 * 1024)
-            print(f"\r{percent:.1f}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", end='')
-        
+            print(f"\r{percent:.1f}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", end="")
+
         urllib.request.urlretrieve(url, download_path, reporthook)
         print("\nDownload complete")
     else:
         print(f"Using cached archive: {download_path}")
-    
+
     if not extract_path.exists():
         print(f"Extracting to {extract_path}...")
         extract_path.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(download_path, 'r:gz') as tar:
+        with tarfile.open(download_path, "r:gz") as tar:
             tar.extractall(extract_path)
         print("Extraction complete")
     else:
         print(f"Using extracted data: {extract_path}")
-    
+
     return extract_path / "musan"
 
 
@@ -107,37 +107,38 @@ def load_dataset_from_source(source: str, output_dir: Path):
     """Load MUSAN dataset from specified source."""
     if source == "huggingface":
         from datasets import load_dataset
+
         print("Loading from HuggingFace...")
         dataset = load_dataset("FluidInference/musan", split="train")
         print(f"Loaded {len(dataset)} samples")
         return dataset, "huggingface"
-        
+
     elif source == "kaggle":
         dataset_path = download_from_kaggle(output_dir)
         musan_path = dataset_path / "musan"
         if not musan_path.exists():
             raise ValueError(f"'musan' directory not found in {dataset_path}")
-        
+
         print(f"Dataset path: {musan_path}")
-        for cat in ['music', 'speech', 'noise']:
+        for cat in ["music", "speech", "noise"]:
             cat_path = musan_path / cat
             if cat_path.exists():
                 wav_count = len(list(cat_path.glob("**/*.wav")))
                 print(f"  {cat}: {wav_count} files")
-        
+
         return musan_path, "kaggle"
-        
+
     elif source == "openslr":
         dataset_path = download_from_openslr(output_dir)
         print(f"Dataset path: {dataset_path}")
-        for cat in ['music', 'speech', 'noise']:
+        for cat in ["music", "speech", "noise"]:
             cat_path = dataset_path / cat
             if cat_path.exists():
                 wav_count = len(list(cat_path.glob("**/*.wav")))
                 print(f"  {cat}: {wav_count} files")
-        
+
         return dataset_path, "openslr"
-        
+
     else:
         raise ValueError(f"Unknown source: {source}")
 
@@ -165,7 +166,7 @@ def create_manifest_entry(
     """Create nemo-skills manifest entry."""
     audio_rel_path = f"/data/musan/{category}/audio/{audio_filename}"
     audio_metadata = {"path": audio_rel_path, "duration": duration}
-    
+
     # Instruction for transcription (expects empty response for non-speech audio)
     instruction = "Transcribe the speech in this audio. If there is no speech, do not output anything."
 
@@ -206,33 +207,33 @@ def process_category_from_files(
     category_path = dataset_path / category
     if not category_path.exists():
         raise ValueError(f"Category directory not found: {category_path}")
-    
+
     wav_files = sorted(list(category_path.glob("**/*.wav")))
     print(f"Found {len(wav_files)} WAV files")
-    
+
     if len(wav_files) == 0:
         return 0, []
-    
+
     if max_samples > 0 and len(wav_files) > max_samples:
         wav_files = wav_files[:max_samples]
         print(f"Limited to {max_samples} samples")
-    
+
     audio_dir = output_dir / category / "audio"
     dataset_dir = output_dir / category
     os.makedirs(audio_dir, exist_ok=True)
     os.makedirs(dataset_dir, exist_ok=True)
-    
+
     manifest_entries = []
     successful = 0
     failed = 0
-    
+
     for idx, wav_path in enumerate(tqdm(wav_files, desc=f"Processing {category}")):
         try:
             audio_array, sampling_rate = sf.read(str(wav_path))
             duration = get_audio_duration(audio_array, sampling_rate)
             audio_filename = f"musan_{category}_{idx:06d}.wav"
             local_audio_path = audio_dir / audio_filename
-            
+
             if save_audio:
                 try:
                     save_audio_file(audio_array, sampling_rate, str(local_audio_path))
@@ -240,7 +241,7 @@ def process_category_from_files(
                     print(f"Failed to save sample {idx}: {e}")
                     failed += 1
                     continue
-            
+
             entry = create_manifest_entry(
                 audio_filename=audio_filename,
                 duration=duration,
@@ -248,24 +249,24 @@ def process_category_from_files(
                 sample_id=idx,
                 label=wav_path.stem,
             )
-            
+
             manifest_entries.append(entry)
             successful += 1
-            
+
         except Exception as e:
             print(f"Error processing {wav_path}: {e}")
             failed += 1
             continue
-    
+
     manifest_path = dataset_dir / "test.jsonl"
     with open(manifest_path, "w", encoding="utf-8") as f:
         for entry in manifest_entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    
+
     print(f"Saved {successful} samples to {manifest_path}")
     if failed > 0:
         print(f"Failed: {failed} samples")
-    
+
     return successful, manifest_entries
 
 
@@ -292,7 +293,7 @@ def process_category(
             split=split,
             max_samples=max_samples,
         )
-    
+
     elif source_type != "huggingface":
         raise NotImplementedError(f"Source '{source_type}' not supported")
 
@@ -301,14 +302,14 @@ def process_category(
     if target_label is None:
         print(f"Unknown category '{category}'")
         return 0, []
-    
+
     for sample in dataset:
         label = sample.get("label")
         if label == target_label:
             filtered_samples.append(sample)
-    
+
     print(f"Found {len(filtered_samples)} samples")
-    
+
     if len(filtered_samples) == 0:
         return 0, []
 
@@ -418,13 +419,13 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("\n" + "=" * 60)
-    print(f"MUSAN Dataset Preparation")
+    print("MUSAN Dataset Preparation")
     print("=" * 60)
     print(f"Source: {args.source}")
     print(f"Output: {output_dir}")
     print(f"Categories: {', '.join(args.categories)}")
     print("=" * 60 + "\n")
-    
+
     try:
         dataset, source_type = load_dataset_from_source(args.source, output_dir)
     except Exception as e:
@@ -466,7 +467,9 @@ def main():
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"Requested: {len(args.categories)}, Successful: {len(successful_categories)}, Failed: {len(failed_categories)}")
+    print(
+        f"Requested: {len(args.categories)}, Successful: {len(successful_categories)}, Failed: {len(failed_categories)}"
+    )
     print(f"Total samples: {total_samples}")
 
     if successful_categories:
@@ -482,4 +485,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

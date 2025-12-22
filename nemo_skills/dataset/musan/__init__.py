@@ -14,7 +14,7 @@
 
 """MUSAN: A Music, Speech, and Noise Corpus
 
-MUSAN is a corpus of music, speech, and noise recordings designed for training 
+MUSAN is a corpus of music, speech, and noise recordings designed for training
 models for voice activity detection and music/speech discrimination.
 
 DOWNLOAD OPTIONS:
@@ -55,4 +55,3 @@ GENERATION_ARGS = "++prompt_format=openai "
 BENCHMARKS = {
     "musan": {},
 }
-
