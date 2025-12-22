@@ -515,23 +515,40 @@ class SweBenchGenerationTask(GenerationTask):
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
 
-        all_model_kwargs = {
-            **completion_kwargs,
-            "api_base": api_base,
-            "temperature": self.cfg.inference.temperature,
-            "top_p": self.cfg.inference.top_p,
-            "drop_params": True,
-        }
-        model_kwargs_json = json.dumps(all_model_kwargs)
+        # all_model_kwargs = {
+        #     **completion_kwargs,
+        #     "api_base": api_base,
+        #     "temperature": self.cfg.inference.temperature,
+        #     "top_p": self.cfg.inference.top_p,
+        #     "drop_params": True,
+        # }
+        # model_kwargs_json = json.dumps(all_model_kwargs)
+
+        # mini_swe_agent_cmd = (
+        #     "cp -r /root_mount/mini-swe-agent /root && "
+        #     "cp -r /root_mount/uv /root && "
+        #     "cd /root/mini-swe-agent && "
+        #     f"export MSWEA_MODEL_KWARGS={shlex.quote(model_kwargs_json)} && "
+        #     f"/root/mini-swe-agent/venv/bin/python -m minisweagent "
+        #     f"--config {get_config_path(self.cfg.agent_config)} "
+        #     f"--model hosted_vllm/{self.cfg.server.model} "
+        #     f"--task {shlex.quote(data_point['problem_statement'])} "
+        #     f"--output trajectories/{data_point['instance_id']}.traj.json "
+        #     f"--yolo && "
+        #     "cp -r trajectories /trajectories_mount/"
+        # )
 
         mini_swe_agent_cmd = (
             "cp -r /root_mount/mini-swe-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/mini-swe-agent && "
-            f"export MSWEA_MODEL_KWARGS={shlex.quote(model_kwargs_json)} && "
-            f"/root/mini-swe-agent/venv/bin/python -m minisweagent "
+            f"/root/mini-swe-agent/venv/bin/python -m run/mini.py "
             f"--config {get_config_path(self.cfg.agent_config)} "
-            f"--model hosted_vllm/{self.cfg.server.model} "
+            f"--model.model_name hosted_vllm/{self.cfg.server.model} "
+            f"--model.model_kwargs.api_base {api_base} "
+            f"--model.completion_kwargs {shlex.quote(json.dumps(completion_kwargs))} "
+            f"--model.model_kwargs.temperature {self.cfg.inference.temperature} "
+            f"--model.model_kwargs.top_p {self.cfg.inference.top_p} "
             f"--task {shlex.quote(data_point['problem_statement'])} "
             f"--output trajectories/{data_point['instance_id']}.traj.json "
             f"--yolo && "
