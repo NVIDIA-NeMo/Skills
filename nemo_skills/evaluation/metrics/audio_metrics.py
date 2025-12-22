@@ -34,7 +34,7 @@ audio-specific metrics as the field evolves.
 
 import logging
 
-from nemo_skills.evaluation.metrics.base import BaseMetrics, as_int, as_percentage
+from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float, as_int, as_percentage
 from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -345,7 +345,7 @@ class AudioMetrics(BaseMetrics):
         if self.cap_accuracy_scores:
             base_metrics["cap_accuracy"] = as_percentage
         if self.total_audio_seconds > 0:
-            base_metrics["char_rate"] = lambda _k, v, _all: f"{v:.2f}"
+            base_metrics["char_rate"] = as_float
 
         base_metrics["num_entries"] = as_int  # Add at end for better display order
 
