@@ -39,8 +39,8 @@ def get_date_range(start_str, end_str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start_date", type=str, required=True, help="Start date in YYYY_MM format")
-    parser.add_argument("--end_date", type=str, required=True, help="End date in YYYY_MM format")
+    parser.add_argument("--start_date", type=str, help="Start date in YYYY_MM format")
+    parser.add_argument("--end_date", type=str, help="End date in YYYY_MM format")
     parser.add_argument(
         "--setup", type=str, default="default", help="Setup name (used as nemo-skills split parameter)."
     )
@@ -50,12 +50,21 @@ if __name__ == "__main__":
         default="nebius/SWE-rebench-leaderboard",
         help="Dataset name to load",
     )
+    parser.add_argument(
+        "--mounted_path_to_sif_containers",
+        type=str,
+        help="Mounted path for pre-downloaded .sif containers.",
+    )
     args = parser.parse_args()
 
     dataset_name = args.dataset_name
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
 
-    splits_to_load = get_date_range(args.start_date, args.end_date)
+    if args.start_date and args.end_date:
+        splits_to_load = get_date_range(args.start_date, args.end_date)
+    else:
+        print("Start/End date not provided. Defaulting to 'test' split.")
+        splits_to_load = ["test"]
 
     all_data = []
     global_id_counter = 0
@@ -67,7 +76,9 @@ if __name__ == "__main__":
             for item in ds:
                 processed_item = {
                     **item,
-                    "container_name": f"docker://{item['docker_image']}",
+                    "container_name": f"{item['docker_image']}"
+                    if args.mounted_path_to_sif_containers is None
+                    else f"{args.mounted_path_to_sif_containers}/{item['docker_image'].replace('/', '_').replace(':', '_')}.sif",
                     "container_id": global_id_counter,
                     "dataset_name": dataset_name,
                     "split": split,
