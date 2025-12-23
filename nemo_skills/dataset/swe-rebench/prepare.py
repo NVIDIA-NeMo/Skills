@@ -39,6 +39,13 @@ def get_date_range(start_str, end_str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--container_formatter",
+        type=str,
+        default="docker://{docker_image}",
+        help="Container formatter string. You can download .sif containers and store them in a mounted "
+        "directory which you can reference here to avoid redownloading all the time.",
+    )
     parser.add_argument("--start_date", type=str, help="Start date in YYYY_MM format")
     parser.add_argument("--end_date", type=str, help="End date in YYYY_MM format")
     parser.add_argument(
@@ -49,11 +56,6 @@ if __name__ == "__main__":
         type=str,
         default="nebius/SWE-rebench-leaderboard",
         help="Dataset name to load",
-    )
-    parser.add_argument(
-        "--mounted_path_to_sif_containers",
-        type=str,
-        help="Mounted path for pre-downloaded .sif containers.",
     )
     args = parser.parse_args()
 
@@ -74,11 +76,13 @@ if __name__ == "__main__":
         try:
             ds = datasets.load_dataset(path=dataset_name, split=split)
             for item in ds:
+                docker_image = item["docker_image"]
+                if args.container_formatter.endswith(".sif"):
+                    docker_image = item["docker_image"].replace("/", "_").replace(":", "_")
+                container_formatter = args.container_formatter.format(docker_image=docker_image)
                 processed_item = {
                     **item,
-                    "container_name": f"{item['docker_image']}"
-                    if args.mounted_path_to_sif_containers is None
-                    else f"{args.mounted_path_to_sif_containers}/{item['docker_image'].replace('/', '_').replace(':', '_')}.sif",
+                    "container_formatter": container_formatter,
                     "container_id": global_id_counter,
                     "dataset_name": dataset_name,
                     "split": split,
