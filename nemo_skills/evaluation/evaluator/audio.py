@@ -137,10 +137,7 @@ _hf_normalizer = None
 
 
 def preprocess_hf_leaderboard(text: str) -> str:
-    """Apply HuggingFace Open ASR Leaderboard normalization using Whisper's EnglishTextNormalizer.
-
-    This matches the normalization used in https://github.com/huggingface/open_asr_leaderboard
-    """
+    """Apply HuggingFace Open ASR Leaderboard normalization."""
     global _hf_normalizer
     if _hf_normalizer is None:
         from whisper.normalizers import EnglishTextNormalizer

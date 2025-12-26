@@ -32,6 +32,7 @@ from datasets import load_dataset
 from tqdm import tqdm
 
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
+USER_MESSAGE = "Transcribe the audio file into English text. /no_think"
 MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this (causes mel spectrogram errors)
 
 # Speaker IDs to skip in Tedlium dataset
@@ -72,7 +73,7 @@ def save_audio_and_format_entry(entry, dataset_name, audio_dir, sample_idx, with
     text = text.strip() if text else ""
 
     system_message = {"role": "system", "content": SYSTEM_MESSAGE}
-    user_message = {"role": "user", "content": "Transcribe the following audio."}
+    user_message = {"role": "user", "content": USER_MESSAGE}
 
     audio_info = entry.get("audio", {})
     if isinstance(audio_info, dict) and "array" in audio_info and "sampling_rate" in audio_info:
