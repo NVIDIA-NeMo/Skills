@@ -28,11 +28,11 @@ METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
     "++inference.tokens_to_generate={tokens_to_generate} "
-{maybe_text_completions_args}    "++eval_type=ruler ++eval_config.match_type={match_type} "
-)
+    "++eval_type=ruler ++eval_config.match_type={match_type} "
+{extra_generation_args})
 '''
 
-TEXT_COMPLETIONS_ARGS = '''\
+TEXT_COMPLETIONS_EXTRA_ARGS = '''\
     # ruler is adding prefix for assistant response, so it has to go through completions api
     "++start_assistant_response_key=generation "
     "++inference.endpoint_type=text "
@@ -68,7 +68,7 @@ def prepare_task_for_ns(task, data_dir, setup, use_chat_completions):
             DEFAULT_SETTINGS_TEMPLATE.format(
                 tokens_to_generate=TOKENS_TO_GENERATE[short_name],
                 match_type=MATCH_TYPE[short_name],
-                maybe_text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
+                extra_generation_args="" if use_chat_completions else TEXT_COMPLETIONS_EXTRA_ARGS,
             )
         )
 
