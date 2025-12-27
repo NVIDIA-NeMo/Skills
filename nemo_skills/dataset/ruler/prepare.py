@@ -215,10 +215,11 @@ if __name__ == "__main__":
             "--tokenizer_path meta-llama/Llama-3.1-8B-Instruct --max_seq_length 131072"
         )
         exit(0)
-    mode = "chat completions" if args.use_chat_completions else "text completions (prefill)"
-    print(f"Preparing RULER dataset for tasks: {args.tasks}")
-    print(f"Mode: {mode}")
-    print(f"Additional arguments: {ruler_prepare_args}")
+    print(
+        f"Preparing RULER dataset for tasks: {args.tasks}, "
+        f"mode: {'chat completions' if args.use_chat_completions else 'text completions (prefill)'}, "
+        f"additional arguments: {ruler_prepare_args}"
+    )
     get_ruler_data(
         args.tasks,
         args.setup,
