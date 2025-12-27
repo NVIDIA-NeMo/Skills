@@ -54,7 +54,7 @@ def prepare_task_for_ns(task, data_dir, setup, use_chat_completions):
             answer_prefix = original_entry["answer_prefix"].strip()
             new_entry = {
                 "index": original_entry["index"],
-                "question": original_entry["input"] + answer_prefix if use_chat_completions else original_entry["input"],
+                "question": original_entry["input"] + (answer_prefix if use_chat_completions else ""),
                 "expected_answer": original_entry["outputs"],
                 "length": original_entry["length"],
             }
