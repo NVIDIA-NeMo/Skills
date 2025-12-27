@@ -88,7 +88,7 @@ class WrapperAutoTokenizer:
 
     def __init__(self, model_name: str):
         LOG.info(f"Initializing tokenizer from string: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
     def encode(self, prompt: str | list[dict], tools=None) -> list[int]:
         """Encode the prompt using the tokenizer."""
