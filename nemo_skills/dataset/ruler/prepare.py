@@ -73,7 +73,7 @@ def prepare_task_for_ns(task, data_dir, setup, use_chat_completions):
         )
 
 
-def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_args, tmp_data_dir=None, use_chat_completions=False):
+def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_args, use_chat_completions, tmp_data_dir=None):
     if "cwe" in tasks:
         # checking if git-lfs is installed
         try:
