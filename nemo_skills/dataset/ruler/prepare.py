@@ -39,14 +39,6 @@ TEXT_COMPLETIONS_ARGS = '''\
 '''
 
 
-def get_default_settings(use_chat_completions: bool) -> str:
-    return DEFAULT_SETTINGS_TEMPLATE.format(
-        tokens_to_generate="{tokens_to_generate}",
-        match_type="{match_type}",
-        maybe_text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
-    )
-
-
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
 MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "part"}
 
@@ -73,9 +65,10 @@ def prepare_task_for_ns(task, data_dir, setup, use_chat_completions):
     with open(new_path.parent / "__init__.py", "w", encoding="utf-8") as init_file:
         short_name = task.split("_")[0]
         init_file.write(
-            get_default_settings(use_chat_completions).format(
-                match_type=MATCH_TYPE[short_name],
+            DEFAULT_SETTINGS_TEMPLATE.format(
                 tokens_to_generate=TOKENS_TO_GENERATE[short_name],
+                match_type=MATCH_TYPE[short_name],
+                maybe_text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
             )
         )
 
