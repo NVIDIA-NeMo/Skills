@@ -50,36 +50,22 @@ MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "par
 
 
 def prepare_task_for_ns(task, data_dir, setup, use_chat_completions=False):
-    """Resaving from data_dir/task/test.jsonl into current folder/task/test.jsonl and adding proper init.py
-
-    Args:
-        task: Task name (e.g., "niah_single_1")
-        data_dir: Directory containing the original RULER data
-        setup: Name of the setup (e.g., "llama_128k")
-        use_chat_completions: If True, embed answer_prefix in question for chat completions API.
-                              If False (default), use answer_prefix as prefill for text completions API.
-    """
+    """Resaving from data_dir/task/test.jsonl into current folder/task/test.jsonl and adding proper init.py"""
     original_path = Path(data_dir) / task / "test.jsonl"
     new_path = Path(__file__).parent / setup / task / "test.jsonl"
     Path(new_path).parent.mkdir(parents=True, exist_ok=True)
     with open(original_path, "r", encoding="utf-8") as fin, open(new_path, "w", encoding="utf-8") as fout:
         for line in fin:
             original_entry = json.loads(line)
-            if use_chat_completions:
-                new_entry = {
-                    "index": original_entry["index"],
-                    "question": original_entry["input"] + original_entry["answer_prefix"].strip(),
-                    "expected_answer": original_entry["outputs"],
-                    "length": original_entry["length"],
-                }
-            else:
-                new_entry = {
-                    "index": original_entry["index"],
-                    "question": original_entry["input"],
-                    "expected_answer": original_entry["outputs"],
-                    "length": original_entry["length"],
-                    "generation": original_entry["answer_prefix"].strip(),
-                }
+            answer_prefix = original_entry["answer_prefix"].strip()
+            new_entry = {
+                "index": original_entry["index"],
+                "question": original_entry["input"] + answer_prefix if use_chat_completions else original_entry["input"],
+                "expected_answer": original_entry["outputs"],
+                "length": original_entry["length"],
+            }
+            if not use_chat_completions:
+                new_entry["generation"] = answer_prefix
             fout.write(json.dumps(new_entry) + "\n")
 
     with open(new_path.parent / "__init__.py", "w", encoding="utf-8") as init_file:
