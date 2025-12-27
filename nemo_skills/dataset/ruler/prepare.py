@@ -22,50 +22,77 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-DEFAULT_SETTINGS = """
+DEFAULT_SETTINGS_TEMPLATE = '''
 DATASET_GROUP = "long-context"
 METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
     "++inference.tokens_to_generate={tokens_to_generate} "
+{text_completions_args}    "++eval_type=ruler ++eval_config.match_type={match_type} "
+)
+'''
+
+TEXT_COMPLETIONS_ARGS = '''\
     # ruler is adding prefix for assistant response, so it has to go through completions api
     "++start_assistant_response_key=generation "
     "++inference.endpoint_type=text "
-    "++eval_type=ruler ++eval_config.match_type={match_type} "
-)
-"""
+'''
+
+
+def get_default_settings(use_chat_completions: bool) -> str:
+    return DEFAULT_SETTINGS_TEMPLATE.format(
+        tokens_to_generate="{tokens_to_generate}",
+        match_type="{match_type}",
+        text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
+    )
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
 MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "part"}
 
 
-def prepare_task_for_ns(task, data_dir, setup):
-    """Resaving from data_dir/task/test.jsonl into current folder/task/test.jsonl and adding proper init.py"""
+def prepare_task_for_ns(task, data_dir, setup, use_chat_completions=False):
+    """Resaving from data_dir/task/test.jsonl into current folder/task/test.jsonl and adding proper init.py
+
+    Args:
+        task: Task name (e.g., "niah_single_1")
+        data_dir: Directory containing the original RULER data
+        setup: Name of the setup (e.g., "llama_128k")
+        use_chat_completions: If True, embed answer_prefix in question for chat completions API.
+                              If False (default), use answer_prefix as prefill for text completions API.
+    """
     original_path = Path(data_dir) / task / "test.jsonl"
     new_path = Path(__file__).parent / setup / task / "test.jsonl"
     Path(new_path).parent.mkdir(parents=True, exist_ok=True)
     with open(original_path, "r", encoding="utf-8") as fin, open(new_path, "w", encoding="utf-8") as fout:
         for line in fin:
             original_entry = json.loads(line)
-            new_entry = {
-                "index": original_entry["index"],
-                "question": original_entry["input"],
-                "expected_answer": original_entry["outputs"],
-                "length": original_entry["length"],
-                "generation": original_entry["answer_prefix"].strip(),
-            }
+            if use_chat_completions:
+                new_entry = {
+                    "index": original_entry["index"],
+                    "question": original_entry["input"] + original_entry["answer_prefix"].strip(),
+                    "expected_answer": original_entry["outputs"],
+                    "length": original_entry["length"],
+                }
+            else:
+                new_entry = {
+                    "index": original_entry["index"],
+                    "question": original_entry["input"],
+                    "expected_answer": original_entry["outputs"],
+                    "length": original_entry["length"],
+                    "generation": original_entry["answer_prefix"].strip(),
+                }
             fout.write(json.dumps(new_entry) + "\n")
 
     with open(new_path.parent / "__init__.py", "w", encoding="utf-8") as init_file:
         short_name = task.split("_")[0]
         init_file.write(
-            DEFAULT_SETTINGS.format(
+            get_default_settings(use_chat_completions).format(
                 match_type=MATCH_TYPE[short_name],
                 tokens_to_generate=TOKENS_TO_GENERATE[short_name],
             )
         )
 
 
-def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_args, tmp_data_dir=None):
+def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_args, tmp_data_dir=None, use_chat_completions=False):
     if "cwe" in tasks:
         # checking if git-lfs is installed
         try:
@@ -128,7 +155,7 @@ def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_
 
         # resaving the data and creating __init__.py files
         for task in tasks:
-            prepare_task_for_ns(task, Path(tmpdirname) / "ruler_data", setup)
+            prepare_task_for_ns(task, Path(tmpdirname) / "ruler_data", setup, use_chat_completions)
 
         with open(Path(__file__).parent / setup / "__init__.py", "w", encoding="utf-8") as init_file:
             init_file.write("IS_BENCHMARK_GROUP = True\n")
@@ -188,6 +215,13 @@ if __name__ == "__main__":
         default=None,
         help="Directory to store intermediate data. If not provided, a temporary directory will be created.",
     )
+    parser.add_argument(
+        "--use_chat_completions",
+        action="store_true",
+        help="Use chat completions API instead of text completions. "
+             "When enabled, answer_prefix is embedded in question instead of being used as prefill. "
+             "This mode is compatible with thinking/reasoning models.",
+    )
 
     args, unknown = parser.parse_known_args()
     ruler_prepare_args = " ".join(unknown)
@@ -200,7 +234,10 @@ if __name__ == "__main__":
             "--tokenizer_path meta-llama/Llama-3.1-8B-Instruct --max_seq_length 131072"
         )
         exit(0)
-    print(f"Preparing RULER dataset for tasks: {args.tasks} with additional arguments: {ruler_prepare_args}")
+    mode = "chat completions" if args.use_chat_completions else "text completions (prefill)"
+    print(f"Preparing RULER dataset for tasks: {args.tasks}")
+    print(f"Mode: {mode}")
+    print(f"Additional arguments: {ruler_prepare_args}")
     get_ruler_data(
         args.tasks,
         args.setup,
@@ -208,5 +245,6 @@ if __name__ == "__main__":
         args.max_seq_length,
         ruler_prepare_args,
         tmp_data_dir=args.tmp_data_dir,
+        use_chat_completions=args.use_chat_completions,
     )
     print("RULER dataset preparation completed.")
