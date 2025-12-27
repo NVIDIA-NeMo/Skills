@@ -45,6 +45,8 @@ def get_default_settings(use_chat_completions: bool) -> str:
         match_type="{match_type}",
         maybe_text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
     )
+
+
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
 MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "part"}
 
