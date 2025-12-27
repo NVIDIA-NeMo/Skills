@@ -28,7 +28,7 @@ METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
     "++inference.tokens_to_generate={tokens_to_generate} "
-{text_completions_args}    "++eval_type=ruler ++eval_config.match_type={match_type} "
+{maybe_text_completions_args}    "++eval_type=ruler ++eval_config.match_type={match_type} "
 )
 '''
 
@@ -43,13 +43,13 @@ def get_default_settings(use_chat_completions: bool) -> str:
     return DEFAULT_SETTINGS_TEMPLATE.format(
         tokens_to_generate="{tokens_to_generate}",
         match_type="{match_type}",
-        text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
+        maybe_text_completions_args="" if use_chat_completions else TEXT_COMPLETIONS_ARGS,
     )
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
 MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "part"}
 
 
-def prepare_task_for_ns(task, data_dir, setup, use_chat_completions=False):
+def prepare_task_for_ns(task, data_dir, setup, use_chat_completions):
     """Resaving from data_dir/task/test.jsonl into current folder/task/test.jsonl and adding proper init.py"""
     original_path = Path(data_dir) / task / "test.jsonl"
     new_path = Path(__file__).parent / setup / task / "test.jsonl"
@@ -141,7 +141,7 @@ def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_
 
         # resaving the data and creating __init__.py files
         for task in tasks:
-            prepare_task_for_ns(task, Path(tmpdirname) / "ruler_data", setup, use_chat_completions)
+            prepare_task_for_ns(task, Path(tmpdirname) / "ruler_data", setup, use_chat_completions=use_chat_completions)
 
         with open(Path(__file__).parent / setup / "__init__.py", "w", encoding="utf-8") as init_file:
             init_file.write("IS_BENCHMARK_GROUP = True\n")
