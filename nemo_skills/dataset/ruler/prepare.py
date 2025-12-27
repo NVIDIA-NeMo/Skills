@@ -66,8 +66,8 @@ def prepare_task_for_ns(task, data_dir, setup, use_chat_completions):
         short_name = task.split("_")[0]
         init_file.write(
             DEFAULT_SETTINGS.format(
-                tokens_to_generate=TOKENS_TO_GENERATE[short_name],
                 match_type=MATCH_TYPE[short_name],
+                tokens_to_generate=TOKENS_TO_GENERATE[short_name],
                 extra_generation_args="" if use_chat_completions else TEXT_COMPLETIONS_EXTRA_ARGS,
             )
         )
