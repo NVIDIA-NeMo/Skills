@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-DEFAULT_SETTINGS = '''
+DEFAULT_SETTINGS = """
 DATASET_GROUP = "long-context"
 METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
@@ -30,13 +30,13 @@ GENERATION_ARGS = (
     "++inference.tokens_to_generate={tokens_to_generate} "
     "++eval_type=ruler ++eval_config.match_type={match_type} "
 {extra_generation_args})
-'''
+"""
 
-TEXT_COMPLETIONS_EXTRA_ARGS = '''\
+TEXT_COMPLETIONS_EXTRA_ARGS = """\
     # ruler is adding prefix for assistant response, so it has to go through completions api
     "++start_assistant_response_key=generation "
     "++inference.endpoint_type=text "
-'''
+"""
 
 
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
