@@ -448,6 +448,7 @@ def configure_client(
     """
     # Check if user already specified server.server_type in extra_arguments
     server_type_arg = "" if "++server.server_type=" in extra_arguments else f"++server.server_type={server_type} "
+    # Only add server_type if user didn't specify it (allows vllm_multimodal override)
     extra_arguments = server_type_arg + extra_arguments
 
     if server_gpus:  # we need to host the model
@@ -466,13 +467,11 @@ def configure_client(
         }
         if server_container:
             server_config["container"] = server_container
-        # Only add server_type if user didn't specify it (allows vllm_multimodal override)
         extra_arguments = (
-            f"++server.host=127.0.0.1 ++server.port={server_port} ++server.model={model} {extra_arguments} "
+            f"++server.host=127.0.0.1 ++server.port={server_port} ++server.model={model} {extra_arguments}"
         )
     else:  # model is hosted elsewhere
         server_config = None
-        # Only add server_type if user didn't specify it
         extra_arguments = (
             f"++server.base_url={server_address} ++server.model={model} {extra_arguments}"
         )
