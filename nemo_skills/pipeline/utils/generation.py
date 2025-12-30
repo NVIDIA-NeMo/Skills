@@ -447,7 +447,8 @@ def configure_client(
             - extra_arguments: Updated extra arguments for the command.
     """
     # Check if user already specified server.server_type in extra_arguments
-    user_specified_server_type = "++server.server_type=" in extra_arguments
+    server_type_arg = "" if "++server.server_type=" in extra_arguments else f"++server.server_type={server_type} "
+    extra_arguments = server_type_arg + extra_arguments
 
     if server_gpus:  # we need to host the model
         server_port = get_free_port(strategy="random") if get_random_port else 5000
@@ -466,16 +467,13 @@ def configure_client(
         if server_container:
             server_config["container"] = server_container
         # Only add server_type if user didn't specify it (allows vllm_multimodal override)
-        server_type_arg = "" if user_specified_server_type else f"++server.server_type={server_type} "
         extra_arguments = (
-            f"{extra_arguments} {server_type_arg}++server.host=127.0.0.1 "
-            f"++server.port={server_port} ++server.model={model} "
+            f"++server.host=127.0.0.1 ++server.port={server_port} ++server.model={model} {extra_arguments} "
         )
     else:  # model is hosted elsewhere
         server_config = None
         # Only add server_type if user didn't specify it
-        server_type_arg = "" if user_specified_server_type else f"++server.server_type={server_type} "
         extra_arguments = (
-            f"{extra_arguments} {server_type_arg}++server.base_url={server_address} ++server.model={model} "
+            f"++server.base_url={server_address} ++server.model={model} {extra_arguments}"
         )
     return server_config, server_address, extra_arguments
