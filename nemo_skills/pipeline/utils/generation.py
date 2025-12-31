@@ -472,7 +472,5 @@ def configure_client(
         )
     else:  # model is hosted elsewhere
         server_config = None
-        extra_arguments = (
-            f"++server.base_url={server_address} ++server.model={model} {extra_arguments}"
-        )
+        extra_arguments = f"++server.base_url={server_address} ++server.model={model} {extra_arguments}"
     return server_config, server_address, extra_arguments
