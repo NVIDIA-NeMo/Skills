@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This is similar to nemo_skills/dataset/swe-bench/prepare.py, but adds an extra language column.
+
 import argparse
 from pathlib import Path
 
 import datasets
+
+# Source: https://www.swebench.com/multilingual.html#appendix-a
+REPO_TO_LANGUAGE = {
+    "redis/redis": "c",
+    "jqlang/jq": "c",
+    "nlohmann/json": "cpp",
+    "micropython/micropython": "c",
+    "valkey-io/valkey": "c",
+    "fmtlib/fmt": "cpp",
+    "caddyserver/caddy": "go",
+    "hashicorp/terraform": "go",
+    "prometheus/prometheus": "go",
+    "gohugoio/hugo": "go",
+    "gin-gonic/gin": "go",
+    "google/gson": "java",
+    "apache/druid": "java",
+    "projectlombok/lombok": "java",
+    "apache/lucene": "java",
+    "reactivex/rxjava": "java",
+    "javaparser/javaparser": "java",
+    "babel/babel": "javascript",
+    "vuejs/core": "javascript",
+    "facebook/docusaurus": "javascript",
+    "immutable-js/immutable-js": "javascript",
+    "mrdoob/three.js": "javascript",
+    "preactjs/preact": "javascript",
+    "axios/axios": "javascript",
+    "phpoffice/phpspreadsheet": "php",
+    "laravel/framework": "php",
+    "php-cs-fixer/php-cs-fixer": "php",
+    "briannesbitt/carbon": "php",
+    "jekyll/jekyll": "ruby",
+    "fluent/fluentd": "ruby",
+    "fastlane/fastlane": "ruby",
+    "jordansissel/fpm": "ruby",
+    "faker-ruby/faker": "ruby",
+    "rubocop/rubocop": "ruby",
+    "tokio-rs/tokio": "rust",
+    "uutils/coreutils": "rust",
+    "nushell/nushell": "rust",
+    "tokio-rs/axum": "rust",
+    "burntsushi/ripgrep": "rust",
+    "sharkdp/bat": "rust",
+    "astral-sh/ruff": "rust",
+}
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -34,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="princeton-nlp/SWE-bench_Verified",
+        default="SWE-bench/SWE-bench_Multilingual",
         help="Dataset name to load",
     )
     args = parser.parse_args()
@@ -45,7 +93,9 @@ if __name__ == "__main__":
 
     dataset = datasets.load_dataset(path=dataset_name, split=split)
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
-    dataset = dataset.map(lambda example: {**example, "container_formatter": container_formatter})
+    dataset = dataset.map(
+        lambda row: {**row, "container_formatter": container_formatter, "language": REPO_TO_LANGUAGE[row["repo"]]}
+    )
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))
