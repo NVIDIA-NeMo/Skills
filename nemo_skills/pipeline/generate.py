@@ -57,6 +57,7 @@ def _create_commandgroup_from_config(
     task_name: str,
     log_dir: str,
     sbatch_kwargs: Optional[Dict] = None,
+    sandbox_env_overrides: Optional[List[str]] = None,
 ) -> CommandGroup:
     """Create a CommandGroup from server_config.
 
@@ -121,6 +122,14 @@ def _create_commandgroup_from_config(
         # Call sandbox command builder directly with cluster_config
         cmd, metadata = sandbox_command(cluster_config=cluster_config, port=sandbox_port)
         metadata["log_prefix"] = "sandbox"
+
+        # Apply user-specified environment overrides for the sandbox
+        if sandbox_env_overrides:
+            sandbox_env = metadata.get("environment", {})
+            for override in sandbox_env_overrides:
+                key, value = override.split("=", 1)
+                sandbox_env[key] = value
+            metadata["environment"] = sandbox_env
 
         sandbox_cmd = Command(
             command=cmd,
@@ -242,6 +251,11 @@ def generate(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
     ),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
+    sandbox_env_overrides: List[str] = typer.Option(
+        None,
+        help="Extra environment variables for the sandbox container in KEY=VALUE format. "
+        "E.g., --sandbox-env-overrides NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1 to enable network blocking.",
+    ),
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
@@ -455,6 +469,7 @@ def generate(
                     task_name=task_name,
                     log_dir=log_dir,
                     sbatch_kwargs=sbatch_kwargs,
+                    sandbox_env_overrides=sandbox_env_overrides,
                 )
 
                 # Use unique internal job name for dependency tracking, but same task_name

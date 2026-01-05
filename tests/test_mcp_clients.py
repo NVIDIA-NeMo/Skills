@@ -482,8 +482,8 @@ async def test_streamable_http_client_list_and_call_tool(monkeypatch):
         async def call_tool(self, tool, arguments):
             if tool == "t1":
                 return ResultObj({"ok": True})
-            # No structured content -> client should return raw object
-            return types.SimpleNamespace(structuredContent=None, raw=True, tool=tool, arguments=arguments)
+            # No structured content and no text content -> client should return error dict
+            return types.SimpleNamespace(structuredContent=None, content=None)
 
     class FakeHttpCtx:
         async def __aenter__(self):
@@ -505,9 +505,9 @@ async def test_streamable_http_client_list_and_call_tool(monkeypatch):
     out1 = await client.call_tool("t1", {})
     assert out1 == {"ok": True}
 
-    # structured content absent -> return raw
+    # structured content absent and no text content -> return error dict (not raw object)
     out2 = await client.call_tool("t2", {"x": 1})
-    assert getattr(out2, "raw", False) is True and getattr(out2, "tool", "") == "t2"
+    assert out2 == {"error": "No content returned from tool"}
 
 
 @pytest.mark.asyncio
@@ -556,3 +556,81 @@ async def test_streamable_http_client_enforcement(monkeypatch):
     client = MCPStreamableHttpClient(base_url="https://example.com/mcp", enabled_tools=["only_t2"])  # not including t1
     with pytest.raises(PermissionError):
         await client.call_tool("t1", {})
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_with_schema_overrides():
+    """Test ToolManager integration with schema overrides."""
+    from nemo_skills.inference.model.base import EndpointType
+    from nemo_skills.mcp.adapters import format_tool_list_by_endpoint_type, load_schema_overrides
+
+    tm = ToolManager(module_specs=[f"{__name__}::DummyTool"], overrides={}, context={})
+    tools = await tm.list_all_tools(use_cache=False)
+
+    schema_overrides = {
+        "DummyTool": {
+            "execute": {
+                "name": "renamed_execute",
+                "parameters": {"code": {"name": "script"}},  # rename 'code' -> 'script' for model
+            }
+        }
+    }
+    loaded_overrides = load_schema_overrides(schema_overrides)
+    formatted_tools, mappings = format_tool_list_by_endpoint_type(
+        tools, EndpointType.chat, schema_overrides=loaded_overrides
+    )
+
+    renamed_tool = next((t for t in formatted_tools if t["function"]["name"] == "renamed_execute"), None)
+    assert renamed_tool is not None
+    assert "script" in renamed_tool["function"]["parameters"]["properties"]
+    assert "code" not in renamed_tool["function"]["parameters"]["properties"]
+    assert mappings["parameters"]["renamed_execute"] == {"script": "code"}
+    assert mappings["tool_names"]["renamed_execute"] == "execute"
+
+
+def test_schema_override_nonexistent_param_fails():
+    """Overriding a parameter that doesn't exist in the schema must fail early.
+
+    This also covers the hidden-arg case: when hide_args removes a param from the
+    schema before overrides are applied, attempting to override that (now-missing)
+    param will trigger the same error.
+    """
+    from nemo_skills.mcp.adapters import apply_schema_overrides
+
+    tool = {
+        "name": "test",
+        "description": "Test",
+        "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": []},
+    }
+    # Try to override 'script' which doesn't exist (tool only has 'code')
+    with pytest.raises(ValueError, match="Parameter 'script' not in schema"):
+        apply_schema_overrides(tool, {"parameters": {"script": {"name": "renamed"}}})
+
+
+@pytest.mark.asyncio
+async def test_stdio_client_returns_list_for_multiple_content_items(tmp_path):
+    """Tool without return type hint that returns a list should produce multiple content items."""
+    # FastMCP without return type hint - returns list as multiple TextContent items
+    server_code = """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP(name="multi_result_tool")
+
+@mcp.tool()
+async def get_items(count: int):
+    # No return type hint - FastMCP will serialize list items as separate TextContent
+    return [{"id": i} for i in range(1, count + 1)]
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+"""
+    script_path = tmp_path / "multi_result_server.py"
+    script_path.write_text(server_code)
+
+    client = MCPStdioClient(command="python", args=[str(script_path)])
+    result = await client.call_tool("get_items", {"count": 3})
+
+    # Should return all items, not just the first one
+    assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
+    assert len(result) == 3
+    assert result == [{"id": 1}, {"id": 2}, {"id": 3}]

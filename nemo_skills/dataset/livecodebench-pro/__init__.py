@@ -14,5 +14,6 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 DATASET_GROUP = "code"
-METRICS_TYPE = "code"
-GENERATION_ARGS = "++prompt_config=eval/livecodebench/python_codegen ++eval_type=livecodebench_pro"
+METRICS_TYPE = "livecodebench_pro"
+EVAL_SPLIT = "test_25q2"
+GENERATION_ARGS = "++prompt_config=eval/livecodebench/cpp_codegen ++eval_type=livecodebench_pro"
