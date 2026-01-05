@@ -18,6 +18,38 @@ from pathlib import Path
 
 from datasets import load_dataset
 
+_CONTEXT_FILES_BLOCK_TEMPLATE = """
+--- file: {path}
+```{fence}
+{content}
+```
+"""
+
+
+def _fence_for_path(path: str) -> str:
+    p = path.lower()
+    if p.endswith((".cu", ".cuh")):
+        return "cuda"
+    if p.endswith((".cc", ".cpp", ".cxx")):
+        return "cpp"
+    if p.endswith(".c"):
+        return "c"
+    if p.endswith(".h") or p.endswith(".hpp"):
+        return "h"
+    # Default to plaintext if unknown
+    return ""
+
+
+def _format_context_files_block(context_files: list[dict[str, str]]) -> str:
+    blocks: list[str] = []
+    for source in context_files:
+        fence = _fence_for_path(source["path"])
+        blocks.append(
+            _CONTEXT_FILES_BLOCK_TEMPLATE.format(path=source["path"], fence=fence, content=source["content"])
+        )
+    return "".join(blocks)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download and prepare nvidia/compute-eval dataset")
     parser.add_argument(
@@ -35,4 +67,11 @@ if __name__ == "__main__":
 
     with open(data_dir / "eval.jsonl", "wt", encoding="utf-8") as f:
         for item in dataset["eval"]:
-            f.write(json.dumps({"problem": item}, default=str) + "\n")
+            record = {
+                "problem": item,
+                "task_id": item["task_id"],
+                "problem_prompt": item["prompt"],
+                "build_command": item["build_command"],
+                "context_files_block": _format_context_files_block(item["context_files"]),
+            }
+            f.write(json.dumps(record, default=str) + "\n")

@@ -11,16 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import asyncio
 import logging
 import sys
-from typing import Annotated
 
 import hydra
-from compute_eval.data.data_model import CudaCppProblem, CudaPythonProblem
-from compute_eval.generate_completions import generate_model_completions
-from compute_eval.prompts import SYSTEM_PROMPT
-from pydantic import Field, TypeAdapter
+from compute_eval.data.data_model import FileSolution
+
+# noinspection PyProtectedMember
+from compute_eval.generate_completions import _parse_solution
 
 from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask
 from nemo_skills.inference.model import server_params
@@ -31,71 +29,23 @@ from nemo_skills.utils import (
 )
 
 _LOG = logging.getLogger(get_logger_name(__file__))
-_TYPE_ADAPTER = TypeAdapter(Annotated[CudaCppProblem | CudaPythonProblem, Field(discriminator="type")])
 
 
 class ComputeEvalGenerationTask(GenerationTask):
-    _params: dict
-    _system_prompt: str
-    _model: str
-
     def __init__(self, cfg: GenerateSolutionsConfig):
         super().__init__(cfg)
-        self._params = {
-            "temperature": cfg.inference.temperature,
-            "top_p": cfg.inference.top_p,
-            "max_tokens": cfg.inference.tokens_to_generate,
-        }
-        self._system_prompt = cfg.system_message or SYSTEM_PROMPT
-
-        self._model = cfg.server.get("model", "")
-        if self._model == "":
-            raise RuntimeError("Model must be specified in server configuration.")
-
-        self._base_url = cfg.server.get("base_url", "")
-        if self._base_url == "":
-            raise RuntimeError("Base URL must be specified in server configuration.")
-
-    def log_example_prompt(self, data):
-        return
-
-    def setup_prompt(self):
-        return
-
-    def setup_llm(self):
-        return
-
-    def setup_litellm_cache(self):
-        return
-
-    def cleanup_litellm_cache(self):
-        return
 
     async def process_single_datapoint(self, data_point, data):
-        try:
-            problem = _TYPE_ADAPTER.validate_python(data_point["problem"])
-            solution = await asyncio.to_thread(
-                generate_model_completions,
-                system_prompt=self._system_prompt,
-                problem=problem,
-                model=self._model,
-                base_url=self._base_url,
-                params=self._params,
-                debug=True,
-            )
+        res = await super().process_single_datapoint(data_point, data)
 
-            solution_dict = solution.model_dump()
-            return {
-                "solution": solution.model_dump(),
-                "generation": solution_dict.get("generated_completion", ""),
-            }
-        except Exception as e:
-            _LOG.error(f"Error processing data point {data_point}: {e}")
-            return {
-                "solution": None,
-                "generation": "",
-                "error": str(e),
-            }
+        solution = FileSolution(
+            task_id=data_point["task_id"],
+            files=_parse_solution(res["generation"]),
+        )
+        return {
+            "solution": solution.model_dump(),
+            "generation": res["generation"],
+        }
 
 
 GENERATION_TASK_CLASS = ComputeEvalGenerationTask
