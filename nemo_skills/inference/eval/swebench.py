@@ -98,9 +98,12 @@ class SweBenchGenerationConfig:
 
     agent_framework: SupportedAgentFrameworks  # Which agentic framework to use
 
-    # URL of the SWE-agent/OpenHands repo to pass to git clone. If None, will use the official repo
+    # SWE-agent/OpenHands repo URL & commit. Passed to git clone & git checkout respectively.
+    # If None (default):
+    # - if agent_framework=openhands and multilingual=True, will use our fork of OpenHands with better multilingual support.
+    # - otherwise, will use the official SWE-agent/OpenHands repo and HEAD commit.
     agent_framework_repo: str | None = None
-    agent_framework_commit: str = "HEAD"  # Which commit to use when cloning the SWE-agent/OpenHands repo
+    agent_framework_commit: str | None = None
 
     # SWE-agent/OpenHands configuration file path. Can be specified in the same way as ns prompt configs
     # If None, will use the default for the chosen framework
@@ -226,6 +229,9 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = "HEAD"
+
             setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/SWE-agent && "
@@ -237,9 +243,19 @@ class SweBenchGenerationTask(GenerationTask):
                 "source venv/bin/activate && "
                 "uv pip install -e ."
             )
+
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            if self.cfg.agent_framework_repo is None:
-                self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
+            if self.cfg.multilingual:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/ludwig-n/OpenHands.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "ns-swe-bench-multilingual"
+            else:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "HEAD"
+
             setup_commands.append(
                 # install python 3.12 with uv
                 "uv python install 3.12 && "
