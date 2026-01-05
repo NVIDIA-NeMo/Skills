@@ -21,7 +21,7 @@ Here are some of the features we support:
         - [**Instruction following**](./evaluation/instruction-following.md): e.g. [ifbench](./evaluation/instruction-following.md#ifbench), [ifeval](./evaluation/instruction-following.md#ifeval)
         - [**Long-context**](./evaluation/long-context.md): e.g. [ruler](./evaluation/long-context.md#ruler), [mrcr](./evaluation/long-context.md#mrcr)
         - [**Tool-calling**](./evaluation/tool-calling.md): e.g. [bfcl_v3](./evaluation/tool-calling.md#bfcl_v3)
-        - [**Multilingual capabilities**](./evaluation/multilingual.md): e.g. [mmlu-prox](./evaluation/multilingual.md#mmlu-prox), [flores-200](./evaluation/multilingual.md#FLORES-200), [wmt24pp](./evaluation/multilingual.md#wmt24pp)
+        - [**Multilingual capabilities**](./evaluation/multilingual.md): e.g. [mmlu-prox](./evaluation/multilingual.md#mmlu-prox), [flores-200](./evaluation/multilingual.md#flores-200), [wmt24pp](./evaluation/multilingual.md#wmt24pp)
         - [**Speech & Audio**](./evaluation/speech-audio.md): e.g. [asr-leaderboard](./evaluation/speech-audio.md#asr-leaderboard), [mmau-pro](./evaluation/speech-audio.md#mmau-pro)
         - [**Robustness evaluation**](./evaluation/robustness.md): Evaluate model sensitvity against changes in prompt.
     - Easily parallelize each evaluation across many Slurm jobs, self-host LLM judges, bring your own prompts or change benchmark configuration in any other way.
@@ -36,4 +36,3 @@ You can find more examples of how to use Nemo-Skills in the [tutorials](./tutori
 We've built and released many popular models and datasets using Nemo-Skills. See all of them in the [Papers & Releases](./releases/index.md) documentation.
 
 We support many popular benchmarks and it's easy to add new in the future. The following categories of benchmarks are supported
-
