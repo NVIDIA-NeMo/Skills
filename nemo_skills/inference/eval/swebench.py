@@ -99,9 +99,10 @@ class SweBenchGenerationConfig:
     agent_framework: SupportedAgentFrameworks  # Which agentic framework to use
 
     # SWE-agent/OpenHands repo URL & commit. Passed to git clone & git checkout respectively.
-    # If None (default):
-    # - if agent_framework=openhands and multilingual=True, will use our fork of OpenHands with better multilingual support.
-    # - otherwise, will use the official SWE-agent/OpenHands repo and HEAD commit.
+    # Default behavior:
+    # - If agent_framework=openhands and multilingual=True,
+    #   will use a branch in our fork of OpenHands with better multilingual support.
+    # - Otherwise, will use the HEAD commit in the official SWE-agent/OpenHands repo.
     agent_framework_repo: str | None = None
     agent_framework_commit: str | None = None
 
@@ -110,7 +111,7 @@ class SweBenchGenerationConfig:
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max iterations for the agent
 
-    # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual and Multi-SWE-bench.
+    # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs the built-in Multi-SWE-bench inference code from evaluation/benchmarks/multi_swe_bench.
     # For SWE-agent, no changes are made.
     multilingual: bool = False
@@ -285,6 +286,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "make install-python-dependencies && "
                 "poetry run python -m pip install datasets"
             )
+
         else:
             raise ValueError(
                 f"Unsupported agent framework: {self.cfg.agent_framework}. "
