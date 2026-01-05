@@ -107,6 +107,11 @@ class SweBenchGenerationConfig:
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max iterations for the agent
 
+    # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual and Multi-SWE-bench.
+    # For OpenHands, this runs the built-in Multi-SWE-bench inference code from evaluation/benchmarks/multi_swe_bench.
+    # For SWE-agent, no changes are made.
+    multilingual: bool = False
+
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
     eval_harness_repo: str = "https://github.com/Kipok/SWE-bench.git"
     eval_harness_commit: str = "HEAD"  # Which commit to use when cloning the eval harness repo
@@ -521,10 +526,25 @@ class SweBenchGenerationTask(GenerationTask):
 
         config_str = tomlkit.dumps(config)
 
-        # # Folder to copy the dataset into.
-        # # It's important that the name includes the original HF dataset name,
-        # # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
-        # data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
+        # Folder to copy the dataset into.
+        # It's important that the name includes the original HF dataset name,
+        # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
+        data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
+
+        # The final 2 arguments are different between the swe_bench and multi_swe_bench scripts.
+        # We handle that with extra_args.
+        if self.cfg.multilingual:
+            benchmark_name = "multi_swe_bench"
+            extra_args = (
+                f" {data_dir}/dataset.jsonl "  # dataset file
+                f" {data_point['language']} "  # language
+            )
+        else:
+            benchmark_name = "swe_bench"
+            extra_args = (
+                f" {data_dir} "  # dataset folder
+                f" train "  # dataset split (always "train" for local datasets)
+            )
 
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
@@ -551,26 +571,25 @@ class SweBenchGenerationTask(GenerationTask):
             "export NO_CLEANUP=1 && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
-            # # copy dataset
-            # f"mkdir {data_dir} && "
-            # f"cp {self.cfg.input_file} {data_dir} && "
+            # copy dataset
+            f"mkdir {data_dir} && "
+            f"cp {self.cfg.input_file} {data_dir}/dataset.jsonl && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
-            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/multi_swe_bench/config.toml && "
+            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
             # set local runtime & force verbose logs
             "export RUNTIME=local && "
             "export LOG_ALL_EVENTS=true && "
             "export LOG_LEVEL=DEBUG && "
             # run the agent
-            f"./evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh "
+            f"./evaluation/benchmarks/{benchmark_name}/scripts/run_infer.sh "
             f"    llm.model "  # name of llm config section in config.toml
             f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
             f"    CodeActAgent "  # agent
             f"    1 "  # number of instances
             f"    {self.cfg.agent_max_turns} "  # max agent iterations
             f"    1 "  # number of workers
-            f"    {self.cfg.input_file} "  # path to input file (multi-swe-bench expects a path to file and not dir)
-            f"    {data_point['language']} && "  # language
+            f"    {extra_args} && "  # extra args (different depending on benchmark_name)
             # move outputs to the mounted directory
             f"mkdir -p /trajectories_mount/trajectories && "
             f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
