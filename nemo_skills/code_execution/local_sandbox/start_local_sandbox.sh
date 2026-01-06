@@ -25,5 +25,4 @@ docker run --network=host --rm \
     ${UWSGI_CPU_AFFINITY:+-e UWSGI_CPU_AFFINITY=${UWSGI_CPU_AFFINITY}} \
     ${UWSGI_PROCESSES:+-e UWSGI_PROCESSES=${UWSGI_PROCESSES}} \
     -v /nemo_run:/nemo_run \
-    --restart unless-stopped \
     --name=local-sandbox ${SANDBOX_NAME}
