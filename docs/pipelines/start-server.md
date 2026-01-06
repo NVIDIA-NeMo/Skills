@@ -64,7 +64,7 @@ Similarly, the local port for the sandbox server can be changed using `--sandbox
 
 ## Using the Server
 
-To use this started server in [Evaluation](/Skills/pipelines/evaluation/) or [Generation](/Skills/pipelines/generation/),
+To use this started server in [Evaluation](evaluation.md) or [Generation](generation.md),
 all the model-related arguments can now be replaced with `--server_type=openai` and `server_address` arguments.
 
 For instance, for the vLLM model server above, the `eval` pipeline arguments can be modified as,

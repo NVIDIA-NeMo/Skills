@@ -112,7 +112,7 @@ class Prompt:
         if self.tokenizer:
             # assuming it's the object already if not str
             if isinstance(self.tokenizer, str):
-                self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer, trust_remote_code=True)
 
     def build_filled_example(self, example_dict: Dict[str, Any]) -> str:
         """Builds a filled example string based on the example dictionary."""
