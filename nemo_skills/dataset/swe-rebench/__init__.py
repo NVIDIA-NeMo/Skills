@@ -13,7 +13,9 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
+EVAL_SPLIT = "default"
 DATASET_GROUP = "code"
-METRICS_TYPE = "livecodebench_pro"
-EVAL_SPLIT = "test_25q2"
-GENERATION_ARGS = "++prompt_config=eval/livecodebench/cpp_codegen ++eval_type=livecodebench_pro"
+METRICS_TYPE = "swe-bench"
+# evaluation is fused with generation for efficiency
+GENERATION_MODULE = "nemo_skills.inference.eval.swebench"
+GENERATION_ARGS = "++eval_harness_repo=https://github.com/wasiahmad/SWE-rebench.git "

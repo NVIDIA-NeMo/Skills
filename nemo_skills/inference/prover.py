@@ -107,7 +107,7 @@ class ProverTask(GenerationTask):
 
         # Initialize tokenizer for chat template application
         tokenizer_path = self.cfg.tokenizer or self.cfg.server.get("model")
-        self.hf_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        self.hf_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
 
         if self.cfg.refinement:
             self.setup_refine_prompt()
