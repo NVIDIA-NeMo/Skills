@@ -118,7 +118,7 @@ class BirdEvaluator(BaseEvaluator):
             return "SELECT 1"  # No-op filler
 
         # Remove comments first
-        ans = re.sub(r"--.*", "", code_matches[-1])  # Use last match
+        ans = re.sub(r"--.*?|/\*.*?\*/", "", code_matches[-1], flags=re.DOTALL)  # Use last match
         # Collapse whitespace
         ans = re.sub(r"\s+", " ", ans)
         # Remove miscellaneous headers that snuck in
