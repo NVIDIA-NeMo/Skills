@@ -16,7 +16,7 @@ Here are some of the features we support:
     - Evaluate your models on many popular benchmarks.
         - [**Math (natural language**)](./evaluation/natural-math.md): e.g. [aime24](./evaluation/natural-math.md#aime24), [aime25](./evaluation/natural-math.md#aime25), [hmmt_feb25](./evaluation/natural-math.md#hmmt_feb25)
         - [**Math (formal language)**](./evaluation/formal-math.md): e.g. [minif2f](./evaluation/formal-math.md#minif2f), [proofnet](./evaluation/formal-math.md#proofnet), [putnam-bench](./evaluation/formal-math.md#putnam-bench)
-        - [**Code**](./evaluation/code.md): e.g. [swe-bench](./evaluation/code.md#swe-bench), [livecodebench](./evaluation/code.md#livecodebench)
+        - [**Code**](./evaluation/code.md): e.g. [swe-bench](./evaluation/code.md#swe-bench), [livecodebench](./evaluation/code.md#livecodebench), [bird](./evaluation/code.md#BIRD)
         - [**Scientific knowledge**](./evaluation/scientific-knowledge.md): e.g., [hle](./evaluation/scientific-knowledge.md#hle), [scicode](./evaluation/scientific-knowledge.md#scicode), [gpqa](./evaluation/scientific-knowledge.md#gpqa)
         - [**Instruction following**](./evaluation/instruction-following.md): e.g. [ifbench](./evaluation/instruction-following.md#ifbench), [ifeval](./evaluation/instruction-following.md#ifeval)
         - [**Long-context**](./evaluation/long-context.md): e.g. [ruler](./evaluation/long-context.md#ruler), [mrcr](./evaluation/long-context.md#mrcr)
