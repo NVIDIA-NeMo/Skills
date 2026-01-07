@@ -112,8 +112,8 @@ class SweBenchGenerationConfig:
     agent_max_turns: int = 100  # Max iterations for the agent
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
-    # For OpenHands, this runs the built-in Multi-SWE-bench inference code from evaluation/benchmarks/multi_swe_bench.
-    # For SWE-agent, this only changes the default config to use a language-agnostic prompt.
+    # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
+    # For SWE-agent, this changes the default config to multilingual.yaml, which uses a language-agnostic prompt.
     multilingual: bool = False
 
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
