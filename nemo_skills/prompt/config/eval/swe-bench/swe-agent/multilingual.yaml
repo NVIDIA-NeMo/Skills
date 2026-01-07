@@ -1,10 +1,10 @@
-# Based on the default config from the SWE-agent repo:
-# https://github.com/SWE-agent/SWE-agent/blob/1375ec4fa69d300b432b9ca61d6b0e5d7259131c/config/default.yaml
-# but mentions of Python are removed to make the prompt language-agnostic.
+# Based on the multilingual config from the SWE-agent repo:
+# https://github.com/SWE-agent/SWE-agent/blob/3ff833d957973f9483fb012371432662c8b33269/config/benchmarks/anthropic_filemap_multilingual.yaml
 
 # note that this doesn't use nemo-skills prompt logic and instead is passed directly to swe-agent
 
 agent:
+  type: default
   templates:
     system_template: |-
       You are a helpful assistant that can interact with a computer to solve tasks.
@@ -34,6 +34,7 @@ agent:
     next_step_no_output_template: |-
       Your command ran successfully and did not produce any output.
   tools:
+    execution_timeout: 300
     env_variables:
       PAGER: cat
       MANPAGER: cat
@@ -42,9 +43,11 @@ agent:
       TQDM_DISABLE: '1'
       GIT_PAGER: cat
     bundles:
+      - path: tools/multilingual_setup
       - path: tools/registry
       - path: tools/edit_anthropic
       - path: tools/review_on_submit_m
+      - path: tools/diff_state
     registry_variables:
       USE_FILEMAP: 'true'
       SUBMIT_REVIEW_MESSAGES:
