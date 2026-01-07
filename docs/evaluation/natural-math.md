@@ -104,7 +104,7 @@ For example, in a benchmark's `__init__.py` file, you can add default LLM-as-jud
 
 ```bash
 JUDGE_PIPELINE_ARGS = {
-    "model": "o3-mini-20250131",
+    "model": "o3-mini-2025-01-31",
     "server_type": "openai",
     "server_address": "https://api.openai.com/v1",
 }
