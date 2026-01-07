@@ -9,7 +9,7 @@ We support many popular benchmarks and it's easy to add new in the future. The f
 - [**Instruction following**](./instruction-following.md): e.g. [ifbench](./instruction-following.md#ifbench), [ifeval](./instruction-following.md#ifeval)
 - [**Long-context**](./long-context.md): e.g. [ruler](./long-context.md#ruler), [mrcr](./long-context.md#mrcr)
 - [**Tool-calling**](./tool-calling.md): e.g. [bfcl_v3](./tool-calling.md#bfcl_v3)
-- [**Multilingual**](./multilingual.md): e.g. [mmlu-prox](./multilingual.md#mmlu-prox), [flores-200](./multilingual.md#FLORES-200), [wmt24pp](./multilingual.md#wmt24pp)
+- [**Multilingual**](./multilingual.md): e.g. [mmlu-prox](./multilingual.md#mmlu-prox), [flores-200](./multilingual.md#flores-200), [wmt24pp](./multilingual.md#wmt24pp)
 - [**Speech & Audio**](./speech-audio.md): e.g. [asr-leaderboard](./speech-audio.md#asr-leaderboard), [mmau-pro](./speech-audio.md#mmau-pro)
 
 See [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset) where each folder is a benchmark we support.
@@ -177,7 +177,7 @@ code execution timeout for scicode benchmark
 !!! tip "Passing Main Arguments with Config Files"
 
     For parameters that are difficult to escape on the command line (like `end_reasoning_string='</think>'`),
-    you can use YAML config files instead. See [Passing Main Arguments with Config Files](../pipelines/index.md###passing-main-arguments-with-config-files) for details.
+    you can use YAML config files instead. See [Passing Main Arguments with Config Files](../pipelines/index.md#passing-main-arguments-with-config-files) for details.
 
 
 ## Using data on cluster
