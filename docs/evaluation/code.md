@@ -316,6 +316,46 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 --benchmarks=livecodebench:3
 ```
 
+### BIRD
+
+The [BIRD benchmark](https://bird-bench.github.io/) is currently the only text-to-SQL benchmark that is supported. Evaluation is based on the SQL evaluation accuracy calculated in [this file](https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py) provided in the BIRD GitHub repository.
+
+#### Data Preparation
+
+
+First, the data must be downloaded and prepared, which you can do by running:
+```bash
+ns prepare_data birdbench --cluster=<CLUSTER_NAME> --data_dir=<DATA_DIR>
+```
+
+This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas.
+The script will also process the original manifest into `<DATA_DIR>/birdbench/dev.jsonl`, which will be the input for evaluation.
+`<DATA_DIR>` should be a path to the mount point where you want this data to be stored.
+
+See [the "Using data on cluster" documentation](./index.md#Using-data-on-cluster) for more information.
+
+#### Running the Evaluation
+
+The following command runs an evaluation of [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) on a Slurm cluster.
+
+```bash
+ns eval \
+     --cluster=<CLUSTER_NAME> \
+     --server_type='sglang' \
+     --server_gpus=8 \
+     --model=Qwen/Qwen3-8B \
+     --benchmarks=birdbench \
+     --data_dir=<DATA_DIR> \
+     --output_dir=<OUTPUT_DIR> \
+     ++inference.tokens_to_generate=10000 \
+     ++inference.temperature=0.6 \
+     ++inference.top_p=0.95 \
+     ++inference.top_k=20 \
+     ++max_concurrent_requests=1024 \
+```
+You should specify: `<CLUSTER_NAME>`, which should match your cluster config name; `<DATA_DIR>`, which should be the location where your dataset is mounted from the cluster; and `<OUTPUT_DIR>`.
+The former two arguments should match what you used in `prepare_data`.
+
 ### livecodebench-cpp
 
 - Benchmark is defined in [`nemo_skills/dataset/livecodebench-cpp/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/livecodebench-cpp/__init__.py)

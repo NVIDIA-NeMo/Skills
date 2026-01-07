@@ -22,6 +22,7 @@ fire
 
 # needed local code execution server for persistent sessions
 flask
+func-timeout # Needed for BIRD benchmark
 gradio
 httpx
 huggingface_hub
