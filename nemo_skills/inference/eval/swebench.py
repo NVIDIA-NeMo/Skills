@@ -113,7 +113,7 @@ class SweBenchGenerationConfig:
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs the built-in Multi-SWE-bench inference code from evaluation/benchmarks/multi_swe_bench.
-    # For SWE-agent, no changes are made.
+    # For SWE-agent, this only changes the default config to use a language-agnostic prompt.
     multilingual: bool = False
 
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
@@ -457,7 +457,10 @@ class SweBenchGenerationTask(GenerationTask):
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
         if self.cfg.agent_config is None:
-            self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
+            if self.cfg.multilingual:
+                self.cfg.agent_config = "eval/swe-bench/swe-agent/multilingual"
+            else:
+                self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
