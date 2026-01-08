@@ -16,6 +16,7 @@
 METRICS_TYPE = "mmau_pro_closed_form"
 SCORE_MODULE = "nemo_skills.evaluation.metrics.mmau_pro_metrics"
 GENERATION_ARGS = "++prompt_format=openai"
+EVAL_ARGS = "++eval_type=mmau-pro"
 
 # NVEmbed judge configuration for closed-form evaluation
 JUDGE_PIPELINE_ARGS = {

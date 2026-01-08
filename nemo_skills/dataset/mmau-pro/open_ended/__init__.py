@@ -23,4 +23,4 @@ JUDGE_PIPELINE_ARGS = {
     "server_type": "openai",
     "server_address": "https://integrate.api.nvidia.com/v1",
 }
-JUDGE_ARGS = "++prompt_config=judge/speechlm ++generation_key=judgement"
+JUDGE_ARGS = "++prompt_config=judge/mmau-pro ++generation_key=judgement"
