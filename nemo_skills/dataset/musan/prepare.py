@@ -30,6 +30,7 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -94,10 +95,11 @@ def download_from_openslr(output_dir: Path) -> Path:
     if not extract_path.exists():
         print(f"Extracting to {extract_path}...")
         extract_path.mkdir(parents=True, exist_ok=True)
-        if sys.version_info >= (3, 11, 4):
-            tar.extractall(extract_path, filter="data")
-        else:
-            tar.extractall(extract_path)
+        with tarfile.open(download_path, "r:gz") as tar:
+            if sys.version_info >= (3, 11, 4):
+                tar.extractall(extract_path, filter="data")
+            else:
+                tar.extractall(extract_path)
         print("Extraction complete")
     else:
         print(f"Using extracted data: {extract_path}")
