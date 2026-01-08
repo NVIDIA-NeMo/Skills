@@ -19,6 +19,7 @@ from pathlib import Path
 
 import datasets
 
+# SWE-bench Multilingual repositories
 # Source: https://www.swebench.com/multilingual.html#appendix-a
 REPO_TO_LANGUAGE = {
     "redis/redis": "c",
@@ -65,6 +66,18 @@ REPO_TO_LANGUAGE = {
 }
 
 
+def get_language(row):
+    repo = row["repo"]
+    if repo in REPO_TO_LANGUAGE:
+        return REPO_TO_LANGUAGE[repo]
+    else:
+        print(
+            f"Warning: programming language could not be inferred for unknown repo {repo}. "
+            "Setting the 'language' column to 'unknown'. It is recommended to add language labels for optimal scores."
+        )
+        return "unknown"
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -93,9 +106,24 @@ if __name__ == "__main__":
 
     dataset = datasets.load_dataset(path=dataset_name, split=split)
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
-    dataset = dataset.map(
-        lambda row: {**row, "container_formatter": container_formatter, "language": REPO_TO_LANGUAGE[row["repo"]]}
-    )
+
+    # For the standard SWE-bench Multilingual dataset, we add a language label based on the repository name.
+    # For custom datasets, this won't work, so we warn the user that for optimal scores they should add their own labels.
+
+    if "language" in dataset.column_names:
+        print("Dataset already has a 'language' column. Language labels will not be added.")
+    elif "repo" in dataset.column_names:
+        print("Adding programming language labels...")
+        dataset = dataset.map(lambda row: {**row, "language": get_language(row)})
+    else:
+        print(
+            "Warning: programming language labels could not be inferred for this dataset "
+            "because there is no 'language' or 'repo' column. "
+            "Setting the 'language' column to 'unknown'. It is recommended to add language labels for optimal scores."
+        )
+        dataset = dataset.add_column("language", ["unknown"] * len(dataset))
+
+    dataset = dataset.add_column("container_formatter", [container_formatter] * len(dataset))
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))
