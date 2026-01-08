@@ -27,7 +27,6 @@ from nemo_skills.evaluation.evaluator.code import (
     eval_livebench_coding,
     eval_livecodebench_pro,
 )
-from nemo_skills.evaluation.evaluator.compute_eval import ComputeEvalEvaluator
 from nemo_skills.evaluation.evaluator.icpc import ICPCEvaluator
 from nemo_skills.evaluation.evaluator.ifbench import eval_ifbench
 from nemo_skills.evaluation.evaluator.ifeval import eval_if
@@ -70,7 +69,7 @@ EVALUATOR_CLASS_MAP = {
     "icpc": ICPCEvaluator,
     "audio": AudioEvaluator,
     "bird": BirdEvaluator,
-    "compute-eval": ComputeEvalEvaluator,
+    "compute-eval": "nemo_skills.evaluation.evaluator.compute_eval:ComputeEvalEvaluator",
 }
 
 # Validation: Ensure no overlap between class and function maps

@@ -75,7 +75,7 @@ eval(
     server_entrypoint="/workspace/megatron-lm/server.py",
     server_container="/path/to/container.sqsh",
     data_dir="/dataset",
-    installation_command="pip install sacrebleu jiwer openai-whisper"
+    installation_command="pip install -r requirements/audio.txt",
     server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
 )
 ```
@@ -98,8 +98,8 @@ eval(benchmarks="asr-leaderboard", split="librispeech_clean", ...)
         --model=/workspace/path/to/checkpoint \
         --server_entrypoint=/workspace/megatron-lm/server.py \
         --server_container=/path/to/container.sqsh \
-        --data_dir=/dataset
-        --installation_command="pip install sacrebleu jiwer openai-whisper"
+        --data_dir=/dataset \
+        --installation_command="pip install -r requirements/audio.txt"
     ```
 
 ### MMAU-Pro

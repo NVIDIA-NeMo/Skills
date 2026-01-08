@@ -32,8 +32,8 @@ from datasets import load_dataset
 from tqdm import tqdm
 
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
-USER_MESSAGE = "Transcribe the audio file into English text. /no_think"
-MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this (causes mel spectrogram errors)
+USER_MESSAGE = "Transcribe the audio file into English text."
+MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this
 
 # Speaker IDs to skip in Tedlium dataset
 SKIP_SPEAKER_IDS = {"inter_segment_gap"}
@@ -79,6 +79,11 @@ def save_audio_and_format_entry(entry, dataset_name, audio_dir, sample_idx, with
     if isinstance(audio_info, dict) and "array" in audio_info and "sampling_rate" in audio_info:
         audio_array = audio_info["array"]
         sampling_rate = audio_info["sampling_rate"]
+
+        # Skip if audio array is empty or invalid
+        if audio_array is None or len(audio_array) == 0:
+            return None
+
         duration = len(audio_array) / sampling_rate
 
         if duration < MIN_AUDIO_DURATION:
@@ -90,17 +95,23 @@ def save_audio_and_format_entry(entry, dataset_name, audio_dir, sample_idx, with
         if with_audio:
             sf.write(str(audio_dir / audio_filename), audio_array, sampling_rate)
 
+        audio_filepath = f"/dataset/asr-leaderboard/data/{dataset_name}/{audio_filename}"
         user_message["audio"] = {
-            "path": f"/dataset/asr-leaderboard/data/{dataset_name}/{audio_filename}",
+            "path": audio_filepath,
             "duration": float(duration),
         }
 
     formatted_entry = {
-        "task_type": "ASR_LEADERBOARD",
+        "task_type": "ASR",
         "expected_answer": text,
         "messages": [system_message, user_message],
         "subset_for_metrics": dataset_name,
     }
+
+    # Add audio_filepath and duration as top-level fields
+    if "audio" in user_message:
+        formatted_entry["audio_filepath"] = user_message["audio"]["path"]
+        formatted_entry["duration"] = user_message["audio"]["duration"]
 
     if "id" in entry:
         formatted_entry["id"] = entry["id"]
