@@ -75,9 +75,14 @@ class BaseModel:
         enable_soft_fail: bool = False,
         context_limit_retry_strategy: str | None = None,
         num_special_tokens_budget: int = 100,
+        # Directory paths for data and output
+        data_dir: str = "",
+        output_dir: str | None = None,
     ):
         self._tunnel = None
         self.model_name_or_path = model
+        self.data_dir = data_dir
+        self.output_dir = output_dir
         self.server_host = host
         self.server_port = port
         self.ssh_server = ssh_server
