@@ -338,7 +338,7 @@ class GenerationTask:
         # Setup hf_tokenizer for counting prompt tokens
         self.hf_tokenizer = None
         if self.cfg.count_prompt_tokens:
-            self.hf_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer)
+            self.hf_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer, trust_remote_code=True)
 
             if self.hf_tokenizer is None:
                 raise ValueError("Tokenizer could not be initialized. Needed for counting prompt tokens.")
@@ -399,8 +399,20 @@ class GenerationTask:
     def setup_llm(self):
         self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
 
+        self.data_dir = None
+        if "data_dir" in self.cfg.eval_config and not isinstance(self.cfg.eval_config.get("data_dir"), type(None)):
+            self.data_dir = self.cfg.eval_config["data_dir"]
+
+        output_dir = str(Path(self.cfg.output_file).parent)
+
         if self.cfg.code_execution:
-            llm = get_code_execution_model(**self.cfg.server, tokenizer=self.tokenizer, sandbox=self.sandbox)
+            llm = get_code_execution_model(
+                **self.cfg.server,
+                tokenizer=self.tokenizer,
+                sandbox=self.sandbox,
+                data_dir=self.data_dir or "",
+                output_dir=output_dir,
+            )
         elif self.cfg.tool_modules is not None:
             llm = get_tool_calling_model(
                 **self.cfg.server,
@@ -409,9 +421,13 @@ class GenerationTask:
                 schema_overrides=self.cfg.schema_overrides,
                 tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
+                data_dir=self.data_dir or "",
+                output_dir=output_dir,
             )
         else:
-            llm = get_model(**self.cfg.server, tokenizer=self.tokenizer)
+            llm = get_model(
+                **self.cfg.server, tokenizer=self.tokenizer, data_dir=self.data_dir or "", output_dir=output_dir
+            )
 
         if self.cfg.parallel_thinking.mode is not None:
             # We don't want to override these key variables which overlap with self.cfg
