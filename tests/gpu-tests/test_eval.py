@@ -46,6 +46,7 @@ EXCLUDED_DATASETS = {
     "aalcr",  # Has tokenization mismatch issues
     "audiobench",
     "librispeech-pc",
+    "musan",
 }
 
 
