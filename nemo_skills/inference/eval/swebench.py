@@ -470,6 +470,11 @@ class SweBenchGenerationTask(GenerationTask):
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
 
+        # Variables that will be available in prompt templates
+        extra_fields = {}
+        if self.cfg.multilingual:
+            extra_fields["language"] = data_point["language"]
+
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
@@ -489,7 +494,8 @@ class SweBenchGenerationTask(GenerationTask):
             f"    --env.repo.repo_name testbed "
             f"    --env.repo.base_commit {data_point['base_commit']} "
             f"    --problem_statement.text {shlex.quote(data_point['problem_statement'])} "
-            f"    --problem_statement.id {data_point['instance_id']} && "
+            f"    --problem_statement.id {data_point['instance_id']} "
+            f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
             # move trajectories to the mounted directory
             f"cp -r trajectories /trajectories_mount/"
         )
