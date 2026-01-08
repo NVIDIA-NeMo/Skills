@@ -11,7 +11,7 @@ agent:
     system_template: |-
       You are a helpful assistant that can interact with a computer to solve tasks.
     instance_template: |-
-      {%
+      {%-
         set language_names = {
           "c": "C",
           "cpp": "C++",
@@ -24,9 +24,9 @@ agent:
           "rust": "Rust",
           "typescript": "TypeScript",
         }
-      %}
-      {% set language_name = language_names.get(language, "") %}
-      {%
+      -%}
+      {%- set language_name = language_names.get(language, "") -%}
+      {%-
         set repr_instructions = {
           "c": "Create a script to reproduce the error by compiling your C code (for example, using `gcc <filename.c> -o <executable>`) and then running the executable using the bash tool, to confirm the error",
           "cpp": "Create or adapt a small executable (e.g., a main file or a test driver) to reproduce the issue. Build and run it (for example, by using `g++ -o reproduce reproduce.cpp && ./reproduce` via the bash tool) to confirm the error",
@@ -39,8 +39,8 @@ agent:
           "rust": "Create a reproduction script (or binary) that triggers the error and execute it with `cargo run --bin <filename>` using the bash tool, to confirm the error",
           "typescript": "Create a script to reproduce the error and execute it with `ts-node <filename.ts>` using the bash tool, to confirm the error",
         }
-      %}
-      {% set repr_instruction = repr_instructions.get(language, "Create a script to reproduce the error and execute it using the bash tool, to confirm the error") %}
+      -%}
+      {%- set repr_instruction = repr_instructions.get(language, "Create a script to reproduce the error and execute it using the bash tool, to confirm the error") -%}
 
       <uploaded_files>
       {{working_dir}}
