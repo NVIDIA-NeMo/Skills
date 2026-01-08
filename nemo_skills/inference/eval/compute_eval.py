@@ -37,15 +37,21 @@ class ComputeEvalGenerationTask(GenerationTask):
 
     async def process_single_datapoint(self, data_point, data):
         res = await super().process_single_datapoint(data_point, data)
-
-        solution = FileSolution(
-            task_id=data_point["task_id"],
-            files=_parse_solution(res["generation"]),
-        )
-        return {
-            "solution": solution.model_dump(),
-            "generation": res["generation"],
-        }
+        try:
+            solution = FileSolution(
+                task_id=data_point["task_id"],
+                files=_parse_solution(res["generation"]),
+            )
+            return {
+                "solution": solution.model_dump(),
+                "generation": res["generation"],
+            }
+        except KeyError as e:
+            _LOG.error(f"Missing required field: {e}")
+            raise
+        except Exception as e:
+            _LOG.error(f"Failed to parse solution: {e}")
+            raise
 
 
 GENERATION_TASK_CLASS = ComputeEvalGenerationTask

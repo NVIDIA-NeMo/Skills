@@ -43,6 +43,9 @@ def _fence_for_path(path: str) -> str:
 def _format_context_files_block(context_files: list[dict[str, str]]) -> str:
     blocks: list[str] = []
     for source in context_files:
+        if "path" not in source or "content" not in source:
+            continue
+
         fence = _fence_for_path(source["path"])
         blocks.append(
             _CONTEXT_FILES_BLOCK_TEMPLATE.format(path=source["path"], fence=fence, content=source["content"])
@@ -61,7 +64,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    dataset = load_dataset("nvidia/compute-eval", args.release, token=os.getenv("HF_TOKEN", None))
+    token = os.getenv("HF_TOKEN", None)
+    if not token:
+        print("Error: HF_TOKEN environment variable not set. Please set it to access the dataset.")
+        exit(1)
+
+    dataset = load_dataset("nvidia/compute-eval", args.release, token=token)
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
 
@@ -74,4 +82,6 @@ if __name__ == "__main__":
                 "build_command": item["build_command"],
                 "context_files_block": _format_context_files_block(item["context_files"]),
             }
+
+            # Dumping using default=str to handle datetime serialization from the problem records
             f.write(json.dumps(record, default=str) + "\n")

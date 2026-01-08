@@ -63,9 +63,23 @@ class ComputeEvalEvaluator(BaseEvaluator):
                 "build_output": graded.build_output,
                 "test_output": graded.test_output,
             }
+        except KeyError as e:
+            _LOG.error(f"Missing required field in data_point: {e}")
+            return {
+                "passed": False,
+                "skipped": False,
+                "elapsed_time": 0.0,
+                "build_output": "",
+                "test_output": "",
+                "error": f"Missing required field: {e}",
+            }
         except Exception as e:
             _LOG.error(f"Error during evaluation: {e}")
             return {
                 "passed": False,
+                "skipped": False,
+                "elapsed_time": 0.0,
+                "build_output": "",
+                "test_output": "",
                 "error": str(e),
             }
