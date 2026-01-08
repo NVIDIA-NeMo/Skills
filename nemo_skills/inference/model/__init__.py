@@ -17,6 +17,9 @@ import dataclasses
 from nemo_skills.mcp.utils import locate
 from nemo_skills.utils import python_doc_to_cmd_help
 
+# NIM models (speech)
+from .asr_nim import ASRNIMModel
+
 # Audio utilities
 from .audio_utils import (
     audio_file_to_base64,
@@ -25,9 +28,6 @@ from .audio_utils import (
     make_audio_content_block,
     save_audio_chunk_to_base64,
 )
-
-# NIM models (speech)
-from .asr_nim import ASRNIMModel
 from .azure import AzureOpenAIModel
 
 # Base classes

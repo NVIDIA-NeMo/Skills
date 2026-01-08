@@ -413,9 +413,7 @@ class VLLMMultimodalModel(VLLMModel):
             needs_chunking, audio_path, duration = self._needs_audio_chunking(messages, task_type)
 
             if needs_chunking:
-                return await self._generate_with_chunking(
-                    messages, audio_path, duration, tokens_to_generate, **kwargs
-                )
+                return await self._generate_with_chunking(messages, audio_path, duration, tokens_to_generate, **kwargs)
 
             # No chunking needed - convert audio fields to base64 format
             messages = [self.content_text_to_list(msg.copy()) for msg in messages]
