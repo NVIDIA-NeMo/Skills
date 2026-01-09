@@ -186,12 +186,14 @@ class VLLMMultimodalModel(VLLMModel):
             base64_audio = audio_file_to_base64(audio_path)
             audio_message = {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{base64_audio}"}}
             audio_items.append(audio_message)
+            del message["audio"]  # Remove original audio field after conversion
         elif "audios" in message:
             for audio in message["audios"]:
                 audio_path = os.path.join(self.data_dir, audio["path"])
                 base64_audio = audio_file_to_base64(audio_path)
                 audio_message = {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{base64_audio}"}}
                 audio_items.append(audio_message)
+            del message["audios"]  # Remove original audios field after conversion
 
         # Insert audio items at the BEGINNING of content list (before text)
         if audio_items:
@@ -202,25 +204,18 @@ class VLLMMultimodalModel(VLLMModel):
     def _preprocess_messages_for_model(self, messages: list[dict]) -> list[dict]:
         """Preprocess messages based on model-specific requirements.
 
-        Remove /no_think suffix from system message as many models don't
-        recognize it and it degrades performance (especially Qwen).
+        NOTE: We intentionally keep /no_think suffix for Qwen models as it
+        instructs the model to respond concisely without verbose explanations.
 
         Args:
             messages: List of message dicts.
 
         Returns:
-            Preprocessed list of message dicts.
+            Preprocessed list of message dicts (deep copy to avoid mutation).
         """
         processed_messages = []
         for msg in messages:
             msg_copy = msg.copy()
-
-            if msg_copy.get("role") == "system" and isinstance(msg_copy.get("content"), str):
-                content = msg_copy["content"]
-                if "/no_think" in content:
-                    content = content.replace(" /no_think", "").replace("/no_think", "")
-                    msg_copy["content"] = content.strip()
-
             processed_messages.append(msg_copy)
 
         return processed_messages
