@@ -124,7 +124,7 @@ def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: boo
 
 def preprocess_asr_text(text: str) -> str:
     """Apply Whisper-style normalization: lowercase, normalize, remove brackets."""
-    from whisper.normalizers import EnglishTextNormalizer
+    from whisper_normalizer.english import EnglishTextNormalizer
 
     text = text.lower()
     text = EnglishTextNormalizer()(text)
