@@ -208,7 +208,8 @@ class GenerateSolutionsConfig:
     # List of content types to drop from messages (e.g., base64 audio) to keep output files smaller
     drop_content_types: list[str] = field(default_factory=lambda: ["audio_url"])
 
-    # Audio chunking configuration for VLLMMultimodalModel
+    # Audio configuration - set by benchmarks that need audio processing (mmau-pro, audiobench, etc.)
+    should_enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
     enable_audio_chunking: bool = True
     audio_chunk_task_types: list[str] | None = None  # If None, chunk all task types; if specified, only chunk these
     chunk_audio_threshold_sec: int = 30  # Duration in seconds for each audio chunk
@@ -216,7 +217,6 @@ class GenerateSolutionsConfig:
     # Evaluation setup if requested. If eval_type is set to None, evaluation is skipped
     eval_type: str | None = None  # "lean4-proof", "math", etc.
     eval_config: dict = field(default_factory=dict)  # Config for the evaluator
-    dataset_group: str | None = None  # "math", "code", "speechlm", etc. from benchmark's DATASET_GROUP
 
     def __post_init__(self):
         self._post_init_validate_data()
@@ -415,9 +415,9 @@ class GenerationTask:
         output_dir = str(Path(self.cfg.output_file).parent)
 
         # Determine if audio processing is needed
+        # Benchmarks that need audio set should_enable_audio=true in their GENERATION_ARGS
         needs_audio = (
-            self.cfg.eval_type == "audio"
-            or self.cfg.dataset_group == "speechlm"
+            self.cfg.should_enable_audio
             or self.cfg.server.get("server_type") == "vllm_multimodal"
         )
 
@@ -590,8 +590,11 @@ class GenerationTask:
         for output in outputs:
             fout.write(json.dumps(output) + "\n")
 
-    def drop_binary_data(self, output):
-        """Remove binary data (like base64 audio) from messages to keep output files smaller."""
+    def drop_fields_from_messages(self, output):
+        """Remove specified content types from messages to keep output files smaller.
+        
+        Filters out content types listed in drop_content_types config f.e. base64 data.
+        """
         # Skip if output doesn't have messages (e.g., text completion mode or error cases)
         if "messages" not in output:
             return
@@ -622,8 +625,8 @@ class GenerationTask:
             original_data_point.pop(key, None)
         output.update(original_data_point)
 
-        # Drop binary data (e.g., base64 audio) from output to reduce file size
-        self.drop_binary_data(output)
+        # Drop specified content types (f.e base64 audio) from output to reduce file size
+        self.drop_fields_from_messages(output)
 
         if self.cfg.parse_reasoning:
             parse_reasoning(

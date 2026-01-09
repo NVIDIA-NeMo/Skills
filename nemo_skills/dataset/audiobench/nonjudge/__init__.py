@@ -25,7 +25,7 @@ DATASET_GROUP = "speechlm"
 METRICS_TYPE = "audio"
 
 # Evaluation settings
-EVAL_ARGS = "++eval_type=audio "
+EVAL_ARGS = "++eval_type=audio"
 
 # Generation settings - OpenAI format for audio-language models
-GENERATION_ARGS = "++prompt_format=openai "
+GENERATION_ARGS = "++prompt_format=openai ++should_enable_audio=true"

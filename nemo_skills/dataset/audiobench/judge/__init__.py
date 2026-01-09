@@ -26,8 +26,8 @@ These tasks require an LLM judge for evaluation, matching MMAU-Pro evaluation se
 DATASET_GROUP = "speechlm"
 METRICS_TYPE = "audio"
 DEFAULT_SPLIT = "test"
-GENERATION_ARGS = "++prompt_format=openai "
-EVAL_ARGS = "++eval_type=audio "
+GENERATION_ARGS = "++prompt_format=openai ++should_enable_audio=true"
+EVAL_ARGS = "++eval_type=audio"
 
 # Judge configuration matching AudioBench official implementation
 # Using Llama-3.1-70B with vllm (can be overridden in run scripts)
