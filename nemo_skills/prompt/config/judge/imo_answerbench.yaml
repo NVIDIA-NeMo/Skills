@@ -25,10 +25,10 @@ user: |-
 
   **Part 2: Final Grade**
   Immediately following the closing </thinking> tag, output **ONLY** the final grade.
-  * If Correct: \boxed{Correct}
-  * If Incorrect: \boxed{Incorrect}
+  * If Correct: \boxed{{Correct}}
+  * If Incorrect: \boxed{{Incorrect}}
 
-  **CRITICAL CONSTRAINT: Do not add any text, explanations, or formatting outside the <thinking> tags or the final \boxed{} output.**
+  **CRITICAL CONSTRAINT: Do not add any text, explanations, or formatting outside the <thinking> tags or the final \boxed{{}} output.**
 
   # Output example:
 
@@ -41,7 +41,7 @@ user: |-
       These two sets are not equivalent. The empty set contains no elements, while the Golden Answer contains an infinite number of elements.
   4. **Conclusion:** Incorrect
   </thinking>
-  \boxed{Incorrect}
+  \boxed{{Incorrect}}
 
   # 4. Input Data
   Here is the problem, model solution, and golden answer to grade:

@@ -29,10 +29,10 @@ user: |-
   {problem}
 
   **GROUND-TRUTH SOLUTION**
-  {solution}
+  {reference_solution}
 
   **SPECIFIC GRADING GUIDELINES**
-  {grading_guidelines}
+  {rubric}
 
   **PROPOSED SOLUTION**
   {predicted_answer}

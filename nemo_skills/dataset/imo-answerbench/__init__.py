@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,11 @@
 # limitations under the License.
 
 DATASET_GROUP = "math"
-METRICS_TYPE = "judge"
+METRICS_TYPE = "math"
 GENERATION_ARGS = "++prompt_config=generic/math ++eval_type=math"
 # Judge configuration: Use the AnswerAutoGrader prompt.
 # Recommended model: Gemini 2.5 Pro (or similar strong reasoner)
-JUDGE_ARGS = "++prompt_config=judge/imo_answerbench ++generation_key=judgement"
+JUDGE_ARGS = "++prompt_config=judge/imo_answerbench ++generation_key=judgement ++inference.reasoning_effort=dynamic"
 
 JUDGE_PIPELINE_ARGS = {
     "generation_type": "math_judge",

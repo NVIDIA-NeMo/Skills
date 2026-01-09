@@ -15,4 +15,4 @@ user: |-
   The very last part of your response must be **only** one of the following words: incorrect, partial, almost, or correct.
 
   Problem: {problem_statement}
-  Solution: {response}
+  Solution: {proof}

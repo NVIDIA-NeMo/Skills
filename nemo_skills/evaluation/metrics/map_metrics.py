@@ -31,6 +31,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     SciCodeMetrics,
     SweBenchMetrics,
 )
+from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
@@ -73,6 +74,7 @@ METRICS_MAP = {
     "mmau_pro_open_ended": MMAUProMetrics,
     "mmau_pro_instruction_following": MMAUProMetrics,
     "compute-eval": ComputeEvalMetrics,
+    "gradingbench": GradingBenchMetrics,
 }
 
 

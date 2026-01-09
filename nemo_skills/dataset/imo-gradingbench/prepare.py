@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import csv
+import io
 import json
+import urllib.request
 from pathlib import Path
 
 if __name__ == "__main__":
@@ -24,29 +26,23 @@ if __name__ == "__main__":
     source_url = f"{base_url}/gradingbench.csv"
     output_file = data_dir / "test.jsonl"
 
-    import io
-    import urllib.request
+    with urllib.request.urlopen(source_url, timeout=30) as response:
+        content = response.read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(content))
 
-    try:
-        with urllib.request.urlopen(source_url) as response:
-            content = response.read().decode("utf-8")
-            reader = csv.DictReader(io.StringIO(content))
-
-            with open(output_file, "w", encoding="utf-8") as out:
-                for row in reader:
-                    entry = {
-                        "grading_id": row["Grading ID"],
-                        "problem_id": row["Problem ID"],
-                        "problem_statement": row["Problem"],
-                        "solution": row["Solution"],
-                        "grading_guidelines": row["Grading guidelines"],
-                        "response": row["Response"],
-                        "points": row["Points"],
-                        "reward": row["Reward"],
-                        "source": row["Problem Source"],
-                        # We set 'expected_answer' to the reward/points for evaluation
-                        "expected_answer": row["Reward"],
-                    }
-                    out.write(json.dumps(entry) + "\n")
-    except Exception as e:
-        raise RuntimeError(f"Failed to download or process file from {source_url}: {e}")
+        with open(output_file, "w", encoding="utf-8") as out:
+            for row in reader:
+                entry = {
+                    "grading_id": row["Grading ID"],
+                    "problem_id": row["Problem ID"],
+                    "problem_statement": row["Problem"],
+                    "reference_solution": row["Solution"],
+                    "rubric": row["Grading guidelines"],
+                    "proof": row["Response"],
+                    "points": row["Points"],
+                    "reward": row["Reward"],
+                    "source": row["Problem Source"],
+                    # We set 'expected_answer' to the reward/points for evaluation
+                    "expected_answer": row["Reward"],
+                }
+                out.write(json.dumps(entry) + "\n")

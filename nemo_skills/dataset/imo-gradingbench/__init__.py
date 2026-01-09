@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 DATASET_GROUP = "judge"
-METRICS_TYPE = "math"
+METRICS_TYPE = "gradingbench"
 # This dataset is for evaluating the judge itself, or using a judge to evaluate.
 # If it's a meta-benchmark, we might want to see if the model's judgment matches the expected reward.
 GENERATION_ARGS = "++prompt_config=judge/math ++eval_type=math"
