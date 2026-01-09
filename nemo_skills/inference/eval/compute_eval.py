@@ -48,10 +48,18 @@ class ComputeEvalGenerationTask(GenerationTask):
             }
         except KeyError as e:
             _LOG.error(f"Missing required field: {e}")
-            raise
+            return {
+                "solution": None,
+                "generation": res.get("generation", ""),
+                "error": f"Missing required field: {e}",
+            }
         except Exception as e:
             _LOG.error(f"Failed to parse solution: {e}")
-            raise
+            return {
+                "solution": None,
+                "generation": res.get("generation", ""),
+                "error": f"Failed to parse solution: {e}",
+            }
 
 
 GENERATION_TASK_CLASS = ComputeEvalGenerationTask
