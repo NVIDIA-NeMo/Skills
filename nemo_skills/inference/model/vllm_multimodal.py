@@ -408,6 +408,7 @@ class VLLMMultimodalModel(VLLMModel):
         Returns:
             Generation result dict with 'generation' key and optional metadata.
         """
+
     #     if isinstance(prompt, list):
     #         messages = prompt
     #         needs_chunking, audio_path, duration = self._needs_audio_chunking(messages, task_type)

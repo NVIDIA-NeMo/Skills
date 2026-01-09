@@ -416,10 +416,7 @@ class GenerationTask:
 
         # Determine if audio processing is needed
         # Benchmarks that need audio set should_enable_audio=true in their GENERATION_ARGS
-        needs_audio = (
-            self.cfg.should_enable_audio
-            or self.cfg.server.get("server_type") == "vllm_multimodal"
-        )
+        needs_audio = self.cfg.should_enable_audio or self.cfg.server.get("server_type") == "vllm_multimodal"
 
         # Build server config, potentially switching to vllm_multimodal for audio tasks
         server_config = dict(self.cfg.server)
@@ -592,7 +589,7 @@ class GenerationTask:
 
     def drop_fields_from_messages(self, output):
         """Remove specified content types from messages to keep output files smaller.
-        
+
         Filters out content types listed in drop_content_types config f.e. base64 data.
         """
         # Skip if output doesn't have messages (e.g., text completion mode or error cases)
