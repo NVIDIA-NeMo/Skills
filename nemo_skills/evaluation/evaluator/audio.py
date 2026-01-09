@@ -49,6 +49,10 @@ _HELPFUL_PREFIXES = [
     r"^the text is[:\s]*",
     r"^the spoken text is[:\s]*",
     r"^the audio content is[:\s]*",
+    r"^the original content of this audio is[:\s]*",
+    r"^the content of this audio is[:\s]*",
+    r"^this audio says[:\s]*",
+    r"^the audio recording says[:\s]*",
 ]
 
 
@@ -57,10 +61,14 @@ def strip_helpful_prefixes(text: str) -> str:
 
     Audio-LLMs often respond with helpful prefixes like "The audio says: ..." when asked
     to transcribe audio. This function removes such prefixes for accurate WER calculation.
+    Also strips surrounding quotes from the transcription.
     """
     result = text.strip()
     for prefix in _HELPFUL_PREFIXES:
         result = re.sub(prefix, "", result, flags=re.IGNORECASE).strip()
+    # Strip surrounding quotes (single or double) that models often add
+    if (result.startswith("'") and result.endswith("'")) or (result.startswith('"') and result.endswith('"')):
+        result = result[1:-1].strip()
     return result
 
 
