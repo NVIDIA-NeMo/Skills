@@ -34,6 +34,34 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     prompt_config: str = "eval/speechlm/audio"
     apply_whisper_normalization: bool = True
     normalize_asr_pc_standard_wer: bool = True
+    strip_helpful_prefixes: bool = True  # Strip common ASR response prefixes like "The audio says:"
+
+
+# Common prefixes that LLMs add before transcriptions
+_HELPFUL_PREFIXES = [
+    r"^the audio says[:\s]*",
+    r"^the transcription is[:\s]*",
+    r"^here is the transcription[:\s]*",
+    r"^here's the transcription[:\s]*",
+    r"^transcription[:\s]*",
+    r"^the speech says[:\s]*",
+    r"^the speaker says[:\s]*",
+    r"^the text is[:\s]*",
+    r"^the spoken text is[:\s]*",
+    r"^the audio content is[:\s]*",
+]
+
+
+def strip_helpful_prefixes(text: str) -> str:
+    """Strip common ASR response prefixes from model output.
+
+    Audio-LLMs often respond with helpful prefixes like "The audio says: ..." when asked
+    to transcribe audio. This function removes such prefixes for accurate WER calculation.
+    """
+    result = text.strip()
+    for prefix in _HELPFUL_PREFIXES:
+        result = re.sub(prefix, "", result, flags=re.IGNORECASE).strip()
+    return result
 
 
 def normalize_whitespace(text: str) -> str:
@@ -324,6 +352,10 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     task_type = sample.get("task_type", "unknown")
     generation = sample.get("generation", "").strip()
     expected_answer = sample.get("expected_answer", "").strip()
+
+    # Strip helpful prefixes for ASR tasks (e.g., "The audio says: ...")
+    if config.strip_helpful_prefixes and task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD"]:
+        generation = strip_helpful_prefixes(generation)
 
     if task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD", "AST", "Translation", "CER"] and not generation:
         base = {
