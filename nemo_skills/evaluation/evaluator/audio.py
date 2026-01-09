@@ -41,6 +41,8 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
 _HELPFUL_PREFIXES = [
     r"^the audio says[:\s]*",
     r"^the transcription is[:\s]*",
+    r"^the transcription of the speech is[:\s]*",
+    r"^the spoken content is[:\s]*",
     r"^here is the transcription[:\s]*",
     r"^here's the transcription[:\s]*",
     r"^transcription[:\s]*",
@@ -61,14 +63,39 @@ def strip_helpful_prefixes(text: str) -> str:
 
     Audio-LLMs often respond with helpful prefixes like "The audio says: ..." when asked
     to transcribe audio. This function removes such prefixes for accurate WER calculation.
-    Also strips surrounding quotes from the transcription.
+
+    Strategy:
+    1. If text contains quotes, extract content between first and last quote
+    2. Otherwise, strip known prefixes and surrounding quotes
     """
     result = text.strip()
+
+    # Strategy 1: Extract content between quotes if present
+    # This handles: "The transcription is: 'actual content here.'"
+    if "'" in result:
+        first_quote = result.find("'")
+        last_quote = result.rfind("'")
+        if first_quote != last_quote:  # Found opening and closing quotes
+            extracted = result[first_quote + 1 : last_quote].strip()
+            if extracted:  # Only use if we got something
+                return extracted
+
+    if '"' in result:
+        first_quote = result.find('"')
+        last_quote = result.rfind('"')
+        if first_quote != last_quote:  # Found opening and closing quotes
+            extracted = result[first_quote + 1 : last_quote].strip()
+            if extracted:  # Only use if we got something
+                return extracted
+
+    # Strategy 2: Strip known prefixes
     for prefix in _HELPFUL_PREFIXES:
         result = re.sub(prefix, "", result, flags=re.IGNORECASE).strip()
+
     # Strip surrounding quotes (single or double) that models often add
     if (result.startswith("'") and result.endswith("'")) or (result.startswith('"') and result.endswith('"')):
         result = result[1:-1].strip()
+
     return result
 
 
