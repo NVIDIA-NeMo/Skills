@@ -202,23 +202,17 @@ class VLLMMultimodalModel(VLLMModel):
         return message
 
     def _preprocess_messages_for_model(self, messages: list[dict]) -> list[dict]:
-        """Preprocess messages based on model-specific requirements.
+        """Preprocess messages - creates copies to avoid mutation.
 
-        NOTE: We intentionally keep /no_think suffix for Qwen models as it
-        instructs the model to respond concisely without verbose explanations.
+        Note: /no_think suffix is passed through unchanged (handled by the model).
 
         Args:
             messages: List of message dicts.
 
         Returns:
-            Preprocessed list of message dicts (deep copy to avoid mutation).
+            Copy of message dicts.
         """
-        processed_messages = []
-        for msg in messages:
-            msg_copy = msg.copy()
-            processed_messages.append(msg_copy)
-
-        return processed_messages
+        return [msg.copy() for msg in messages]
 
     def _needs_audio_chunking(self, messages: list[dict], task_type: str = None) -> tuple[bool, str, float]:
         """Check if audio in messages needs chunking.
