@@ -408,38 +408,37 @@ class VLLMMultimodalModel(VLLMModel):
         Returns:
             Generation result dict with 'generation' key and optional metadata.
         """
+        if isinstance(prompt, list):
+            messages = prompt
+            needs_chunking, audio_path, duration = self._needs_audio_chunking(messages, task_type)
 
-    #     if isinstance(prompt, list):
-    #         messages = prompt
-    #         needs_chunking, audio_path, duration = self._needs_audio_chunking(messages, task_type)
+            if needs_chunking:
+                return await self._generate_with_chunking(messages, audio_path, duration, tokens_to_generate, **kwargs)
 
-    #         if needs_chunking:
-    #             return await self._generate_with_chunking(messages, audio_path, duration, tokens_to_generate, **kwargs)
+            # No chunking needed - convert audio fields to base64 format
+            messages = [self.content_text_to_list(msg.copy()) for msg in messages]
+            messages = self._preprocess_messages_for_model(messages)
+            prompt = messages
 
-    #         # No chunking needed - convert audio fields to base64 format
-    #         messages = [self.content_text_to_list(msg.copy()) for msg in messages]
-    #         messages = self._preprocess_messages_for_model(messages)
-    #         prompt = messages
+        # Call parent's generate_async (which handles audio OUTPUT via _parse_chat_completion_response)
+        return await super().generate_async(prompt=prompt, tokens_to_generate=tokens_to_generate, **kwargs)
 
-    #     # Call parent's generate_async (which handles audio OUTPUT via _parse_chat_completion_response)
-    #     return await super().generate_async(prompt=prompt, tokens_to_generate=tokens_to_generate, **kwargs)
+    def _build_chat_request_params(
+        self,
+        messages: list[dict],
+        **kwargs,
+    ) -> dict:
+        """Build chat request parameters with audio preprocessing.
 
-    # def _build_chat_request_params(
-    #     self,
-    #     messages: list[dict],
-    #     **kwargs,
-    # ) -> dict:
-    #     """Build chat request parameters with audio preprocessing.
+        Args:
+            messages: List of message dicts.
+            **kwargs: Additional parameters for the request.
 
-    #     Args:
-    #         messages: List of message dicts.
-    #         **kwargs: Additional parameters for the request.
-
-    #     Returns:
-    #         Request parameters dict.
-    #     """
-    #     # Preprocess messages for model-specific requirements
-    #     messages = self._preprocess_messages_for_model(messages)
-    #     # Convert audio fields to base64 format
-    #     messages = [self.content_text_to_list(msg.copy()) for msg in messages]
-    #     return super()._build_chat_request_params(messages=messages, **kwargs)
+        Returns:
+            Request parameters dict.
+        """
+        # Preprocess messages for model-specific requirements
+        messages = self._preprocess_messages_for_model(messages)
+        # Convert audio fields to base64 format
+        messages = [self.content_text_to_list(msg.copy()) for msg in messages]
+        return super()._build_chat_request_params(messages=messages, **kwargs)
