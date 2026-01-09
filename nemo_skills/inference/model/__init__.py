@@ -39,6 +39,7 @@ from .tts_nim import TTSNIMModel
 
 # Utilities
 from .vllm import VLLMModel
+from .vllm_multimodal import VLLMMultimodalModel
 
 # Model implementations
 
@@ -51,6 +52,7 @@ models = {
     "azureopenai": AzureOpenAIModel,
     "gemini": GeminiModel,
     "vllm": VLLMModel,
+    "vllm_multimodal": VLLMMultimodalModel,
     "sglang": SGLangModel,
     "tts_nim": TTSNIMModel,
     "asr_nim": ASRNIMModel,
