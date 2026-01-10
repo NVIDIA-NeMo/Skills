@@ -25,7 +25,7 @@ def format_entry(entry) -> dict:
         'domain': entry['domain'],
         'topic': entry['topic'],
         'question': entry['question'],
-        'target': entry['answer']
+        'expected_answer': entry['answer']
     }
 
 def write_jsonl(data: list[dict], path: str):

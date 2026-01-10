@@ -86,7 +86,7 @@ user: |-
   Here is a new example. Don't apologize or correct yourself if there was a mistake; we are just trying to grade the answer.
 
   Question: {question}
-  Gold target: {target}
+  Gold target: {expected_answer}
   Predicted answer: {generation}
 
 
