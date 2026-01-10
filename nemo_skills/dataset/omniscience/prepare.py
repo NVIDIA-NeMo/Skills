@@ -41,7 +41,7 @@ if __name__ == "__main__":
     output_dir = Path(__file__).absolute().parent
 
     split_set = set(args.splits)
-    splits = {'all': dataset, **{TOPIC_TO_SPLIT_MAP.get(t, str(t).lower()): dataset.filter(lambda x: x['domain'] == t) for t in dataset.unique('domain')}}
+    splits = {'text': dataset, **{TOPIC_TO_SPLIT_MAP.get(t, str(t).lower()): dataset.filter(lambda x: x['domain'] == t) for t in dataset.unique('domain')}}
     splits = {k: v for k, v in splits.items() if k in split_set}
 
     for split, data in splits.items():
