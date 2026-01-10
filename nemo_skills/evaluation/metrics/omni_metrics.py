@@ -17,8 +17,9 @@ from collections import defaultdict
 from nemo_skills.evaluation.metrics.math_metrics import BaseMetrics, as_int, as_percentage
 
 class OmniMetrics(BaseMetrics):
-    def __init__(self, compute_no_answer: bool = True):
+    def __init__(self, compute_no_answer: bool = True, answer_key: str = "generation"):
         super().__init__(compute_no_answer=compute_no_answer)
+        self.answer_key = answer_key
 
     # use same RM code as MathMetrics
     def _compute_reward_at_k(self, predictions: list[dict]):
