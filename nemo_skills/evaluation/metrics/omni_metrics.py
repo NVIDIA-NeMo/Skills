@@ -63,6 +63,7 @@ class OmniMetrics(BaseMetrics):
             judgement = prediction['judgement']
             correctness_dict['judge_omni_index'] = int(judgement.lower() == "A") - int(judgement.lower() == "B") # TODO: add regex parsing here to account for judges spitting out more text
             correctness_dict['judge_correct'] = int(judgement.lower() == "A")
+        print(correctness_dict)
         return correctness_dict
 
     def _update_score_metrics_for_pass(self, eval_dict: dict, k: int, score_method: str, score_dicts: list[dict], pass_score: bool | float | int, predictions: list[dict], predicted_answers: list[str] | None):
