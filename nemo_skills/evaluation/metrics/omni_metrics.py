@@ -61,28 +61,29 @@ class OmniMetrics(BaseMetrics):
         correctness_dict = {}
         if "judgement" in prediction:
             judgement = prediction['judgement']
-            correctness_dict['judge_omni_index'] = int(judgement.lower() == "a") - int(judgement.lower() == "b") # TODO: add regex parsing here to account for judges spitting out more text
+            # correctness_dict['judge_omni_index'] = int(judgement.lower() == "a") - int(judgement.lower() == "b") # TODO: add regex parsing here to account for judges spitting out more text
             correctness_dict['judge_correct'] = int(judgement.lower() == "a")
+            correctness_dict['judge_incorrect'] = int(judgement.lower() == "b")
+            correctness_dict['judge_partially_correct'] = int(judgement.lower() == "c")
+            correctness_dict['judge_abstained'] = int(judgement.lower() == "d")
         return correctness_dict
 
-    def _update_score_metrics_for_pass(self, eval_dict: dict, k: int, score_method: str, score_dicts: list[dict], pass_score: bool | float | int, predictions: list[dict], predicted_answers: list[str] | None):
-        if k != 1 or score_method != "judgement":
-            return
-        incorrect, part_corr, abst_rate = 0, 0, 0
-        for score in score_dicts:
-            judgement = score[score_method]
-            incorrect += int(judgement.lower() == "b")
-            part_corr += int(judgement.lower() == "c")
-            abst_rate += int(judgement.lower() == "d")
+    def get_metrics(self):
+        metrics = super().get_metrics()
 
-        hallucination_rate = incorrect / (incorrect + part_corr + abst_rate)
-        eval_dict['judge_omni_hallucination'] = len(score_dicts) * hallucination_rate # multiply by the number of datapoints so compute_metrics() reports an accurate percentage
+        for agg_method, agg_metric_dict in metrics.items():
+            correct, incorrect, part_correct, abstained = agg_metric_dict['judge_correct'], agg_metric_dict['judge_incorrect'], agg_metric_dict['judge_partially_correct'], agg_metric_dict['judge_abstained']
+            metrics[agg_method]['judge_omni_index'] = (correct - incorrect) / (correct + incorrect + part_correct + abstained)
+            metrics[agg_method]['judge_hallucination_rate'] = incorrect / (incorrect + part_correct + abstained)
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         if "judgement" in prediction:
             prediction['judgement'] = "B"
-            prediction['judge_omni_index'] = -1
+            # prediction['judge_omni_index'] = -1
             prediction['judge_correct'] = 0
+            prediction['judge_incorrect'] = 1
+            prediction['judge_partially_correct'] = 0
+            prediction['judge_abstained'] = 0
         return prediction
 
     def update(self, predictions):
