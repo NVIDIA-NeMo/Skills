@@ -59,6 +59,7 @@ DATASETS = [
     ("mmau-pro", ["test"]),
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
+    ("compute-eval", ["eval"]),
 ]
 
 
