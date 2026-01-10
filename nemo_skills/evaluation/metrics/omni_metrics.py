@@ -79,7 +79,8 @@ class OmniMetrics(BaseMetrics):
     def update(self, predictions):
         super().update(predictions)
         self._compute_pass_at_k(predictions, None)
-        self._compute_reward_at_k(predictions)
+        if "reward_model_score" in predictions[0]:
+            self._compute_reward_at_k(predictions=predictions)
 
     # print the same evaluations/metrics as math but ignoring majority/rm since that doesn't really exist with omniscience
     def evaluations_to_print(self):
