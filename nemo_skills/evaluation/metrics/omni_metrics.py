@@ -95,6 +95,7 @@ class OmniMetrics(BaseMetrics):
             "avg_tokens": as_int,
             "gen_seconds": as_int,
             "judge_correct": as_percentage,
+            "judge_omni_index": as_percentage,
         }
         if self.compute_no_answer:
             metrics_to_print["no_answer"] = as_percentage
