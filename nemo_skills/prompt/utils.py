@@ -263,6 +263,7 @@ class Prompt:
         """
 
         if self.config.system is not None:
+            print(input_dict)
             messages = [
                 {"role": "system", "content": self.config.system.format(input_dict)},
             ]
