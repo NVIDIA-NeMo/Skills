@@ -61,7 +61,6 @@ class OmniMetrics(BaseMetrics):
         correctness_dict = {}
         if "judgement" in prediction:
             judgement = prediction['judgement']
-            # correctness_dict['judge_omni_index'] = int(judgement.lower() == "a") - int(judgement.lower() == "b") # TODO: add regex parsing here to account for judges spitting out more text
             correctness_dict['judge_correct'] = int(judgement.lower() == "a")
             correctness_dict['judge_incorrect'] = int(judgement.lower() == "b")
             correctness_dict['judge_partially_correct'] = int(judgement.lower() == "c")
@@ -80,7 +79,6 @@ class OmniMetrics(BaseMetrics):
     def get_incorrect_sample(self, prediction: dict) -> dict:
         if "judgement" in prediction:
             prediction['judgement'] = "B"
-            # prediction['judge_omni_index'] = -1
             prediction['judge_correct'] = 0
             prediction['judge_incorrect'] = 1
             prediction['judge_partially_correct'] = 0
