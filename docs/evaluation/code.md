@@ -178,6 +178,65 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### compute-eval
+
+- Benchmark is defined in [`nemo_skills/dataset/compute-eval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/compute-eval/__init__.py)
+- Original benchmark source is [here](https://github.com/NVIDIA/compute-eval).
+
+ComputeEval is a benchmark for evaluating Large Language Models on CUDA code generation tasks. It features handcrafted CUDA programming challenges that test an LLM's capability at writing reliable CUDA code. The benchmark includes functional correctness evaluation through compilation and execution against held-out test suites.
+
+**Prerequisites:** NVIDIA GPU with CUDA Toolkit 12 or greater must be installed, and `nvcc` must be available in your PATH.
+
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. You can optionally specify a release version:
+
+```bash
+ns prepare_data compute-eval --release 2025-1
+```
+
+If no release is specified, the default release will be downloaded. This will generate an `eval.jsonl` file in the `nemo_skills/dataset/compute-eval/` directory.
+
+**Note:** You need to set the `HF_TOKEN` environment variable because the dataset requires authentication.
+
+#### Running the Evaluation
+
+Once the data is prepared, you can run the evaluation. Replace `<...>` placeholders with your cluster and directory paths.
+
+This command runs an evaluation of [OpenReasoning-Nemotron-32B](https://huggingface.co/nvidia/OpenReasoning-Nemotron-32B) on a Slurm cluster:
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=compute-eval \
+    --data_dir=<DATA_DIR> \
+    --output_dir=<OUTPUT_DIR> \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=16384
+```
+
+**Security Note:** ComputeEval executes machine-generated CUDA code. While the benchmark is designed for evaluation purposes, we strongly recommend running evaluations in a sandboxed environment (e.g., a Docker container or virtual machine) to minimize security risks.
+
+#### Verifying Results
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/compute-eval/metrics.json`. You can also review `<OUTPUT_DIR>/eval-results/compute-eval/summarized-results/main_*`. They should look something like this:
+
+```
+---------------------------- compute-eval -----------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | accuracy
+pass@1          | 50          | 8432       | 1245        | 64.00%
+```
+
+The benchmark reports:
+- **accuracy**: Percentage of problems where generated code compiled and passed all tests
+- **pass@1**: Same as accuracy for single-solution generation
+- **pass@k**: Success rate when generating k solutions per problem (if configured)
 
 ### IOI
 
