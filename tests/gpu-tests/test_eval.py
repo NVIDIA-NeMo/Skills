@@ -47,6 +47,8 @@ EXCLUDED_DATASETS = {
     "mrcr",
     "audiobench",
     "librispeech-pc",
+    # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
+    "compute-eval",
 }
 
 
