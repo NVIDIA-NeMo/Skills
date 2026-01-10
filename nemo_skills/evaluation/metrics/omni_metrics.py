@@ -73,6 +73,7 @@ class OmniMetrics(BaseMetrics):
 
         for agg_method, agg_metric_dict in metrics.items():
             correct, incorrect, part_correct, abstained = agg_metric_dict['judge_correct'], agg_metric_dict['judge_incorrect'], agg_metric_dict['judge_partially_correct'], agg_metric_dict['judge_abstained']
+            print(agg_metric_dict)
             metrics[agg_method]['judge_omni_index'] = (correct - incorrect) / (correct + incorrect + part_correct + abstained)
             metrics[agg_method]['judge_omni_hallucination'] = incorrect / (incorrect + part_correct + abstained)
         return metrics
