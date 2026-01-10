@@ -16,7 +16,7 @@ TOPIC_TO_SPLIT_MAP = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--splits', default=['all', 'humanities', 'health', 'swe', 'stem', 'law', 'finance'], nargs="+", choices=["all", "humanities", "health", "swe", "stem", "law", "finance"])
+    parser.add_argument('-s', '--splits', default=['text', 'humanities', 'health', 'swe', 'stem', 'law', 'finance'], nargs="+", choices=["text", "humanities", "health", "swe", "stem", "law", "finance"])
     return parser.parse_args()
 
 def format_entry(entry) -> dict:
