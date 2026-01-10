@@ -66,8 +66,17 @@ class OmniMetrics(BaseMetrics):
         return correctness_dict
 
     def _update_score_metrics_for_pass(self, eval_dict: dict, k: int, score_method: str, score_dicts: list[dict], pass_score: bool | float | int, predictions: list[dict], predicted_answers: list[str] | None):
-        # TODO: implement hallucination rate computation
-        pass 
+        if k != 1 or score_method != "judgement":
+            return
+        incorrect, part_corr, abst_rate = 0, 0, 0
+        for score in score_dicts:
+            judgement = score[score_method]
+            incorrect += int(judgement.lower() == "b")
+            part_corr += int(judgement.lower() == "c")
+            abst_rate += int(judgement.lower() == "d")
+
+        hallucination_rate = incorrect / (incorrect + part_corr + abst_rate)
+        eval_dict['judge_omni_hallucination'] = len(score_dicts) * hallucination_rate # multiply by the number of datapoints so compute_metrics() reports an accurate percentage
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         if "judgement" in prediction:
@@ -96,6 +105,7 @@ class OmniMetrics(BaseMetrics):
             "gen_seconds": as_int,
             "judge_correct": as_percentage,
             "judge_omni_index": as_percentage,
+            "judge_omni_hallucination": as_percentage,
         }
         if self.compute_no_answer:
             metrics_to_print["no_answer"] = as_percentage
