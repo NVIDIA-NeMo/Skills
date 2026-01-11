@@ -399,9 +399,19 @@ class GenerationTask:
     def setup_llm(self):
         self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
 
-        self.data_dir = None
-        if "data_dir" in self.cfg.eval_config and not isinstance(self.cfg.eval_config.get("data_dir"), type(None)):
+        # Determine data_dir for resolving relative paths (e.g., images for VLM)
+        # For VLM models, always use input file's parent (images are relative to JSONL)
+        # For other models, use eval_config.data_dir if explicitly set
+        is_vlm = self.cfg.server.get("server_type") == "vllm_vlm"
+        if is_vlm and self.cfg.input_file:
+            # VLM: images are stored alongside the JSONL, use input file's parent
+            self.data_dir = str(Path(self.cfg.input_file).parent)
+        elif "data_dir" in self.cfg.eval_config and not isinstance(self.cfg.eval_config.get("data_dir"), type(None)):
             self.data_dir = self.cfg.eval_config["data_dir"]
+        elif self.cfg.input_file:
+            self.data_dir = str(Path(self.cfg.input_file).parent)
+        else:
+            self.data_dir = None
 
         output_dir = str(Path(self.cfg.output_file).parent)
 

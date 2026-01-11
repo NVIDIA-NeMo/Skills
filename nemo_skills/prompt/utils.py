@@ -101,6 +101,11 @@ class PromptConfig:
     system: str | None = None
     code_tags: CodeTags = None
     few_shot_examples: FewShotExamplesConfig = field(default_factory=FewShotExamplesConfig)
+    # VLM support: if set, the field name from input_dict containing the image path
+    # When set, user content will be a multimodal list with image_url + text
+    image_field: str | None = None
+    # Whether to put image before or after the text in multimodal content
+    image_position: str = "before"  # "before" or "after"
 
 
 class Prompt:
@@ -268,7 +273,24 @@ class Prompt:
             ]
         else:
             messages = []
-        messages.append({"role": "user", "content": self.build_user_message(input_dict)})
+
+        # Build user message content
+        user_text = self.build_user_message(input_dict)
+
+        # For VLM: if image_field is set, build multimodal content with image + text
+        if self.config.image_field and self.config.image_field in input_dict:
+            image_path = input_dict[self.config.image_field]
+            text_part = {"type": "text", "text": user_text}
+            image_part = {"type": "image_url", "image_url": {"url": image_path}}
+
+            if self.config.image_position == "before":
+                user_content = [image_part, text_part]
+            else:
+                user_content = [text_part, image_part]
+        else:
+            user_content = user_text
+
+        messages.append({"role": "user", "content": user_content})
 
         if not format_as_string:
             if start_assistant_response_key:
