@@ -37,66 +37,53 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     strip_helpful_prefixes: bool = True  # Strip common ASR response prefixes like "The audio says:"
 
 
-# Common prefixes that LLMs add before transcriptions
-_HELPFUL_PREFIXES = [
-    r"^the audio says[:\s]*",
-    r"^the transcription is[:\s]*",
-    r"^the transcription of the speech is[:\s]*",
-    r"^the spoken content is[:\s]*",
-    r"^here is the transcription[:\s]*",
-    r"^here's the transcription[:\s]*",
-    r"^transcription[:\s]*",
-    r"^the speech says[:\s]*",
-    r"^the speaker says[:\s]*",
-    r"^the text is[:\s]*",
-    r"^the spoken text is[:\s]*",
-    r"^the audio content is[:\s]*",
-    r"^the original content of this audio is[:\s]*",
-    r"^the content of this audio is[:\s]*",
-    r"^this audio says[:\s]*",
-    r"^the audio recording says[:\s]*",
+# Known model failure responses that should be treated as empty transcriptions
+_FAILURE_RESPONSES = [
+    r"the speech is in audio format and needs to be transcribed",
+    r"i do not have access to audio",
+    r"i cannot access audio",
+    r"i'm sorry.*i do not have access",
+    r"as an ai language model.*i do not have access",
 ]
 
 
 def strip_helpful_prefixes(text: str) -> str:
     """Strip common ASR response prefixes from model output.
 
+    Aligned with AudioBench's post_process_qwen2_asr function.
     Audio-LLMs often respond with helpful prefixes like "The audio says: ..." when asked
     to transcribe audio. This function removes such prefixes for accurate WER calculation.
 
-    Strategy:
-    1. If text contains quotes, extract content between first and last quote
-    2. Otherwise, strip known prefixes and surrounding quotes
+    Strategy (from AudioBench):
+    1. Check for known failure responses and return empty string
+    2. Extract content from double quotes "..."
+    3. Handle colon-quote patterns (:'  or : ')
+    4. Extract content using greedy single quote matching '...'
     """
     result = text.strip()
 
-    # Strategy 1: Extract content between quotes if present
-    # This handles: "The transcription is: 'actual content here.'"
-    if "'" in result:
-        first_quote = result.find("'")
-        last_quote = result.rfind("'")
-        if first_quote != last_quote:  # Found opening and closing quotes
-            extracted = result[first_quote + 1 : last_quote].strip()
-            if extracted:  # Only use if we got something
-                return extracted
+    # Check for known model failure responses
+    for failure_pattern in _FAILURE_RESPONSES:
+        if re.search(failure_pattern, result, flags=re.IGNORECASE):
+            return ""
 
-    if '"' in result:
-        first_quote = result.find('"')
-        last_quote = result.rfind('"')
-        if first_quote != last_quote:  # Found opening and closing quotes
-            extracted = result[first_quote + 1 : last_quote].strip()
-            if extracted:  # Only use if we got something
-                return extracted
+    # Step 1: Extract from double quotes (from AudioBench)
+    match = re.search(r'"((?:\\.|[^"\\])*)"', result)
+    if match:
+        result = match.group(1)
 
-    # Strategy 2: Strip known prefixes
-    for prefix in _HELPFUL_PREFIXES:
-        result = re.sub(prefix, "", result, flags=re.IGNORECASE).strip()
+    # Step 2: Handle colon-quote patterns (from AudioBench)
+    if ":'" in result:
+        result = "'" + result.split(":'")[1]
+    elif ": '" in result:
+        result = "'" + result.split(": '")[1]
 
-    # Strip surrounding quotes (single or double) that models often add
-    if (result.startswith("'") and result.endswith("'")) or (result.startswith('"') and result.endswith('"')):
-        result = result[1:-1].strip()
+    # Step 3: Find the longest match of single quotes (greedy, from AudioBench)
+    match = re.search(r"'(.*)'", result)
+    if match:
+        result = match.group(1)
 
-    return result
+    return result.strip()
 
 
 def normalize_whitespace(text: str) -> str:
@@ -185,14 +172,83 @@ def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: boo
     }
 
 
+def _normalize_digits_to_words(text: str) -> str:
+    """Convert digits to words (aligned with AudioBench)."""
+    digits_to_words = {
+        '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+        '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
+        '10': 'ten', '11': 'eleven', '12': 'twelve', '13': 'thirteen',
+        '14': 'fourteen', '15': 'fifteen', '16': 'sixteen',
+        '17': 'seventeen', '18': 'eighteen', '19': 'nineteen',
+        '20': 'twenty', '30': 'thirty', '40': 'forty', '50': 'fifty',
+        '60': 'sixty', '70': 'seventy', '80': 'eighty', '90': 'ninety',
+    }
+    for digit, word in digits_to_words.items():
+        text = re.sub(r'\b' + digit + r'\b', word, text)
+    return text
+
+
+def _expand_contractions(text: str) -> str:
+    """Expand common contractions (aligned with AudioBench)."""
+    contractions = {
+        "i'm": "i am", "you're": "you are", "he's": "he is", "she's": "she is",
+        "it's": "it is", "we're": "we are", "they're": "they are",
+        "i've": "i have", "you've": "you have", "we've": "we have", "they've": "they have",
+        "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not",
+        "hasn't": "has not", "haven't": "have not", "hadn't": "had not",
+        "doesn't": "does not", "don't": "do not", "didn't": "did not", "that's": "that is",
+    }
+    for contraction, expanded in contractions.items():
+        text = re.sub(r'\b' + contraction + r'\b', expanded, text)
+    return text
+
+
+def _remove_non_speech_elements(text: str) -> str:
+    """Remove common non-speech elements (aligned with AudioBench)."""
+    non_speech_patterns = r'\b(uh|umm|um|er|ah)\b'
+    return re.sub(non_speech_patterns, '', text)
+
+
 def preprocess_asr_text(text: str) -> str:
-    """Apply Whisper-style normalization: lowercase, normalize, remove brackets."""
+    """Apply ASR text normalization aligned with AudioBench's preprocess_text_asr.
+
+    Steps:
+    1. Lowercase
+    2. Whisper EnglishTextNormalizer
+    3. Digit-to-word conversion
+    4. Contraction expansion
+    5. Remove content in brackets [] () {} <>
+    6. jiwer processing (remove punctuation, expand contractions, etc.)
+    7. Remove non-speech elements (uh, um, er, ah)
+    """
+    import jiwer
     from whisper_normalizer.english import EnglishTextNormalizer
 
+    # Step 1: Lowercase
     text = text.lower()
+
+    # Step 2: Whisper normalization
     text = EnglishTextNormalizer()(text)
+
+    # Step 3-4: Digit-to-word and contraction expansion (from AudioBench)
+    text = _normalize_digits_to_words(text)
+    text = _expand_contractions(text)
+
+    # Step 5: Remove content in brackets (from AudioBench)
     text = re.sub(r"(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
+
+    # Step 6: jiwer processing (from AudioBench)
+    jiwer_process = jiwer.Compose([
+        jiwer.RemoveMultipleSpaces(),
+        jiwer.ExpandCommonEnglishContractions(),
+        jiwer.RemoveKaldiNonWords(),
+        jiwer.RemovePunctuation()
+    ])
+    text = jiwer_process(text)
+
+    # Step 7: Remove non-speech elements (from AudioBench)
+    text = _remove_non_speech_elements(text).strip()
+
     return text
 
 
