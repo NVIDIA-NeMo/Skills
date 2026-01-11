@@ -56,13 +56,14 @@ def load_audio_file(audio_file_path: str):
     return audio_array, sampling_rate
 
 
-def chunk_audio(audio_array, sampling_rate, chunk_duration_sec=30):
+def chunk_audio(audio_array, sampling_rate, chunk_duration_sec=30, min_chunk_duration_sec=1.0):
     """Chunk audio array into segments of specified duration.
 
     Args:
         audio_array: Audio data as numpy array.
         sampling_rate: Sampling rate in Hz.
         chunk_duration_sec: Duration of each chunk in seconds.
+        min_chunk_duration_sec: Minimum duration for last chunk (shorter chunks are merged).
 
     Returns:
         List of audio chunks (numpy arrays).
@@ -70,13 +71,20 @@ def chunk_audio(audio_array, sampling_rate, chunk_duration_sec=30):
     import numpy as np
 
     chunk_samples = int(chunk_duration_sec * sampling_rate)
+    min_chunk_samples = int(min_chunk_duration_sec * sampling_rate)
     num_chunks = int(np.ceil(len(audio_array) / chunk_samples))
 
     chunks = []
     for i in range(num_chunks):
         start = i * chunk_samples
         end = min((i + 1) * chunk_samples, len(audio_array))
-        chunks.append(audio_array[start:end])
+        chunk = audio_array[start:end]
+
+        # Merge tiny trailing chunks with previous chunk to avoid empty audio errors
+        if len(chunk) < min_chunk_samples and chunks:
+            chunks[-1] = np.concatenate([chunks[-1], chunk])
+        else:
+            chunks.append(chunk)
 
     return chunks
 
