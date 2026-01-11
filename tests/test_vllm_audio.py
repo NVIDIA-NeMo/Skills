@@ -53,6 +53,7 @@ def mock_vllm_multimodal_model(tmp_path):
         model.enable_audio_chunking = True
         model.audio_chunk_task_types = None
         model.chunk_audio_threshold_sec = 30
+        model._tunnel = None
         return model
 
 
@@ -113,8 +114,8 @@ def test_content_text_to_list_no_audio(mock_vllm_multimodal_model):
     assert "audio" not in result
 
 
-def test_preprocess_messages_strips_no_think(mock_vllm_multimodal_model):
-    """Test that /no_think is stripped from system messages."""
+def test_preprocess_messages_preserves_no_think(mock_vllm_multimodal_model):
+    """Test that /no_think is preserved in system messages."""
     messages = [
         {"role": "system", "content": "You are a helpful assistant. /no_think"},
         {"role": "user", "content": "Hello"},
@@ -122,7 +123,8 @@ def test_preprocess_messages_strips_no_think(mock_vllm_multimodal_model):
 
     result = mock_vllm_multimodal_model._preprocess_messages_for_model(messages)
 
-    assert result[0]["content"] == "You are a helpful assistant."
+    # /no_think should be preserved, not stripped
+    assert result[0]["content"] == "You are a helpful assistant. /no_think"
     assert result[1]["content"] == "Hello"
 
 
