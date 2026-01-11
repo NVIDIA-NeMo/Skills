@@ -96,11 +96,13 @@ def save_audio_chunk_to_base64(audio_chunk, sampling_rate) -> str:
     import soundfile as sf
 
     # Create temporary file
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-        tmp_path = tmp_file.name
-        sf.write(tmp_path, audio_chunk, sampling_rate)
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_path = tmp_file.name
 
     try:
+        tmp_file.close()
+        sf.write(tmp_path, audio_chunk, sampling_rate)
+
         # Read and encode
         with open(tmp_path, "rb") as f:
             audio_content = f.read()

@@ -426,8 +426,7 @@ class VLLMMultimodalModel(VLLMModel):
         Returns:
             Request parameters dict.
         """
-        # Preprocess messages for model-specific requirements
-        messages = self._preprocess_messages_for_model(messages)
-        # Convert audio fields to base64 format
+        #content_text_to_list THEN preprocess
         messages = [self.content_text_to_list(msg.copy()) for msg in messages]
+        messages = self._preprocess_messages_for_model(messages)
         return super()._build_chat_request_params(messages=messages, **kwargs)

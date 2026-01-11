@@ -38,6 +38,7 @@ def extract_multicriteria_scores(judgement_text: str) -> dict[str, float]:
         Defaults to 3.0 if score not found.
     """
     scores = {}
+    found_overall = False
 
     patterns = {
         "correctness": r"CORRECTNESS:\s*(\d+(?:\.\d+)?)",
@@ -49,10 +50,15 @@ def extract_multicriteria_scores(judgement_text: str) -> dict[str, float]:
 
     for criterion, pattern in patterns.items():
         match = re.search(pattern, judgement_text, re.IGNORECASE)
-        scores[criterion] = float(match.group(1)) if match else 3.0
+        if match:
+            scores[criterion] = float(match.group(1))
+            if criterion == "overall":
+                found_overall = True
+        else:
+            scores[criterion] = 3.0
 
-    # Fallback: compute overall if missing or still 3.0
-    if "overall" not in scores or scores["overall"] == 3.0:
+    # Fallback: compute overall only if not explicitly provided by judge
+    if not found_overall:
         criteria_scores = [scores.get(k, 3.0) for k in ["correctness", "relevance", "completeness", "clarity"]]
         scores["overall"] = sum(criteria_scores) / len(criteria_scores)
 
