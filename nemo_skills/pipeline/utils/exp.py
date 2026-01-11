@@ -523,7 +523,8 @@ def add_task(
         # NOTE: avoid evaluating default (which would index cluster_config) unless needed
         server_container = server_config.pop("container", None)
         if server_container is None:
-            server_container = cluster_config["containers"][server_config["server_type"]]
+            containers = cluster_config["containers"]
+            server_container = containers.get(server_config["server_type"], containers.get("vllm"))
         server_cmd, num_server_tasks = get_server_command(**server_config, cluster_config=cluster_config)
         server_executor = get_executor(
             cluster_config=cluster_config,

@@ -31,7 +31,16 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 # TODO: read this from init.py
-DATASETS_REQUIRE_DATA_DIR = ["ruler", "ioi24", "mmau-pro", "librispeech-pc", "audiobench", "asr-leaderboard", "musan"]
+DATASETS_REQUIRE_DATA_DIR = [
+    "ruler",
+    "ioi24",
+    "mmau-pro",
+    "librispeech-pc",
+    "audiobench",
+    "asr-leaderboard",
+    "musan",
+    "mmmu-pro",
+]
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
