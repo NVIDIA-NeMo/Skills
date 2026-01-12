@@ -168,7 +168,8 @@ def create_manifest_entry(
     label: str,
 ) -> Dict:
     """Create nemo-skills manifest entry."""
-    audio_rel_path = f"/data/musan/{category}/audio/{audio_filename}"
+    audio_root = os.getenv("NEMO_SKILLS_AUDIO_ROOT", "/data")
+    audio_rel_path = f"{audio_root}/musan/{category}/audio/{audio_filename}"
     audio_metadata = {"path": audio_rel_path, "duration": duration}
 
     # Instruction for transcription (expects empty response for non-speech audio)
