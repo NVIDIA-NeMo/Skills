@@ -224,7 +224,7 @@ def evaluate_cer(reference: str, hypothesis: str) -> dict[str, Any]:
 def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict = None) -> dict[str, Any]:
     """Detect potential hallucinations via speaking rate anomaly.
 
-    Normal speech: ~10-15 chars/second. Higher rates suggest repetition/hallucination.
+    Normal speech: ~600-900 chars/minute. Higher rates suggest repetition/hallucination.
     Requires audio_duration in audio_context.
     """
     audio_duration = audio_context.get("audio_duration") if audio_context else None
@@ -238,10 +238,11 @@ def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict 
         }
 
     char_count = len(hypothesis)
-    char_rate = char_count / audio_duration
+    # Convert to chars/minute
+    char_rate = (char_count / audio_duration) * 60.0
 
-    # Hallucination threshold: >25 chars/sec (too fast = likely repetition)
-    is_hallucinating = char_rate > 25.0
+    # Hallucination threshold: >1500 chars/min (25 chars/second * 60)
+    is_hallucinating = char_rate > 1500.0
 
     return {
         "hallucination_rate": 1.0 if is_hallucinating else 0.0,
@@ -385,8 +386,9 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
 
     audio_duration = sample.get("audio_duration", None)
     if audio_duration and audio_duration > 0 and expected_answer and generation:
-        updates["ref_char_rate"] = len(expected_answer) / audio_duration
-        updates["hyp_char_rate"] = len(generation) / audio_duration
+        # chars/minute (chars/second * 60)
+        updates["ref_char_rate"] = (len(expected_answer) / audio_duration) * 60.0
+        updates["hyp_char_rate"] = (len(generation) / audio_duration) * 60.0
         updates["char_rate_diff"] = abs(updates["hyp_char_rate"] - updates["ref_char_rate"])
 
     return updates

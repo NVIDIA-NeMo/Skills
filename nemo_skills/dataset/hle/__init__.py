@@ -20,10 +20,10 @@ EVAL_SPLIT = "text"
 
 # Some answers are not possible to compare symbolically, so have to use a judge model
 # Setting openai judge by default, but can be overriden from command line for a locally hosted model
-# Currently using o3-mini-20250131 which is used by the official leaderboard - https://agi.safe.ai/
+# Currently using o3-mini-2025-01-31 which is used by the official leaderboard - https://agi.safe.ai/
 # To approximate the Artificial Analysis Index results, we suggest using gpt-4o - https://artificialanalysis.ai/methodology/intelligence-benchmarking#evaluation-suite-details
 JUDGE_PIPELINE_ARGS = {
-    "model": "o3-mini-20250131",
+    "model": "o3-mini-2025-01-31",
     "server_type": "openai",
     "server_address": "https://api.openai.com/v1",
 }

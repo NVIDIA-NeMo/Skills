@@ -37,15 +37,19 @@ EXCLUDED_DATASETS = {
     "bfcl_v3",
     "bfcl_v4",
     "swe-bench",
+    "swe-rebench",
     "aai",
     "human-eval",
     "human-eval-infilling",
     "mbpp",
     "mmau-pro",
     "asr-leaderboard",
-    "aalcr",  # Has tokenization mismatch issues
+    "mrcr",
     "audiobench",
     "librispeech-pc",
+    "musan",
+    # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
+    "compute-eval",
 }
 
 

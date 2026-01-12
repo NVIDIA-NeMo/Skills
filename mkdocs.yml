@@ -1,3 +1,4 @@
+strict: true
 site_name: Nemo-Skills
 site_url: https://nvidia-nemo.github.io/Skills
 extra_css:

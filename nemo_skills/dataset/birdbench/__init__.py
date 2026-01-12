@@ -13,20 +13,15 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "math"
-METRICS_TYPE = "simpleqa"
-GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=math"
-EVAL_SPLIT = "verified"
-
-# SimpleQA requires judge model for evaluating factual accuracy
-# Setting openai judge by default, but can be overridden from command line for a locally hosted model
-# Using o3-mini-2025-01-31 as recommended for factual evaluation tasks
-
-JUDGE_PIPELINE_ARGS = {
-    "model": "o3-mini-2025-01-31",
-    "server_type": "openai",
-    "server_address": "https://api.openai.com/v1",
-}
-
-
-JUDGE_ARGS = "++prompt_config=judge/simpleqa ++generation_key=judgement ++add_generation_stats=False"
+DATASET_GROUP = "code"
+METRICS_TYPE = "bird"
+EVAL_SPLIT = "dev"
+GENERATION_ARGS = (
+    "++prompt_config=generic/text_to_sql "
+    "++eval_type=bird "
+    "++inference.tokens_to_generate=10000 "
+    "++inference.temperature=0.6 "
+    "++inference.top_p=0.95 "
+    "++inference.top_k=20 "
+    "++max_concurrent_requests=1024"
+)
