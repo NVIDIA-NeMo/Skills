@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
@@ -327,12 +328,22 @@ def grpo_nemo_rl(
         None,
         help="Max position embeddings to use for conversion. If not specified, will be inferred from the model config.",
     ),
+    ray_template: str = typer.Option(
+        None,
+        help="Slurm Ray template to use. If specified, will set NEMO_RUN_SLURM_RAY_TEMPLATE environment variable. "
+        "Example: 'ray_enroot.sub.j2'",
+    ),
 ):
     """Runs NeMo-RL GRPO training.
 
     All extra arguments are passed directly to the NeMo-RL GRPO script.
     """
     setup_logging(disable_hydra_logs=False, use_rich=True)
+
+    # Set Ray template if provided
+    if ray_template is not None:
+        os.environ["NEMO_RUN_SLURM_RAY_TEMPLATE"] = ray_template
+
     extra_arguments = f"{' '.join(ctx.args)}"
     LOG.info("Starting training job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
