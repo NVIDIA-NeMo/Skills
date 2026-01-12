@@ -24,6 +24,7 @@ from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
 from nemo_skills.evaluation.metrics.bird_metrics import BirdMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
+    ComputeEvalMetrics,
     EvalPlusMetrics,
     HumanEvalInfillingMetrics,
     LiveCodeBenchMetrics,
@@ -71,6 +72,7 @@ METRICS_MAP = {
     "mmau_pro_closed_form": MMAUProMetrics,
     "mmau_pro_open_ended": MMAUProMetrics,
     "mmau_pro_instruction_following": MMAUProMetrics,
+    "compute-eval": ComputeEvalMetrics,
 }
 
 

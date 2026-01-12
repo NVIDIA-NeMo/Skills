@@ -60,6 +60,7 @@ DATASETS = [
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),
+    ("compute-eval", ["eval"]),
 ]
 
 

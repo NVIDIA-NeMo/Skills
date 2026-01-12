@@ -48,6 +48,8 @@ EXCLUDED_DATASETS = {
     "audiobench",
     "librispeech-pc",
     "musan",
+    # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
+    "compute-eval",
 }
 
 
