@@ -19,8 +19,8 @@ GENERATION_ARGS = "++prompt_config=eval/aai/omni"
 EVAL_SPLIT = "text"
 
 JUDGE_PIPELINE_ARGS = {
-    "model": "gemini-2.5-flash",
-    "server_type": "azureopenai",
-    "server_address": "https://llm-proxy.perflab.nvidia.com",
+    "model": "gemini-2.5-flash-preview-09-2025",
+    "server_type": "gemini",
+    "server_address": "https://generativelanguage.googleapis.com"
 }
 JUDGE_ARGS = "++prompt_config=judge/aa-omni-judge ++generation_key=judgement ++add_generation_stats=False"
