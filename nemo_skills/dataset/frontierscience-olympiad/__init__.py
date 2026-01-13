@@ -16,7 +16,7 @@
 DATASET_GROUP = "math"
 METRICS_TYPE = "frontierscience-olympiad"
 GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=math"
-EVAL_SPLIT = "physics"
+EVAL_SPLIT = "all"
 
 
 JUDGE_PIPELINE_ARGS = {

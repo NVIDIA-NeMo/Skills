@@ -70,8 +70,11 @@ if __name__ == "__main__":
 
     # Load the FrontierScience olympiad dataset directly from HuggingFace
     print(f"Downloading FrontierScience olympiad dataset from {OLYMPIAD_URL}...")
-    response = requests.get(OLYMPIAD_URL)
-    response.raise_for_status()
+
+    try:
+        response = requests.get(OLYMPIAD_URL, timeout=30)
+    except Exception as e:
+        raise RuntimeError(f"Error downloading dataset from {OLYMPIAD_URL}: {e}")
 
     # Parse JSONL data
     olympiad_data = []
