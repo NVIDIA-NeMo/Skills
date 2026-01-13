@@ -24,14 +24,7 @@ from tenacity import (
 
 
 def select_tokenizer(tokenizer_type, tokenizer_path):
-    if tokenizer_type == 'nemo':
-        if '.model' in tokenizer_path:
-            return NeMoSentencePieceTokenizer(model_path=tokenizer_path)
-        elif '.json' in tokenizer_path:
-            return NeMoTikTokenTokenizer(vocab_file=tokenizer_path)
-        else:
-            raise ValueError(f"Unknown tokenizer file format {tokenizer_path}")
-    elif tokenizer_type == 'hf':
+    if tokenizer_type == 'hf':
         return HFTokenizer(model_path=tokenizer_path)
     elif tokenizer_type == 'openai':
         return OpenAITokenizer(model_path=tokenizer_path)
@@ -39,40 +32,6 @@ def select_tokenizer(tokenizer_type, tokenizer_path):
         return GeminiTokenizer(model_path=tokenizer_path)
     else:
         raise ValueError(f"Unknown tokenizer_type {tokenizer_type}")
-
-
-class NeMoTikTokenTokenizer:
-    """
-    Tokenizer from NeMo TiktokenTokenizer
-    """
-    def __init__(self, vocab_file) -> None:
-        from nemo.collections.common.tokenizers.tiktoken_tokenizer import TiktokenTokenizer
-        self.tokenizer = TiktokenTokenizer(vocab_file=vocab_file)
-    
-    def text_to_tokens(self, text: str) -> List[str]:
-        tokens = self.tokenizer.text_to_tokens(text)
-        return tokens
-
-    def tokens_to_text(self, tokens: List[int]) -> str:
-        text = self.tokenizer.tokens_to_text(tokens)
-        return text
-
-
-class NeMoSentencePieceTokenizer:
-    """
-    Tokenizer from NeMo SentencePieceTokenizer
-    """
-    def __init__(self, model_path) -> None:
-        from nemo.collections.common.tokenizers.sentencepiece_tokenizer import SentencePieceTokenizer
-        self.tokenizer = SentencePieceTokenizer(model_path=model_path)
-    
-    def text_to_tokens(self, text: str) -> List[str]:
-        tokens = self.tokenizer.text_to_tokens(text)
-        return tokens
-
-    def tokens_to_text(self, tokens: List[int]) -> str:
-        text = self.tokenizer.tokens_to_text(tokens)
-        return text
 
 
 class HFTokenizer:

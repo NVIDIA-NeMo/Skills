@@ -245,7 +245,7 @@ def generate_input_output(index, num_qs):
     else:
         repeats = 1
         
-    curr_context = random.sample([item for item in haystack for _ in range(repeats)], num_qs)
+    curr_context = [dict(item) for item in random.sample([item for item in haystack for _ in range(repeats)], num_qs)]
 
     if args.num_order > 0:
         random_numbers = [generate_random_number() for _ in range(math.ceil((num_qs + 1) / args.num_order))]
@@ -261,7 +261,7 @@ def generate_input_output(index, num_qs):
     random.shuffle(curr_context)
     examples = random.sample(curr_context, args.fewshot)
 
-    true_context = needle[index]
+    true_context = dict(needle[index])
     true_context["random_index"] = random_numbers[-1]
     if args.insert_position < 0:
         insert_position = random.randint(0, len(curr_context))
@@ -383,15 +383,17 @@ def generate_samples(max_seq_length: int, incremental: int = 10):
     # Generate samples
     for index in tqdm(needle_sample):
         used_qs = num_qs
-        while(True):
+        while True:
             try:
                 input_text, save_dict = generate_input_output(index, used_qs)
                 length = len(TOKENIZER.text_to_tokens(input_text))
                 assert length <= max_seq_length, f"{length} exceeds max_seq_length."
                 break
-            except:
-                if used_qs > incremental:
-                    used_qs -= incremental
++            except AssertionError:
++                if used_qs > incremental:
++                    used_qs -= incremental
++                else:
++                    raise
 
         save_dict["length"] = length
         formatted_output = save_dict

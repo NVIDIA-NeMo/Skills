@@ -171,13 +171,13 @@ def generate_random_number(num_digits=7):
 
 def generate_input_output(index, num_docs):
 
-    curr_needle = needle[index]
+    curr_needle = dict(needle[index])
     curr_needle["context"] = [{**c, "random_index": generate_random_number()} for c in curr_needle["context"]]
     curr_needle["distractor"] = [{**c, "random_index": generate_random_number()} for c in curr_needle["distractor"]]
 
     if args.fewshot > 0:
         fewshot_examples = random.sample([i for i in range(len(needle)) if i != index], args.fewshot)
-        fewshot_examples = [needle[i] for i in fewshot_examples]
+        fewshot_examples = [dict(needle[i]) for i in fewshot_examples]
         for e in fewshot_examples:
             e["context"] = [{**c, "random_index": generate_random_number()} for c in e['context']]
             e["distractor"] = [{**c, "random_index": generate_random_number()} for c in e['distractor']]
@@ -185,6 +185,9 @@ def generate_input_output(index, num_docs):
         fewshot_examples = []
 
     remaining_haystack_size = len(haystack) - len(set([c["text"] for c in (curr_needle["context"] + curr_needle["distractor"])] + [f["text"] for e in fewshot_examples for f in (e["context"] + e["distractor"])]))
+    if remaining_haystack_size <= 0:
+        raise ValueError("No remaining haystack documents available after exclusions.")
+
     if num_docs > remaining_haystack_size:
         repeats = (num_docs + remaining_haystack_size - 1) // remaining_haystack_size  # Ceiling division
     else:
@@ -307,16 +310,18 @@ def generate_samples(num_samples: int, max_seq_length: int, incremental: int = 5
     # Generate samples
     for index in tqdm(range(num_samples)):
         used_docs = num_docs
-        while(True):
+        while True:
             try:
                 input_text, save_dict = generate_input_output(index, used_docs)
                 length = len(TOKENIZER.text_to_tokens(input_text))
                 if max_seq_length > 0:
                     assert length <= max_seq_length, f"{length} exceeds max_seq_length."
                 break
-            except:
+            except AssertionError:
                 if used_docs > incremental:
                     used_docs -= incremental
+                else:
+                    raise
 
         save_dict["length"] = length
         formatted_output = save_dict

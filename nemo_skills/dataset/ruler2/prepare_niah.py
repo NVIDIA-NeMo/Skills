@@ -49,7 +49,7 @@ parser.add_argument("--random_seed", type=int, default=42)
 parser.add_argument("--num_needle_k", type=int, default=1)
 parser.add_argument("--num_needle_v", type=int, default=1)
 parser.add_argument("--num_needle_q", type=int, default=1)
-parser.add_argument("--type_haystack", type=str, default='essay', help='[Options] noise, essay, needle.')
+parser.add_argument("--type_haystack", type=str, default='needle', help='[Options] needle.')
 parser.add_argument("--type_needle_k", type=str, default='words', help='[Options] numbers, words, uuids.')
 parser.add_argument("--type_needle_v", type=str, default='numbers', help='[Options] numbers, words, uuids.')
 parser.add_argument("--num_digits_k", type=int, default=7)
@@ -94,15 +94,17 @@ def generate_random_word():
 def generate_random_uuid():
     return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
-def generate_random(type_needle: str, digits: int = None):
+def generate_random(type_needle: str, digits: int | None = None):
     if type_needle == 'numbers':
+        if digits is None:
+            raise ValueError("digits must be provided when type_needle='numbers'")
         return generate_random_number(digits)
     elif type_needle == 'words':
         return generate_random_word()
     elif type_needle == 'uuids':
         return generate_random_uuid()
     else:
-        raise NotImplementedError(f'{args.type_needle} is not implemented.')
+        raise NotImplementedError(f'{type_needle} is not implemented.')
 
 def generate_input_output(num_haystack):
     keys, values, needles = [], [], []
@@ -121,49 +123,26 @@ def generate_input_output(num_haystack):
     random.Random(args.random_seed).shuffle(needles)
     
     # Context
-    if args.type_haystack == 'essay':
-        if num_haystack <= len(haystack):
-            text = " ".join(haystack[:num_haystack])
-        else:
-            repeats = (num_haystack + len(haystack) - 1) // len(haystack)  # Ceiling division
-            text = " ".join((haystack * repeats)[:num_haystack])
-        document_sents = sent_tokenize(text.strip())
-        insertion_positions = [0] + \
-                              sorted([int(len(document_sents) * (depth / 100)) for depth in random.sample(DEPTHS, len(needles))]) + \
-                              [len(document_sents)]
-        document_sents_list = []
-        for i in range(1,len(insertion_positions)):
-            last_pos = insertion_positions[i-1]
-            next_pos = insertion_positions[i]
-            document_sents_list.append(" ".join(document_sents[last_pos:next_pos]))
-            if i-1 < len(needles):
-                document_sents_list.append(needles[i-1])
-        context = " ".join(document_sents_list)
-
+    if args.num_needle_v == 1:
+        sentences = [haystack.format(
+            type_needle_v=args.type_needle_v,
+            key=generate_random(args.type_needle_k, args.num_digits_k),
+            value=generate_random(args.type_needle_v, args.num_digits_v),
+        ) for _ in range(num_haystack)]
     else:
-        if args.type_haystack == 'noise':
-            sentences = [haystack] * num_haystack
-        elif args.type_haystack == 'needle':
-            if args.num_needle_v == 1:
-                sentences = [haystack.format(
-                    type_needle_v=args.type_needle_v,
-                    key=generate_random(args.type_needle_k, args.num_digits_k),
-                    value=generate_random(args.type_needle_v, args.num_digits_v),
-                ) for _ in range(num_haystack)]
-            else:
-                haystack_values = [generate_random(args.type_needle_v, args.num_digits_v) for _ in range(num_haystack)]
-                haystack_keys = ([generate_random(args.type_needle_k, args.num_digits_k) for _ in range(math.ceil(num_haystack / args.num_needle_v))] * args.num_needle_v)[:num_haystack]
-                sentences = [haystack.format(
-                    type_needle_v=args.type_needle_v,
-                    key=haystack_keys[i],
-                    value=haystack_values[i],
-                ) for i in range(num_haystack)]
-                random.shuffle(sentences)
+        haystack_values = [generate_random(args.type_needle_v, args.num_digits_v) for _ in range(num_haystack)]
+        haystack_keys = ([generate_random(args.type_needle_k, args.num_digits_k) for _ in range(math.ceil(num_haystack / args.num_needle_v))] * args.num_needle_v)[:num_haystack]
+        sentences = [haystack.format(
+            type_needle_v=args.type_needle_v,
+            key=haystack_keys[i],
+            value=haystack_values[i],
+        ) for i in range(num_haystack)]
+        random.shuffle(sentences)
 
-        indexes = sorted(random.sample(range(num_haystack), len(needles)), reverse=True)
-        for index, element in zip(indexes, needles):
-            sentences.insert(index, element)
-        context = "\n".join(sentences)
+    indexes = sorted(random.sample(range(num_haystack), len(needles)), reverse=True)
+    for index, element in zip(indexes, needles):
+        sentences.insert(index, element)
+    context = "\n".join(sentences)
 
 
     ## Query and Answer
@@ -216,7 +195,7 @@ def generate_samples(num_samples: int, max_seq_length: int, incremental: int = 5
     logger.info(f"Starting binary search with bounds: {lower_bound} to {upper_bound}")
     while lower_bound <= upper_bound:
         mid = (lower_bound + upper_bound) // 2
-        input_text, save_dict = generate_input_output(mid)
+        input_text, _answers = generate_input_output(mid)
         total_tokens = len(TOKENIZER.text_to_tokens(input_text))
 
         logger.info(f"Testing haystack size: {mid}, resulting tokens: {total_tokens}/{max_seq_length}")
@@ -235,15 +214,17 @@ def generate_samples(num_samples: int, max_seq_length: int, incremental: int = 5
     # Generate samples
     for index in tqdm(range(num_samples)):
         used_haystack = num_haystack
-        while(True):
+        while True:
             try:
                 input_text, answer  = generate_input_output(used_haystack)
                 length = len(TOKENIZER.text_to_tokens(input_text))
                 assert length <= max_seq_length, f"{length} exceeds max_seq_length."
                 break
-            except:
+            except AssertionError:
                 if used_haystack > incremental:
                     used_haystack -= incremental
+                else:
+                    raise
 
         formatted_output = {
             'index': index,
