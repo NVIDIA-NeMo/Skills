@@ -87,15 +87,15 @@ class OmniMetrics(BaseMetrics):
 
             # convert pcts back to counts
             if isinstance(correct, float):
-                correct *= self.total
+                correct *= self.total / 100
             if isinstance(incorrect, float):
-                incorrect *= self.total
+                incorrect *= self.total / 100
             if isinstance(part_correct, float):
-                part_correct *= self.total
+                part_correct *= self.total / 100
             if isinstance(abstained, float):
-                abstained *= self.total
+                abstained *= self.total / 100
             if isinstance(non_correct, float):
-                non_correct *= self.total
+                non_correct *= self.total / 100
 
             # compute omni index between max correct and min incorrect (for pass@k)
             metrics[agg_method]["judge_omni_index"] = 100 * (correct - incorrect) / self.total if self.total > 0 else 0
