@@ -12,20 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-MMMU-Pro dataset preparation script.
-
-Uses the 'vision' config which has augmented settings where images are critical.
-
-Usage:
-    ns prepare_data mmmu-pro --data_dir <path_to_data_dir>
-"""
-
 import argparse
 import ast
 import json
-import os
-import sys
 from pathlib import Path
 
 from datasets import load_dataset
@@ -36,7 +25,6 @@ from nemo_skills.dataset.utils import get_mcq_fields
 
 def format_entry(entry, images_dir: Path) -> dict | None:
     """Format a MMMU-Pro entry for NeMo-Skills VLM evaluation."""
-    # Skip entries without images
     if entry["image"] is None:
         return None
 
@@ -44,13 +32,8 @@ def format_entry(entry, images_dir: Path) -> dict | None:
     image_path = images_dir / image_filename
     entry["image"].save(image_path)
 
-    # Parse options - it's a string representation of a list
     options = ast.literal_eval(entry["options"])
-
-    # Build MCQ fields using standard utility
-    mcq_fields = get_mcq_fields("", options)  # Question is in the image for 'vision' config
-
-    # Subject for subset metrics
+    mcq_fields = get_mcq_fields("", options)
     subject = entry["subject"].replace(" ", "_")
 
     return {
@@ -62,10 +45,11 @@ def format_entry(entry, images_dir: Path) -> dict | None:
     }
 
 
-def save_data(split: str, data_dir: Path):
+def save_data(split: str):
     """Download and prepare MMMU-Pro data."""
+    data_dir = Path(__file__).absolute().parent
     images_dir = data_dir / "images"
-    images_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(exist_ok=True)
 
     output_file = data_dir / f"{split}.jsonl"
 
@@ -94,24 +78,5 @@ if __name__ == "__main__":
         choices=("test",),
         help="Dataset split to prepare (default: test)",
     )
-    parser.add_argument(
-        "--data_dir",
-        type=str,
-        default=os.getenv("NEMO_SKILLS_DATA_DIR"),
-        help="Directory to save prepared data. Defaults to NEMO_SKILLS_DATA_DIR env var.",
-    )
     args = parser.parse_args()
-
-    # Resolve data_dir
-    if args.data_dir:
-        data_dir = Path(args.data_dir) / "mmmu-pro"
-    else:
-        pkg_dir = Path(__file__).absolute().parent
-        print(
-            "Warning: --data_dir not specified and NEMO_SKILLS_DATA_DIR not set. "
-            f"Writing to package directory: {pkg_dir}",
-            file=sys.stderr,
-        )
-        data_dir = pkg_dir
-
-    save_data(args.split, data_dir)
+    save_data(args.split)

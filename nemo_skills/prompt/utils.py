@@ -285,8 +285,10 @@ class Prompt:
 
             if self.config.image_position == "before":
                 user_content = [image_part, text_part]
-            else:
+            elif self.config.image_position == "after":
                 user_content = [text_part, image_part]
+            else:
+                raise ValueError(f"Invalid image_position '{self.config.image_position}'. Must be 'before' or 'after'")
         else:
             user_content = user_text
 

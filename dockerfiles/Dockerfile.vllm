@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:v0.11.0
+FROM vllm/vllm-openai:v0.13.0
 RUN pip install "vllm[audio]"
 # Required by vLLM for Qwen-VL model family (runtime dependency, not directly imported)
-RUN pip install qwen-vl-utils==0.0.14
+RUN pip install qwen-vl-utils

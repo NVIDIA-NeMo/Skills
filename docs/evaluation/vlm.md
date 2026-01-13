@@ -4,15 +4,11 @@ This section details how to evaluate Vision-Language Model (VLM) benchmarks that
 
 ## VLM-specific features
 
-VLM evaluation introduces several new components to NeMo-Skills:
+VLM evaluation uses the standard `vllm` server type with multimodal support:
 
-### Server type: `vllm_vlm`
-
-Use `--server_type=vllm_vlm` for VLM inference. This server type:
-
-- Uses vLLM with multimodal support
 - Automatically converts local image paths to base64 data URLs
 - Supports HTTP/HTTPS image URLs and pre-encoded base64 data URLs
+- Works seamlessly with any vLLM-supported VLM model
 
 ### Prompt configuration
 
@@ -77,7 +73,7 @@ ns prepare_data mmmu-pro --data_dir=/workspace/ns-data --cluster=<cluster>
         ctx=wrap_arguments("++inference.temperature=0 ++inference.tokens_to_generate=16384"),
         cluster="slurm",
         output_dir="/workspace/mmmu-pro-eval",
-        server_type="vllm_vlm",
+        server_type="vllm",
         server_gpus=1,
         model="Qwen/Qwen3-VL-4B-Instruct",
         benchmarks="mmmu-pro",
@@ -91,7 +87,7 @@ ns prepare_data mmmu-pro --data_dir=/workspace/ns-data --cluster=<cluster>
         ns eval \
             --cluster=slurm \
             --output_dir=/workspace/mmmu-pro-eval \
-            --server_type=vllm_vlm \
+            --server_type=vllm \
             --server_gpus=1 \
             --model=Qwen/Qwen3-VL-4B-Instruct \
             --benchmarks=mmmu-pro \
@@ -111,7 +107,7 @@ ns prepare_data mmmu-pro --data_dir=/workspace/ns-data --cluster=<cluster>
         ctx=wrap_arguments("++inference.temperature=0.7 ++inference.tokens_to_generate=131072"),
         cluster="slurm",
         output_dir="/workspace/mmmu-pro-eval",
-        server_type="vllm_vlm",
+        server_type="vllm",
         server_gpus=8,
         model="/hf_models/Qwen3-VL-30B-A3B-Thinking",
         benchmarks="mmmu-pro",
@@ -125,7 +121,7 @@ ns prepare_data mmmu-pro --data_dir=/workspace/ns-data --cluster=<cluster>
         ns eval \
             --cluster=slurm \
             --output_dir=/workspace/mmmu-pro-eval \
-            --server_type=vllm_vlm \
+            --server_type=vllm \
             --server_gpus=8 \
             --model=/hf_models/Qwen3-VL-30B-A3B-Thinking \
             --benchmarks=mmmu-pro \
@@ -136,7 +132,7 @@ ns prepare_data mmmu-pro --data_dir=/workspace/ns-data --cluster=<cluster>
 
 ## vLLM configuration tips
 
-Based on [vLLM Qwen3-VL documentation](https://docs.vllm.ai/en/stable/models/vlm.html):
+Based on [vLLM VLM documentation](https://docs.vllm.ai/en/stable/models/vlm.html):
 
 - For image-only inference, add `--limit-mm-per-prompt.video 0` to save memory
 - Set `--max-model-len 128000` for most use cases (default 262K consumes more memory)
