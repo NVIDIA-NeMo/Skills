@@ -79,12 +79,11 @@ class OmniMetrics(BaseMetrics):
                 agg_metric_dict["judge_abstained"],
             )
             total = correct + incorrect + part_correct + abstained
-            metrics[agg_method]["judge_omni_index"] = (
-                100 * (correct - incorrect) / total if total > 0 else 0
-            )
+            metrics[agg_method]["judge_omni_index"] = 100 * (correct - incorrect) / total if total > 0 else 0
             metrics[agg_method]["judge_omni_hallucination"] = (
-                100 * incorrect / (incorrect + part_correct + abstained) 
-                if (incorrect + part_correct + abstained) > 0 else 0
+                100 * incorrect / (incorrect + part_correct + abstained)
+                if (incorrect + part_correct + abstained) > 0
+                else 0
             )
         return metrics
 
