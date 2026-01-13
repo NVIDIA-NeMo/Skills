@@ -67,13 +67,12 @@ def prepare_task_for_ns(task, data_dir, setup, data_format):
         if data_format == "chat":
             extra_generation_args = ""
         else:
-            extra_generation_args = TEXT_COMPLETIONS_EXTRA_ARGS.format(tokens_to_generate=TOKENS_TO_GENERATE[short_name])
+            extra_generation_args = TEXT_COMPLETIONS_EXTRA_ARGS.format(
+                tokens_to_generate=TOKENS_TO_GENERATE[short_name]
+            )
 
         init_file.write(
-            DEFAULT_SETTINGS.format(
-                match_type=MATCH_TYPE[short_name],
-                extra_generation_args=extra_generation_args
-            )
+            DEFAULT_SETTINGS.format(match_type=MATCH_TYPE[short_name], extra_generation_args=extra_generation_args)
         )
 
 
