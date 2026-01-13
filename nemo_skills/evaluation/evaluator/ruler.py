@@ -16,8 +16,8 @@ import json
 import logging
 import os
 import re
-import editdistance
 
+import editdistance
 from tqdm import tqdm
 
 from nemo_skills.evaluation.evaluator.base import BaseEvaluatorConfig
@@ -95,7 +95,6 @@ def eval_ruler2(cfg):
     def post_process_preds(preds):
         return preds
 
-
     def wer(hypotheses: list[str], references: list[str]) -> float:
         scores = 0
         words = 0
@@ -113,7 +112,7 @@ def eval_ruler2(cfg):
         if words != 0:
             wer = 1.0 * scores / words
         else:
-            wer = float('inf')
+            wer = float("inf")
         return wer
 
     def string_match_all_single(preds, refs):
@@ -122,7 +121,9 @@ def eval_ruler2(cfg):
         preds = [preds]
         refs = [refs]
         score = [
-            sum([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred.lower()], [r.lower()])) for r in ref]) / len(ref) for pred, ref in zip(preds, refs)
+            sum([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred.lower()], [r.lower()])) for r in ref])
+            / len(ref)
+            for pred, ref in zip(preds, refs)
         ][0]
         return score
 
@@ -132,18 +133,30 @@ def eval_ruler2(cfg):
         preds = [preds]
         refs = [refs]
         score = [
-            sum([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred.lower()], [r.lower()])) for r in ref]) / len(ref) for pred, ref in zip(preds, refs)
+            sum([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred.lower()], [r.lower()])) for r in ref])
+            / len(ref)
+            for pred, ref in zip(preds, refs)
         ][0]
         return score
 
     def string_match_part_single(preds, refs):
         preds = post_process_preds(preds)
-        preds = re.sub(r'Document \d+:(?:.*\n)+?\n', '', preds)
+        preds = re.sub(r"Document \d+:(?:.*\n)+?\n", "", preds)
 
         preds = [preds]
         refs = [refs]
         score = [
-            sum([max([max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred.lower()], [r.lower()])) for r in ref]) for pred, ref in zip(preds, refs)])
+            sum(
+                [
+                    max(
+                        [
+                            max(1.0 if r.lower() in pred.lower() else 0.0, 1 - wer([pred.lower()], [r.lower()]))
+                            for r in ref
+                        ]
+                    )
+                    for pred, ref in zip(preds, refs)
+                ]
+            )
         ][0]
         return score
 
@@ -157,7 +170,6 @@ def eval_ruler2(cfg):
         "part": string_match_part_single,
         "2steps": string_match_2steps_single,
     }
-
 
     jsonl_file = eval_config.input_file
     with open(jsonl_file, "rt", encoding="utf-8") as fin:
