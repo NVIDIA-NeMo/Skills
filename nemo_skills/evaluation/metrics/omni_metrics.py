@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 from collections import defaultdict
 
 from nemo_skills.evaluation.metrics.math_metrics import BaseMetrics, as_int, as_percentage
+
 
 class OmniMetrics(BaseMetrics):
     def __init__(self, compute_no_answer: bool = True, answer_key: str = "generation"):
@@ -60,29 +61,36 @@ class OmniMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         correctness_dict = {}
         if "judgement" in prediction:
-            judgement = prediction['judgement']
-            correctness_dict['judge_correct'] = int(judgement.lower() == "a")
-            correctness_dict['judge_incorrect'] = int(judgement.lower() == "b")
-            correctness_dict['judge_partially_correct'] = int(judgement.lower() == "c")
-            correctness_dict['judge_abstained'] = int(judgement.lower() == "d")
+            judgement = prediction["judgement"]
+            correctness_dict["judge_correct"] = int(judgement.lower() == "a")
+            correctness_dict["judge_incorrect"] = int(judgement.lower() == "b")
+            correctness_dict["judge_partially_correct"] = int(judgement.lower() == "c")
+            correctness_dict["judge_abstained"] = int(judgement.lower() == "d")
         return correctness_dict
 
     def get_metrics(self):
         metrics = super().get_metrics()
 
         for agg_method, agg_metric_dict in metrics.items():
-            correct, incorrect, part_correct, abstained = agg_metric_dict['judge_correct'], agg_metric_dict['judge_incorrect'], agg_metric_dict['judge_partially_correct'], agg_metric_dict['judge_abstained']
-            metrics[agg_method]['judge_omni_index'] = 100 * (correct - incorrect) / (correct + incorrect + part_correct + abstained)
-            metrics[agg_method]['judge_omni_hallucination'] = 100 * incorrect / (incorrect + part_correct + abstained)
+            correct, incorrect, part_correct, abstained = (
+                agg_metric_dict["judge_correct"],
+                agg_metric_dict["judge_incorrect"],
+                agg_metric_dict["judge_partially_correct"],
+                agg_metric_dict["judge_abstained"],
+            )
+            metrics[agg_method]["judge_omni_index"] = (
+                100 * (correct - incorrect) / (correct + incorrect + part_correct + abstained)
+            )
+            metrics[agg_method]["judge_omni_hallucination"] = 100 * incorrect / (incorrect + part_correct + abstained)
         return metrics
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         if "judgement" in prediction:
-            prediction['judgement'] = "B"
-            prediction['judge_correct'] = 0
-            prediction['judge_incorrect'] = 1
-            prediction['judge_partially_correct'] = 0
-            prediction['judge_abstained'] = 0
+            prediction["judgement"] = "B"
+            prediction["judge_correct"] = 0
+            prediction["judge_incorrect"] = 1
+            prediction["judge_partially_correct"] = 0
+            prediction["judge_abstained"] = 0
         return prediction
 
     def update(self, predictions):
@@ -110,4 +118,3 @@ class OmniMetrics(BaseMetrics):
         if self.compute_no_answer:
             metrics_to_print["no_answer"] = as_percentage
         return metrics_to_print
-        

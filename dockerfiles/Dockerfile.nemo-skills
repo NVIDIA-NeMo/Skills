@@ -63,4 +63,3 @@ ARG CACHEBUST=3
 RUN pip install --no-cache-dir -r /opt/NeMo-Skills/requirements/main.txt
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
-RUN pip install func-timeout

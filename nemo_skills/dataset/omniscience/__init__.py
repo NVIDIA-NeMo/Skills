@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,13 +14,13 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 DATASET_GROUP = "math"
-METRICS_TYPE = "omniscience"  # This uses the MathMetrics class, but with compute_no_answer=False
+METRICS_TYPE = "omniscience"
 GENERATION_ARGS = "++prompt_config=eval/aai/omni"
 EVAL_SPLIT = "text"
 
 JUDGE_PIPELINE_ARGS = {
     "model": "gemini-2.5-flash-preview-09-2025",
     "server_type": "gemini",
-    "server_address": "https://generativelanguage.googleapis.com"
+    "server_address": "https://generativelanguage.googleapis.com",
 }
 JUDGE_ARGS = "++prompt_config=judge/aa-omni-judge ++generation_key=judgement ++add_generation_stats=False"
