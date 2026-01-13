@@ -32,7 +32,6 @@ GENERATION_ARGS = (
 """
 
 TEXT_COMPLETIONS_EXTRA_ARGS = """\
-    # ruler is adding prefix for assistant response, so it has to go through completions api
     "++inference.tokens_to_generate={tokens_to_generate} "
     "++start_assistant_response_key=generation "
     "++inference.endpoint_type=text "
