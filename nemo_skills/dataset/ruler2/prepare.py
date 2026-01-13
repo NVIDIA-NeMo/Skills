@@ -46,7 +46,7 @@ def prepare_mk_niah_basic(output_folder, tokenizer_type, tokenizer_path, length,
             "--type_needle_k", "words",
             "--type_needle_v", "numbers",
             "--num_digits_v", "10",
-        ]
+        ],
         check=True,
     )
 
@@ -66,7 +66,7 @@ def prepare_mk_niah_easy(output_folder, tokenizer_type, tokenizer_path, length, 
             "--num_order", "0",
             "--task_type", "retrieve",
             "--algo_type", "single",
-        ]
+        ],
         check=True,
     )
 
@@ -86,7 +86,7 @@ def prepare_mk_niah_medium(output_folder, tokenizer_type, tokenizer_path, length
             "--num_order", "0",
             "--task_type", "solve",
             "--algo_type", "2steps",
-        ]
+        ],
         check=True,
     )
 
@@ -106,7 +106,7 @@ def prepare_mk_niah_hard(output_folder, tokenizer_type, tokenizer_path, length, 
             "--num_order", "0",
             "--task_type", "solve",
             "--algo_type", "single",
-        ]
+        ],
         check=True,
     )
 
@@ -127,7 +127,7 @@ def prepare_mv_niah_basic(output_folder, tokenizer_type, tokenizer_path, length,
             "--type_needle_k", "words",
             "--type_needle_v", "numbers",
             "--num_digits_v", "10",
-        ]
+        ],
         check=True,
     )
 
@@ -147,7 +147,7 @@ def prepare_mv_niah_easy(output_folder, tokenizer_type, tokenizer_path, length, 
             "--num_order", "4",
             "--task_type", "niah",
             "--algo_type", "single",
-        ]
+        ],
         check=True,
     )
 
@@ -167,7 +167,7 @@ def prepare_mv_niah_medium(output_folder, tokenizer_type, tokenizer_path, length
             "--num_order", "4",
             "--task_type", "retrieve",
             "--algo_type", "2steps",
-        ]
+        ],
         check=True,
     )   
 
@@ -187,7 +187,7 @@ def prepare_mv_niah_hard(output_folder, tokenizer_type, tokenizer_path, length, 
             "--num_order", "4",
             "--task_type", "retrieve",
             "--algo_type", "single",
-        ]
+        ],
         check=True,
     )
 
@@ -207,7 +207,7 @@ def prepare_qa_basic(output_folder, tokenizer_type, tokenizer_path, length, data
             "--prompt_type", "instruct",
             "--task_type", "retrieve",
             "--query_type", "doc",
-        ]
+        ],
         check=True,
     )
 
@@ -226,7 +226,7 @@ def prepare_qa_easy(output_folder, tokenizer_type, tokenizer_path, length, datas
             "--prompt_type", "instruct",
             "--task_type", "retrieve",
             "--query_type", "question",
-        ]
+        ],
         check=True,
     )
 
@@ -246,7 +246,7 @@ def prepare_qa_medium(output_folder, tokenizer_type, tokenizer_path, length, dat
             "--prompt_type", "instruct",
             "--task_type", "solve",
             "--algo_type", "2steps",
-        ]
+        ],
         check=True,
     )
 
@@ -265,7 +265,7 @@ def prepare_qa_hard(output_folder, tokenizer_type, tokenizer_path, length, datas
             "--prompt_type", "instruct",
             "--task_type", "solve",
             "--algo_type", "single",
-        ]
+        ],
         check=True,
     )
 
