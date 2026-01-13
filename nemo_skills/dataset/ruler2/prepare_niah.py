@@ -120,7 +120,7 @@ def generate_input_output(num_haystack):
             ))
         values.append(value)
     
-    random.Random(args.random_seed).shuffle(needles)
+    random.shuffle(needles)
     
     # Context
     if args.num_needle_v == 1:

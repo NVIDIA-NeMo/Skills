@@ -31,229 +31,241 @@ GENERATION_ARGS = (
 
 def prepare_mk_niah_basic(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_niah "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--num_needle_k 1 "
-        f"--num_needle_v 1 "
-        f"--num_needle_q 1 "
-        f"--type_haystack needle "
-        f"--type_needle_k words "
-        f"--type_needle_v numbers "
-        f"--num_digits_v 10",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_niah",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--num_needle_k", "1",
+            "--num_needle_v", "1",
+            "--num_needle_q", "1",
+            "--type_haystack", "needle",
+            "--type_needle_k", "words",
+            "--type_needle_v", "numbers",
+            "--num_digits_v", "10",
+        ]
         check=True,
     )
 
 def prepare_mk_niah_easy(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_mmlu "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset mmlu "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--num_order 0 "
-        f"--task_type retrieve "
-        f"--algo_type single",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_mmlu",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "mmlu",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--num_order", "0",
+            "--task_type", "retrieve",
+            "--algo_type", "single",
+        ]
         check=True,
     )
 
 def prepare_mk_niah_medium(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_mmlu "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset mmlu "
-        f"--fewshot 5 "
-        f"--prompt_type instruct "
-        f"--num_order 0 "
-        f"--task_type solve "
-        f"--algo_type 2steps",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_mmlu",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "mmlu",
+            "--fewshot", "5",
+            "--prompt_type", "instruct",
+            "--num_order", "0",
+            "--task_type", "solve",
+            "--algo_type", "2steps",
+        ]
         check=True,
     )
 
 def prepare_mk_niah_hard(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_mmlu "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset mmlu "
-        f"--fewshot 5 "
-        f"--prompt_type instruct "
-        f"--num_order 0 "
-        f"--task_type solve "
-        f"--algo_type single",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_mmlu",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "mmlu",
+            "--fewshot", "5",
+            "--prompt_type", "instruct",
+            "--num_order", "0",
+            "--task_type", "solve",
+            "--algo_type", "single",
+        ]
         check=True,
     )
 
 def prepare_mv_niah_basic(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_niah "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--num_needle_k 1 "
-        f"--num_needle_v 4 "
-        f"--num_needle_q 1 "
-        f"--type_haystack needle "
-        f"--type_needle_k words "
-        f"--type_needle_v numbers "
-        f"--num_digits_v 10",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_niah",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--num_needle_k", "1",
+            "--num_needle_v", "4",
+            "--num_needle_q", "1",
+            "--type_haystack", "needle",
+            "--type_needle_k", "words",
+            "--type_needle_v", "numbers",
+            "--num_digits_v", "10",
+        ]
         check=True,
     )
 
 def prepare_mv_niah_easy(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_mmlu "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset mmlu "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--num_order 4 "
-        f"--task_type niah "
-        f"--algo_type single",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_mmlu",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "mmlu",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--num_order", "4",
+            "--task_type", "niah",
+            "--algo_type", "single",
+        ]
         check=True,
     )
 
 def prepare_mv_niah_medium(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_mmlu "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset mmlu "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--num_order 4 "
-        f"--task_type retrieve "
-        f"--algo_type 2steps",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_mmlu",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "mmlu",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--num_order", "4",
+            "--task_type", "retrieve",
+            "--algo_type", "2steps",
+        ]
         check=True,
-    )
+    )   
 
 def prepare_mv_niah_hard(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_mmlu "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset mmlu "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--num_order 4 "
-        f"--task_type retrieve "
-        f"--algo_type single",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_mmlu",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "mmlu",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--num_order", "4",
+            "--task_type", "retrieve",
+            "--algo_type", "single",
+        ]
         check=True,
     )
 
 
 def prepare_qa_basic(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_qa "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset hotpotqa "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--task_type retrieve "
-        f"--query_type doc",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_qa",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "hotpotqa",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--task_type", "retrieve",
+            "--query_type", "doc",
+        ]
         check=True,
     )
 
 def prepare_qa_easy(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_qa "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset hotpotqa "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--task_type retrieve "
-        f"--query_type question",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_qa",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "hotpotqa",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--task_type", "retrieve",
+            "--query_type", "question",
+        ]
         check=True,
     )
 
 
 def prepare_qa_medium(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_qa "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset hotpotqa "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--task_type solve "
-        f"--algo_type 2steps",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_qa",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "hotpotqa",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--task_type", "solve",
+            "--algo_type", "2steps",
+        ]
         check=True,
     )
 
 def prepare_qa_hard(output_folder, tokenizer_type, tokenizer_path, length, dataset_size):
     subprocess.run(
-        f"python -m nemo_skills.dataset.ruler2.prepare_qa "
-        f"--output_folder {output_folder} "
-        f"--tokenizer_type {tokenizer_type} "
-        f"--tokenizer_path {tokenizer_path} "
-        f"--max_seq_length {length} "
-        f"--num_samples {dataset_size} "
-        f"--random_seed 42 "
-        f"--dataset hotpotqa "
-        f"--fewshot 0 "
-        f"--prompt_type instruct "
-        f"--task_type solve "
-        f"--algo_type single",
-        shell=True,
+        [
+            "python", "-m", "nemo_skills.dataset.ruler2.prepare_qa",
+            "--output_folder", output_folder,
+            "--tokenizer_type", tokenizer_type,
+            "--tokenizer_path", tokenizer_path,
+            "--max_seq_length", length,
+            "--num_samples", dataset_size,
+            "--random_seed", "42",
+            "--dataset", "hotpotqa",
+            "--fewshot", "0",
+            "--prompt_type", "instruct",
+            "--task_type", "solve",
+            "--algo_type", "single",
+        ]
         check=True,
     )
 
@@ -299,7 +311,8 @@ def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path
     output_folder = Path(__file__).parent / setup
 
     # 1. installing necessary packages
-    subprocess.run(["pip install wonderwords html2text tenacity"], check=True, shell=True)
+    subprocess.run(["pip", "install", "wonderwords", "html2text", "tenacity"], check=True)
+
 
     for task in tasks:
         prepare_task_for_ns(output_folder, task)
