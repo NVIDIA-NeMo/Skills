@@ -238,6 +238,67 @@ The benchmark reports:
 - **pass@1**: Same as accuracy for single-solution generation
 - **pass@k**: Success rate when generating k solutions per problem (if configured)
 
+### swe-bench-multilingual
+
+- Benchmark is defined in [`nemo_skills/dataset/swe-bench-multilingual/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-multilingual/__init__.py)
+- Original benchmark source is [here](https://www.swebench.com/multilingual.html).
+
+SWE-bench Multilingual uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well. The differences are as follows:
+
+1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: https://github.com/ludwig-n/OpenHands and https://github.com/ludwig-n/SWE-agent. In both forks we use the `ns-swe-bench-multilingual` branch by default.
+2. For OpenHands, we use the [Multi-SWE-bench entrypoint script](https://github.com/ludwig-n/OpenHands/blob/ns-swe-bench-multilingual/evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh) instead of the standard SWE-bench one.
+3. For SWE-agent, we default to a [different config file](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/multilingual.yaml) with language-specific prompting.
+
+#### Sample run
+
+Here's how to run a sample evaluation of [Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) with OpenHands on a Slurm cluster.
+
+1. Prepare the data following the same [instructions](#data-preparation) as for SWE-bench, replacing `ns prepare_data swe-bench` with `ns prepare_data swe-bench-multilingual`. This will download [SWE-bench Multilingual](https://huggingface.co/datasets/SWE-bench/SWE-bench_Multilingual) by default instead of Verified. The container names have the same format. For downloading images, you can use the same `dump_images.py` script as for SWE-bench.
+2. Run
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=Qwen/Qwen3-Coder-30B-A3B-Instruct \
+    --server_type=vllm \
+    --server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=swe-bench-multilingual \
+    --output_dir=<OUTPUT_DIR> \
+    --num_chunks=6 \
+    ++agent_framework=openhands \
+    ++inference.temperature=0.7 \
+    ++inference.top_p=0.8 \
+    ++inference.top_k=20
+```
+replacing <...> with your desired parameters.
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/swe-bench-multilingual/metrics.json`. They should look something like this:
+```
+{
+  "swe-bench-multilingual": {
+    "pass@1": {
+      "num_entries": 300,
+      "gen_seconds": 83685,
+      "issues_resolved": 33.33333333333336,
+      "no_patch": 0.6666666666666665,
+      "patch_cant_apply": 1.0
+    }
+  }
+}
+```
+Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate. To do that automatically, you can set `--benchmarks=swe-bench-multilingual:N`, where N is your desired number of repeats.
+
+To evaluate the same model with SWE-agent,
+all you need to do is replace `openhands` with `swe_agent` in the command above.
+
+!!! note
+    There are some instances where the gold (ground truth) patches do not pass the evaluation tests. Therefore, it's likely that on those instances even patches that resolve the issue will be incorrectly evaluated as "unresolved". We have observed 2 such instances in SWE-bench Multilingual: `jqlang__jq-2681` and `tokio-rs__tokio-4384`. In addition, 5 instances behave inconsistently (gold patches sometimes pass and sometimes fail): `axios__axios-4731`, `axios__axios-4738`, `axios__axios-5892`, `caddyserver__caddy-5995`, `valkey-io__valkey-928`. Depending on your setup, this set of instances may be different.
+
+!!! note
+    For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
+
+
 ### IOI
 
 We currently support IOI24 and are working to support IOI25 for evaluation. The original data for IOI24 can be seen [here](https://huggingface.co/datasets/open-r1/ioi).
