@@ -53,7 +53,7 @@ def prepare_task_for_ns(task, data_dir, setup, data_format):
             original_entry = json.loads(line)
             new_entry = {
                 "index": original_entry["index"],
-                "question": original_entry["input"]
+                "question": original_entry["input"],
                 "expected_answer": original_entry["outputs"],
                 "length": original_entry["length"],
             }
@@ -227,7 +227,7 @@ if __name__ == "__main__":
 
     if "--tokenizer_type" not in ruler_prepare_args:
         ruler_prepare_args += " --tokenizer_type hf"
-        
+
     print(
         f"Preparing RULER dataset for tasks: {args.tasks}, "
         f"data_format: {args.data_format}, "
