@@ -62,7 +62,7 @@ def test_vllm_audio_generation():
             f"    --server_nodes 1 "
             f"    --server_args '--enforce-eager' "
             f"    --input_file={input_file} "
-            f"    ++prompt_config=openai "
+            f"    ++prompt_format=openai "
             f"    ++skip_filled=False "
         )
         subprocess.run(cmd, shell=True, check=True)

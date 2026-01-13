@@ -20,6 +20,7 @@ This module provides a multimodal model class that handles:
 """
 
 import base64
+import copy
 import json
 import logging
 import os
@@ -212,7 +213,7 @@ class VLLMMultimodalModel(VLLMModel):
         Returns:
             Copy of message dicts.
         """
-        return [msg.copy() for msg in messages]
+        return [copy.deepcopy(msg) for msg in messages]
 
     def _needs_audio_chunking(self, messages: list[dict], task_type: str = None) -> tuple[bool, str, float]:
         """Check if audio in messages needs chunking.
@@ -243,14 +244,11 @@ class VLLMMultimodalModel(VLLMModel):
                         return False, None, 0.0
 
                     # Load audio to check duration
-                    try:
-                        audio_array, sampling_rate = load_audio_file(audio_path)
-                        duration = len(audio_array) / sampling_rate
+                    audio_array, sampling_rate = load_audio_file(audio_path)
+                    duration = len(audio_array) / sampling_rate
 
-                        if duration > self.chunk_audio_threshold_sec:
-                            return True, audio_path, duration
-                    except Exception:
-                        pass
+                    if duration > self.chunk_audio_threshold_sec:
+                        return True, audio_path, duration
 
         return False, None, 0.0
 
@@ -282,13 +280,18 @@ class VLLMMultimodalModel(VLLMModel):
         chunk_results = []
         result = None
 
+        # Track cumulative statistics across chunks
+        total_input_tokens = 0
+        total_generated_tokens = 0
+        total_time = 0.0
+
         for chunk_idx, audio_chunk in enumerate(chunks):
             chunk_messages = []
 
             for msg in messages:
-                msg_copy = msg.copy()
+                msg_copy = copy.deepcopy(msg)
 
-                if msg_copy.get("role") == "user" and ("audio" in msg_copy or "audios" in msg_copy):
+                if msg_copy["role"] == "user" and ("audio" in msg_copy or "audios" in msg_copy):
                     chunk_base64 = save_audio_chunk_to_base64(audio_chunk, sampling_rate)
 
                     content = msg_copy.get("content", "")
@@ -316,7 +319,12 @@ class VLLMMultimodalModel(VLLMModel):
                 prompt=chunk_messages, tokens_to_generate=tokens_to_generate, **kwargs
             )
 
-            generation = result.get("generation", "")
+            # Sum statistics from each chunk
+            total_input_tokens += result.get("input_tokens", 0)
+            total_generated_tokens += result.get("generated_tokens", 0)
+            total_time += result.get("time_elapsed", 0.0)
+
+            generation = result["generation"]
 
             # Post-process: clean up the generation text
             generation = self._postprocess_chunk_generation(generation)
@@ -330,6 +338,10 @@ class VLLMMultimodalModel(VLLMModel):
             final_result["generation"] = aggregated_text
             final_result["num_audio_chunks"] = len(chunks)
             final_result["audio_duration"] = duration
+            # Update with summed statistics
+            final_result["input_tokens"] = total_input_tokens
+            final_result["generated_tokens"] = total_generated_tokens
+            final_result["time_elapsed"] = total_time
         else:
             final_result = {
                 "generation": aggregated_text,
@@ -405,7 +417,7 @@ class VLLMMultimodalModel(VLLMModel):
                 return await self._generate_with_chunking(messages, audio_path, duration, tokens_to_generate, **kwargs)
 
             # No chunking needed - convert audio fields to base64 format
-            messages = [self.content_text_to_list(msg.copy()) for msg in messages]
+            messages = [self.content_text_to_list(copy.deepcopy(msg)) for msg in messages]
             messages = self._preprocess_messages_for_model(messages)
             prompt = messages
 
@@ -427,6 +439,6 @@ class VLLMMultimodalModel(VLLMModel):
             Request parameters dict.
         """
         # content_text_to_list THEN preprocess
-        messages = [self.content_text_to_list(msg.copy()) for msg in messages]
+        messages = [self.content_text_to_list(copy.deepcopy(msg)) for msg in messages]
         messages = self._preprocess_messages_for_model(messages)
         return super()._build_chat_request_params(messages=messages, **kwargs)

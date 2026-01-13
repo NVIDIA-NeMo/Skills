@@ -34,7 +34,8 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     prompt_config: str = "eval/speechlm/audio"
     apply_whisper_normalization: bool = True
     normalize_asr_pc_standard_wer: bool = True
-    strip_helpful_prefixes: bool = True  # Strip common ASR response prefixes like "The audio says:"
+    strip_helpful_prefixes: bool = True
+    normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", or "none"
 
 
 # Known model failure responses that should be treated as empty transcriptions
@@ -48,37 +49,25 @@ _FAILURE_RESPONSES = [
 
 
 def strip_helpful_prefixes(text: str) -> str:
-    """Strip common ASR response prefixes from model output.
-
-    Aligned with AudioBench's post_process_qwen2_asr function.
-    Audio-LLMs often respond with helpful prefixes like "The audio says: ..." when asked
-    to transcribe audio. This function removes such prefixes for accurate WER calculation.
-
-    Strategy (from AudioBench):
-    1. Check for known failure responses and return empty string
-    2. Extract content from double quotes "..."
-    3. Handle colon-quote patterns (:'  or : ')
-    4. Extract content using greedy single quote matching '...'
-    """
+    """Strip ASR response prefixes like 'The audio says: ...' for accurate WER."""
     result = text.strip()
 
-    # Check for known model failure responses
     for failure_pattern in _FAILURE_RESPONSES:
         if re.search(failure_pattern, result, flags=re.IGNORECASE):
             return ""
 
-    # Step 1: Extract from double quotes (from AudioBench)
+    # Extract from double quotes
     match = re.search(r'"((?:\\.|[^"\\])*)"', result)
     if match:
         result = match.group(1)
 
-    # Step 2: Handle colon-quote patterns (from AudioBench)
+    # Handle colon-quote patterns
     if ":'" in result:
         result = "'" + result.split(":'")[1]
     elif ": '" in result:
         result = "'" + result.split(": '")[1]
 
-    # Step 3: Find the longest match of single quotes (greedy, from AudioBench)
+    # Greedy single quote extraction
     match = re.search(r"'(.*)'", result)
     if match:
         result = match.group(1)
@@ -138,8 +127,17 @@ def calculate_per(reference: str, hypothesis: str) -> float:
     return per
 
 
-def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: bool = True) -> dict[str, Any]:
-    """Evaluate ASR-PC: computes WER, WER_C, WER_PC, PER."""
+def evaluate_asr_pc(
+    reference: str, hypothesis: str, normalize_standard_wer: bool = True, normalization_mode: str = "standard"
+) -> dict[str, Any]:
+    """Evaluate ASR-PC: computes WER, WER_C, WER_PC, PER.
+
+    Args:
+        reference: Ground truth transcription.
+        hypothesis: Model output transcription.
+        normalize_standard_wer: Whether to apply normalization to standard WER.
+        normalization_mode: Normalization mode for standard WER ("standard", "audiobench", "hf_leaderboard", "none").
+    """
     import jiwer
 
     ref_pc = normalize_whitespace(reference)
@@ -154,8 +152,8 @@ def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: boo
     wer_c = jiwer.wer(ref_c, hyp_c)
 
     if normalize_standard_wer:
-        ref_std = preprocess_asr_text(reference)
-        hyp_std = preprocess_asr_text(hypothesis)
+        ref_std = preprocess_asr_text(reference, mode=normalization_mode)
+        hyp_std = preprocess_asr_text(hypothesis, mode=normalization_mode)
     else:
         ref_std = normalize_whitespace(re.sub(r"[^\w\s]", "", reference.lower()))
         hyp_std = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis.lower()))
@@ -173,126 +171,148 @@ def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: boo
 
 
 def _normalize_digits_to_words(text: str) -> str:
-    """Convert digits to words (aligned with AudioBench)."""
+    """Convert standalone digits to words (e.g., '1' -> 'one')."""
     digits_to_words = {
-        '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
-        '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
-        '10': 'ten', '11': 'eleven', '12': 'twelve', '13': 'thirteen',
-        '14': 'fourteen', '15': 'fifteen', '16': 'sixteen',
-        '17': 'seventeen', '18': 'eighteen', '19': 'nineteen',
-        '20': 'twenty', '30': 'thirty', '40': 'forty', '50': 'fifty',
-        '60': 'sixty', '70': 'seventy', '80': 'eighty', '90': 'ninety',
+        "0": "zero",
+        "1": "one",
+        "2": "two",
+        "3": "three",
+        "4": "four",
+        "5": "five",
+        "6": "six",
+        "7": "seven",
+        "8": "eight",
+        "9": "nine",
+        "10": "ten",
+        "11": "eleven",
+        "12": "twelve",
+        "13": "thirteen",
+        "14": "fourteen",
+        "15": "fifteen",
+        "16": "sixteen",
+        "17": "seventeen",
+        "18": "eighteen",
+        "19": "nineteen",
+        "20": "twenty",
+        "30": "thirty",
+        "40": "forty",
+        "50": "fifty",
+        "60": "sixty",
+        "70": "seventy",
+        "80": "eighty",
+        "90": "ninety",
     }
     for digit, word in digits_to_words.items():
-        text = re.sub(r'\b' + digit + r'\b', word, text)
+        text = re.sub(r"\b" + digit + r"\b", word, text)
     return text
 
 
 def _expand_contractions(text: str) -> str:
-    """Expand common contractions (aligned with AudioBench)."""
+    """Expand common English contractions (e.g., "I'm" -> "I am")."""
     contractions = {
-        "i'm": "i am", "you're": "you are", "he's": "he is", "she's": "she is",
-        "it's": "it is", "we're": "we are", "they're": "they are",
-        "i've": "i have", "you've": "you have", "we've": "we have", "they've": "they have",
-        "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not",
-        "hasn't": "has not", "haven't": "have not", "hadn't": "had not",
-        "doesn't": "does not", "don't": "do not", "didn't": "did not", "that's": "that is",
+        "i'm": "i am",
+        "you're": "you are",
+        "he's": "he is",
+        "she's": "she is",
+        "it's": "it is",
+        "we're": "we are",
+        "they're": "they are",
+        "i've": "i have",
+        "you've": "you have",
+        "we've": "we have",
+        "they've": "they have",
+        "isn't": "is not",
+        "aren't": "are not",
+        "wasn't": "was not",
+        "weren't": "were not",
+        "hasn't": "has not",
+        "haven't": "have not",
+        "hadn't": "had not",
+        "doesn't": "does not",
+        "don't": "do not",
+        "didn't": "did not",
+        "that's": "that is",
     }
     for contraction, expanded in contractions.items():
-        text = re.sub(r'\b' + contraction + r'\b', expanded, text)
+        text = re.sub(r"\b" + contraction + r"\b", expanded, text)
     return text
 
 
 def _remove_non_speech_elements(text: str) -> str:
-    """Remove common non-speech elements (aligned with AudioBench)."""
-    non_speech_patterns = r'\b(uh|umm|um|er|ah)\b'
-    return re.sub(non_speech_patterns, '', text)
+    """Remove filler words (uh, um, er, ah)."""
+    non_speech_patterns = r"\b(uh|umm|um|er|ah)\b"
+    return re.sub(non_speech_patterns, "", text)
 
 
-def preprocess_asr_text(text: str) -> str:
-    """Apply ASR text normalization aligned with AudioBench's preprocess_text_asr.
+VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none")
 
-    Steps:
-    1. Lowercase
-    2. Whisper EnglishTextNormalizer
-    3. Digit-to-word conversion
-    4. Contraction expansion
-    5. Remove content in brackets [] () {} <>
-    6. jiwer processing (remove punctuation, expand contractions, etc.)
-    7. Remove non-speech elements (uh, um, er, ah)
+
+def preprocess_asr_text(text: str, mode: str = "standard") -> str:
+    """Normalize ASR text for WER calculation.
+
+    Args:
+        text: Raw text.
+        mode: Normalization mode:
+            - "standard": Whisper normalization (default)
+            - "audiobench": Full AudioBench normalization
+            - "hf_leaderboard": HuggingFace leaderboard style
+            - "none": No normalization (whitespace only)
     """
-    import jiwer
+    if mode not in VALID_NORMALIZATION_MODES:
+        raise ValueError(
+            f"Invalid normalization_mode '{mode}'. Available options: {', '.join(VALID_NORMALIZATION_MODES)}"
+        )
+
+    if mode == "none":
+        return re.sub(r"\s+", " ", text).strip()
+
+    if mode == "hf_leaderboard":
+        import unicodedata
+
+        text = unicodedata.normalize("NFC", text)
+        text = text.lower()
+        text = re.sub(r"[^\w\s]", "", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    # "standard" and "audiobench" both start with whisper normalization
     from whisper_normalizer.english import EnglishTextNormalizer
 
-    # Step 1: Lowercase
     text = text.lower()
-
-    # Step 2: Whisper normalization
     text = EnglishTextNormalizer()(text)
 
-    # Step 3-4: Digit-to-word and contraction expansion (from AudioBench)
-    text = _normalize_digits_to_words(text)
-    text = _expand_contractions(text)
+    if mode == "audiobench":
+        # Additional audiobench-specific normalization
+        import jiwer
 
-    # Step 5: Remove content in brackets (from AudioBench)
-    text = re.sub(r"(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)", "", text)
+        text = _normalize_digits_to_words(text)
+        text = _expand_contractions(text)
+        text = re.sub(r"(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)", "", text)
+        jiwer_process = jiwer.Compose(
+            [
+                jiwer.RemoveMultipleSpaces(),
+                jiwer.ExpandCommonEnglishContractions(),
+                jiwer.RemoveKaldiNonWords(),
+                jiwer.RemovePunctuation(),
+            ]
+        )
+        text = jiwer_process(text)
+        text = _remove_non_speech_elements(text)
 
-    # Step 6: jiwer processing (from AudioBench)
-    jiwer_process = jiwer.Compose([
-        jiwer.RemoveMultipleSpaces(),
-        jiwer.ExpandCommonEnglishContractions(),
-        jiwer.RemoveKaldiNonWords(),
-        jiwer.RemovePunctuation()
-    ])
-    text = jiwer_process(text)
-
-    # Step 7: Remove non-speech elements (from AudioBench)
-    text = _remove_non_speech_elements(text).strip()
-
-    return text
-
-
-def preprocess_hf_leaderboard(text: str) -> str:
-    """Apply HuggingFace leaderboard normalization: lowercase, remove punctuation, normalize unicode."""
-    import unicodedata
-
-    text = unicodedata.normalize("NFC", text)
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def evaluate_asr(reference: str, hypothesis: str, apply_normalization: bool = True) -> dict[str, Any]:
-    """Evaluate ASR: computes WER with optional Whisper normalization."""
+def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "standard") -> dict[str, Any]:
+    """Evaluate ASR: computes WER with normalization.
+
+    Args:
+        reference: Ground truth transcription.
+        hypothesis: Model output transcription.
+        normalization_mode: "standard", "audiobench", "hf_leaderboard", or "none".
+    """
     import jiwer
 
-    if apply_normalization:
-        ref = preprocess_asr_text(reference)
-        hyp = preprocess_asr_text(hypothesis)
-    else:
-        ref = normalize_whitespace(reference)
-        hyp = normalize_whitespace(hypothesis)
-
-    if not ref:
-        ref = "empty"
-    if not hyp:
-        hyp = "empty"
-
-    wer_score = jiwer.wer(ref, hyp)
-
-    return {
-        "wer": wer_score,
-        "is_correct": wer_score < 0.5,
-    }
-
-
-def evaluate_asr_leaderboard(reference: str, hypothesis: str) -> dict[str, Any]:
-    """Evaluate ASR with HuggingFace leaderboard preprocessing for direct comparison."""
-    import jiwer
-
-    ref = preprocess_hf_leaderboard(reference)
-    hyp = preprocess_hf_leaderboard(hypothesis)
+    ref = preprocess_asr_text(reference, mode=normalization_mode)
+    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode)
 
     if not ref:
         ref = "empty"
@@ -441,11 +461,11 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     """Evaluate single sample based on task_type. Returns dict of updates to merge."""
     updates = {}
     task_type = sample.get("task_type", "unknown")
-    generation = sample.get("generation", "").strip()
+    generation = sample["generation"].strip()
     expected_answer = sample.get("expected_answer", "").strip()
 
     # Strip helpful prefixes for ASR tasks (e.g., "The audio says: ...")
-    if config.strip_helpful_prefixes and task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD"]:
+    if config.strip_helpful_prefixes:
         generation = strip_helpful_prefixes(generation)
 
     if task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD", "AST", "Translation", "CER"] and not generation:
@@ -462,19 +482,26 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         return {**base, "wer": 1.0}
 
     if task_type == "ASR-PC":
+        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
         metrics = evaluate_asr_pc(
-            expected_answer, generation, normalize_standard_wer=config.normalize_asr_pc_standard_wer
+            expected_answer,
+            generation,
+            normalize_standard_wer=config.normalize_asr_pc_standard_wer,
+            normalization_mode=mode,
         )
         updates.update(metrics)
         updates["predicted_answer"] = generation
 
     elif task_type == "ASR":
-        metrics = evaluate_asr(expected_answer, generation, apply_normalization=config.apply_whisper_normalization)
+        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
         updates["predicted_answer"] = generation
 
     elif task_type == "ASR_LEADERBOARD":
-        metrics = evaluate_asr_leaderboard(expected_answer, generation)
+        # ASR_LEADERBOARD uses normalization_mode from config (default hf_leaderboard set in dataset init)
+        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
         updates["predicted_answer"] = generation
 

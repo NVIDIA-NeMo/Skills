@@ -209,7 +209,7 @@ class GenerateSolutionsConfig:
     drop_content_types: list[str] = field(default_factory=lambda: ["audio_url"])
 
     # Audio configuration - set by benchmarks that need audio processing (mmau-pro, audiobench, etc.)
-    should_enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
+    enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
     enable_audio_chunking: bool = True
     audio_chunk_task_types: list[str] | None = None  # If None, chunk all task types; if specified, only chunk these
     chunk_audio_threshold_sec: int = 30  # Duration in seconds for each audio chunk
@@ -415,12 +415,14 @@ class GenerationTask:
         output_dir = str(Path(self.cfg.output_file).parent)
 
         # Determine if audio processing is needed
-        # Benchmarks that need audio set should_enable_audio=true in their GENERATION_ARGS
-        needs_audio = self.cfg.should_enable_audio or self.cfg.server.get("server_type") == "vllm_multimodal"
+        # Benchmarks that need audio set enable_audio=true in their GENERATION_ARGS
+        needs_audio = self.cfg.enable_audio or self.cfg.server.get("server_type") == "vllm_multimodal"
 
         # Build server config, potentially switching to vllm_multimodal for audio tasks
         server_config = dict(self.cfg.server)
         if needs_audio and server_config.get("server_type") in ["vllm", "vllm_multimodal"]:
+            if server_config.get("server_type") == "vllm":
+                LOG.warning("Auto-switching server_type from 'vllm' to 'vllm_multimodal' for audio processing")
             server_config["server_type"] = "vllm_multimodal"
             # Pass audio chunking config
             server_config.update(
