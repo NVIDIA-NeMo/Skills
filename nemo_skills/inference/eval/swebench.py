@@ -100,8 +100,7 @@ class SweBenchGenerationConfig:
 
     # SWE-agent/OpenHands repo URL & commit. Passed to git clone & git checkout respectively.
     # Default behavior:
-    # - If agent_framework=openhands and multilingual=True,
-    #   will use a branch in our fork of OpenHands with better multilingual support.
+    # - If multilingual=True, will use a branch in our fork of SWE-agent/OpenHands with better multilingual support.
     # - Otherwise, will use the HEAD commit in the official SWE-agent/OpenHands repo.
     agent_framework_repo: str | None = None
     agent_framework_commit: str | None = None
@@ -113,7 +112,7 @@ class SweBenchGenerationConfig:
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
-    # For SWE-agent, this changes the default config to multilingual.yaml, which uses a language-agnostic prompt.
+    # For SWE-agent, this changes the default config to multilingual.yaml, which uses language-specific prompting.
     multilingual: bool = False
 
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
