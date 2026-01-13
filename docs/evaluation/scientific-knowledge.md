@@ -100,7 +100,12 @@ We also tested a variant where the full generation output was provided to the ju
 
 The reported number for `simpleqa-gpt-oss-120b-notool` is 13.1% according to this [kaggle page](https://www.kaggle.com/benchmarks/deepmind/simpleqa-verified).
 
+### FrontierScience-Olympiad
 
+- Benchmark is defined in [`nemo_skills/dataset/frontierscience-olympiad/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/frontierscience-olympiad/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/openai/frontierscience).
+- Contains 100 short-answer questions crafted by international science olympiad medalists across physics, chemistry, and biology.
+- Available splits: `physics` (default), `chemistry`, `biology`, and `all` (all subjects combined).
 
 ### SuperGPQA
 
