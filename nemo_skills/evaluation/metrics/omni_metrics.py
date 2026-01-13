@@ -84,23 +84,18 @@ class OmniMetrics(BaseMetrics):
                 agg_metric_dict["judge_abstained"],
             )
             non_correct = -agg_metric_dict["non_correct"]
-            print(correct)
-            print(incorrect)
-            print(part_correct)
-            print(abstained)
-            print(non_correct)
-            assert isinstance(correct, int), "correct isnt an int"
-            assert isinstance(incorrect, int), "incorrect isnt an int"
-            assert isinstance(part_correct, int), "part_correct isnt an int"
-            assert isinstance(abstained, int), "abstained isnt an int"
-            assert isinstance(non_correct, int), "non_correct isnt an int"
 
             # convert pcts back to counts
-            # if isinstance(correct, float): correct *= self.total
-            # if isinstance(incorrect, float): incorrect *= self.total
-            # if isinstance(part_correct, float): part_correct *= self.total
-            # if isinstance(abstained, float): abstained *= self.total
-            # if isinstance(non_correct, float): non_correct *= self.total
+            if isinstance(correct, float):
+                correct *= self.total
+            if isinstance(incorrect, float):
+                incorrect *= self.total
+            if isinstance(part_correct, float):
+                part_correct *= self.total
+            if isinstance(abstained, float):
+                abstained *= self.total
+            if isinstance(non_correct, float):
+                non_correct *= self.total
 
             # compute omni index between max correct and min incorrect (for pass@k)
             metrics[agg_method]["judge_omni_index"] = 100 * (correct - incorrect) / self.total if self.total > 0 else 0
