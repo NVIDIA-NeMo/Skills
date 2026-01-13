@@ -40,7 +40,6 @@ from .tts_nim import TTSNIMModel
 # Utilities
 from .vllm import VLLMModel
 from .vllm_multimodal import VLLMMultimodalModel
-from .vllm_vlm import VLLMVLMModel
 
 # Model implementations
 
@@ -54,7 +53,6 @@ models = {
     "gemini": GeminiModel,
     "vllm": VLLMModel,
     "vllm_multimodal": VLLMMultimodalModel,
-    "vllm_vlm": VLLMVLMModel,
     "sglang": SGLangModel,
     "tts_nim": TTSNIMModel,
     "asr_nim": ASRNIMModel,

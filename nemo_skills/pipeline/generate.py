@@ -103,8 +103,7 @@ def _create_job_unified(
         # 1. Add server if needed
         if server_config is not None and int(server_config.get("num_gpus", 0)) > 0:
             server_type = server_config["server_type"]
-            containers = cluster_config["containers"]
-            server_container = server_config.get("container") or containers.get(server_type, containers.get("vllm"))
+            server_container = server_config.get("container") or cluster_config["containers"][server_type]
 
             # Create ServerScript
             server_script = ServerScript(

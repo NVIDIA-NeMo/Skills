@@ -18,13 +18,12 @@ import tempfile
 
 import pytest
 
-from nemo_skills.inference.model import VLLMVLMModel, get_model, models
-from nemo_skills.inference.model.vllm_vlm import encode_image_to_base64, process_image_content
+from nemo_skills.inference.model import VLLMModel, get_model, models
+from nemo_skills.inference.model.vllm import encode_image_to_base64, process_image_content
 from nemo_skills.prompt.utils import Prompt, PromptConfig
 
 
 def test_encode_image_to_base64():
-    # Create a minimal valid PNG file
     png_header = b"\x89PNG\r\n\x1a\n"
     ihdr_data = b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
     ihdr_crc = b"\x90wS\xde"
@@ -62,6 +61,11 @@ def test_process_image_content_preserves_text_items():
     assert result == content
 
 
+def test_process_image_content_none():
+    result = process_image_content(None)
+    assert result is None
+
+
 def test_process_image_content_http_url_passthrough():
     http_url = "https://example.com/image.jpg"
     content = [
@@ -79,14 +83,14 @@ def test_process_image_content_data_url_passthrough():
     assert result[0]["image_url"]["url"] == data_url
 
 
-def test_vllm_vlm_model_registered():
-    assert "vllm_vlm" in models
-    assert models["vllm_vlm"] == VLLMVLMModel
+def test_vllm_model_registered():
+    assert "vllm" in models
+    assert models["vllm"] == VLLMModel
 
 
-def test_get_model_vllm_vlm():
-    model = get_model(server_type="vllm_vlm", model="test-model")
-    assert isinstance(model, VLLMVLMModel)
+def test_get_model_vllm():
+    model = get_model(server_type="vllm", model="test-model")
+    assert isinstance(model, VLLMModel)
 
 
 def test_prompt_with_image_field():
@@ -127,3 +131,12 @@ def test_prompt_image_position_after():
     content = messages[0]["content"]
     assert content[0]["type"] == "text"
     assert content[1]["type"] == "image_url"
+
+
+def test_prompt_image_position_invalid():
+    config = PromptConfig(user="{problem}", image_field="image_path", image_position="middle")
+    prompt = Prompt(config, tokenizer=None)
+    input_dict = {"problem": "Test", "image_path": "img.png"}
+
+    with pytest.raises(ValueError, match="Invalid image_position"):
+        prompt.fill(input_dict)

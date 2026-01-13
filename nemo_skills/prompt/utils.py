@@ -285,8 +285,10 @@ class Prompt:
 
             if self.config.image_position == "before":
                 user_content = [image_part, text_part]
-            else:
+            elif self.config.image_position == "after":
                 user_content = [text_part, image_part]
+            else:
+                raise ValueError(f"Invalid image_position '{self.config.image_position}'. Must be 'before' or 'after'")
         else:
             user_content = user_text
 
@@ -319,10 +321,15 @@ class Prompt:
                         raise ValueError(
                             "The model doesn't support chat template, can't format messages which contain non-user values"
                         )
+                    user_content = messages[0]["content"]
+                    # Handle multimodal content - extract text for base models (no chat template)
+                    if isinstance(user_content, list):
+                        text_parts = [item["text"] for item in user_content if item.get("type") == "text"]
+                        user_content = " ".join(text_parts)
                     if hasattr(self.tokenizer, "bos_token"):
-                        messages_string = self.tokenizer.bos_token + messages[0]["content"]
+                        messages_string = self.tokenizer.bos_token + user_content
                     else:
-                        messages_string = messages[0]["content"]
+                        messages_string = user_content
                 else:
                     raise e
             if start_assistant_response_key:
