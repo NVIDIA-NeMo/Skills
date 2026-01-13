@@ -325,9 +325,6 @@ class VLLMMultimodalModel(VLLMModel):
             total_time += result.get("time_elapsed", 0.0)
 
             generation = result["generation"]
-
-            # Post-process: clean up the generation text
-            generation = self._postprocess_chunk_generation(generation)
             chunk_results.append(generation.strip())
 
         # Aggregate results
@@ -350,43 +347,6 @@ class VLLMMultimodalModel(VLLMModel):
             }
 
         return final_result
-
-    def _postprocess_chunk_generation(self, generation: str) -> str:
-        """Post-process generation from a chunk.
-
-        Applies Qwen2-Audio specific cleanup based on AudioBench's implementation.
-
-        Args:
-            generation: Raw generation text from the model.
-
-        Returns:
-            Cleaned generation text.
-        """
-        # Remove SRT subtitle timestamps (vLLM-specific issue)
-        timestamp_pattern = r"\d+\s+\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}\s+"
-        generation = re.sub(timestamp_pattern, "", generation)
-        timestamp_pattern_no_num = r"\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}\s*"
-        generation = re.sub(timestamp_pattern_no_num, "", generation)
-        generation = re.sub(r"\\n\d+\s+(?=\d{2}:\d{2})", " ", generation)
-        generation = re.sub(r"\n\d+\s+(?=\d{2}:\d{2})", " ", generation)
-
-        # Extract from double quotes (non-greedy)
-        match = re.search(r'"((?:\\.|[^"\\])*)"', generation)
-        if match:
-            generation = match.group(1)
-
-        # Handle colon-quote patterns
-        if ":'" in generation:
-            generation = "'" + generation.split(":'")[1]
-        elif ": '" in generation:
-            generation = "'" + generation.split(": '")[1]
-
-        # Extract from single quotes (greedy - matches LONGEST)
-        match = re.search(r"'(.*)'", generation)
-        if match:
-            generation = match.group(1)
-
-        return generation
 
     async def generate_async(
         self,

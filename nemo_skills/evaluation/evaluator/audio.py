@@ -49,12 +49,22 @@ _FAILURE_RESPONSES = [
 
 
 def strip_helpful_prefixes(text: str) -> str:
-    """Strip ASR response prefixes like 'The audio says: ...' for accurate WER."""
+    """Strip ASR response prefixes like 'The audio says: ...' for accurate WER.
+    
+    Also removes SRT subtitle timestamps that can appear in vLLM chunked audio generation.
+    """
     result = text.strip()
 
+    # Check for model failure responses
     for failure_pattern in _FAILURE_RESPONSES:
         if re.search(failure_pattern, result, flags=re.IGNORECASE):
             return ""
+
+    # Remove SRT subtitle timestamps (vLLM chunked audio artifact)
+    result = re.sub(r"\d+\s+\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}\s+", "", result)
+    result = re.sub(r"\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}\s*", "", result)
+    result = re.sub(r"\\n\d+\s+(?=\d{2}:\d{2})", " ", result)
+    result = re.sub(r"\n\d+\s+(?=\d{2}:\d{2})", " ", result)
 
     # Extract from double quotes
     match = re.search(r'"((?:\\.|[^"\\])*)"', result)

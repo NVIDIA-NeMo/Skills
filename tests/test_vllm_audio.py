@@ -153,16 +153,3 @@ def test_needs_audio_chunking_task_type_filter(mock_vllm_multimodal_model):
     # Task type in filter but file doesn't exist - should return False gracefully
     needs_chunking, _, _ = mock_vllm_multimodal_model._needs_audio_chunking(messages, task_type="transcription")
     assert needs_chunking is False
-
-
-def test_postprocess_chunk_generation(mock_vllm_multimodal_model):
-    """Test post-processing of chunk generation removes timestamps."""
-    # Test SRT timestamp removal
-    generation = "1 00:00:00,000 --> 00:00:05,000 Hello world"
-    result = mock_vllm_multimodal_model._postprocess_chunk_generation(generation)
-    assert "00:00:00" not in result
-
-    # Test quote extraction
-    generation = '"This is the transcription"'
-    result = mock_vllm_multimodal_model._postprocess_chunk_generation(generation)
-    assert result == "This is the transcription"
