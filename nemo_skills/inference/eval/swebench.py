@@ -228,10 +228,16 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Install SWE-agent/OpenHands.
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            if self.cfg.agent_framework_repo is None:
-                self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
-            if self.cfg.agent_framework_commit is None:
-                self.cfg.agent_framework_commit = "HEAD"
+            if self.cfg.multilingual:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/ludwig-n/SWE-agent.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "ns-swe-bench-multilingual"
+            else:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "HEAD"
 
             setup_commands.append(
                 # clone the swe-agent repo
