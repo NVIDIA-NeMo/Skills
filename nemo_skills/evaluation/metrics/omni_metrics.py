@@ -63,9 +63,14 @@ class OmniMetrics(BaseMetrics):
         if "judgement" in prediction:
             judgement = prediction["judgement"]
             correctness_dict["judge_correct"] = int(judgement.lower() == "a")
-            correctness_dict["judge_incorrect"] = int(judgement.lower() == "b")
+            correctness_dict["judge_incorrect"] = -int(
+                judgement.lower() == "b"
+            )  # negate incorrect so pass@k minimizes it
             correctness_dict["judge_partially_correct"] = int(judgement.lower() == "c")
             correctness_dict["judge_abstained"] = int(judgement.lower() == "d")
+
+            # keep counter of all entries where no answer is correct
+            correctness_dict["non_correct"] = -int(judgement.lower() in ["b", "c", "d"])
         return correctness_dict
 
     def get_metrics(self):
@@ -74,27 +79,46 @@ class OmniMetrics(BaseMetrics):
         for agg_method, agg_metric_dict in metrics.items():
             correct, incorrect, part_correct, abstained = (
                 agg_metric_dict["judge_correct"],
-                agg_metric_dict["judge_incorrect"],
+                -agg_metric_dict["judge_incorrect"],  # multiply negated judge_incorrect to get minimized incorrect pct
                 agg_metric_dict["judge_partially_correct"],
                 agg_metric_dict["judge_abstained"],
             )
-            total = correct + incorrect + part_correct + abstained
-            metrics[agg_method]["judge_omni_index"] = 100 * (correct - incorrect) / total if total > 0 else 0
-            metrics[agg_method]["judge_omni_hallucination"] = (
-                100 * incorrect / (incorrect + part_correct + abstained)
-                if (incorrect + part_correct + abstained) > 0
-                else 0
-            )
+            non_correct = -agg_metric_dict["non_correct"]
+            print(correct)
+            print(incorrect)
+            print(part_correct)
+            print(abstained)
+            print(non_correct)
+            assert isinstance(correct, int), "correct isnt an int"
+            assert isinstance(incorrect, int), "incorrect isnt an int"
+            assert isinstance(part_correct, int), "part_correct isnt an int"
+            assert isinstance(abstained, int), "abstained isnt an int"
+            assert isinstance(non_correct, int), "non_correct isnt an int"
+
+            # convert pcts back to counts
+            # if isinstance(correct, float): correct *= self.total
+            # if isinstance(incorrect, float): incorrect *= self.total
+            # if isinstance(part_correct, float): part_correct *= self.total
+            # if isinstance(abstained, float): abstained *= self.total
+            # if isinstance(non_correct, float): non_correct *= self.total
+
+            # compute omni index between max correct and min incorrect (for pass@k)
+            metrics[agg_method]["judge_omni_index"] = 100 * (correct - incorrect) / self.total if self.total > 0 else 0
+
+            # compute hallucination rate with min incorrect and min non_correct
+            metrics[agg_method]["judge_omni_hallucination"] = 100 * incorrect / non_correct if non_correct > 0 else 0
         return metrics
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
+        copy_prediction = prediction.copy()
         if "judgement" in prediction:
-            prediction["judgement"] = "B"
-            prediction["judge_correct"] = 0
-            prediction["judge_incorrect"] = 1
-            prediction["judge_partially_correct"] = 0
-            prediction["judge_abstained"] = 0
-        return prediction
+            copy_prediction["judgement"] = "B"
+            copy_prediction["judge_correct"] = 0
+            copy_prediction["judge_incorrect"] = -1
+            copy_prediction["judge_partially_correct"] = 0
+            copy_prediction["judge_abstained"] = 0
+            copy_prediction["non_correct"] = -1
+        return copy_prediction
 
     def update(self, predictions):
         super().update(predictions)
