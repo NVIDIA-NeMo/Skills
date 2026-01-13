@@ -97,7 +97,7 @@ if __name__ == "__main__":
         count = write_data_to_file(output_file, olympiad_data, subject_filter=subject)
         print(f"Saved {count} {subject} entries to {output_file}")
     if args.split == "all":
-        # Also create a combined test.jsonl with all problems
-        output_file = data_dir / "test.jsonl"
+        # Also create a combined all.jsonl with all problems
+        output_file = data_dir / "all.jsonl"
         count = write_data_to_file(output_file, olympiad_data)
         print(f"Saved {count} total entries to {output_file}")
