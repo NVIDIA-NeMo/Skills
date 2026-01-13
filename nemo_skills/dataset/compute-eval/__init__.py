@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,15 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# NOTE: needs to run from the root of the repo!
-
-SANDBOX_NAME=${1:-'local-sandbox'}
-docker build --tag=${SANDBOX_NAME} --build-arg="NUM_WORKERS=$((`nproc --all`))" -f dockerfiles/Dockerfile.sandbox .
-
-echo "Multi-worker mode: Starting $((`nproc --all`)) workers with session affinity"
-docker run --network=host --rm \
-    --memory=${NEMO_SKILLS_SANDBOX_MEM_LIMIT:-"16g"} \
-    ${UWSGI_CPU_AFFINITY:+-e UWSGI_CPU_AFFINITY=${UWSGI_CPU_AFFINITY}} \
-    ${UWSGI_PROCESSES:+-e UWSGI_PROCESSES=${UWSGI_PROCESSES}} \
-    -v /nemo_run:/nemo_run \
-    --name=local-sandbox ${SANDBOX_NAME}
+EVAL_SPLIT = "eval"
+DATASET_GROUP = "code"
+METRICS_TYPE = "compute-eval"
+GENERATION_MODULE = "nemo_skills.inference.eval.compute_eval"
+GENERATION_ARGS = "++prompt_config=compute-eval/baseline ++eval_type=compute-eval"
