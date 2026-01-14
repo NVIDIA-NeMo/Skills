@@ -232,7 +232,7 @@ The benchmark reports:
 
 SWE-bench Multilingual uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well. The differences are as follows:
 
-1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: https://github.com/ludwig-n/OpenHands and https://github.com/ludwig-n/SWE-agent. In both forks we use the `ns-swe-bench-multilingual` branch by default.
+1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: [https://github.com/ludwig-n/OpenHands](https://github.com/ludwig-n/OpenHands) and [https://github.com/ludwig-n/SWE-agent](https://github.com/ludwig-n/SWE-agent). In both forks we use the `ns-swe-bench-multilingual` branch by default.
 2. For OpenHands, we use the [Multi-SWE-bench entrypoint script](https://github.com/ludwig-n/OpenHands/blob/ns-swe-bench-multilingual/evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh) instead of the standard SWE-bench one.
 3. For SWE-agent, we default to a [different config file](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/multilingual.yaml) with language-specific prompting.
 
