@@ -27,18 +27,22 @@ DATASET_GROUP = "long-context"
 METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
+    "++eval_type=ruler ++eval_config.match_type={match_type} "
+{extra_generation_args})
+"""
+
+TEXT_COMPLETIONS_EXTRA_ARGS = """\
     "++inference.tokens_to_generate={tokens_to_generate} "
-    # ruler is adding prefix for assistant response, so it has to go through completions api
     "++start_assistant_response_key=generation "
     "++inference.endpoint_type=text "
-    "++eval_type=ruler ++eval_config.match_type={match_type} "
-)
 """
+
+
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
 MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "part"}
 
 
-def prepare_task_for_ns(task, data_dir, setup):
+def prepare_task_for_ns(task, data_dir, setup, data_format):
     """Resaving from data_dir/task/test.jsonl into current folder/task/test.jsonl and adding proper init.py"""
     original_path = Path(data_dir) / task / "test.jsonl"
     new_path = Path(__file__).parent / setup / task / "test.jsonl"
@@ -51,21 +55,28 @@ def prepare_task_for_ns(task, data_dir, setup):
                 "question": original_entry["input"],
                 "expected_answer": original_entry["outputs"],
                 "length": original_entry["length"],
-                "generation": original_entry["answer_prefix"].strip(),
             }
+            if data_format == "default":
+                new_entry["generation"] = original_entry["answer_prefix"].strip()
+            elif data_format == "base":
+                new_entry["generation"] = "\n" + original_entry["answer_prefix"].strip()
             fout.write(json.dumps(new_entry) + "\n")
 
     with open(new_path.parent / "__init__.py", "w", encoding="utf-8") as init_file:
         short_name = task.split("_")[0]
-        init_file.write(
-            DEFAULT_SETTINGS.format(
-                match_type=MATCH_TYPE[short_name],
-                tokens_to_generate=TOKENS_TO_GENERATE[short_name],
+        if data_format == "chat":
+            extra_generation_args = ""
+        else:
+            extra_generation_args = TEXT_COMPLETIONS_EXTRA_ARGS.format(
+                tokens_to_generate=TOKENS_TO_GENERATE[short_name]
             )
+
+        init_file.write(
+            DEFAULT_SETTINGS.format(match_type=MATCH_TYPE[short_name], extra_generation_args=extra_generation_args)
         )
 
 
-def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_args, tmp_data_dir=None):
+def get_ruler_data(tasks, setup, template_tokens, max_seq_length, data_format, ruler_prepare_args, tmp_data_dir=None):
     if "cwe" in tasks:
         # checking if git-lfs is installed
         try:
@@ -115,7 +126,7 @@ def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_
             subprocess.run(
                 f"python prepare.py --save_dir {tmpdirname}/ruler_data --benchmark synthetic "
                 f"    --subset test --task {task} --tokenizer_type hf --model_template_type base --prepare_for_ns "
-                f"    --num_samples 500 --max_seq_length {max_seq_length} {ruler_prepare_args}",
+                f"    --num_samples 100 --max_seq_length {max_seq_length} {ruler_prepare_args}",
                 shell=True,
                 check=True,
                 cwd=Path(tmpdirname) / "RULER" / "scripts" / "data",
@@ -128,7 +139,7 @@ def get_ruler_data(tasks, setup, template_tokens, max_seq_length, ruler_prepare_
 
         # resaving the data and creating __init__.py files
         for task in tasks:
-            prepare_task_for_ns(task, Path(tmpdirname) / "ruler_data", setup)
+            prepare_task_for_ns(task, Path(tmpdirname) / "ruler_data", setup, data_format=data_format)
 
         with open(Path(__file__).parent / setup / "__init__.py", "w", encoding="utf-8") as init_file:
             init_file.write("IS_BENCHMARK_GROUP = True\n")
@@ -188,6 +199,17 @@ if __name__ == "__main__":
         default=None,
         help="Directory to store intermediate data. If not provided, a temporary directory will be created.",
     )
+    parser.add_argument(
+        "--data_format",
+        type=str,
+        default="default",
+        choices=["default", "base", "chat"],
+        help="""
+        default: use default format, answer_prefix is added in the generation field.
+        base: use base format, answer_prefix is added in the generation field with a newline separator.
+        chat: use chat format, answer_prefix is removed.
+        """,
+    )
 
     args, unknown = parser.parse_known_args()
     ruler_prepare_args = " ".join(unknown)
@@ -200,12 +222,18 @@ if __name__ == "__main__":
             "--tokenizer_path meta-llama/Llama-3.1-8B-Instruct --max_seq_length 131072"
         )
         exit(0)
-    print(f"Preparing RULER dataset for tasks: {args.tasks} with additional arguments: {ruler_prepare_args}")
+
+    print(
+        f"Preparing RULER dataset for tasks: {args.tasks}, "
+        f"data_format: {args.data_format}, "
+        f"additional arguments: {ruler_prepare_args}"
+    )
     get_ruler_data(
         args.tasks,
         args.setup,
         args.template_tokens,
         args.max_seq_length,
+        args.data_format,
         ruler_prepare_args,
         tmp_data_dir=args.tmp_data_dir,
     )
