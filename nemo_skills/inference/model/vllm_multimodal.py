@@ -236,7 +236,10 @@ class VLLMMultimodalModel(VLLMModel):
         # Find audio in messages
         for msg in messages:
             if msg.get("role") == "user":
-                audio_info = msg.get("audio") or (msg.get("audios", [{}])[0] if msg.get("audios") else {})
+                audio_info = msg.get("audio")
+                if not audio_info:
+                    audios = msg.get("audios", [])
+                    audio_info = audios[0] if audios else {}
                 if audio_info and "path" in audio_info:
                     audio_path = os.path.join(self.data_dir, audio_info["path"])
 
@@ -330,21 +333,17 @@ class VLLMMultimodalModel(VLLMModel):
         # Aggregate results
         aggregated_text = " ".join(chunk_results)
 
-        if result:
-            final_result = result.copy()
-            final_result["generation"] = aggregated_text
-            final_result["num_audio_chunks"] = len(chunks)
-            final_result["audio_duration"] = duration
-            # Update with summed statistics
-            final_result["input_tokens"] = total_input_tokens
-            final_result["generated_tokens"] = total_generated_tokens
-            final_result["time_elapsed"] = total_time
-        else:
-            final_result = {
-                "generation": aggregated_text,
-                "num_audio_chunks": len(chunks),
-                "audio_duration": duration,
-            }
+        if not result:
+            raise RuntimeError(f"All {len(chunks)} audio chunk generations failed")
+
+        final_result = result.copy()
+        final_result["generation"] = aggregated_text
+        final_result["num_audio_chunks"] = len(chunks)
+        final_result["audio_duration"] = duration
+        # Update with summed statistics
+        final_result["input_tokens"] = total_input_tokens
+        final_result["generated_tokens"] = total_generated_tokens
+        final_result["time_elapsed"] = total_time
 
         return final_result
 

@@ -72,6 +72,14 @@ def chunk_audio(audio_array, sampling_rate, chunk_duration_sec=30, min_chunk_dur
 
     chunk_samples = int(chunk_duration_sec * sampling_rate)
     min_chunk_samples = int(min_chunk_duration_sec * sampling_rate)
+
+    # Validate minimum audio length
+    if len(audio_array) < min_chunk_samples:
+        raise ValueError(
+            f"Audio too short: {len(audio_array)/sampling_rate:.2f}s "
+            f"< minimum {min_chunk_duration_sec}s"
+        )
+
     num_chunks = int(np.ceil(len(audio_array) / chunk_samples))
 
     chunks = []
