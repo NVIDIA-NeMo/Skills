@@ -40,12 +40,23 @@ class TranslationMetrics(BaseMetrics):
 
             bleu_score = corpus_bleu(preds, [gts], tokenize=tokenize).score
             metrics_dict[key] = {"bleu": bleu_score}
-            self.aggregation_dict["xx->xx"].append(bleu_score)
-            self.aggregation_dict[f"{src_lang}->xx"].append(bleu_score)
-            self.aggregation_dict[f"xx->{tgt_lang}"].append(bleu_score)
+            self.bleu_aggregation_dict["xx->xx"].append(bleu_score)
+            self.bleu_aggregation_dict[f"{src_lang}->xx"].append(bleu_score)
+            self.bleu_aggregation_dict[f"xx->{tgt_lang}"].append(bleu_score)
 
-        for key in self.aggregation_dict:
-            metrics_dict[key] = {"bleu": sum(self.aggregation_dict[key]) / len(self.aggregation_dict[key])}
+            if "comets" in self.translation_dict[key]:
+                comet_score = sum(self.translation_dict[key]["comets"]) / len(self.translation_dict[key]["comets"])
+                metrics_dict[key]["comet"] = comet_score
+                self.comet_aggregation_dict["xx->xx"].append(comet_score)
+                self.comet_aggregation_dict[f"{src_lang}->xx"].append(comet_score)
+                self.comet_aggregation_dict[f"xx->{tgt_lang}"].append(comet_score)
+
+        for key in self.bleu_aggregation_dict:
+            metrics_dict[key] = {"bleu": sum(self.bleu_aggregation_dict[key]) / len(self.bleu_aggregation_dict[key])}
+            if self.comet_aggregation_dict:
+                metrics_dict[key]["comet"] = sum(self.comet_aggregation_dict[key]) / len(
+                    self.comet_aggregation_dict[key]
+                )
 
         return metrics_dict
 
@@ -70,15 +81,19 @@ class TranslationMetrics(BaseMetrics):
             self.translation_dict[f"{src_lang}->{tgt_lang}"]["preds"].append(generation)
             self.translation_dict[f"{src_lang}->{tgt_lang}"]["gts"].append(ground_truth)
 
+            if "comet" in pred:
+                self.translation_dict[f"{src_lang}->{tgt_lang}"]["comets"].append(pred["comet"] * 100)
+
     def reset(self):
         super().reset()
         self.translation_dict = defaultdict(lambda: defaultdict(list))
-        self.aggregation_dict = defaultdict(list)
+        self.bleu_aggregation_dict = defaultdict(list)
+        self.comet_aggregation_dict = defaultdict(list)
 
     def evaluations_to_print(self):
         """Returns all translation pairs and aggregated multilingual dictionaries."""
-        return list(self.translation_dict.keys()) + list(self.aggregation_dict.keys())
+        return list(self.translation_dict.keys()) + list(self.bleu_aggregation_dict.keys())
 
     def metrics_to_print(self):
-        metrics_to_print = {"bleu": as_float}
+        metrics_to_print = {"bleu": as_float, "comet": as_float}
         return metrics_to_print
