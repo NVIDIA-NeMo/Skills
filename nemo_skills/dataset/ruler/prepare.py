@@ -125,7 +125,7 @@ def get_ruler_data(tasks, setup, template_tokens, max_seq_length, data_format, r
         def prepare_task(task):
             subprocess.run(
                 f"python prepare.py --save_dir {tmpdirname}/ruler_data --benchmark synthetic "
-                f"    --subset test --task {task} --model_template_type base --prepare_for_ns "
+                f"    --subset test --task {task} --tokenizer_type hf --model_template_type base --prepare_for_ns "
                 f"    --num_samples 100 --max_seq_length {max_seq_length} {ruler_prepare_args}",
                 shell=True,
                 check=True,
@@ -222,9 +222,6 @@ if __name__ == "__main__":
             "--tokenizer_path meta-llama/Llama-3.1-8B-Instruct --max_seq_length 131072"
         )
         exit(0)
-
-    if "--tokenizer_type" not in ruler_prepare_args:
-        ruler_prepare_args += " --tokenizer_type hf"
 
     print(
         f"Preparing RULER dataset for tasks: {args.tasks}, "

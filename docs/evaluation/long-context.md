@@ -8,6 +8,11 @@ More details are coming soon!
 
 - Benchmark is defined in [`nemo_skills/dataset/ruler/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ruler/__init__.py)
 - Original benchmark source is [here](https://github.com/NVIDIA/RULER).
+- Arguments
+    - data_format:
+      - default: evaluate non-reasoning model only with answer prefix.
+      - base: evaluate base model with answer prefix.
+      - chat: evaluate chat model including non-reasoning and reasoning model without answer prefix.
 
 ### mrcr
 
