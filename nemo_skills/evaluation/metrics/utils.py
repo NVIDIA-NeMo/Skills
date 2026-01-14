@@ -36,13 +36,14 @@ def read_predictions(predictions, line_idx, file_handles):
 
 def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
     # Match both plain "Judgement:" and markdown bold "**Judgement**:" formats, this happens for gpt-4o which is AA Judge model.
-    match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
-    if match:
-        verdict = judgement[match.end() :].strip()
-        if verdict.lower().startswith("yes"):
-            return True
-        elif verdict.lower().startswith("no"):
-            return False
+    if judgement:
+        match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
+        if match:
+            verdict = judgement[match.end() :].strip().lstrip("*").strip()
+            if verdict.lower().startswith("yes"):
+                return True
+            elif verdict.lower().startswith("no"):
+                return False
 
     if return_none:
         return None

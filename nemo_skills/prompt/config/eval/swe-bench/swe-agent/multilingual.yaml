@@ -1,18 +1,51 @@
-# Based on the default config from the SWE-agent repo:
-# https://github.com/SWE-agent/SWE-agent/blob/1375ec4fa69d300b432b9ca61d6b0e5d7259131c/config/default.yaml
-# but mentions of Python are removed to make the prompt language-agnostic.
+# Based on the multilingual config from the SWE-agent repo:
+# https://github.com/SWE-agent/SWE-agent/blob/3ff833d957973f9483fb012371432662c8b33269/config/benchmarks/anthropic_filemap_multilingual.yaml
+# but adds language-specific reproduction instructions from the Multi-SWE-bench team:
+# https://github.com/OpenHands/OpenHands/blob/a40f7bda210cefb3a34758308662a88bc01b20db/evaluation/benchmarks/multi_swe_bench/run_infer.py#L74
 
 # note that this doesn't use nemo-skills prompt logic and instead is passed directly to swe-agent
 
 agent:
+  type: default
   templates:
     system_template: |-
       You are a helpful assistant that can interact with a computer to solve tasks.
     instance_template: |-
+      {%-
+        set language_names = {
+          "c": "C",
+          "cpp": "C++",
+          "java": "Java",
+          "javascript": "JavaScript",
+          "go": "Go",
+          "php": "PHP",
+          "python": "Python",
+          "ruby": "Ruby",
+          "rust": "Rust",
+          "typescript": "TypeScript",
+        }
+      -%}
+      {%- set language_name = language_names.get(language, "") -%}
+      {%-
+        set repr_instructions = {
+          "c": "Create a script to reproduce the error by compiling your C code (for example, using `gcc <filename.c> -o <executable>`) and then running the executable using the bash tool, to confirm the error",
+          "cpp": "Create or adapt a small executable (e.g., a main file or a test driver) to reproduce the issue. Build and run it (for example, by using `g++ -o reproduce reproduce.cpp && ./reproduce` via the bash tool) to confirm the error",
+          "java": "Create a Java class to reproduce the error and execute it by first compiling with `javac <classname>.java` and then running with `java <classname>` using the bash tool, to confirm the error",
+          "javascript": "Create a script to reproduce the error and execute it with `node <filename.js>` using the bash tool, to confirm the error",
+          "go": "Create a script or a function to reproduce the error and execute it with `go run <filename.go>` using the bash tool, to confirm the error",
+          "php": "Create a script to reproduce the error and execute it with `php <filename.php>` using the bash tool, to confirm the error",
+          "python": "Create a script to reproduce the error and execute it with `python <filename.py>` using the bash tool, to confirm the error",
+          "ruby": "Create a script to reproduce the error and execute it with `ruby <filename.rb>` using the bash tool, to confirm the error",
+          "rust": "Create a reproduction script (or binary) that triggers the error and execute it with `cargo run --bin <filename>` using the bash tool, to confirm the error",
+          "typescript": "Create a script to reproduce the error and execute it with `ts-node <filename.ts>` using the bash tool, to confirm the error",
+        }
+      -%}
+      {%- set repr_instruction = repr_instructions.get(language, "Create a script to reproduce the error and execute it using the bash tool, to confirm the error") -%}
+
       <uploaded_files>
       {{working_dir}}
       </uploaded_files>
-      I've uploaded a code repository in the directory {{working_dir}}. Consider the following PR description:
+      I've uploaded a {{language_name}} code repository in the directory {{working_dir}}. Consider the following PR description:
 
       <pr_description>
       {{problem_statement}}
@@ -23,7 +56,7 @@ agent:
       Your task is to make the minimal changes to non-tests files in the {{working_dir}} directory to ensure the <pr_description> is satisfied.
       Follow these steps to resolve the issue:
       1. As a first step, it might be a good idea to find and read code relevant to the <pr_description>
-      2. Create a script to reproduce the error and execute it using the bash tool, to confirm the error
+      2. {{repr_instruction}}
       3. Edit the sourcecode of the repo to resolve the issue
       4. Rerun your reproduce script and confirm that the error is fixed!
       5. Think about edgecases and make sure your fix handles them as well
@@ -34,6 +67,7 @@ agent:
     next_step_no_output_template: |-
       Your command ran successfully and did not produce any output.
   tools:
+    execution_timeout: 300
     env_variables:
       PAGER: cat
       MANPAGER: cat
@@ -42,9 +76,11 @@ agent:
       TQDM_DISABLE: '1'
       GIT_PAGER: cat
     bundles:
+      - path: tools/multilingual_setup
       - path: tools/registry
       - path: tools/edit_anthropic
       - path: tools/review_on_submit_m
+      - path: tools/diff_state
     registry_variables:
       USE_FILEMAP: 'true'
       SUBMIT_REVIEW_MESSAGES:

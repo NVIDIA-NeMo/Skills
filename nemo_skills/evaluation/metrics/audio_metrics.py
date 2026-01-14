@@ -34,7 +34,7 @@ audio-specific metrics as the field evolves.
 
 import logging
 
-from nemo_skills.evaluation.metrics.base import BaseMetrics, as_int, as_percentage
+from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float, as_int, as_percentage
 from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -72,7 +72,8 @@ class AudioMetrics(BaseMetrics):
         self.pc_rate_scores = []
         self.punct_f1_scores = []
         self.cap_accuracy_scores = []
-        self.char_rate_scores = []
+        self.total_hallucinated_chars = 0
+        self.total_audio_seconds = 0.0
 
         # Judge scores (AudioBench-style rating 0-5, or legacy binary Yes/No mapped to 1/0)
         self.judge_ratings = []
@@ -210,8 +211,13 @@ class AudioMetrics(BaseMetrics):
                 self.punct_f1_scores.append(pred["punct_f1"])
             if "cap_accuracy" in pred and pred["cap_accuracy"] is not None:
                 self.cap_accuracy_scores.append(pred["cap_accuracy"])
-            if "char_rate" in pred and pred["char_rate"] is not None:
-                self.char_rate_scores.append(pred["char_rate"])
+
+            if pred.get("task_type") == "Hallucination":
+                predicted_text = pred.get("predicted_answer") or pred.get("generation") or ""
+                audio_duration = pred.get("audio_duration", 0.0)
+                if audio_duration > 0:
+                    self.total_hallucinated_chars += len(predicted_text.strip())
+                    self.total_audio_seconds += audio_duration
 
             # Collect judge ratings (0-5) from judge datasets if available
             score_dict = self._get_score_dict(pred)
@@ -276,8 +282,9 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["cap_accuracy"] = round(
                     100.0 * sum(self.cap_accuracy_scores) / len(self.cap_accuracy_scores), 2
                 )
-            if self.char_rate_scores:
-                agg_metrics["char_rate"] = round(sum(self.char_rate_scores) / len(self.char_rate_scores), 2)
+            if self.total_audio_seconds > 0:
+                total_minutes = self.total_audio_seconds / 60.0
+                agg_metrics["char_rate"] = round(self.total_hallucinated_chars / total_minutes, 2)
 
         return metrics_dict
 
@@ -337,8 +344,8 @@ class AudioMetrics(BaseMetrics):
             base_metrics["punct_f1"] = as_percentage
         if self.cap_accuracy_scores:
             base_metrics["cap_accuracy"] = as_percentage
-        if self.char_rate_scores:
-            base_metrics["char_rate"] = as_int
+        if self.total_audio_seconds > 0:
+            base_metrics["char_rate"] = as_float
 
         base_metrics["num_entries"] = as_int  # Add at end for better display order
 
