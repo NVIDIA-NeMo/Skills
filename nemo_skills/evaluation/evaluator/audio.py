@@ -50,7 +50,7 @@ _FAILURE_RESPONSES = [
 
 def strip_helpful_prefixes(text: str) -> str:
     """Strip ASR response prefixes like 'The audio says: ...' for accurate WER.
-    
+
     Also removes SRT subtitle timestamps that can appear in vLLM chunked audio generation.
     """
     result = text.strip()
