@@ -556,10 +556,13 @@ class SweBenchGenerationTask(GenerationTask):
                     config["llm"]["model"][oh_param] = param_value
                 else:
                     # If oh_param is None, this means there is no dedicated OH config option for this parameter,
-                    # so we need to pass it via the completion_kwargs dict.
+                    # so we need to pass it via the completion_kwargs parameter.
                     completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
 
         completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
+        if "top_logprobs" in completion_kwargs:
+            completion_kwargs["logprobs"] = True
+
         if completion_kwargs:
             config["llm"]["model"]["completion_kwargs"] = completion_kwargs
 
