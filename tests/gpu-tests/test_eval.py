@@ -38,6 +38,7 @@ EXCLUDED_DATASETS = {
     "bfcl_v3",
     "bfcl_v4",
     "swe-bench",
+    "swe-bench-multilingual",
     "swe-rebench",
     "aai",
     "human-eval",
