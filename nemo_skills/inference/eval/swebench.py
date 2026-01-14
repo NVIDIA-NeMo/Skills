@@ -477,6 +477,8 @@ class SweBenchGenerationTask(GenerationTask):
         completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
+        if "reasoning_effort" in completion_kwargs:
+            completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
         # Variables that will be available in prompt templates
         extra_fields = {}
@@ -562,6 +564,8 @@ class SweBenchGenerationTask(GenerationTask):
         completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
+        if "reasoning_effort" in completion_kwargs:
+            completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
         if completion_kwargs:
             config["llm"]["model"]["completion_kwargs"] = completion_kwargs
