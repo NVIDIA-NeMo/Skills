@@ -94,7 +94,9 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 #### Inference parameters
 
-For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by SWE-agent/OpenHands. Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). Any parameters you set explicitly will be passed, but keep in mind certain parameters may not be supported by your LLM server.
+For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by SWE-agent/OpenHands.
+
+Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). Any parameters you set explicitly will be passed. Custom parameters can be set via extra_body like this: `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. However, keep in mind certain parameters may not be supported by your LLM server.
 
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
