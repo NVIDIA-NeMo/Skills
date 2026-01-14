@@ -280,6 +280,9 @@ class VLLMMultimodalModel(VLLMModel):
 
         LOG.info(f"Chunking audio ({duration:.1f}s) into {len(chunks)} chunks of {self.chunk_audio_threshold_sec}s")
 
+        if not chunks:
+            raise RuntimeError("No audio chunks generated - audio may be too short or invalid")
+
         chunk_results = []
         result = None
 
@@ -334,7 +337,7 @@ class VLLMMultimodalModel(VLLMModel):
         aggregated_text = " ".join(chunk_results)
 
         if not result:
-            raise RuntimeError(f"All {len(chunks)} audio chunk generations failed")
+            raise RuntimeError("Audio chunk generation returned no result")
 
         final_result = result.copy()
         final_result["generation"] = aggregated_text
