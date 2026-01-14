@@ -46,8 +46,7 @@ class SupportedAgentFrameworks(str, Enum):
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
-# because they may not be supported by all LLM servers or agent frameworks.
-# tokens_to_generate is purposefully unlimited by default for SWE-bench.
+# because they may not be supported by all LLM servers.
 @nested_dataclass(kw_only=True)
 class SweBenchInferenceConfig:
     temperature: float = 0.0  # Temperature of 0 means greedy decoding
@@ -77,11 +76,11 @@ NS_TO_OPENAI_PARAM = {
 # Converts the parameter names above to the corresponding parameters in OpenHands's LLM config.
 # https://github.com/All-Hands-AI/OpenHands/blob/main/openhands/core/config/llm_config.py#L12
 NS_TO_OPENHANDS_PARAM = {
-    # Supported on OpenHands's side. top_k is not OpenAI-compatible and so may break some servers.
+    # Passed as dedicated parameters.
     "tokens_to_generate": "max_output_tokens",
     "top_k": "top_k",
     "random_seed": "seed",
-    # Not supported by OpenHands. Nemo-Skills will raise an error if they are passed.
+    # Passed via the completion_kwargs dict.
     "min_p": None,
     "repetition_penalty": None,
     "top_logprobs": None,
@@ -544,17 +543,20 @@ class SweBenchGenerationTask(GenerationTask):
             "temperature": self.cfg.inference.temperature,
             "top_p": self.cfg.inference.top_p,
         }
+        completion_kwargs = {}
 
         for ns_param, oh_param in NS_TO_OPENHANDS_PARAM.items():
-            if getattr(self.cfg.inference, ns_param) is not None:
+            param_value = getattr(self.cfg.inference, ns_param)
+            if param_value is not None:
                 if oh_param is not None:
-                    config["llm"]["model"][oh_param] = getattr(self.cfg.inference, ns_param)
+                    config["llm"]["model"][oh_param] = param_value
                 else:
-                    supported_params = [key for key, value in NS_TO_OPENHANDS_PARAM.items() if value is not None]
-                    raise ValueError(
-                        f"Inference parameter {ns_param} is not supported by OpenHands. "
-                        f"Supported inference parameters: temperature, top_p, {', '.join(supported_params)}."
-                    )
+                    # If oh_param is None, this means there is no dedicated OH config option for this parameter,
+                    # so we need to pass it via the completion_kwargs dict.
+                    completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
+
+        if completion_kwargs:
+            config["llm"]["model"]["completion_kwargs"] = completion_kwargs
 
         config_str = tomlkit.dumps(config)
 
