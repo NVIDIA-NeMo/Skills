@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ def format_entry(entry, problem_index):
         "id": f"olympiad-{problem_index}",
         "question": entry.get("problem", ""),
         "expected_answer": answer,
-        "subject": entry.get("subject", ""),
+        "subset_for_metrics": entry.get("subject", ""),
         "task_group_id": entry.get("task_group_id", ""),
     }
 
