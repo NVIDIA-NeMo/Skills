@@ -58,6 +58,8 @@ class SweBenchInferenceConfig:
     repetition_penalty: float | None = None
     top_logprobs: int | None = None
 
+    extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
+
 
 # Converts the parameter names above to the corresponding OpenAI parameter names.
 NS_TO_OPENAI_PARAM = {
@@ -471,6 +473,7 @@ class SweBenchGenerationTask(GenerationTask):
             for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
             if getattr(self.cfg.inference, ns_param) is not None
         }
+        completion_kwargs.update(self.cfg.inference.extra_body)
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
 
@@ -555,6 +558,7 @@ class SweBenchGenerationTask(GenerationTask):
                     # so we need to pass it via the completion_kwargs dict.
                     completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
 
+        completion_kwargs.update(self.cfg.inference.extra_body)
         if completion_kwargs:
             config["llm"]["model"]["completion_kwargs"] = completion_kwargs
 
