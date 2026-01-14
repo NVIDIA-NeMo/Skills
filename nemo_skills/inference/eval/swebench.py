@@ -26,6 +26,7 @@ from pathlib import Path
 
 import hydra
 import tomlkit
+from omegaconf import OmegaConf
 
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.model import server_params
@@ -473,7 +474,7 @@ class SweBenchGenerationTask(GenerationTask):
             for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
             if getattr(self.cfg.inference, ns_param) is not None
         }
-        completion_kwargs.update(self.cfg.inference.extra_body)
+        completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
 
@@ -558,7 +559,7 @@ class SweBenchGenerationTask(GenerationTask):
                     # so we need to pass it via the completion_kwargs dict.
                     completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
 
-        completion_kwargs.update(self.cfg.inference.extra_body)
+        completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
         if completion_kwargs:
             config["llm"]["model"]["completion_kwargs"] = completion_kwargs
 
