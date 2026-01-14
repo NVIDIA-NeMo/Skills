@@ -32,7 +32,7 @@ ipython
 iso639-lang
 langcodes
 language-data
-litellm[caching] == 1.77.5 # Requires patching the logging worker (See nemo_skills/inference/patch_litellm_logging.py)
+litellm[caching]
 math-verify[antlr4_9_3]
 mcp
 nemo-evaluator-launcher<0.1.47
