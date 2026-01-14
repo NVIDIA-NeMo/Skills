@@ -9,6 +9,20 @@ More details are coming soon!
 - Benchmark is defined in [`nemo_skills/dataset/ruler/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ruler/__init__.py)
 - Original benchmark source is [here](https://github.com/NVIDIA/RULER).
 
+
+### ruler2
+
+- Benchmark is defined in [`nemo_skills/dataset/ruler2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ruler2/__init__.py)
+- Please follow this [setup](https://github.com/NVIDIA/RULER/blob/rulerv2-ns/README.md) to run evaluation.
+- Example scores
+| Model                                   | Avg  | 8192 | 16384 | 32768 | 65536 | 131072 | 262144 | 524288 | 1000000 |
+|-----------------------------------------|------|------|-------|-------|-------|--------|--------|--------|---------|
+| Gemini 2.5 Flash Think On               | 91.4 | 94.3 | 93.7  | 91.4  | 88.4  | 89.0   | -      | -      | -       |
+| Gemini 2.5 Flash Think Off              | 88.0 | 91.3 | 89.0  | 88.8  | 85.5  | 85.5   | 82.5   | 79.1   | 77.0    |
+| GPT 4.1                                 | 89.2 | 91.2 | 90.8  | 89.8  | 87.7  | 86.5   | 80.6   | 74.5   | 75.2    |
+| Qwen3-235B-A22B-Thinking-2507           | 85.2 | 92.9 | 91.3  | 85.3  | 80.6  | 75.7   | -      | -      | -       |
+| Qwen3-235B-A22B-Instruct-2507           | 83.7 | 87.3 | 85.8  | 84.5  | 82.5  | 78.2   | 65.3   | 53.0   | 36.1    |
+
 ### mrcr
 
 - Benchmark is defined in [`nemo_skills/dataset/mrcr/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mrcr/__init__.py)

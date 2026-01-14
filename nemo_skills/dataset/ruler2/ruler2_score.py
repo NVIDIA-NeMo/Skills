@@ -37,7 +37,7 @@ def compute_score(metrics: dict):
         metrics[setup][aggregation] = {
             "accuracy": sum(
                 metrics[f"{setup}.{task}"][aggregation].get(
-                    "accuracy", (metrics[f"{setup}.{task}"][aggregation].get("symbolic_correct", 0))
+                    "accuracy", (metrics[f"{setup}.{task}"][aggregation]["symbolic_correct"])
                 )
                 for task in tasks
             )

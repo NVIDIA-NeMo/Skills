@@ -484,7 +484,7 @@ def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path
     output_folder = Path(__file__).parent / setup
 
     # 1. installing necessary packages
-    subprocess.run(["pip", "install", "wonderwords", "html2text", "tenacity"], check=True)
+    # subprocess.run(["pip", "install", "wonderwords", "html2text", "tenacity"], check=True)
 
     for task in tasks:
         prepare_task_for_ns(output_folder, task)
