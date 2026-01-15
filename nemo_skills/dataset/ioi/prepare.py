@@ -27,6 +27,7 @@ compile_url = "https://raw.githubusercontent.com/huggingface/ioi/refs/heads/main
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", type=str, default="test")
+    parser.add_argument("--suffix", type=str, default="24")
     args = parser.parse_args()
 
     data_dir = Path(__file__).absolute().parent
@@ -50,7 +51,7 @@ if __name__ == "__main__":
                 }
             )
 
-    with open(os.path.join(data_dir, f"{args.split}.jsonl"), "w") as f:
+    with open(os.path.join(data_dir, f"ioi{args.suffix}.jsonl"), "w") as f:
         f.write("\n".join(json.dumps(x) for x in entries))
 
     tests_dataset = load_dataset("open-r1/ioi-test-cases", name="2024", split="train")
@@ -82,5 +83,5 @@ if __name__ == "__main__":
             "grader_files": entry["grader_files"],
         }
 
-    with open(os.path.join(data_dir, f"{args.split}_metadata.json"), "w") as f:
+    with open(os.path.join(data_dir, f"ioi{args.suffix}_metadata.json"), "w") as f:
         json.dump(final_structure, f)

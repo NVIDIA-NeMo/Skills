@@ -138,7 +138,7 @@ class ClientMessageParser:
         # Initialize the prompt formatter
         # While BFCL model_handler also has the _format_prompt method, we found errors in it's implementation
         # So we use the tokenizer to format the prompt instead which uses the chat template directly
-        tokenizer = AutoTokenizer.from_pretrained(model_handler.model_name_huggingface)
+        tokenizer = AutoTokenizer.from_pretrained(model_handler.model_name_huggingface, trust_remote_code=True)
         self.message_formatter = partial(tokenizer.apply_chat_template, tokenize=False, add_generation_prompt=True)
 
     def create_response_parser(self, native_response_parser):

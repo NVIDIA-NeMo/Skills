@@ -31,7 +31,8 @@ from .utils import ServerTokenizer, WrapperAutoTokenizer, trim_after_stop_phrase
 LOG = logging.getLogger(get_logger_name(__file__))
 
 # The logging worker sometimes does not stop. We patch it to disable its functionality.
-# TODO: Remove this once LiteLLM fixes it.
+# This issue is fixed in the latest litellm, keeping it here to avoid breaking previous containers
+# We can remove it once everyone is moved to the latest container
 patch_litellm_logging_worker()
 
 
@@ -75,9 +76,14 @@ class BaseModel:
         enable_soft_fail: bool = False,
         context_limit_retry_strategy: str | None = None,
         num_special_tokens_budget: int = 100,
+        # Directory paths for data and output
+        data_dir: str = "",
+        output_dir: str | None = None,
     ):
         self._tunnel = None
         self.model_name_or_path = model
+        self.data_dir = data_dir
+        self.output_dir = output_dir
         self.server_host = host
         self.server_port = port
         self.ssh_server = ssh_server
@@ -308,7 +314,12 @@ class BaseModel:
                             continue
 
                         LOG.error(f"BadRequestError after {max_retries} retries, returning empty response: {e}")
-                        return {"generation": "", "reasoning_content": "", "num_generated_tokens": 0}
+                        return {
+                            "generation": "",
+                            "reasoning_content": "",
+                            "num_generated_tokens": 0,
+                            "serialized_output": [],
+                        }
                     else:
                         raise e
 

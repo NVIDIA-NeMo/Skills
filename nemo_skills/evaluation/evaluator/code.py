@@ -15,7 +15,6 @@
 import asyncio
 import json
 import logging
-import re
 import shutil
 import subprocess
 import sys
@@ -116,59 +115,58 @@ class CodeExecEvaluator(BaseEvaluator):
         LOG.info("Full evaluation completed successfully")
 
 
-def preprocess_code(generation_dict: dict, language="python", strip_whitespace=True):
-    completion = generation_dict["generation"]
-    if strip_whitespace:
-        completion = completion.strip()
+def preprocess_code(generation_dict: dict, language: str = "python", strip_whitespace: bool = True):
+    completion = generation_dict.get("generation", "")
     completion = completion.replace("\r", "")
 
-    ##### To handle code generation by reasoning models
-    # check for <think> and </think> tags
-    if "<think>" in completion:
-        if "</think>" in completion:
-            # thinking trace completed, solution in after the trace
-            match = re.search(r"</think>\s*(.*)", completion, re.DOTALL)
-            completion = match.group(1).strip() if match else None
+    # ---------------------------------------------------------
+    # 1. Handle reasoning traces: <think>...</think>
+    # ---------------------------------------------------------
+    if "</think>" in completion:
+        # partition is faster than regex and avoids imports
+        _, separator, post_thought = completion.partition("</think>")
+        if separator:
+            # Keep content after the closing tag
+            completion = post_thought
         else:
-            completion = None
+            # <think> opened but never closed -> Invalid generation
+            generation_dict["completion"] = ""
+            return generation_dict
 
-    if completion is None:
-        generation_dict["completion"] = ""  # no valid solution generated
-        return generation_dict
-    #####
+    # ---------------------------------------------------------
+    # 2. Extract fenced code block
+    # ---------------------------------------------------------
+    specific_fence = f"```{language}"
+    generic_fence = "```"
 
-    start_with_lang_tag = f"```{language}"
-    generic_start_end_tag = "```"
+    # Find the *last* occurrence of the code block (handles CoT steps)
+    start_index = completion.rfind(specific_fence)
+    fence_len = len(specific_fence)
 
-    if start_with_lang_tag in completion:
-        def_line = completion.index(start_with_lang_tag) + len(start_with_lang_tag)
-        completion = completion[def_line:]
-        if strip_whitespace:
-            completion = completion.strip()
-        try:
-            next_line = completion.index(generic_start_end_tag)
-            completion = completion[:next_line]
-            if strip_whitespace:
-                completion = completion.strip()
-        except Exception:
-            print(completion)
-            print("================\n")
+    # Fallback to generic fence if specific language tag is missing
+    if start_index == -1:
+        start_index = completion.rfind(generic_fence)
+        fence_len = len(generic_fence)
 
-    elif generic_start_end_tag in completion:
-        def_line = completion.index(generic_start_end_tag) + len(generic_start_end_tag)
-        completion = completion[def_line:]
-        if strip_whitespace:
-            completion = completion.strip()
-        try:
-            next_line = completion.index(generic_start_end_tag)
-            completion = completion[:next_line]
-            if strip_whitespace:
-                completion = completion.strip()
-        except Exception:
-            print(completion)
-            print("================\n")
+    if start_index != -1:
+        # Move past the opening fence
+        content_start = start_index + fence_len
+        completion = completion[content_start:]
 
-    if completion.startswith(" ") and strip_whitespace:
+        # Check for closing fence
+        end_index = completion.find(generic_fence)
+        if end_index != -1:
+            # Valid block found
+            completion = completion[:end_index]
+        else:
+            # STRICT MODE: Opening fence found, but no closing fence.
+            # The generation is truncated/incomplete. Discard it.
+            completion = ""
+
+    # ---------------------------------------------------------
+    # 3. Final Cleanup (The only strip that matters)
+    # ---------------------------------------------------------
+    if strip_whitespace:
         completion = completion.strip()
 
     generation_dict["completion"] = completion
@@ -196,7 +194,7 @@ def eval_evalplus(cfg):
 
     jsonl_file = cfg.input_file
     with open(jsonl_file) as f:
-        samples = [preprocess_code(json.loads(line)) for line in f]
+        samples = [preprocess_code(json.loads(line), language="python") for line in f]
     # all changes will be done with a new key "completion", so it's ok to write to the same file
     with open(jsonl_file, "wt", encoding="utf-8") as f:
         for sample in samples:
@@ -238,19 +236,62 @@ def install_requirements(url):
         print(f"Error during installation: {e}")
 
 
+@nested_dataclass(kw_only=True)
+class LiveCodeBenchProEvaluatorConfig(BaseEvaluatorConfig):
+    sandbox: dict = field(default_factory=lambda: {"sandbox_type": "local"})
+    language: str = "cpp"  # use either "python" or "cpp"
+    test_file: str = None
+    test_dir: str = None  # path to the unit tests directory
+    timeout: int = 6
+    num_processes: int = 12
+
+
 def eval_livecodebench_pro(cfg):
-    cfg = BaseEvaluatorConfig(**cfg)
+    cfg = LiveCodeBenchProEvaluatorConfig(**cfg)
+    try:
+        from livecodebench.evaluate import evaluate
+    except ImportError:
+        LOG.info("Package 'livecodebench' not found. Attempting to install...")
+        install_from_git("git+https://github.com/wasiahmad/livecodebench.git@livecodebench_pro")
+        try:
+            from livecodebench.evaluate import evaluate
+        except ImportError:
+            LOG.info("Failed to install 'livecodebench'. Please install it manually.")
+            raise
+
     jsonl_file = cfg.input_file
+    samples = []
     with open(jsonl_file) as f:
-        samples = [preprocess_code(json.loads(line), "python") for line in f]
-        for sample in samples:
-            sample["problem_id"] = sample.pop("task_id")
-            sample["text_response"] = sample.pop("completion")
-            sample["response_meta"] = None
+        for line in f:
+            sample = json.loads(line)
+            sample = preprocess_code(sample, language=cfg.language, strip_whitespace=True)
+            sample["code_list"] = [sample["completion"]]
+            samples.append(sample)
 
     with open(jsonl_file, "wt", encoding="utf-8") as f:
         for sample in samples:
             f.write(json.dumps(sample) + "\n")
+
+    evaluate(
+        custom_output_file=jsonl_file,
+        language=cfg.language,
+        test_file=cfg.test_file,
+        test_dir=cfg.test_dir,
+        k_list=[1],
+        num_process_evaluate=cfg.num_processes,
+        timeout=cfg.timeout,
+    )
+
+    with open(jsonl_file[:-6] + "_eval_results.json", "rt", encoding="utf-8") as fin:
+        eval_grades = json.load(fin)
+    with open(jsonl_file, "wt", encoding="utf-8") as f:
+        for sample in samples:
+            if sample["problem_id"] in eval_grades["eval"]:
+                sample["graded_list"] = eval_grades["eval"][sample["problem_id"]]["graded_list"]
+                f.write(json.dumps(sample) + "\n")
+
+    # moving eval file to ensure metrics are recomputed
+    shutil.move(jsonl_file[:-6] + "_eval_results.json", jsonl_file[:-6] + "_eval_results-saved.json")
 
 
 def eval_livebench_coding(cfg):
@@ -273,12 +314,12 @@ def eval_livebench_coding(cfg):
             sample = json.loads(line)
             if sample["task"] == "coding_completion":
                 assert len(sample["partial_solution"]) > 0
-                sample = preprocess_code(sample, strip_whitespace=False)
+                sample = preprocess_code(sample, language="python", strip_whitespace=False)
                 sample["completion"] = sample["completion"].replace("\t", "    ")
                 full_solution = sample["partial_solution"] + "\n" + sample["completion"]
                 sample["code_list"] = [full_solution]
             else:
-                sample = preprocess_code(sample, strip_whitespace=True)
+                sample = preprocess_code(sample, language="python", strip_whitespace=True)
                 sample["code_list"] = [sample["completion"]]
 
             samples.append(sample)
@@ -334,7 +375,7 @@ def eval_bigcodebench(cfg):
     samples = []
     with open(jsonl_file) as f:
         for line in f:
-            generation_dict = preprocess_code(json.loads(line))
+            generation_dict = preprocess_code(json.loads(line), language="python")
             generation_dict["solution"] = generation_dict.pop("completion")
             samples.append(generation_dict)
     with open(jsonl_file, "wt", encoding="utf-8") as f:
@@ -419,7 +460,7 @@ def eval_human_eval_infilling(cfg):
             elif data_split != sample["split"]:
                 raise ValueError(f"All samples should have the same split, but got {data_split} and {sample['split']}")
 
-            sample = preprocess_code(sample, strip_whitespace=False)
+            sample = preprocess_code(sample, language="python", strip_whitespace=False)
             sample["original_completion"] = sample["completion"]
             sample = postprocess_code(sample)
             samples.append(sample)

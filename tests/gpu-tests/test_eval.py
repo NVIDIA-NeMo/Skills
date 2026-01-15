@@ -33,17 +33,24 @@ EXCLUDED_DATASETS = {
     "livebench_coding",
     "livecodebench-pro",
     "livecodebench-cpp",
-    "ioi24",
-    "ioi25",
+    "ioi",
     "bfcl_v3",
     "bfcl_v4",
     "swe-bench",
+    "swe-bench-multilingual",
+    "swe-rebench",
     "aai",
     "human-eval",
     "human-eval-infilling",
     "mbpp",
     "mmau-pro",
-    "aalcr",  # Has tokenization mismatch issues
+    "asr-leaderboard",
+    "mrcr",
+    "audiobench",
+    "librispeech-pc",
+    "musan",
+    # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
+    "compute-eval",
 }
 
 

@@ -85,7 +85,10 @@ jobs:
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
-        docker run --rm --network=host nemo-skills-sandbox-image &
+        # Default shared runtime directory
+        sudo mkdir -p /nemo_run
+        sudo chmod 777 /nemo_run
+        docker run --rm --network=host -v /nemo_run:/nemo_run nemo-skills-sandbox-image &
         sleep 10
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
         ns prepare_data gsm8k math-500

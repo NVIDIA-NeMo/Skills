@@ -178,6 +178,126 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### compute-eval
+
+- Benchmark is defined in [`nemo_skills/dataset/compute-eval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/compute-eval/__init__.py)
+- Original benchmark source is [here](https://github.com/NVIDIA/compute-eval).
+
+ComputeEval is a benchmark for evaluating Large Language Models on CUDA code generation tasks. It features handcrafted CUDA programming challenges that test an LLM's capability at writing reliable CUDA code. The benchmark includes functional correctness evaluation through compilation and execution against held-out test suites.
+
+**Prerequisites:** NVIDIA GPU with CUDA Toolkit 12 or greater must be installed, and `nvcc` must be available in your PATH.
+
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. You can optionally specify a release version:
+
+```bash
+ns prepare_data compute-eval --release 2025-1
+```
+
+If no release is specified, the default release will be downloaded. This will generate an `eval.jsonl` file in the `nemo_skills/dataset/compute-eval/` directory.
+
+**Note:** You need to set the `HF_TOKEN` environment variable because the dataset requires authentication.
+
+#### Running the Evaluation
+
+Once the data is prepared, you can run the evaluation. Replace `<...>` placeholders with your cluster and directory paths.
+
+This command runs an evaluation of [OpenReasoning-Nemotron-32B](https://huggingface.co/nvidia/OpenReasoning-Nemotron-32B) on a Slurm cluster:
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=compute-eval \
+    --data_dir=<DATA_DIR> \
+    --output_dir=<OUTPUT_DIR> \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=16384
+```
+
+**Security Note:** ComputeEval executes machine-generated CUDA code. While the benchmark is designed for evaluation purposes, we strongly recommend running evaluations in a sandboxed environment (e.g., a Docker container or virtual machine) to minimize security risks.
+
+#### Verifying Results
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/compute-eval/metrics.json`. You can also review `<OUTPUT_DIR>/eval-results/compute-eval/summarized-results/main_*`. They should look something like this:
+
+```
+---------------------------- compute-eval -----------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | accuracy
+pass@1          | 50          | 8432       | 1245        | 64.00%
+```
+
+The benchmark reports:
+- **accuracy**: Percentage of problems where generated code compiled and passed all tests
+- **pass@1**: Same as accuracy for single-solution generation
+- **pass@k**: Success rate when generating k solutions per problem (if configured)
+
+### swe-bench-multilingual
+
+- Benchmark is defined in [`nemo_skills/dataset/swe-bench-multilingual/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-multilingual/__init__.py)
+- Original benchmark source is [here](https://www.swebench.com/multilingual.html).
+
+SWE-bench Multilingual uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well. The differences are as follows:
+
+1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: https://github.com/ludwig-n/OpenHands and https://github.com/ludwig-n/SWE-agent. In both forks we use the `ns-swe-bench-multilingual` branch by default.
+2. For OpenHands, we use the [Multi-SWE-bench entrypoint script](https://github.com/ludwig-n/OpenHands/blob/ns-swe-bench-multilingual/evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh) instead of the standard SWE-bench one.
+3. For SWE-agent, we default to a [different config file](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/multilingual.yaml) with language-specific prompting.
+
+#### Sample run
+
+Here's how to run a sample evaluation of [Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) with OpenHands on a Slurm cluster.
+
+1. Prepare the data following the same [instructions](#data-preparation) as for SWE-bench, replacing `ns prepare_data swe-bench` with `ns prepare_data swe-bench-multilingual`. This will download [SWE-bench Multilingual](https://huggingface.co/datasets/SWE-bench/SWE-bench_Multilingual) by default instead of Verified. The container names have the same format. For downloading images, you can use the same `dump_images.py` script as for SWE-bench.
+2. Run
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=Qwen/Qwen3-Coder-30B-A3B-Instruct \
+    --server_type=vllm \
+    --server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=swe-bench-multilingual \
+    --output_dir=<OUTPUT_DIR> \
+    --num_chunks=6 \
+    ++agent_framework=openhands \
+    ++inference.temperature=0.7 \
+    ++inference.top_p=0.8 \
+    ++inference.top_k=20
+```
+replacing <...> with your desired parameters.
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/swe-bench-multilingual/metrics.json`. They should look something like this:
+```
+{
+  "swe-bench-multilingual": {
+    "pass@1": {
+      "num_entries": 300,
+      "gen_seconds": 83685,
+      "issues_resolved": 33.33333333333336,
+      "no_patch": 0.6666666666666665,
+      "patch_cant_apply": 1.0
+    }
+  }
+}
+```
+Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate. To do that automatically, you can set `--benchmarks=swe-bench-multilingual:N`, where N is your desired number of repeats.
+
+To evaluate the same model with SWE-agent,
+all you need to do is replace `openhands` with `swe_agent` in the command above.
+
+!!! note
+    There are some instances where the gold (ground truth) patches do not pass the evaluation tests. Therefore, it's likely that on those instances even patches that resolve the issue will be incorrectly evaluated as "unresolved". We have observed 2 such instances in SWE-bench Multilingual: `jqlang__jq-2681` and `tokio-rs__tokio-4384`. In addition, 5 instances behave inconsistently (gold patches sometimes pass and sometimes fail): `axios__axios-4731`, `axios__axios-4738`, `axios__axios-5892`, `caddyserver__caddy-5995`, `valkey-io__valkey-928`. Depending on your setup, this set of instances may be different.
+
+!!! note
+    For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
+
 
 ### IOI
 
@@ -185,10 +305,10 @@ We currently support IOI24 and are working to support IOI25 for evaluation. The 
 
 #### Data Preparation
 
-First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `test.jsonl` and `test_metadata.json`.
+First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `ioi24.jsonl` and `ioi24_metadata.json`.
 
 ```
-ns prepare_data ioi24
+ns prepare_data ioi
 ```
 
 #### Running the Evaluation
@@ -209,10 +329,11 @@ ns eval \
     --server_gpus=8 \
     --benchmarks=ioi24:50 \
     --with_sandbox \
-    --split=test \
+    --split=ioi24 \
     --data_dir=<DATA_DIR> \
     --output_dir=<OUTPUT_DIR> \
-    --extra_eval_args="++eval_config.test_file=<PATH_TO_METADATA_TEST_FILE>" \
+    --eval_subfolder=eval-results/ioi24/ \ # set the folder if you want to differentiate subsets.
+    --extra_eval_args="++eval_config.test_file=<PATH_TO_METADATA_TEST_DIR>/ioi24_metadata.json" \
     ++inference.temperature=0.6 \
     ++inference.top_p=0.95 \
     ++inference.tokens_to_generate=65536
@@ -220,13 +341,12 @@ ns eval \
 
 ##### Verifying Results
 
-After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/summarized-results/main_*`. They should look something like this:
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/ioi24/ioi/metrics.json`. You can also take a look at `<OUTPUT_DIR>/eval-results/ioi24/ioi/summarized-results/main_*`. They should look something like this:
 
 ```
------------------------------------------------------- ioi24 ------------------------------------------------------
-evaluation_mode   | num_entries | avg_tokens | gen_seconds | correct       | total_score        | round_robin_score
-pass@1[avg-of-50] | 39          | 40387      | 7410        | 0.51% ± 1.04% | 303.47             | 261.01
-pass@50           | 39          | 40387      | 7410        | 2.56%         | 303.47             | 261.01
+------------------------------------ ioi24 -------------------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | correct | total_score
+pass@50          | 39          | 52225      | 99630       | 23.08%  | 500
 ```
 
 ### livecodebench
@@ -316,6 +436,46 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 --benchmarks=livecodebench:3
 ```
 
+### BIRD
+
+The [BIRD benchmark](https://bird-bench.github.io/) is currently the only text-to-SQL benchmark that is supported. Evaluation is based on the SQL evaluation accuracy calculated in [this file](https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py) provided in the BIRD GitHub repository.
+
+#### Data Preparation
+
+
+First, the data must be downloaded and prepared, which you can do by running:
+```bash
+ns prepare_data birdbench --cluster=<CLUSTER_NAME> --data_dir=<DATA_DIR>
+```
+
+This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, which contains the BIRD dev manifest, table information, and database schemas.
+The script will also process the original manifest into `<DATA_DIR>/birdbench/dev.jsonl`, which will be the input for evaluation.
+`<DATA_DIR>` should be a path to the mount point where you want this data to be stored.
+
+See [the "Using data on cluster" documentation](./index.md#Using-data-on-cluster) for more information.
+
+#### Running the Evaluation
+
+The following command runs an evaluation of [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) on a Slurm cluster.
+
+```bash
+ns eval \
+     --cluster=<CLUSTER_NAME> \
+     --server_type='sglang' \
+     --server_gpus=8 \
+     --model=Qwen/Qwen3-8B \
+     --benchmarks=birdbench \
+     --data_dir=<DATA_DIR> \
+     --output_dir=<OUTPUT_DIR> \
+     ++inference.tokens_to_generate=10000 \
+     ++inference.temperature=0.6 \
+     ++inference.top_p=0.95 \
+     ++inference.top_k=20 \
+     ++max_concurrent_requests=1024 \
+```
+You should specify: `<CLUSTER_NAME>`, which should match your cluster config name; `<DATA_DIR>`, which should be the location where your dataset is mounted from the cluster; and `<OUTPUT_DIR>`.
+The former two arguments should match what you used in `prepare_data`.
+
 ### livecodebench-cpp
 
 - Benchmark is defined in [`nemo_skills/dataset/livecodebench-cpp/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/livecodebench-cpp/__init__.py)
@@ -327,6 +487,38 @@ Due to variance between runs, you can automatically repeat the evaluation and av
 
 - Benchmark is defined in [`nemo_skills/dataset/livecodebench-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/livecodebench-pro/__init__.py)
 - Original benchmark source is [here](https://github.com/GavinZhengOI/LiveCodeBench-Pro).
+
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. The arguments below will generate `test_24q4.jsonl`, `test_25q1.jsonl`, `test_25q2.jsonl`, and `test_25q3.jsonl` files.
+
+```
+ns prepare_data livecodebench-pro --cluster=local --data_dir=/workspace/ns-data
+```
+
+Note that, this will also download testcases and keep it at `/workspace/ns-data/livecodebench-pro/testcases`. We recommend using a cluster data location since the testcases directory would be of size 15GB.
+
+#### Running the Evaluation
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=livecodebench-pro \
+    --split=test_25q2 \
+    --data_dir=/workspace/ns-data/livecodebench-pro \
+    --output_dir=<OUTPUT_DIR> \
+    ++parse_reasoning=True \
+    ++eval_config.test_file=/workspace/ns-data/livecodebench-pro/test_25q2.jsonl \
+    ++eval_config.test_dir=/workspace/ns-data/livecodebench-pro/testcases \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=65536
+```
 
 ### human-eval
 
