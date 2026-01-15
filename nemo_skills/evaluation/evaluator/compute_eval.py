@@ -20,7 +20,7 @@ from compute_eval.execution import evaluate_solution
 from compute_eval.utils.eval_utils import get_nvcc_version, parse_semver
 from pydantic import Field, TypeAdapter
 
-from nemo_skills.evaluation.evaluator import BaseEvaluator
+from nemo_skills.evaluation.evaluator.base import BaseEvaluator
 from nemo_skills.utils import get_logger_name
 
 _LOG = logging.getLogger(get_logger_name(__file__))
