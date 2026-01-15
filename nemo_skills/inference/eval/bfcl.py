@@ -56,6 +56,42 @@ from nemo_skills.utils import (
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+BFCL_REQUIREMENTS = [
+    # Source: https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/pyproject.toml
+    "requests",
+    "tqdm",
+    "numpy==1.26.4",
+    "pandas",
+    "huggingface_hub",
+    "pydantic>=2.8.2",
+    "python-dotenv>=1.0.1",
+    "tree_sitter==0.21.3",
+    "tree-sitter-java==0.21.0",
+    "tree-sitter-javascript==0.21.4",
+    "openai>=1.86.0",
+    "mistralai==1.7.0",
+    "anthropic>=0.75.0",
+    "cohere==5.18.0",
+    "typer>=0.12.5",
+    "tabulate>=0.9.0",
+    "datamodel-code-generator==0.25.7",
+    "google-genai>=1.52.0",
+    "qwen-agent",
+    "mpmath==1.3.0",
+    "tenacity>=8.5.0",
+    "writer-sdk>=2.1.0",
+    "overrides",
+    "boto3",
+    "beautifulsoup4",
+    "html2text",
+    "rank_bm25==0.2.2",
+    "google-search-results",
+    "sentence-transformers>=2.7.0",
+    "faiss-cpu==1.11.0",
+    "networkx==3.3",
+    "filelock==3.20.0",
+]
+
 
 @nested_dataclass(kw_only=True)
 class BFCLGenerationConfig(GenerateSolutionsConfig):
@@ -271,6 +307,10 @@ class ServerMessageParser:
 
 
 class BFCLGenerationTask(GenerationTask):
+    @classmethod
+    def get_generation_requirements(cls) -> list[str] | None:
+        return BFCL_REQUIREMENTS
+
     def __init__(self, cfg: BFCLGenerationConfig):
         super().__init__(cfg)
         if cfg.use_client_parsing:

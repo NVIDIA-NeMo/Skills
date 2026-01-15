@@ -13,7 +13,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools
+RUN pip install --upgrade pip setuptools uv
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
