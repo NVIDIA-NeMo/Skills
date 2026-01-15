@@ -1,0 +1,31 @@
+user: |-
+  You should think step-by-step before responding to the question below.
+
+  Please use python programming language only.
+
+  You must use ```python for just the final solution code block with the following format:
+  ```python
+  # Your code here
+  ```
+
+  Never use sys.stdin.buffer or sys.stdout.buffer or any .buffer attribute.
+  These will FAIL in environments where stdin/stdout are StringIO.
+
+  Allowed methods:
+  - input()
+  - sys.stdin.read()
+  - sys.stdin.readline()
+  - open("file", "r").read()
+
+  Forbidden methods (do NOT use):
+  - sys.stdin.buffer.read()
+  - sys.stdin.buffer.readline()
+  - sys.stdout.buffer.write()
+  - any `.buffer` attribute.
+
+  All code must work even if sys.stdin is a StringIO object without .buffer.
+
+  ### Question
+  {question}
+
+  ### Answer: (use the provided format with backticks)
