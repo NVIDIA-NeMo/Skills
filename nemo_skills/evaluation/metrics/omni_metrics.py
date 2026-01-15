@@ -61,7 +61,7 @@ class OmniMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         correctness_dict = {}
         if "judgement" in prediction:
-            judgement = prediction["judgement"]
+            judgement = prediction["judgement"].strip()
             correctness_dict["judge_correct"] = int(judgement.lower() == "a")
             correctness_dict["judge_incorrect"] = -int(
                 judgement.lower() == "b"
