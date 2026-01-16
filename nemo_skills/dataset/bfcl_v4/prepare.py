@@ -33,7 +33,7 @@ REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
 
 def main():
     LOG.warning(
-        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Llama-Nemotron/DeepSeek."
+        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Nemotron/DeepSeek."
     )
 
     download_and_process_bfcl_data(

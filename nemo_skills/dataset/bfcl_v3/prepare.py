@@ -181,7 +181,7 @@ def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, scoring
 
 def main(args):
     LOG.warning(
-        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Llama-Nemotron/DeepSeek."
+        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Nemotron/DeepSeek."
     )
 
     download_and_process_bfcl_data(

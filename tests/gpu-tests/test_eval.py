@@ -34,8 +34,6 @@ EXCLUDED_DATASETS = {
     "livecodebench-pro",
     "livecodebench-cpp",
     "ioi",
-    "bfcl_v3",
-    "bfcl_v4",
     "swe-bench",
     "swe-bench-multilingual",
     "swe-rebench",
@@ -133,16 +131,28 @@ def test_aaa_prepare_and_eval_all_datasets():
     )
 
     common_ctx = "++max_samples=2 ++inference.tokens_to_generate=100 ++server.enable_soft_fail=True "
+    extra_eval_args_by_dataset = {
+        "bfcl_v3": "++eval_config.partial_eval=true",
+        "bfcl_v4": "++eval_config.partial_eval=true",
+    }
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/all-datasets-eval"
     docker_rm([output_dir])
-    eval(
-        ctx=wrap_arguments(common_ctx),
-        output_dir=output_dir,
-        benchmarks=",".join(non_judge_datasets),
-        expname=f"eval-all-datasets-{model_type}",
-        **eval_kwargs,
-    )
+    datasets_by_extra_args = {}
+    for dataset in non_judge_datasets:
+        extra_args = extra_eval_args_by_dataset.get(dataset, "")
+        datasets_by_extra_args.setdefault(extra_args, []).append(dataset)
+
+    for idx, (extra_args, datasets) in enumerate(datasets_by_extra_args.items()):
+        ctx_args = f"{common_ctx} {extra_args}"
+        expname_suffix = "" if not extra_args else f"-extra-eval-args-{idx}"
+        eval(
+            ctx=wrap_arguments(ctx_args),
+            output_dir=output_dir,
+            benchmarks=",".join(datasets),
+            expname=f"eval-all-datasets-{model_type}{expname_suffix}",
+            **eval_kwargs,
+        )
 
     run_cmd(
         ctx=wrap_arguments(f"python -m nemo_skills.pipeline.summarize_results {output_dir}"),
