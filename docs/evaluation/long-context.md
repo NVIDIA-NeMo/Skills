@@ -28,8 +28,35 @@ Other supported options
 
 ### ruler2
 - Benchmark is defined in [`nemo_skills/dataset/ruler2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ruler2/__init__.py)
-- Please follow this [setup](https://github.com/NVIDIA/RULER/blob/rulerv2-ns/README.md) to run evaluation.
-- Example scores
+
+It's recommended to use [data_dir parameter](../evaluation/index.md#using-data-on-cluster) when running evaluation.
+Ruler2 also requires `setup`, `tokenizer_path` and `max_seq_length` to be specified. Example command to prepare data
+
+```bash
+ns prepare_data ruler2 \
+    --cluster=<cluster config> \
+    --data_dir=<mounted location to store data into> \
+    --setup=<typically MODEL_NAME-LENGTH but can be any string> \
+    --tokenizer_path=<model name, e.g. Qwen/Qwen3-1.7B> \
+    --max_seq_length=<length you want to evaluate, e.g. 131072>
+```
+
+Example evaluation command
+
+```bash
+ns eval \
+    --cluster=<cluster config> \
+    --data_dir=<must match prepare_data parameter> \
+    --output_dir=<any mounted output location> \
+    --benchmarks=ruler2.<what you used for prepare_data setup argument> \
+    --model=<model name, e.g. Qwen/Qwen3-1.7B> \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --server_type=vllm
+```
+
+Example scores
+
 | Model                                   | Avg  | 8192 | 16384 | 32768 | 65536 | 131072 | 262144 | 524288 | 1000000 |
 |-----------------------------------------|------|------|-------|-------|-------|--------|--------|--------|---------|
 | Gemini 2.5 Flash Think On               | 91.4 | 94.3 | 93.7  | 91.4  | 88.4  | 89.0   | -      | -      | -       |
