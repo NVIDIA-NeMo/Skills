@@ -34,6 +34,8 @@ EXCLUDED_DATASETS = {
     "livecodebench-pro",
     "livecodebench-cpp",
     "ioi",
+    "bfcl_v4",
+    "bfcl_v3",  # not really excluded, just handled separately below
     "swe-bench",
     "swe-bench-multilingual",
     "swe-rebench",
@@ -88,7 +90,7 @@ def test_aaa_prepare_and_eval_all_datasets():
 
     # Prepare all datasets - fail fast if any dataset preparation fails
     exp = prepare_data(
-        ctx=wrap_arguments(" ".join(dataset_names)),
+        ctx=wrap_arguments(" ".join(dataset_names + ["bfcl_v3", "bfcl_v4"])),
         cluster="test-local",
         config_dir=str(config_dir),
         data_dir=str(data_dir),
