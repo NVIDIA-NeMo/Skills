@@ -98,14 +98,22 @@ class SweBenchGenerationConfig:
 
     agent_framework: SupportedAgentFrameworks  # Which agentic framework to use
 
-    # URL of the SWE-agent/OpenHands repo to pass to git clone. If None, will use the official repo
+    # SWE-agent/OpenHands repo URL & commit. Passed to git clone & git checkout respectively.
+    # Default behavior:
+    # - If multilingual=True, will use a branch in our fork of SWE-agent/OpenHands with better multilingual support.
+    # - Otherwise, will use the HEAD commit in the official SWE-agent/OpenHands repo.
     agent_framework_repo: str | None = None
-    agent_framework_commit: str = "HEAD"  # Which commit to use when cloning the SWE-agent/OpenHands repo
+    agent_framework_commit: str | None = None
 
     # SWE-agent/OpenHands configuration file path. Can be specified in the same way as ns prompt configs
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max iterations for the agent
+
+    # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
+    # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
+    # For SWE-agent, this changes the default config to multilingual.yaml, which uses language-specific prompting.
+    multilingual: bool = False
 
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
     eval_harness_repo: str = "https://github.com/Kipok/SWE-bench.git"
@@ -219,8 +227,17 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Install SWE-agent/OpenHands.
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            if self.cfg.agent_framework_repo is None:
-                self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
+            if self.cfg.multilingual:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/ludwig-n/SWE-agent.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "ns-swe-bench-multilingual"
+            else:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/SWE-agent/SWE-agent.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "HEAD"
+
             setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/SWE-agent && "
@@ -232,9 +249,19 @@ class SweBenchGenerationTask(GenerationTask):
                 "source venv/bin/activate && "
                 "uv pip install -e ."
             )
+
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            if self.cfg.agent_framework_repo is None:
-                self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
+            if self.cfg.multilingual:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/ludwig-n/OpenHands.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "ns-swe-bench-multilingual"
+            else:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "HEAD"
+
             setup_commands.append(
                 # install python 3.12 with uv
                 "uv python install 3.12 && "
@@ -264,6 +291,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "make install-python-dependencies && "
                 "poetry run python -m pip install datasets"
             )
+
         else:
             raise ValueError(
                 f"Unsupported agent framework: {self.cfg.agent_framework}. "
@@ -434,7 +462,10 @@ class SweBenchGenerationTask(GenerationTask):
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
         if self.cfg.agent_config is None:
-            self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
+            if self.cfg.multilingual:
+                self.cfg.agent_config = "eval/swe-bench/swe-agent/multilingual"
+            else:
+                self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -443,6 +474,11 @@ class SweBenchGenerationTask(GenerationTask):
         }
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
+
+        # Variables that will be available in prompt templates
+        extra_fields = {}
+        if self.cfg.multilingual:
+            extra_fields["language"] = data_point["language"]
 
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
@@ -463,7 +499,8 @@ class SweBenchGenerationTask(GenerationTask):
             f"    --env.repo.repo_name testbed "
             f"    --env.repo.base_commit {data_point['base_commit']} "
             f"    --problem_statement.text {shlex.quote(data_point['problem_statement'])} "
-            f"    --problem_statement.id {data_point['instance_id']} && "
+            f"    --problem_statement.id {data_point['instance_id']} "
+            f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
             # move trajectories to the mounted directory
             f"cp -r trajectories /trajectories_mount/"
         )
@@ -526,6 +563,21 @@ class SweBenchGenerationTask(GenerationTask):
         # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
         data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
 
+        # The final 2 arguments are different between the swe_bench and multi_swe_bench scripts.
+        # We handle that with extra_args.
+        if self.cfg.multilingual:
+            benchmark_name = "multi_swe_bench"
+            extra_args = (
+                f" {data_dir}/dataset.jsonl "  # dataset file
+                f" {data_point['language']} "  # language
+            )
+        else:
+            benchmark_name = "swe_bench"
+            extra_args = (
+                f" {data_dir} "  # dataset folder
+                f" train "  # dataset split (always "train" for local datasets)
+            )
+
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -553,24 +605,23 @@ class SweBenchGenerationTask(GenerationTask):
             "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
             f"mkdir {data_dir} && "
-            f"cp {self.cfg.input_file} {data_dir} && "
+            f"cp {self.cfg.input_file} {data_dir}/dataset.jsonl && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
-            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/swe_bench/config.toml && "
+            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
             # set local runtime & force verbose logs
             "export RUNTIME=local && "
             "export LOG_ALL_EVENTS=true && "
             "export LOG_LEVEL=DEBUG && "
             # run the agent
-            f"./evaluation/benchmarks/swe_bench/scripts/run_infer.sh "
+            f"./evaluation/benchmarks/{benchmark_name}/scripts/run_infer.sh "
             f"    llm.model "  # name of llm config section in config.toml
             f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
             f"    CodeActAgent "  # agent
             f"    1 "  # number of instances
             f"    {self.cfg.agent_max_turns} "  # max agent iterations
             f"    1 "  # number of workers
-            f"    {data_dir} "  # dataset path
-            f"    train && "  # dataset split (always "train" for local datasets)
+            f"    {extra_args} && "  # extra args (different depending on benchmark_name)
             # move outputs to the mounted directory
             f"mkdir -p /trajectories_mount/trajectories && "
             f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
