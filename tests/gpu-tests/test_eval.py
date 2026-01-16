@@ -114,7 +114,12 @@ def test_aaa_prepare_and_eval_all_datasets():
             # Check that at least one .jsonl file exists
             jsonl_files = list(dataset_path.glob("*.jsonl"))
             if not jsonl_files:
-                missing_datasets.append(f"{dataset} (no .jsonl files)")
+                # Some datasets (e.g., bfcl_*) place jsonl files in subfolders.
+                jsonl_files = [
+                    jsonl_path for jsonl_path in dataset_path.rglob("*.jsonl") if jsonl_path.parent != dataset_path
+                ]
+                if not jsonl_files:
+                    missing_datasets.append(f"{dataset} (no .jsonl files)")
 
     assert not missing_datasets, f"Data files missing for datasets: {missing_datasets}"
 
