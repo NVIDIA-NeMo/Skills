@@ -377,6 +377,9 @@ class BFCLGenerationTask(GenerationTask):
         # Sort prereqs to make sure they come in the correct order
         prereqs = sorted(prereqs, key=lambda x: int(x["id"].split("_prereq_")[1].split("-")[0]))
 
+        self.wait_for_server()
+        self.wait_for_sandbox()
+
         for p in prereqs:
             _ = asyncio.run(self.process_single_datapoint(p, data))
 
