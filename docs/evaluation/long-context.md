@@ -65,6 +65,8 @@ Example scores
 | Qwen3-235B-A22B-Thinking-2507           | 85.2 | 92.9 | 91.3  | 85.3  | 80.6  | 75.7   | -      | -      | -       |
 | Qwen3-235B-A22B-Instruct-2507           | 83.7 | 87.3 | 85.8  | 84.5  | 82.5  | 78.2   | 65.3   | 53.0   | 36.1    |
 
+For more details see [https://github.com/NVIDIA/RULER/blob/rulerv2-ns](https://github.com/NVIDIA/RULER/blob/rulerv2-ns/)
+
 ### mrcr
 
 - Benchmark is defined in [`nemo_skills/dataset/mrcr/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mrcr/__init__.py)
