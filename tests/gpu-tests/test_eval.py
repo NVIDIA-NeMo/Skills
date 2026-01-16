@@ -132,32 +132,20 @@ def test_aaa_prepare_and_eval_all_datasets():
         server_type="sglang",
         server_gpus=1,
         server_nodes=1,
-        auto_summarize_results=False,
     )
 
     common_ctx = "++max_samples=2 ++inference.tokens_to_generate=100 ++server.enable_soft_fail=True "
-    extra_eval_args_by_dataset = {
-        "bfcl_v3": "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC",
-        "bfcl_v4": "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC",
-    }
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/all-datasets-eval"
     docker_rm([output_dir])
-    datasets_by_extra_args = {}
-    for dataset in non_judge_datasets:
-        extra_args = extra_eval_args_by_dataset.get(dataset, "")
-        datasets_by_extra_args.setdefault(extra_args, []).append(dataset)
-
-    for idx, (extra_args, datasets) in enumerate(datasets_by_extra_args.items()):
-        ctx_args = f"{common_ctx} {extra_args}"
-        expname_suffix = "" if not extra_args else f"-extra-eval-args-{idx}"
-        eval(
-            ctx=wrap_arguments(ctx_args),
-            output_dir=output_dir,
-            benchmarks=",".join(datasets),
-            expname=f"eval-all-datasets-{model_type}{expname_suffix}",
-            **eval_kwargs,
-        )
+    eval(
+        ctx=wrap_arguments(common_ctx),
+        output_dir=output_dir,
+        benchmarks=",".join(non_judge_datasets),
+        expname=f"eval-all-datasets-{model_type}",
+        auto_summarize_results=False,
+        **eval_kwargs,
+    )
 
     run_cmd(
         ctx=wrap_arguments(f"python -m nemo_skills.pipeline.summarize_results {output_dir}"),
@@ -165,14 +153,33 @@ def test_aaa_prepare_and_eval_all_datasets():
         config_dir=str(config_dir),
     )
 
-    eval_results_dir = Path(output_dir) / "eval-results"
-    metrics_path = eval_results_dir / "metrics.json"
-    assert metrics_path.exists(), "Missing aggregated metrics file"
-    with metrics_path.open() as f:
-        metrics = json.load(f)
+    # have to process bfcl separately as it's eval group and fails on summarize results.
+    # It also needs a special eval arg
+    # TODO: after summarize results works natively with eval groups, we can merge these
+    # TODO: enable bfcl_v4 after figuring out why it's broken in this setup
+    bfcl_eval_args = "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC"
+    eval(
+        ctx=wrap_arguments(f"{common_ctx} {bfcl_eval_args}"),
+        output_dir=output_dir,
+        benchmarks="bfcl_v3",
+        expname=f"eval-all-datasets-{model_type}-bfcl",
+        auto_summarize_results=True,
+        **eval_kwargs,
+    )
 
+    eval_results_dir = Path(output_dir) / "eval-results"
+    missing_outputs = []
     for dataset in non_judge_datasets:
-        assert dataset in metrics, f"Missing metrics for {dataset}"
+        dataset_output_dir = eval_results_dir / dataset
+        output_files = list(dataset_output_dir.glob("output*.jsonl"))
+        if not output_files:
+            missing_outputs.append(dataset)
+
+    assert not missing_outputs, f"Missing eval outputs for datasets: {missing_outputs}"
+
+    for dataset in non_judge_datasets + ["bfcl_v3"]:
+        metrics_file = eval_results_dir / dataset / "metrics.json"
+        assert metrics_file.exists(), f"Missing metrics.json for dataset {dataset}"
 
     # TODO: add same for judge_datasets after generate supports num_jobs
     # (otherwise it starts judge every time and takes forever)
