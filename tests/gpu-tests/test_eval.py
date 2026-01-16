@@ -137,8 +137,8 @@ def test_aaa_prepare_and_eval_all_datasets():
 
     common_ctx = "++max_samples=2 ++inference.tokens_to_generate=100 ++server.enable_soft_fail=True "
     extra_eval_args_by_dataset = {
-        "bfcl_v3": "++eval_config.partial_eval=true",
-        "bfcl_v4": "++eval_config.partial_eval=true",
+        "bfcl_v3": "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC",
+        "bfcl_v4": "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC",
     }
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/all-datasets-eval"
