@@ -17,11 +17,40 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from bfcl_eval.constants.category_mapping import MEMORY_SCENARIO_NAME
-from bfcl_eval.utils import (
+# Github paths for BFCL
+REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
+BFCL_EVAL_PIP_PACKAGE = "bfcl_eval"
+BFCL_EVAL_GIT_PACKAGE = f"git+{REPO_URL}#subdirectory=berkeley-function-call-leaderboard"
+
+
+# TODO: we should probably move all such runtime installations to an isolated venv..
+def ensure_bfcl_eval_installed():
+    try:
+        import bfcl_eval  # noqa: F401
+
+        return
+    except (ModuleNotFoundError, ImportError, AttributeError):
+        logging.getLogger(__name__).info("bfcl_eval not found. Installing runtime dependency...")
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", BFCL_EVAL_PIP_PACKAGE],
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", BFCL_EVAL_GIT_PACKAGE],
+                check=True,
+            )
+
+
+ensure_bfcl_eval_installed()
+
+from bfcl_eval.constants.category_mapping import MEMORY_SCENARIO_NAME  # noqa: E402
+from bfcl_eval.utils import (  # noqa: E402
     is_agentic,
     is_format_sensitivity,
     is_memory,
@@ -36,22 +65,18 @@ from bfcl_eval.utils import (
     process_web_search_test_case,
 )
 
-from nemo_skills.dataset.bfcl_v3.constants import (
+from nemo_skills.dataset.bfcl_v3.constants import (  # noqa: E402
     ALL_SCORING_CATEGORIES,
     DATA_FOLDER_PATH,
     VERSION_PREFIX,
 )
-from nemo_skills.dataset.bfcl_v3.utils import (
+from nemo_skills.dataset.bfcl_v3.utils import (  # noqa: E402
     convert_to_tool,
     func_doc_language_specific_pre_processing,
 )
-from nemo_skills.utils import get_logger_name
+from nemo_skills.utils import get_logger_name  # noqa: E402
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-# Github paths for BFCL
-REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
 
 # Define the configuration as a dictionary
 DEFAULT_SETTINGS = """
