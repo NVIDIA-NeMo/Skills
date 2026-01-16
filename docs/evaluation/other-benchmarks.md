@@ -29,7 +29,7 @@ This is a benchmark developed by AA to measure hallucinations in LLMs and penali
 - Note that this benchmark can be quite sensitive to temperature and other sampling parameters, so make sure your settings align well with downstream conditions.
 - Also note that there still may be some variance between the public set and the full dataset; however, this set may be used as a way to compare hallucination rates between different checkpoints/models.
 
-#### Configuration: gpt-oss-20b with default judge (gemini-2.5-flash-preview-09-2025)
+#### Configuration: Qwen3-8B with default judge (gemini-2.5-flash-preview-09-2025)
 - Make sure to set `DEFAULT_REASONING_EFFORT_HIGH_THINKING_BUDGET=24576` in your environment variables and nemo-skills config to max judge reasoning when using reasoning_effort='high'.
 
 ```python
@@ -45,7 +45,7 @@ eval(
     ),
     cluster="slurm",
     expname="aa-omniscience-eval",
-    model="openai/gpt-oss-20b",
+    model="Qwen/Qwen3-8B",
     server_gpus=8,
     server_nodes=1,
     server_type="vllm",
@@ -57,7 +57,7 @@ eval(
 )
 ```
 
-#### Configuration: gpt-oss-20b with custom judge (gpt-oss-120b)
+#### Configuration: Qwen3-8B with custom judge (gpt-oss-120b)
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, eval
 
@@ -71,7 +71,7 @@ eval(
     ),
     cluster="slurm",
     expname="aa-omniscience-eval",
-    model="openai/gpt-oss-20b",
+    model="Qwen/Qwen3-8B",
     server_gpus=8,
     server_nodes=1,
     server_type="vllm",
