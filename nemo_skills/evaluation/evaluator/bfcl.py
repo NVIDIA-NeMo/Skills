@@ -75,7 +75,7 @@ def eval_bfcl(cfg):
         cmd = [
             sys.executable,
             "-m",
-            "bfcl_eval.cli",
+            "bfcl_eval",
             "evaluate",
             "--model",
             eval_config.model,
