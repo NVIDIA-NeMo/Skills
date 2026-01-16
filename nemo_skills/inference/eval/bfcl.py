@@ -228,7 +228,24 @@ class ClientMessageParser:
 
     def parse_output_dict(self, output_dict: dict):
         """Parse the output dictionary to get the model response."""
-        parsed_response = self.response_parser(output_dict["response"])
+        response = output_dict.get("response")
+        if response is None:
+            LOG.warning(
+                "Missing 'response' in output_dict; falling back to generation content. Output dict: %s", output_dict
+            )
+            generation = output_dict.get("generation", "")
+            if isinstance(generation, list):
+                # Tool-call generations can be lists; keep content empty in that case.
+                generation = (
+                    ""
+                    if generation and isinstance(generation[0], dict)
+                    else "".join([g for g in generation if isinstance(g, str)])
+                )
+            parsed_response = {"content": generation}
+            if "tool_calls" in output_dict:
+                parsed_response["tool_calls"] = output_dict["tool_calls"]
+        else:
+            parsed_response = self.response_parser(response)
 
         model_response = {
             "role": "assistant",
@@ -279,17 +296,24 @@ class ServerMessageParser:
 
     def parse_output_dict(self, output_dict: dict):
         """Parse the output dictionary to get the model response."""
-
-        output_dict["message"] = output_dict["response"].choices[0].message
-
-        try:
-            tool_calls = output_dict["message"].tool_calls
-            generation = [{func_call.function.name: func_call.function.arguments} for func_call in tool_calls]
-            tool_call_ids = [func_call.id for func_call in tool_calls]
-        except Exception:
+        response = output_dict.get("response")
+        if response is None:
+            LOG.warning("Missing 'response' in output_dict; falling back to generation content.")
+            message = {"role": "assistant", "content": output_dict.get("generation", "")}
+            output_dict["message"] = message
             tool_calls = []
-            generation = output_dict["message"].content
+            generation = message["content"]
             tool_call_ids = []
+        else:
+            output_dict["message"] = response.choices[0].message
+            try:
+                tool_calls = output_dict["message"].tool_calls
+                generation = [{func_call.function.name: func_call.function.arguments} for func_call in tool_calls]
+                tool_call_ids = [func_call.id for func_call in tool_calls]
+            except Exception:
+                tool_calls = []
+                generation = output_dict["message"].content
+                tool_call_ids = []
 
         # Use model output if not a tool call
         output_dict["generation"] = generation if generation else [output_dict["message"].content]
@@ -300,10 +324,15 @@ class ServerMessageParser:
         return output_dict
 
     def get_response_text(self, message):
+        if isinstance(message, dict):
+            return message.get("content")
         return message.content
 
     def set_response_text(self, message, response_text):
-        message.content = response_text
+        if isinstance(message, dict):
+            message["content"] = response_text
+        else:
+            message.content = response_text
 
 
 class BFCLGenerationTask(GenerationTask):
@@ -480,11 +509,10 @@ class BFCLGenerationTask(GenerationTask):
 
                 if self.cfg.parse_reasoning:
                     # TODO: replace with main parse_reasoning method
-                    trimmed_response_text = self._parse_reasoning_from_message_content(
-                        self.message_parser.get_response_text(model_response["message"])
-                    )
+                    message_text = self.message_parser.get_response_text(model_response["message"])
+                    trimmed_response_text = self._parse_reasoning_from_message_content(message_text)
                     # If no tool calling was used, apply reasoning cleanup to both the message and generation
-                    if model_response["message"].content == model_response["generation"]:
+                    if isinstance(model_response["generation"], str) and message_text == model_response["generation"]:
                         model_response["generation"] = [trimmed_response_text]
 
                     self.message_parser.set_response_text(model_response["message"], trimmed_response_text)
