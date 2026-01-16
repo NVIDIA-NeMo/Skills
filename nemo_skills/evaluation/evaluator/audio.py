@@ -17,6 +17,7 @@
 import asyncio
 import logging
 import re
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -32,7 +33,6 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     """Configuration for audio evaluation."""
 
     prompt_config: str = "eval/speechlm/audio"
-    apply_whisper_normalization: bool = True
     normalize_asr_pc_standard_wer: bool = True
 
 
@@ -119,41 +119,34 @@ def evaluate_asr_pc(reference: str, hypothesis: str, normalize_standard_wer: boo
         "wer_pc": wer_pc,
         "per": per,
         "is_correct": wer_pc < 0.5,
+        "text": ref_std,
+        "pred_text": hyp_std,
     }
+
+
+@lru_cache(maxsize=1)
+def _get_english_normalizer():
+    """Lazily initialize and cache the English text normalizer."""
+    from whisper_normalizer.english import EnglishTextNormalizer
+
+    return EnglishTextNormalizer()
 
 
 def preprocess_asr_text(text: str) -> str:
-    """Apply Whisper-style normalization: lowercase, normalize, remove brackets."""
-    from whisper.normalizers import EnglishTextNormalizer
-
-    text = text.lower()
-    text = EnglishTextNormalizer()(text)
-    text = re.sub(r"(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    """Apply Whisper-style normalization (lowercase, remove brackets, normalize whitespace)."""
+    return _get_english_normalizer()(text)
 
 
-def preprocess_hf_leaderboard(text: str) -> str:
-    """Apply HuggingFace leaderboard normalization: lowercase, remove punctuation, normalize unicode."""
-    import unicodedata
-
-    text = unicodedata.normalize("NFC", text)
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-def evaluate_asr(reference: str, hypothesis: str, apply_normalization: bool = True) -> dict[str, Any]:
-    """Evaluate ASR: computes WER with optional Whisper normalization."""
+def evaluate_asr(reference: str, hypothesis: str) -> dict[str, Any]:
+    """Evaluate ASR: computes WER with Whisper normalization."""
     import jiwer
 
-    if apply_normalization:
-        ref = preprocess_asr_text(reference)
-        hyp = preprocess_asr_text(hypothesis)
-    else:
-        ref = normalize_whitespace(reference)
-        hyp = normalize_whitespace(hypothesis)
+    ref = preprocess_asr_text(reference)
+    hyp = preprocess_asr_text(hypothesis)
+
+    # Store normalized texts before empty substitution
+    text = ref
+    pred_text = hyp
 
     if not ref:
         ref = "empty"
@@ -165,26 +158,8 @@ def evaluate_asr(reference: str, hypothesis: str, apply_normalization: bool = Tr
     return {
         "wer": wer_score,
         "is_correct": wer_score < 0.5,
-    }
-
-
-def evaluate_asr_leaderboard(reference: str, hypothesis: str) -> dict[str, Any]:
-    """Evaluate ASR with HuggingFace leaderboard preprocessing for direct comparison."""
-    import jiwer
-
-    ref = preprocess_hf_leaderboard(reference)
-    hyp = preprocess_hf_leaderboard(hypothesis)
-
-    if not ref:
-        ref = "empty"
-    if not hyp:
-        hyp = "empty"
-
-    wer_score = jiwer.wer(ref, hyp)
-
-    return {
-        "wer": wer_score,
-        "is_correct": wer_score < 0.5,
+        "text": text,
+        "pred_text": pred_text,
     }
 
 
@@ -193,20 +168,25 @@ def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:
     try:
         import sacrebleu
 
-        ref = [reference.strip()]
-        hyp = hypothesis.strip()
-        bleu = sacrebleu.sentence_bleu(hyp, ref)
+        text = reference.strip()
+        pred_text = hypothesis.strip()
+        ref = [text]
+        bleu = sacrebleu.sentence_bleu(pred_text, ref)
         bleu_score = bleu.score / 100.0
 
         return {
             "bleu": bleu_score,
             "is_correct": bleu_score > 0.3,
+            "text": text,
+            "pred_text": pred_text,
         }
     except Exception as e:
         return {
             "bleu": 0.0,
             "is_correct": False,
             "error": str(e),
+            "text": reference.strip(),
+            "pred_text": hypothesis.strip(),
         }
 
 
@@ -218,6 +198,8 @@ def evaluate_cer(reference: str, hypothesis: str) -> dict[str, Any]:
     return {
         "cer": cer_score,
         "is_correct": cer_score < 0.5,
+        "text": reference,
+        "pred_text": hypothesis,
     }
 
 
@@ -235,6 +217,8 @@ def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict 
             "char_rate": 0.0,
             "is_correct": True,
             "error": "missing_audio_duration",
+            "text": reference,
+            "pred_text": hypothesis,
         }
 
     char_count = len(hypothesis)
@@ -248,6 +232,8 @@ def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict 
         "hallucination_rate": 1.0 if is_hallucinating else 0.0,
         "char_rate": round(char_rate, 2),
         "is_correct": not is_hallucinating,
+        "text": reference,
+        "pred_text": hypothesis,
     }
 
 
@@ -295,6 +281,8 @@ def evaluate_pc_rate(reference: str, hypothesis: str) -> dict[str, Any]:
         "punct_f1": round(punct_f1, 3),
         "cap_accuracy": round(cap_accuracy, 3),
         "is_correct": pc_rate > 0.5,
+        "text": reference,
+        "pred_text": hypothesis,
     }
 
 
@@ -326,17 +314,16 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     generation = sample.get("generation", "").strip()
     expected_answer = sample.get("expected_answer", "").strip()
 
-    if task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD", "AST", "Translation", "CER"] and not generation:
+    if task_type in ["ASR", "ASR-PC", "AST", "Translation", "CER"] and not generation:
         base = {
             "is_correct": False,
             "error": "missing_generation",
-            "predicted_answer": "",
         }
         if task_type in ["AST", "Translation"]:
             return {**base, "bleu": 0.0}
         if task_type == "CER":
             return {**base, "cer": 1.0}
-        # ASR / ASR-PC / ASR_LEADERBOARD
+        # ASR / ASR-PC
         return {**base, "wer": 1.0}
 
     if task_type == "ASR-PC":
@@ -344,43 +331,31 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             expected_answer, generation, normalize_standard_wer=config.normalize_asr_pc_standard_wer
         )
         updates.update(metrics)
-        updates["predicted_answer"] = generation
 
     elif task_type == "ASR":
-        metrics = evaluate_asr(expected_answer, generation, apply_normalization=config.apply_whisper_normalization)
+        metrics = evaluate_asr(expected_answer, generation)
         updates.update(metrics)
-        updates["predicted_answer"] = generation
-
-    elif task_type == "ASR_LEADERBOARD":
-        metrics = evaluate_asr_leaderboard(expected_answer, generation)
-        updates.update(metrics)
-        updates["predicted_answer"] = generation
 
     elif task_type in ["AST", "Translation"]:
         metrics = evaluate_translation(expected_answer, generation)
         updates.update(metrics)
-        updates["predicted_answer"] = generation
 
     elif task_type == "CER":
         metrics = evaluate_cer(expected_answer, generation)
         updates.update(metrics)
-        updates["predicted_answer"] = generation
 
     elif task_type == "Hallucination":
         audio_context = {"audio_duration": sample.get("audio_duration")}
         metrics = evaluate_hallucination(expected_answer, generation, audio_context)
         updates.update(metrics)
-        updates["predicted_answer"] = generation
 
     elif task_type == "PC-Rate":
         metrics = evaluate_pc_rate(expected_answer, generation)
         updates.update(metrics)
-        updates["predicted_answer"] = generation
 
     else:
         if "requires_judge" not in sample:
             updates["requires_judge"] = True
-            updates["predicted_answer"] = generation
         if "is_correct" not in sample:
             updates["is_correct"] = False
 
