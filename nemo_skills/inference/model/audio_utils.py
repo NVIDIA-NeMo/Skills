@@ -56,7 +56,7 @@ def load_audio_file(audio_file_path: str):
     return audio_array, sampling_rate
 
 
-def chunk_audio(audio_array, sampling_rate, chunk_duration_sec=30, min_chunk_duration_sec=1.0):
+def chunk_audio(audio_array, sampling_rate, chunk_duration_sec=30, min_chunk_duration_sec=0.5):
     """Chunk audio array into segments of specified duration.
 
     Args:

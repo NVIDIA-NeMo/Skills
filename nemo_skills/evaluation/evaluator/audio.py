@@ -17,7 +17,6 @@
 import asyncio
 import logging
 import re
-from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -249,7 +248,6 @@ def _expand_contractions(text: str) -> str:
         text = re.sub(r"\b" + contraction + r"\b", expanded, text)
     return text
 
-    return EnglishTextNormalizer()
 
 def _remove_non_speech_elements(text: str) -> str:
     """Remove filler words (uh, um, er, ah)."""
@@ -337,8 +335,8 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     return {
         "wer": wer_score,
         "is_correct": wer_score < 0.5,
-        "text": text,
-        "pred_text": pred_text,
+        "text": ref,
+        "pred_text": hyp,
     }
 
 
