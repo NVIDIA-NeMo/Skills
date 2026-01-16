@@ -40,7 +40,7 @@ from nemo_skills.utils import (
     setup_logging,
 )
 
-from .generate import GenerateSolutionsConfig, GenerationTask
+from .generate import GenerationTask, GenerationTaskConfig
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -52,7 +52,7 @@ reasoning_effort_list = [
 
 
 @nested_dataclass(kw_only=True)
-class ProverConfig(GenerateSolutionsConfig):
+class ProverConfig(GenerationTaskConfig):
     max_tokens: int = 40960  # model max tokens
     n_pass: int = 1  # number of passes to run the prover
 
@@ -101,7 +101,7 @@ class ProverTask(GenerationTask):
         Individual functions can be overriden to customize the behavior of the generation task.
 
         Args:
-            cfg: GenerateSolutionsConfig object with the configuration parameters or subclass.
+            cfg: GenerationTaskConfig object with the configuration parameters or subclass.
         """
         super().__init__(cfg)
 
