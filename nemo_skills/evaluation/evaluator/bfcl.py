@@ -38,6 +38,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class BFCLEvaluatorConfig(BaseEvaluatorConfig):
     model: str = "o4-mini-2025-04-16-FC"  # Uses the same eval as Llama-Nemotron
     timeout: int = 300
+    partial_eval: bool = False
 
 
 def eval_bfcl(cfg):
@@ -82,6 +83,8 @@ def eval_bfcl(cfg):
             "--test-category",
             test_category,
         ]
+        if eval_config.partial_eval:
+            cmd.append("--partial-eval")
 
         env = os.environ.copy()
         env["OPENAI_API_KEY"] = "dummy"
