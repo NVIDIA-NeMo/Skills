@@ -230,20 +230,15 @@ class ClientMessageParser:
         """Parse the output dictionary to get the model response."""
         response = output_dict.get("response")
         if response is None:
-            LOG.warning(
-                "Missing 'response' in output_dict; falling back to generation content. Output dict: %s", output_dict
-            )
-            generation = output_dict.get("generation", "")
-            if isinstance(generation, list):
-                # Tool-call generations can be lists; keep content empty in that case.
-                generation = (
-                    ""
-                    if generation and isinstance(generation[0], dict)
-                    else "".join([g for g in generation if isinstance(g, str)])
+            if self.cfg.server.get("enable_soft_fail", False):
+                LOG.info(
+                    "Soft-fail enabled: missing 'response' in output_dict; something went wrong with this generation. "
+                    "Output dict: %s",
+                    output_dict,
                 )
-            parsed_response = {"content": generation}
-            if "tool_calls" in output_dict:
-                parsed_response["tool_calls"] = output_dict["tool_calls"]
+                parsed_response = {"content": ""}
+            else:
+                raise KeyError(f"Missing 'response' in output_dict: {output_dict!r}")
         else:
             parsed_response = self.response_parser(response)
 
@@ -298,12 +293,19 @@ class ServerMessageParser:
         """Parse the output dictionary to get the model response."""
         response = output_dict.get("response")
         if response is None:
-            LOG.warning("Missing 'response' in output_dict; falling back to generation content.")
-            message = {"role": "assistant", "content": output_dict.get("generation", "")}
-            output_dict["message"] = message
-            tool_calls = []
-            generation = message["content"]
-            tool_call_ids = []
+            if self.cfg.server.get("enable_soft_fail", False):
+                LOG.info(
+                    "Soft-fail enabled: missing 'response' in output_dict; something went wrong with this generation. "
+                    "Output dict: %s",
+                    output_dict,
+                )
+                message = {"role": "assistant", "content": ""}
+                output_dict["message"] = message
+                tool_calls = []
+                generation = ""
+                tool_call_ids = []
+            else:
+                raise KeyError(f"Missing 'response' in output_dict: {output_dict!r}")
         else:
             output_dict["message"] = response.choices[0].message
             try:
@@ -316,7 +318,11 @@ class ServerMessageParser:
                 tool_call_ids = []
 
         # Use model output if not a tool call
-        output_dict["generation"] = generation if generation else [output_dict["message"].content]
+        if isinstance(output_dict["message"], dict):
+            message_content = output_dict["message"].get("content", "")
+        else:
+            message_content = output_dict["message"].content
+        output_dict["generation"] = generation if generation else [message_content]
         output_dict["tool_calls"] = tool_calls
         output_dict["tool_call_ids"] = tool_call_ids
         output_dict["num_generated_tokens"] = output_dict.get("num_generated_tokens", 0)
