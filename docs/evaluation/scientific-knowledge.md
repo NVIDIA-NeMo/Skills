@@ -105,7 +105,7 @@ The reported number for `simpleqa-gpt-oss-120b-notool` is 13.1% according to thi
 - Benchmark is defined in [`nemo_skills/dataset/frontierscience-olympiad/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/frontierscience-olympiad/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/openai/frontierscience).
 - Contains 100 short-answer questions crafted by international science olympiad medalists across physics, chemistry, and biology.
-- Available splits: `physics` (default), `chemistry`, `biology`, and `all` (all subjects combined).
+- Available splits: `physics`, `chemistry`, `biology`, and `all` (all subjects combined, default).
 
 #### Configuration: `gpt-oss-20b` with builtin tool (python)
 
