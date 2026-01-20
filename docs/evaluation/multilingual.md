@@ -216,3 +216,14 @@ Some reference numbers for test split (xx corresponds to average over 5 language
         --split=test \
         ++inference.tokens_to_generate=2048
     ```
+
+## Supported translation metrics
+
+By default, we compute [BLEU score](https://github.com/mjpost/sacrebleu) to evaluate machine translation. However, we also support COMET, a popular neural metric for machine translation. Computing COMET requires a separate evaluation run that uses [xCOMET-XXL](https://huggingface.co/Unbabel/XCOMET-XXL) model as a judge. This run can be scheduled by adding the following parameters to the evaluation command:
+
+```bash
+ns eval \
+    ... \
+    --judge_type=comet \
+    --judge_model=[path_to_comet_checkpoint]
+```

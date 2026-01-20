@@ -12,11 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Settings that define how evaluation should be done by default (all can be changed from cmdline)
-# Uses the audio evaluator which computes WER with Whisper-style text normalization
-# Data samples should have task_type="ASR" for proper WER calculation
-
-DATASET_GROUP = "speechlm"
-METRICS_TYPE = "audio"
-EVAL_ARGS = "++eval_type=audio"
-GENERATION_ARGS = "++prompt_format=openai"
+DATASET_GROUP = "long-context"
