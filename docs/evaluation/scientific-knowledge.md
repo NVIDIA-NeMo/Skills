@@ -121,7 +121,7 @@ eval(
     ),
     cluster="slurm",
     expname="ghb-model_gpt_oss_20b",
-    model="/hf_models/gpt-oss-20b",
+    model="openai/gpt-oss-20b",
     server_type="vllm",
     server_gpus=4,
     server_args="--async-scheduling",
@@ -132,12 +132,13 @@ eval(
     with_sandbox=True,
     wandb_project="frontier",
     wandb_name="frontierscience-ghb-model_gpt_oss_20b",
-    judge_model="/hf_models/gpt-oss-120b",
+    judge_model="openai/gpt-oss-120b",
     judge_server_type="vllm",
     judge_server_gpus=8,
     judge_server_args="--async-scheduling",
 )
 ```
+
 
 #### Configuration: `gpt-oss-120b` without tool
 
