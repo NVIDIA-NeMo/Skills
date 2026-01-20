@@ -83,7 +83,7 @@ NS_TO_OPENHANDS_PARAM = {
     "tokens_to_generate": "max_output_tokens",
     "top_k": "top_k",
     "random_seed": "seed",
-    # Passed via the completion_kwargs dict.
+    # Passed via the completion_kwargs parameter.
     "min_p": None,
     "repetition_penalty": None,
     "top_logprobs": None,
@@ -557,8 +557,8 @@ class SweBenchGenerationTask(GenerationTask):
                 if oh_param is not None:
                     config["llm"]["model"][oh_param] = param_value
                 else:
-                    # If oh_param is None, this means there is no dedicated OH config option for this parameter,
-                    # so we need to pass it via the completion_kwargs parameter.
+                    # If oh_param is None, that means there is no dedicated OH config option for this parameter,
+                    # so we need to pass it via the completion_kwargs option.
                     completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
 
         completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
