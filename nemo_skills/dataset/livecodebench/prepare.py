@@ -23,9 +23,10 @@ from dateutil.relativedelta import relativedelta
 
 
 class PromptConstants:
-    # reference: https://github.com/QwenLM/Qwen2.5-Coder/blob/main/qwencoder-eval/reasoning/livecode_bench_cot/lcb_runner_cq/prompts/code_generation.py#L31
-    FORMATTING_MESSAGE_WITH_STARTER_CODE = "You will use the following starter code to write the solution to the problem and enclose your code within delimiters."
-    FORMATTING_WITHOUT_STARTER_CODE = "Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the python program runs, it reads the inputs, runs the algorithm and writes output to STDOUT."
+    FORMATTING_MESSAGE_WITH_STARTER_CODE = (
+        """Please place the solution code in the following format:\n```python\n# Your solution code here\n```"""
+    )
+    FORMATTING_WITHOUT_STARTER_CODE = """Write Python code to solve the problem. Please place the solution code in the following format:\n```python\n# Your solution code here\n```"""
 
 
 def parse_data(release_version="release_latest"):
@@ -68,13 +69,18 @@ def parse_month_range(start_date, end_date):
 
 def clean_data(dataset, keep_all_columns=False):
     def map_fn(data):
-        question = data["question_content"] + "\n\n"
+        question = data["question_content"]
         if data["starter_code"]:
-            question += f"{PromptConstants.FORMATTING_MESSAGE_WITH_STARTER_CODE}\n"
-            question += f"```python\n{data['starter_code']}\n```\n\n"
+            question += (
+                "\n\n"
+                + "Solve the problem starting with the provided function header.\n\nFunction header:\n"
+                + "```\n"
+                + data["starter_code"]
+                + "\n```"
+            )
+            question += "\n\n" + PromptConstants.FORMATTING_MESSAGE_WITH_STARTER_CODE
         else:
-            question += f"{PromptConstants.FORMATTING_WITHOUT_STARTER_CODE}\n\n"
-            question += "```python\n# YOUR CODE HERE\n```\n\n"
+            question += "\n\n" + PromptConstants.FORMATTING_WITHOUT_STARTER_CODE
 
         data["task_id"] = data["question_id"]
         data["question"] = question.replace("    ", "\t")
