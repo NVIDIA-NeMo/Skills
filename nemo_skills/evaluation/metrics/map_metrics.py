@@ -46,6 +46,9 @@ from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetric
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
+    "frontierscience-olympiad": functools.partial(
+        MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
+    ),
     "simpleqa": SimpleQAMetrics,
     "lean4-proof": Lean4Metrics,
     "lean4-statement": Lean4Metrics,
