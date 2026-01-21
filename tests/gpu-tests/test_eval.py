@@ -28,6 +28,7 @@ from tests.conftest import docker_rm
 EXCLUDED_DATASETS = {
     "__pycache__",
     "ruler",
+    "ruler2",
     "bigcodebench",
     "livecodebench",
     "livebench_coding",
@@ -37,6 +38,7 @@ EXCLUDED_DATASETS = {
     "bfcl_v3",
     "bfcl_v4",
     "swe-bench",
+    "swe-bench-multilingual",
     "swe-rebench",
     "aai",
     "human-eval",

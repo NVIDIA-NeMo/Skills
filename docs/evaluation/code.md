@@ -94,22 +94,9 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 #### Inference parameters
 
-For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by SWE-agent/OpenHands. Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, and some parameters may be unsupported, e.g. when using OpenHands.
+For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by SWE-agent/OpenHands.
 
-In order for a parameter to work, it needs to be supported in 2 places: by the agentic framework and by the LLM server itself. For framework support, see the following table:
-
-| Nemo-Skills inference parameter | Behavior when using SWE-agent          | Behavior when using OpenHands          |
-| :------------------------------ | :------------------------------------- | :------------------------------------- |
-| temperature                     | ✅ Always passed to LLM. Default: 0     | ✅ Always passed to LLM. Default: 0     |
-| top_p                           | ✅ Always passed to LLM. Default: 0.95  | ✅ Always passed to LLM. Default: 0.95  |
-| top_k                           | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| tokens_to_generate              | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| random_seed                     | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| min_p                           | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
-| repetition_penalty              | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
-| top_logprobs                    | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
-
-In addition, keep in mind certain parameters may not be supported by your LLM server, because not all of them are part of the official [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). However, VLLM and SGLang do support all of these parameters.
+Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). Any parameters you set explicitly will be passed. Custom parameters can be set via extra_body like this: `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. However, keep in mind certain parameters may not be supported by your LLM server.
 
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
@@ -237,6 +224,67 @@ The benchmark reports:
 - **accuracy**: Percentage of problems where generated code compiled and passed all tests
 - **pass@1**: Same as accuracy for single-solution generation
 - **pass@k**: Success rate when generating k solutions per problem (if configured)
+
+### swe-bench-multilingual
+
+- Benchmark is defined in [`nemo_skills/dataset/swe-bench-multilingual/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-multilingual/__init__.py)
+- Original benchmark source is [here](https://www.swebench.com/multilingual.html).
+
+SWE-bench Multilingual uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well. The differences are as follows:
+
+1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: [https://github.com/ludwig-n/OpenHands](https://github.com/ludwig-n/OpenHands) and [https://github.com/ludwig-n/SWE-agent](https://github.com/ludwig-n/SWE-agent). In both forks we use the `ns-swe-bench-multilingual` branch by default.
+2. For OpenHands, we use the [Multi-SWE-bench entrypoint script](https://github.com/ludwig-n/OpenHands/blob/ns-swe-bench-multilingual/evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh) instead of the standard SWE-bench one.
+3. For SWE-agent, we default to a [different config file](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/multilingual.yaml) with language-specific prompting.
+
+#### Sample run
+
+Here's how to run a sample evaluation of [Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) with OpenHands on a Slurm cluster.
+
+1. Prepare the data following the same [instructions](#data-preparation) as for SWE-bench, replacing `ns prepare_data swe-bench` with `ns prepare_data swe-bench-multilingual`. This will download [SWE-bench Multilingual](https://huggingface.co/datasets/SWE-bench/SWE-bench_Multilingual) by default instead of Verified. The container names have the same format. For downloading images, you can use the same `dump_images.py` script as for SWE-bench.
+2. Run
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=Qwen/Qwen3-Coder-30B-A3B-Instruct \
+    --server_type=vllm \
+    --server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=swe-bench-multilingual \
+    --output_dir=<OUTPUT_DIR> \
+    --num_chunks=6 \
+    ++agent_framework=openhands \
+    ++inference.temperature=0.7 \
+    ++inference.top_p=0.8 \
+    ++inference.top_k=20
+```
+replacing <...> with your desired parameters.
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/swe-bench-multilingual/metrics.json`. They should look something like this:
+```
+{
+  "swe-bench-multilingual": {
+    "pass@1": {
+      "num_entries": 300,
+      "gen_seconds": 83685,
+      "issues_resolved": 33.33333333333336,
+      "no_patch": 0.6666666666666665,
+      "patch_cant_apply": 1.0
+    }
+  }
+}
+```
+Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate. To do that automatically, you can set `--benchmarks=swe-bench-multilingual:N`, where N is your desired number of repeats.
+
+To evaluate the same model with SWE-agent,
+all you need to do is replace `openhands` with `swe_agent` in the command above.
+
+!!! note
+    There are some instances where the gold (ground truth) patches do not pass the evaluation tests. Therefore, it's likely that on those instances even patches that resolve the issue will be incorrectly evaluated as "unresolved". We have observed 2 such instances in SWE-bench Multilingual: `jqlang__jq-2681` and `tokio-rs__tokio-4384`. In addition, 5 instances behave inconsistently (gold patches sometimes pass and sometimes fail): `axios__axios-4731`, `axios__axios-4738`, `axios__axios-5892`, `caddyserver__caddy-5995`, `valkey-io__valkey-928`. Depending on your setup, this set of instances may be different.
+
+!!! note
+    For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
+
 
 ### IOI
 

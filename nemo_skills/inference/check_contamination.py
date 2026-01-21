@@ -20,15 +20,24 @@ from dataclasses import field
 
 import hydra
 
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerationTask,
+    GenerationTaskConfig,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    setup_logging,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class CheckContaminationConfig(GenerateSolutionsConfig):
+class CheckContaminationConfig(GenerationTaskConfig):
     """LLM-based check contamination parameters.
     For the full list of supported parameters, use 'python -m nemo_skills.inference.generate --help'
     """

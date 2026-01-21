@@ -1,0 +1,4 @@
+jiwer>=3.1.0,<4.0.0                   # Word/Character Error Rate computation
+sacrebleu               # BLEU score computation
+soundfile             # Audio file I/O for dataset preparation
+whisper-normalizer      # Lightweight text normalization (EnglishTextNormalizer)
