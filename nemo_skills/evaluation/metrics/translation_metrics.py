@@ -41,7 +41,7 @@ class TranslationMetrics(BaseMetrics):
             preds = self.translation_dict[key]["preds"]
             gts = self.translation_dict[key]["gts"]
 
-            num_seeds = len(preds[0])
+            num_seeds = len(preds[0]) if preds else 0
 
             tokenize = "13a"
             if tgt_lang[:2] == "ja":
@@ -118,7 +118,8 @@ class TranslationMetrics(BaseMetrics):
 
             generations.append(generation)
             ground_truths.append(pred["translation"])
-            comets.append(pred["comet"] * 100)
+            if "comet" in pred:
+                comets.append(pred["comet"] * 100)
 
         self.translation_dict[f"{src_lang}->{tgt_lang}"]["preds"].append(generations)
         self.translation_dict[f"{src_lang}->{tgt_lang}"]["gts"].append(ground_truths)
