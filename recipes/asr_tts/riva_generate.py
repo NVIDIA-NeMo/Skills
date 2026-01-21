@@ -20,7 +20,11 @@ from pathlib import Path
 
 import hydra
 
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerationTask,
+    GenerationTaskConfig,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.nim_utils import ASRExtraConfig, TTSExtraConfig
 from nemo_skills.utils import get_help_message, nested_dataclass, setup_logging
@@ -29,7 +33,7 @@ LOG = logging.getLogger(__name__)
 
 
 @nested_dataclass(kw_only=True)
-class RivaGenerateConfig(GenerateSolutionsConfig):
+class RivaGenerateConfig(GenerationTaskConfig):
     inference: InferenceConfig = field(default_factory=InferenceConfig)
     server: dict = field(default_factory=dict)
 

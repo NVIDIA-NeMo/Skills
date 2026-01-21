@@ -38,6 +38,7 @@ from nemo_skills.evaluation.metrics.lean4_metrics import Lean4Metrics
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
+from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
@@ -62,6 +63,7 @@ METRICS_MAP = {
     "icpc": ICPCMetrics,
     "multichoice": MathMetrics,
     "ruler": RulerMetrics,
+    "ruler2": RulerMetrics,
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
@@ -75,6 +77,7 @@ METRICS_MAP = {
     "mmau_pro_closed_form": MMAUProMetrics,
     "mmau_pro_open_ended": MMAUProMetrics,
     "mmau_pro_instruction_following": MMAUProMetrics,
+    "omniscience": OmniMetrics,
     "compute-eval": ComputeEvalMetrics,
 }
 
