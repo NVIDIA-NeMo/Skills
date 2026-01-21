@@ -39,8 +39,8 @@ from nemo_skills.inference.eval.bfcl_utils import (
     is_empty_execute_response,
 )
 from nemo_skills.inference.generate import (
-    GenerateSolutionsConfig,
     GenerationTask,
+    GenerationTaskConfig,
     InferenceConfig,
 )
 from nemo_skills.inference.model import server_params
@@ -58,7 +58,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class BFCLGenerationConfig(GenerateSolutionsConfig):
+class BFCLGenerationConfig(GenerationTaskConfig):
     """BFCL benchmark generation."""
 
     # Inheritance was converting these dataclasses to dicts, so to be on the safe side we override them
