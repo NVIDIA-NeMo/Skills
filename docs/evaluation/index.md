@@ -11,6 +11,7 @@ We support many popular benchmarks and it's easy to add new in the future. The f
 - [**Tool-calling**](./tool-calling.md): e.g. [bfcl_v3](./tool-calling.md#bfcl_v3)
 - [**Multilingual**](./multilingual.md): e.g. [mmlu-prox](./multilingual.md#mmlu-prox), [flores-200](./multilingual.md#flores-200), [wmt24pp](./multilingual.md#wmt24pp)
 - [**Speech & Audio**](./speech-audio.md): e.g. [asr-leaderboard](./speech-audio.md#asr-leaderboard), [mmau-pro](./speech-audio.md#mmau-pro)
+- [**Vision-Language Models (VLM)**](./vlm.md): e.g. [mmmu-pro](./vlm.md#mmmu-pro)
 
 See [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset) where each folder is a benchmark we support.
 
