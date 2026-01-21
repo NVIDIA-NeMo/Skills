@@ -399,9 +399,12 @@ class GenerationTask:
     def setup_llm(self):
         self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
 
-        self.data_dir = None
-        if "data_dir" in self.cfg.eval_config and not isinstance(self.cfg.eval_config.get("data_dir"), type(None)):
-            self.data_dir = self.cfg.eval_config["data_dir"]
+        # Determine data_dir for resolving relative paths (e.g., images, audio)
+        # Always resolve relative to input file's parent directory
+        if self.cfg.input_file:
+            self.data_dir = str(Path(self.cfg.input_file).parent)
+        else:
+            self.data_dir = None
 
         output_dir = str(Path(self.cfg.output_file).parent)
 
