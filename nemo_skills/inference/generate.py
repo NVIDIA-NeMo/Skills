@@ -84,7 +84,7 @@ class InferenceConfig:
 
 
 @nested_dataclass(kw_only=True)
-class GenerateSolutionsConfig:
+class GenerationTaskConfig:
     """Generation parameters."""
 
     input_file: str  # Path to the input file with data
@@ -254,7 +254,7 @@ class GenerateSolutionsConfig:
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
-cs.store(name="base_generation_config", node=GenerateSolutionsConfig)
+cs.store(name="base_generation_config", node=GenerationTaskConfig)
 
 
 class GenerationTask:
@@ -282,13 +282,13 @@ class GenerationTask:
 
         return get_server_command
 
-    def __init__(self, cfg: GenerateSolutionsConfig):
+    def __init__(self, cfg: GenerationTaskConfig):
         """
         Class that represents a generation task. It implements a template of steps to generate solutions using LLMs.
         Individual functions can be overriden to customize the behavior of the generation task.
 
         Args:
-            cfg: GenerateSolutionsConfig object with the configuration parameters or subclass.
+            cfg: GenerationTaskConfig object with the configuration parameters or subclass.
         """
         self.cfg = cfg
         self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
@@ -796,8 +796,8 @@ GENERATION_TASK_CLASS = GenerationTask
 
 # Update the hydra main to use the class method
 @hydra.main(version_base=None, config_name="base_generation_config")
-def generate(cfg: GenerateSolutionsConfig):
-    cfg = GenerateSolutionsConfig(_init_nested=True, **cfg)
+def generate(cfg: GenerationTaskConfig):
+    cfg = GenerationTaskConfig(_init_nested=True, **cfg)
     LOG.info("Config used: %s", cfg)
 
     task = GenerationTask(cfg)
@@ -805,7 +805,7 @@ def generate(cfg: GenerateSolutionsConfig):
 
 
 HELP_MESSAGE = get_help_message(
-    GenerateSolutionsConfig,
+    GenerationTaskConfig,
     server_params=server_params(),
     sandbox_params=sandbox_params(),
 )
