@@ -100,7 +100,83 @@ We also tested a variant where the full generation output was provided to the ju
 
 The reported number for `simpleqa-gpt-oss-120b-notool` is 13.1% according to this [kaggle page](https://www.kaggle.com/benchmarks/deepmind/simpleqa-verified).
 
+### FrontierScience-Olympiad
 
+- Benchmark is defined in [`nemo_skills/dataset/frontierscience-olympiad/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/frontierscience-olympiad/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/openai/frontierscience).
+- Contains 100 short-answer questions crafted by international science olympiad medalists across physics, chemistry, and biology.
+- Available splits: `physics`, `chemistry`, `biology`, and `all` (all subjects combined, default).
+
+#### Configuration: `gpt-oss-20b` with builtin tool (python)
+
+```python
+from nemo_skills.pipeline.cli import wrap_arguments, eval
+
+eval(
+    ctx=wrap_arguments(
+        "++inference.temperature=1.0 ++inference.tokens_to_generate=65536 "
+        "++code_tags=gpt-oss ++server.code_execution.max_code_executions=100 "
+        "++inference.endpoint_type=text ++chat_template_kwargs.builtin_tools=[python] "
+        "++chat_template_kwargs.reasoning_effort=high ++code_execution=true"
+    ),
+    cluster="slurm",
+    expname="ghb-model_gpt_oss_20b",
+    model="openai/gpt-oss-20b",
+    server_type="vllm",
+    server_gpus=4,
+    server_args="--async-scheduling",
+    benchmarks="frontierscience-olympiad:20",
+    split="all",
+    num_chunks=1,
+    output_dir="/workspace/frontierscience-ghb-model_gpt_oss_20b",
+    with_sandbox=True,
+    wandb_project="frontier",
+    wandb_name="frontierscience-ghb-model_gpt_oss_20b",
+    judge_model="openai/gpt-oss-120b",
+    judge_server_type="vllm",
+    judge_server_gpus=8,
+    judge_server_args="--async-scheduling",
+)
+```
+
+
+#### Configuration: `gpt-oss-120b` without tool
+
+```python
+from nemo_skills.pipeline.cli import wrap_arguments, eval
+
+eval(
+    ctx=wrap_arguments(
+        "++inference.temperature=1.0 ++inference.tokens_to_generate=65536 "
+        "++inference.extra_body.reasoning_effort=high"
+    ),
+    cluster="slurm",
+    expname="ghn-model_gpt_oss_120b",
+    model="openai/gpt-oss-120b",
+    server_type="vllm",
+    server_gpus=8,
+    server_args="--async-scheduling",
+    benchmarks="frontierscience-olympiad:20",
+    split="all",
+    num_chunks=1,
+    output_dir="/workspace/frontierscience-ghn-model_gpt_oss_120b",
+    wandb_project="frontier",
+    wandb_name="frontierscience-ghn-model_gpt_oss_120b",
+    judge_model="openai/gpt-oss-120b",
+    judge_server_type="vllm",
+    judge_server_gpus=8,
+    judge_server_args="--async-scheduling",
+)
+```
+
+#### Result
+
+| Run Name                                  |   pass@1 |   majority@8 |   pass@8 |
+|:------------------------------------------|---------:|-------------:|---------:|
+| gpt-oss-20b (no tool)                     |    49.74 |        47.00 |    71.98 |
+| gpt-oss-20b (with python tool)            |    36.94 |        37.38 |    73.61 |
+| gpt-oss-120b (no tool)                    |    60.53 |        61.13 |    79.25 |
+| gpt-oss-120b (with python tool)           |    54.05 |        53.00 |    80.07 |
 
 ### SuperGPQA
 

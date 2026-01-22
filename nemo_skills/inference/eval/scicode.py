@@ -24,8 +24,8 @@ from nemo_skills.inference.eval.scicode_utils import (
     process_problem_steps,
 )
 from nemo_skills.inference.generate import (
-    GenerateSolutionsConfig,
     GenerationTask,
+    GenerationTaskConfig,
     InferenceConfig,
 )
 from nemo_skills.inference.model import server_params
@@ -42,7 +42,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class SciCodeGenerationConfig(GenerateSolutionsConfig):
+class SciCodeGenerationConfig(GenerationTaskConfig):
     """SciCode benchmark generation. Will run queries multiple times including previously generated code.
     For the full list of supported parameters, use 'python -m nemo_skills.inference.generate --help'
     """

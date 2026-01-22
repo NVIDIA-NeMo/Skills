@@ -19,15 +19,25 @@ from dataclasses import field
 import hydra
 
 from nemo_skills.evaluation.math_grader import extract_answer
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerationTask,
+    GenerationTaskConfig,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, prefill_judgement, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    prefill_judgement,
+    setup_logging,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class LlmMathJudgeConfig(GenerateSolutionsConfig):
+class LlmMathJudgeConfig(GenerationTaskConfig):
     """LLM math judge parameters.
     For the full list of supported parameters, use 'python -m nemo_skills.inference.generate --help'
     """
