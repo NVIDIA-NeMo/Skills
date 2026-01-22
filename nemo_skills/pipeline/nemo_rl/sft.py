@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
@@ -326,8 +325,8 @@ def sft_nemo_rl(
     ),
     ray_template: str = typer.Option(
         None,
-        help="Slurm Ray template to use. If specified, will set NEMO_RUN_SLURM_RAY_TEMPLATE environment variable. "
-        "Example: 'ray_enroot.sub.j2'",
+        help="Slurm Ray template to use for Ray jobs. Passed to SlurmExecutor.ray_template. "
+        "Example: 'ray_enroot.sub.j2' (default: 'ray.sub.j2')",
     ),
 ):
     """Runs NeMo-RL SFT training.
@@ -335,11 +334,6 @@ def sft_nemo_rl(
     All extra arguments are passed directly to the NeMo-RL SFT script.
     """
     setup_logging(disable_hydra_logs=False, use_rich=True)
-
-    # Set Ray template if provided
-    if ray_template is not None:
-        os.environ["NEMO_RUN_SLURM_RAY_TEMPLATE"] = ray_template
-
     extra_arguments = f"{' '.join(ctx.args)}"
     LOG.info("Starting training job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
@@ -430,6 +424,7 @@ def sft_nemo_rl(
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
+                    ray_template=ray_template,
                 )
         # if average_steps is not specified, we only save the final checkpoint
         if average_steps is None:
