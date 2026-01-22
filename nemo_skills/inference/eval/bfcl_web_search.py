@@ -13,9 +13,9 @@
 # limitations under the License.
 
 
+import os
 import random
 import time
-import os
 from typing import Optional
 
 import html2text
@@ -67,7 +67,8 @@ class WebSearchAPI:
         self._warned_no_serp_key = True
         print(
             (
-                "*" * 100
+                "*"
+                * 100
                 + "\n⚠️  [WebSearchAPI] SERPAPI_API_KEY is not set. Falling back to native DuckDuckGo (ddgs). "
                 "This may be rate-limited or blocked under high parallelism. "
                 "If you see repeated blocks/rate limits, set SERPAPI_API_KEY to use SerpApi's DuckDuckGo engine."
@@ -81,9 +82,7 @@ class WebSearchAPI:
         formatted = []
         for r in results:
             if self.show_snippet:
-                formatted.append(
-                    {"title": r.get("title", ""), "href": r.get("href", ""), "body": r.get("body", "")}
-                )
+                formatted.append({"title": r.get("title", ""), "href": r.get("href", ""), "body": r.get("body", "")})
             else:
                 formatted.append({"title": r.get("title", ""), "href": r.get("href", "")})
         return formatted
@@ -113,11 +112,11 @@ class WebSearchAPI:
                 if "429" in str(e):
                     wait_time = backoff + random.uniform(0, backoff)
                     error_block = (
-                        "*" * 100
+                        "*"
+                        * 100
                         + "\n❗️❗️ [WebSearchAPI] Received 429 from SerpAPI. The number of requests sent using this API key "
                         "exceeds the hourly throughput limit OR your account has run out of searches. "
-                        f"Retrying in {wait_time:.1f} seconds…"
-                        + "*" * 100
+                        f"Retrying in {wait_time:.1f} seconds…" + "*" * 100
                     )
                     print(error_block)
                     time.sleep(wait_time)
@@ -135,11 +134,11 @@ class WebSearchAPI:
             if "error" in search_results and "429" in str(search_results["error"]):
                 wait_time = backoff + random.uniform(0, backoff)
                 error_block = (
-                    "*" * 100
+                    "*"
+                    * 100
                     + "\n❗️❗️ [WebSearchAPI] Received 429 from SerpAPI. The number of requests sent using this API key "
                     "exceeds the hourly throughput limit OR your account has run out of searches. "
-                    f"Retrying in {wait_time:.1f} seconds…"
-                    + "*" * 100
+                    f"Retrying in {wait_time:.1f} seconds…" + "*" * 100
                 )
                 print(error_block)
                 time.sleep(wait_time)
@@ -166,7 +165,9 @@ class WebSearchAPI:
 
     def _search_with_ddgs(self, *, keywords: str, max_results: int, region: str) -> list[dict]:
         # DDGS.text() may return an iterator; normalize to list.
-        search_results = DDGS(timeout=60).text(query=keywords, region=region, max_results=max_results, backend="duckduckgo")
+        search_results = DDGS(timeout=60).text(
+            query=keywords, region=region, max_results=max_results, backend="duckduckgo"
+        )
         results_list = list(search_results) if search_results else []
         out = []
         for result in results_list[:max_results]:
@@ -297,11 +298,9 @@ class WebSearchAPI:
                 if "No results found" in str(e):
                     wait_time = backoff + random.uniform(0, backoff)
                     error_block = (
-                        "*" * 100
-                        + f"\n❗️❗️ [WebSearchAPI] Hit a block/rate-limit on DuckDuckGo requests. "
+                        "*" * 100 + f"\n❗️❗️ [WebSearchAPI] Hit a block/rate-limit on DuckDuckGo requests. "
                         f"If unable to run eval due to repeated blocks, try to decrease job parallelism or set SERPAPI_API_KEY "
-                        f"to use SerpApi's DuckDuckGo engine. Retrying in {wait_time:.1f} seconds…"
-                        + "*" * 100
+                        f"to use SerpApi's DuckDuckGo engine. Retrying in {wait_time:.1f} seconds…" + "*" * 100
                     )
                     print(error_block)
                     time.sleep(wait_time)
@@ -309,11 +308,11 @@ class WebSearchAPI:
                     continue
                 else:
                     error_block = (
-                        "*" * 100
-                        + f"\n❗️❗️ [WebSearchAPI] Error from DuckDuckGo (ddgs): {str(e)}. "
+                        "*" * 100 + f"\n❗️❗️ [WebSearchAPI] Error from DuckDuckGo (ddgs): {str(e)}. "
                         "This is not a recognized retryable rate-limit error, so it will not be retried. "
                         "If you suspect blocking/rate limiting, consider setting SERPAPI_API_KEY to use SerpApi."
-                        + "*" * 100
+                        + "*"
+                        * 100
                     )
                     print(error_block)
                 return {"error": str(e)}

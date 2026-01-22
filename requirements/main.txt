@@ -20,7 +20,6 @@ editdistance
 # ddgs # Needed for BFCLv4 - currently cannot be installed directly due to lepton obsolete httpx version in use
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f
 faiss-cpu # Needed for BFCLv4
-serpapi # Needed for BFCLv4
 fire
 
 # needed local code execution server for persistent sessions
@@ -47,6 +46,7 @@ requests
 sacrebleu
 scikit-learn
 sentence_transformers # Needed for BFCLv4 
+serpapi # Needed for BFCLv4
 sympy
 tqdm
 transformers
