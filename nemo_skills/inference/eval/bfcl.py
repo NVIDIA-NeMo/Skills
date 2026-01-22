@@ -20,17 +20,8 @@ from dataclasses import asdict, field
 from functools import partial
 
 import hydra
-from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
-    MemoryAPI,
-)
-from bfcl_eval.model_handler.utils import add_memory_instruction_system_prompt
-from bfcl_eval.utils import is_memory, is_memory_prereq
 from transformers import AutoTokenizer
 
-from nemo_skills.dataset.bfcl_v3.utils import (
-    convert_to_tool,
-    func_doc_language_specific_pre_processing,
-)
 from nemo_skills.inference.eval.bfcl_utils import (
     DEFAULT_USER_PROMPT_FOR_ADDITIONAL_FUNCTION_FC,
     MAXIMUM_STEP_LIMIT,
@@ -362,6 +353,8 @@ class BFCLGenerationTask(GenerationTask):
 
     def load_data(self):
         """Run through memory prereqs so that they are given a correct order and priority"""
+        from bfcl_eval.utils import is_memory_prereq
+
         # This needs to happen before the data shapes are passed to apply the filter, this cannot use preprocessor
         data = super().load_data()
         # First, fix the target paths to point to the actual target paths for memory stores
@@ -442,6 +435,16 @@ class BFCLGenerationTask(GenerationTask):
 
     async def _generate_single_data_point_multi_turn(self, data_point):
         """Generate for a single data point with multiple turns."""
+        from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
+            MemoryAPI,
+        )
+        from bfcl_eval.model_handler.utils import add_memory_instruction_system_prompt
+        from bfcl_eval.utils import is_memory, is_memory_prereq
+
+        from nemo_skills.dataset.bfcl_v3.utils import (
+            convert_to_tool,
+            func_doc_language_specific_pre_processing,
+        )
 
         initial_config: dict = data_point["initial_config"]
         involved_classes: list = data_point["involved_classes"]
@@ -474,7 +477,7 @@ class BFCLGenerationTask(GenerationTask):
 
             assert len(involved_instances) == 1, "Memory category should only involve one class."
 
-            memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+            memory_instance: MemoryAPI = list(involved_instances.values())[0]
             data_point["question"] = add_memory_instruction_system_prompt(
                 data_point["question"],
                 test_category,
@@ -581,7 +584,7 @@ class BFCLGenerationTask(GenerationTask):
         # Need to flush the memory to local file at the end of the conversation
         if is_memory_prereq(test_entry_id):
             assert len(involved_instances) == 1, "Memory category should only involve one class."
-            memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+            memory_instance: MemoryAPI = list(involved_instances.values())[0]
             memory_instance._flush_memory_to_local_file()
 
         if out_of_context:
