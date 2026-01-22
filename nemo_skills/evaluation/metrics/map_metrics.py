@@ -31,6 +31,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     SciCodeMetrics,
     SweBenchMetrics,
 )
+from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
@@ -46,12 +47,16 @@ from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetric
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
+    "frontierscience-olympiad": functools.partial(
+        MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
+    ),
     "simpleqa": SimpleQAMetrics,
     "lean4-proof": Lean4Metrics,
     "lean4-statement": Lean4Metrics,
     "answer-judgement": AnswerJudgementMetrics,
     "arena": ArenaMetrics,
     "audio": AudioMetrics,
+    "speechlm": AudioMetrics,  # Alias for backward compatibility
     "bfcl": BFCLMetrics,
     "bird": BirdMetrics,
     "evalplus": EvalPlusMetrics,
@@ -60,6 +65,7 @@ METRICS_MAP = {
     "icpc": ICPCMetrics,
     "multichoice": MathMetrics,
     "ruler": RulerMetrics,
+    "ruler2": RulerMetrics,
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
@@ -75,6 +81,7 @@ METRICS_MAP = {
     "mmau_pro_instruction_following": MMAUProMetrics,
     "omniscience": OmniMetrics,
     "compute-eval": ComputeEvalMetrics,
+    "gradingbench": GradingBenchMetrics,
 }
 
 

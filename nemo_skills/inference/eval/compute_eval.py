@@ -20,19 +20,15 @@ from compute_eval.data.data_model import FileSolution
 # noinspection PyProtectedMember
 from compute_eval.generate_completions import _parse_solution
 
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask
+from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig
 from nemo_skills.inference.model import server_params
-from nemo_skills.utils import (
-    get_help_message,
-    get_logger_name,
-    setup_logging,
-)
+from nemo_skills.utils import get_help_message, get_logger_name, setup_logging
 
 _LOG = logging.getLogger(get_logger_name(__file__))
 
 
 class ComputeEvalGenerationTask(GenerationTask):
-    def __init__(self, cfg: GenerateSolutionsConfig):
+    def __init__(self, cfg: GenerationTaskConfig):
         super().__init__(cfg)
 
     async def process_single_datapoint(self, data_point, data):
@@ -66,7 +62,7 @@ GENERATION_TASK_CLASS = ComputeEvalGenerationTask
 
 
 @hydra.main(version_base=None, config_name="base_generation_config")
-def run_compute_eval(cfg: GenerateSolutionsConfig):
+def run_compute_eval(cfg: GenerationTaskConfig):
     _LOG.info("Config used: %s", cfg)
 
     task = ComputeEvalGenerationTask(cfg)
@@ -75,7 +71,7 @@ def run_compute_eval(cfg: GenerateSolutionsConfig):
 
 if __name__ == "__main__":
     if "--help" in sys.argv or "-h" in sys.argv:
-        print(get_help_message(GenerateSolutionsConfig, server_params=server_params()))
+        print(get_help_message(GenerationTaskConfig, server_params=server_params()))
     else:
         setup_logging()
         run_compute_eval()
