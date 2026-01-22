@@ -55,6 +55,7 @@ METRICS_MAP = {
     "answer-judgement": AnswerJudgementMetrics,
     "arena": ArenaMetrics,
     "audio": AudioMetrics,
+    "speechlm": AudioMetrics,  # Alias for backward compatibility
     "bfcl": BFCLMetrics,
     "bird": BirdMetrics,
     "evalplus": EvalPlusMetrics,
