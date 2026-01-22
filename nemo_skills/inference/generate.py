@@ -416,11 +416,20 @@ class GenerationTask:
 
         # Determine if audio processing is needed
         # Benchmarks that need audio set enable_audio=true in their GENERATION_ARGS
-        needs_audio = self.cfg.enable_audio or self.cfg.server.get("server_type") == "vllm_multimodal"
+        needs_audio = self.cfg.enable_audio
 
         # Build server config, potentially switching to vllm_multimodal for audio tasks
         server_config = dict(self.cfg.server)
-        if needs_audio and server_config.get("server_type") in ["vllm", "vllm_multimodal"]:
+        if needs_audio and server_config.get("server_type") not in ["vllm", "vllm_multimodal"]:
+            LOG.warning(
+                f"enable_audio is set but server_type is '{server_config.get('server_type')}'. "
+                "Audio processing is only supported for vllm_multimodal server types. "
+                "Audio will not be processed."
+            )
+        if needs_audio and server_config.get("server_type") in [
+            "vllm",
+            "vllm_multimodal",
+        ]:  # helps with backward compatibility
             if server_config.get("server_type") == "vllm":
                 LOG.warning("Auto-switching server_type from 'vllm' to 'vllm_multimodal' for audio processing")
             server_config["server_type"] = "vllm_multimodal"
