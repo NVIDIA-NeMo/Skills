@@ -22,9 +22,11 @@ import tempfile
 from pathlib import Path
 
 # Github paths for BFCL
+# using same setup as in the nemo-skills container for consistency
 REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
-BFCL_EVAL_PIP_PACKAGE = "bfcl_eval"
-BFCL_EVAL_GIT_PACKAGE = f"git+{REPO_URL}#subdirectory=berkeley-function-call-leaderboard"
+BFCL_GIT_COMMIT = "86d0374d0db52623c5092a73f82c22b87b7e9a25"
+BFCL_EVAL_SUBDIR = "berkeley-function-call-leaderboard"
+BFCL_EXTRA_INDEX_URL = "https://download.pytorch.org/whl/cpu"
 
 
 # TODO: we should probably move all such runtime installations to an isolated venv..
@@ -35,14 +37,22 @@ def ensure_bfcl_eval_installed():
         return
     except (ModuleNotFoundError, ImportError, AttributeError):
         logging.getLogger(__name__).info("bfcl_eval not found. Installing runtime dependency...")
-        try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / "gorilla"
+            subprocess.run(["git", "clone", REPO_URL, str(repo_dir)], check=True)
+            subprocess.run(["git", "checkout", BFCL_GIT_COMMIT], check=True, cwd=str(repo_dir))
             subprocess.run(
-                [sys.executable, "-m", "pip", "install", BFCL_EVAL_PIP_PACKAGE],
-                check=True,
-            )
-        except subprocess.CalledProcessError:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", BFCL_EVAL_GIT_PACKAGE],
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-cache-dir",
+                    "-e",
+                    str(repo_dir / BFCL_EVAL_SUBDIR),
+                    "--extra-index-url",
+                    BFCL_EXTRA_INDEX_URL,
+                ],
                 check=True,
             )
 
