@@ -14,6 +14,5 @@
 
 DATASET_GROUP = "judge"
 METRICS_TYPE = "gradingbench"
-# This dataset is for evaluating the judge itself, or using a judge to evaluate.
-# If it's a meta-benchmark, we might want to see if the model's judgment matches the expected reward.
-GENERATION_ARGS = "++prompt_config=judge/math ++eval_type=math"
+# This dataset is for evaluating grading ability - the model must grade proofs.
+GENERATION_ARGS = "++prompt_config=judge/imo_gradingbench ++eval_type=math"
