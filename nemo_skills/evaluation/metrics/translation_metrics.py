@@ -12,16 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import subprocess
 from collections import defaultdict
 
+import numpy as np
 from sacrebleu import corpus_bleu
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float
 
 
+def install_packages(lang):
+    """Korean and Japanese tokenizations require extra dependencies."""
+    subprocess.run(
+        ["pip", "install", "-q", f"sacrebleu[{lang}]"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 class TranslationMetrics(BaseMetrics):
-    # TODO: refactor BLEU computation so it reuses parent method functions from pass@k
-    # TODO: add support for other translation metrics, such as COMET and MetricX
+    # TODO: add support for other translation metrics, such as MetricX
 
     def get_metrics(self):
         metrics_dict = {}
@@ -30,35 +41,62 @@ class TranslationMetrics(BaseMetrics):
             preds = self.translation_dict[key]["preds"]
             gts = self.translation_dict[key]["gts"]
 
+            num_seeds = len(preds[0]) if preds else 0
+
             tokenize = "13a"
             if tgt_lang[:2] == "ja":
+                install_packages(tgt_lang[:2])
                 tokenize = "ja-mecab"
             if tgt_lang[:2] == "zh":
                 tokenize = "zh"
             if tgt_lang[:2] == "ko":
+                install_packages(tgt_lang[:2])
                 tokenize = "ko-mecab"
 
-            bleu_score = corpus_bleu(preds, [gts], tokenize=tokenize).score
-            metrics_dict[key] = {"bleu": bleu_score}
-            self.bleu_aggregation_dict["xx->xx"].append(bleu_score)
-            self.bleu_aggregation_dict[f"{src_lang}->xx"].append(bleu_score)
-            self.bleu_aggregation_dict[f"xx->{tgt_lang}"].append(bleu_score)
+            bleu_scores = []
+            for i in range(num_seeds):
+                predictions = [pred[i] for pred in preds]
+                ground_truths = [gt[i] for gt in gts]
+                bleu_scores.append(corpus_bleu(predictions, [ground_truths], tokenize=tokenize).score)
+
+            metrics_dict[key] = {"bleu": bleu_scores}
+            self.bleu_aggregation_dict["xx->xx"].append(bleu_scores)
+            self.bleu_aggregation_dict[f"{src_lang}->xx"].append(bleu_scores)
+            self.bleu_aggregation_dict[f"xx->{tgt_lang}"].append(bleu_scores)
 
             if "comets" in self.translation_dict[key]:
-                comet_score = sum(self.translation_dict[key]["comets"]) / len(self.translation_dict[key]["comets"])
-                metrics_dict[key]["comet"] = comet_score
-                self.comet_aggregation_dict["xx->xx"].append(comet_score)
-                self.comet_aggregation_dict[f"{src_lang}->xx"].append(comet_score)
-                self.comet_aggregation_dict[f"xx->{tgt_lang}"].append(comet_score)
+                comets = list(zip(*self.translation_dict[key]["comets"]))
+                comet_scores = [np.mean(comets[i]) for i in range(num_seeds)]
+                metrics_dict[key]["comet"] = comet_scores
+                self.comet_aggregation_dict["xx->xx"].append(comet_scores)
+                self.comet_aggregation_dict[f"{src_lang}->xx"].append(comet_scores)
+                self.comet_aggregation_dict[f"xx->{tgt_lang}"].append(comet_scores)
 
         for key in self.bleu_aggregation_dict:
-            metrics_dict[key] = {"bleu": sum(self.bleu_aggregation_dict[key]) / len(self.bleu_aggregation_dict[key])}
+            bleus = list(zip(*self.bleu_aggregation_dict[key]))
+            bleu_scores = [np.mean(bleus[i]) for i in range(num_seeds)]
+            metrics_dict[key] = {"bleu": bleu_scores}
+
             if self.comet_aggregation_dict:
-                metrics_dict[key]["comet"] = sum(self.comet_aggregation_dict[key]) / len(
-                    self.comet_aggregation_dict[key]
-                )
+                comets = list(zip(*self.comet_aggregation_dict[key]))
+                comet_scores = [np.mean(comets[i]) for i in range(num_seeds)]
+                metrics_dict[key]["comet"] = comet_scores
+
+        self._add_std_metrics(metrics_dict)
 
         return metrics_dict
+
+    def _add_std_metrics(self, metrics_dict):
+        for key in metrics_dict:
+            metrics_list = ["bleu"]
+            if "comet" in metrics_dict[key]:
+                metrics_list.append("comet")
+
+            for metric in metrics_list:
+                avg = np.mean(metrics_dict[key][metric])
+                std = np.std(metrics_dict[key][metric])
+
+                metrics_dict[key].update({metric: avg, f"{metric}_statistics": {"std_dev_across_runs": std}})
 
     def update(self, predictions):
         """Updating the evaluation results with the current element.
@@ -69,20 +107,25 @@ class TranslationMetrics(BaseMetrics):
         """
         super().update(predictions)
 
+        generations, ground_truths, comets = [], [], []
         for pred in predictions:
             src_lang = pred["source_language"]
             tgt_lang = pred["target_language"]
-            generation = pred["generation"]
-            ground_truth = pred["translation"]
 
+            generation = pred["generation"]
             if generation is None:
                 generation = ""
 
-            self.translation_dict[f"{src_lang}->{tgt_lang}"]["preds"].append(generation)
-            self.translation_dict[f"{src_lang}->{tgt_lang}"]["gts"].append(ground_truth)
-
+            generations.append(generation)
+            ground_truths.append(pred["translation"])
             if "comet" in pred:
-                self.translation_dict[f"{src_lang}->{tgt_lang}"]["comets"].append(pred["comet"] * 100)
+                comets.append(pred["comet"] * 100)
+
+        self.translation_dict[f"{src_lang}->{tgt_lang}"]["preds"].append(generations)
+        self.translation_dict[f"{src_lang}->{tgt_lang}"]["gts"].append(ground_truths)
+
+        if "comet" in pred:
+            self.translation_dict[f"{src_lang}->{tgt_lang}"]["comets"].append(comets)
 
     def reset(self):
         super().reset()
