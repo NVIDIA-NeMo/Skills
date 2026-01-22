@@ -23,7 +23,7 @@ import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException
-from serpapi import GoogleSearch
+from serpapi.google_search import GoogleSearch
 
 ERROR_TEMPLATES = [
     "503 Server Error: Service Unavailable for url: {url}",
