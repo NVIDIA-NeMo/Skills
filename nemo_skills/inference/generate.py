@@ -205,6 +205,15 @@ class GenerationTaskConfig:
     # If True, will enable litellm disk cache (useful for keeping intermediate results in case of job timelimit failures)
     enable_litellm_cache: bool = False
 
+    # List of content types to drop from messages (e.g., base64 audio) to keep output files smaller
+    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url"])
+
+    # Audio configuration - set by benchmarks that need audio processing (mmau-pro, audiobench, etc.)
+    enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
+    enable_audio_chunking: bool = True
+    audio_chunk_task_types: list[str] | None = None  # If None, chunk all task types; if specified, only chunk these
+    chunk_audio_threshold_sec: int = 30  # Duration in seconds for each audio chunk
+
     # Evaluation setup if requested. If eval_type is set to None, evaluation is skipped
     eval_type: str | None = None  # "lean4-proof", "math", etc.
     eval_config: dict = field(default_factory=dict)  # Config for the evaluator
@@ -408,9 +417,37 @@ class GenerationTask:
 
         output_dir = str(Path(self.cfg.output_file).parent)
 
+        # Determine if audio processing is needed
+        # Benchmarks that need audio set enable_audio=true in their GENERATION_ARGS
+        needs_audio = self.cfg.enable_audio
+
+        # Build server config, potentially switching to vllm_multimodal for audio tasks
+        server_config = dict(self.cfg.server)
+        if needs_audio and server_config.get("server_type") not in ["vllm", "vllm_multimodal"]:
+            LOG.warning(
+                f"enable_audio is set but server_type is '{server_config.get('server_type')}'. "
+                "Audio processing is only supported for vllm_multimodal server types. "
+                "Audio will not be processed."
+            )
+        if needs_audio and server_config.get("server_type") in [
+            "vllm",
+            "vllm_multimodal",
+        ]:  # helps with backward compatibility
+            if server_config.get("server_type") == "vllm":
+                LOG.warning("Auto-switching server_type from 'vllm' to 'vllm_multimodal' for audio processing")
+            server_config["server_type"] = "vllm_multimodal"
+            # Pass audio chunking config
+            server_config.update(
+                {
+                    "enable_audio_chunking": self.cfg.enable_audio_chunking,
+                    "audio_chunk_task_types": self.cfg.audio_chunk_task_types,
+                    "chunk_audio_threshold_sec": self.cfg.chunk_audio_threshold_sec,
+                }
+            )
+
         if self.cfg.code_execution:
             llm = get_code_execution_model(
-                **self.cfg.server,
+                **server_config,
                 tokenizer=self.tokenizer,
                 sandbox=self.sandbox,
                 data_dir=self.data_dir or "",
@@ -418,7 +455,7 @@ class GenerationTask:
             )
         elif self.cfg.tool_modules is not None:
             llm = get_tool_calling_model(
-                **self.cfg.server,
+                **server_config,
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
                 schema_overrides=self.cfg.schema_overrides,
@@ -429,7 +466,7 @@ class GenerationTask:
             )
         else:
             llm = get_model(
-                **self.cfg.server, tokenizer=self.tokenizer, data_dir=self.data_dir or "", output_dir=output_dir
+                **server_config, tokenizer=self.tokenizer, data_dir=self.data_dir or "", output_dir=output_dir
             )
 
         if self.cfg.parallel_thinking.mode is not None:
@@ -564,6 +601,25 @@ class GenerationTask:
         for output in outputs:
             fout.write(json.dumps(output) + "\n")
 
+    def drop_fields_from_messages(self, output):
+        """Remove specified content types from messages to keep output files smaller.
+
+        Filters out content types listed in drop_content_types config f.e. base64 data.
+        """
+        # Skip if output doesn't have messages (e.g., text completion mode or error cases)
+        if "messages" not in output:
+            return
+
+        for message in output["messages"]:
+            # Skip if content is not a list (e.g., string content in system messages)
+            if not isinstance(message.get("content"), list):
+                continue
+
+            # Filter out content types specified in drop_content_types config
+            message["content"] = [
+                content for content in message["content"] if content.get("type") not in self.cfg.drop_content_types
+            ]
+
     async def postprocess_single_output(self, output, original_data_point):
         # to make it easier to follow up with other generations and limit accidental errors, we are adding
         # all of the original data to the output file alongside the new generations
@@ -579,6 +635,10 @@ class GenerationTask:
         for key in output:
             original_data_point.pop(key, None)
         output.update(original_data_point)
+
+        # Drop specified content types (f.e base64 audio) from output to reduce file size
+        self.drop_fields_from_messages(output)
+
         if self.cfg.parse_reasoning:
             parse_reasoning(
                 output,
