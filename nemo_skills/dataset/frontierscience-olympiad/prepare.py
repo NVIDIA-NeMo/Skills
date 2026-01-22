@@ -17,10 +17,13 @@ import json
 import re
 from pathlib import Path
 
-import requests
+from datasets import load_dataset
 from tqdm import tqdm
 
-OLYMPIAD_URL = "https://huggingface.co/datasets/openai/frontierscience/resolve/main/olympiad/test.jsonl"
+HF_REPO = "openai/frontierscience"
+HF_CONFIG = "olympiad"
+HF_SPLIT = "test"
+HF_DATA_FILE = "olympiad/test.jsonl"
 
 # Map of available subjects
 SUBJECTS = ["chemistry", "biology", "physics"]
@@ -68,19 +71,16 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Load the FrontierScience olympiad dataset directly from HuggingFace
-    print(f"Downloading FrontierScience olympiad dataset from {OLYMPIAD_URL}...")
-
-    try:
-        response = requests.get(OLYMPIAD_URL, timeout=30)
-    except Exception as e:
-        raise RuntimeError(f"Error downloading dataset from {OLYMPIAD_URL}: {e}")
-
-    # Parse JSONL data
-    olympiad_data = []
-    for line in response.text.strip().split("\n"):
-        if line:
-            olympiad_data.append(json.loads(line))
+    # Load the FrontierScience olympiad dataset from HuggingFace datasets API
+    print(
+        "Loading FrontierScience olympiad dataset from HuggingFace datasets "
+        f"({HF_REPO}, {HF_CONFIG}, split={HF_SPLIT})..."
+    )
+    olympiad_data = load_dataset(
+        HF_REPO,
+        data_files={HF_SPLIT: HF_DATA_FILE},
+        split=HF_SPLIT,
+    )
 
     print(f"Loaded {len(olympiad_data)} olympiad problems")
 
