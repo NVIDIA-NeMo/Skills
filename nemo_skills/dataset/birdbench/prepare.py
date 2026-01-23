@@ -17,7 +17,6 @@ import json
 import os
 import re
 import sqlite3
-import time
 import zipfile
 from pathlib import Path
 
@@ -28,22 +27,7 @@ def download_data(data_dir):
     # Download zip directly (HF Dataset is missing SQL files and table info)
     print("Downloading and extracting data file...")
     url = "https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip"
-    filename = None
-    last_exc = None
-    for attempt in range(1, 4):
-        try:
-            filename = wget.download(url, out=data_dir)
-            break
-        except Exception as exc:
-            last_exc = exc
-            if filename:
-                partial_path = Path(data_dir, filename)
-                if partial_path.exists():
-                    partial_path.unlink()
-            if attempt < 3:
-                time.sleep(0.5 * attempt)
-    if filename is None:
-        raise RuntimeError(f"Failed to download {url}") from last_exc
+    filename = wget.download(url, out=data_dir)
     with zipfile.ZipFile(Path(data_dir, filename), "r") as f_in:
         f_in.extractall(data_dir)
 
