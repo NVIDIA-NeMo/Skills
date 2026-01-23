@@ -13,6 +13,8 @@
 # limitations under the License.
 
 
+import importlib.util
+import os
 import random
 import time
 from typing import Optional
@@ -20,8 +22,6 @@ from typing import Optional
 import html2text
 import requests
 from bs4 import BeautifulSoup
-from ddgs import DDGS
-from ddgs.exceptions import DDGSException
 
 ERROR_TEMPLATES = [
     "503 Server Error: Service Unavailable for url: {url}",
@@ -41,15 +41,203 @@ ERROR_TEMPLATES = [
 ]
 
 
+class WebSearchBackendUnavailable(RuntimeError):
+    """Raised when neither ddgs nor serpapi is available to perform web search."""
+
+
 class WebSearchAPI:
     def __init__(self):
         self._api_description = "This tool belongs to the Web Search API category. It provides functions to search the web and browse search results."
         self.show_snippet = True
+        self._warned_no_serp_key = False
+        self._validated_backends = False
 
     def _load_scenario(self, initial_config: dict, long_context: bool = False):
         # We don't care about the long_context parameter here
         # It's there to match the signature of functions in the multi-turn evaluation code
         self.show_snippet = initial_config["show_snippet"]
+        # Validate once per instance so BFCL fails fast before generation starts.
+        self._validate_backends_available()
+
+    @staticmethod
+    def _get_serp_api_key() -> Optional[str]:
+        """
+        Returns SERP API key if configured.
+        """
+        return os.environ.get("SERPAPI_API_KEY")
+
+    @staticmethod
+    def _has_module(module_name: str) -> bool:
+        # find_spec avoids importing the module (important for optional deps / older containers)
+        return importlib.util.find_spec(module_name) is not None
+
+    def _validate_backends_available(self):
+        """
+        Fail fast if web search cannot possibly work in this environment.
+
+        Rules:
+        - If SERPAPI_API_KEY is not set: we require ddgs (native DuckDuckGo) to be importable.
+        - If SERPAPI_API_KEY is set: we require at least one usable backend:
+            - serpapi (preferred), OR
+            - ddgs (fallback if serpapi missing)
+        """
+        if self._validated_backends:
+            return
+        self._validated_backends = True
+
+        has_ddgs = self._has_module("ddgs")
+        has_serpapi = self._has_module("serpapi")
+        serp_key = self._get_serp_api_key()
+
+        if serp_key:
+            if not has_serpapi and not has_ddgs:
+                raise WebSearchBackendUnavailable(
+                    "SERPAPI_API_KEY is set, but neither serpapi nor ddgs is installed. "
+                    "Install serpapi to use SerpApi's DuckDuckGo engine or install ddgs to fall back to native DuckDuckGo."
+                )
+        else:
+            if not has_ddgs:
+                raise WebSearchBackendUnavailable(
+                    "SERPAPI_API_KEY is not set and ddgs is not installed, so web search cannot run. "
+                    "Install ddgs to use native DuckDuckGo search, or set SERPAPI_API_KEY and install serpapi."
+                )
+
+    def _warn_no_serp_api_key_once(self):
+        if self._warned_no_serp_key:
+            return
+        self._warned_no_serp_key = True
+        print(
+            (
+                "*"
+                * 100
+                + "\n⚠️  [WebSearchAPI] SERPAPI_API_KEY is not set. Falling back to native DuckDuckGo (ddgs). "
+                "This may be rate-limited or blocked under high parallelism. "
+                "If you see repeated blocks/rate limits, set SERPAPI_API_KEY to use SerpApi's DuckDuckGo engine."
+                + "\n"
+                + "*" * 100
+            )
+        )
+
+    def _format_results(self, results: list[dict]) -> list[dict]:
+        """Normalize results into the expected schema for the eval."""
+        formatted = []
+        for r in results:
+            if self.show_snippet:
+                formatted.append({"title": r.get("title", ""), "href": r.get("href", ""), "body": r.get("body", "")})
+            else:
+                formatted.append({"title": r.get("title", ""), "href": r.get("href", "")})
+        return formatted
+
+    def _search_with_serpapi_duckduckgo(
+        self, *, keywords: str, max_results: int, region: str, api_key: str
+    ) -> list[dict]:
+        """
+        Use SerpApi's DuckDuckGo engine (not ddgs) when SERPAPI_API_KEY is available.
+        """
+        try:
+            # Dynamic import: allow running in older containers without serpapi installed,
+            # as long as ddgs is available and SERPAPI_API_KEY is not required.
+            from serpapi.google_search import GoogleSearch  # type: ignore
+        except Exception as e:
+            # Let the caller decide whether to fall back to ddgs or fail hard.
+            raise ModuleNotFoundError("serpapi is not installed") from e
+
+        backoff = 2  # initial back-off in seconds (matches the reference implementation)
+
+        # SerpApi expects engine='duckduckgo'
+        params = {
+            "engine": "duckduckgo",
+            "q": keywords,
+            "kl": region,
+            "api_key": api_key,
+        }
+
+        # Infinite retry loop with exponential backoff on 429s (matches reference behavior)
+        while True:
+            try:
+                search_results = GoogleSearch(params).get_dict()
+            except Exception as e:
+                # If the underlying HTTP call raised a 429 we retry, otherwise propagate as an error
+                if "429" in str(e):
+                    wait_time = backoff + random.uniform(0, backoff)
+                    error_block = (
+                        "*"
+                        * 100
+                        + "\n❗️❗️ [WebSearchAPI] Received 429 from SerpAPI. The number of requests sent using this API key "
+                        "exceeds the hourly throughput limit OR your account has run out of searches. "
+                        f"Retrying in {wait_time:.1f} seconds…" + "*" * 100
+                    )
+                    print(error_block)
+                    time.sleep(wait_time)
+                    backoff = min(backoff * 2, 120)  # cap the back-off
+                    continue
+                error_block = (
+                    "*" * 100
+                    + f"\n❗️❗️ [WebSearchAPI] Error from SerpAPI: {str(e)}. This is not a rate-limit error, so it will not be retried."
+                    + "*" * 100
+                )
+                print(error_block)
+                return {"error": str(e)}
+
+            # SerpAPI sometimes returns the error in the payload instead of raising
+            if "error" in search_results and "429" in str(search_results["error"]):
+                wait_time = backoff + random.uniform(0, backoff)
+                error_block = (
+                    "*"
+                    * 100
+                    + "\n❗️❗️ [WebSearchAPI] Received 429 from SerpAPI. The number of requests sent using this API key "
+                    "exceeds the hourly throughput limit OR your account has run out of searches. "
+                    f"Retrying in {wait_time:.1f} seconds…" + "*" * 100
+                )
+                print(error_block)
+                time.sleep(wait_time)
+                backoff = min(backoff * 2, 120)
+                continue
+
+            break  # Success – no rate-limit error detected
+
+        organic = search_results.get("organic_results") or []
+        if not organic:
+            # Keep behavior aligned with reference (no organic_results => error)
+            return {"error": "Failed to retrieve the search results from server. Please try again later."}
+
+        out: list[dict] = []
+        for item in organic[:max_results]:
+            out.append(
+                {
+                    "title": item.get("title", ""),
+                    "href": item.get("link", ""),
+                    "body": item.get("snippet", ""),
+                }
+            )
+        return out
+
+    def _search_with_ddgs(self, *, keywords: str, max_results: int, region: str) -> list[dict]:
+        try:
+            # Dynamic import: allow running in older containers without ddgs installed,
+            # as long as serpapi is available when SERPAPI_API_KEY is set.
+            from ddgs import DDGS  # type: ignore
+        except Exception:
+            raise WebSearchBackendUnavailable(
+                "Neither ddgs nor serpapi is available for web search. "
+                "Install ddgs to use native DuckDuckGo search, or set SERPAPI_API_KEY and install serpapi to use SerpApi."
+            )
+
+        # DDGS.text() may return an iterator; normalize to list.
+        search_results = DDGS(timeout=60).text(
+            query=keywords, region=region, max_results=max_results, backend="duckduckgo"
+        )
+        results_list = list(search_results) if search_results else []
+        out = []
+        for result in results_list[:max_results]:
+            out.append(
+                {
+                    "title": result.get("title", ""),
+                    "href": result.get("href", ""),
+                    "body": result.get("body", ""),
+                }
+            )
+        return out
 
     def search_engine_query(
         self,
@@ -141,21 +329,50 @@ class WebSearchAPI:
         """
         backoff = 10  # initial back-off in seconds
 
+        # Prefer SerpApi if configured (more reliable under parallelism / rate limits).
+        serp_api_key = self._get_serp_api_key()
+        if serp_api_key:
+            try:
+                serp_results = self._search_with_serpapi_duckduckgo(
+                    keywords=keywords,
+                    max_results=max_results or 10,
+                    region=region or "wt-wt",
+                    api_key=serp_api_key,
+                )
+                # _search_with_serpapi_duckduckgo may return {"error": "..."} for non-retryable failures
+                if isinstance(serp_results, dict) and "error" in serp_results:
+                    return serp_results
+                return self._format_results(serp_results)
+            except ModuleNotFoundError:
+                # Optional requirement: if serpapi isn't installed in an older container, warn and fall back to ddgs.
+                # If ddgs is also missing, _search_with_ddgs will raise RuntimeError (hard fail).
+                print(
+                    (
+                        "*" * 100 + "\n⚠️  [WebSearchAPI] SERPAPI_API_KEY is set but serpapi is not installed. "
+                        "Falling back to native DuckDuckGo (ddgs)." + "\n" + "*" * 100
+                    )
+                )
+        else:
+            self._warn_no_serp_api_key_once()
+
         # Infinite retry loop with exponential backoff
         while True:
             try:
                 wait_time = backoff + random.uniform(0, backoff)
-                search_results = DDGS(timeout=60).text(
-                    query=keywords, region=region, max_results=max_results, backend="duckduckgo"
+                search_results = self._search_with_ddgs(
+                    keywords=keywords, max_results=max_results or 10, region=region or "wt-wt"
                 )
 
-            except DDGSException as e:
+            except WebSearchBackendUnavailable:
+                # Hard fail: don't convert this to {"error": ...} since the harness should stop.
+                raise
+            except Exception as e:
                 if "No results found" in str(e):
                     wait_time = backoff + random.uniform(0, backoff)
                     error_block = (
-                        "*" * 100
-                        + f"\n❗️❗️ [WebSearchAPI] Hit rate limit on DuckDuckGo requests. This is a common behaviour. If unable to run eval due to repeated rate limits, try to decrease job parallelism. Retrying in {wait_time:.1f} seconds…"
-                        + "*" * 100
+                        "*" * 100 + f"\n❗️❗️ [WebSearchAPI] Hit a block/rate-limit on DuckDuckGo requests. "
+                        f"If unable to run eval due to repeated blocks, try to decrease job parallelism or set SERPAPI_API_KEY "
+                        f"to use SerpApi's DuckDuckGo engine. Retrying in {wait_time:.1f} seconds…" + "*" * 100
                     )
                     print(error_block)
                     time.sleep(wait_time)
@@ -163,9 +380,11 @@ class WebSearchAPI:
                     continue
                 else:
                     error_block = (
-                        "*" * 100
-                        + f"\n❗️❗️ [WebSearchAPI] Error from DuckDuckGo: {str(e)}. This is not a rate-limit error, so it will not be retried."
-                        + "*" * 100
+                        "*" * 100 + f"\n❗️❗️ [WebSearchAPI] Error from DuckDuckGo (ddgs): {str(e)}. "
+                        "This is not a recognized retryable rate-limit error, so it will not be retried. "
+                        "If you suspect blocking/rate limiting, consider setting SERPAPI_API_KEY to use SerpApi."
+                        + "*"
+                        * 100
                     )
                     print(error_block)
                 return {"error": str(e)}
@@ -175,26 +394,7 @@ class WebSearchAPI:
         if not search_results:
             return {"error": "Failed to retrieve the search results from server. Please try again later."}
 
-        # Convert the search results to the desired format
-        results = []
-        for result in search_results[:max_results]:
-            if self.show_snippet:
-                results.append(
-                    {
-                        "title": result["title"],
-                        "href": result["href"],
-                        "body": result["body"],
-                    }
-                )
-            else:
-                results.append(
-                    {
-                        "title": result["title"],
-                        "href": result["href"],
-                    }
-                )
-
-        return results
+        return self._format_results(search_results[: (max_results or 10)])
 
     def fetch_url_content(self, url: str, mode: str = "raw") -> str:
         """
