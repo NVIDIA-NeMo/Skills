@@ -156,6 +156,25 @@ def test_aaa_prepare_and_eval_all_datasets():
         config_dir=str(config_dir),
     )
 
+    eval_results_dir = Path(output_dir) / "eval-results"
+
+    missing_outputs = []
+    for dataset in non_judge_datasets:
+        dataset_output_dir = eval_results_dir / dataset
+        output_files = list(dataset_output_dir.glob("output*.jsonl"))
+        if not output_files:
+            missing_outputs.append(dataset)
+
+    assert not missing_outputs, f"Missing eval outputs for datasets: {missing_outputs}"
+
+    summary_metrics_file = eval_results_dir / "metrics.json"
+    assert summary_metrics_file.exists(), "Missing metrics.json summary for non-bfcl datasets"
+    with open(summary_metrics_file, "r") as f:
+        summary_metrics = json.load(f)
+
+    missing_metrics = [dataset for dataset in non_judge_datasets if dataset not in summary_metrics]
+    assert not missing_metrics, f"Missing metrics for datasets in metrics.json: {missing_metrics}"
+
     # have to process bfcl separately as it's eval group and fails on summarize results.
     # It also needs a special eval arg
     # TODO: after summarize results works natively with eval groups, we can merge these
@@ -170,19 +189,8 @@ def test_aaa_prepare_and_eval_all_datasets():
         **eval_kwargs,
     )
 
-    eval_results_dir = Path(output_dir) / "eval-results"
-    missing_outputs = []
-    for dataset in non_judge_datasets:
-        dataset_output_dir = eval_results_dir / dataset
-        output_files = list(dataset_output_dir.glob("output*.jsonl"))
-        if not output_files:
-            missing_outputs.append(dataset)
-
-    assert not missing_outputs, f"Missing eval outputs for datasets: {missing_outputs}"
-
-    for dataset in non_judge_datasets + ["bfcl_v3"]:
-        metrics_file = eval_results_dir / dataset / "metrics.json"
-        assert metrics_file.exists(), f"Missing metrics.json for dataset {dataset}"
+    bfcl_metrics_file = eval_results_dir / "bfcl_v3" / "metrics.json"
+    assert bfcl_metrics_file.exists(), "Missing metrics.json for dataset bfcl_v3"
 
     # TODO: add same for judge_datasets after generate supports num_jobs
     # (otherwise it starts judge every time and takes forever)
