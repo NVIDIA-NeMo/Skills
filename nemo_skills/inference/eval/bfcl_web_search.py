@@ -21,9 +21,6 @@ from typing import Optional
 import html2text
 import requests
 from bs4 import BeautifulSoup
-from ddgs import DDGS
-from ddgs.exceptions import DDGSException
-from serpapi.google_search import GoogleSearch
 
 ERROR_TEMPLATES = [
     "503 Server Error: Service Unavailable for url: {url}",
@@ -93,6 +90,18 @@ class WebSearchAPI:
         """
         Use SerpApi's DuckDuckGo engine (not ddgs) when SERPAPI_API_KEY is available.
         """
+        try:
+            # Dynamic import: allow running in older containers without serpapi installed,
+            # as long as ddgs is available and SERPAPI_API_KEY is not required.
+            from serpapi.google_search import GoogleSearch  # type: ignore
+        except Exception:
+            return {
+                "error": (
+                    "serpapi is not installed, but SERPAPI_API_KEY is set. "
+                    "Install serpapi to use SerpApi's DuckDuckGo engine, or unset SERPAPI_API_KEY to fall back to ddgs."
+                )
+            }
+
         backoff = 2  # initial back-off in seconds (matches the reference implementation)
 
         # SerpApi expects engine='duckduckgo'
@@ -164,6 +173,18 @@ class WebSearchAPI:
         return out
 
     def _search_with_ddgs(self, *, keywords: str, max_results: int, region: str) -> list[dict]:
+        try:
+            # Dynamic import: allow running in older containers without ddgs installed,
+            # as long as serpapi is available when SERPAPI_API_KEY is set.
+            from ddgs import DDGS  # type: ignore
+        except Exception:
+            return {
+                "error": (
+                    "ddgs is not installed. Install ddgs to use native DuckDuckGo search, "
+                    "or set SERPAPI_API_KEY and install serpapi to use SerpApi."
+                )
+            }
+
         # DDGS.text() may return an iterator; normalize to list.
         search_results = DDGS(timeout=60).text(
             query=keywords, region=region, max_results=max_results, backend="duckduckgo"
@@ -281,7 +302,16 @@ class WebSearchAPI:
             )
             # _search_with_serpapi_duckduckgo may return {"error": "..."} for non-retryable failures
             if isinstance(serp_results, dict) and "error" in serp_results:
-                return serp_results
+                # Optional requirement: if serpapi isn't installed in an older container, warn and fall back to ddgs.
+                if "serpapi is not installed" in str(serp_results["error"]).lower():
+                    print(
+                        (
+                            "*" * 100 + "\n⚠️  [WebSearchAPI] SERPAPI_API_KEY is set but serpapi is not installed. "
+                            "Falling back to native DuckDuckGo (ddgs)." + "\n" + "*" * 100
+                        )
+                    )
+                else:
+                    return serp_results
             return self._format_results(serp_results)
         else:
             self._warn_no_serp_api_key_once()
@@ -293,8 +323,10 @@ class WebSearchAPI:
                 search_results = self._search_with_ddgs(
                     keywords=keywords, max_results=max_results or 10, region=region or "wt-wt"
                 )
+                if isinstance(search_results, dict) and "error" in search_results:
+                    return search_results
 
-            except DDGSException as e:
+            except Exception as e:
                 if "No results found" in str(e):
                     wait_time = backoff + random.uniform(0, backoff)
                     error_block = (
