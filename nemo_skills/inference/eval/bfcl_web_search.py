@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import importlib.util
 import os
 import random
 import time
@@ -40,16 +41,23 @@ ERROR_TEMPLATES = [
 ]
 
 
+class WebSearchBackendUnavailable(RuntimeError):
+    """Raised when neither ddgs nor serpapi is available to perform web search."""
+
+
 class WebSearchAPI:
     def __init__(self):
         self._api_description = "This tool belongs to the Web Search API category. It provides functions to search the web and browse search results."
         self.show_snippet = True
         self._warned_no_serp_key = False
+        self._validated_backends = False
 
     def _load_scenario(self, initial_config: dict, long_context: bool = False):
         # We don't care about the long_context parameter here
         # It's there to match the signature of functions in the multi-turn evaluation code
         self.show_snippet = initial_config["show_snippet"]
+        # Validate once per instance so BFCL fails fast before generation starts.
+        self._validate_backends_available()
 
     @staticmethod
     def _get_serp_api_key() -> Optional[str]:
@@ -57,6 +65,42 @@ class WebSearchAPI:
         Returns SERP API key if configured.
         """
         return os.environ.get("SERPAPI_API_KEY")
+
+    @staticmethod
+    def _has_module(module_name: str) -> bool:
+        # find_spec avoids importing the module (important for optional deps / older containers)
+        return importlib.util.find_spec(module_name) is not None
+
+    def _validate_backends_available(self):
+        """
+        Fail fast if web search cannot possibly work in this environment.
+
+        Rules:
+        - If SERPAPI_API_KEY is not set: we require ddgs (native DuckDuckGo) to be importable.
+        - If SERPAPI_API_KEY is set: we require at least one usable backend:
+            - serpapi (preferred), OR
+            - ddgs (fallback if serpapi missing)
+        """
+        if self._validated_backends:
+            return
+        self._validated_backends = True
+
+        has_ddgs = self._has_module("ddgs")
+        has_serpapi = self._has_module("serpapi")
+        serp_key = self._get_serp_api_key()
+
+        if serp_key:
+            if not has_serpapi and not has_ddgs:
+                raise WebSearchBackendUnavailable(
+                    "SERPAPI_API_KEY is set, but neither serpapi nor ddgs is installed. "
+                    "Install serpapi to use SerpApi's DuckDuckGo engine or install ddgs to fall back to native DuckDuckGo."
+                )
+        else:
+            if not has_ddgs:
+                raise WebSearchBackendUnavailable(
+                    "SERPAPI_API_KEY is not set and ddgs is not installed, so web search cannot run. "
+                    "Install ddgs to use native DuckDuckGo search, or set SERPAPI_API_KEY and install serpapi."
+                )
 
     def _warn_no_serp_api_key_once(self):
         if self._warned_no_serp_key:
@@ -94,13 +138,9 @@ class WebSearchAPI:
             # Dynamic import: allow running in older containers without serpapi installed,
             # as long as ddgs is available and SERPAPI_API_KEY is not required.
             from serpapi.google_search import GoogleSearch  # type: ignore
-        except Exception:
-            return {
-                "error": (
-                    "serpapi is not installed, but SERPAPI_API_KEY is set. "
-                    "Install serpapi to use SerpApi's DuckDuckGo engine, or unset SERPAPI_API_KEY to fall back to ddgs."
-                )
-            }
+        except Exception as e:
+            # Let the caller decide whether to fall back to ddgs or fail hard.
+            raise ModuleNotFoundError("serpapi is not installed") from e
 
         backoff = 2  # initial back-off in seconds (matches the reference implementation)
 
@@ -178,12 +218,10 @@ class WebSearchAPI:
             # as long as serpapi is available when SERPAPI_API_KEY is set.
             from ddgs import DDGS  # type: ignore
         except Exception:
-            return {
-                "error": (
-                    "ddgs is not installed. Install ddgs to use native DuckDuckGo search, "
-                    "or set SERPAPI_API_KEY and install serpapi to use SerpApi."
-                )
-            }
+            raise WebSearchBackendUnavailable(
+                "Neither ddgs nor serpapi is available for web search. "
+                "Install ddgs to use native DuckDuckGo search, or set SERPAPI_API_KEY and install serpapi to use SerpApi."
+            )
 
         # DDGS.text() may return an iterator; normalize to list.
         search_results = DDGS(timeout=60).text(
@@ -294,25 +332,26 @@ class WebSearchAPI:
         # Prefer SerpApi if configured (more reliable under parallelism / rate limits).
         serp_api_key = self._get_serp_api_key()
         if serp_api_key:
-            serp_results = self._search_with_serpapi_duckduckgo(
-                keywords=keywords,
-                max_results=max_results or 10,
-                region=region or "wt-wt",
-                api_key=serp_api_key,
-            )
-            # _search_with_serpapi_duckduckgo may return {"error": "..."} for non-retryable failures
-            if isinstance(serp_results, dict) and "error" in serp_results:
-                # Optional requirement: if serpapi isn't installed in an older container, warn and fall back to ddgs.
-                if "serpapi is not installed" in str(serp_results["error"]).lower():
-                    print(
-                        (
-                            "*" * 100 + "\n⚠️  [WebSearchAPI] SERPAPI_API_KEY is set but serpapi is not installed. "
-                            "Falling back to native DuckDuckGo (ddgs)." + "\n" + "*" * 100
-                        )
-                    )
-                else:
+            try:
+                serp_results = self._search_with_serpapi_duckduckgo(
+                    keywords=keywords,
+                    max_results=max_results or 10,
+                    region=region or "wt-wt",
+                    api_key=serp_api_key,
+                )
+                # _search_with_serpapi_duckduckgo may return {"error": "..."} for non-retryable failures
+                if isinstance(serp_results, dict) and "error" in serp_results:
                     return serp_results
-            return self._format_results(serp_results)
+                return self._format_results(serp_results)
+            except ModuleNotFoundError:
+                # Optional requirement: if serpapi isn't installed in an older container, warn and fall back to ddgs.
+                # If ddgs is also missing, _search_with_ddgs will raise RuntimeError (hard fail).
+                print(
+                    (
+                        "*" * 100 + "\n⚠️  [WebSearchAPI] SERPAPI_API_KEY is set but serpapi is not installed. "
+                        "Falling back to native DuckDuckGo (ddgs)." + "\n" + "*" * 100
+                    )
+                )
         else:
             self._warn_no_serp_api_key_once()
 
@@ -323,9 +362,10 @@ class WebSearchAPI:
                 search_results = self._search_with_ddgs(
                     keywords=keywords, max_results=max_results or 10, region=region or "wt-wt"
                 )
-                if isinstance(search_results, dict) and "error" in search_results:
-                    return search_results
 
+            except WebSearchBackendUnavailable:
+                # Hard fail: don't convert this to {"error": ...} since the harness should stop.
+                raise
             except Exception as e:
                 if "No results found" in str(e):
                     wait_time = backoff + random.uniform(0, backoff)
