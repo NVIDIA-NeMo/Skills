@@ -291,6 +291,11 @@ class GenerationTask:
 
         return get_server_command
 
+    @classmethod
+    def get_generation_requirements(cls) -> list[str] | None:
+        """Return extra requirements for this generation module, if any."""
+        return None
+
     def __init__(self, cfg: GenerationTaskConfig):
         """
         Class that represents a generation task. It implements a template of steps to generate solutions using LLMs.
