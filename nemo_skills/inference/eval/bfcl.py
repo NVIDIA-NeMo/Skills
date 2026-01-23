@@ -310,7 +310,7 @@ class ServerMessageParser:
 
         # Use model output if not a tool call
         if isinstance(output_dict["message"], dict):
-            message_content = output_dict["message"].get("content", "")
+            message_content = output_dict["message"]["content"]
         else:
             message_content = output_dict["message"].content
         output_dict["generation"] = generation if generation else [message_content]
@@ -322,7 +322,7 @@ class ServerMessageParser:
 
     def get_response_text(self, message):
         if isinstance(message, dict):
-            return message.get("content")
+            return message["content"]
         return message.content
 
     def set_response_text(self, message, response_text):
