@@ -20,17 +20,8 @@ from dataclasses import asdict, field
 from functools import partial
 
 import hydra
-from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
-    MemoryAPI,
-)
-from bfcl_eval.model_handler.utils import add_memory_instruction_system_prompt
-from bfcl_eval.utils import is_memory, is_memory_prereq
 from transformers import AutoTokenizer
 
-from nemo_skills.dataset.bfcl_v3.utils import (
-    convert_to_tool,
-    func_doc_language_specific_pre_processing,
-)
 from nemo_skills.inference.eval.bfcl_utils import (
     DEFAULT_USER_PROMPT_FOR_ADDITIONAL_FUNCTION_FC,
     MAXIMUM_STEP_LIMIT,
@@ -55,6 +46,42 @@ from nemo_skills.utils import (
 )
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+BFCL_REQUIREMENTS = [
+    # Source: https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/pyproject.toml
+    "requests",
+    "tqdm",
+    "numpy==1.26.4",
+    "pandas",
+    "huggingface_hub",
+    "pydantic>=2.8.2",
+    "python-dotenv>=1.0.1",
+    "tree_sitter==0.21.3",
+    "tree-sitter-java==0.21.0",
+    "tree-sitter-javascript==0.21.4",
+    "openai>=1.86.0",
+    "mistralai==1.7.0",
+    "anthropic>=0.75.0",
+    "cohere==5.18.0",
+    "typer>=0.12.5",
+    "tabulate>=0.9.0",
+    "datamodel-code-generator==0.25.7",
+    "google-genai>=1.52.0",
+    "qwen-agent",
+    "mpmath==1.3.0",
+    "tenacity>=8.5.0",
+    "writer-sdk>=2.1.0",
+    "overrides",
+    "boto3",
+    "beautifulsoup4",
+    "html2text",
+    "rank_bm25==0.2.2",
+    "google-search-results",
+    "sentence-transformers>=2.7.0",
+    "faiss-cpu==1.11.0",
+    "networkx==3.3",
+    "filelock==3.20.0",
+]
 
 
 @nested_dataclass(kw_only=True)
@@ -192,7 +219,19 @@ class ClientMessageParser:
 
     def parse_output_dict(self, output_dict: dict):
         """Parse the output dictionary to get the model response."""
-        parsed_response = self.response_parser(output_dict["response"])
+        response = output_dict.get("response")
+        if response is None:
+            if self.cfg.server.get("enable_soft_fail", False):
+                LOG.info(
+                    "Soft-fail enabled: missing 'response' in output_dict; something went wrong with this generation. "
+                    "Output dict: %s",
+                    output_dict,
+                )
+                parsed_response = {"content": ""}
+            else:
+                raise KeyError(f"Missing 'response' in output_dict: {output_dict!r}")
+        else:
+            parsed_response = self.response_parser(response)
 
         model_response = {
             "role": "assistant",
@@ -243,20 +282,38 @@ class ServerMessageParser:
 
     def parse_output_dict(self, output_dict: dict):
         """Parse the output dictionary to get the model response."""
-
-        output_dict["message"] = output_dict["response"].choices[0].message
-
-        try:
-            tool_calls = output_dict["message"].tool_calls
-            generation = [{func_call.function.name: func_call.function.arguments} for func_call in tool_calls]
-            tool_call_ids = [func_call.id for func_call in tool_calls]
-        except Exception:
-            tool_calls = []
-            generation = output_dict["message"].content
-            tool_call_ids = []
+        response = output_dict.get("response")
+        if response is None:
+            if self.cfg.server.get("enable_soft_fail", False):
+                LOG.info(
+                    "Soft-fail enabled: missing 'response' in output_dict; something went wrong with this generation. "
+                    "Output dict: %s",
+                    output_dict,
+                )
+                message = {"role": "assistant", "content": ""}
+                output_dict["message"] = message
+                tool_calls = []
+                generation = ""
+                tool_call_ids = []
+            else:
+                raise KeyError(f"Missing 'response' in output_dict: {output_dict!r}")
+        else:
+            output_dict["message"] = response.choices[0].message
+            try:
+                tool_calls = output_dict["message"].tool_calls
+                generation = [{func_call.function.name: func_call.function.arguments} for func_call in tool_calls]
+                tool_call_ids = [func_call.id for func_call in tool_calls]
+            except Exception:
+                tool_calls = []
+                generation = output_dict["message"].content
+                tool_call_ids = []
 
         # Use model output if not a tool call
-        output_dict["generation"] = generation if generation else [output_dict["message"].content]
+        if isinstance(output_dict["message"], dict):
+            message_content = output_dict["message"]["content"]
+        else:
+            message_content = output_dict["message"].content
+        output_dict["generation"] = generation if generation else [message_content]
         output_dict["tool_calls"] = tool_calls
         output_dict["tool_call_ids"] = tool_call_ids
         output_dict["num_generated_tokens"] = output_dict.get("num_generated_tokens", 0)
@@ -264,13 +321,22 @@ class ServerMessageParser:
         return output_dict
 
     def get_response_text(self, message):
+        if isinstance(message, dict):
+            return message["content"]
         return message.content
 
     def set_response_text(self, message, response_text):
-        message.content = response_text
+        if isinstance(message, dict):
+            message["content"] = response_text
+        else:
+            message.content = response_text
 
 
 class BFCLGenerationTask(GenerationTask):
+    @classmethod
+    def get_generation_requirements(cls) -> list[str] | None:
+        return BFCL_REQUIREMENTS
+
     def __init__(self, cfg: BFCLGenerationConfig):
         super().__init__(cfg)
         if cfg.use_client_parsing:
@@ -287,6 +353,8 @@ class BFCLGenerationTask(GenerationTask):
 
     def load_data(self):
         """Run through memory prereqs so that they are given a correct order and priority"""
+        from bfcl_eval.utils import is_memory_prereq
+
         # This needs to happen before the data shapes are passed to apply the filter, this cannot use preprocessor
         data = super().load_data()
         # First, fix the target paths to point to the actual target paths for memory stores
@@ -301,6 +369,9 @@ class BFCLGenerationTask(GenerationTask):
         non_prereqs = [datapoint for datapoint in data if not is_memory_prereq(datapoint["id"])]
         # Sort prereqs to make sure they come in the correct order
         prereqs = sorted(prereqs, key=lambda x: int(x["id"].split("_prereq_")[1].split("-")[0]))
+
+        self.wait_for_server()
+        self.wait_for_sandbox()
 
         for p in prereqs:
             _ = asyncio.run(self.process_single_datapoint(p, data))
@@ -364,6 +435,16 @@ class BFCLGenerationTask(GenerationTask):
 
     async def _generate_single_data_point_multi_turn(self, data_point):
         """Generate for a single data point with multiple turns."""
+        from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
+            MemoryAPI,
+        )
+        from bfcl_eval.model_handler.utils import add_memory_instruction_system_prompt
+        from bfcl_eval.utils import is_memory, is_memory_prereq
+
+        from nemo_skills.dataset.bfcl_v3.utils import (
+            convert_to_tool,
+            func_doc_language_specific_pre_processing,
+        )
 
         initial_config: dict = data_point["initial_config"]
         involved_classes: list = data_point["involved_classes"]
@@ -396,7 +477,7 @@ class BFCLGenerationTask(GenerationTask):
 
             assert len(involved_instances) == 1, "Memory category should only involve one class."
 
-            memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+            memory_instance: MemoryAPI = list(involved_instances.values())[0]
             data_point["question"] = add_memory_instruction_system_prompt(
                 data_point["question"],
                 test_category,
@@ -440,11 +521,10 @@ class BFCLGenerationTask(GenerationTask):
 
                 if self.cfg.parse_reasoning:
                     # TODO: replace with main parse_reasoning method
-                    trimmed_response_text = self._parse_reasoning_from_message_content(
-                        self.message_parser.get_response_text(model_response["message"])
-                    )
+                    message_text = self.message_parser.get_response_text(model_response["message"])
+                    trimmed_response_text = self._parse_reasoning_from_message_content(message_text)
                     # If no tool calling was used, apply reasoning cleanup to both the message and generation
-                    if model_response["message"].content == model_response["generation"]:
+                    if isinstance(model_response["generation"], str) and message_text == model_response["generation"]:
                         model_response["generation"] = [trimmed_response_text]
 
                     self.message_parser.set_response_text(model_response["message"], trimmed_response_text)
@@ -504,7 +584,7 @@ class BFCLGenerationTask(GenerationTask):
         # Need to flush the memory to local file at the end of the conversation
         if is_memory_prereq(test_entry_id):
             assert len(involved_instances) == 1, "Memory category should only involve one class."
-            memory_instance: "MemoryAPI" = list(involved_instances.values())[0]
+            memory_instance: MemoryAPI = list(involved_instances.values())[0]
             memory_instance._flush_memory_to_local_file()
 
         if out_of_context:

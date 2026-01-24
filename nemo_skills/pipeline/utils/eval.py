@@ -415,6 +415,7 @@ def prepare_eval_commands(
                         "Please provide a valid generation module."
                     )
                 generation_task = generation_task.GENERATION_TASK_CLASS
+                requirements = generation_task.get_generation_requirements()
                 if (
                     generation_task.get_server_command_fn.__func__ != GenerationTask.get_server_command_fn.__func__
                     and num_jobs != total_evals
@@ -438,6 +439,7 @@ def prepare_eval_commands(
                     chunk_id=chunk_id,
                     num_chunks=benchmark_args.num_chunks,
                     script=generation_module or benchmark_args.generation_module,
+                    requirements=requirements,
                     # only logging for the first seed
                     wandb_parameters=wandb_parameters if seed_idx == 0 else None,
                     with_sandbox=benchmark_args.requires_sandbox,
