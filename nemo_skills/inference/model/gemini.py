@@ -27,7 +27,9 @@ class GeminiModel(BaseModel):
             - gemini-2.5-flash: thinking budget 0-24576 (default: no thinking)
             - gemini-2.5-flash-lite: thinking budget 0-24576 (default: no thinking)
         """
-        super().__init__(base_url="", *args, **kwargs)
+        # Use empty string only if no base_url provided (uses litellm's default Gemini endpoint)
+        # Otherwise pass through the custom base_url
+        super().__init__(base_url=base_url if base_url else "", *args, **kwargs)
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         api_key = super()._get_api_key(api_key, api_key_env_var, base_url)
@@ -100,7 +102,9 @@ class GeminiModel(BaseModel):
             params["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": -1,
+                "include_thoughts": True,
             }
+            params["allowed_openai_params"].append("thinking")
 
         params["reasoning_effort"] = reasoning_effort
 

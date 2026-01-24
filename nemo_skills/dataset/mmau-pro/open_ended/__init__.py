@@ -15,7 +15,7 @@
 # Open-ended questions evaluated with LLM judge (Qwen)
 METRICS_TYPE = "mmau_pro_open_ended"
 SCORE_MODULE = "nemo_skills.evaluation.metrics.mmau_pro_metrics"
-GENERATION_ARGS = "++prompt_format=openai"
+GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
 
 # Judge configuration for open-ended evaluation using NVIDIA API
 JUDGE_PIPELINE_ARGS = {
@@ -23,4 +23,4 @@ JUDGE_PIPELINE_ARGS = {
     "server_type": "openai",
     "server_address": "https://integrate.api.nvidia.com/v1",
 }
-JUDGE_ARGS = "++prompt_config=judge/speechlm ++generation_key=judgement"
+JUDGE_ARGS = "++prompt_config=judge/mmau-pro ++generation_key=judgement"

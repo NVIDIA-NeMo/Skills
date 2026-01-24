@@ -1,0 +1,11 @@
+# Prompt config for MMMU-Pro VLM benchmark with 10 answer choices.
+# Based on AAI methodology: https://artificialanalysis.ai/methodology/intelligence-benchmarking
+# Image is shown before the question text.
+
+image_field: image_path
+image_position: before
+
+user: |-
+  Answer the following multiple choice question. The last line of your response should be in the following format: 'Answer: A/B/C/D/E/F/G/H/I/J' (e.g. 'Answer: A').
+
+  {problem}

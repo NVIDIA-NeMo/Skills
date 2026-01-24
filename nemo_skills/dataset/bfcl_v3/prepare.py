@@ -17,11 +17,50 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from bfcl_eval.constants.category_mapping import MEMORY_SCENARIO_NAME
-from bfcl_eval.utils import (
+# Github paths for BFCL
+# using same setup as in the nemo-skills container for consistency
+REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
+BFCL_GIT_COMMIT = "86d0374d0db52623c5092a73f82c22b87b7e9a25"
+BFCL_EVAL_SUBDIR = "berkeley-function-call-leaderboard"
+BFCL_EXTRA_INDEX_URL = "https://download.pytorch.org/whl/cpu"
+
+
+# TODO: we should probably move all such runtime installations to an isolated venv..
+def ensure_bfcl_eval_installed():
+    try:
+        import bfcl_eval  # noqa: F401
+
+        return
+    except (ModuleNotFoundError, ImportError, AttributeError):
+        logging.getLogger(__name__).info("bfcl_eval not found. Installing runtime dependency...")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / "gorilla"
+            subprocess.run(["git", "clone", REPO_URL, str(repo_dir)], check=True)
+            subprocess.run(["git", "checkout", BFCL_GIT_COMMIT], check=True, cwd=str(repo_dir))
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-cache-dir",
+                    "-e",
+                    str(repo_dir / BFCL_EVAL_SUBDIR),
+                    "--extra-index-url",
+                    BFCL_EXTRA_INDEX_URL,
+                ],
+                check=True,
+            )
+
+
+ensure_bfcl_eval_installed()
+
+from bfcl_eval.constants.category_mapping import MEMORY_SCENARIO_NAME  # noqa: E402
+from bfcl_eval.utils import (  # noqa: E402
     is_agentic,
     is_format_sensitivity,
     is_memory,
@@ -36,22 +75,18 @@ from bfcl_eval.utils import (
     process_web_search_test_case,
 )
 
-from nemo_skills.dataset.bfcl_v3.constants import (
+from nemo_skills.dataset.bfcl_v3.constants import (  # noqa: E402
     ALL_SCORING_CATEGORIES,
     DATA_FOLDER_PATH,
     VERSION_PREFIX,
 )
-from nemo_skills.dataset.bfcl_v3.utils import (
+from nemo_skills.dataset.bfcl_v3.utils import (  # noqa: E402
     convert_to_tool,
     func_doc_language_specific_pre_processing,
 )
-from nemo_skills.utils import get_logger_name
+from nemo_skills.utils import get_logger_name  # noqa: E402
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-# Github paths for BFCL
-REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
 
 # Define the configuration as a dictionary
 DEFAULT_SETTINGS = """
@@ -181,7 +216,7 @@ def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, scoring
 
 def main(args):
     LOG.warning(
-        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Llama-Nemotron/DeepSeek."
+        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Nemotron/DeepSeek."
     )
 
     download_and_process_bfcl_data(

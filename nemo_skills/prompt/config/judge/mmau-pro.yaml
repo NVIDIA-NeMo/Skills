@@ -1,0 +1,30 @@
+# Judge prompt configuration for Speech/Audio Language Model evaluation
+# Used for evaluating open-ended responses in MMAU-Pro benchmark
+# Uses multi-criteria scoring on 1-5 scale
+
+user: |-
+  You are an expert evaluator for audio and speech-related questions. Please evaluate the quality of a model's response to a question.
+
+  Question: {question}
+
+  Reference Answer: {expected_answer}
+
+  Model Response: {generation}
+
+  Please evaluate the model response on the following criteria and provide scores from 1-5 (where 5 is best):
+
+  1. **Correctness**: How factually accurate is the response compared to the reference?
+  2. **Relevance**: How well does the response address the specific question asked?
+  3. **Completeness**: Does the response cover all important aspects mentioned in the reference?
+  4. **Clarity**: How clear and well-structured is the response?
+
+  For each criterion, provide:
+  - A score from 1-5
+  - A brief justification (1-2 sentences)
+
+  Format your response as:
+  CORRECTNESS: [score] - [justification]
+  RELEVANCE: [score] - [justification]
+  COMPLETENESS: [score] - [justification]
+  CLARITY: [score] - [justification]
+  OVERALL: [average score] - [overall assessment]
