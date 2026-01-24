@@ -36,6 +36,10 @@ The following things are required when adding new benchmarks
   Make sure to add an example command for how to run evaluation and expected results for any model you tested it with.
   Describe any details that are specific to this dataset. Any special arguments to prepare data?
   Any non-standard inference arguments? Any other things to pay attention to?
+- Don't forget to run `mkdocs serve` and visually check that the documentation renders properly in the browser.
+- Avoid data loss because of evaluation mistakes. Our current design overrides the original
+  generation files with new evaluation-specific keys. Make sure to do all computation before
+  re-opening the files for writing to avoid accidental data loss if there is a bug and code fails before writing is complete.
 - Run GPU tests in the CI (or locally). To run in CI, we need to set "run GPU tests" label.
   By default all datasets will be prepared and evaluated on a few samples in the CI. You can
   remove your dataset from the test explicitly if it requires very heavy data preparation or
