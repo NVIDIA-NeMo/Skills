@@ -40,7 +40,8 @@ The following things are required when adding new benchmarks
 - Avoid data loss because of evaluation mistakes. Our current design overrides the original
   generation files with new evaluation-specific keys. Make sure to do all computation before
   re-opening the files for writing to avoid accidental data loss if there is a bug and code fails before writing is complete.
-- Run GPU tests in the CI (or locally). To run in CI, we need to set "run GPU tests" label.
+- Run GPU tests in the CI (or locally). To run in CI, we need to set "run GPU tests" label
+  (toggle it off and back on if rerunning after changes).
   By default all datasets will be prepared and evaluated on a few samples in the CI. You can
   remove your dataset from the test explicitly if it requires very heavy data preparation or
   has another reason why we can't use it. But try to avoid that if possible!
