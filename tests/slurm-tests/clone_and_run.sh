@@ -15,6 +15,8 @@ cd NeMo-Skills
 curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=$LOCAL_WORKSPACE sh
 $LOCAL_WORKSPACE/uv venv .venv --python 3.10
 source .venv/bin/activate
-$LOCAL_WORKSPACE/uv pip install -e .
+VENV_BIN="$(dirname "$(command -v python)")"
+export PATH="$VENV_BIN:$PATH"
+pip install -e .
 
 ./tests/slurm-tests/run_all.sh $1

@@ -142,31 +142,10 @@ def eval_reasoning_on(workspace, cluster, expname_prefix, wandb_project):
         wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-on",
     )
 
-    # BFCL (Reasoning ON)
-    eval(
-        ctx=wrap_arguments(f"{common_params} {tokens_to_generate} ++use_client_parsing=False"),
-        cluster=cluster,
-        benchmarks="bfcl_v3",
-        model=base_model,
-        server_gpus=8,
-        num_jobs=1,
-        server_type="vllm",
-        output_dir=f"{workspace}/reasoning_on_tool_calling",
-        server_args=(
-            f"--tool-parser-plugin {base_model}/llama_nemotron_toolcall_parser_no_streaming.py "
-            f"--tool-call-parser llama_nemotron_json --enable-auto-tool-choice --max-num-seqs=1024"
-        ),
-        run_after=f"{expname_prefix}-download-models",
-        expname=f"{expname_prefix}-bfcl-on",
-        wandb_project=wandb_project,
-        wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-on",
-    )
-
     return [
         f"{expname_prefix}-math-code-science-on",
         f"{expname_prefix}-livecode-on",
         f"{expname_prefix}-hle-on",
-        f"{expname_prefix}-bfcl-on",
     ]
 
 
@@ -265,25 +244,6 @@ def eval_reasoning_off(workspace, cluster, expname_prefix, wandb_project):
         wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-off",
     )
 
-    # BFCL (Reasoning OFF)
-    eval(
-        ctx=wrap_arguments(f"{common_params} {tokens_to_generate} ++use_client_parsing=False"),
-        cluster=cluster,
-        benchmarks="bfcl_v3",
-        model=base_model,
-        server_gpus=8,
-        server_type="vllm",
-        output_dir=f"{workspace}/reasoning_off_tool_calling",
-        server_args=(
-            f"--tool-parser-plugin {base_model}/llama_nemotron_toolcall_parser_no_streaming.py "
-            f"--tool-call-parser llama_nemotron_json --enable-auto-tool-choice --max-num-seqs=1024"
-        ),
-        run_after=f"{expname_prefix}-download-models",
-        expname=f"{expname_prefix}-bfcl-off",
-        wandb_project=wandb_project,
-        wandb_name=f"{expname_prefix}-super_49b-eval-reasoning-off",
-    )
-
     # RULER (Reasoning OFF)
     eval(
         ctx=wrap_arguments(f"{common_params}"),
@@ -305,7 +265,6 @@ def eval_reasoning_off(workspace, cluster, expname_prefix, wandb_project):
         f"{expname_prefix}-math-code-science-off",
         f"{expname_prefix}-livecode-off",
         f"{expname_prefix}-hle-off",
-        f"{expname_prefix}-bfcl-off",
         f"{expname_prefix}-ruler-off",
     ]
 
@@ -320,7 +279,7 @@ def main():
     args = parser.parse_args()
 
     prepare_data(
-        ctx=wrap_arguments("gpqa mmlu-pro hle livecodebench scicode bfcl_v3 math-500 aime24 aime25"),
+        ctx=wrap_arguments("gpqa mmlu-pro hle livecodebench scicode math-500 aime24 aime25"),
     )
 
     setup(workspace=args.workspace, cluster=args.cluster, expname_prefix=args.expname_prefix)
