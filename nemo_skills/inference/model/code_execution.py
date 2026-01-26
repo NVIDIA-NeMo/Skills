@@ -199,6 +199,8 @@ class CodeExecutionWrapper:
                     code_output_tokens = len(self.model.tokenizer.encode(code_output))
                     request["tokens_to_generate"] -= code_output_tokens
                     total_num_generated_tokens += code_output_tokens
+                    if request["tokens_to_generate"] <= 0:
+                        break
                     if is_openai_format:
                         request["prompt"][-2]["content"] += code_output
                     else:
@@ -431,6 +433,8 @@ class CodeExecutionWrapper:
                     # Account for tokens in the code output
                     code_output_tokens = len(self.model.tokenizer.encode(formatted_code_output))
                     request["tokens_to_generate"] -= code_output_tokens
+                    if request["tokens_to_generate"] <= 0:
+                        break
 
                     # Append executed code's output to the prompt
                     if is_openai_format:
