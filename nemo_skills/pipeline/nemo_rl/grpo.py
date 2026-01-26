@@ -327,11 +327,6 @@ def grpo_nemo_rl(
         None,
         help="Max position embeddings to use for conversion. If not specified, will be inferred from the model config.",
     ),
-    ray_template: str = typer.Option(
-        None,
-        help="Slurm Ray template to use for Ray jobs. Passed to SlurmExecutor.ray_template. "
-        "Example: 'ray_enroot.sub.j2' (default: 'ray.sub.j2')",
-    ),
 ):
     """Runs NeMo-RL GRPO training.
 
@@ -344,6 +339,10 @@ def grpo_nemo_rl(
 
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
+
+    # Read ray_template from env_vars
+    env_variables = get_env_variables(cluster_config)
+    ray_template = env_variables.get("RAY_TEMPLATE", None)
 
     if log_dir is None:
         log_dir = output_dir
