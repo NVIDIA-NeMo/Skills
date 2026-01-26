@@ -177,6 +177,16 @@ def execute_multi_turn_func_call(
 
             execution_results.append(func_call_result)
         except Exception as e:
+            # Hard fail for missing/unsupported web-search backends.
+            # BFCL would otherwise swallow the exception and keep going, which makes the failure silent.
+            try:
+                from nemo_skills.inference.eval.bfcl_web_search import WebSearchBackendUnavailable
+
+                if isinstance(e, WebSearchBackendUnavailable):
+                    raise
+            except ImportError:
+                # If bfcl_web_search isn't importable for some reason, fall back to existing behavior.
+                pass
             execution_results.append(f"Error during execution: {str(e)}")
 
     return execution_results, involved_instances
