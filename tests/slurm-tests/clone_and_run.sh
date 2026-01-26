@@ -9,7 +9,8 @@ LOCAL_WORKSPACE=/tmp/nemo-skills-slurm-ci
 rm -rf $LOCAL_WORKSPACE
 mkdir -p $LOCAL_WORKSPACE
 cd $LOCAL_WORKSPACE
-git clone https://github.com/NVIDIA-NeMo/Skills.git NeMo-Skills
+# TODO: temporarily copying from local folder for testing, revert to git clone after
+cp -r /home/igitman/workspace/NeMo-Skills NeMo-Skills
 cd NeMo-Skills
 
 curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=$LOCAL_WORKSPACE sh
