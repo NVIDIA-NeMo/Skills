@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+DATASET_GROUP = "math"
+METRICS_TYPE = "math"
+GENERATION_ARGS = "++prompt_config=generic/math ++eval_type=math"
+# Judge configuration: Use the AnswerAutoGrader prompt.
+# Recommended model: Gemini 2.5 Pro (or similar strong reasoner)
+JUDGE_ARGS = "++prompt_config=judge/imo_answerbench ++generation_key=judgement ++inference.reasoning_effort=dynamic"
 
-METRICS_TYPE = "mmau_pro_closed_form"
-SCORE_MODULE = "nemo_skills.evaluation.metrics.mmau_pro_metrics"
-GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
-EVAL_ARGS = "++eval_type=mmau-pro"
-
-# NVEmbed judge configuration for closed-form evaluation
 JUDGE_PIPELINE_ARGS = {
-    "judge_type": "nvembed",
+    "generation_type": "math_judge",
+    "model": "gemini-2.5-pro",
+    "server_type": "gemini",
 }

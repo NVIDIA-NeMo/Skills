@@ -358,6 +358,7 @@ class GenerationClientScript(BaseJobScript):
     wandb_parameters: Optional[Dict] = None
     with_sandbox: bool = False
     script: str = "nemo_skills.inference.generate"
+    requirements: Optional[list[str]] = None
 
     # Cross-component references for single/multi-model
     servers: Optional[List[Optional["ServerScript"]]] = None
@@ -414,6 +415,7 @@ class GenerationClientScript(BaseJobScript):
                 wandb_parameters=self.wandb_parameters,
                 with_sandbox=self.with_sandbox,
                 script=self.script,
+                requirements=self.requirements,
                 # Multi-model parameters (None for single-model)
                 server_addresses=server_addresses,
                 model_names=self.model_names,

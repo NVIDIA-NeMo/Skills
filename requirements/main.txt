@@ -46,6 +46,7 @@ requests
 sacrebleu
 scikit-learn
 sentence_transformers # Needed for BFCLv4 
+serpapi # Needed for BFCLv4
 sympy
 tqdm
 transformers
