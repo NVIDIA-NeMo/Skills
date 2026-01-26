@@ -340,9 +340,8 @@ def grpo_nemo_rl(
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
 
-    # Read ray_template from env_vars
-    env_variables = get_env_variables(cluster_config)
-    ray_template = env_variables.get("RAY_TEMPLATE", None)
+    # Read ray_template from cluster config
+    ray_template = cluster_config.get("ray_template", None)
 
     if log_dir is None:
         log_dir = output_dir
