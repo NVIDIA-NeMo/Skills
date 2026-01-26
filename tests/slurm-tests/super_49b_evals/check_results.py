@@ -67,7 +67,7 @@ REASONING_METRIC_RANGES = {
         "aime25": (0.0, 10.0),
         "gpqa": (49.0, 56.0),
         "mmlu-pro": (68.0, 71.0),
-        "livecodebench": (27.5, 32.5),
+        "livecodebench": (26.0, 32.5),
         "scicode": {
             "problem_accuracy": (5.0, 10.0),
             "subtask_accuracy": (20.0, 28.0),
