@@ -1,28 +1,26 @@
 {
-  "strictness": 1,
-  "statusCheck": false,
-  "triggerOnUpdates": false,
-  "includeBranches": ["main", "chtruong/*"],
-  "instructions": "Review code following the guidelines in CONTRIBUTING.md.",
   "commentTypes": ["logic", "syntax", "style"],
+  "instructions": "Review code following the guidelines in CONTRIBUTING.md. Be concise, actionable, and focus on critical issues.",
+  "includeBranches": ["main", "chtruong/*"],
+  "strictness": 3,
   "summarySection": {
-    "visible": true,
-    "collapsed": true
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
   },
   "issuesTableSection": {
-    "visible": true,
-    "collapsed": false
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
   },
   "confidenceScoreSection": {
-    "visible": true,
-    "collapsed": true
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
   },
   "sequenceDiagramSection": {
-    "visible": false,
-    "collapsed": true
-  },
-  "fixWithAI": true,
-  "customContext": {
-    "files": ["CONTRIBUTING.md"]
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
   }
 }
