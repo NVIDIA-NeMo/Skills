@@ -13,6 +13,7 @@
 # limitations under the License.
 
 *.json
+!greptile.json
 *.tar.gz
 *.tar
 *.npy

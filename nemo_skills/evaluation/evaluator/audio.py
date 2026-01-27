@@ -34,6 +34,7 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     prompt_config: str = "eval/speechlm/audio"
     normalize_asr_pc_standard_wer: bool = True
     strip_helpful_prefixes: bool = True
+    apply_whisper_normalization: bool = True
     normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", or "none"
 
 

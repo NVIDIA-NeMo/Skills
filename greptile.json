@@ -1,0 +1,28 @@
+{
+  "strictness": 1,
+  "statusCheck": false,
+  "triggerOnUpdates": false,
+  "includeBranches": ["main", "chtruong/*"],
+  "instructions": "Review code following the guidelines in CONTRIBUTING.md.",
+  "commentTypes": ["logic", "syntax", "style"],
+  "summarySection": {
+    "visible": true,
+    "collapsed": true
+  },
+  "issuesTableSection": {
+    "visible": true,
+    "collapsed": false
+  },
+  "confidenceScoreSection": {
+    "visible": true,
+    "collapsed": true
+  },
+  "sequenceDiagramSection": {
+    "visible": false,
+    "collapsed": true
+  },
+  "fixWithAI": true,
+  "customContext": {
+    "files": ["CONTRIBUTING.md"]
+  }
+}
