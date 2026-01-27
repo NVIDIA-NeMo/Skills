@@ -78,7 +78,7 @@ BFCL_REQUIREMENTS = [
     "html2text",
     "rank_bm25==0.2.2",
     "google-search-results",
-    "sentence-transformers>=2.7.0",
+    # "sentence-transformers>=2.7.0",
     "faiss-cpu==1.11.0",
     "networkx==3.3",
     "filelock==3.20.0",
