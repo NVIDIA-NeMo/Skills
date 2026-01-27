@@ -155,7 +155,7 @@ policy:
       start_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       weight_decay_incr_style: "constant"
-      lr_decay_style: "constant"
+      lr_decay_style: "cosine" # This is equivalent to constant unless min_lr is set to smaller value
       lr_decay_iters: 1000
       lr_warmup_iters: 13
       lr_warmup_init: 5.0e-7
@@ -210,10 +210,10 @@ policy:
         start_factor: 0.1
         end_factor: 1.0
         total_iters: 10
-    - name: "torch.optim.lr_scheduler.ConstantLR"
+    - name: "torch.optim.lr_scheduler.CosineAnnealingLR"
       kwargs:
-        factor: 1.0
-        total_iters: 10000000000
+        T_max: ${grpo.max_num_steps}
+        eta_min: ${policy.min_lr}
     - milestones: [10]
 
   generation:
