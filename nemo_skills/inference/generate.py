@@ -305,6 +305,7 @@ class GenerationTask:
             cfg: GenerationTaskConfig object with the configuration parameters or subclass.
         """
         self.cfg = cfg
+        # Refactor: Use deep conversion for extra_body config to resolve nested dicts
         if OmegaConf.is_config(self.cfg.inference.extra_body):
             self.cfg.inference.extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
         else:
