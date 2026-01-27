@@ -49,6 +49,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 BFCL_REQUIREMENTS = [
     # Source: https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/pyproject.toml
+    "torch",  # Prevent torch reinstall - use pre-installed version from container
     "requests",
     "tqdm",
     "numpy==1.26.4",
@@ -67,7 +68,7 @@ BFCL_REQUIREMENTS = [
     "tabulate>=0.9.0",
     "datamodel-code-generator==0.25.7",
     "google-genai>=1.52.0",
-    "qwen-agent",
+    # "qwen-agent",  # disabling due to some issues (and shouldn't be needed)
     "mpmath==1.3.0",
     "tenacity>=8.5.0",
     "writer-sdk>=2.1.0",
