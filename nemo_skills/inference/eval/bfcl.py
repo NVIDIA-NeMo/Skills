@@ -49,7 +49,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 BFCL_REQUIREMENTS = [
     # Source: https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/pyproject.toml
-    "torch",  # Prevent torch reinstall - use pre-installed version from container
+    # "torch",  # Prevent torch reinstall - use pre-installed version from container
     "requests",
     "tqdm",
     "numpy==1.26.4",
