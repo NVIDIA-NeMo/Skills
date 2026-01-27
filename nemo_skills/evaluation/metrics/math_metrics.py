@@ -25,8 +25,11 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class MathMetrics(BaseMetrics):
     # TODO: how can we ensure that user-defined aggregations have all the same metrics as in base?
 
-    def __init__(self, compute_no_answer: bool = True, answer_key: str = "predicted_answer"):
+    def __init__(
+        self, compute_no_answer: bool = True, question_key: str = "problem", answer_key: str = "predicted_answer"
+    ):
         super().__init__(compute_no_answer=compute_no_answer)
+        self.question_key = question_key
         self.answer_key = answer_key
 
     def _compute_reward_at_k(self, predictions: list[dict]):
@@ -113,7 +116,7 @@ class MathMetrics(BaseMetrics):
                     "Question: %s\nPredicted answer: %s\nExpected answer: %s\nLLM reasoning: %s\n",
                     correctness_dict["symbolic_correct"],
                     correctness_dict["judge_correct"],
-                    prediction["problem"],
+                    prediction[self.question_key],
                     prediction[self.answer_key],
                     prediction["expected_answer"],
                     prediction["judgement"],

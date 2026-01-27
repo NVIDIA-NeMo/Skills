@@ -21,9 +21,18 @@ from dataclasses import asdict, field, is_dataclass
 
 import hydra
 
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerationTask,
+    GenerationTaskConfig,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    setup_logging,
+)
 
 
 @nested_dataclass(kw_only=True)
@@ -32,7 +41,7 @@ class ScriptInferenceConfig(InferenceConfig):
 
 
 @nested_dataclass(kw_only=True)
-class ScriptGenerationConfig(GenerateSolutionsConfig):
+class ScriptGenerationConfig(GenerationTaskConfig):
     inference: ScriptInferenceConfig = field(default_factory=ScriptInferenceConfig)
     model_name: str | None = None
     prompt_format: str = "openai"

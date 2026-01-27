@@ -31,7 +31,7 @@ def eval_mmau_pro(cfg):
     This evaluator handles instruction following evaluation for MMAU-Pro benchmark.
     Other question types are handled by different evaluation methods:
     - Closed-form questions: Evaluated by nvembed_judge.py using NVEmbed similarity matching
-    - Open-ended questions: Evaluated by LLM judge (Qwen) using judge/speechlm prompt config
+    - Open-ended questions: Evaluated by LLM judge (Qwen) using judge/mmau-pro prompt config
     """
     eval_config = BaseEvaluatorConfig(**cfg)
 

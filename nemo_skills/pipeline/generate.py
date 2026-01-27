@@ -166,6 +166,7 @@ def _create_job_unified(
                 wandb_parameters=generation_params.get("wandb_parameters"),
                 with_sandbox=with_sandbox,
                 script=generation_params.get("script", "nemo_skills.inference.generate"),
+                requirements=generation_params.get("requirements"),
                 # Multi-server support (works for single and multi-model)
                 servers=server_scripts if server_scripts else None,
                 server_addresses_prehosted=generation_params.get("server_addresses_prehosted"),
@@ -482,6 +483,7 @@ def generate(
         )
     generation_task = generation_task.GENERATION_TASK_CLASS
     extra_arguments = f"{generation_task.get_generation_default_args()} {extra_arguments}"
+    generation_requirements = generation_task.get_generation_requirements()
     extra_arguments_original = extra_arguments
 
     # Treat no random seeds as a single None seed to unify the code paths
@@ -569,6 +571,7 @@ def generate(
                     "postprocess_cmd": postprocess_cmd,
                     "wandb_parameters": wandb_parameters if seed_idx == 0 else None,
                     "script": generation_module,
+                    "requirements": generation_requirements,
                     # Multi-model specific fields
                     "server_addresses_prehosted": server_addresses_resolved,
                     "model_names": models_list,
