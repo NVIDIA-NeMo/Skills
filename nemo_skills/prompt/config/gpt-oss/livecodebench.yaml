@@ -1,0 +1,4 @@
+user: |-
+  {question}
+
+  Please avoid using `sys.stdin.buffer` to process input, and avoid using `threading`.

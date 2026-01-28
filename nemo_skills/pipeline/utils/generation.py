@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import hashlib
 import logging
 import os
 import shlex
 import subprocess
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, List, Optional, Union
 
 from nemo_skills.pipeline.utils.cluster import get_tunnel
@@ -99,6 +101,51 @@ def normalize_parameter(
     raise ValueError(
         f"Parameter {param_name} has {len(param_value)} values but {num_models} models specified. "
         f"Must be 1 value (broadcast) or {num_models} values (per-model)."
+    )
+
+
+def build_requirements_venv_cmd(requirements: list[str]) -> str:
+    req_lines = [str(line).strip() for line in requirements if str(line).strip()]
+    requirements_content = "\n".join(req_lines)
+
+    if not requirements_content:
+        raise ValueError("Requirements content is empty.")
+
+    requirements_hash = hashlib.sha256(requirements_content.encode("utf-8")).hexdigest()[:12]
+    venv_root = Path("/tmp/nemo_skills/venvs")
+    venv_dir = venv_root / f"reqs-{requirements_hash}"
+    reqs_root = Path("/tmp/nemo_skills/requirements")
+    reqs_file = reqs_root / f"reqs-{requirements_hash}.txt"
+
+    venv_root_arg = shlex.quote(str(venv_root))
+    venv_dir_arg = shlex.quote(str(venv_dir))
+    reqs_root_arg = shlex.quote(str(reqs_root))
+    reqs_file_arg = shlex.quote(str(reqs_file))
+
+    return (
+        f"REQS_DIR={reqs_root_arg} && REQS_FILE={reqs_file_arg} && "
+        'mkdir -p "$REQS_DIR" && '
+        'if [ ! -f "$REQS_FILE" ]; then '
+        "cat <<'NEMO_SKILLS_REQS_EOF' > \"$REQS_FILE\"\n"
+        f"{requirements_content}\n"
+        "NEMO_SKILLS_REQS_EOF\n"
+        "fi && "
+        f"VENV_ROOT={venv_root_arg} && VENV_DIR={venv_dir_arg} && "
+        'READY_FILE="$VENV_DIR/.nemo_skills_ready" && '
+        'LOCK_DIR="$VENV_DIR.lock" && '
+        'mkdir -p "$VENV_ROOT" && '
+        'if [ ! -f "$READY_FILE" ]; then '
+        '  if mkdir "$LOCK_DIR" 2>/dev/null; then '
+        '    if ! uv venv --system-site-packages "$VENV_DIR"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        '    . "$VENV_DIR/bin/activate"; '
+        '    if ! uv pip install -r "$REQS_FILE"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        '    touch "$READY_FILE"; '
+        '    rmdir "$LOCK_DIR"; '
+        "  else "
+        '    while [ ! -f "$READY_FILE" ]; do sleep 1; done; '
+        "  fi; "
+        "fi && "
+        '. "$VENV_DIR/bin/activate"'
     )
 
 
@@ -370,6 +417,7 @@ def get_generation_cmd(
     wandb_parameters=None,
     with_sandbox: bool = False,
     script: str = "nemo_skills.inference.generate",
+    requirements: Optional[list[str]] = None,
     # Optional: for multi-model generation
     server_addresses: Optional[List[str]] = None,
     model_names: Optional[List[str]] = None,
@@ -383,6 +431,8 @@ def get_generation_cmd(
     - server_types: List of server types (one per model)
 
     For single-model, server config is passed via extra_arguments.
+    If requirements are provided, a per-requirements uv venv is prepared
+    and activated before running the generation command.
     """
     if input_file is None and input_dir is None:
         raise ValueError("Either input_file or input_dir must be provided.")
@@ -484,6 +534,10 @@ def get_generation_cmd(
 
     if override_args:
         cmd += f" {override_args} "
+
+    if requirements:
+        requirements_cmd = build_requirements_venv_cmd(requirements)
+        preprocess_cmd = f"{requirements_cmd} && {preprocess_cmd}" if preprocess_cmd else requirements_cmd
 
     return wrap_cmd(
         cmd=cmd,

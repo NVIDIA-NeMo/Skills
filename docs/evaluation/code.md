@@ -94,22 +94,9 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 #### Inference parameters
 
-For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by SWE-agent/OpenHands. Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, and some parameters may be unsupported, e.g. when using OpenHands.
+For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by SWE-agent/OpenHands.
 
-In order for a parameter to work, it needs to be supported in 2 places: by the agentic framework and by the LLM server itself. For framework support, see the following table:
-
-| Nemo-Skills inference parameter | Behavior when using SWE-agent          | Behavior when using OpenHands          |
-| :------------------------------ | :------------------------------------- | :------------------------------------- |
-| temperature                     | ✅ Always passed to LLM. Default: 0     | ✅ Always passed to LLM. Default: 0     |
-| top_p                           | ✅ Always passed to LLM. Default: 0.95  | ✅ Always passed to LLM. Default: 0.95  |
-| top_k                           | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| tokens_to_generate              | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| random_seed                     | 🟡 Only passed to LLM if set explicitly | 🟡 Only passed to LLM if set explicitly |
-| min_p                           | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
-| repetition_penalty              | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
-| top_logprobs                    | 🟡 Only passed to LLM if set explicitly | ⛔ Not supported, will fail if set      |
-
-In addition, keep in mind certain parameters may not be supported by your LLM server, because not all of them are part of the official [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). However, VLLM and SGLang do support all of these parameters.
+Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). Any parameters you set explicitly will be passed. Custom parameters can be set via extra_body like this: `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. However, keep in mind certain parameters may not be supported by your LLM server.
 
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
@@ -245,7 +232,7 @@ The benchmark reports:
 
 SWE-bench Multilingual uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well. The differences are as follows:
 
-1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: https://github.com/ludwig-n/OpenHands and https://github.com/ludwig-n/SWE-agent. In both forks we use the `ns-swe-bench-multilingual` branch by default.
+1. For both OpenHands and SWE-agent, instead of using the official repos, we default to using our forks with multilingual-specific fixes and enhancements: [https://github.com/ludwig-n/OpenHands](https://github.com/ludwig-n/OpenHands) and [https://github.com/ludwig-n/SWE-agent](https://github.com/ludwig-n/SWE-agent). In both forks we use the `ns-swe-bench-multilingual` branch by default.
 2. For OpenHands, we use the [Multi-SWE-bench entrypoint script](https://github.com/ludwig-n/OpenHands/blob/ns-swe-bench-multilingual/evaluation/benchmarks/multi_swe_bench/scripts/run_infer.sh) instead of the standard SWE-bench one.
 3. For SWE-agent, we default to a [different config file](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/multilingual.yaml) with language-specific prompting.
 

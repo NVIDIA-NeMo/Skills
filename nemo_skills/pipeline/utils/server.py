@@ -124,7 +124,7 @@ def get_server_command(
     num_tasks = num_gpus
 
     # check if the model path is mounted if not vllm, sglang, or trtllm;
-    # vllm, sglang, and trtllm can also pass model name as "model_path" so we need special processing
+    # vllm, sglang, trtllm can also pass model name as "model_path" so we need special processing
     if server_type not in ["vllm", "sglang", "trtllm", "generic"]:
         check_if_mounted(cluster_config, model_path)
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 *.json
+!greptile.json
 *.tar.gz
 *.tar
 *.npy
@@ -44,5 +45,6 @@ nemo_skills/dataset/aalcr/lcr/
 .idea/
 .idea/*
 CLAUDE.md
+.codex
 
 .idea

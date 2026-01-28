@@ -31,7 +31,7 @@ if args.model_type == "qwen":
         head_dim=32,
         max_position_embeddings=256,
         num_attention_heads=2,
-        num_hidden_layers=2,
+        num_hidden_layers=28,
     )
 else:
     raise ValueError(f"Model type {args.model_type} not supported")
