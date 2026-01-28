@@ -20,7 +20,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 
 import yaml
 
@@ -96,10 +95,15 @@ def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, hf_overrid
     script_dir = os.path.dirname(os.path.abspath(__file__))
     consolidation_script = os.path.join(script_dir, "offline_hf_consolidation.py")
 
-    # Run the consolidation script
+    # Run the consolidation script using uv with the automodel extra to get nemo_automodel
     # Reference: https://github.com/NVIDIA-NeMo/Automodel/blob/main/tools/offline_hf_consolidation.py
     cmd = [
-        sys.executable,
+        "uv",
+        "run",
+        "--active",
+        "--extra",
+        "automodel",
+        "python",
         consolidation_script,
         "--model-name",
         model_name,
