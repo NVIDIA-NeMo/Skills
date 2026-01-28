@@ -16,10 +16,11 @@
 # and added logic to figure out max step automatically
 
 import argparse
-import glob
+import json
 import os
 import re
-import shutil
+import subprocess
+import sys
 
 import yaml
 
@@ -87,68 +88,32 @@ def is_safetensors_checkpoint(weights_path):
     return os.path.isdir(hf_metadata_path)
 
 
-def convert_safetensors_to_hf(weights_path, hf_ckpt_path, tokenizer_path, hf_overrides=None):
-    """Convert safetensors checkpoint to HF format by reorganizing files."""
+def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, hf_overrides=None):
+    """Convert safetensors checkpoint to HF format using offline_hf_consolidation.py."""
     model_dir = os.path.join(weights_path, "model")
-    hf_metadata_dir = os.path.join(model_dir, ".hf_metadata")
 
-    os.makedirs(hf_ckpt_path, exist_ok=True)
+    # Get the path to the consolidation script (same directory as this script)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    consolidation_script = os.path.join(script_dir, "offline_hf_consolidation.py")
 
-    # Copy config.json from .hf_metadata
-    config_src = os.path.join(hf_metadata_dir, "config.json")
-    if os.path.exists(config_src):
-        shutil.copy2(config_src, os.path.join(hf_ckpt_path, "config.json"))
-
-    # Copy generation_config.json if exists
-    gen_config_src = os.path.join(hf_metadata_dir, "generation_config.json")
-    if os.path.exists(gen_config_src):
-        shutil.copy2(gen_config_src, os.path.join(hf_ckpt_path, "generation_config.json"))
-
-    # Find and copy safetensors files
-    safetensors_files = glob.glob(os.path.join(model_dir, "*.safetensors"))
-    if len(safetensors_files) == 1:
-        # Single shard - rename to model.safetensors
-        shutil.copy2(safetensors_files[0], os.path.join(hf_ckpt_path, "model.safetensors"))
-    else:
-        # Multiple shards - copy with standard naming and create index
-        import json
-
-        weight_map = {}
-        for i, src_file in enumerate(sorted(safetensors_files), 1):
-            dst_name = f"model-{i:05d}-of-{len(safetensors_files):05d}.safetensors"
-            shutil.copy2(src_file, os.path.join(hf_ckpt_path, dst_name))
-
-            # Read keys from safetensors file to build weight_map
-            from safetensors import safe_open
-
-            with safe_open(src_file, framework="pt") as f:
-                for key in f.keys():
-                    weight_map[key] = dst_name
-
-        # Write index file
-        index = {"metadata": {}, "weight_map": weight_map}
-        with open(os.path.join(hf_ckpt_path, "model.safetensors.index.json"), "w") as f:
-            json.dump(index, f, indent=2)
-
-    # Copy tokenizer files from the original model
-    tokenizer_files = [
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "vocab.json",
-        "merges.txt",
-        "added_tokens.json",
-        "chat_template.jinja",
+    # Run the consolidation script
+    # Reference: https://github.com/NVIDIA-NeMo/Automodel/blob/main/tools/offline_hf_consolidation.py
+    cmd = [
+        sys.executable,
+        consolidation_script,
+        "--model-name",
+        model_name,
+        "--input-dir",
+        model_dir,
+        "--output-dir",
+        hf_ckpt_path,
     ]
-    for fname in tokenizer_files:
-        src = os.path.join(tokenizer_path, fname)
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(hf_ckpt_path, fname))
+
+    print(f"Running consolidation: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
 
     # Apply hf_overrides to config.json if provided
     if hf_overrides:
-        import json
-
         config_path = os.path.join(hf_ckpt_path, "config.json")
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -203,11 +168,11 @@ def main():
 
     # Check if checkpoint is in the new safetensors format
     if is_safetensors_checkpoint(dcp_ckpt_path):
-        print("Detected safetensors checkpoint format, using direct conversion...")
+        print("Detected safetensors checkpoint format, using offline consolidation...")
         hf_ckpt = convert_safetensors_to_hf(
             weights_path=dcp_ckpt_path,
             hf_ckpt_path=args.hf_ckpt_path,
-            tokenizer_path=tokenizer_name_or_path,
+            model_name=model_name_or_path,
             hf_overrides=hf_overrides if hf_overrides else None,
         )
     else:
