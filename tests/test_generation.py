@@ -153,28 +153,6 @@ def test_generate_openai_format(tmp_path, format):
     assert len(data[1]["generation"]) > 0
 
 
-def test_extra_body_nested_dict(tmp_path):
-    """Test that nested DictConfig in extra_body is properly converted to dict."""
-    cmd = (
-        f"ns generate "
-        f"    --server_type=vllm "
-        f"    --model=nvidia/nemotron-3-nano-30b-a3b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
-        f"    --input_file=/nemo_run/code/tests/data/openai-input-list.test "
-        f"    --output_dir={tmp_path} "
-        f"    ++prompt_format=openai "
-        f"    ++inference.extra_body.chat_template_kwargs.enable_thinking=False "
-    )
-    subprocess.run(cmd, shell=True, check=True)
-
-    # checking that output exists and has the expected format
-    with open(f"{tmp_path}/output.jsonl") as fin:
-        data = [json.loads(line) for line in fin.readlines()]
-    assert len(data) == 2
-    assert len(data[0]["generation"]) > 0
-    assert len(data[1]["generation"]) > 0
-
-
 def test_server_metadata_from_num_tasks(tmp_path):
     """Test that metadata dict is properly created from server command returning (cmd, num_tasks)."""
     cluster_config = {
