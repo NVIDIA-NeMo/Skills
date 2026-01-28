@@ -1,0 +1,13 @@
+# default prompt for livecodebench Python
+
+system: ""
+
+# user: |-
+#   Here is a problem for which you need to generate an executable code in python programming language.
+
+#   {question}
+
+user: |-
+  以下は、Pythonプログラミング言語で実行可能なコードを生成する必要がある問題です。
+
+  {question}

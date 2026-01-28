@@ -1,0 +1,14 @@
+# Standard-Prompt für livecodebench Python
+# Original: default prompt for livecodebench Python
+
+system: ""
+
+# user: |-
+#   Here is a problem for which you need to generate an executable code in python programming language.
+
+#   {question}
+
+user: |-
+  Hier ist ein Problem, für das Sie ausführbaren Code in der Programmiersprache Python generieren müssen.
+
+  {question}

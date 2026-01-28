@@ -1,0 +1,25 @@
+# default prompt for all math benchmarks (e.g. gsm8k, math)
+
+few_shot_examples:
+  # prefix: "Here are some examples of problems and solutions you can refer to.\n\n"
+  # template: "Problem:\n{problem}\n\nSolution:\n{solution}\n\n\n\n\n\n"
+  # suffix: "Here is the problem you need to solve:\n"
+  prefix: "Voici quelques exemples de problèmes et de solutions auxquels vous pouvez vous référer.\n\n"
+  template: "Problème:\n{problem}\n\nSolution:\n{solution}\n\n\n\n\n\n"
+  suffix: "Voici le problème que vous devez résoudre:\n"
+  # this is built as <prefix>{template.format(example1)}{template.format(example2)}...{template.format(exampleN)}<suffix>
+  # and available as {examples} key in the final prompt
+  # if examples_type is not specified, then {examples} will be empty
+  # by default there are no examples, but can be changed from code/cmd
+
+system: ""
+
+# user: |-
+#   Solve the following math problem. Make sure to put the answer (and only answer) inside \boxed{{}}.
+
+#   {examples}{problem}
+
+user: |-
+  Résolvez le problème mathématique suivant. Assurez-vous de mettre la réponse (et seulement la réponse) dans \boxed{{}}.
+
+  {examples}{problem}
