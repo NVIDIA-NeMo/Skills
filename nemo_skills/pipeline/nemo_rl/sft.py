@@ -174,7 +174,7 @@ def get_training_cmd(
 def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
     cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
     if backend == "fsdp":
-        cmd += "uv run --active python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
+        cmd += "uv run --extra automodel python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
     elif backend == "megatron":
         cmd += "uv run --extra mcore python -m nemo_skills.training.nemo_rl.convert_megatron_to_hf "
     else:
