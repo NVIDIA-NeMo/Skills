@@ -16,11 +16,12 @@
 # and added logic to figure out max step automatically
 
 import argparse
+import glob
 import os
 import re
+import shutil
 
 import yaml
-from nemo_rl.utils.native_checkpoint import convert_dcp_to_hf
 
 
 def parse_args():
@@ -80,6 +81,84 @@ def find_max_step_folder(training_folder, step_override=None):
     return os.path.join(training_folder, f"step_{chosen_step}")
 
 
+def is_safetensors_checkpoint(weights_path):
+    """Check if checkpoint is in the new safetensors format (has model/.hf_metadata/)."""
+    hf_metadata_path = os.path.join(weights_path, "model", ".hf_metadata")
+    return os.path.isdir(hf_metadata_path)
+
+
+def convert_safetensors_to_hf(weights_path, hf_ckpt_path, tokenizer_path, hf_overrides=None):
+    """Convert safetensors checkpoint to HF format by reorganizing files."""
+    model_dir = os.path.join(weights_path, "model")
+    hf_metadata_dir = os.path.join(model_dir, ".hf_metadata")
+
+    os.makedirs(hf_ckpt_path, exist_ok=True)
+
+    # Copy config.json from .hf_metadata
+    config_src = os.path.join(hf_metadata_dir, "config.json")
+    if os.path.exists(config_src):
+        shutil.copy2(config_src, os.path.join(hf_ckpt_path, "config.json"))
+
+    # Copy generation_config.json if exists
+    gen_config_src = os.path.join(hf_metadata_dir, "generation_config.json")
+    if os.path.exists(gen_config_src):
+        shutil.copy2(gen_config_src, os.path.join(hf_ckpt_path, "generation_config.json"))
+
+    # Find and copy safetensors files
+    safetensors_files = glob.glob(os.path.join(model_dir, "*.safetensors"))
+    if len(safetensors_files) == 1:
+        # Single shard - rename to model.safetensors
+        shutil.copy2(safetensors_files[0], os.path.join(hf_ckpt_path, "model.safetensors"))
+    else:
+        # Multiple shards - copy with standard naming and create index
+        import json
+
+        weight_map = {}
+        for i, src_file in enumerate(sorted(safetensors_files), 1):
+            dst_name = f"model-{i:05d}-of-{len(safetensors_files):05d}.safetensors"
+            shutil.copy2(src_file, os.path.join(hf_ckpt_path, dst_name))
+
+            # Read keys from safetensors file to build weight_map
+            from safetensors import safe_open
+
+            with safe_open(src_file, framework="pt") as f:
+                for key in f.keys():
+                    weight_map[key] = dst_name
+
+        # Write index file
+        index = {"metadata": {}, "weight_map": weight_map}
+        with open(os.path.join(hf_ckpt_path, "model.safetensors.index.json"), "w") as f:
+            json.dump(index, f, indent=2)
+
+    # Copy tokenizer files from the original model
+    tokenizer_files = [
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+        "added_tokens.json",
+        "chat_template.jinja",
+    ]
+    for fname in tokenizer_files:
+        src = os.path.join(tokenizer_path, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(hf_ckpt_path, fname))
+
+    # Apply hf_overrides to config.json if provided
+    if hf_overrides:
+        import json
+
+        config_path = os.path.join(hf_ckpt_path, "config.json")
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        config.update(hf_overrides)
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
+
+    return hf_ckpt_path
+
+
 def main():
     """Main entry point."""
     args = parse_args()
@@ -122,14 +201,27 @@ def main():
     if args.max_position_embeddings:
         hf_overrides["max_position_embeddings"] = args.max_position_embeddings
 
-    hf_ckpt = convert_dcp_to_hf(
-        dcp_ckpt_path=dcp_ckpt_path,
-        hf_ckpt_path=args.hf_ckpt_path,
-        model_name_or_path=model_name_or_path,
-        tokenizer_name_or_path=tokenizer_name_or_path,
-        overwrite=True,
-        hf_overrides=hf_overrides,
-    )
+    # Check if checkpoint is in the new safetensors format
+    if is_safetensors_checkpoint(dcp_ckpt_path):
+        print("Detected safetensors checkpoint format, using direct conversion...")
+        hf_ckpt = convert_safetensors_to_hf(
+            weights_path=dcp_ckpt_path,
+            hf_ckpt_path=args.hf_ckpt_path,
+            tokenizer_path=tokenizer_name_or_path,
+            hf_overrides=hf_overrides if hf_overrides else None,
+        )
+    else:
+        print("Detected DCP checkpoint format, using DCP conversion...")
+        from nemo_rl.utils.native_checkpoint import convert_dcp_to_hf
+
+        hf_ckpt = convert_dcp_to_hf(
+            dcp_ckpt_path=dcp_ckpt_path,
+            hf_ckpt_path=args.hf_ckpt_path,
+            model_name_or_path=model_name_or_path,
+            tokenizer_name_or_path=tokenizer_name_or_path,
+            overwrite=True,
+            hf_overrides=hf_overrides,
+        )
     print(f"Saved HF checkpoint to: {hf_ckpt}")
 
 
