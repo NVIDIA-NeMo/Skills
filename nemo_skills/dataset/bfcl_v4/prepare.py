@@ -16,8 +16,6 @@
 import logging
 import os
 
-from bfcl_eval.constants.category_mapping import ALL_SCORING_CATEGORIES
-
 from nemo_skills.dataset.bfcl_v3.constants import (
     DATA_FOLDER_PATH,
 )
@@ -32,8 +30,10 @@ REPO_URL = "https://github.com/ShishirPatil/gorilla.git"
 
 
 def main():
+    from bfcl_eval.constants.category_mapping import ALL_SCORING_CATEGORIES
+
     LOG.warning(
-        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Llama-Nemotron/DeepSeek."
+        "Currently processing according to the OpenAI model style which works for most models, including Qwen/Nemotron/DeepSeek."
     )
 
     download_and_process_bfcl_data(

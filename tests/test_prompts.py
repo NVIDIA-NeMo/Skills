@@ -792,7 +792,7 @@ You will be asked to look at the two answers (predicted and expected) to a math 
 Please first explain your reasoning in a couple of sentences. Then respond with only Yes or No as your judgement on whether the two answers are the same.
 When comparing answers only perform trivial simplifications.
 
-Here are a few examples.
+Here are a few examples. Please include both "Reasoning" and "Judgement" in your final response in the same format as below.
 
 
 Example 1:

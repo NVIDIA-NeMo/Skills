@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 import logging
+import mimetypes
+import os
+from pathlib import Path
 
 import requests
 
@@ -22,6 +26,68 @@ from .base import BaseModel
 from .utils import ServerTokenizer
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+
+def encode_image_to_base64(image_path: str) -> str:
+    """Encode a local image file to base64 data URL."""
+    path = Path(image_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    mime_type, _ = mimetypes.guess_type(str(path))
+    if mime_type is None:
+        mime_type = "image/jpeg"
+
+    with open(path, "rb") as f:
+        image_data = f.read()
+
+    base64_data = base64.b64encode(image_data).decode("utf-8")
+    return f"data:{mime_type};base64,{base64_data}"
+
+
+def process_image_content(content: list | str | None, data_dir: str = "") -> list | str | None:
+    """Process message content to handle image paths and URLs.
+
+    Converts local file paths to base64 data URLs if needed.
+    HTTP/HTTPS URLs and existing data URLs are passed through unchanged.
+    """
+    if content is None or isinstance(content, str):
+        return content
+
+    processed_content = []
+    for item in content:
+        if isinstance(item, dict) and item.get("type") == "image_url":
+            image_url = item.get("image_url", {})
+            url = image_url.get("url", "")
+
+            if url and not url.startswith(("data:", "http://", "https://")):
+                if not os.path.isabs(url) and data_dir:
+                    resolved_path = os.path.join(data_dir, url)
+                else:
+                    resolved_path = url
+
+                try:
+                    base64_url = encode_image_to_base64(resolved_path)
+                    processed_item = {
+                        "type": "image_url",
+                        "image_url": {"url": base64_url},
+                    }
+                    for key in image_url:
+                        if key != "url":
+                            processed_item["image_url"][key] = image_url[key]
+                    item = processed_item
+                except FileNotFoundError:
+                    LOG.error(
+                        f"Image file not found: {resolved_path} "
+                        f"(original path: {url}, data_dir: {data_dir or 'not set'})"
+                    )
+                    raise
+
+            processed_content.append(item)
+        else:
+            processed_content.append(item)
+
+    return processed_content
 
 
 class VLLMModel(BaseModel):
@@ -117,8 +183,16 @@ class VLLMModel(BaseModel):
         tools: list[dict] | None = None,
         extra_body: dict = None,
     ) -> dict:
+        # Process messages to handle image content (VLM support)
+        processed_messages = []
+        for msg in messages:
+            processed_msg = msg.copy()
+            if "content" in processed_msg:
+                processed_msg["content"] = process_image_content(processed_msg["content"], self.data_dir)
+            processed_messages.append(processed_msg)
+
         request = {
-            "messages": messages,
+            "messages": processed_messages,
             "max_tokens": tokens_to_generate,
             "temperature": temperature,
             "top_p": top_p,

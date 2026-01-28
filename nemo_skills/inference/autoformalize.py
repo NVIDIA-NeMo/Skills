@@ -38,7 +38,7 @@ from nemo_skills.utils import (
     setup_logging,
 )
 
-from .generate import GenerateSolutionsConfig, GenerationTask
+from .generate import GenerationTask, GenerationTaskConfig
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -46,7 +46,7 @@ reasoning_effort_list = ["low", "medium", "high"]
 
 
 @nested_dataclass(kw_only=True)
-class AutoformalizeConfig(GenerateSolutionsConfig):
+class AutoformalizeConfig(GenerationTaskConfig):
     """LLM generation parameters."""
 
     # Lean 4 specific parameters

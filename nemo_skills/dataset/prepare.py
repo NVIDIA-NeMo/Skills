@@ -101,7 +101,7 @@ if __name__ == "__main__":
         "--dataset_groups",
         default=[],
         nargs="*",
-        choices=["math", "code", "chat", "multichoice", "long-context", "tool"],
+        choices=["math", "code", "chat", "multichoice", "long-context", "tool", "vlm"],
         help="Can specify a dataset group here",
     )
     parser.add_argument(
