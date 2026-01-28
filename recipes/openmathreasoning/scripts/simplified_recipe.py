@@ -232,20 +232,20 @@ if __name__ == "__main__":
         args.backend,
         wandb_params,
     )
-    prepare(workspace=args.workspace, cluster=args.cluster, expname_prefix=args.expname_prefix)
-    initial_eval(
-        workspace=args.workspace,
-        cluster=args.cluster,
-        num_gpus=args.num_gpus,
-        expname_prefix=args.expname_prefix,
-        wandb_params=wandb_params,
-    )
-    run_sdg(
-        workspace=args.workspace,
-        cluster=args.cluster,
-        num_gpus=args.num_gpus,
-        expname_prefix=args.expname_prefix,
-        wandb_params=wandb_params,
-    )
+    # prepare(workspace=args.workspace, cluster=args.cluster, expname_prefix=args.expname_prefix)
+    # initial_eval(
+    #     workspace=args.workspace,
+    #     cluster=args.cluster,
+    #     num_gpus=args.num_gpus,
+    #     expname_prefix=args.expname_prefix,
+    #     wandb_params=wandb_params,
+    # )
+    # run_sdg(
+    #     workspace=args.workspace,
+    #     cluster=args.cluster,
+    #     num_gpus=args.num_gpus,
+    #     expname_prefix=args.expname_prefix,
+    #     wandb_params=wandb_params,
+    # )
     run_training(*common_args)
     final_eval(*common_args)
