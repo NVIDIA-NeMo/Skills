@@ -13,47 +13,23 @@
 # limitations under the License.
 
 import json
-import os
-import urllib.request
 from pathlib import Path
 
-URL = "https://huggingface.co/datasets/SciCode1/SciCode/raw/main/problems_{split}.jsonl"
-
+from datasets import load_dataset
 
 if __name__ == "__main__":
     data_dir = Path(__file__).absolute().parent
-    for split in ["dev", "test"]:
-        original_file = str(data_dir / f"original_{split}.jsonl")
-        data_dir.mkdir(exist_ok=True)
-        output_file = str(data_dir / f"{split}.jsonl")
+    data_dir.mkdir(exist_ok=True)
 
-        if not os.path.exists(original_file):
-            urllib.request.urlretrieve(URL.format(split=split), original_file)
+    dataset = load_dataset("SciCode1/SciCode")
 
-        data = []
-        with open(original_file, "rt", encoding="utf-8") as fin:
-            for line in fin:
-                entry = json.loads(line)
-                new_entry = entry  # TODO?
-                data.append(new_entry)
-
-        with open(output_file, "wt", encoding="utf-8") as fout:
-            for entry in data:
-                fout.write(json.dumps(entry) + "\n")
-
-    # Concate the two to make test_aai
-    dev_file = data_dir / "dev.jsonl"
-    test_file = data_dir / "test.jsonl"
+    split_mapping = {"validation": "dev", "test": "test"}
     test_aai_file = data_dir / "test_aai.jsonl"
-
-    with open(dev_file, "rt", encoding="utf-8") as fin:
-        dev_data = [json.loads(line) for line in fin]
-    with open(test_file, "rt", encoding="utf-8") as fin:
-        test_data = [json.loads(line) for line in fin]
-
-    test_aai_data = []
-    test_aai_data.extend(dev_data)
-    test_aai_data.extend(test_data)
-    with open(test_aai_file, "w", encoding="utf-8") as fout:
-        for entry in test_aai_data:
-            fout.write(json.dumps(entry) + "\n")
+    with open(test_aai_file, "w", encoding="utf-8") as test_aai_fout:
+        for hf_split, output_split in split_mapping.items():
+            output_file = data_dir / f"{output_split}.jsonl"
+            with open(output_file, "wt", encoding="utf-8") as fout:
+                for entry in dataset[hf_split]:
+                    line = json.dumps(entry) + "\n"
+                    fout.write(line)
+                    test_aai_fout.write(line)
