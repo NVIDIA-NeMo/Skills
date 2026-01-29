@@ -24,16 +24,12 @@ if __name__ == "__main__":
     dataset = load_dataset("SciCode1/SciCode")
 
     split_mapping = {"validation": "dev", "test": "test"}
-    all_data = []
-    for hf_split, output_split in split_mapping.items():
-        output_file = data_dir / f"{output_split}.jsonl"
-        with open(output_file, "wt", encoding="utf-8") as fout:
-            for entry in dataset[hf_split]:
-                fout.write(json.dumps(entry) + "\n")
-                all_data.append(entry)
-
-    # Concatenate dev and test to make test_aai
     test_aai_file = data_dir / "test_aai.jsonl"
-    with open(test_aai_file, "w", encoding="utf-8") as fout:
-        for entry in all_data:
-            fout.write(json.dumps(entry) + "\n")
+    with open(test_aai_file, "w", encoding="utf-8") as test_aai_fout:
+        for hf_split, output_split in split_mapping.items():
+            output_file = data_dir / f"{output_split}.jsonl"
+            with open(output_file, "wt", encoding="utf-8") as fout:
+                for entry in dataset[hf_split]:
+                    line = json.dumps(entry) + "\n"
+                    fout.write(line)
+                    test_aai_fout.write(line)
