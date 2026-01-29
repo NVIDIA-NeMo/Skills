@@ -25,8 +25,6 @@ from math import lcm
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
 
-import fire
-from fire import decorators as fire_decorators
 from rich.logging import RichHandler
 
 # isort: off
@@ -507,6 +505,11 @@ def check_no_extra_args_fire():
         RuntimeError: If the function name is not found in the calling context.
         ValueError: If extra arguments are found that are not accepted by the function.
     """
+
+    # Need to import here since nemo-rl async GRPO data processing imports this file and does not have fire installed on its VLLM uv venv.
+    import fire
+    from fire import decorators as fire_decorators
+
     args = sys.argv[1:]
     # Extract the function name and its arguments from the command-line arguments
     function_name = args[0]
