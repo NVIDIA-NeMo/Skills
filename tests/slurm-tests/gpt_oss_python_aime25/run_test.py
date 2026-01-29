@@ -33,7 +33,7 @@ def eval_gpt_oss_python(workspace, cluster, expname_prefix, wandb_project):
         ),
         cluster=cluster,
         benchmarks="aime25:16",
-        model="openai/gpt-oss-120b",
+        model="/hf_models/gpt-oss-120b",
         server_gpus=8,
         num_jobs=1,
         server_type="vllm",

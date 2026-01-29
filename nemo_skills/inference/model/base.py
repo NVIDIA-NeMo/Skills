@@ -206,8 +206,8 @@ class BaseModel:
         if isinstance(tokenizer, str):
             try:
                 return WrapperAutoTokenizer(tokenizer)
-            except (OSError, Exception) as e:
-                LOG.debug(f"Failed to initialize tokenizer from '{tokenizer}': {e}")
+            except OSError:
+                LOG.warning(f"Tokenizer not found at '{tokenizer}', trying fallback to server /tokenize endpoint")
                 return None
 
     @abc.abstractmethod
