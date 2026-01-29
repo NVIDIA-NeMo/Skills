@@ -339,6 +339,9 @@ def sft_nemo_rl(
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
 
+    # Read ray_template from cluster config
+    ray_template = cluster_config.get("ray_template", None)
+
     if log_dir is None:
         log_dir = output_dir
 
@@ -419,6 +422,7 @@ def sft_nemo_rl(
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
+                    ray_template=ray_template,
                 )
         # if average_steps is not specified, we only save the final checkpoint
         if average_steps is None:
