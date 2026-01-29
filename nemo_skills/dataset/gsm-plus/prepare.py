@@ -16,13 +16,11 @@ import argparse
 import json
 import os
 import pathlib
-import urllib.request
 from pathlib import Path
 
+from datasets import load_dataset
+
 from nemo_skills.dataset.utils import add_rounding_instruction
-
-URL = "https://huggingface.co/datasets/qintongli/GSM-Plus/resolve/main/data/test-00000-of-00001.jsonl?download=true"
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -47,10 +45,9 @@ if __name__ == "__main__":
     split = "test"
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
-    original_file = str(data_dir / f"original_{split}.jsonl")
     output_file = str(data_dir / f"{split}.jsonl")
 
-    urllib.request.urlretrieve(URL, original_file)
+    dataset = load_dataset("qintongli/GSM-Plus", split="test")
 
     file_rounded = None
     if not args.no_rounding_instructions:
@@ -62,10 +59,9 @@ if __name__ == "__main__":
         for key in cleaning_options.keys():
             cleaning_options[key] = set(cleaning_options[key])
 
-    with open(original_file, "rt") as original, open(output_file, "w") as test_full:
-        original_data = [json.loads(line) for line in original.readlines()]
-        cleaning_options["none"] = set(range(len(original_data)))
-        for i, original_entry in enumerate(original_data):
+    cleaning_options["none"] = set(range(len(dataset)))
+    with open(output_file, "w") as test_full:
+        for i, original_entry in enumerate(dataset):
             if (
                 original_entry["perturbation_type"].replace(" ", "_") in args.categories
                 and i in cleaning_options[args.cleaning]
@@ -107,6 +103,3 @@ if __name__ == "__main__":
 
     if file_rounded:
         file_rounded.close()
-
-    # cleaning up
-    os.remove(original_file)
