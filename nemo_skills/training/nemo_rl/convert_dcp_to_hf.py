@@ -88,37 +88,30 @@ def is_safetensors_checkpoint(weights_path):
     return os.path.isdir(hf_metadata_path)
 
 
-def copy_tokenizer_files(model_name, hf_ckpt_path):
-    """Download and copy tokenizer files from HuggingFace to the HF checkpoint directory.
+def copy_tokenizer_files(tokenizer_path, hf_ckpt_path):
+    """Copy tokenizer files from the original model to the HF checkpoint directory.
 
     Args:
-        model_name: HuggingFace model name to download tokenizer from
+        tokenizer_path: Path to directory containing tokenizer files
         hf_ckpt_path: Path to the HF checkpoint directory
     """
-    from huggingface_hub import hf_hub_download, list_repo_files
-
-    # Common tokenizer files that need to be copied
     tokenizer_files = [
         "tokenizer.json",
         "tokenizer_config.json",
         "special_tokens_map.json",
         "vocab.json",
         "merges.txt",
-        "tokenizer.model",  # For SentencePiece-based tokenizers
         "added_tokens.json",
+        "chat_template.jinja",
     ]
-
-    print(f"Downloading tokenizer files from {model_name}...")
-    repo_files = list_repo_files(model_name)
-    for filename in tokenizer_files:
-        if filename in repo_files:
-            downloaded_path = hf_hub_download(model_name, filename)
-            dst_path = os.path.join(hf_ckpt_path, filename)
-            shutil.copy2(downloaded_path, dst_path)
-            print(f"Copied {filename}")
+    for fname in tokenizer_files:
+        src = os.path.join(tokenizer_path, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(hf_ckpt_path, fname))
+            print(f"Copied {fname}")
 
 
-def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, tokenizer_name, hf_overrides=None):
+def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, tokenizer_path, hf_overrides=None):
     """Convert safetensors checkpoint to HF format using offline_hf_consolidation.py."""
     model_dir = os.path.join(weights_path, "model")
 
@@ -148,7 +141,9 @@ def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, tokenizer_
     subprocess.run(cmd, check=True)
 
     # Copy tokenizer files (not handled by offline consolidation)
-    copy_tokenizer_files(tokenizer_name, hf_ckpt_path)
+    # TODO: this will fail if config["policy"]["model_name"] isn't a path, but that's not common and we should
+    # anyway remove this logic when it's properly handled in nemo-rl
+    copy_tokenizer_files(tokenizer_path, hf_ckpt_path)
 
     # Apply hf_overrides to config.json if provided
     if hf_overrides:
@@ -211,7 +206,7 @@ def main():
             weights_path=dcp_ckpt_path,
             hf_ckpt_path=args.hf_ckpt_path,
             model_name=model_name_or_path,
-            tokenizer_name=tokenizer_name_or_path,
+            tokenizer_path=tokenizer_name_or_path,
             hf_overrides=hf_overrides if hf_overrides else None,
         )
     else:

@@ -27,7 +27,7 @@ from typing import Any
 
 import hydra
 import litellm
-from omegaconf import ListConfig
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -305,7 +305,10 @@ class GenerationTask:
             cfg: GenerationTaskConfig object with the configuration parameters or subclass.
         """
         self.cfg = cfg
-        self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
+        if isinstance(self.cfg.inference.extra_body, DictConfig):
+            self.cfg.inference.extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
+        else:
+            self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
 
         # chat template kwargs goes either into extra body of inference or as a prompt parameter
         if self.cfg.chat_template_kwargs:
