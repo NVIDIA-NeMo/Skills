@@ -23,14 +23,14 @@ from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: 
 
 TOOLCALLING_METRIC_RANGES = {
     ("overall_accuracy", "accuracy"): (61.0, 67.0),
-    ("non_live_single_turn", "overall_non_live", "accuracy"): (84.0, 90.0),
-    ("non_live_single_turn", "non_live_ast", "accuracy"): (85.0, 92.0),
-    ("non_live_single_turn", "irrelevance", "accuracy"): (79.0, 86.0),
-    ("live_single_turn", "overall_live", "accuracy"): (76.0, 83.0),
-    ("live_single_turn", "live_ast", "accuracy"): (79.0, 86.0),
-    ("live_single_turn", "live_irrelevance", "accuracy"): (73.0, 80.0),
-    ("live_single_turn", "live_relevance", "accuracy"): (70.0, 90.0),  # unusually high variance
-    ("multi_turn", "overall_multi_turn", "accuracy"): (20.0, 30.0),
+    ("overall_non_live", "accuracy"): (84.0, 90.0),
+    ("non_live_ast", "accuracy"): (85.0, 92.0),
+    ("non_live_irrelevance", "accuracy"): (79.0, 86.0),
+    ("overall_live", "accuracy"): (76.0, 83.0),
+    ("live_ast", "accuracy"): (79.0, 86.0),
+    ("live_irrelevance", "accuracy"): (73.0, 80.0),
+    ("live_relevance", "accuracy"): (70.0, 90.0),  # unusually high variance
+    ("overall_multi_turn", "accuracy"): (20.0, 30.0),
 }
 
 
@@ -43,7 +43,7 @@ GENSELECT_METRIC_RANGES = {
 
 def check_results(eval_dir: str):
     f = os.path.join(eval_dir, "eval-results", "bfcl_v3", "metrics.json")
-    data = load_json(f)
+    data = load_json(f)["bfcl_v3"]
     for category_tuple, expected_range in TOOLCALLING_METRIC_RANGES.items():
         val = float(get_nested_value(data, category_tuple))
         lo, hi = expected_range

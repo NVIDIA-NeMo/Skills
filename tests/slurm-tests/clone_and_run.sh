@@ -13,8 +13,10 @@ git clone https://github.com/NVIDIA-NeMo/Skills.git NeMo-Skills
 cd NeMo-Skills
 
 curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=$LOCAL_WORKSPACE sh
-$LOCAL_WORKSPACE/uv venv .venv --python 3.10
+$LOCAL_WORKSPACE/uv venv .venv --python 3.10 --seed
 source .venv/bin/activate
+VENV_BIN="$(dirname "$(command -v python)")"
+export PATH="$VENV_BIN:$PATH"
 $LOCAL_WORKSPACE/uv pip install -e .
 
 ./tests/slurm-tests/run_all.sh $1

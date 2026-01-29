@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
-from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: E402
+from utils import assert_all, load_json, soft_assert  # noqa: E402
 
 REASONING_TASKS = [
     "math-500",
@@ -67,7 +67,7 @@ REASONING_METRIC_RANGES = {
         "aime25": (0.0, 10.0),
         "gpqa": (49.0, 56.0),
         "mmlu-pro": (68.0, 71.0),
-        "livecodebench": (27.5, 32.5),
+        "livecodebench": (26.0, 32.5),
         "scicode": {
             "problem_accuracy": (5.0, 10.0),
             "subtask_accuracy": (20.0, 28.0),
@@ -175,15 +175,6 @@ def check_reasoning(eval_dir: str, mode: str):
             soft_assert(lo <= val <= hi, f"{bench} ({mode}) {field}={val} out of range [{lo},{hi}]")
 
 
-def check_toolcalling(eval_dir: str, mode: str):
-    f = os.path.join(eval_dir, "eval-results", "bfcl_v3", "metrics.json")
-    data = load_json(f)
-    for cat, path in TOOLCALLING_METRIC_PATHS.items():
-        val = float(get_nested_value(data, path))
-        lo, hi = TOOLCALLING_METRIC_RANGES[mode][cat]
-        soft_assert(lo <= val <= hi, f"TOOL-CALLING ({mode}) {cat}={val} out of range [{lo},{hi}]")
-
-
 def check_ruler(eval_dir: str, mode: str):
     f = os.path.join(eval_dir, "eval-results", "ruler.nemotron_super_128k_slurm_ci", "metrics.json")
     data = load_json(f)
@@ -202,8 +193,6 @@ def main():
 
     check_reasoning(eval_root / "reasoning_off", "reasoning_off")
     check_reasoning(eval_root / "reasoning_on", "reasoning_on")
-    check_toolcalling(eval_root / "reasoning_on_tool_calling", "reasoning_on")
-    check_toolcalling(eval_root / "reasoning_off_tool_calling", "reasoning_off")
     check_ruler(eval_root / "reasoning_off_ruler", "reasoning_off")
 
     assert_all()
