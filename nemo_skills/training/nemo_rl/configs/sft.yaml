@@ -16,7 +16,7 @@ sft:
 checkpointing:
   enabled: true
   checkpoint_dir: "results/sft"
-  metric_name: "val_loss"
+  metric_name: "val:val_loss" # one of "val:" or "train:" followed by the metric name
   higher_is_better: false
   keep_top_k: 50
   save_period: 100
@@ -33,8 +33,7 @@ policy:
   train_micro_batch_size: 1
   max_total_sequence_length: 4096
   precision: "bfloat16"
-  fsdp_offload_enabled: false
-  activation_checkpointing_enabled: false
+  offload_optimizer_for_logprob: false
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
@@ -43,9 +42,10 @@ policy:
   weight_decay: 0.01
   min_lr: 1e-6
 
-
   dtensor_cfg:
+    _v2: true
     enabled: true
+    env_vars: {}
     cpu_offload: False
     sequence_parallel: ${policy.sequence_parallel}
     activation_checkpointing: false
@@ -53,9 +53,23 @@ policy:
     context_parallel_size: ${policy.context_parallel_size}
     custom_parallel_plan: null
 
+    # LoRA (Low-Rank Adaptation) Configuration
+    lora_cfg:
+      enabled: False  # Set to True to enable LoRA fine-tuning
+      target_modules: []  # List of module names to apply LoRA (empty list with match_all_linear=true applies to all linear layers)
+      exclude_modules: []  # List of module names to exclude from LoRA
+      match_all_linear: true  # If True, applies LoRA to all linear layers (overrides target_modules)
+      dim: 8  # LoRA rank (r): lower rank = fewer parameters but less capacity. Typical values: 4, 8, 16, 32, 64
+      alpha: 32  # LoRA scaling factor: effective learning rate multiplier = alpha/dim. Typical values: 16, 32, 64
+      dropout: 0.0  # Dropout probability applied to LoRA layers (0.0 = no dropout)
+      dropout_position: "post"  # Where to apply dropout: "pre" (before LoRA) or "post" (after LoRA)
+      lora_A_init: "xavier"  # Initialization method for LoRA A matrix: "xavier" or "uniform"
+      use_triton: true  # Use Triton-optimized kernels for LoRA (faster but requires flash-attn). Disable when tensor_parallel_size > 1
 
   megatron_cfg:
     enabled: false
+    env_vars: {}
+    empty_unused_memory_level: 1
     activation_checkpointing: false
     tensor_model_parallel_size: ${policy.tensor_model_parallel_size}
     expert_tensor_parallel_size: 1
@@ -72,10 +86,25 @@ policy:
     moe_router_bias_update_rate: 1e-3
     moe_permute_fusion: false
     #gives ~20% training perf speedup with sequence packing
+    apply_rope_fusion: True
+    # gives ~25% training perf speedup with sequence packing and apply_rope_fusion
     bias_activation_fusion: True
-    apply_rope_fusion: True  # Only used if position_embedding_type=rope
     layernorm_epsilon: 1e-6
-    empty_unused_memory_level: 0 # setting it to 0 will maximize performance, but it might lead to OOMs, while setting it to 2 to minimize the peak memory usage to avoid OOMs
+    defer_fp32_logits: False
+    moe_per_layer_logging: False
+
+    peft:
+      enabled: false
+      target_modules: []
+      exclude_modules: []
+      dim: 8
+      alpha: 32
+      dropout: 0.0
+      dropout_position: "post"
+      lora_A_init_method: "xavier"
+      lora_B_init_method: "zero"
+      a2a_experimental: false
+      lora_dtype: None
 
     optimizer:
       optimizer: "adam"
@@ -98,7 +127,7 @@ policy:
       use_distributed_optimizer: true
       use_precision_aware_optimizer: true
 
-      # clip_grad: ${policy.max_grad_norm}
+      clip_grad: ${policy.max_grad_norm}
 
       # optimizer cpu offload
       optimizer_cpu_offload: false
@@ -117,22 +146,24 @@ policy:
       grad_reduce_in_fp32: false
       overlap_grad_reduce: true
       overlap_param_gather: true
-      average_in_collective: true
       data_parallel_sharding_strategy: "optim_grads_params"
+      use_custom_fsdp: false
 
   dynamic_batching:
     enabled: false
-
+    train_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.train_micro_batch_size}}
+    sequence_length_round: 64
 
   sequence_packing:
     enabled: True
     train_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.train_micro_batch_size}}
     algorithm: "modified_first_fit_decreasing"
     sequence_length_round: 64
-    logprob_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.train_micro_batch_size}}
-  #If this value is set to null, it will be automatically assigned in the code.
-  make_sequence_length_divisible_by: null
-  max_grad_norm: null
+
+  # makes the training sequence length divisible by the tensor parallel size
+  # this is useful for sequence parallel training
+  make_sequence_length_divisible_by: ${policy.dtensor_cfg.tensor_parallel_size}
+  max_grad_norm: 0.0 # megatron: Zero means no clipping, FSDP: null means no clipping
 
   optimizer:
     name: "torch.optim.AdamW"
@@ -155,7 +186,7 @@ policy:
   - name: "torch.optim.lr_scheduler.CosineAnnealingLR"
     kwargs:
       T_max: ${sft.max_num_steps}      # total training steps
-      eta_min: ${policy.lr}   # set min_lr = initial_lr -> constant schedule
+      eta_min: ${policy.min_lr}   # set min_lr = initial_lr -> constant schedule
   - milestones: [0]  # required to avoid config errors
 
 
@@ -180,6 +211,9 @@ logger:
   monitor_gpus: true  # If true, will monitor GPU usage and log to wandb and/or tensorboard
   num_val_samples_to_print: 0  # Number of validation samples to pretty print on terminal
   wandb:
+    project: "sft-dev"
+    name: "sft-dev-${data.dataset_name}"
+  swanlab:
     project: "sft-dev"
     name: "sft-dev-${data.dataset_name}"
   tensorboard:

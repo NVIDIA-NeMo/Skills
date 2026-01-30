@@ -28,12 +28,8 @@ set `DOCKER_PLATFORM=linux/arm64` for the build script described above.
 
 ## Building trtllm image
 
-We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.0.0` image for both amd64 and arm64.
+We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc1` image.
 
 ## Building sglang image
 
-We directly use official `lmsysorg/sglang:v0.5.4` image.
-
-## Building vllm image
-
-We use official `vllm/vllm-openai:v0.10.2` image with the additional `vllm[audio]` dependencies.
+We directly use official `lmsysorg/sglang:v0.5.8` image.
