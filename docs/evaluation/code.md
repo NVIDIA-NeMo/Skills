@@ -147,9 +147,9 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
     "pass@1": {
       "num_entries": 500,
       "gen_seconds": 7172,
-      "issues_resolved": 45.0,
-      "no_patch": 0.4,
-      "patch_cant_apply": 0.8
+      "issues_resolved": 48.4,
+      "no_patch": 1.0,
+      "patch_cant_apply": 1.6
     }
   }
 }
