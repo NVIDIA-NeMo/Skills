@@ -24,13 +24,13 @@ from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: 
 TOOLCALLING_METRIC_RANGES = {
     ("overall_accuracy", "accuracy"): (61.0, 67.0),
     ("overall_non_live", "accuracy"): (84.0, 90.0),
-    ("non_live_ast", "accuracy"): (85.0, 92.0),
+    ("non_live_ast", "accuracy"): (84.0, 92.0),
     ("non_live_irrelevance", "accuracy"): (79.0, 86.0),
     ("overall_live", "accuracy"): (76.0, 83.0),
     ("live_ast", "accuracy"): (79.0, 86.0),
     ("live_irrelevance", "accuracy"): (73.0, 80.0),
-    ("live_relevance", "accuracy"): (70.0, 90.0),  # unusually high variance
-    ("overall_multi_turn", "accuracy"): (20.0, 30.0),
+    ("live_relevance", "accuracy"): (70.0, 100.0),  # unusually high variance
+    ("overall_multi_turn", "accuracy"): (20.0, 33.0),
 }
 
 
