@@ -27,7 +27,7 @@ METRIC_RANGES = {
         ("swe-bench", "pass@1", "issues_resolved"): (44.3, 52.3),
     },
     "swe_agent": {
-        ("swe-bench", "pass@1", "issues_resolved"): (45.5, 52.4),
+        ("swe-bench", "pass@1", "issues_resolved"): (45.5, 53.5),
     },
 }
 
