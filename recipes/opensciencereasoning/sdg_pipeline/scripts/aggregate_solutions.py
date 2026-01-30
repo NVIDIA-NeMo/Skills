@@ -72,8 +72,10 @@ def aggregate_samples(files: Iterable[Path]) -> List[Dict]:
         with open(file_path) as fin:
             for line in fin:
                 sample = json.loads(line)
-                if "_full_generation" in sample:
-                    sample["generation"] = sample.pop("_full_generation")
+                if not sample:
+                    logging.warning("Skipping empty line in %s", file_path)
+                    continue
+
                 sample = {
                     key: value
                     for key, value in sample.items()
@@ -85,6 +87,17 @@ def aggregate_samples(files: Iterable[Path]) -> List[Dict]:
                         "judgement",
                         "majority_voting_agreement_rate",
                         "majority_voting_agreement_at_n",
+                        "subtopic","topic", 
+                        "difficulty_model_pass_rate", 
+                        "difficulty_model_pass_at_n",
+                        "difficulty_model","prompt",
+                        "answer_regex", 
+                        "_filled_prompt",
+                        "tools",
+                        "conversation",
+                        "num_tool_calls",
+                        "serialized_output",
+                        "_full_generation"
                     ]
                 }
 

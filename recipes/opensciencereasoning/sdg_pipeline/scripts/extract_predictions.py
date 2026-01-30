@@ -75,7 +75,7 @@ def collect_predictions(
                 if predicted_answer_regex_field:
                     extract_from_boxed = sample["metadata"].get("extract_from_boxed", False)
                     predicted_answer_regex = (
-                        "" if extract_from_boxed else sample["metadata"][predicted_answer_regex_field]
+                        "" if extract_from_boxed else sample[predicted_answer_regex_field]
                     )
                 elif predicted_answer_regex:
                     extract_from_boxed = False
