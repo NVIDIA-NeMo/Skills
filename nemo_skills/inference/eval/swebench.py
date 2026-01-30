@@ -249,7 +249,8 @@ class SweBenchGenerationTask(GenerationTask):
                 # make venv & install swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
-                "uv pip install -e ."
+                "uv pip install -e . && "
+                "uv pip install rich==14.2.0"
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
