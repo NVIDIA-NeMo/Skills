@@ -33,6 +33,7 @@ ipython
 iso639-lang
 langcodes
 language-data
+latex2sympy2_extended  # Needed for math evaluation
 litellm[caching]
 math-verify[antlr4_9_3]
 mcp
