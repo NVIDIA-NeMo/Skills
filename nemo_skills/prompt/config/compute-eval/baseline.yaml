@@ -48,13 +48,13 @@ user: |-
 
   Problem
   Description:
-  $problem_prompt
+  {problem_prompt}
 
   Build command:
-  $build_command
+  {build_command}
 
   Context files:
-  $context_files_block
+  {context_files_block}
 
   Output requirements
 
