@@ -105,9 +105,11 @@ class ScriptGenerationTask(GenerationTask):
             kwargs["llm_kwargs"] = self.llm_kwargs
         if "random_seed" in sig.parameters:
             kwargs["random_seed"] = self.random_seed
-        result = await self._script_module.process_single(**kwargs)
-        if "generation" not in result:
-            result["generation"] = "dummy generation key"  # To avoid error in dumping
+        async with self.semaphore:
+            result = await self._script_module.process_single(**kwargs)
+            if "generation" not in result:
+                result["generation"] = "dummy generation key"  # To avoid error in dumping
+
         return result
 
 
