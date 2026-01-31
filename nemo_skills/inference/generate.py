@@ -37,6 +37,7 @@ from nemo_skills.evaluation.evaluator import (
     get_evaluator_class,
     supports_single_eval,
 )
+from nemo_skills.inference.litellm_hybrid_cache import StableLiteLLMCache
 from nemo_skills.inference.model import (
     ParallelThinkingConfig,
     get_code_execution_model,
@@ -824,10 +825,11 @@ class GenerationTask:
             self.litellm_cache_dir = (
                 Path(self.cfg.output_file).parent / "litellm_cache" / f"{output_file_name}_{self.cfg.chunk_id or 0}"
             )
-            litellm.cache = litellm.Cache(type="disk", disk_cache_dir=self.litellm_cache_dir)
+            litellm.cache = StableLiteLLMCache(cache_file_path=str(self.litellm_cache_dir / "cache.pkl"))
 
     def cleanup_litellm_cache(self):
         if self.cfg.enable_litellm_cache:
+            litellm.cache.cache.force_save()
             shutil.rmtree(self.litellm_cache_dir)
 
     def generate(self):
