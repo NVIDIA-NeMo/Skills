@@ -436,6 +436,7 @@ def add_task(
     partition=None,
     account=None,
     with_sandbox=False,
+    sandbox_container=None,
     keep_mounts_for_sandbox=False,
     sandbox_port: int | None = None,
     server_config=None,
@@ -629,7 +630,7 @@ def add_task(
             commands.append(get_sandbox_command(cluster_config))
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
-                container=cluster_config["containers"]["sandbox"],
+                container=sandbox_container or cluster_config["containers"]["sandbox"],
                 num_nodes=executors[0].nodes if cluster_config["executor"] == "slurm" else 1,
                 tasks_per_node=1,
                 gpus_per_node=0,

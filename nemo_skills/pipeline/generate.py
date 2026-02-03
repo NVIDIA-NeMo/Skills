@@ -61,6 +61,8 @@ def _create_job_unified(
     log_dir: str,
     sbatch_kwargs: Optional[Dict] = None,
     sandbox_env_overrides: Optional[List[str]] = None,
+    main_container: Optional[str] = None,
+    sandbox_container: Optional[str] = None,
 ) -> List[CommandGroup]:
     """
     Create CommandGroups for n models (unified for n=1 and n>1).
@@ -148,7 +150,7 @@ def _create_job_unified(
 
                 sandbox_cmd = Command(
                     script=sandbox_script,
-                    container=cluster_config["containers"]["sandbox"],
+                    container=sandbox_container or cluster_config["containers"]["sandbox"],
                     name=f"{task_name}_sandbox",
                 )
                 components.append(sandbox_cmd)
@@ -179,7 +181,7 @@ def _create_job_unified(
 
             client_cmd = Command(
                 script=client_script,
-                container=cluster_config["containers"]["nemo-skills"],
+                container=main_container or cluster_config["containers"]["nemo-skills"],
                 name=f"{task_name}",
             )
             components.append(client_cmd)
@@ -274,6 +276,8 @@ def generate(
         help="Container image(s). CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models.",
     ),
+    main_container: str = typer.Option(None, help="Override container image for the main generation client"),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     dependent_jobs: int = typer.Option(0, help="Specify this to launch that number of dependent jobs"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     num_random_seeds: int = typer.Option(
@@ -598,6 +602,8 @@ def generate(
                     log_dir=log_dir,
                     sbatch_kwargs=sbatch_kwargs,
                     sandbox_env_overrides=sandbox_env_overrides,
+                    main_container=main_container,
+                    sandbox_container=sandbox_container,
                 )
 
                 # Use unique internal job name for dependency tracking, but same task_name

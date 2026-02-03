@@ -127,6 +127,8 @@ def start_server(
         "If not specified, will use the default entrypoint for the server type.",
     ),
     server_container: str = typer.Option(None, help="Override container image for the hosted server"),
+    main_container: str = typer.Option(None, help="Override container image for the main task (e.g., chat interface)"),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     partition: str = typer.Option(None, help="Cluster partition to use"),
     account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
@@ -201,7 +203,7 @@ def start_server(
             cmd=cmd,
             task_name="server",
             log_dir=log_dir,
-            container=cluster_config["containers"]["nemo-skills"],
+            container=main_container or cluster_config["containers"]["nemo-skills"],
             cluster_config=cluster_config,
             partition=partition,
             account=account,
@@ -209,6 +211,7 @@ def start_server(
             with_sandbox=with_sandbox,
             keep_mounts_for_sandbox=keep_mounts_for_sandbox,
             sandbox_port=sandbox_port,
+            sandbox_container=sandbox_container,
             sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
         )
 

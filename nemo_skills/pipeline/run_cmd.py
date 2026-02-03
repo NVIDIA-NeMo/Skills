@@ -78,6 +78,7 @@ def run_cmd(
     server_container: str = typer.Option(
         None, help="Override container image for the hosted server (if server_gpus is set)"
     ),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     dependent_jobs: int = typer.Option(0, help="Specify this to launch that number of dependent jobs"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     run_after: List[str] = typer.Option(
@@ -203,6 +204,7 @@ def run_cmd(
                 with_sandbox=with_sandbox,
                 keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                 sandbox_port=None if get_random_port else 6000,
+                sandbox_container=sandbox_container,
                 run_after=run_after,
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
