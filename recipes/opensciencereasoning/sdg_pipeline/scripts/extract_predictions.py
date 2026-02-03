@@ -16,8 +16,10 @@
 """Extract predicted answers from generation outputs and optionally perform majority voting."""
 
 import argparse
+import hashlib
 import json
 import logging
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import DefaultDict, Dict, List
@@ -67,6 +69,13 @@ def collect_predictions(
     totals: DefaultDict[str, int] = defaultdict(int)
 
     for file_path in input_dir.glob("*.jsonl"):
+        # Extract random seed from filename (e.g., output-rs42.jsonl -> 42)
+        seed_match = re.search(r'output-rs(\d+)', file_path.stem)
+        random_seed = seed_match.group(1) if seed_match else "unknown"
+        
+        # Compute hash of the input file
+        file_hash = hashlib.md5(file_path.name.encode()).hexdigest()[:8]
+        
         samples: List[dict] = []
         with open(file_path) as fin:
             for line in fin:
@@ -89,10 +98,15 @@ def collect_predictions(
                     LOG.warning("Failed to extract answer for sample %s: %s", sample, e)
                     predicted_answer = None
                 sample["predicted_answer"] = predicted_answer
+                
+                # Add generation_id combining problem id, random seed, and file hash
+                problem_id = sample.get("id", "unknown")
+                sample["generation_id"] = f"{problem_id}__rs{random_seed}__{file_hash}"
+                
                 samples.append(sample)
 
                 if predicted_answer:
-                    answer_counts[sample["problem"]][predicted_answer] += 1
+                    answer_counts[sample["id"]][predicted_answer] += 1
                     totals[sample["problem"]] += 1
 
         file_samples[file_path] = samples
@@ -141,6 +155,10 @@ def main() -> None:
                     sample["majority_voting_agreement_at_n"] = (
                         round(majority_votes / total_votes, 6) if total_votes else 0.0
                     )
+                if "serialized_output" in sample:
+                    sample["messages"] = sample["serialized_output"]
+                else:
+                    LOG.warning("Sample missing serialized_output field: %s", sample)
                 fout.write(json.dumps(sample) + "\n")
 
         LOG.info("Wrote %s samples to %s", len(samples), destination)

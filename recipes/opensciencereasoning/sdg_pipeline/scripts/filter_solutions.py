@@ -20,6 +20,63 @@ import json
 import logging
 import os
 from typing import Dict, List, Optional, Sequence
+import re
+
+
+# ===========================
+# INTERNET DETECTION RULES
+# ===========================
+
+INTERNET_PATTERNS = {
+    "URL": r"https?://",
+    "HTTP_LIB": r"\b(requests|urllib|urllib3|httpx|aiohttp|http\.client)\b",
+    "SOCKET": r"\bimport\s+socket\b|\bsocket\.connect\(",
+    "CLI": r"\b(curl|wget|aria2|lynx)\b",
+    "SEARCH_API": r"\b(pubmed|ncbi|entrez|serpapi|bing|duckduckgo|google|wikipedia)\b",
+    "SCRAPING": r"\b(BeautifulSoup|selenium|playwright)\b",
+    "API_CLIENT": r"\b(openai|boto3|googleapiclient)\b",
+}
+
+COMPILED = {k: re.compile(v, re.IGNORECASE) for k, v in INTERNET_PATTERNS.items()}
+
+
+# ===========================
+# HELPERS
+# ===========================
+
+def extract_python_calls(serialized_output):
+    calls = []
+    for msg in serialized_output:
+        tool_calls = msg.get("tool_calls")
+        for call in tool_calls if tool_calls else []:
+            fn = call.get("function", {})
+            name = fn.get("name", "")
+            if "python" in name.lower():
+                calls.append(call)
+    return calls
+
+
+def extract_python_code(call):
+    try:
+        payload = json.loads(call["function"].get("arguments", ""))
+        return payload.get("code")
+    except Exception:
+        return None
+
+
+def uses_internet(serialized_output):
+    python_calls = extract_python_calls(serialized_output)
+
+    for call in python_calls:
+        code = extract_python_code(call)
+        if not code:
+            continue
+
+        for regex in COMPILED.values():
+            if regex.search(code):
+                return True
+
+    return False
 
 LOG = logging.getLogger(__name__)
 
@@ -63,6 +120,9 @@ def record_passes_filters(
         candidate = record.get(field)
         if candidate not in allowed:
             return False, f"metadata:{field}"
+
+    if uses_internet(record.get("serialized_output", [])):
+        return False, "uses_internet"
 
     return True, None
 
@@ -145,7 +205,7 @@ def main() -> None:
                 only_samples_with_ground_truth_answer=args.only_samples_with_ground_truth_answer,
                 metadata_filters=metadata_filters,
             )
-            
+
             if passes:
                 fout.write(json.dumps(record, ensure_ascii=False) + "\n")
                 written_records += 1

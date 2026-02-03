@@ -388,6 +388,10 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
         )
 
         generation_dir = f"{output_dir}/judgement"
+        # When judgement is made, pass the generation data directory for mapping
+        generation_data_arg = f"    --generation_data_dir '{output_dir}/with_predictions' "
+    else:
+        generation_data_arg = ""
 
     run_cmd(
         ctx=wrap_arguments(
@@ -395,6 +399,7 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
             f"    --input_dir '{generation_dir}' "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
             f"    --generation_model '{generation_args['model'].split('/')[-1]}' "
+            f"{generation_data_arg}"
         ),
         cluster=cluster,
         expname=expname,

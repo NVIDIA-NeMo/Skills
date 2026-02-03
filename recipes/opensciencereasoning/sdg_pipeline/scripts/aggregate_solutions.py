@@ -16,8 +16,10 @@
 """Aggregate solution generations into a single JSONL file."""
 
 import argparse
+import hashlib
 import json
 import logging
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
@@ -58,14 +60,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input_dir", required=True, help="Directory containing generation or judgement outputs")
     parser.add_argument("--output_file", required=True, help="Where to write the aggregated JSONL")
     parser.add_argument("--generation_model", required=True, help="Identifier of the generation model to record")
+    parser.add_argument("--generation_data_dir", default=None, help="Directory containing generation data (if different from input_dir). When provided, judgements will be mapped to generation data by generation_id")
 
     return parser.parse_args()
 
 
-def aggregate_samples(files: Iterable[Path]) -> List[Dict]:
-    """Read generation/judgement files and enrich them with correctness metrics."""
+def aggregate_samples(files: Iterable[Path], generation_data_files: Iterable[Path] = None) -> List[Dict]:
+    """Read generation/judgement files and enrich them with correctness metrics.
+    
+    If generation_data_files is provided, this function will:
+    1. Load all generation data indexed by generation_id
+    2. Load judgement files and map judgements to generation data by generation_id
+    3. Take ONLY the judgement field from judgement files, keeping all other data from generation files
+    """
     per_problem_stats: Dict[str, Dict[str, int]] = defaultdict(lambda: {"total": 0, "correct": 0})
     all_samples: List[Dict] = []
+    
+    # If generation_data_files is provided, load generation data first
+    generation_data_map = {}
+    if generation_data_files:
+        LOG.info("Loading generation data files for mapping...")
+        for gen_file in generation_data_files:
+            LOG.info("Reading generation data from %s", gen_file)
+            with open(gen_file) as fin:
+                for line in fin:
+                    gen_sample = json.loads(line)
+                    if not gen_sample:
+                        continue
+                    gen_id = gen_sample.get("generation_id")
+                    if gen_id:
+                        generation_data_map[gen_id] = gen_sample
+        LOG.info("Loaded %d generation samples", len(generation_data_map))
 
     for file_path in files:
         LOG.info("Reading %s", file_path)
@@ -75,6 +100,27 @@ def aggregate_samples(files: Iterable[Path]) -> List[Dict]:
                 if not sample:
                     logging.warning("Skipping empty line in %s", file_path)
                     continue
+                
+                # If we have generation data, map judgement to it
+                if generation_data_files:
+                    gen_id = sample.get("generation_id")
+                    if not gen_id:
+                        # Try to reconstruct generation_id from file and sample
+                        seed_match = re.search(r'output-rs(\d+)', file_path.stem)
+                        random_seed = seed_match.group(1) if seed_match else "unknown"
+                        file_hash = hashlib.md5(file_path.name.encode()).hexdigest()[:8]
+                        problem_id = sample.get("id", "unknown")
+                        gen_id = f"{problem_id}__rs{random_seed}__{file_hash}"
+                    
+                    if gen_id in generation_data_map:
+                        # Use generation data as base and only take judgement from judged file
+                        base_sample = generation_data_map[gen_id].copy()
+                        if "judgement" in sample:
+                            base_sample["judgement"] = sample["judgement"]
+                        sample = base_sample
+                    else:
+                        LOG.warning("Generation data not found for generation_id: %s", gen_id)
+
 
                 sample = {
                     key: value
@@ -82,6 +128,7 @@ def aggregate_samples(files: Iterable[Path]) -> List[Dict]:
                     if key
                     in BASE_FIELDS
                     + [
+                        "generation_id",
                         "predicted_answer",
                         "generation",
                         "judgement",
@@ -137,8 +184,18 @@ def main() -> None:
         LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, input_dir)
         open(args.output_file, "w").close()
         return
+    
+    # Load generation data files if provided
+    generation_data_files = None
+    if args.generation_data_dir:
+        generation_data_dir = Path(args.generation_data_dir)
+        if not generation_data_dir.exists() or not generation_data_dir.is_dir():
+            raise FileNotFoundError(f"Generation data directory does not exist: {generation_data_dir}")
+        generation_data_files = sorted(generation_data_dir.glob(DEFAULT_OUTPUT_PATTERN))
+        if not generation_data_files:
+            LOG.warning("No generation data files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_data_dir)
 
-    samples = aggregate_samples(files)
+    samples = aggregate_samples(files, generation_data_files)
 
     with open(args.output_file, "w") as fout:
         for sample in samples:

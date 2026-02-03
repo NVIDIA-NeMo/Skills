@@ -164,7 +164,7 @@ stages:
     enable_code_execution: ""
     code_execution_limits: ""
     builtin_tools: ""
-    endpoint_type: ++inference.endpoint_type=text
+    endpoint_type: ++inference.endpoint_type=chat
 
     generation_kwargs:
       args:
@@ -193,8 +193,10 @@ stages:
         ${stages.generate_solutions.builtin_tools}
 
     judge_kwargs:
+      endpoint_type: ++inference.endpoint_type=text
       ctx_args: >-
         ++prompt_config=judge/general-judge
+
       args:
         model: /hf_models/gpt-oss-20b
         server_type: vllm
