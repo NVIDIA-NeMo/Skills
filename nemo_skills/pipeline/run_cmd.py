@@ -58,6 +58,7 @@ def run_cmd(
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     num_gpus: int | None = typer.Option(None, help="Number of GPUs per node to use"),
@@ -197,6 +198,7 @@ def run_cmd(
                 container=containers,
                 cluster_config=cluster_config,
                 partition=partition,
+                account=account,
                 server_config=server_config,
                 with_sandbox=with_sandbox,
                 keep_mounts_for_sandbox=keep_mounts_for_sandbox,

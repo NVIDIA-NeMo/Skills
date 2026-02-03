@@ -168,6 +168,7 @@ def get_executor(
     log_prefix: str = "main",
     mounts=None,
     partition=None,
+    account=None,
     dependencies=None,
     extra_package_dirs: tuple[str] | None = None,
     heterogeneous=False,
@@ -210,6 +211,7 @@ def get_executor(
             taken from `cluster_config`.
         partition: SLURM partition override. If omitted, inferred from `gpus_per_node`
             and `cluster_config`.
+        account: SLURM account override. If omitted, uses `cluster_config["account"]`.
         dependencies: SLURM job handles to depend on. The dependency type is taken from
             `cluster_config['dependency_type']` (default: "afterany").
         extra_package_dirs: Additional directories to package with the code for remote
@@ -328,9 +330,12 @@ def get_executor(
     dependency_type = cluster_config.get("dependency_type", "afterany")
     job_details_class = CustomJobDetailsRay if with_ray else CustomJobDetails
 
+    # Resolve account with fallback to cluster_config
+    account = account or cluster_config.get("account")
+
     # Build executor parameters as a dictionary to avoid duplicate parameters
     executor_params = {
-        "account": cluster_config["account"],
+        "account": account,
         "partition": partition,
         "nodes": num_nodes,
         "ntasks_per_node": tasks_per_node,
@@ -429,6 +434,7 @@ def add_task(
     num_nodes=1,
     log_dir=None,
     partition=None,
+    account=None,
     with_sandbox=False,
     keep_mounts_for_sandbox=False,
     sandbox_port: int | None = None,
@@ -538,6 +544,7 @@ def add_task(
             tasks_per_node=num_server_tasks,
             gpus_per_node=server_config["num_gpus"],
             partition=partition,
+            account=account,
             dependencies=dependencies,
             job_name=task_name,
             log_dir=log_dir,
@@ -582,6 +589,7 @@ def add_task(
                         tasks_per_node=cur_tasks,
                         gpus_per_node=num_gpus if server_config is None else 0,
                         partition=partition,
+                        account=account,
                         dependencies=dependencies,
                         job_name=task_name,
                         log_dir=log_dir,
@@ -626,6 +634,7 @@ def add_task(
                 tasks_per_node=1,
                 gpus_per_node=0,
                 partition=partition,
+                account=account,
                 mounts=None if keep_mounts_for_sandbox else [],
                 dependencies=dependencies,
                 job_name=task_name,

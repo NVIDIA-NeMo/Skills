@@ -55,6 +55,7 @@ def _create_job_unified(
     installation_command: Optional[str],
     with_sandbox: bool,
     partition: Optional[str],
+    account: Optional[str],
     keep_mounts_for_sandbox: bool,
     task_name: str,
     log_dir: str,
@@ -191,6 +192,7 @@ def _create_job_unified(
                 commands=components,
                 hardware=HardwareConfig(
                     partition=partition,
+                    account=account,
                     num_gpus=group_gpus,
                     num_nodes=group_nodes,
                     num_tasks=group_tasks,
@@ -297,6 +299,7 @@ def generate(
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     run_after: List[str] = typer.Option(
@@ -589,6 +592,7 @@ def generate(
                     installation_command=installation_command,
                     with_sandbox=with_sandbox,
                     partition=partition,
+                    account=account,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                     task_name=task_name,
                     log_dir=log_dir,
