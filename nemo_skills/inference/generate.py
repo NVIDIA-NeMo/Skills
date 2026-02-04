@@ -639,14 +639,14 @@ class GenerationTask:
 
             # Apply prompt_suffix if configured
             if self.cfg.prompt_suffix:
-                if isinstance(prompt, list):
+                if isinstance(prompt, list) and prompt:
                     prompt[-1]["content"] += self.cfg.prompt_suffix
-                else:
+                elif isinstance(prompt, str):
                     prompt += self.cfg.prompt_suffix
             return prompt
 
         if self.cfg.prompt_format == "openai":
-            if self.cfg.prompt_suffix:
+            if self.cfg.prompt_suffix and data_point["messages"]:
                 data_point["messages"][-1]["content"] += self.cfg.prompt_suffix
             if self.cfg.system_message:
                 if data_point["messages"][0]["role"] != "system":
@@ -669,9 +669,9 @@ class GenerationTask:
             format_as_string=(self.cfg.inference.endpoint_type == EndpointType.text),
         )
         if self.cfg.prompt_suffix:
-            if isinstance(filled_prompt, list):
+            if isinstance(filled_prompt, list) and filled_prompt:
                 filled_prompt[-1]["content"] += self.cfg.prompt_suffix
-            else:
+            elif isinstance(filled_prompt, str):
                 filled_prompt += self.cfg.prompt_suffix
         return filled_prompt
 
