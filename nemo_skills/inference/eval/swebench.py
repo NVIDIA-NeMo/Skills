@@ -558,7 +558,7 @@ class SweBenchGenerationTask(GenerationTask):
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
         if self.cfg.agent_config is None:
-            self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/mini"
+            self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/default"
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -578,12 +578,13 @@ class SweBenchGenerationTask(GenerationTask):
             "drop_params": True,
         }
 
-        # 3. Convert dictionary into a list of CLI config override strings: -c key=value
+        # Build the config override string
+        # We use -c for key=value pairs. In v1, --config is strictly for file paths.
         config_overrides = []
         for k, v in model_overrides.items():
-            # shlex.quote handles potential spaces or special characters in strings (like api_base)
+            # shlex.quote handles spaces in api_base or other strings
             val = shlex.quote(str(v))
-            config_overrides.append(f"--config model.model_kwargs.{k}={val}")
+            config_overrides.append(f"-c model.model_kwargs.{k}={val}")
 
         overrides_cmd_str = " ".join(config_overrides)
 
@@ -591,6 +592,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/mini-swe-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/mini-swe-agent && "
+            # Bypasses the "To get started..." interactive prompt
             "export MSWEA_CONFIGURED=true && "
             "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
             f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
