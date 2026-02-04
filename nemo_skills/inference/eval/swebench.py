@@ -265,6 +265,8 @@ class SweBenchGenerationTask(GenerationTask):
                 "rm -rf /root/mini-swe-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
                 "cd /root/mini-swe-agent && "
+                # Bypass the interactive setup wizard by pointing to the default config
+                "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install mini-swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
@@ -589,6 +591,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/mini-swe-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/mini-swe-agent && "
+            "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
             f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
             f"--config {get_config_path(self.cfg.agent_config)} "
             f"{overrides_cmd_str} "
