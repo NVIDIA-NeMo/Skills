@@ -258,6 +258,8 @@ class SweBenchGenerationTask(GenerationTask):
         elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = "HEAD"
             setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
