@@ -619,13 +619,18 @@ class GenerationTask:
                 else:
                     # No existing messages, use new_prompt and add audio from data_point
                     prompt = deepcopy(self.cfg.new_prompt)
-                    for msg in prompt:
-                        if msg["role"] == "user":
-                            if "audio" in data_point:
-                                msg["audio"] = data_point["audio"]
-                            if "audios" in data_point:
-                                msg["audios"] = data_point["audios"]
-                            break
+                    has_audio = "audio" in data_point or "audios" in data_point
+                    if has_audio:
+                        # Find user message to attach audio
+                        user_msg = next((msg for msg in prompt if msg["role"] == "user"), None)
+                        if user_msg is None:
+                            raise ValueError(
+                                "new_prompt must have a 'user' role message when audio data is present in data_point"
+                            )
+                        if "audio" in data_point:
+                            user_msg["audio"] = data_point["audio"]
+                        if "audios" in data_point:
+                            user_msg["audios"] = data_point["audios"]
             else:
                 # String format - build simple message with audio if present
                 if "audio" in data_point or "audios" in data_point:
