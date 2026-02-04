@@ -279,7 +279,16 @@ class BaseModel:
                     if endpoint_type == EndpointType.chat:
                         assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
+                        print("MAX TOKENS ASKED", request_params["max_tokens"])
+                        print("FULL REQUEST PARAMS", request_params)
+                        print("FULL LITELLM KWARGS", self.litellm_kwargs)
                         response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
+                        print("TOKENS RECEIVED", response.usage.completion_tokens)
+                        print("FULL RESPONSE", response)
+                        print("FULL GENERATION", response.choices[0].message.content)
+                        print(
+                            "FULL REASONING CONTENT", getattr(response.choices[0].message, "reasoning_content", None)
+                        )
                         if stream:
                             result = self._stream_chat_chunks_async(response)
                         else:
