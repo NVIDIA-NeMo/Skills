@@ -591,6 +591,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/mini-swe-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/mini-swe-agent && "
+            "mkdir -p /root/.config/mini-swe-agent && touch /root/.config/mini-swe-agent/.env && "
             "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
             f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
             f"--config {get_config_path(self.cfg.agent_config)} "
