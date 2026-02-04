@@ -558,7 +558,7 @@ class SweBenchGenerationTask(GenerationTask):
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
         if self.cfg.agent_config is None:
-            self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/default"
+            self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/mini"
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -594,7 +594,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cd /root/mini-swe-agent && "
             # Bypasses the "To get started..." interactive prompt
             "export MSWEA_CONFIGURED=true && "
-            "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
+            # "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
             f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
             f"--config {get_config_path(self.cfg.agent_config)} "
             f"{overrides_cmd_str} "
