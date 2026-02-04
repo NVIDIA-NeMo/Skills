@@ -603,19 +603,17 @@ class GenerationTask:
             if isinstance(self.cfg.new_prompt, (list, ListConfig)):
                 # Check if data_point already has messages (openai format with audio)
                 if "messages" in data_point and isinstance(data_point["messages"], (list, ListConfig)):
-                    # Merge: update content from new_prompt, keep other fields (audio, duration, etc.) from original
-                    prompt = deepcopy(data_point["messages"])
-                    for i, new_msg in enumerate(self.cfg.new_prompt):
-                        if i < len(prompt):
-                            # Update only the content field, keep everything else
-                            if "content" in new_msg:
-                                prompt[i]["content"] = new_msg["content"]
-                            # Optionally update role if specified
-                            if "role" in new_msg:
-                                prompt[i]["role"] = new_msg["role"]
-                        else:
-                            # If new_prompt has more messages than original, append them
-                            prompt.append(deepcopy(new_msg))
+                    # Use new_prompt as the structure, copy audio fields from original at matching positions
+                    prompt = deepcopy(self.cfg.new_prompt)
+                    original_messages = data_point["messages"]
+                    for i, msg in enumerate(prompt):
+                        if i < len(original_messages):
+                            orig_msg = original_messages[i]
+                            # Copy audio-related fields from original message
+                            if "audio" in orig_msg:
+                                msg["audio"] = orig_msg["audio"]
+                            if "audios" in orig_msg:
+                                msg["audios"] = orig_msg["audios"]
                 else:
                     # No existing messages, use new_prompt and add audio from data_point
                     prompt = deepcopy(self.cfg.new_prompt)
