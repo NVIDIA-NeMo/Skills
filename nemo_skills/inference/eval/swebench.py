@@ -563,41 +563,34 @@ class SweBenchGenerationTask(GenerationTask):
         }
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
+        if "reasoning_effort" in completion_kwargs:
+            completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        # all_model_kwargs = {
-        #     **completion_kwargs,
-        #     "api_base": api_base,
-        #     "temperature": self.cfg.inference.temperature,
-        #     "top_p": self.cfg.inference.top_p,
-        #     "drop_params": True,
-        # }
-        # model_kwargs_json = json.dumps(all_model_kwargs)
+        model_overrides = {
+            **completion_kwargs,
+            "api_base": api_base,
+            "temperature": self.cfg.inference.temperature,
+            "top_p": self.cfg.inference.top_p,
+            "drop_params": True,
+        }
 
-        # mini_swe_agent_cmd = (
-        #     "cp -r /root_mount/mini-swe-agent /root && "
-        #     "cp -r /root_mount/uv /root && "
-        #     "cd /root/mini-swe-agent && "
-        #     f"export MSWEA_MODEL_KWARGS={shlex.quote(model_kwargs_json)} && "
-        #     f"/root/mini-swe-agent/venv/bin/python -m minisweagent "
-        #     f"--config {get_config_path(self.cfg.agent_config)} "
-        #     f"--model hosted_vllm/{self.cfg.server.model} "
-        #     f"--task {shlex.quote(data_point['problem_statement'])} "
-        #     f"--output trajectories/{data_point['instance_id']}.traj.json "
-        #     f"--yolo && "
-        #     "cp -r trajectories /trajectories_mount/"
-        # )
+        # 3. Convert dictionary into a list of CLI config override strings: -c key=value
+        config_overrides = []
+        for k, v in model_overrides.items():
+            # shlex.quote handles potential spaces or special characters in strings (like api_base)
+            val = shlex.quote(str(v))
+            config_overrides.append(f"--config model.model_kwargs.{k}={val}")
+
+        overrides_cmd_str = " ".join(config_overrides)
 
         mini_swe_agent_cmd = (
             "cp -r /root_mount/mini-swe-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/mini-swe-agent && "
-            f"/root/mini-swe-agent/venv/bin/python -m run/mini.py "
+            f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
             f"--config {get_config_path(self.cfg.agent_config)} "
-            f"--model.model_name hosted_vllm/{self.cfg.server.model} "
-            f"--model.model_kwargs.api_base {api_base} "
-            f"--model.completion_kwargs {shlex.quote(json.dumps(completion_kwargs))} "
-            f"--model.model_kwargs.temperature {self.cfg.inference.temperature} "
-            f"--model.model_kwargs.top_p {self.cfg.inference.top_p} "
+            f"{overrides_cmd_str} "
+            f"--model hosted_vllm/{self.cfg.server.model} "
             f"--task {shlex.quote(data_point['problem_statement'])} "
             f"--output trajectories/{data_point['instance_id']}.traj.json "
             f"--yolo && "
