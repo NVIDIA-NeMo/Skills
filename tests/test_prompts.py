@@ -1029,7 +1029,7 @@ def test_new_prompt_override_string_format():
     task.cfg.prompt_format = "ns"  # Text completion format
     task.cfg.new_prompt = "Solve this equation"
     task.prompt = MagicMock()
-    
+
     # Use the actual fill_prompt method
     task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
 
@@ -1045,8 +1045,9 @@ def test_new_prompt_override_string_format():
 
 def test_new_prompt_string_with_openai_format_raises_error():
     """Test that using string new_prompt with openai format raises clear error."""
-    from nemo_skills.inference.generate import GenerationTask
     import pytest
+
+    from nemo_skills.inference.generate import GenerationTask
 
     # Create a mock task object with openai format
     task = MagicMock(spec=GenerationTask)
@@ -1055,7 +1056,7 @@ def test_new_prompt_string_with_openai_format_raises_error():
     task.cfg.prompt_format = "openai"  # Chat format requires list
     task.cfg.new_prompt = "Solve this equation"  # String - invalid for openai!
     task.prompt = MagicMock()
-    
+
     # Use the actual fill_prompt method
     task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
 
@@ -1076,7 +1077,7 @@ def test_new_prompt_with_suffix():
     task.cfg = MagicMock()
     task.cfg.prompt_suffix = " /no_think"
     task.prompt = MagicMock()
-    
+
     # Use the actual fill_prompt method
     task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
 

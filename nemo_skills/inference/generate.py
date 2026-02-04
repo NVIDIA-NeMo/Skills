@@ -595,10 +595,10 @@ class GenerationTask:
             if self.cfg.prompt_format == "openai" and not isinstance(self.cfg.new_prompt, (list, ListConfig)):
                 raise ValueError(
                     "new_prompt must be a list of messages when prompt_format='openai'. "
-                    "Example: ++new_prompt='[{role:system,content:\"...\"},{role:user,content:\"...\"}]' "
+                    'Example: ++new_prompt=\'[{role:system,content:"..."},{role:user,content:"..."}]\' '
                     "or use a YAML file with a list structure."
                 )
-            
+
             # If new_prompt is a list (messages format) - handle both list and ListConfig from Hydra
             if isinstance(self.cfg.new_prompt, (list, ListConfig)):
                 # Check if data_point already has messages (openai format with audio)
