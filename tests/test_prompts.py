@@ -13,6 +13,12 @@
 # limitations under the License.
 
 
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import yaml
+
 from nemo_skills.prompt.utils import get_prompt
 
 
@@ -982,3 +988,270 @@ Confidence: The extracted confidence score between 0|\\%| and 100|\\%| from [res
         )
         == expected_prompt
     )
+
+
+def test_new_prompt_override_chat_format():
+    """Test that new_prompt config parameter overrides template-based prompt generation for chat format."""
+    from nemo_skills.inference.generate import GenerationTask
+
+    # Create a mock task object with minimal setup
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"  # Chat format
+    task.cfg.new_prompt = [{"role": "user", "content": "Transcribe this audio"}]
+    task.prompt = MagicMock()
+
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Data point has audio that should be merged
+    data_point = {"audio": {"path": "test.wav"}, "problem": "ignored problem"}
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should return new_prompt with audio merged in
+    assert len(result) == 1
+    assert result[0]["role"] == "user"
+    assert result[0]["content"] == "Transcribe this audio"
+    assert result[0]["audio"] == {"path": "test.wav"}
+    task.prompt.fill.assert_not_called()
+
+
+def test_new_prompt_override_string_format():
+    """Test that new_prompt config parameter overrides template-based prompt generation for string format."""
+    from nemo_skills.inference.generate import GenerationTask
+
+    # Create a mock task object with minimal setup
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "ns"  # Text completion format
+    task.cfg.new_prompt = "Solve this equation"
+    task.prompt = MagicMock()
+    
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Data point without audio
+    data_point = {"problem": "x + 2 = 5"}
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should return new_prompt directly, not call template fill
+    assert result == "Solve this equation"
+    task.prompt.fill.assert_not_called()
+
+
+def test_new_prompt_string_with_openai_format_raises_error():
+    """Test that using string new_prompt with openai format raises clear error."""
+    from nemo_skills.inference.generate import GenerationTask
+    import pytest
+
+    # Create a mock task object with openai format
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"  # Chat format requires list
+    task.cfg.new_prompt = "Solve this equation"  # String - invalid for openai!
+    task.prompt = MagicMock()
+    
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Data point without audio
+    data_point = {"problem": "x + 2 = 5"}
+
+    # Should raise ValueError with helpful message
+    with pytest.raises(ValueError, match="new_prompt must be a list of messages when prompt_format='openai'"):
+        task.fill_prompt(data_point, [])
+
+
+def test_new_prompt_with_suffix():
+    """Test that prompt_suffix is still applied when using new_prompt config."""
+    from nemo_skills.inference.generate import GenerationTask
+
+    # Create a mock task object with prompt_suffix
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = " /no_think"
+    task.prompt = MagicMock()
+    
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Test with list (chat format)
+    task.cfg.prompt_format = "openai"
+    task.cfg.new_prompt = [{"role": "user", "content": "Hello"}]
+    data_point = {}
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should have suffix appended to last message content
+    assert result[-1]["content"] == "Hello /no_think"
+
+    # Test with string (text completion format)
+    task.cfg.prompt_format = "ns"
+    task.cfg.new_prompt = "Solve this"
+    data_point = {}
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should have suffix appended to string
+    assert result == "Solve this /no_think"
+
+
+def test_new_prompt_with_audio():
+    """Test that new_prompt config merges with audio from data."""
+    from nemo_skills.inference.generate import GenerationTask
+
+    # Create a mock task object with minimal setup
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"  # Chat format
+    task.cfg.new_prompt = [{"role": "user", "content": "Transcribe this audio"}]
+    task.prompt = MagicMock()
+
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Data point has audio that should be merged
+    data_point = {"audio": {"path": "audio.wav", "duration": 1.5}}
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should return new_prompt with audio merged from data
+    assert len(result) == 1
+    assert result[0]["content"] == "Transcribe this audio"
+    assert "audio" in result[0]
+    assert result[0]["audio"]["path"] == "audio.wav"
+    assert result[0]["audio"]["duration"] == 1.5
+
+
+def test_fallback_to_template_when_no_new_prompt():
+    """Test that normal template-based prompt generation works when new_prompt config is not set."""
+    from nemo_skills.inference.generate import GenerationTask
+    from nemo_skills.inference.model.base import EndpointType
+
+    # Create a mock task object with minimal setup
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.new_prompt = None  # No override
+    task.cfg.prompt_format = "ns"
+    task.cfg.total_code_executions_in_prompt = None
+    task.cfg.start_assistant_response_key = None
+    task.cfg.chat_template_kwargs = {}
+    task.cfg.inference = MagicMock()
+    task.cfg.inference.endpoint_type = EndpointType.chat
+    task.prompt = MagicMock()
+    task.prompt.fill.return_value = [{"role": "user", "content": "Solve: 2 + 2"}]
+
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Test without new_prompt - should use template
+    data_point = {"problem": "2 + 2"}
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should call template fill
+    task.prompt.fill.assert_called_once()
+    assert result == [{"role": "user", "content": "Solve: 2 + 2"}]
+
+
+def test_new_prompt_updates_existing_messages():
+    """Test that new_prompt config updates content in existing messages while preserving other fields."""
+    from nemo_skills.inference.generate import GenerationTask
+
+    # Create a mock task object
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"  # Chat format
+    task.cfg.new_prompt = [
+        {"role": "system", "content": "You are an expert transcriptionist."},
+        {"role": "user", "content": "Transcribe the audio file into English text."},
+    ]
+    task.prompt = MagicMock()
+
+    # Use the actual fill_prompt method
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Data point already has messages with audio and duration
+    data_point = {
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant. /no_think"},
+            {
+                "role": "user",
+                "content": "Transcribe the audio with proper punctuation and capitalization.",
+                "audio": {"path": "/data/audio.wav", "duration": 1.39},
+            },
+        ],
+        "expected_answer": "some text",
+    }
+
+    result = task.fill_prompt(data_point, [])
+
+    # Should update content but preserve audio and duration
+    assert len(result) == 2
+    assert result[0]["role"] == "system"
+    assert result[0]["content"] == "You are an expert transcriptionist."
+    assert result[1]["role"] == "user"
+    assert result[1]["content"] == "Transcribe the audio file into English text."
+    assert result[1]["audio"] == {"path": "/data/audio.wav", "duration": 1.39}  # Preserved!
+    task.prompt.fill.assert_not_called()
+
+
+def test_new_prompt_from_yaml_file():
+    """Test that new_prompt can be loaded from a YAML file."""
+
+    # Create a temporary YAML file with prompt structure (list format)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml_content = [
+            {"role": "system", "content": "You are an expert transcriptionist."},
+            {"role": "user", "content": "Transcribe the audio file into English text."},
+        ]
+        yaml.dump(yaml_content, f)
+        yaml_path = f.name
+
+    try:
+        # Test loading YAML - simulate what __init__ does
+        new_prompt = yaml_path
+        if new_prompt.endswith((".yaml", ".yml")):
+            yaml_file_path = Path(new_prompt)
+            if yaml_file_path.exists():
+                with open(yaml_file_path, "r") as file:
+                    new_prompt = yaml.safe_load(file)
+
+        # Verify YAML was loaded correctly
+        assert isinstance(new_prompt, list)
+        assert len(new_prompt) == 2
+        assert new_prompt[0]["role"] == "system"
+        assert new_prompt[0]["content"] == "You are an expert transcriptionist."
+        assert new_prompt[1]["role"] == "user"
+        assert new_prompt[1]["content"] == "Transcribe the audio file into English text."
+    finally:
+        # Cleanup
+        Path(yaml_path).unlink()
+
+    # Test with string format YAML
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        yaml.dump("Transcribe this audio", f)
+        yaml_path = f.name
+
+    try:
+        new_prompt = yaml_path
+        if new_prompt.endswith((".yaml", ".yml")):
+            yaml_file_path = Path(new_prompt)
+            if yaml_file_path.exists():
+                with open(yaml_file_path, "r") as file:
+                    new_prompt = yaml.safe_load(file)
+
+        # Verify string was loaded
+        assert isinstance(new_prompt, str)
+        assert new_prompt == "Transcribe this audio"
+    finally:
+        # Cleanup
+        Path(yaml_path).unlink()
