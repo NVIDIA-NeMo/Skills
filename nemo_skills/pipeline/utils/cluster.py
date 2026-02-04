@@ -168,7 +168,7 @@ def get_env_variables(cluster_config):
     - `required_env_vars` - list of required environment variables
     - `env_vars` - list of optional environment variables
 
-    WANDB_API_KEY, NVIDIA_API_KEY, AZURE_OPENAI_API_KEY, OPENAI_API_KEY, and HF_TOKEN are always added if they exist.
+    WANDB_API_KEY, NVIDIA_API_KEY, AZURE_OPENAI_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, and HF_TOKEN are always added if they exist.
 
     Args:
         cluster_config: cluster config dictionary
@@ -211,6 +211,7 @@ def get_env_variables(cluster_config):
         "NVIDIA_API_KEY",
         "AZURE_OPENAI_API_KEY",
         "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
         "HF_TOKEN",
         "NGC_API_KEY",
     }

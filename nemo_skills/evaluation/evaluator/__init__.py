@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict
 from nemo_skills.evaluation.evaluator.audio import AudioEvaluator
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator
 from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
+from nemo_skills.evaluation.evaluator.bird import BirdEvaluator
 from nemo_skills.evaluation.evaluator.code import (
     CodeExecEvaluator,
     eval_bigcodebench,
@@ -26,6 +27,7 @@ from nemo_skills.evaluation.evaluator.code import (
     eval_livebench_coding,
     eval_livecodebench_pro,
 )
+from nemo_skills.evaluation.evaluator.compute_eval import ComputeEvalEvaluator
 from nemo_skills.evaluation.evaluator.icpc import ICPCEvaluator
 from nemo_skills.evaluation.evaluator.ifbench import eval_ifbench
 from nemo_skills.evaluation.evaluator.ifeval import eval_if
@@ -38,7 +40,7 @@ from nemo_skills.evaluation.evaluator.math import (
 from nemo_skills.evaluation.evaluator.mcq import eval_mcq
 from nemo_skills.evaluation.evaluator.mmau_pro import eval_mmau_pro
 from nemo_skills.evaluation.evaluator.mrcr import eval_mrcr
-from nemo_skills.evaluation.evaluator.ruler import eval_ruler
+from nemo_skills.evaluation.evaluator.ruler import eval_ruler, eval_ruler2
 from nemo_skills.evaluation.evaluator.scicode import eval_scicode
 
 EVALUATOR_MAP = {
@@ -49,6 +51,7 @@ EVALUATOR_MAP = {
     "bfcl": eval_bfcl,
     "multichoice": eval_mcq,
     "ruler": eval_ruler,
+    "ruler2": eval_ruler2,
     "livecodebench": eval_livecodebench,
     "livebench_coding": eval_livebench_coding,
     "livecodebench_pro": eval_livecodebench_pro,
@@ -67,6 +70,8 @@ EVALUATOR_CLASS_MAP = {
     "ioi": IOIEvaluator,
     "icpc": ICPCEvaluator,
     "audio": AudioEvaluator,
+    "bird": BirdEvaluator,
+    "compute-eval": ComputeEvalEvaluator,
 }
 
 # Validation: Ensure no overlap between class and function maps

@@ -1,0 +1,8 @@
+# MathArena AIME prompt - matches https://github.com/MathArena
+# Used for reproducing MathArena benchmark results
+
+user: |-
+  Please reason step by step, and put your final answer within \boxed{{}}.
+  The answer is an integer between 0 and 999 inclusive.
+
+  {problem}

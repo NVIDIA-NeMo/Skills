@@ -21,14 +21,17 @@ from nemo_skills.evaluation.metrics.answer_judgement_metrics import AnswerJudgem
 from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
 from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
+from nemo_skills.evaluation.metrics.bird_metrics import BirdMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
+    ComputeEvalMetrics,
     EvalPlusMetrics,
     HumanEvalInfillingMetrics,
     LiveCodeBenchMetrics,
     SciCodeMetrics,
     SweBenchMetrics,
 )
+from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
@@ -36,6 +39,7 @@ from nemo_skills.evaluation.metrics.lean4_metrics import Lean4Metrics
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
+from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
@@ -43,19 +47,25 @@ from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetric
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
+    "frontierscience-olympiad": functools.partial(
+        MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
+    ),
     "simpleqa": SimpleQAMetrics,
     "lean4-proof": Lean4Metrics,
     "lean4-statement": Lean4Metrics,
     "answer-judgement": AnswerJudgementMetrics,
     "arena": ArenaMetrics,
     "audio": AudioMetrics,
+    "speechlm": AudioMetrics,  # Alias for backward compatibility
     "bfcl": BFCLMetrics,
+    "bird": BirdMetrics,
     "evalplus": EvalPlusMetrics,
     "if": IFMetrics,
     "ioi": IOIMetrics,
     "icpc": ICPCMetrics,
     "multichoice": MathMetrics,
     "ruler": RulerMetrics,
+    "ruler2": RulerMetrics,
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
@@ -69,6 +79,9 @@ METRICS_MAP = {
     "mmau_pro_closed_form": MMAUProMetrics,
     "mmau_pro_open_ended": MMAUProMetrics,
     "mmau_pro_instruction_following": MMAUProMetrics,
+    "omniscience": OmniMetrics,
+    "compute-eval": ComputeEvalMetrics,
+    "gradingbench": GradingBenchMetrics,
 }
 
 

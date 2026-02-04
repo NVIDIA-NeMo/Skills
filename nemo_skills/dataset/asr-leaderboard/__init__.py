@@ -13,9 +13,10 @@
 # limitations under the License.
 
 # Settings that define how evaluation should be done by default (all can be changed from cmdline)
+
 # Uses the audio evaluator which computes WER with HuggingFace leaderboard preprocessing
-# Data samples should have task_type="ASR_LEADERBOARD" for proper WER calculation
 
 DATASET_GROUP = "speechlm"
 METRICS_TYPE = "audio"
-GENERATION_ARGS = "++prompt_format=openai ++eval_type=audio"
+EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=hf_leaderboard"
+GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"

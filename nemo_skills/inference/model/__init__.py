@@ -19,6 +19,15 @@ from nemo_skills.utils import python_doc_to_cmd_help
 
 # NIM models (speech)
 from .asr_nim import ASRNIMModel
+
+# Audio utilities
+from .audio_utils import (
+    audio_file_to_base64,
+    chunk_audio,
+    load_audio_file,
+    make_audio_content_block,
+    save_audio_chunk_to_base64,
+)
 from .azure import AzureOpenAIModel
 
 # Base classes
@@ -39,6 +48,7 @@ from .tts_nim import TTSNIMModel
 
 # Utilities
 from .vllm import VLLMModel
+from .vllm_multimodal import VLLMMultimodalModel
 
 # Model implementations
 
@@ -51,6 +61,7 @@ models = {
     "azureopenai": AzureOpenAIModel,
     "gemini": GeminiModel,
     "vllm": VLLMModel,
+    "vllm_multimodal": VLLMMultimodalModel,
     "sglang": SGLangModel,
     "tts_nim": TTSNIMModel,
     "asr_nim": ASRNIMModel,
@@ -82,7 +93,7 @@ def get_model(server_type, tokenizer=None, model_class: str | None = None, **kwa
 
 def get_code_execution_model(server_type, tokenizer=None, code_execution=None, sandbox=None, **kwargs):
     """A helper function to make it easier to set server through cmd."""
-    model = get_model(server_type=server_type, tokenizer=tokenizer, **kwargs)
+    model = get_model(server_type=server_type, tokenizer=tokenizer, require_tokenizer=True, **kwargs)
     if code_execution is None:
         code_execution = {}
     code_execution_config = CodeExecutionConfig(**code_execution)

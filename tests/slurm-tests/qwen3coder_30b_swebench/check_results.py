@@ -22,12 +22,12 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
 from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: E402
 
 METRIC_RANGES = {
-    # +/- 4 pts from scores measured on 2025-10-08 (avg of 6 runs for OpenHands, 3 for SWE-agent)
+    # +/- 4 pts from scores measured on 2026-01-30 (avg of 3 runs)
     "openhands": {
-        ("swe-bench", "pass@1", "issues_resolved"): (41.9, 47.9),
+        ("swe-bench", "pass@1", "issues_resolved"): (44.3, 52.3),
     },
     "swe_agent": {
-        ("swe-bench", "pass@1", "issues_resolved"): (45.5, 52.4),
+        ("swe-bench", "pass@1", "issues_resolved"): (45.5, 53.5),
     },
 }
 

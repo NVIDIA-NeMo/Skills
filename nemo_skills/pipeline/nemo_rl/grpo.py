@@ -112,6 +112,21 @@ class NemoRLTask:
                 wandb_id=wandb_id,
             )
 
+            # Validate wandb artifact name length (constructed in RL/nemo_rl/utils/logger.py)
+            # Artifact name format: "git-diffs-{project}-{id}" where id already contains project
+            artifact_name = f"git-diffs-{self.wandb_project}-{wandb_id}"
+            max_artifact_length = 128
+            if len(artifact_name) > max_artifact_length:
+                raise ValueError(
+                    f"Wandb artifact name would exceed {max_artifact_length} character limit.\n"
+                    f"  Artifact name: '{artifact_name}' ({len(artifact_name)} chars)\n"
+                    f"  Components:\n"
+                    f"    - expname: '{self.expname}' ({len(self.expname)} chars)\n"
+                    f"    - wandb_project: '{self.wandb_project}' ({len(self.wandb_project)} chars)\n"
+                    f"    - wandb_group: '{self.wandb_group}' ({len(self.wandb_group) if self.wandb_group else 0} chars)\n"
+                    f"  Suggestion: Shorten expname or wandb_project by at least {len(artifact_name) - max_artifact_length} characters."
+                )
+
         return cmd
 
     def get_cmd(self):
@@ -177,7 +192,7 @@ def get_training_cmd(
 def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
     cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
     if backend == "fsdp":
-        cmd += "uv run --active python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
+        cmd += "uv run --extra automodel python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
     elif backend == "megatron":
         cmd += "uv run --extra mcore python -m nemo_skills.training.nemo_rl.convert_megatron_to_hf "
     else:
@@ -340,6 +355,9 @@ def grpo_nemo_rl(
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
 
+    # Read ray_template from cluster config
+    ray_template = cluster_config.get("ray_template", None)
+
     if log_dir is None:
         log_dir = output_dir
 
@@ -419,6 +437,7 @@ def grpo_nemo_rl(
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
+                    ray_template=ray_template,
                 )
         if average_steps is None:
             prev_task = add_task(
