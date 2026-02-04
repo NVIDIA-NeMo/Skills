@@ -269,7 +269,7 @@ class SweBenchGenerationTask(GenerationTask):
                 # make venv & install mini-swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
-                "uv pip install -e .mini-swe-agent"
+                "uv pip install -e ."
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
