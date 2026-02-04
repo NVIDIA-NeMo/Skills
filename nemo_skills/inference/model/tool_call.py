@@ -143,12 +143,12 @@ class ToolCallingWrapper:
                 **generation_kwargs,
             )
 
-            # Recount tokens client-side for accuracy
-            # (vLLM reports wrong completion_tokens when finish_reason='length')
-            text_to_count = generation.get("generation", "")
-            if generation.get("reasoning_content"):
-                text_to_count = generation["reasoning_content"] + text_to_count
-            generation["num_generated_tokens"] = len(self.model.tokenizer.encode(text_to_count))
+            # # Recount tokens client-side for accuracy
+            # # (vLLM reports wrong completion_tokens when finish_reason='length')
+            # text_to_count = generation.get("generation", "")
+            # if generation.get("reasoning_content"):
+            #     text_to_count = generation["reasoning_content"] + text_to_count
+            # generation["num_generated_tokens"] = len(self.model.tokenizer.encode(text_to_count))
 
             if isinstance(tokens_to_generate, int):
                 tokens_to_generate -= generation["num_generated_tokens"]
