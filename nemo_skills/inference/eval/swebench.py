@@ -255,6 +255,21 @@ class SweBenchGenerationTask(GenerationTask):
                 "uv pip install rich==14.2.0"
             )
 
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+            if self.cfg.agent_framework_repo is None:
+                self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
+            setup_commands.append(
+                # clone the swe-agent repo
+                "rm -rf /root/mini-swe-agent && "
+                f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
+                "cd /root/mini-swe-agent && "
+                f"git checkout {self.cfg.agent_framework_commit} && "
+                # make venv & install mini-swe-agent dependencies
+                "uv venv --python 3.12 --managed-python venv && "
+                "source venv/bin/activate && "
+                "uv pip install -e .mini-swe-agent"
+            )
+
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             if self.cfg.multilingual:
                 if self.cfg.agent_framework_repo is None:
