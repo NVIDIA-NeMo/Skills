@@ -614,7 +614,7 @@ class SweBenchGenerationTask(GenerationTask):
             )
 
             # Execute mini-swe-agent command
-            search_path = os.path.join(self.output_dir, "trajectories", f"{data_point['instance_id']}.pred")
+            search_path = os.path.join(self.output_dir, "trajectories", f"{data_point['instance_id']}.traj.json")
 
             pred_file = await self._execute_container_command(
                 data_point, mini_swe_agent_cmd, search_path, mode="agent"
@@ -628,9 +628,13 @@ class SweBenchGenerationTask(GenerationTask):
             trajectory_dict = json.loads(f.read().strip())
 
         # need to rename .pred to .jsonl
-        pred_jsonl_file = pred_file.replace(".pred", ".jsonl")
+        pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
         with open(pred_jsonl_file, "w") as f:
-            f.write(json.dumps(trajectory_dict))
+            trajectory_info = trajectory_dict.get("info", {})
+            trajectory_info["model_patch"] = (
+                None if "submission" not in trajectory_info else trajectory_info.pop("submission")
+            )
+            f.write(json.dumps(trajectory_info))
 
         # TODO: get num_generated_tokens and other stats from .traj file
         # looks like data['info']['model_stats']
