@@ -607,7 +607,6 @@ class SweBenchGenerationTask(GenerationTask):
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
                 f"--task {shlex.quote(data_point['problem_statement'])} "
-                f"--cost-limit 0 "
                 f"--output trajectories/{data_point['instance_id']}.traj.json "
                 f"--yolo "
                 f"--exit-immediately && "
