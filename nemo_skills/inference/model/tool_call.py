@@ -156,7 +156,7 @@ class ToolCallingWrapper:
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
                 tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
-                if max_tool_calls >= 0 and tool_calls_executed > max_tool_calls:
+                if max_tool_calls >= 0 and tool_calls_executed + len(tool_calls) > max_tool_calls:
                     LOG.info(
                         "Tool call limit reached (max_tool_calls=%s); stopping generation.",
                         max_tool_calls,
