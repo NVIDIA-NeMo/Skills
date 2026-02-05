@@ -634,6 +634,7 @@ class SweBenchGenerationTask(GenerationTask):
             trajectory_info["model_patch"] = (
                 None if "submission" not in trajectory_info else trajectory_info.pop("submission")
             )
+            trajectory_info["instance_id"] = data_point["instance_id"]
             f.write(json.dumps(trajectory_info))
 
         # TODO: get num_generated_tokens and other stats from .traj file
