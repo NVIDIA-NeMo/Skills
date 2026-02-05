@@ -631,10 +631,11 @@ class SweBenchGenerationTask(GenerationTask):
         pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
         with open(pred_jsonl_file, "w") as f:
             trajectory_info = trajectory_dict.get("info", {})
+            trajectory_info["model_name_or_path"] = self.cfg.server.model
+            trajectory_info["instance_id"] = data_point["instance_id"]
             trajectory_info["model_patch"] = (
                 None if "submission" not in trajectory_info else trajectory_info.pop("submission")
             )
-            trajectory_info["instance_id"] = data_point["instance_id"]
             f.write(json.dumps(trajectory_info))
 
         # TODO: get num_generated_tokens and other stats from .traj file
