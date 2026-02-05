@@ -620,29 +620,24 @@ class SweBenchGenerationTask(GenerationTask):
                 data_point, mini_swe_agent_cmd, search_path, mode="agent"
             )
 
+            with open(pred_file, "r") as f:
+                trajectory_dict = json.loads(f.read().strip())
+
+            pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
+            with open(pred_jsonl_file, "w") as f:
+                trajectory_info = trajectory_dict.get("info", {})
+                trajectory_info["model_name_or_path"] = self.cfg.server.model
+                trajectory_info["instance_id"] = data_point["instance_id"]
+                trajectory_info["model_patch"] = (
+                    None if "submission" not in trajectory_info else trajectory_info.pop("submission")
+                )
+                f.write(json.dumps(trajectory_info))
+
+            return pred_jsonl_file
+
         finally:
             if os.path.exists(host_tmp_path):
                 os.remove(host_tmp_path)
-
-        with open(pred_file, "r") as f:
-            trajectory_dict = json.loads(f.read().strip())
-
-        # need to rename .pred to .jsonl
-        pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
-        with open(pred_jsonl_file, "w") as f:
-            trajectory_info = trajectory_dict.get("info", {})
-            trajectory_info["model_name_or_path"] = self.cfg.server.model
-            trajectory_info["instance_id"] = data_point["instance_id"]
-            trajectory_info["model_patch"] = (
-                None if "submission" not in trajectory_info else trajectory_info.pop("submission")
-            )
-            f.write(json.dumps(trajectory_info))
-
-        # TODO: get num_generated_tokens and other stats from .traj file
-        # looks like data['info']['model_stats']
-        # {'instance_cost': 0, 'tokens_sent': 40858, 'tokens_received': 1775, 'api_calls': 9}
-
-        return pred_jsonl_file
 
     async def _run_openhands(self, data_point, api_base):
         """
