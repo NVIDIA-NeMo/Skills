@@ -568,7 +568,7 @@ class SweBenchGenerationTask(GenerationTask):
         if "reasoning_effort" in completion_kwargs:
             completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/mini")
+        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/default")
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
