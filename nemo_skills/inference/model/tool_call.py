@@ -162,6 +162,7 @@ class ToolCallingWrapper:
                         "Tool call limit reached (max_tool_calls=%s); stopping generation.",
                         self.max_tool_calls,
                     )
+                    result_steps["finish_reason"].append("tool_call_limit_reached")
                     break
 
                 tool_calls_output_messages = await self._execute_tool_calls(
