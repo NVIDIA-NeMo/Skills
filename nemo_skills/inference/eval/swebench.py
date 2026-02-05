@@ -583,7 +583,6 @@ class SweBenchGenerationTask(GenerationTask):
                 "api_base": api_base,
                 "temperature": self.cfg.inference.temperature,
                 "top_p": self.cfg.inference.top_p,
-                "drop_params": True,
             }
         )
 
