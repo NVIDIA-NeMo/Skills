@@ -572,6 +572,8 @@ class SweBenchGenerationTask(GenerationTask):
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
+        full_config["cost_tracking"] = "ignore_errors"
+
         if "model" not in full_config:
             full_config["model"] = {}
         if "model_kwargs" not in full_config["model"]:
