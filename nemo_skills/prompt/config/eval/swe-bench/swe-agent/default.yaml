@@ -88,3 +88,10 @@ env:
           source /testbed/.venv/bin/activate &&
           echo 'Activated environment at /testbed/.venv';
       fi
+    - >-
+      for f in / /root /testbed; do
+          rm -rf $f/r2e_tests &&
+          if grep -qs r2e_tests $f/run_tests.sh; then
+              rm -rf $f/run_tests.sh;
+          fi
+      done
