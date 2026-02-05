@@ -260,7 +260,7 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
             if self.cfg.agent_framework_commit is None:
-                self.cfg.agent_framework_commit = "v1"
+                self.cfg.agent_framework_commit = "v2"
             setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
@@ -608,7 +608,8 @@ class SweBenchGenerationTask(GenerationTask):
                 f"--model hosted_vllm/{self.cfg.server.model} "
                 f"--task {shlex.quote(data_point['problem_statement'])} "
                 f"--output trajectories/{data_point['instance_id']}.traj.json "
-                f"--yolo && "
+                f"--yolo "
+                f"--exit-immediately && "
                 "mkdir -p /trajectories_mount/trajectories && cp -r trajectories/* /trajectories_mount/trajectories/"
             )
 
