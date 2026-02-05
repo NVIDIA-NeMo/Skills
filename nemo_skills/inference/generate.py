@@ -207,7 +207,7 @@ class GenerationTaskConfig:
     enable_litellm_cache: bool = False
 
     # List of content types to drop from messages (e.g., base64 audio) to keep output files smaller
-    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url"])
+    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url", "input_audio"])
 
     # Audio configuration - set by benchmarks that need audio processing (mmau-pro, audiobench, etc.)
     enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
