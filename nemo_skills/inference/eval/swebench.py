@@ -572,8 +572,6 @@ class SweBenchGenerationTask(GenerationTask):
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
-        full_config["cost_tracking"] = "ignore_errors"
-
         if "model" not in full_config:
             full_config["model"] = {}
         if "model_kwargs" not in full_config["model"]:
@@ -604,6 +602,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cp -r /root_mount/uv /root && "
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
+                "export MSWEA_COST_TRACKING=ignore_errors && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
