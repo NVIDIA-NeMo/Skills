@@ -267,7 +267,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
                 "cd /root/mini-swe-agent && "
                 # Bypass the interactive setup wizard by pointing to the default config
-                "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/mini.yaml && "
+                "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/benchmarks/swebench.yaml && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install mini-swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
@@ -568,7 +568,7 @@ class SweBenchGenerationTask(GenerationTask):
         if "reasoning_effort" in completion_kwargs:
             completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/default")
+        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
