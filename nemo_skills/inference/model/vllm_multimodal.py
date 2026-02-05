@@ -180,16 +180,32 @@ class VLLMMultimodalModel(VLLMModel):
         """Build request body, skipping vLLM-specific params for external APIs.
 
         Args:
-            top_k: Top-k sampling parameter.
-            min_p: Min-p sampling parameter.
-            repetition_penalty: Repetition penalty parameter.
+            top_k: Top-k sampling parameter (vLLM, default -1).
+            min_p: Min-p sampling parameter (vLLM, default 0.0).
+            repetition_penalty: Repetition penalty parameter (vLLM, default 1.0).
             extra_body: Additional parameters to include.
 
         Returns:
             Dictionary of extra body parameters for the request.
+
+        Raises:
+            ValueError: If vLLM-specific params are set to non-default values in external API mode.
         """
-        # For external APIs, skip vLLM-specific parameters
+        # For external APIs, fail if user explicitly set vLLM-specific parameters
         if self._external_api_mode:
+            non_default_params = []
+            if top_k != -1:
+                non_default_params.append(f"top_k={top_k}")
+            if min_p != 0.0:
+                non_default_params.append(f"min_p={min_p}")
+            if repetition_penalty != 1.0:
+                non_default_params.append(f"repetition_penalty={repetition_penalty}")
+
+            if non_default_params:
+                raise ValueError(
+                    f"vLLM-specific parameters are not supported for external APIs: {', '.join(non_default_params)}. "
+                    "These parameters only work with local vLLM servers."
+                )
             return extra_body or {}
 
         # For local vLLM server, use full parameter set
