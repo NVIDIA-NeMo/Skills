@@ -90,6 +90,9 @@ class CritPtEvaluator(BaseEvaluator):
         """
         code = self._extract_code_from_generation(data_point.get("generation", ""))
 
+        if not code.startswith("```"):
+            code = "```python\n" + code + "\n```"
+
         # Submission Object Fields from https://artificialanalysis.ai/documentation#critpt-api
 
         submission = {
@@ -105,44 +108,65 @@ class CritPtEvaluator(BaseEvaluator):
         """Evaluate full dataset by submitting all predictions to API."""
         LOG.info(f"Loading predictions from {self.eval_config.input_file}")
 
-        # Load all data points
+        # Check if response file already exists
+        response_file = self.eval_config.input_file.replace(".jsonl", "_critpt_response.json")
+        if os.path.exists(response_file):
+            LOG.info(
+                f"Response file {response_file} already exists. Loading cached response and skipping API submission."
+            )
+            with open(response_file, "r") as f:
+                response_data = json.load(f)
+        else:
+            # Load all data points
+            data_points = []
+            with open(self.eval_config.input_file, "rt", encoding="utf-8") as f:
+                for line in f:
+                    data_points.append(json.loads(line))
+
+            LOG.info(f"Found {len(data_points)} data points")
+
+            assert len(data_points) == 70, (
+                f"CritPt API only supports 70 submissions at a time, but got {len(data_points)}"
+            )
+
+            # Format submissions
+            submissions = []
+            for data_point in data_points:
+                try:
+                    submission = self._format_submission(data_point)
+                    submissions.append(submission)
+                except Exception as e:
+                    LOG.warning(f"Failed to format submission for {data_point.get('problem_id', 'unknown')}: {e}")
+                    # Add placeholder submission to maintain alignment
+                    submissions.append(
+                        {
+                            "problem_id": data_point.get("problem_id", "unknown"),
+                            "generated_code": "",
+                            "model": "unkown",
+                            "generation_config": {},
+                        }
+                    )
+            # Save submissions to file
+            submission_file = self.eval_config.input_file.replace(".jsonl", "_submissions.jsonl")
+            with open(submission_file, "wt", encoding="utf-8") as f:
+                for submission in submissions:
+                    f.write(json.dumps(submission) + "\n")
+            LOG.info(f"Saved {len(submissions)} submissions to {submission_file}")
+
+            # Submit to API
+            LOG.info(f"Submitting {len(submissions)} predictions to CritPt API...")
+            response_data = self._submit_to_api(submissions)
+
+            # Save API response
+            with open(response_file, "w") as f:
+                json.dump(response_data, f, indent=2)
+            LOG.info(f"Saved API response to {response_file}")
+
+        # Load all data points for processing results
         data_points = []
         with open(self.eval_config.input_file, "rt", encoding="utf-8") as f:
             for line in f:
                 data_points.append(json.loads(line))
-
-        LOG.info(f"Found {len(data_points)} data points")
-
-        assert len(data_points) == 70, f"CritPt API only supports 70 submissions at a time, but got {len(data_points)}"
-
-        # Format submissions
-        submissions = []
-        for data_point in data_points:
-            try:
-                submission = self._format_submission(data_point)
-                submissions.append(submission)
-            except Exception as e:
-                LOG.warning(f"Failed to format submission for {data_point.get('problem_id', 'unknown')}: {e}")
-                # Add placeholder submission to maintain alignment
-                submissions.append(
-                    {
-                        "problem_id": data_point.get("problem_id", "unknown"),
-                        "generated_code": "",
-                        "model": "unkown",
-                        "generation_config": {},
-                    }
-                )
-
-        # Submit to API
-        LOG.info(f"Submitting {len(submissions)} predictions to CritPt API...")
-        response_data = self._submit_to_api(submissions)
-
-        # Save API response if requested
-        if self.eval_config.save_response:
-            response_file = self.eval_config.input_file.replace(".jsonl", "_critpt_response.json")
-            with open(response_file, "w") as f:
-                json.dump(response_data, f, indent=2)
-            LOG.info(f"Saved API response to {response_file}")
 
         # Process aggregate statistics from API response
         # CritPt API returns aggregate accuracy, not per-example results

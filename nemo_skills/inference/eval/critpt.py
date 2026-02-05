@@ -21,12 +21,9 @@ from typing import List
 import hydra
 
 from nemo_skills.code_execution.sandbox import sandbox_params
-from nemo_skills.inference.generate import (
-    GenerationTask,
-    GenerationTaskConfig,
-    InferenceConfig,
-)
+from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig
 from nemo_skills.inference.model import server_params
+from nemo_skills.inference.model.base import EndpointType
 from nemo_skills.prompt.utils import get_token_count, load_config
 from nemo_skills.utils import (
     get_help_message,
@@ -45,8 +42,25 @@ def parse_chatml(prompt: str) -> List[dict]:
     messages = []
     for role, content in pattern.findall(prompt):
         messages.append({"role": role.strip(), "content": content.strip()})
-
     return messages
+
+
+# Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
+# because they may not be supported by all LLM servers.
+@nested_dataclass(kw_only=True)
+class CritPtInferenceConfig:
+    endpoint_type: EndpointType = EndpointType.chat
+    temperature: float = 0.0  # Temperature of 0 means greedy decoding
+    top_k: int | None = -1
+    top_p: float | None = None
+    min_p: float | None = 0.0
+    random_seed: int | None = None
+    tokens_to_generate: int | None = None
+    repetition_penalty: float | None = None
+    top_logprobs: int | None = None
+    timeout: int | None = 14400  # Timeout for each individual LLM call in seconds
+    reasoning_effort: str | None = None
+    extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
 
 
 @nested_dataclass(kw_only=True)
@@ -56,7 +70,7 @@ class CritPtGenerationConfig(GenerationTaskConfig):
     """
 
     # Inheritance was converting these dataclasses to dicts, so to be on the safe side we override them
-    inference: InferenceConfig = field(default_factory=InferenceConfig)  # LLM call parameters
+    inference: CritPtInferenceConfig = field(default_factory=CritPtInferenceConfig)  # LLM call parameters
     # Inference server configuration {server_params}
     server: dict = field(default_factory=dict)
 
@@ -114,37 +128,36 @@ class CritPtGenerationTask(GenerationTask):
         # Since process_single_datapoint did not return the prompt, we fill it here manually.
         # turn1_prompt contains the system message, and the user message.
         turn1_prompt = self.fill_prompt(data_point, all_data)
-        LOG.info(f"Turn 1 prompt: {turn1_prompt}")
+        LOG.debug(f"Turn 1 prompt: {turn1_prompt}")
 
         if isinstance(turn1_prompt, str):
             turn1_prompt = parse_chatml(turn1_prompt)
-            LOG.info(f"Turn 1 prompt (parsed): {turn1_prompt}")
+            LOG.debug(f"Turn 1 prompt (parsed): {turn1_prompt}")
 
         turn1_result = await super().process_single_datapoint(data_point, all_data)
-        LOG.info(f"Turn 1 result: {turn1_result}")
+        LOG.debug(f"Turn 1 result: {turn1_result}")
         #
-        if self.cfg.parse_reasoning:
+        if self.cfg.end_reasoning_string in turn1_result[self.cfg.generation_key]:
             parse_reasoning(turn1_result, self.cfg.generation_key, self.cfg.end_reasoning_string)
         solution_turn1 = turn1_result[self.cfg.generation_key]
-        LOG.info(f"Solution: {solution_turn1}")
+        LOG.debug(f"Solution: {solution_turn1}")
 
         assitant_msg: dict = {"role": "assistant", "content": solution_turn1}
 
-        LOG.info(f"Assistant: {assitant_msg}")
+        LOG.debug(f"Assistant: {assitant_msg}")
 
         # ===== Turn 2: Generate code using template =====
         # Build prompt that includes code template
         turn2_prompt_template = load_config(self.cfg.prompt_config_turn2)["user"]
-        LOG.info(f"Turn 2 prompt template: {turn2_prompt_template}")
         turn2_prompt: dict = {"role": "user", "content": turn2_prompt_template.format(**data_point)}
-        LOG.info(f"Turn 2 prompt: {turn2_prompt}")
+        LOG.debug(f"Turn 2 prompt: {turn2_prompt}")
 
         # Final prompt is the turn1_prompt + assistant message + turn2_prompt
         final_prompt = turn1_prompt + [assitant_msg, turn2_prompt]
-        LOG.info(f"Final prompt: {final_prompt}")
 
         turn2_result = await self._process_single_completion(data_point, final_prompt)
-        if self.cfg.parse_reasoning:
+
+        if self.cfg.end_reasoning_string in turn2_result[self.cfg.generation_key]:
             parse_reasoning(turn2_result, self.cfg.generation_key, self.cfg.end_reasoning_string)
 
         turn2_result["intermediate"] = solution_turn1
