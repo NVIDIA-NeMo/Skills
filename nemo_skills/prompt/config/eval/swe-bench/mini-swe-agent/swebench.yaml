@@ -152,3 +152,4 @@ model:
     submit your solution (you will not be able to continue working on this task after that).
   model_kwargs:
     drop_params: true
+  cost_tracking: "ignore_errors"
