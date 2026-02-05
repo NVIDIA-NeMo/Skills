@@ -79,10 +79,12 @@ env:
   post_startup_commands:
     - |-
       if [ -d /opt/miniconda3/envs/testbed ]; then
+          conda config --set changeps1 False &&
           . /opt/miniconda3/etc/profile.d/conda.sh &&
           conda activate testbed &&
           echo 'Activated environment at /opt/miniconda3/envs/testbed';
       elif [ -f /testbed/.venv/bin/activate ]; then
+          export VIRTUAL_ENV_DISABLE_PROMPT=1 &&
           source /testbed/.venv/bin/activate &&
           echo 'Activated environment at /testbed/.venv';
       fi
