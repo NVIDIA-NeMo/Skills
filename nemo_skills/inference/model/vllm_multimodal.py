@@ -100,6 +100,8 @@ class VLLMMultimodalModel(VLLMModel):
         self.audio_chunk_task_types = audio_chunk_task_types
         self.chunk_audio_threshold_sec = chunk_audio_threshold_sec
 
+        if audio_format not in ("audio_url", "input_audio"):
+            raise ValueError(f"Unsupported audio_format '{audio_format}'. Use 'audio_url' or 'input_audio'.")
         self.audio_format = audio_format
 
         # Audio OUTPUT config
@@ -273,6 +275,19 @@ class VLLMMultimodalModel(VLLMModel):
     # Audio INPUT methods
     # =====================
 
+    def _preprocess_messages_for_model(self, messages: list[dict]) -> list[dict]:
+        """Preprocess messages - creates copies to avoid mutation.
+
+        Note: /no_think suffix is passed through unchanged (handled by the model).
+
+        Args:
+            messages: List of message dicts.
+
+        Returns:
+            Copy of message dicts.
+        """
+        return [copy.deepcopy(msg) for msg in messages]
+
     def content_text_to_list(self, message: dict) -> dict:
         """Convert message content with audio to proper list format.
 
@@ -423,6 +438,9 @@ class VLLMMultimodalModel(VLLMModel):
 
                 chunk_messages.append(msg_copy)
 
+            # Preprocess messages before sending to model
+            chunk_messages = self._preprocess_messages_for_model(chunk_messages)
+
             # Generate for this chunk using parent's generate_async
             result = await super().generate_async(
                 prompt=chunk_messages, tokens_to_generate=tokens_to_generate, **kwargs
@@ -482,7 +500,9 @@ class VLLMMultimodalModel(VLLMModel):
                 return await self._generate_with_chunking(messages, audio_path, duration, tokens_to_generate, **kwargs)
 
             # No chunking needed - convert audio fields to base64 format
-            prompt = [self.content_text_to_list(msg) for msg in messages]
+            messages = [self.content_text_to_list(copy.deepcopy(msg)) for msg in messages]
+            messages = self._preprocess_messages_for_model(messages)
+            prompt = messages
 
         # Call parent's generate_async (which handles audio OUTPUT via _parse_chat_completion_response)
         return await super().generate_async(prompt=prompt, tokens_to_generate=tokens_to_generate, **kwargs)
