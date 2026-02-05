@@ -77,12 +77,12 @@ agent:
     max_output_tokens: 0
 env:
   post_startup_commands:
-    - |
-      if [ -d /opt/miniconda3/envs/testbed ]; then    # SWE-bench Verified, SWE-Gym, SWE-rebench
-          . /opt/miniconda3/etc/profile.d/conda.sh
-          conda activate testbed
-          echo 'Activated environment at /opt/miniconda3/envs/testbed'
-      elif [ -f /testbed/.venv/bin/activate ]; then    # R2E-Gym
-          source /testbed/.venv/bin/activate
-          echo 'Activated environment at /testbed/.venv'
+    - |-
+      if [ -d /opt/miniconda3/envs/testbed ]; then
+          . /opt/miniconda3/etc/profile.d/conda.sh &&
+          conda activate testbed &&
+          echo 'Activated environment at /opt/miniconda3/envs/testbed';
+      elif [ -f /testbed/.venv/bin/activate ]; then
+          source /testbed/.venv/bin/activate &&
+          echo 'Activated environment at /testbed/.venv';
       fi
