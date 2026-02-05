@@ -602,7 +602,6 @@ class SweBenchGenerationTask(GenerationTask):
                 "cp -r /root_mount/uv /root && "
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
-                "export MSWEA_COST_TRACKING=ignore_errors && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "

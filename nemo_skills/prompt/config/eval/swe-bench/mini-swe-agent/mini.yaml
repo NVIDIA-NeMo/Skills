@@ -153,5 +153,6 @@ environment:
     PIP_PROGRESS_BAR: 'off'
     TQDM_DISABLE: '1'
 model:
+  cost_tracking: "ignore_errors"
   model_kwargs:
     drop_params: true
