@@ -77,7 +77,7 @@ agent:
     max_output_tokens: 0
 env:
   post_startup_commands:
-    - |-
+    - >-
       if [ -d /opt/miniconda3/envs/testbed ]; then
           conda config --set changeps1 False &&
           . /opt/miniconda3/etc/profile.d/conda.sh &&
