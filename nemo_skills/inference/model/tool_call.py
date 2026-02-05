@@ -113,6 +113,7 @@ class ToolCallingWrapper:
         endpoint_type: EndpointType,
         tools: List[dict] = None,
         tokens_to_generate: int = None,
+        max_tool_calls: int = -1,
         **generation_kwargs,
     ) -> Dict:
         assert isinstance(prompt, list), "Only use ChatCompletion API for now."
@@ -131,6 +132,7 @@ class ToolCallingWrapper:
 
         # assigning a unique request id to pass to tool calls if they need to be stateful
         request_id = str(uuid.uuid4())
+        tool_calls_executed = 0
 
         while True:
             if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
@@ -154,6 +156,13 @@ class ToolCallingWrapper:
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
                 tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
+                if max_tool_calls >= 0 and tool_calls_executed > max_tool_calls:
+                    LOG.info(
+                        "Tool call limit reached (max_tool_calls=%s); stopping generation.",
+                        max_tool_calls,
+                    )
+                    break
+
                 tool_calls_output_messages = await self._execute_tool_calls(
                     tool_calls, request_id=request_id, endpoint_type=endpoint_type
                 )
@@ -161,6 +170,7 @@ class ToolCallingWrapper:
                 conversation.extend(tool_calls_output_messages)
 
                 result_steps["num_tool_calls"].append(len(tool_calls))
+                tool_calls_executed += len(tool_calls)
 
                 continue
 
