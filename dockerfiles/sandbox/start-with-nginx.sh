@@ -4,6 +4,49 @@
 #
 # Multi-node is auto-detected from SLURM environment variables.
 # Falls back to single-node (localhost) when SLURM is not available.
+#
+# =============================================================================
+# Environment Variables
+# =============================================================================
+#
+# Required (set by Dockerfile defaults if not provided):
+#   NGINX_PORT              Port nginx listens on (default: 6000, set in Dockerfile)
+#
+# Optional — Worker Configuration:
+#   NUM_WORKERS             Number of uWSGI workers per node (default: $(nproc --all))
+#   SANDBOX_WORKER_BASE_PORT
+#                           Starting TCP port for workers (default: 50001). Workers
+#                           bind to sequential ports: base, base+1, ..., base+N-1.
+#                           If a port is already in use, the startup algorithm retries
+#                           with offset increments.
+#   STATEFUL_SANDBOX        Set to 1 (default) for stateful mode: each uWSGI worker
+#                           runs a single process to preserve Jupyter kernel sessions
+#                           across requests. Set to 0 for stateless mode where
+#                           UWSGI_PROCESSES and UWSGI_CHEAPER take effect.
+#   UWSGI_PROCESSES         uWSGI processes per worker (default: 1). Only used when
+#                           STATEFUL_SANDBOX=0.
+#   UWSGI_CHEAPER           uWSGI cheaper mode: minimum number of active processes
+#                           (default: 1). Only used when STATEFUL_SANDBOX=0.
+#
+# Optional — Multi-Node (SLURM):
+#   SLURM_JOB_NODELIST      SLURM-provided compressed nodelist (e.g., "node[001-016]").
+#                           Presence of this variable triggers multi-node mode.
+#                           Automatically set by SLURM — do not set manually.
+#   SLURM_JOB_ID            SLURM job ID, used to namespace the port coordination
+#                           directory. Automatically set by SLURM.
+#   SANDBOX_PORTS_DIR       Explicit path for cross-node port coordination files.
+#                           Must be on a shared filesystem (e.g., Lustre). If unset,
+#                           defaults to /nemo_run/sandbox_ports_<SLURM_JOB_ID> in
+#                           SLURM jobs, or /tmp/sandbox_ports_<PID> for single-node.
+#
+# Optional — Security:
+#   NEMO_SKILLS_SANDBOX_BLOCK_NETWORK
+#                           Set to 1 to enable network blocking for sandboxed code.
+#                           Uses /etc/ld.so.preload to intercept socket() calls in
+#                           all new processes. Applied AFTER nginx/uWSGI start so
+#                           the API remains functional. (default: 0)
+#
+# =============================================================================
 
 set -e
 
