@@ -208,6 +208,7 @@ def test_judge_generations_with_structured_output(tmp_path):
         f"    --metric_type=hle-aa "
         f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA"'
         f"    ++max_samples=2 "
+        f"    ++inference.tokens_to_generate=1024 "  # to make test go fast
     )
     subprocess.run(cmd, shell=True, check=True)
 
