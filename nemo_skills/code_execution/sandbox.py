@@ -70,7 +70,7 @@ class Sandbox(abc.ABC):
         self.ssh_key_path = os.getenv("NEMO_SKILLS_SSH_KEY_PATH", ssh_key_path)
         self.disable_session_restore = disable_session_restore or os.getenv(
             "NEMO_SKILLS_DISABLE_SESSION_RESTORE", ""
-        ) not in ("", "0", "false")
+        ).lower() not in ("", "0", "false")
         self.session_histories = defaultdict(list)  # session_id -> list of generated_code
 
     async def close(self):
