@@ -627,9 +627,14 @@ class SweBenchGenerationTask(GenerationTask):
                 trajectory_info = trajectory_dict.get("info", {})
                 trajectory_info["model_name_or_path"] = self.cfg.server.model
                 trajectory_info["instance_id"] = data_point["instance_id"]
-                trajectory_info["model_patch"] = (
-                    None if "submission" not in trajectory_info else trajectory_info.pop("submission")
-                )
+
+                patch = trajectory_info.pop("submission", None)
+                if not patch:
+                    patch = None
+                elif not patch.endswith("\n"):
+                    patch += "\n"
+                trajectory_info["model_patch"] = patch
+
                 f.write(json.dumps(trajectory_info))
 
             return pred_jsonl_file
