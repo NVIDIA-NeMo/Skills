@@ -586,7 +586,8 @@ class SweBenchGenerationTask(GenerationTask):
             }
         )
 
-        tmp_config_filename = f"config_{data_point['instance_id']}.yaml"
+        (self.output_dir / "configs").mkdir(parents=True, exist_ok=True)
+        tmp_config_filename = f"configs/config_{data_point['instance_id']}.yaml"
         host_tmp_path = os.path.join(self.output_dir, tmp_config_filename)
 
         # Inside the container, this path maps to /trajectories_mount/
