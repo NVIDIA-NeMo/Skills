@@ -48,9 +48,10 @@
 #                           Set to 1 to enable network blocking for sandboxed code.
 #                           Uses /etc/ld.so.preload to intercept socket() calls in
 #                           all new processes. Applied AFTER nginx/uWSGI start so
-#                           the API remains functional. Only applied in single-node
-#                           mode — in multi-node mode, ld.so.preload would prevent
-#                           restarted workers from binding to their ports. (default: 0)
+#                           the API remains functional. Note: in any mode, if a
+#                           worker crashes the monitoring loop will attempt to restart
+#                           it, but the new process will be unable to bind its socket.
+#                           The remaining workers continue serving. (default: 0)
 #
 # =============================================================================
 
@@ -276,8 +277,11 @@ verify_remote_workers() {
 # Node discovery
 # =============================================================================
 _H=$(hostname)
-echo "[$_H] SLURM_JOB_NODELIST=${SLURM_JOB_NODELIST:-<not set>} SLURM_NNODES=${SLURM_NNODES:-<not set>}"
-echo "[$_H] NGINX_PORT=${NGINX_PORT:-<not set>} NUM_WORKERS=${NUM_WORKERS} SANDBOX_FORCE_SINGLE_NODE=${SANDBOX_FORCE_SINGLE_NODE:-0}"
+
+# Log configured values (only show SLURM vars if they're actually set)
+echo "[$_H] NGINX_PORT=$NGINX_PORT NUM_WORKERS=$NUM_WORKERS"
+[ -n "$SLURM_JOB_NODELIST" ] && echo "[$_H] SLURM_JOB_NODELIST=$SLURM_JOB_NODELIST SLURM_NNODES=${SLURM_NNODES:-?}"
+[ -n "$SANDBOX_FORCE_SINGLE_NODE" ] && echo "[$_H] SANDBOX_FORCE_SINGLE_NODE=$SANDBOX_FORCE_SINGLE_NODE"
 
 if [ "${SANDBOX_FORCE_SINGLE_NODE:-0}" = "1" ]; then
     echo "[$_H] SANDBOX_FORCE_SINGLE_NODE=1, forcing single-node mode"
@@ -286,11 +290,13 @@ elif [ -n "$SLURM_JOB_NODELIST" ]; then
     echo "[$_H] Expanding SLURM_JOB_NODELIST: $SLURM_JOB_NODELIST"
     ALL_NODES=$(expand_nodelist "$SLURM_JOB_NODELIST")
     if [ -z "$ALL_NODES" ]; then
-        echo "[$_H] WARNING: Failed to expand nodelist, falling back to localhost"
+        echo "[$_H] WARNING: Failed to expand SLURM_JOB_NODELIST='$SLURM_JOB_NODELIST'"
+        echo "[$_H] Falling back to single-node mode. If multi-node is intended, check that"
+        echo "[$_H] SLURM_JOB_NODELIST is correctly set by your SLURM environment."
         ALL_NODES="127.0.0.1"
     fi
 else
-    echo "[$_H] No SLURM environment detected, using localhost"
+    echo "[$_H] No SLURM_JOB_NODELIST detected — running in single-node mode"
     ALL_NODES="127.0.0.1"
 fi
 
@@ -356,12 +362,16 @@ fi
 if [ -z "$UWSGI_CHEAPER" ]; then
     UWSGI_CHEAPER=1
 elif [ "$UWSGI_CHEAPER" -le 0 ]; then
+    echo "WARNING: UWSGI_CHEAPER=$UWSGI_CHEAPER must be >= 1, setting to 1"
     UWSGI_CHEAPER=1
 elif [ "$UWSGI_CHEAPER" -ge "$UWSGI_PROCESSES" ]; then
+    echo "WARNING: UWSGI_CHEAPER=$UWSGI_CHEAPER must be < UWSGI_PROCESSES=$UWSGI_PROCESSES"
     if [ "$UWSGI_PROCESSES" -eq 1 ]; then
+        echo "  Disabling cheaper mode for single-process setup"
         UWSGI_CHEAPER=""
     else
         UWSGI_CHEAPER=$((UWSGI_PROCESSES - 1))
+        echo "  Setting UWSGI_CHEAPER=$UWSGI_CHEAPER"
     fi
 fi
 
@@ -532,16 +542,18 @@ done
 echo "[$_H] All $NUM_WORKERS local workers ready!"
 
 # =============================================================================
-# Write port assignments to shared storage
+# Write port assignments to shared storage (multi-node only)
 # =============================================================================
-PORTS_FILE="$PORTS_REPORT_DIR/${CURRENT_NODE_SHORT}_ports.txt"
-> "$PORTS_FILE"
-for i in $(seq 1 $NUM_WORKERS); do
-    echo "${i}:${ACTUAL_WORKER_PORTS[$((i-1))]}" >> "$PORTS_FILE"
-done
-echo "PORT_REPORT_COMPLETE" >> "$PORTS_FILE"
-sync
-echo "[$_H] Port assignments written to $PORTS_FILE"
+if [ "$NODE_COUNT" -gt 1 ]; then
+    PORTS_FILE="$PORTS_REPORT_DIR/${CURRENT_NODE_SHORT}_ports.txt"
+    > "$PORTS_FILE"
+    for i in $(seq 1 $NUM_WORKERS); do
+        echo "${i}:${ACTUAL_WORKER_PORTS[$((i-1))]}" >> "$PORTS_FILE"
+    done
+    echo "PORT_REPORT_COMPLETE" >> "$PORTS_FILE"
+    sync
+    echo "[$_H] Port assignments written to $PORTS_FILE"
+fi
 
 # =============================================================================
 # Nginx setup
@@ -581,49 +593,9 @@ if [ "$IS_MASTER" = "1" ]; then
 else
     # --- Worker node: local nginx proxy forwarding to master ---
     echo "[$_H] Starting nginx proxy to master $MASTER_NODE:$NGINX_PORT..."
-    cat > /etc/nginx/nginx.conf << EOF
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream master_lb {
-        server ${MASTER_NODE}:${NGINX_PORT};
-    }
-
-    server {
-        listen ${NGINX_PORT};
-        server_name localhost;
-
-        client_max_body_size 10M;
-        client_body_buffer_size 128k;
-
-        location / {
-            proxy_pass http://master_lb;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
-            proxy_set_header X-Session-ID \$http_x_session_id;
-            proxy_connect_timeout 1200s;
-            proxy_send_timeout 1200s;
-            proxy_read_timeout 1200s;
-            proxy_buffering off;
-        }
-
-        location /nginx-status {
-            stub_status on;
-            access_log off;
-            allow 127.0.0.1;
-            allow ::1;
-            deny all;
-        }
-    }
-
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log warn;
-}
-EOF
+    sed -e "s|\${MASTER_NODE}|${MASTER_NODE}|g" \
+        -e "s|\${NGINX_PORT}|${NGINX_PORT}|g" \
+        /etc/nginx/nginx-worker-proxy.conf.template > /etc/nginx/nginx.conf
 
     echo "Testing nginx proxy configuration..."
     if ! nginx -t; then
@@ -637,20 +609,26 @@ EOF
 fi
 
 # =============================================================================
-# Network blocking (single-node only)
+# Network blocking
 # =============================================================================
 # ld.so.preload intercepts socket() in all NEW exec'd processes. This is safe
-# when nginx/uWSGI are already running. However, in multi-node mode, if the
-# monitoring loop restarts a crashed worker, the new uWSGI process would be
-# unable to bind its listening socket. We therefore only enable network blocking
-# in single-node mode where worker restarts are less critical.
+# for nginx/uWSGI that are already running. However, if the monitoring loop
+# restarts a crashed worker, the new uWSGI process would be unable to bind its
+# listening socket. We set NETWORK_BLOCKING_ACTIVE so the monitoring loop can
+# emit a clear diagnostic when this happens.
+NETWORK_BLOCKING_ACTIVE=0
 BLOCK_NETWORK_LIB="/usr/lib/libblock_network.so"
 if [ "${NEMO_SKILLS_SANDBOX_BLOCK_NETWORK:-0}" = "1" ]; then
-    if [ "$NODE_COUNT" -gt 1 ]; then
-        echo "[$_H] Network blocking skipped in multi-node mode (would prevent worker restarts)"
-    elif [ -f "$BLOCK_NETWORK_LIB" ]; then
+    if [ -f "$BLOCK_NETWORK_LIB" ]; then
         echo "$BLOCK_NETWORK_LIB" > /etc/ld.so.preload
+        NETWORK_BLOCKING_ACTIVE=1
         echo "[$_H] Network blocking ENABLED via ld.so.preload"
+        if [ "$NODE_COUNT" -gt 1 ]; then
+            echo "[$_H] NOTE: Network blocking is active in multi-node mode. If a worker"
+            echo "[$_H]   crashes, the monitoring loop will be unable to restart it because"
+            echo "[$_H]   ld.so.preload blocks socket() in new processes. The remaining"
+            echo "[$_H]   workers will continue serving requests."
+        fi
     else
         echo "[$_H] WARNING: Network blocking requested but $BLOCK_NETWORK_LIB not found"
     fi
@@ -695,6 +673,11 @@ while true; do
         i=$((idx + 1))
         if ! kill -0 "$pid" 2>/dev/null; then
             echo "[$_H] WARNING: Worker $i (PID $pid) died — restarting..."
+            if [ "$NETWORK_BLOCKING_ACTIVE" = "1" ]; then
+                echo "[$_H] WARNING: Network blocking (ld.so.preload) is active. The restarted"
+                echo "[$_H]   worker may fail to bind its port because socket() is blocked for"
+                echo "[$_H]   new processes. Remaining workers continue serving requests."
+            fi
             result=$(start_worker $i)
             WORKER_PIDS[$idx]="${result%%:*}"
             ACTUAL_WORKER_PORTS[$idx]="${result##*:}"

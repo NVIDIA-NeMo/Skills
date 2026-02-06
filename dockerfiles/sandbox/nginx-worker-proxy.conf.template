@@ -1,0 +1,44 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Proxy all requests to the master node's nginx load balancer.
+    # Worker nodes don't route to individual workers — the master's
+    # consistent-hash upstream handles session affinity.
+    upstream master_lb {
+        server ${MASTER_NODE}:${NGINX_PORT};
+    }
+
+    server {
+        listen ${NGINX_PORT};
+        server_name localhost;
+
+        client_max_body_size 10M;
+        client_body_buffer_size 128k;
+
+        location / {
+            proxy_pass http://master_lb;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Session-ID $http_x_session_id;
+            proxy_connect_timeout 1200s;
+            proxy_send_timeout 1200s;
+            proxy_read_timeout 1200s;
+            proxy_buffering off;
+        }
+
+        location /nginx-status {
+            stub_status on;
+            access_log off;
+            allow 127.0.0.1;
+            allow ::1;
+            deny all;
+        }
+    }
+
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log warn;
+}

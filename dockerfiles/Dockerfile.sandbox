@@ -91,8 +91,9 @@ RUN mkdir -p /data && pip install gdown && \
 
 COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.py
 
-# Copy nginx configuration template
+# Copy nginx configuration templates
 COPY dockerfiles/sandbox/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY dockerfiles/sandbox/nginx-worker-proxy.conf.template /etc/nginx/nginx-worker-proxy.conf.template
 
 # =============================================================================
 # Network Blocking for Sandboxed Code Execution (Defense in Depth)
