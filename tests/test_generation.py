@@ -206,7 +206,7 @@ def test_judge_generations_with_structured_output(tmp_path):
         f"    --judge_server_address=https://integrate.api.nvidia.com/v1 "
         f"    --judge_server_type=openai "
         f"    --metric_type=hle-aa "
-        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA"'
+        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA" '
         f"    ++max_samples=2 "
         f"    ++inference.tokens_to_generate=1024 "  # to make test go fast
     )

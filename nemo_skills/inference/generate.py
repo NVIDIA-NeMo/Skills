@@ -691,7 +691,7 @@ class GenerationTask:
             "stop_phrases": [self.cfg.stop_phrase] if self.cfg.stop_phrase else None,
         }
 
-        if self.cfg.structured_output in STRUCTURED_OUTPUTS:
+        if self.cfg.structured_output is not None:
             generation_params["response_format"] = STRUCTURED_OUTPUTS[self.cfg.structured_output]
 
         if self.cfg.code_execution:
