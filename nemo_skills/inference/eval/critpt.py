@@ -142,9 +142,9 @@ class CritPtGenerationTask(GenerationTask):
         solution_turn1 = turn1_result[self.cfg.generation_key]
         LOG.debug(f"Solution: {solution_turn1}")
 
-        assitant_msg: dict = {"role": "assistant", "content": solution_turn1}
+        assistant_msg: dict = {"role": "assistant", "content": solution_turn1}
 
-        LOG.debug(f"Assistant: {assitant_msg}")
+        LOG.debug(f"Assistant: {assistant_msg}")
 
         # ===== Turn 2: Generate code using template =====
         # Build prompt that includes code template
@@ -153,7 +153,7 @@ class CritPtGenerationTask(GenerationTask):
         LOG.debug(f"Turn 2 prompt: {turn2_prompt}")
 
         # Final prompt is the turn1_prompt + assistant message + turn2_prompt
-        final_prompt = turn1_prompt + [assitant_msg, turn2_prompt]
+        final_prompt = turn1_prompt + [assistant_msg, turn2_prompt]
 
         turn2_result = await self._process_single_completion(data_point, final_prompt)
 

@@ -88,7 +88,7 @@ class CritPtEvaluator(BaseEvaluator):
         - generation: model's generated solution containing code
         - Other optional fields based on CritPt requirements
         """
-        code = self._extract_code_from_generation(data_point.get("generation", ""))
+        code = self._extract_code_from_generation(data_point["generation"])
 
         if not code.startswith("```"):
             code = "```python\n" + code + "\n```"
@@ -98,7 +98,7 @@ class CritPtEvaluator(BaseEvaluator):
         submission = {
             "problem_id": data_point["problem_id"],
             "generated_code": code,
-            "model": "unkown",
+            "model": "unknown",
             "generation_config": {},
         }
 
@@ -132,20 +132,8 @@ class CritPtEvaluator(BaseEvaluator):
             # Format submissions
             submissions = []
             for data_point in data_points:
-                try:
-                    submission = self._format_submission(data_point)
-                    submissions.append(submission)
-                except Exception as e:
-                    LOG.warning(f"Failed to format submission for {data_point.get('problem_id', 'unknown')}: {e}")
-                    # Add placeholder submission to maintain alignment
-                    submissions.append(
-                        {
-                            "problem_id": data_point.get("problem_id", "unknown"),
-                            "generated_code": "",
-                            "model": "unkown",
-                            "generation_config": {},
-                        }
-                    )
+                submission = self._format_submission(data_point)
+                submissions.append(submission)
             # Save submissions to file
             submission_file = self.eval_config.input_file.replace(".jsonl", "_submissions.jsonl")
             with open(submission_file, "wt", encoding="utf-8") as f:
