@@ -563,6 +563,7 @@ class SweBenchGenerationTask(GenerationTask):
             for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
             if getattr(self.cfg.inference, ns_param) is not None
         }
+        completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
         if "top_logprobs" in completion_kwargs:
             completion_kwargs["logprobs"] = True
         if "reasoning_effort" in completion_kwargs:
@@ -571,6 +572,10 @@ class SweBenchGenerationTask(GenerationTask):
         base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
+
+        if "agent" not in full_config:
+            full_config["agent"] = {}
+        full_config["agent"]["step_limit"] = self.cfg.agent_max_turns
 
         if "model" not in full_config:
             full_config["model"] = {}
