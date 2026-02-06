@@ -21,7 +21,7 @@ Nemo-Skills can be used to evaluate an LLM on various STEM datasets.
 
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, eval
-cluster = 'slurm'
+cluster = "slurm"
 eval(
     ctx=wrap_arguments(
         "++inference.temperature=1.0 ++inference.top_p=1.0 "
@@ -31,9 +31,9 @@ eval(
     cluster=cluster,
     server_type="vllm",
     server_gpus=1,
-    server_args='--no-enable-prefix-caching --mamba_ssm_cache_dtype float32',
-    model='nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16',
-    benchmarks='gpqa:4',
+    server_args="--no-enable-prefix-caching --mamba_ssm_cache_dtype float32",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    benchmarks="gpqa:4",
     output_dir="/workspace/Nano_V3_evals"
 )
 ```
@@ -43,7 +43,7 @@ eval(
 
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, eval
-cluster = 'slurm'
+cluster = "slurm"
 eval(
     ctx=wrap_arguments(
        "++inference.temperature=1.0 ++inference.top_p=1.0 "
@@ -53,9 +53,9 @@ eval(
     cluster=cluster,
     server_type="vllm",
     server_gpus=1,
-    server_args='--no-enable-prefix-caching --mamba_ssm_cache_dtype float32',
-    model='nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16',
-    benchmarks='hle:4',
+    server_args="--no-enable-prefix-caching --mamba_ssm_cache_dtype float32",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    benchmarks="hle:4",
     output_dir="/workspace/Nano_V3_evals",
     judge_model="openai/gpt-oss-120b",
     judge_server_type="vllm",
@@ -64,4 +64,29 @@ eval(
     extra_judge_args="++chat_template_kwargs.reasoning_effort=high  ++inference.temperature=1.0 ++inference.top_p=1.0 ++inference.tokens_to_generate=120000 "
 )
 
+```
+
+## Evaluate `NVIDIA-Nemotron-3-Nano` on an MCQ dataset using tools
+
+```python
+from nemo_skills.pipeline.cli import wrap_arguments, eval
+cluster = "slurm"
+eval(
+    ctx=wrap_arguments(
+        "++inference.temperature=0.6 ++inference.top_p=0.95 "
+        "++inference.tokens_to_generate=131072 ++inference.extra_body.skip_special_tokens=false "
+        "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
+        "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
+
+    ),
+    cluster=cluster,
+    server_type="vllm",
+    server_gpus=1,
+    server_args="--no-enable-prefix-caching --mamba_ssm_cache_dtype float32 --enable-auto-tool-choice --tool-call-parser qwen3_coder",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    benchmarks="gpqa:4",
+    output_dir="/workspace/Nano_V3_evals",
+    with_sandbox=True,
+
+)
 ```

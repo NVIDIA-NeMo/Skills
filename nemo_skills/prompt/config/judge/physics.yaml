@@ -1,3 +1,5 @@
+# adapted from https://arxiv.org/abs/2506.00022
+
 user: |-
   You are a diligent and precise assistant tasked with evaluating the correctness of responses. You
   will receive a question, an output sentence, and the correct answer. Your task is to determine if the

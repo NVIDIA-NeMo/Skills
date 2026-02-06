@@ -1,3 +1,5 @@
+# adapted from https://arxiv.org/abs/2506.00022
+
 user: |-
     Below is an open-ended problem in Physics. Please answer this problem adhering to the following rules:
     1. Please use LaTeX format to represent the variables and formulas used in the solution process and results.

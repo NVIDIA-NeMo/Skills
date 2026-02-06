@@ -31,10 +31,8 @@ def is_correct_physics_judgement(judgement, return_none=False) -> Union[bool, No
         elif re.search(r"\[incorrect\]", judgement, re.IGNORECASE):
             return False
 
-    if return_none:
-        return None
-    else:
-        return False  # improper judgement format, so have to judge as false
+    # improper judgement format, so have to judge as false
+    return None if return_none else False
 
 
 class PhysicsMetrics(MathMetrics):
