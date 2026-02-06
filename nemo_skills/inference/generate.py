@@ -27,7 +27,7 @@ from typing import Any
 
 import hydra
 import litellm
-from omegaconf import ListConfig
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -37,6 +37,7 @@ from nemo_skills.evaluation.evaluator import (
     get_evaluator_class,
     supports_single_eval,
 )
+from nemo_skills.inference.litellm_hybrid_cache import StableLiteLLMCache
 from nemo_skills.inference.model import (
     ParallelThinkingConfig,
     get_code_execution_model,
@@ -198,6 +199,8 @@ class GenerationTaskConfig:
     #      --config-path /path/to/configs --config-name config
     schema_overrides: dict | None = field(default_factory=dict)
 
+    max_tool_calls: int = -1  # If >= 0, will limit the number of tool calls executed during generation to this number
+
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
     parse_reasoning: bool = False
@@ -308,7 +311,10 @@ class GenerationTask:
             cfg: GenerationTaskConfig object with the configuration parameters or subclass.
         """
         self.cfg = cfg
-        self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
+        if isinstance(self.cfg.inference.extra_body, DictConfig):
+            self.cfg.inference.extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
+        else:
+            self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
 
         # chat template kwargs goes either into extra body of inference or as a prompt parameter
         if self.cfg.chat_template_kwargs:
@@ -467,6 +473,7 @@ class GenerationTask:
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
                 schema_overrides=self.cfg.schema_overrides,
+                max_tool_calls=self.cfg.max_tool_calls,
                 tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
                 data_dir=self.data_dir or "",
@@ -827,10 +834,11 @@ class GenerationTask:
             self.litellm_cache_dir = (
                 Path(self.cfg.output_file).parent / "litellm_cache" / f"{output_file_name}_{self.cfg.chunk_id or 0}"
             )
-            litellm.cache = litellm.Cache(type="disk", disk_cache_dir=self.litellm_cache_dir)
+            litellm.cache = StableLiteLLMCache(cache_file_path=str(self.litellm_cache_dir / "cache.pkl"))
 
     def cleanup_litellm_cache(self):
         if self.cfg.enable_litellm_cache:
+            litellm.cache.cache.force_save()
             shutil.rmtree(self.litellm_cache_dir)
 
     def generate(self):

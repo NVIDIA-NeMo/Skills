@@ -271,8 +271,11 @@ class Sandbox(abc.ABC):
         except httpx.HTTPError:
             return False
 
-    def wait_for_sandbox(self, timeout: int = 5):
-        while not self._check_ready(timeout=timeout):
+    def wait_for_sandbox(self, wait_timeout: int = 240, http_timeout: int = 5):
+        start_time = time.time()
+        while not self._check_ready(timeout=http_timeout):
+            if time.time() - start_time >= wait_timeout:
+                raise RuntimeError(f"Sandbox at {self.host}:{self.port} did not start within {wait_timeout} seconds")
             time.sleep(1)
 
 

@@ -20,10 +20,8 @@ from pathlib import Path
 import pytest
 from utils import require_env_var
 
-from nemo_skills.evaluation.metrics import ComputeMetrics
+from nemo_skills.evaluation.metrics.compute_metrics import ComputeMetrics
 from tests.conftest import docker_rm
-
-# TODO: retrieval test
 
 
 @pytest.mark.gpu
@@ -47,6 +45,7 @@ def test_vllm_generate_greedy():
         f"    ++prompt_config=generic/math "
         f"    ++max_samples=10 "
         f"    ++skip_filled=False "
+        f"    ++inference.extra_body.chat_template_kwargs.enable_thinking=False "
     )
     subprocess.run(cmd, shell=True, check=True)
 

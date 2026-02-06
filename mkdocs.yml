@@ -83,6 +83,7 @@ nav:
     - evaluation/tool-calling.md
     - evaluation/multilingual.md
     - evaluation/speech-audio.md
+    - evaluation/vlm.md
     - evaluation/other-benchmarks.md
     - evaluation/robustness.md
   - Agentic Inference:

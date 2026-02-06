@@ -79,6 +79,8 @@ class BaseModel:
         # Directory paths for data and output
         data_dir: str = "",
         output_dir: str | None = None,
+        # Request tokenizer initialization independent of soft_fail
+        require_tokenizer: bool = False,
     ):
         self._tunnel = None
         self.model_name_or_path = model
@@ -126,7 +128,7 @@ class BaseModel:
         else:
             self.base_url = base_url
 
-        if enable_soft_fail:
+        if enable_soft_fail or require_tokenizer:
             self.tokenizer = self._get_tokenizer(tokenizer)
         else:
             self.tokenizer = None
@@ -202,7 +204,11 @@ class BaseModel:
         if tokenizer is None:
             return None
         if isinstance(tokenizer, str):
-            return WrapperAutoTokenizer(tokenizer)
+            try:
+                return WrapperAutoTokenizer(tokenizer)
+            except OSError:
+                LOG.warning(f"Tokenizer not found at '{tokenizer}', trying fallback to server /tokenize endpoint")
+                return None
 
     @abc.abstractmethod
     def _build_chat_request_params(self, **kwargs) -> dict:

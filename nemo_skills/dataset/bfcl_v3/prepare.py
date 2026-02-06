@@ -48,7 +48,6 @@ def ensure_bfcl_eval_installed():
                     "pip",
                     "install",
                     "--no-cache-dir",
-                    "-e",
                     str(repo_dir / BFCL_EVAL_SUBDIR),
                     "--extra-index-url",
                     BFCL_EXTRA_INDEX_URL,
