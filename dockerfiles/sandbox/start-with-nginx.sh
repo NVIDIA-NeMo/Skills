@@ -355,6 +355,9 @@ fi
 
 export UWSGI_PROCESSES UWSGI_CHEAPER
 
+echo "UWSGI settings: PROCESSES=$UWSGI_PROCESSES, CHEAPER=$UWSGI_CHEAPER"
+
+# Validate and fix uwsgi configuration
 if [ -z "$UWSGI_PROCESSES" ]; then
     UWSGI_PROCESSES=2
 fi
@@ -362,22 +365,28 @@ fi
 if [ -z "$UWSGI_CHEAPER" ]; then
     UWSGI_CHEAPER=1
 elif [ "$UWSGI_CHEAPER" -le 0 ]; then
-    echo "WARNING: UWSGI_CHEAPER=$UWSGI_CHEAPER must be >= 1, setting to 1"
+    echo "WARNING: UWSGI_CHEAPER ($UWSGI_CHEAPER) must be at least 1"
     UWSGI_CHEAPER=1
+    echo "Setting UWSGI_CHEAPER to $UWSGI_CHEAPER"
 elif [ "$UWSGI_CHEAPER" -ge "$UWSGI_PROCESSES" ]; then
-    echo "WARNING: UWSGI_CHEAPER=$UWSGI_CHEAPER must be < UWSGI_PROCESSES=$UWSGI_PROCESSES"
+    echo "WARNING: UWSGI_CHEAPER ($UWSGI_CHEAPER) must be lower than UWSGI_PROCESSES ($UWSGI_PROCESSES)"
     if [ "$UWSGI_PROCESSES" -eq 1 ]; then
-        echo "  Disabling cheaper mode for single-process setup"
+        # For single process, disable cheaper mode entirely
+        echo "Disabling cheaper mode for single process setup"
         UWSGI_CHEAPER=""
     else
         UWSGI_CHEAPER=$((UWSGI_PROCESSES - 1))
-        echo "  Setting UWSGI_CHEAPER=$UWSGI_CHEAPER"
+        echo "Setting UWSGI_CHEAPER to $UWSGI_CHEAPER"
     fi
 fi
 
 export UWSGI_PROCESSES
-[ -n "$UWSGI_CHEAPER" ] && export UWSGI_CHEAPER
-echo "[$_H] uWSGI: processes=$UWSGI_PROCESSES cheaper=${UWSGI_CHEAPER:-disabled}"
+if [ -n "$UWSGI_CHEAPER" ]; then
+    export UWSGI_CHEAPER
+    echo "UWSGI config - Processes: $UWSGI_PROCESSES, Cheaper: $UWSGI_CHEAPER"
+else
+    echo "UWSGI config - Processes: $UWSGI_PROCESSES, Cheaper: disabled"
+fi
 
 # =============================================================================
 # Log setup
@@ -403,7 +412,9 @@ WORKER_PIDS=()
 cleanup() {
     echo "Shutting down workers and nginx..."
     for pid in "${WORKER_PIDS[@]}"; do
-        kill -0 "$pid" 2>/dev/null && kill -TERM "$pid" 2>/dev/null || true
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
     done
     pkill -f nginx || true
     [ -n "$HEALTH_CHECK_DIR" ] && rm -rf "$HEALTH_CHECK_DIR" 2>/dev/null || true
