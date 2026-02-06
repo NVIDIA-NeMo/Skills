@@ -156,6 +156,9 @@ class CritPtEvaluator(BaseEvaluator):
             # Submit to API
             LOG.info(f"Submitting {len(submissions)} predictions to CritPt API...")
             response_data = self._submit_to_api(submissions)
+            if response_data["status_code"] != 200:
+                LOG.error(f"Failed to submit predictions to CritPt API: {response_data}")
+                raise ValueError(f"Failed to submit predictions to CritPt API: {response_data}")
 
             # Save API response
             with open(response_file, "w") as f:
@@ -241,6 +244,8 @@ class CritPtEvaluator(BaseEvaluator):
 
         response.raise_for_status()
         response_data = response.json()
+        # add status code to response data
+        response_data["status_code"] = response.status_code
 
         LOG.info(f"API response received with status {response.status_code}")
         LOG.debug(f"Response data: {json.dumps(response_data, indent=2)}")
