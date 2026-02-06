@@ -198,6 +198,8 @@ class GenerationTaskConfig:
     #      --config-path /path/to/configs --config-name config
     schema_overrides: dict | None = field(default_factory=dict)
 
+    max_tool_calls: int = -1  # If >= 0, will limit the number of tool calls executed during generation to this number
+
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
     parse_reasoning: bool = False
@@ -468,6 +470,7 @@ class GenerationTask:
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
                 schema_overrides=self.cfg.schema_overrides,
+                max_tool_calls=self.cfg.max_tool_calls,
                 tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
                 data_dir=self.data_dir or "",
