@@ -74,10 +74,10 @@ def expand_nodelist(nodelist):
 
     return nodes
 
-nodelist = '''$nodelist'''
+nodelist = sys.argv[1]
 nodes = expand_nodelist(nodelist)
 print(' '.join(nodes))
-" 2>/dev/null
+" "$nodelist" 2>/dev/null
 }
 
 # =============================================================================
@@ -173,6 +173,8 @@ else
     PORTS_REPORT_DIR="/tmp/sandbox_ports_$$"
 fi
 mkdir -p "$PORTS_REPORT_DIR"
+# Clean stale port files from previous runs (e.g., if SANDBOX_PORTS_DIR is reused)
+rm -f "$PORTS_REPORT_DIR"/*_ports.txt 2>/dev/null || true
 echo "[$_H] Port reporting directory: $PORTS_REPORT_DIR"
 echo "[$_H] Directory exists: $([ -d "$PORTS_REPORT_DIR" ] && echo 'yes' || echo 'no')"
 
@@ -276,37 +278,13 @@ cleanup() {
         fi
     done
     pkill -f nginx || true
+    # Clean up temp directories created during startup
+    [ -n "$HEALTH_CHECK_DIR" ] && rm -rf "$HEALTH_CHECK_DIR" 2>/dev/null || true
+    [ -n "$REMOTE_HEALTH_DIR" ] && rm -rf "$REMOTE_HEALTH_DIR" 2>/dev/null || true
     exit 0
 }
 
 trap cleanup SIGTERM SIGINT
-
-# Function to check if a port is free
-is_port_free() {
-    local port=$1
-    # Check ALL socket states (not just LISTEN) to catch TIME_WAIT, etc.
-    # -t = TCP, -a = all states, -n = numeric
-    ! ss -tan 2>/dev/null | grep -qE ":${port}[[:space:]]"
-}
-
-# Function to find a free port starting from a given port
-find_free_port() {
-    local start_port=$1
-    local max_attempts=100
-    local port=$start_port
-
-    for _ in $(seq 1 $max_attempts); do
-        if is_port_free $port; then
-            echo $port
-            return 0
-        fi
-        port=$((port + 1))
-    done
-
-    # Fallback: return the original port and let uwsgi fail with clear error
-    echo $start_port
-    return 1
-}
 
 # Function to start a single worker (fast, no waiting)
 # Spawns uwsgi in background and returns immediately
@@ -488,7 +466,6 @@ declare -A WORKER_READY
 
 # Directory for health check status files (parallel communication)
 HEALTH_CHECK_DIR=$(mktemp -d)
-trap "rm -rf $HEALTH_CHECK_DIR" EXIT
 
 # Function to check a single worker's health (runs in background)
 check_worker_health() {
@@ -817,20 +794,6 @@ if [ "$IS_MASTER" = "1" ]; then
     echo "=== End Port Debug ==="
 
     nginx
-
-    # Enable network blocking for user code execution if requested
-    # This MUST happen AFTER nginx/uwsgi start (they need sockets for API)
-    # Using /etc/ld.so.preload ensures this cannot be bypassed by user code
-    BLOCK_NETWORK_LIB="/usr/lib/libblock_network.so"
-    if [ "${NEMO_SKILLS_SANDBOX_BLOCK_NETWORK:-0}" = "1" ]; then
-        if [ -f "$BLOCK_NETWORK_LIB" ]; then
-            echo "$BLOCK_NETWORK_LIB" > /etc/ld.so.preload
-            echo "Network blocking ENABLED: All new processes will have network blocked"
-            echo "  (API server sockets created before this, so API still works)"
-        else
-            echo "WARNING: Network blocking requested but $BLOCK_NETWORK_LIB not found"
-        fi
-    fi
 else
     # Worker node in multi-node mode: start a local nginx proxy that forwards to master
     # This allows clients to connect to localhost:NGINX_PORT on any node
@@ -896,6 +859,23 @@ EOF
 
     nginx
     echo "Local nginx proxy started on port $NGINX_PORT -> master $MASTER_NODE:$NGINX_PORT"
+fi
+
+# =============================================================================
+# Enable network blocking for user code execution if requested
+# This MUST happen AFTER nginx/uwsgi start (they need sockets for API)
+# Using /etc/ld.so.preload ensures this cannot be bypassed by user code
+# Applied on ALL nodes since worker nodes run sandboxed user code too
+# =============================================================================
+BLOCK_NETWORK_LIB="/usr/lib/libblock_network.so"
+if [ "${NEMO_SKILLS_SANDBOX_BLOCK_NETWORK:-0}" = "1" ]; then
+    if [ -f "$BLOCK_NETWORK_LIB" ]; then
+        echo "$BLOCK_NETWORK_LIB" > /etc/ld.so.preload
+        echo "Network blocking ENABLED: All new processes will have network blocked"
+        echo "  (API server sockets created before this, so API still works)"
+    else
+        echo "WARNING: Network blocking requested but $BLOCK_NETWORK_LIB not found"
+    fi
 fi
 
 # =============================================================================
