@@ -147,10 +147,10 @@ def test_grpo_nemo_rl(backend):
     grpo_nemo_rl(
         ctx=wrap_arguments(
             "++data.prompt.prompt_config=qwen/math-cot "
-            "++grpo.max_num_steps=5 "
             "++grpo.num_prompts_per_step=2 "
             "++policy.max_total_sequence_length=256 "
             "++policy.dtensor_cfg.tensor_parallel_size=1 "
+            "++policy.megatron_cfg.scheduler.lr_warmup_iters=2 "
             "++checkpointing.save_period=2 "
             "++policy.train_global_batch_size=2 "
             "++policy.train_micro_batch_size=1 "

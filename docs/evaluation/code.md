@@ -147,9 +147,9 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
     "pass@1": {
       "num_entries": 500,
       "gen_seconds": 7172,
-      "issues_resolved": 45.0,
-      "no_patch": 0.4,
-      "patch_cant_apply": 0.8
+      "issues_resolved": 48.4,
+      "no_patch": 1.0,
+      "patch_cant_apply": 1.6
     }
   }
 }
@@ -439,7 +439,7 @@ This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, w
 The script will also process the original manifest into `<DATA_DIR>/birdbench/dev.jsonl`, which will be the input for evaluation.
 `<DATA_DIR>` should be a path to the mount point where you want this data to be stored.
 
-See [the "Using data on cluster" documentation](./index.md#Using-data-on-cluster) for more information.
+See [the "Using data on cluster" documentation](./index.md#using-data-on-cluster) for more information.
 
 #### Running the Evaluation
 
