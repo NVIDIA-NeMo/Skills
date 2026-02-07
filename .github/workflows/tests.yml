@@ -91,5 +91,5 @@ jobs:
         docker run --rm --network=host -v /nemo_run:/nemo_run nemo-skills-sandbox-image &
         sleep 10
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
-        ns prepare_data gsm8k math-500
+        ns prepare_data gsm8k math-500 hle
         python -m pytest tests/ -m "not gpu" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv
