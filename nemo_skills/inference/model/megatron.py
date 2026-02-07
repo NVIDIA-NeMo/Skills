@@ -36,6 +36,7 @@ class MegatronModel(BaseModel):
         stop_phrases: list[str] | None = None,
         timeout: int | None = None,
         top_logprobs: int | None = None,
+        response_format=None,
         **kwargs,
     ) -> dict:
         # Validations
@@ -48,6 +49,7 @@ class MegatronModel(BaseModel):
         if top_k != -1:
             raise NotImplementedError("Megatron server does not support top_k parameter.")
         assert kwargs.get("tools") is None, "Megatron server does not support tools parameter."
+        assert response_format is None, "Megatron server does not support response_format parameter."
 
         params = {
             "messages": messages,
@@ -81,6 +83,7 @@ class MegatronModel(BaseModel):
         stop_phrases: list[str] | None = None,
         timeout: int | None = None,
         top_logprobs: int | None = None,
+        response_format=None,
         **kwargs,
     ) -> dict:
         # Parameter validation specific to Megatron
@@ -93,6 +96,7 @@ class MegatronModel(BaseModel):
         if top_k != -1:
             raise NotImplementedError("Megatron server does not support top_k parameter.")
         assert kwargs.get("tools") is None, "Megatron server does not support tools parameter."
+        assert response_format is None, "Megatron server does not support response_format parameter."
 
         return {
             "prompt": prompt,
