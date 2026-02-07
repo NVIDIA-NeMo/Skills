@@ -1,3 +1,4 @@
+# source: https://github.com/SWE-agent/mini-swe-agent/blob/v2.0/src/minisweagent/config/benchmarks/swebench_backticks.yaml
 agent:
   system_template: |
     You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.
