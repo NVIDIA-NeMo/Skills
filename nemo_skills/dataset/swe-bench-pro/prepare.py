@@ -21,7 +21,7 @@ import datasets
 
 
 # source: https://github.com/scaleapi/SWE-bench_Pro-os/blob/main/helper_code/image_uri.py
-def get_dockerhub_image_uri(uid, dockerhub_username, repo_name=""):
+def get_dockerhub_image_uri(uid, dockerhub_username, repo_name):
     repo_base, repo_name_only = repo_name.lower().split("/")
     hsh = uid.replace("instance_", "")
 
