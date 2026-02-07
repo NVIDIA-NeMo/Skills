@@ -439,7 +439,7 @@ This will download and unpack a file into `<DATA_DIR>/birdbench/dev_20240627`, w
 The script will also process the original manifest into `<DATA_DIR>/birdbench/dev.jsonl`, which will be the input for evaluation.
 `<DATA_DIR>` should be a path to the mount point where you want this data to be stored.
 
-See [the "Using data on cluster" documentation](./index.md#Using-data-on-cluster) for more information.
+See [the "Using data on cluster" documentation](./index.md#using-data-on-cluster) for more information.
 
 #### Running the Evaluation
 

@@ -12,40 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-*.json
-!greptile.json
-*.tar.gz
-*.tar
-*.npy
-*.info
-*.jsonl
-*.csv
-nemo_experiments
-wandb
-build
-.hypothesis
-*.zip
-*.egg-info
-*.xml
-*.DS_Store
-.coverage
-.venv
-*.lock
 
-__pycache__
-.ipynb_checkpoints
+# settings that define how evaluation should be done by default (all can be changed from cmdline)
+DATASET_GROUP = "chat"
+METRICS_TYPE = "arena"
+# using judgement directly in metrics, no need for special evaluation
+GENERATION_ARGS = "++prompt_config=generic/default"
 
-cluster_configs/*
-!cluster_configs/example-*.yaml
-
-nemo_skills/dataset/ruler/*/
-nemo_skills/dataset/bfcl_v3/*/
-nemo_skills/dataset/bfcl_v4/*/
-nemo_skills/dataset/aalcr/lcr/
-.idea/
-.idea/*
-CLAUDE.md
-AGENTS.md
-.codex
-
-.idea
+JUDGE_PIPELINE_ARGS = {
+    "generation_module": "nemo_skills.inference.eval.arena_judge",
+    "model": "gpt-4.1",
+    "server_type": "openai",
+    "server_address": "https://api.openai.com/v1",
+}
