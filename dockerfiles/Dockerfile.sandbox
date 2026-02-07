@@ -91,9 +91,9 @@ RUN mkdir -p /data && pip install gdown && \
 
 COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.py
 
-# Copy nginx configuration template and startup scripts
+# Copy nginx configuration templates
 COPY dockerfiles/sandbox/nginx.conf.template /etc/nginx/nginx.conf.template
-COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx.sh
+COPY dockerfiles/sandbox/nginx-worker-proxy.conf.template /etc/nginx/nginx-worker-proxy.conf.template
 
 # =============================================================================
 # Network Blocking for Sandboxed Code Execution (Defense in Depth)
@@ -127,7 +127,9 @@ RUN gcc -shared -fPIC -o /usr/lib/libblock_network.so /tmp/block_network.c -ldl 
     rm /tmp/block_network.c && \
     echo "Built libblock_network.so for network isolation"
 
-# Make scripts executable
+# Copy startup script late in Dockerfile for better cache utilization
+# (start-with-nginx.sh changes more frequently than dependencies above)
+COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx.sh
 RUN chmod +x /start-with-nginx.sh
 
 # Set the working directory to /app
@@ -152,4 +154,4 @@ ENV UWSGI_PROCESSES=$UWSGI_PROCESSES
 ENV LISTEN_PORT=6000
 RUN echo "uwsgi_read_timeout 14400s;" > /etc/nginx/conf.d/custom_timeout.conf
 
-CMD /start-with-nginx.sh
+CMD ["/start-with-nginx.sh"]
