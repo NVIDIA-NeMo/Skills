@@ -347,7 +347,7 @@ def main() -> None:
             master_config,
         ) = setup_result
     else:
-        raise ValueError(f"Expected 9 or 10 elements in setup_result, got {len(setup_result)}")
+        raise ValueError(f"Expected 10 or 11 elements in setup_result, got {len(setup_result)}")
 
     # Check if async mode is enabled
     if "async_grpo" in config["grpo"] and config["grpo"]["async_grpo"]["enabled"]:
