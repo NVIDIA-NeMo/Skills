@@ -143,9 +143,11 @@ class VLLMModel(BaseModel):
         reasoning_effort: str | None = None,
         extra_body: dict = None,
         tools: list[dict] | None = None,
+        response_format=None,
     ) -> dict:
         assert reasoning_effort is None, "reasoning_effort is not supported for text completion requests"
         assert tools is None, "tools are not supported for text completion requests"
+        assert response_format is None, "response_format is not supported for text completion requests"
         return {
             "prompt": prompt,
             "max_tokens": tokens_to_generate,
@@ -182,6 +184,7 @@ class VLLMModel(BaseModel):
         reasoning_effort: str | None = None,
         tools: list[dict] | None = None,
         extra_body: dict = None,
+        response_format=None,
     ) -> dict:
         # Process messages to handle image content (VLM support)
         processed_messages = []
@@ -207,6 +210,7 @@ class VLLMModel(BaseModel):
             "timeout": timeout,
             "extra_body": self._build_request_body(top_k, min_p, repetition_penalty, extra_body=extra_body),
             "tools": tools,
+            "response_format": response_format,
         }
         if reasoning_effort:
             request["allowed_openai_params"] = ["reasoning_effort"]

@@ -53,7 +53,7 @@ class CodeExecEvaluator(BaseEvaluator):
             f"max_output_characters={self.eval_config.max_output_characters}"
         )
         self.sandbox = get_sandbox(self.eval_config.sandbox)
-        self.sandbox.wait_for_sandbox(50)
+        self.sandbox.wait_for_sandbox(wait_timeout=240)
 
     async def eval_single(self, data: dict):
         """Evaluate single code during generation."""

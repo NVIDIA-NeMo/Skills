@@ -257,6 +257,10 @@ class SandboxScript(BaseJobScript):
     keep_mounts: bool = False
     allocate_port: bool = True
     env_overrides: Optional[List[str]] = None  # Extra env vars in KEY=VALUE form
+
+    # Sandbox spans all group nodes (e.g., for multi-node generate jobs)
+    span_group_nodes: bool = True
+
     log_prefix: str = field(default="sandbox", init=False)
 
     def __post_init__(self):

@@ -71,7 +71,7 @@ reviews:
     # Default: {}
     # Automatic Incremental Review - Automatic incremental code review on each push
     # Default: true
-    auto_incremental_review: false # current: true
+    auto_incremental_review: true # current: true
     # Review draft PRs/MRs.
     # Default: false
     drafts: false

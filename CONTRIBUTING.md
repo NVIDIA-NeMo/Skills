@@ -163,7 +163,11 @@ All subsequent commits will be checked according to configuration in [`.pre-comm
 
 ## Running Tests
 
-TBD
+Check existing github actions CI for cpu/gpu tests. Slurm tests documentation is [here](/tests/slurm-tests).
+When running cpu tests, it's important to always add `-s` flag to pytest as otherwise all tests using nemo-run
+will fail.
+
+More details TBD
 
 **TIP**: Our CI depends on some secret variables only accessible to developers of the repository.
 To run the full suite of tests, please create pull requests from a branch instead of a fork whenever
