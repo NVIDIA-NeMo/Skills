@@ -216,7 +216,7 @@ wait_for_port_reports() {
         for node in $ALL_NODES; do
             local node_short="${node%%.*}"
             local port_file="$PORTS_REPORT_DIR/${node_short}_ports.txt"
-            if [ -f "$port_file" ] && cat "$port_file" 2>/dev/null | grep -q "PORT_REPORT_COMPLETE"; then
+            if [ -f "$port_file" ] && grep -q "PORT_REPORT_COMPLETE" "$port_file" 2>/dev/null; then
                 reported=$((reported + 1))
             fi
         done
@@ -333,7 +333,7 @@ else
     PORTS_REPORT_DIR="/tmp/sandbox_ports_$$"
 fi
 mkdir -p "$PORTS_REPORT_DIR"
-rm -f "$PORTS_REPORT_DIR"/*_ports.txt 2>/dev/null || true
+rm -f "$PORTS_REPORT_DIR/${CURRENT_NODE_SHORT}_ports.txt" 2>/dev/null || true
 echo "[$_H] Port report dir: $PORTS_REPORT_DIR"
 
 declare -a ACTUAL_WORKER_PORTS
