@@ -70,10 +70,10 @@ def clean_data(dataset, keep_all_columns=False):
     def map_fn(data):
         if data["starter_code"]:
             data["formatting_message"] = PromptConstants.FORMATTING_MESSAGE_WITH_STARTER_CODE
-            data["starter_code"] = f"```python\n{data['starter_code']}\n```\n\n"
+            data["starter_code"] = f"```python\n{data['starter_code']}\n```"
         else:
             data["formatting_message"] = PromptConstants.FORMATTING_WITHOUT_STARTER_CODE
-            data["starter_code"] = "```python\n# YOUR CODE HERE\n```\n\n"
+            data["starter_code"] = "```python\n# YOUR CODE HERE\n```"
 
         data["task_id"] = data["question_id"]
         return data
