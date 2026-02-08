@@ -65,7 +65,7 @@ def process_problem_splits(output_dir, token):
                     output_record = dict(row)
                     output_record["question_content"] = row["problem_statement"]
                     output_record["formatting_message"] = FORMATTING_MESSAGE
-                    output_record["starter_code"] = "```cpp\n// YOUR CODE HERE\n```\n\n"
+                    output_record["starter_code"] = "```cpp\n// YOUR CODE HERE\n```"
                     output_record["subset_for_metrics"] = row["difficulty"]
                     f.write(json.dumps(output_record) + "\n")
 
