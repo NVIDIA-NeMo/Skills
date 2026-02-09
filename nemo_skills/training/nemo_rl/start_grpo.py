@@ -319,7 +319,7 @@ def main() -> None:
 
     setup_result = setup(config, tokenizer, dataset, val_dataset)
 
-    if len(setup_result) == 10:  # Nemo-RL main branch
+    if len(setup_result) == 10:
         (
             policy,
             policy_generation,
@@ -332,7 +332,7 @@ def main() -> None:
             grpo_state,
             master_config,
         ) = setup_result
-    elif len(setup_result) == 11:  # For Nano/Super nemo-RL
+    elif len(setup_result) == 11:
         (
             policy,
             policy_generation,
@@ -347,7 +347,7 @@ def main() -> None:
             master_config,
         ) = setup_result
     else:
-        raise ValueError(f"Expected 10 or 11 elements in setup_result, got {len(setup_result)}")
+        raise ValueError(f"Expected 9 or 10 elements in setup_result, got {len(setup_result)}")
 
     # Check if async mode is enabled
     if "async_grpo" in config["grpo"] and config["grpo"]["async_grpo"]["enabled"]:
