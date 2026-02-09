@@ -17,5 +17,5 @@
 
 DATASET_GROUP = "math"
 METRICS_TYPE = "critpt"
-GENERATION_ARGS = "++prompt_config=eval/critpt/solve_problem ++eval_type=critpt"
+GENERATION_ARGS = "++eval_type=critpt"
 GENERATION_MODULE = "nemo_skills.inference.eval.critpt"

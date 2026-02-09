@@ -21,7 +21,7 @@ system: >-
 
   For final answers involving values, follow the precision requirements specified in the problem.
   If no precision is specified:
-  - If an exact value is possible, provide it (e.g., \\$\\sqrt(2)\\$, \\$\\pi/4\\$).
+  - If an exact value is possible, provide it (e.g., $\sqrt{2}$, $\pi/4$).
   - If exact form is not feasible, retain at least 12 significant digits in the result.
 
   5. **Formatting Compliance** - If the user requests a specific output format (e.g., code, table),  provide the final answer accordingly.
