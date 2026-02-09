@@ -36,7 +36,6 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     strip_helpful_prefixes: bool = True
     apply_whisper_normalization: bool = True
     normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", or "none"
-    apply_whisper_normalization: bool = True
     # Optional list of reference fields to calculate WER against (e.g., ["text_tn", "text_itn"])
     # For each field, WER will be computed and stored with corresponding metric name
     reference_fields: list[str] | None = None
