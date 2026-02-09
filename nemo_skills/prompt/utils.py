@@ -106,6 +106,10 @@ class PromptConfig:
     image_field: str | None = None
     # Whether to put image before or after the text in multimodal content
     image_position: str = "before"  # "before" or "after"
+    # Audio support: field name(s) from input_dict containing audio metadata dict(s)
+    # When set, audio metadata is attached to the user message for model processing
+    audio_field: str | None = None  # single audio (e.g. "audio" -> {"path": "...", "duration": ...})
+    audio_list_field: str | None = None  # multiple audios (e.g. "audios" -> [{"path": "...", ...}, ...])
 
 
 class Prompt:
@@ -292,7 +296,15 @@ class Prompt:
         else:
             user_content = user_text
 
-        messages.append({"role": "user", "content": user_content})
+        user_message_dict = {"role": "user", "content": user_content}
+
+        # For audio: attach audio metadata to user message (model layer handles base64 conversion)
+        if self.config.audio_field and self.config.audio_field in input_dict:
+            user_message_dict["audio"] = input_dict[self.config.audio_field]
+        if self.config.audio_list_field and self.config.audio_list_field in input_dict:
+            user_message_dict["audios"] = input_dict[self.config.audio_list_field]
+
+        messages.append(user_message_dict)
 
         if not format_as_string:
             if start_assistant_response_key:
@@ -442,6 +454,7 @@ def get_prompt(
     code_tags: str | dict | None = None,
     examples_type: str | None = None,
     system_message: str | None = None,
+    user_message: str | None = None,
     config_dir: str | None = None,
     code_tags_dir: str | None = None,
 ) -> Prompt:
@@ -455,6 +468,9 @@ def get_prompt(
 
     if system_message is not None:
         config["system"] = system_message
+
+    if user_message is not None:
+        config["user"] = user_message
 
     code_tags_obj = None
     if code_tags is not None:

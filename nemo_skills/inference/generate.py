@@ -27,7 +27,6 @@ from typing import Any
 
 import hydra
 import litellm
-import yaml
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -91,7 +90,7 @@ class GenerationTaskConfig:
 
     input_file: str  # Path to the input file with data
     output_file: str  # Where to save the generations
-    prompt_config: str | None = None  # How to format the data into prompts
+    prompt_config: Any = None  # How to format the data into prompts (str path, dict, or None)
 
     # Deprecated, please use endpoint_type in the InferenceConfig instead
     use_completions_api: bool = False
@@ -104,7 +103,7 @@ class GenerationTaskConfig:
     prompt_format: str = "ns"
     prompt_suffix: str = ""  # suffix to add to the prompt, e.g. " /no_think"
     system_message: str | None = None  # can override the default system message in the config
-    new_prompt: Any = None  # can override the prompt/messages from manifest for all samples (str or list)
+    user_message: str | None = None  # can override the user message in the prompt config template
     code_tags: str | None = None  # required when using code execution
     examples_type: str | None = None  # to be able to customize few-shot examples
 
@@ -248,9 +247,7 @@ class GenerationTaskConfig:
         if self.prompt_format not in ["ns", "openai"]:
             raise ValueError(f"prompt_format must be either 'ns' or 'openai', got '{self.prompt_format}'")
 
-        if self.prompt_format == "openai":
-            assert self.prompt_config is None, "prompt_config is not supported for prompt_format == 'openai'"
-        else:
+        if self.prompt_format == "ns":
             assert self.prompt_config is not None, "prompt_config is required when prompt_format == 'ns'"
         for param, default_value in self._get_disallowed_params():
             if getattr(self, param) != default_value:
@@ -308,16 +305,6 @@ class GenerationTask:
             cfg: GenerationTaskConfig object with the configuration parameters or subclass.
         """
         self.cfg = cfg
-
-        # If new_prompt is a path to a YAML file, load it
-        if self.cfg.new_prompt is not None and isinstance(self.cfg.new_prompt, str):
-            if self.cfg.new_prompt.endswith((".yaml", ".yml")):
-                yaml_path = Path(self.cfg.new_prompt)
-                if yaml_path.exists():
-                    with open(yaml_path, "r") as f:
-                        self.cfg.new_prompt = yaml.safe_load(f)
-                else:
-                    raise ValueError(f"new_prompt YAML file not found: {self.cfg.new_prompt}")
 
         if isinstance(self.cfg.inference.extra_body, DictConfig):
             self.cfg.inference.extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
@@ -413,7 +400,8 @@ class GenerationTask:
         self.output_lock = None
 
     def setup_prompt(self):
-        if self.cfg.prompt_format == "openai":
+        if self.cfg.prompt_config is None:
+            # openai format without prompt_config -- messages come from data
             return None
 
         prompt = get_prompt(
@@ -422,6 +410,7 @@ class GenerationTask:
             code_tags=self.cfg.code_tags,
             examples_type=self.cfg.examples_type,
             system_message=self.cfg.system_message,
+            user_message=self.cfg.user_message,
         )
 
         LOG.info("Prompt used: %s", prompt)
@@ -586,69 +575,43 @@ class GenerationTask:
 
         return remaining_data
 
+    def _merge_audio_from_data(self, messages, data_point):
+        """Merge audio metadata from data_point into messages for the openai path.
+
+        Audio may live either on messages (positional) or as top-level data_point fields.
+        We check both locations and attach audio to the first user message.
+        """
+        if "messages" in data_point and isinstance(data_point["messages"], (list, ListConfig)):
+            # Copy audio fields from the original data messages at matching positions
+            original_messages = data_point["messages"]
+            for i, msg in enumerate(messages):
+                if i < len(original_messages):
+                    orig_msg = original_messages[i]
+                    if "audio" in orig_msg:
+                        msg["audio"] = orig_msg["audio"]
+                    if "audios" in orig_msg:
+                        msg["audios"] = orig_msg["audios"]
+        else:
+            # Audio may be a top-level field on the data point
+            has_audio = "audio" in data_point or "audios" in data_point
+            if has_audio:
+                user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                if user_msg is not None:
+                    if "audio" in data_point:
+                        user_msg["audio"] = data_point["audio"]
+                    if "audios" in data_point:
+                        user_msg["audios"] = data_point["audios"]
+
     # TODO: data will not include any samples skipped after restart
     def fill_prompt(self, data_point, data):
         """Passing in full data in case it's needed to fill the prompt in subclasses."""
-        # Check for prompt override from config - applies to all samples
-        if self.cfg.new_prompt is not None:
-            # Validate new_prompt format for openai/chat endpoints
-            if self.cfg.prompt_format == "openai" and not isinstance(self.cfg.new_prompt, (list, ListConfig)):
-                raise ValueError(
-                    "new_prompt must be a list of messages when prompt_format='openai'. "
-                    'Example: ++new_prompt=\'[{role:system,content:"..."},{role:user,content:"..."}]\' '
-                    "or use a YAML file with a list structure."
-                )
-
-            # If new_prompt is a list (messages format) - handle both list and ListConfig from Hydra
-            if isinstance(self.cfg.new_prompt, (list, ListConfig)):
-                # Check if data_point already has messages (openai format with audio)
-                if "messages" in data_point and isinstance(data_point["messages"], (list, ListConfig)):
-                    # Use new_prompt as the structure, copy audio fields from original at matching positions
-                    prompt = deepcopy(self.cfg.new_prompt)
-                    original_messages = data_point["messages"]
-                    for i, msg in enumerate(prompt):
-                        if i < len(original_messages):
-                            orig_msg = original_messages[i]
-                            # Copy audio-related fields from original message
-                            if "audio" in orig_msg:
-                                msg["audio"] = orig_msg["audio"]
-                            if "audios" in orig_msg:
-                                msg["audios"] = orig_msg["audios"]
-                else:
-                    # No existing messages, use new_prompt and add audio from data_point
-                    prompt = deepcopy(self.cfg.new_prompt)
-                    has_audio = "audio" in data_point or "audios" in data_point
-                    if has_audio:
-                        # Find user message to attach audio
-                        user_msg = next((msg for msg in prompt if msg["role"] == "user"), None)
-                        if user_msg is None:
-                            raise ValueError(
-                                "new_prompt must have a 'user' role message when audio data is present in data_point"
-                            )
-                        if "audio" in data_point:
-                            user_msg["audio"] = data_point["audio"]
-                        if "audios" in data_point:
-                            user_msg["audios"] = data_point["audios"]
-            else:
-                # String format - build simple message with audio if present
-                if "audio" in data_point or "audios" in data_point:
-                    prompt = [{"role": "user", "content": self.cfg.new_prompt}]
-                    if "audio" in data_point:
-                        prompt[0]["audio"] = data_point["audio"]
-                    if "audios" in data_point:
-                        prompt[0]["audios"] = data_point["audios"]
-                else:
-                    prompt = self.cfg.new_prompt
-
-            # Apply prompt_suffix if configured
-            if self.cfg.prompt_suffix:
-                if isinstance(prompt, list) and prompt:
-                    prompt[-1]["content"] += self.cfg.prompt_suffix
-                elif isinstance(prompt, str):
-                    prompt += self.cfg.prompt_suffix
-            return prompt
-
-        if self.cfg.prompt_format == "openai":
+        if self.cfg.prompt_format == "openai" and self.prompt is None:
+            # Pure openai path -- messages come from the data
+            if self.cfg.user_message:
+                for msg in data_point["messages"]:
+                    if msg["role"] == "user":
+                        msg["content"] = self.cfg.user_message
+                        break
             if self.cfg.prompt_suffix and data_point["messages"]:
                 data_point["messages"][-1]["content"] += self.cfg.prompt_suffix
             if self.cfg.system_message:
@@ -658,6 +621,25 @@ class GenerationTask:
                     data_point["messages"][0]["content"] = self.cfg.system_message
             return data_point["messages"]
 
+        if self.cfg.prompt_format == "openai" and self.prompt is not None:
+            # openai path with prompt_config template -- build prompt from template, merge audio from data
+            data_point = deepcopy(data_point)
+            filled_prompt = self.prompt.fill(
+                data_point,
+                start_assistant_response_key=self.cfg.start_assistant_response_key,
+                chat_template_kwargs=self.cfg.chat_template_kwargs,
+                format_as_string=(self.cfg.inference.endpoint_type == EndpointType.text),
+            )
+            if isinstance(filled_prompt, list):
+                self._merge_audio_from_data(filled_prompt, data_point)
+            if self.cfg.prompt_suffix:
+                if isinstance(filled_prompt, list) and filled_prompt:
+                    filled_prompt[-1]["content"] += self.cfg.prompt_suffix
+                elif isinstance(filled_prompt, str):
+                    filled_prompt += self.cfg.prompt_suffix
+            return filled_prompt
+
+        # NS path -- always uses prompt template
         total_code_executions_in_prompt = self.cfg.total_code_executions_in_prompt
         if total_code_executions_in_prompt is not None:
             if isinstance(total_code_executions_in_prompt, (list, tuple)):
