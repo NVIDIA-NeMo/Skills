@@ -165,6 +165,18 @@ class Sandbox(abc.ABC):
             output = await self._send_request(request, timeout)
         except httpx.TimeoutException:
             output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
+        except httpx.TransportError as e:
+            # Catches all transport/connection errors: RemoteProtocolError, ConnectError, NetworkError, etc.
+            LOG.warning(f"Sandbox connection error for session {request_session_id}: {e}")
+            output = {
+                "process_status": "error",
+                "stdout": "",
+                "stderr": (
+                    f"Sandbox environment crashed: {e}\n"
+                    "Session state was lost. You need to re-import all modules and re-define all variables "
+                    "before continuing. Consider simplifying the code to avoid crashes.\n"
+                ),
+            }
         new_session_created = output.pop("new_session_created", False)
 
         # Rebuild state by re-executing history first, then execute the new code.
@@ -194,6 +206,15 @@ class Sandbox(abc.ABC):
                         restore_output = await self._send_request(restore_request, timeout)
                     except httpx.TimeoutException:
                         restore_output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
+                    except httpx.TransportError as e:
+                        LOG.warning(
+                            f"Sandbox connection error during state restoration for session {request_session_id}: {e}"
+                        )
+                        restore_output = {
+                            "process_status": "error",
+                            "stdout": "",
+                            "stderr": f"Sandbox crashed during state restoration: {e}\n",
+                        }
 
                     if restore_output.get("process_status") != "completed":
                         LOG.error(
@@ -235,6 +256,17 @@ class Sandbox(abc.ABC):
                 output = await self._send_request(exec_request, timeout)
             except httpx.TimeoutException:
                 output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
+            except httpx.TransportError as e:
+                LOG.warning(f"Sandbox connection error during execution for session {request_session_id}: {e}")
+                output = {
+                    "process_status": "error",
+                    "stdout": "",
+                    "stderr": (
+                        f"Sandbox environment crashed: {e}\n"
+                        "Session state was lost. You need to re-import all modules and re-define all variables "
+                        "before continuing. Consider simplifying the code to avoid crashes.\n"
+                    ),
+                }
 
         # Append to history if successful execution (process_status == 'completed')
         if output.get("process_status") == "completed" and request_session_id_str is not None:
@@ -252,6 +284,9 @@ class Sandbox(abc.ABC):
             output = await self._send_request(request, timeout)
         except httpx.TimeoutException:
             return "timeout"
+        except httpx.TransportError as e:
+            LOG.warning(f"Sandbox connection error during Lean4 proof check: {e}")
+            return "error"
         return determine_proof_status(output)
 
     def _check_ready(self, timeout: float = 5.0) -> bool:
@@ -333,18 +368,17 @@ class LocalSandbox(Sandbox):
                     return
                 response.raise_for_status()
             except (
-                httpx.ReadTimeout,  # retry for other communication errors and statuses
-                httpx.ConnectError,
-                httpx.ConnectTimeout,
-                httpx.RemoteProtocolError,
+                httpx.TransportError,  # Covers ReadError, ConnectError, RemoteProtocolError, etc.
+                httpx.TimeoutException,
                 httpx.HTTPStatusError,
             ) as e:
                 LOG.warning("Retry %d/%d deleting session %s – %s", attempt + 1, max_retries, session_id, e)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay)
                 else:
-                    LOG.warning(f"Failed to delete session {session_id} after {max_retries} attempts. ")
+                    LOG.warning(f"Failed to delete session {session_id} after {max_retries} attempts.")
             except Exception as e:
+                # Don't crash on delete failures - just log and continue
                 LOG.warning(
                     "Failed to delete session %s: %s (type: %s, repr: %r)\nTraceback:\n%s",
                     session_id,
@@ -353,7 +387,7 @@ class LocalSandbox(Sandbox):
                     e,
                     traceback.format_exc(),
                 )
-                raise  # Re-raise unexpected exceptions
+                return  # Best-effort cleanup, don't crash
 
 
 sandboxes = {
