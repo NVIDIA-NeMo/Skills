@@ -74,10 +74,10 @@ def build_messages_with_prompt(audio_metadata, prompt_text):
 
 def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_audio=True, audio_prefix="/data/numb3rs"):
     """Format a dataset entry and optionally save audio file.
-    
+
     Returns a base entry dict with audio metadata. Messages are added separately
     based on prompt variant when writing to files.
-    
+
     Args:
         audio_prefix: Prefix for audio paths in the generated JSONL files.
                       Default is '/data/numb3rs' which maps to container mount.
@@ -139,12 +139,12 @@ def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_aud
 
 def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefix="/data/numb3rs"):
     """Prepare a single category from the Numb3rs dataset.
-    
+
     Generates 3 files per category in categories/ subfolder:
     - categories/{category}_neutral.jsonl
     - categories/{category}_tn.jsonl
     - categories/{category}_itn.jsonl
-    
+
     Args:
         audio_prefix: Prefix for audio paths in the generated JSONL files.
     """
@@ -174,7 +174,9 @@ def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefi
     skipped = 0
 
     for idx, entry in enumerate(tqdm(category_samples, desc=f"Processing {category}")):
-        formatted = save_audio_and_format_entry(entry, category, audio_dir, idx, with_audio=with_audio, audio_prefix=audio_prefix)
+        formatted = save_audio_and_format_entry(
+            entry, category, audio_dir, idx, with_audio=with_audio, audio_prefix=audio_prefix
+        )
         if formatted is None:
             skipped += 1
             continue
@@ -193,22 +195,19 @@ def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefi
             for base_entry in base_entries:
                 # Build complete entry with messages for this variant
                 entry_with_messages = base_entry.copy()
-                
+
                 # Set expected_answer based on variant
                 if variant_name == "tn":
                     entry_with_messages["expected_answer"] = base_entry["text_tn"]
                 else:  # neutral and itn both expect spoken form
                     entry_with_messages["expected_answer"] = base_entry["text_itn"]
-                
+
                 # Build messages with the prompt for this variant
-                entry_with_messages["messages"] = build_messages_with_prompt(
-                    base_entry["audio_metadata"], 
-                    prompt_text
-                )
-                
+                entry_with_messages["messages"] = build_messages_with_prompt(base_entry["audio_metadata"], prompt_text)
+
                 # Remove audio_metadata (only needed for message building)
                 del entry_with_messages["audio_metadata"]
-                
+
                 fout.write(json.dumps(entry_with_messages) + "\n")
                 count += 1
 
@@ -235,7 +234,7 @@ def main():
         "--audio-prefix",
         default="/data/numb3rs",
         help="Prefix for audio paths in JSONL files (default: /data/numb3rs). "
-             "Examples: /data/numb3rs, /dataset/numb3rs",
+        "Examples: /data/numb3rs, /dataset/numb3rs",
     )
     args = parser.parse_args()
 
@@ -279,16 +278,18 @@ def main():
     # Process each category
     total_samples = 0
     for category in categories_to_prepare:
-        total_samples += prepare_category(category, dataset, output_dir, with_audio=with_audio, audio_prefix=audio_prefix)
+        total_samples += prepare_category(
+            category, dataset, output_dir, with_audio=with_audio, audio_prefix=audio_prefix
+        )
 
     # Combine all category variant files into test variant files
-    print(f"\nCreating combined test files for each variant...")
-    
+    print("\nCreating combined test files for each variant...")
+
     categories_dir = output_dir / "categories"
-    
+
     for variant_name in PROMPT_VARIANTS.keys():
         combined_file = output_dir / f"test_{variant_name}.jsonl"
-        
+
         # Get all category files for this variant from categories/ subfolder
         variant_pattern = f"*_{variant_name}.jsonl"
         category_files = sorted(categories_dir.glob(variant_pattern)) if categories_dir.exists() else []
