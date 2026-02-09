@@ -43,6 +43,7 @@ from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
 from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
+from nemo_skills.evaluation.metrics.sysbench_metrics import SysBenchMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 
 METRICS_MAP = {
@@ -75,6 +76,7 @@ METRICS_MAP = {
     "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,
     "aalcr": AALCRMetrics,
+    "sysbench": SysBenchMetrics,
     "livebench_coding": LiveCodeBenchMetrics,
     "translation": TranslationMetrics,
     "human_eval_infilling": HumanEvalInfillingMetrics,

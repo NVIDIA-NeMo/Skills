@@ -13,3 +13,8 @@ More details are coming soon!
 
 - Benchmark is defined in [`nemo_skills/dataset/ifeval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/ifeval/__init__.py)
 - Original benchmark source is [here](https://github.com/google-research/google-research/tree/master/instruction_following_eval).
+
+### sysbench
+
+- Benchmark is defined in [`nemo_skills/dataset/sysbench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/sysbench/__init__.py)
+- Original benchmark source is [here](https://github.com/PKU-Baichuan-MLSystemLab/SysBench).

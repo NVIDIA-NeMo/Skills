@@ -1,0 +1,47 @@
+user: |-
+  # 背景与目标
+  你现在是一个大模型结果评估专家。以下，你将会面对一个大模型 system prompt 遵循能力评估任务。
+  我将会给出你对应的 system prompt、历史对话、当前轮次的问题、和当前轮次的回答，
+  需要你准确判断当前轮次的回答是否合格。
+  为了让你的评判足够准确，我还将会给出评判细则，需要你准确判断并告知评判细则当中的每一条约束的遵循情况。
+
+  # 对话信息
+  ## system prompt
+  <system prompt>
+  {system_prompt}
+  </system prompt>
+
+  ## 历史对话轮次
+  {history}
+
+  ## 当前待评估的对话轮次
+  <role:>
+  {current_user_role}
+  </role>
+  <content>
+  {current_user_content}
+  </content>
+  <role:>
+  {current_assistant_role}
+  </role>
+  <content>
+  {current_assistant_content}
+  </content>
+
+  # 评判细则
+  <评判细则>
+  {criteria}
+  </评判细则>
+
+  请你认真阅读上述 system prompt 设定与历史对话轮次，并严格以评判细则为评判标准，针对评判细则当中的逐条要求，判断当前对话轮次的回答是否遵循。
+  请以 json 格式回答，包含两个字段：评判理由、评判结果（评判结果为一个 dict，dict 的 key 为评判细则的序号，value 为对应的评判结果（是/否））。
+  输出格式如下：
+  '''json
+  {{
+    "评判理由": "……",
+    "评判结果": {{
+      1: "……",
+      ……
+    }}
+  }}
+  '''

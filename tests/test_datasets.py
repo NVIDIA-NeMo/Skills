@@ -61,6 +61,7 @@ DATASETS = [
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),
     ("compute-eval", ["eval"]),
+    ("sysbench", ["test"]),
 ]
 
 
