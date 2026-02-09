@@ -19,33 +19,6 @@ from pathlib import Path
 
 import datasets
 
-
-# source: https://github.com/scaleapi/SWE-bench_Pro-os/blob/main/helper_code/image_uri.py
-def get_docker_image_tag(uid, repo_name):
-    repo_base, repo_name_only = repo_name.lower().split("/")
-    hsh = uid.replace("instance_", "")
-
-    if uid == "instance_element-hq__element-web-ec0f940ef0e8e3b61078f145f34dc40d1938e6c5-vnan":
-        repo_name_only = "element-web"  # Keep full name for this one case
-    elif "element-hq" in repo_name.lower() and "element-web" in repo_name.lower():
-        repo_name_only = "element"
-        if hsh.endswith("-vnan"):
-            hsh = hsh[:-5]
-    # All other repos: strip -vnan suffix
-    elif hsh.endswith("-vnan"):
-        hsh = hsh[:-5]
-
-    tag = f"{repo_base}.{repo_name_only}-{hsh}"
-    if len(tag) > 128:
-        tag = tag[:128]
-
-    return tag
-
-
-def get_dockerhub_image_uri(uid, dockerhub_username, repo_name):
-    return f"{dockerhub_username}/sweap-images:{get_docker_image_tag(uid, repo_name)}"
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -80,11 +53,9 @@ if __name__ == "__main__":
     dataset = dataset.add_column(
         "container_formatter",
         [
-            container_formatter.format(docker_tag=get_dockerhub_image_uri(row["instance_id"], "jefzda", row["repo"]))
+            container_formatter.format(docker_tag=f"jefzda/sweap-images:{row['dockerhub_tag']}")
             if container_formatter.startswith("docker://")
-            else container_formatter.format(
-                docker_tag=f"jefzda_sweap-images_{get_docker_image_tag(row['instance_id'], row['repo'])}"
-            )
+            else container_formatter.format(docker_tag=f"jefzda_sweap-images_{row['dockerhub_tag']}")
             for row in dataset
         ],
     )
