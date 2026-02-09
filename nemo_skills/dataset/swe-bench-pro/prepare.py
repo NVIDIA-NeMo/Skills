@@ -51,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--container_formatter",
         type=str,
-        default="docker://{docker_image}",
+        default="docker://{docker_tag}",
         help="Container formatter string. You can download .sif containers and store them in a mounted "
         "directory which you can reference here to avoid redownloading all the time. "
         "See nemo_skills/dataset/swe-bench/dump_images.py",
@@ -71,6 +71,7 @@ if __name__ == "__main__":
     dataset_name = args.dataset_name
     split = args.split
     container_formatter = args.container_formatter
+    assert "{docker_tag}" in container_formatter, "container_formatter must have {docker_tag}"
 
     dataset = datasets.load_dataset(path=dataset_name, split=split)
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
@@ -79,10 +80,10 @@ if __name__ == "__main__":
     dataset = dataset.add_column(
         "container_formatter",
         [
-            container_formatter.format(docker_image=get_dockerhub_image_uri(row["instance_id"], "jefzda", row["repo"]))
+            container_formatter.format(docker_tag=get_dockerhub_image_uri(row["instance_id"], "jefzda", row["repo"]))
             if container_formatter.startswith("docker://")
             else container_formatter.format(
-                tag=f"jefzda_sweap-images_{get_docker_image_tag(row['instance_id'], row['repo'])}"
+                docker_tag=f"jefzda_sweap-images_{get_docker_image_tag(row['instance_id'], row['repo'])}"
             )
             for row in dataset
         ],
