@@ -533,7 +533,6 @@ def add_task(
     # So we send the server last if the job needs gpus
     server_goes_first = server_needs_gpus and not client_num_gpus
 
-    # Helper to add server tasks (supports multiple servers via n_servers)
     def add_server_tasks():
         nonlocal het_group
         # Get container once (same for all servers)
