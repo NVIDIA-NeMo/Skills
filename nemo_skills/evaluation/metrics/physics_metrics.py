@@ -14,7 +14,6 @@
 
 import logging
 import re
-from typing import Union
 
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 from nemo_skills.utils import get_logger_name
@@ -22,37 +21,22 @@ from nemo_skills.utils import get_logger_name
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
-def is_correct_physics_judgement(judgement, return_none=False) -> Union[bool, None]:
-    """Parse physics judgement that returns [Correct] or [Incorrect]."""
-    if judgement:
-        # Look for [Correct] or [Incorrect] patterns (case insensitive)
-        if re.search(r"\[correct\]", judgement, re.IGNORECASE):
-            return True
-        elif re.search(r"\[incorrect\]", judgement, re.IGNORECASE):
-            return False
-
-    # improper judgement format, so have to judge as false
-    return None if return_none else False
-
-
 class PhysicsMetrics(MathMetrics):
     def __init__(self, compute_no_answer: bool = False, answer_key: str = "generation"):
         super().__init__(compute_no_answer=compute_no_answer)
         self.answer_key = answer_key
 
-    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
-        correctness_dict = {}
-        if "symbolic_correct" in prediction:
-            correctness_dict["symbolic_correct"] = prediction["symbolic_correct"]
-        if "judgement" in prediction:
-            correctness_dict["judge_correct"] = is_correct_physics_judgement(prediction["judgement"])
-        if "judge_correct" in correctness_dict and "symbolic_correct" in correctness_dict:
-            correctness_dict["both_correct"] = (
-                correctness_dict["symbolic_correct"] and correctness_dict["judge_correct"]
-            )
-            correctness_dict["any_correct"] = correctness_dict["symbolic_correct"] or correctness_dict["judge_correct"]
+    def is_correct_judgement(self, judgement: str, return_none: bool = False) -> bool:
+        """Parse physics judgement that returns [Correct] or [Incorrect]."""
+        if judgement:
+            # Look for [Correct] or [Incorrect] patterns (case insensitive)
+            if re.search(r"\[correct\]", judgement, re.IGNORECASE):
+                return True
+            elif re.search(r"\[incorrect\]", judgement, re.IGNORECASE):
+                return False
 
-        return correctness_dict
+        # improper judgement format, so have to judge as false
+        return None if return_none else False
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         prediction = prediction.copy()
