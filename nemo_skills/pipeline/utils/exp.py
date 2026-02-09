@@ -529,6 +529,8 @@ def add_task(
     # This happens when the client doesn't need GPUs but the server does
     server_needs_gpus = server_config is not None and int(server_config.get("num_gpus", 0)) > 0
     client_num_gpus = num_gpus or 0
+    # For ray heterogenous jobs, nemo-run assumes the first het group is the main task
+    # So we send the server last if the job needs gpus
     server_goes_first = server_needs_gpus and not client_num_gpus
 
     # Helper to add server tasks (supports multiple servers via n_servers)
