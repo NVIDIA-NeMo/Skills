@@ -4,17 +4,18 @@ Nemo-Skills can be used to evaluate an LLM on various STEM datasets.
 
 ## Dataset Overview
 
-| <div style="width:80px; display:inline-block; text-align:center">Dataset</div> | <div style="width:110px; display:inline-block; text-align:center">Questions</div> | <div style="width:90px; display:inline-block; text-align:center">Types</div> | <div style="width:150px; display:inline-block; text-align:center">Domain</div> | <div style="width:70px; display:inline-block; text-align:center">Images?</div> | <div style="width:70px; display:inline-block; text-align:center">NS default</div> | <div style="width:50px; display:inline-block; text-align:center">Link</div> |
-|:---|:---:|:---:|:---|:---:|:---:|:---:|
-| **HLE** | 2500 | Open ended, MCQ | Engineering, Physics, Chemistry, Bio, etc. | Yes | text only | [HF](https://huggingface.co/datasets/cais/hle) |
-| **GPQA** | 448 (main)<br>198 (diamond)</br>546 (ext.) | MCQ (4) | Physics, Chemistry, Biology | No | diamond | [HF](https://huggingface.co/datasets/Idavidrein/gpqa) |
-| **SuperGPQA** | 26,529 | MCQ (≤ 10) | Science, Eng, Humanities, etc. | No | test | [HF](https://huggingface.co/datasets/m-a-p/SuperGPQA) |
-| **MMLU-Pro** | 12,032 | MCQ (≤ 10) | Multiple subjects | No | test | [HF](https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro) |
-| **SciCode** | 80</br>(338 subtasks) | Code gen | Scientific computing | No | test+val | [HF](https://huggingface.co/datasets/SciCode1/SciCode) |
-| **FrontierScience** | 100 | Short-answer | Physics, Chemistry, Biology | No | all | [HF](https://huggingface.co/datasets/openai/frontierscience) |
-| **Physics** | 1,000 (EN), 1,000 (ZH) | Open-ended | Physics | No | EN | [HF](https://huggingface.co/datasets/desimfj/PHYSICS) |
-| **MMLU** | 14,042 | MCQ (4) | Multiple Subjects | No | test | [HF](https://huggingface.co/datasets/cais/mmlu) |
-| **SimpleQa** | 4,326 (test), 1,000 (verified) | Open ended | Factuality, Parametric knowledge| No | verified | [HF](https://github.com/openai/simple-evals/) |
+| <div style="width:55px; display:inline-block; text-align:center">Dataset</div> | <div style="width:105px; display:inline-block; text-align:center">Questions</div> | <div style="width:85px; display:inline-block; text-align:center">Types</div> | <div style="width:145px; display:inline-block; text-align:center">Domain</div> | <div style="width:60px; display:inline-block; text-align:center">Images?</div> | <div style="width:50px; display:inline-block; text-align:center">NS default</div> |
+|:---|:---:|:---:|:---|:---:|:---:|
+| **[HLE](https://huggingface.co/datasets/cais/hle)** | 2500 | Open ended, MCQ | Engineering, Physics, Chemistry, Bio, etc. | Yes | text only |
+| **[GPQA ](https://huggingface.co/datasets/Idavidrein/gpqa)** | 448 (main)<br>198 (diamond)</br>546 (ext.) | MCQ (4) | Physics, Chemistry, Biology | No | diamond |
+| **[SuperGPQA](https://huggingface.co/datasets/m-a-p/SuperGPQA)** | 26,529 | MCQ (≤ 10) | Science, Eng, Humanities, etc. | No | test |
+| **[MMLU-Pro](https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro)** | 12,032 | MCQ (≤ 10) | Multiple subjects | No | test |
+| **[SciCode](https://huggingface.co/datasets/SciCode1/SciCode)** | 80</br>(338 subtasks) | Code gen | Scientific computing | No | test+val |
+| **[FrontierScience](https://huggingface.co/datasets/openai/frontierscience)** | 100 | Short-answer | Physics, Chemistry, Biology | No | all |
+| **[Physics](https://huggingface.co/datasets/desimfj/PHYSICS)** | 1,000 (EN), 1,000 (ZH) | Open-ended | Physics | No | EN |
+| **[MMLU](https://huggingface.co/datasets/cais/mmlu)** | 14,042 | MCQ (4) | Multiple Subjects | No | test |
+| **[MMLU-Redux](https://huggingface.co/datasets/edinburgh-dawg/mmlu-redux)** | 5,385| MCQ (4) | Multiple Subjects | No | test |
+| **[SimpleQA](https://github.com/openai/simple-evals/)** | 4,326 (test), 1,000 (verified) | Open ended | Factuality, Parametric knowledge| No | verified |
 
 
 ## Evaluate `NVIDIA-Nemotron-3-Nano` on an MCQ dataset
@@ -25,7 +26,7 @@ cluster = "slurm"
 eval(
     ctx=wrap_arguments(
         "++inference.temperature=1.0 ++inference.top_p=1.0 "
-        "++inference.tokens_to_generate=131072 ++inference.extra_body.skip_special_tokens=false "
+        "++inference.tokens_to_generate=131072 "
         "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
     ),
     cluster=cluster,
@@ -47,7 +48,7 @@ cluster = "slurm"
 eval(
     ctx=wrap_arguments(
        "++inference.temperature=1.0 ++inference.top_p=1.0 "
-        "++inference.tokens_to_generate=131072 ++inference.extra_body.skip_special_tokens=false "
+        "++inference.tokens_to_generate=131072 "
         "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
     ),
     cluster=cluster,
@@ -74,7 +75,7 @@ cluster = "slurm"
 eval(
     ctx=wrap_arguments(
         "++inference.temperature=0.6 ++inference.top_p=0.95 "
-        "++inference.tokens_to_generate=131072 ++inference.extra_body.skip_special_tokens=false "
+        "++inference.tokens_to_generate=131072 "
         "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
         "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
 
