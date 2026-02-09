@@ -324,7 +324,7 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     Args:
         reference: Ground truth transcription.
         hypothesis: Model output transcription.
-        normalization_mode: "standard", "audiobench", "hf_leaderboard", or "none".
+        normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
     """
     import jiwer
 
