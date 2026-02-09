@@ -85,36 +85,24 @@ def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_aud
     """
     # Extract fields from Numb3rs dataset
     # original_text = written form (TN), text = spoken form (ITN)
-    original_text = entry.get("original_text", "").strip()
-    text = entry.get("text", "").strip()
-
-    if not original_text or not text:
-        return None
+    original_text = entry["original_text"].strip()
+    text = entry["text"].strip()
 
     # Get audio filename from file_name field (e.g., "MONEY/MONEY_540__21_999.wav")
-    file_name = entry.get("file_name", "")
-    if file_name:
-        audio_filename = Path(file_name).name  # e.g., "MONEY_540__21_999.wav"
-        sample_id = Path(file_name).stem  # e.g., "MONEY_540__21_999"
-    else:
-        sample_id = entry.get("name", f"{category}_{sample_idx}")
-        if sample_id.endswith(".json"):
-            sample_id = sample_id[:-5]
-        audio_filename = f"{sample_id}.wav"
+    file_name = entry["file_name"]
+    audio_filename = Path(file_name).name  # e.g., "MONEY_540__21_999.wav"
+    sample_id = Path(file_name).stem  # e.g., "MONEY_540__21_999"
 
     # Use duration from dataset (already provided)
-    duration = entry.get("duration", 1.0)
+    duration = entry["duration"]
     if duration < MIN_AUDIO_DURATION:
         return None
 
     # Handle audio saving if requested
     if with_audio:
-        audio_info = entry.get("audio", {})
-        if not isinstance(audio_info, dict) or "array" not in audio_info:
-            return None
-        
+        audio_info = entry["audio"]
         audio_array = audio_info["array"]
-        sampling_rate = audio_info.get("sampling_rate", 16000)
+        sampling_rate = audio_info["sampling_rate"]
 
         if audio_array is None or len(audio_array) == 0:
             return None
@@ -163,7 +151,7 @@ def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefi
     print(f"\nProcessing category: {category}")
 
     # Filter dataset by category
-    category_samples = [s for s in dataset if s.get("category", "").upper() == category.upper()]
+    category_samples = [s for s in dataset if s["category"].upper() == category.upper()]
 
     if not category_samples:
         print(f"No samples found for category: {category}")
@@ -266,15 +254,11 @@ def main():
 
     # Load dataset from HuggingFace
     print("\nLoading Numb3rs dataset from HuggingFace...")
-    try:
-        dataset = load_dataset("nvidia/Numb3rs", split="test", trust_remote_code=True)
-        print(f"Loaded {len(dataset)} total samples")
-    except Exception as e:
-        print(f"Error loading dataset: {e}")
-        return
+    dataset = load_dataset("nvidia/Numb3rs", split="test", trust_remote_code=True)
+    print(f"Loaded {len(dataset)} total samples")
 
     # Get all available categories
-    all_categories = sorted(set(s.get("category", "").upper() for s in dataset if s.get("category")))
+    all_categories = sorted(set(s["category"].upper() for s in dataset))
     print(f"Available categories: {', '.join(all_categories)}")
 
     # Determine which categories to process
