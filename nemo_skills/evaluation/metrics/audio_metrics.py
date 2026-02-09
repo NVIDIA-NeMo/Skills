@@ -78,6 +78,9 @@ class AudioMetrics(BaseMetrics):
         # Judge scores (AudioBench-style rating 0-5, or legacy binary Yes/No mapped to 1/0)
         self.judge_ratings = []
 
+        # Dynamic WER scores for additional ground truth fields (e.g., wer_tn, wer_itn)
+        self.dynamic_wer_scores = {}  # Dict[metric_name, List[float]]
+
     def _extract_judge_result(self, judgement_text: str) -> tuple[bool, float]:
         """Extract judge result from judgement text.
 
@@ -224,6 +227,13 @@ class AudioMetrics(BaseMetrics):
             if "judge_rating" in score_dict:
                 self.judge_ratings.append(score_dict["judge_rating"])
 
+            # Collect dynamic WER scores for additional GT fields (e.g., wer_tn, wer_itn)
+            for key, value in pred.items():
+                if key.startswith("wer_") and key not in ["wer", "wer_c", "wer_pc"] and value is not None:
+                    if key not in self.dynamic_wer_scores:
+                        self.dynamic_wer_scores[key] = []
+                    self.dynamic_wer_scores[key].append(value)
+
         self._compute_pass_at_k(predictions=predictions, predicted_answers=predicted_answers)
         self._compute_majority_at_k(predictions=predictions, predicted_answers=predicted_answers)
 
@@ -286,6 +296,11 @@ class AudioMetrics(BaseMetrics):
                 total_minutes = self.total_audio_seconds / 60.0
                 agg_metrics["char_rate"] = round(self.total_hallucinated_chars / total_minutes, 2)
 
+            # Add dynamic WER metrics (e.g., wer_tn, wer_itn)
+            for metric_name, scores in self.dynamic_wer_scores.items():
+                if scores:
+                    agg_metrics[metric_name] = round(100.0 * sum(scores) / len(scores), 2)
+
         return metrics_dict
 
     def evaluations_to_print(self):
@@ -346,6 +361,10 @@ class AudioMetrics(BaseMetrics):
             base_metrics["cap_accuracy"] = as_percentage
         if self.total_audio_seconds > 0:
             base_metrics["char_rate"] = as_float
+
+        # Add dynamic WER metrics (e.g., wer_tn, wer_itn)
+        for metric_name in self.dynamic_wer_scores.keys():
+            base_metrics[metric_name] = as_percentage
 
         base_metrics["num_entries"] = as_int  # Add at end for better display order
 
