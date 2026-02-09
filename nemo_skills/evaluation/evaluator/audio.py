@@ -35,7 +35,7 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     normalize_asr_pc_standard_wer: bool = True
     strip_helpful_prefixes: bool = True
     apply_whisper_normalization: bool = True
-    normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", or "none"
+    normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn"
     # Optional list of reference fields to calculate WER against (e.g., ["text_tn", "text_itn"])
     # For each field, WER will be computed and stored with corresponding metric name
     reference_fields: list[str] | None = None
@@ -152,7 +152,7 @@ def evaluate_asr_pc(
         reference: Ground truth transcription.
         hypothesis: Model output transcription.
         normalize_standard_wer: Whether to apply normalization to standard WER.
-        normalization_mode: Normalization mode for standard WER ("standard", "audiobench", "hf_leaderboard", "none").
+        normalization_mode: Normalization mode for standard WER ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn").
     """
     import jiwer
 
