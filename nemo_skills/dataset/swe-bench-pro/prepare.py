@@ -21,7 +21,7 @@ import datasets
 
 
 # source: https://github.com/scaleapi/SWE-bench_Pro-os/blob/main/helper_code/image_uri.py
-def get_dockerhub_image_uri(uid, dockerhub_username, repo_name):
+def get_docker_image_tag(uid, repo_name):
     repo_base, repo_name_only = repo_name.lower().split("/")
     hsh = uid.replace("instance_", "")
 
@@ -39,7 +39,11 @@ def get_dockerhub_image_uri(uid, dockerhub_username, repo_name):
     if len(tag) > 128:
         tag = tag[:128]
 
-    return f"{dockerhub_username}/sweap-images:{tag}"
+    return tag
+
+
+def get_dockerhub_image_uri(uid, dockerhub_username, repo_name):
+    return f"{dockerhub_username}/sweap-images:{get_docker_image_tag(uid, repo_name)}"
 
 
 if __name__ == "__main__":
@@ -76,6 +80,10 @@ if __name__ == "__main__":
         "container_formatter",
         [
             container_formatter.format(docker_image=get_dockerhub_image_uri(row["instance_id"], "jefzda", row["repo"]))
+            if container_formatter.startswith("docker://")
+            else container_formatter.format(
+                tag=f"jefzda_sweap-images_{get_docker_image_tag(row['instance_id'], row['repo'])}"
+            )
             for row in dataset
         ],
     )
