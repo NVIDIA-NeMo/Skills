@@ -249,7 +249,9 @@ class SweBenchGenerationTask(GenerationTask):
                 # make venv & install swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
-                "uv pip install -e ."
+                "uv pip install -e . && "
+                # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
+                "uv pip install rich==14.2.0"
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
@@ -670,6 +672,11 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def process_single_datapoint(self, data_point, data):
         """Will do all necessary generations to get a single answer for the data point."""
+        async with self.semaphore:
+            return await self._process_single_datapoint_impl(data_point, data)
+
+    async def _process_single_datapoint_impl(self, data_point, data):
+        """Implementation of process_single_datapoint, called within semaphore."""
 
         # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
         # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?

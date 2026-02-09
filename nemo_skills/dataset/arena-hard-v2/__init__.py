@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.version import __version__
 
-# only used in ns setup command to initialize with defaults
-_containers = {
-    "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc1",
-    "vllm": "dockerfile:dockerfiles/Dockerfile.vllm",
-    "sglang": "lmsysorg/sglang:v0.5.8",
-    "megatron": "dockerfile:dockerfiles/Dockerfile.megatron",
-    "sandbox": "dockerfile:dockerfiles/Dockerfile.sandbox",
-    "nemo-skills": "dockerfile:dockerfiles/Dockerfile.nemo-skills",
-    "verl": "dockerfile:dockerfiles/Dockerfile.verl",
-    "nemo-rl": "dockerfile:dockerfiles/Dockerfile.nemo-rl",
+# settings that define how evaluation should be done by default (all can be changed from cmdline)
+DATASET_GROUP = "chat"
+METRICS_TYPE = "arena"
+# using judgement directly in metrics, no need for special evaluation
+GENERATION_ARGS = "++prompt_config=generic/default"
+
+JUDGE_PIPELINE_ARGS = {
+    "generation_module": "nemo_skills.inference.eval.arena_judge",
+    "model": "gpt-4.1",
+    "server_type": "openai",
+    "server_address": "https://api.openai.com/v1",
 }

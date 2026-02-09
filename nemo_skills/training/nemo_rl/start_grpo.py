@@ -230,7 +230,9 @@ def setup_data(
         "env_cls",
         "nemo_skills.training.nemo_rl.environments.math_environment.MathEnvironment",
     )
-    ACTOR_ENVIRONMENT_REGISTRY[env_cls_path] = PY_EXECUTABLES.SYSTEM
+    py_executable_str = env_configs["math"].get("py_executable", "system")
+    py_executable = getattr(PY_EXECUTABLES, py_executable_str.upper())
+    ACTOR_ENVIRONMENT_REGISTRY[env_cls_path] = py_executable
 
     module_name, class_name = env_cls_path.rsplit(".", 1)
     env_module = importlib.import_module(module_name)
@@ -315,33 +317,97 @@ def main() -> None:
         val_task_to_env,
     ) = setup_data(tokenizer, config["data"], config["env"])
 
-    (
-        policy,
-        policy_generation,
-        cluster,
-        dataloader,
-        val_dataloader,
-        loss_fn,
-        logger,
-        checkpointer,
-        grpo_state,
-        master_config,
-    ) = setup(config, tokenizer, dataset, val_dataset)
+    setup_result = setup(config, tokenizer, dataset, val_dataset)
 
-    grpo_train(
-        policy,
-        policy_generation,
-        dataloader,
-        val_dataloader,
-        tokenizer,
-        loss_fn,
-        task_to_env,
-        val_task_to_env,
-        logger,
-        checkpointer,
-        grpo_state,
-        master_config,
-    )
+    if len(setup_result) == 10:  # Nemo-RL main branch
+        (
+            policy,
+            policy_generation,
+            cluster,
+            dataloader,
+            val_dataloader,
+            loss_fn,
+            logger,
+            checkpointer,
+            grpo_state,
+            master_config,
+        ) = setup_result
+    elif len(setup_result) == 11:  # For Nano/Super nemo-RL
+        (
+            policy,
+            policy_generation,
+            nemo_gym_actor,
+            cluster,
+            dataloader,
+            val_dataloader,
+            loss_fn,
+            logger,
+            checkpointer,
+            grpo_state,
+            master_config,
+        ) = setup_result
+    else:
+        raise ValueError(f"Expected 10 or 11 elements in setup_result, got {len(setup_result)}")
+
+    # Check if async mode is enabled
+    if "async_grpo" in config["grpo"] and config["grpo"]["async_grpo"]["enabled"]:
+        # Async GRPO does not support dynamic sampling, reward scaling, or reward shaping (DAPO features)
+        unsupported_features = [
+            "use_dynamic_sampling",
+            "reward_scaling",
+            "reward_shaping",
+        ]
+
+        for feature in unsupported_features:
+            if feature not in config["grpo"]:
+                continue
+
+            if feature == "use_dynamic_sampling":
+                if config["grpo"][feature]:
+                    raise NotImplementedError(f"{feature} is not supported with async GRPO")
+            else:
+                if config["grpo"][feature]["enabled"]:
+                    raise NotImplementedError(f"{feature} is not supported with async GRPO")
+
+        from nemo_rl.algorithms.grpo import async_grpo_train
+
+        print("🚀 Running async GRPO training")
+
+        async_config = config["grpo"]["async_grpo"]
+        # Run async GRPO training
+        async_grpo_train(
+            policy=policy,
+            policy_generation=policy_generation,
+            dataloader=dataloader,
+            val_dataloader=val_dataloader,
+            tokenizer=tokenizer,
+            loss_fn=loss_fn,
+            task_to_env=task_to_env,
+            val_task_to_env=val_task_to_env,
+            logger=logger,
+            checkpointer=checkpointer,
+            grpo_save_state=grpo_state,
+            master_config=master_config,
+            max_trajectory_age_steps=async_config["max_trajectory_age_steps"],
+        )
+    else:
+        print("🚀 Running synchronous GRPO training")
+
+        # Run standard GRPO training
+        grpo_train(
+            policy,
+            policy_generation,
+            dataloader,
+            val_dataloader,
+            tokenizer,
+            loss_fn,
+            task_to_env,
+            val_task_to_env,
+            logger,
+            checkpointer,
+            grpo_state,
+            master_config,
+        )
 
 
 if __name__ == "__main__":
