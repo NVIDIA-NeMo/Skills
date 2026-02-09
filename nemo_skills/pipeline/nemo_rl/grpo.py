@@ -38,7 +38,7 @@ from nemo_skills.pipeline.utils import (
     should_get_random_port,
     temporary_env_update,
 )
-from nemo_skills.pipeline.utils.server import get_free_port
+from nemo_skills.pipeline.utils.server import SupportedServers, get_free_port
 from nemo_skills.utils import (
     get_logger_name,
     setup_logging,
@@ -52,13 +52,6 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class SupportedBackends(str, Enum):
     fsdp = "fsdp"
     megatron = "megatron"
-
-
-class SupportedServers(str, Enum):
-    trtllm = "trtllm"
-    vllm = "vllm"
-    openai = "openai"
-    sglang = "sglang"
 
 
 @dataclass
