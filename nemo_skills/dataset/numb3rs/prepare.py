@@ -19,9 +19,6 @@ containing paired written/spoken forms with corresponding synthetic audio.
 
 Dataset: https://huggingface.co/datasets/nvidia/Numb3rs
 
-Cluster audio location:
-    /lustre/fs12/portfolios/llmservice/projects/llmservice_nemo_speechlm/data/nemo_skills/dataset/numb3rs/Numb3rs/{CATEGORY}/{name}.wav
-
 Output structure:
 - categories/{category}_neutral.jsonl: Per-category files with neutral prompt
 - categories/{category}_tn.jsonl: Per-category files with TN prompt (written form)
@@ -84,7 +81,7 @@ def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_aud
     Args:
         audio_prefix: Prefix for audio paths in the generated JSONL files.
                       Default is '/data/numb3rs' which maps to container mount.
-                      Real cluster path example: /lustre/fs12/.../numb3rs
+                      Set to your local audio storage path as needed.
     """
     # Extract fields from Numb3rs dataset
     # original_text = written form (TN), text = spoken form (ITN)
@@ -250,8 +247,7 @@ def main():
         "--audio-prefix",
         default="/data/numb3rs",
         help="Prefix for audio paths in JSONL files (default: /data/numb3rs). "
-             "Examples: /data/numb3rs, /dataset/numb3rs, or full cluster path like "
-             "/lustre/fs12/portfolios/llmservice/projects/llmservice_nemo_speechlm/data/nemo_skills/dataset/numb3rs",
+             "Examples: /data/numb3rs, /dataset/numb3rs",
     )
     args = parser.parse_args()
 
