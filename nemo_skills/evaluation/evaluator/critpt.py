@@ -171,28 +171,15 @@ class CritPtEvaluator(BaseEvaluator):
             f"Server Timeouts: {server_timeout_count}, Judge Errors: {judge_error_count}"
         )
 
-        # Distribute correctness based on aggregate accuracy
-        # Since API doesn't provide per-example results, we assign first n examples as correct
-        total_examples = len(data_points)
-        num_correct = int(accuracy * total_examples)
-
-        LOG.info(
-            f"Marking first {num_correct} out of {total_examples} examples as correct based on {accuracy:.2%} accuracy"
-        )
-
-        for idx, data_point in enumerate(data_points):
-            # Mark first num_correct examples as correct, rest as incorrect
-            is_correct = idx < num_correct
-
+        for data_point in data_points:
             # Add evaluation results to data point
-            data_point["critpt_evaluation"] = {
+            data_point["evaluation_metadata"] = {
                 "aggregate_accuracy": accuracy,
                 "timeout_rate": timeout_rate,
                 "server_timeout_count": server_timeout_count,
                 "judge_error_count": judge_error_count,
             }
-            data_point["is_correct"] = is_correct
-            data_point["critpt_score"] = 1.0 if is_correct else 0.0
+            data_point["full_dataset_accuracy"] = accuracy
 
         # Write to temp file then replace original
         temp_file = self.eval_config.input_file + "-tmp"

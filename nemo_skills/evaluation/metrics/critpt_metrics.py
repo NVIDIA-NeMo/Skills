@@ -37,16 +37,7 @@ class CritPtMetrics(BaseMetrics):
         Since CritPt API doesn't provide per-example correctness, the first n examples
         are marked as correct where n = int(aggregate_accuracy * total_examples).
         """
-        return {
-            "accuracy": prediction.get("is_correct", False),
-        }
-
-    def get_incorrect_sample(self, prediction: dict) -> dict:
-        """Return a sample that evaluates as incorrect."""
-        return {
-            "is_correct": False,
-            "critpt_score": 0.0,
-        }
+        return {"full_dataset_accuracy": prediction["full_dataset_accuracy"]}
 
     def update(self, predictions):
         """Update metrics with new predictions.
@@ -55,7 +46,6 @@ class CritPtMetrics(BaseMetrics):
             predictions: List of prediction dictionaries with is_correct field.
         """
         super().update(predictions)
-        self._compute_pass_at_k(predictions=predictions)
 
     def metrics_to_print(self):
         """Specify which metrics to print and their formatting."""
@@ -63,5 +53,5 @@ class CritPtMetrics(BaseMetrics):
             "num_entries": as_int,
             "avg_tokens": as_int,
             "gen_seconds": as_int,
-            "accuracy": as_percentage,
+            "full_dataset_accuracy": as_percentage,
         }
