@@ -15,6 +15,7 @@
 import logging
 import sys
 from dataclasses import field
+from typing import List
 
 import hydra
 
@@ -22,7 +23,7 @@ from nemo_skills.code_execution.sandbox import sandbox_params
 from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig
 from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.base import EndpointType
-from nemo_skills.prompt.utils import load_config
+from nemo_skills.prompt.utils import get_prompt, load_config
 from nemo_skills.utils import (
     get_help_message,
     get_logger_name,
@@ -79,8 +80,8 @@ class CritPtGenerationTask(GenerationTask):
     def __init__(self, cfg: GenerationTaskConfig):
         super().__init__(cfg)
         # Load prompt templates for both turns
-        self.turn1_prompt_config = load_config(self.cfg.prompt_config_turn1)
-        self.turn2_prompt_template = load_config(self.cfg.prompt_config_turn2)["user"]
+        self.prompt_config_turn1 = load_config(self.cfg.prompt_config_turn1)
+        self.prompt_config_turn2 = load_config(self.cfg.prompt_config_turn2)
 
     def fill_prompt(self, data_point, data):
         """Build messages list for turn 1, or return pre-built messages for turn 2."""
@@ -89,16 +90,9 @@ class CritPtGenerationTask(GenerationTask):
             return data_point["messages"]
 
         # Turn 1: Build messages from prompt config
-        messages = []
+        turn1_messages = self.prompt_config_turn1.get_prompt().fill(input_dict=data_point)
 
-        # Add system message if present
-        if "system" in self.turn1_prompt_config:
-            messages.append({"role": "system", "content": self.turn1_prompt_config["system"]})
-
-        # Add user message
-        messages.append({"role": "user", "content": self.turn1_prompt_config["user"].format(**data_point)})
-
-        return messages
+        return turn1_messages
 
     async def process_single_datapoint(self, data_point, all_data):
         """Process a single datapoint with two-turn generation.
@@ -112,8 +106,9 @@ class CritPtGenerationTask(GenerationTask):
         turn1_result = await super().process_single_datapoint(data_point, all_data)
         LOG.debug(f"Turn 1 result: {turn1_result}")
 
-        if self.cfg.end_reasoning_string in turn1_result[self.cfg.generation_key]:
+        if self.cfg.parse_reasoning:
             parse_reasoning(turn1_result, self.cfg.generation_key, self.cfg.end_reasoning_string)
+
         solution_turn1 = turn1_result[self.cfg.generation_key]
         LOG.debug(f"Solution: {solution_turn1}")
 
@@ -122,10 +117,10 @@ class CritPtGenerationTask(GenerationTask):
 
         # ===== Turn 2: Generate code using template =====
         # Build messages for turn 2: turn1_messages + assistant response + turn2_user_message
-        turn2_messages = turn1_messages + [
-            {"role": "assistant", "content": solution_turn1},
-            {"role": "user", "content": self.turn2_prompt_template.format(**data_point)},
-        ]
+        turn2_prompt_instance = get_prompt(prompt_config=self.cfg.prompt_config_turn2)
+        turn2_user_messages: List[dict] = turn2_prompt_instance.fill(input_dict=data_point)
+
+        turn2_messages = turn1_messages + [{"role": "assistant", "content": solution_turn1}] + turn2_user_messages
         LOG.debug(f"Turn 2 messages: {turn2_messages}")
 
         # Use a data point with turn 2 messages
