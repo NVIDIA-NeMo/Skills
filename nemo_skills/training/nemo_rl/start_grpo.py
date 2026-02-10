@@ -230,7 +230,9 @@ def setup_data(
         "env_cls",
         "nemo_skills.training.nemo_rl.environments.math_environment.MathEnvironment",
     )
-    ACTOR_ENVIRONMENT_REGISTRY[env_cls_path] = PY_EXECUTABLES.SYSTEM
+    py_executable_str = env_configs["math"].get("py_executable", "system")
+    py_executable = getattr(PY_EXECUTABLES, py_executable_str.upper())
+    ACTOR_ENVIRONMENT_REGISTRY[env_cls_path] = py_executable
 
     module_name, class_name = env_cls_path.rsplit(".", 1)
     env_module = importlib.import_module(module_name)
@@ -315,18 +317,37 @@ def main() -> None:
         val_task_to_env,
     ) = setup_data(tokenizer, config["data"], config["env"])
 
-    (
-        policy,
-        policy_generation,
-        cluster,
-        dataloader,
-        val_dataloader,
-        loss_fn,
-        logger,
-        checkpointer,
-        grpo_state,
-        master_config,
-    ) = setup(config, tokenizer, dataset, val_dataset)
+    setup_result = setup(config, tokenizer, dataset, val_dataset)
+
+    if len(setup_result) == 10:  # Nemo-RL main branch
+        (
+            policy,
+            policy_generation,
+            cluster,
+            dataloader,
+            val_dataloader,
+            loss_fn,
+            logger,
+            checkpointer,
+            grpo_state,
+            master_config,
+        ) = setup_result
+    elif len(setup_result) == 11:  # For Nano/Super nemo-RL
+        (
+            policy,
+            policy_generation,
+            nemo_gym_actor,
+            cluster,
+            dataloader,
+            val_dataloader,
+            loss_fn,
+            logger,
+            checkpointer,
+            grpo_state,
+            master_config,
+        ) = setup_result
+    else:
+        raise ValueError(f"Expected 10 or 11 elements in setup_result, got {len(setup_result)}")
 
     # Check if async mode is enabled
     if "async_grpo" in config["grpo"] and config["grpo"]["async_grpo"]["enabled"]:
