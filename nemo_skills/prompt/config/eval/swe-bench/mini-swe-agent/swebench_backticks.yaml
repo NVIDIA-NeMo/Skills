@@ -172,8 +172,7 @@ agent:
     - You CANNOT continue working (reading, editing, testing) in any way on this task after submitting.
     </CRITICAL>
     </instructions>
-  step_limit: 250
-  cost_limit: 3.
+  cost_limit: 0.  # no limit
 
 environment:
   cwd: "/testbed"
