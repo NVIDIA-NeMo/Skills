@@ -441,6 +441,8 @@ class WriteFinalConversationManifest(WriteFinalSftManifest):
 
                 if self.prompt:
                     input_messages = self.prompt.fill(input_dict=elem)
+                    if "generation" in output_sample:
+                        del output_sample["generation"]
                     output_sample["messages"] = input_messages + output_sample.pop("serialized_output", [])                    
 
                 output_sample.update(self.metadata)

@@ -25,10 +25,7 @@ pipeline_stages:
   - aggregate                   # Aggregate all the metadata into a single file
   - filter_solutions            # Filter solutions
   - prepare_for_sft             # Prepare for SFT
-  - convert_to_messages_format  # Convert to messages format for training
-  - bucket                      # Bucket by token length
-  - convert_to_qwen_format      # Convert to Qwen format
-  - bucket_qwen                 # Bucket by token length for Qwen format
+  - process_messages_and_bucket # Process messages + token lengths + buckets
   - validate                    # Validate outputs and stage health
 
 # Directory structure configuration
@@ -41,10 +38,7 @@ directories:
   step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate
   step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions
   step-7-prepare-for-sft: ${base_output_dir}/solution-sdg/step-7-prepare-for-sft
-  step-8-convert-to-messages-format: ${base_output_dir}/solution-sdg/step-8-convert-to-messages-format
-  step-9-bucket: ${base_output_dir}/solution-sdg/step-9-bucket
-  step-10-convert-to-qwen-format: ${base_output_dir}/solution-sdg/step-10-convert-to-qwen-format
-  step-11-bucket-qwen: ${base_output_dir}/solution-sdg/step-11-bucket-qwen
+  step-8-process-messages-and-bucket: ${base_output_dir}/solution-sdg/step-8-process-messages-and-bucket
   validate: ${base_output_dir}/solution-sdg/validate
 
 # Stage-specific configurations
@@ -253,42 +247,20 @@ stages:
     dependencies:
       - filter_solutions
 
-  convert_to_messages_format:
-    output_dir: ${directories.step-8-convert-to-messages-format}
+  process_messages_and_bucket:
+    output_dir: ${directories.step-8-process-messages-and-bucket}
     input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
-    dependencies:
-      - prepare_for_sft
-
-  bucket:
-    input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
-    output_dir: ${directories.step-9-bucket}
-    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
+    tokenizer_path: /hf_models/gpt-oss-120b
+    chat_template_kwargs: 
+      reasoning_effort: low
+    to_bucket: True
+    bucket_field: output_token_length
     bucket_sizes:
       - 16000
       - 32000
       - 64000
     dependencies:
       - prepare_for_sft
-
-  convert_to_qwen_format:
-    enabled: False
-    output_dir: ${directories.step-10-convert-to-qwen-format}
-    input_file: ${directories.step-8-convert-to-messages-format}/final_result.jsonl
-    tools: ${stages.generate_solutions.builtin_tools}
-    dependencies:
-      - convert_to_messages_format
-
-  bucket_qwen:
-    enabled: False
-    input_file: ${directories.step-10-convert-to-qwen-format}/final_result.jsonl
-    output_dir: ${directories.step-11-bucket-qwen}
-    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
-    bucket_sizes:
-      - 16000
-      - 32000
-      - 64000
-    dependencies:
-      - convert_to_qwen_format
 
   validate:
     output_dir: ${directories.validate}

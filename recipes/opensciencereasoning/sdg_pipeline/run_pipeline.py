@@ -583,6 +583,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
 
     cmd = (
         f"mkdir -p {output_dir} && python -m nemo_skills.training.prepare_data "
+        f"    --config-name='stem_sft.yaml' "
         f"    ++input_files='{input_file}' "
         f"    ++output_path='{output_dir}/prepared.jsonl' "
         f"    ++add_unlabeled=True "
@@ -627,77 +628,41 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
         )
 
 
-def convert_to_messages_format(cluster, expname, run_after, stage_config, **kwargs):
-    """Convert the final results into a messages format for chat-based models.
-
-    This stage reads the `input_file`, reformats each sample into a messages
-    structure suitable for chat models, and writes the output to `final_result.jsonl`.
+def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwargs):
+    """Process messages into input/output, calculate token lengths, and bucket by token size.
+    
+    This unified stage:
+      1. Reads messages format from input file
+      2. Extracts and formats input (system + user prompts) and output (assistant, reasoning, etc.)
+      3. Calculates input_token_length and output_token_length for each sample
+      4. Optionally buckets samples by token length using the configured tokenizer
+      5. Writes output file with full data including token lengths, and bucketed files if enabled
     """
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/{OUTPUT_FILE}"
+    to_bucket = stage_config.get("to_bucket", True)
+    bucket_field = stage_config.get("bucket_field", "output_token_length")
+    bucket_sizes = stage_config.get("bucket_sizes", [16000, 32000, 64000])
+    tokenizer_path = stage_config.get("tokenizer_path")
 
+    bucket_arg = "--to_bucket" if to_bucket else ""
+    
     run_cmd(
         ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/convert_to_messages.py "
-            f"  {input_file} "
-            f"  {output_file} "
-        ),
-        cluster=cluster,
-        log_dir=f"{output_dir}/logs",
-        expname=expname,
-        run_after=run_after,
-    )
-
-
-def convert_to_qwen_format(cluster, expname, run_after, stage_config, **kwargs):
-    """Convert the messages format into a Qwen-compatible structure."""
-
-    input_file = stage_config["input_file"]
-    output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/{OUTPUT_FILE}"
-
-    with_tools = "--add-tools" if stage_config.get("tools", False) else ""
-
-    run_cmd(
-        ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/convert_to_qwen.py "
-            f"  {input_file} "
-            f"  {output_file} "
-            f"  {with_tools} "
-        ),
-        cluster=cluster,
-        log_dir=f"{output_dir}/logs",
-        expname=expname,
-        run_after=run_after,
-    )
-
-
-def bucket(cluster, expname, run_after, stage_config, **kwargs):
-    """Bucket samples by token length using the configured tokenizer.
-
-    Each record is augmented with its `out_token_length`, which is the
-    per-sample statistic written back to the JSONL output. It emits one JSONL file
-    per configured bucket (for example `{stem}_bucket_16000.jsonl`) plus an overflow
-    file, placing samples into the file whose upper bound matches their token length.
-    Bucket counts and percentages are also reported via the script's logs.
-    """
-    input_file = stage_config["input_file"]
-    output_dir = stage_config["output_dir"]
-
-    run_cmd(
-        ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/calculate_tkn_len_and_bucket.py "
+            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/process_messages_and_bucket.py "
             f"  {input_file} "
             f"  --output_dir {output_dir} "
-            f"  --to_bucket "
-            f"  --bucket_sizes {' '.join(map(str, stage_config.get('bucket_sizes', [16000, 32000, 64000])))} "
-            f"  --tokenizer_path {stage_config.get('tokenizer_path')} "
+            f"  {bucket_arg} "
+            f"  --bucket_field {bucket_field} "
+            f"  --bucket_sizes {' '.join(map(str, bucket_sizes))} "
+            f"  --tokenizer_path {tokenizer_path} "
+            f"  --chat_template_kwargs {shlex.quote(json.dumps(stage_config.get('chat_template_kwargs', {}), ensure_ascii=False))} "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
         expname=expname,
         run_after=run_after,
+        partition="interactive"
     )
 
 
@@ -786,10 +751,7 @@ stages_map = {
     "aggregate": aggregate,
     "filter_solutions": filter_solutions,
     "prepare_for_sft": prepare_for_sft,
-    "convert_to_messages_format": convert_to_messages_format,
-    "bucket": bucket,
-    "bucket_qwen": bucket,
-    "convert_to_qwen_format": convert_to_qwen_format,
+    "process_messages_and_bucket": process_messages_and_bucket,
     "validate": validate,
 }
 
@@ -829,7 +791,7 @@ if __name__ == "__main__":
         default=None,
         help=(
             "Override config values using Hydra-style dotlist syntax. "
-            "Example: --override stages.convert_to_messages_format.enabled=false stages.bucket.enabled=false. "
+            "Example: --override stages.process_messages_and_bucket.to_bucket=true stages.process_messages_and_bucket.tokenizer_path=/path/to/tokenizer. "
             "Separate multiple overrides with spaces."
         ),
     )
