@@ -1,6 +1,0 @@
-# default prompt for livecodebench c++
-
-user: |-
-  Here is a problem for which you need to generate an executable code in c++ programming language.
-
-  {question}
