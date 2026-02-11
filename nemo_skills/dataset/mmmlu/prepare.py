@@ -54,7 +54,7 @@ def main(args):
     output_file = data_dir / "test.jsonl"
     with open(output_file, "wt", encoding="utf-8") as fout:
         for language, examples in datasets.items():
-            for entry in examples:
+            for entry in examples[: args.limit]:
                 entry = format_entry(entry=entry, language=language)
                 json.dump(entry, fout, ensure_ascii=False)
                 fout.write("\n")
@@ -67,6 +67,12 @@ if __name__ == "__main__":
         default=SUPPORTED_LANGUAGES,
         nargs="+",
         help="Languages to process.",
+    )
+    parser.add_argument(
+        "--limit",
+        default=None,
+        type=int,
+        help="Limit the number of examples to process.",
     )
     args = parser.parse_args()
     main(args)
