@@ -13,3 +13,5 @@
 # limitations under the License.
 
 DATASET_GROUP = "long-context"
+REQUIRES_DATA_DIR = True
+HAS_DYNAMIC_INIT = True

@@ -20,6 +20,7 @@ Test sets (evaluation only):
 """
 
 DATASET_GROUP = "speechlm"
+REQUIRES_DATA_DIR = True
 METRICS_TYPE = "audio"
 DEFAULT_SPLIT = "test-clean"
 

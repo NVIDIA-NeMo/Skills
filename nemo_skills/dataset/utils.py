@@ -59,6 +59,22 @@ def get_dataset_name(dataset):
     return dataset
 
 
+def get_dataset_path(dataset):
+    """Resolve a dataset identifier to its directory path.
+
+    Resolution order:
+    1. If dataset contains '/', treat as a direct path.
+    2. Check extra benchmark map.
+    3. Fall back to built-in dataset directory.
+    """
+    if "/" in dataset:
+        return Path(dataset)
+    extra_map = get_extra_benchmark_map()
+    if dataset in extra_map:
+        return Path(extra_map[dataset])
+    return Path(__file__).parent / dataset
+
+
 def get_extra_benchmark_map():
     """Load extra benchmark map from NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var if set.
 

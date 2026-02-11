@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
-import importlib
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from nemo_skills.dataset.utils import add_header_to_jsonl_inplace, get_lean4_header
+from nemo_skills.dataset.utils import (
+    add_header_to_jsonl_inplace,
+    get_dataset_module,
+    get_dataset_path,
+    get_lean4_header,
+)
 
 
 def prepare_datasets(
@@ -41,7 +45,7 @@ def prepare_datasets(
     if dataset_groups:
         target_datasets = []
         for dataset in datasets:
-            dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset}")
+            dataset_module, _ = get_dataset_module(dataset)
             if getattr(dataset_module, "DATASET_GROUP", None) in dataset_groups:
                 target_datasets.append(dataset)
         datasets = target_datasets
@@ -49,7 +53,7 @@ def prepare_datasets(
     max_workers = max(1, parallelism) if parallelism is not None else 1
 
     def run_prepare(dataset_name):
-        dataset_path = datasets_dir / dataset_name
+        dataset_path = get_dataset_path(dataset_name)
         attempts = max(1, retries + 1)
         for attempt in range(1, attempts + 1):
             if attempts > 1:
@@ -68,7 +72,7 @@ def prepare_datasets(
                     raise
                 print(f"Retrying {dataset_name} after failure")
 
-        dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset_name}")
+        dataset_module, _ = get_dataset_module(dataset_name)
         if getattr(dataset_module, "DATASET_GROUP", None) == "math" and add_lean4_header:
             jsonl_files = list(dataset_path.glob("*.jsonl"))
             header = get_lean4_header()

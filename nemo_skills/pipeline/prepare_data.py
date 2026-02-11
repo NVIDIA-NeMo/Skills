@@ -22,6 +22,7 @@ from typing import List
 
 import typer
 
+from nemo_skills.dataset.utils import get_dataset_module, get_dataset_path
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.run_cmd import run_cmd as _run_cmd
 from nemo_skills.pipeline.utils import (
@@ -29,28 +30,10 @@ from nemo_skills.pipeline.utils import (
     get_env_variables,
     parse_kwargs,
 )
+from nemo_skills.pipeline.utils.eval import get_arg_from_module_or_dict
 from nemo_skills.utils import get_logger_name, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-# TODO: read this from init.py
-DATASETS_REQUIRE_DATA_DIR = [
-    "ruler",
-    "ruler2",
-    "ioi24",
-    "mmau-pro",
-    "librispeech-pc",
-    "audiobench",
-    "asr-leaderboard",
-    "musan",
-    "mmmu-pro",
-]
-
-DATASETS_WITH_SPLIT_PREPARE_SCRIPTS = [
-    "ruler",
-    "ruler2",
-]
 
 
 def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str], list[str]]:
@@ -66,8 +49,9 @@ def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str],
 
 def _run_prepare_init_locally(datasets: list[str], prepare_unknown_args: list[str]):
     for dataset in datasets:
+        dataset_path = get_dataset_path(dataset)
         subprocess.run(
-            [sys.executable, "-m", f"nemo_skills.dataset.{dataset}.prepare_init", *prepare_unknown_args],
+            [sys.executable, str(dataset_path / "prepare_init.py"), *prepare_unknown_args],
             check=True,
         )
 
@@ -128,11 +112,15 @@ def prepare_data(
     extra_arguments = shlex.join(ctx.args)
     command = f"python -m nemo_skills.dataset.prepare {extra_arguments}".strip()
     requested_datasets, dataset_groups, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
-    split_prepare_datasets = [d for d in requested_datasets if d in DATASETS_WITH_SPLIT_PREPARE_SCRIPTS]
+    split_prepare_datasets = [
+        d
+        for d in requested_datasets
+        if get_arg_from_module_or_dict(get_dataset_module(d)[0], "HAS_DYNAMIC_INIT", False)
+    ]
 
     if not data_dir and not skip_data_dir_check:
-        for dataset in DATASETS_REQUIRE_DATA_DIR:
-            if dataset in extra_arguments:
+        for dataset in requested_datasets:
+            if get_arg_from_module_or_dict(get_dataset_module(dataset)[0], "REQUIRES_DATA_DIR", False):
                 raise ValueError(
                     f"Dataset {dataset} contains very large input data and it's recommended to have a "
                     "data_dir to be specified to avoid accidentally uploading large data on cluster with every job. "
@@ -149,7 +137,7 @@ def prepare_data(
     if len(requested_datasets) == 1 and len(split_prepare_datasets) == 1 and not dataset_groups:
         split_dataset = split_prepare_datasets[0]
         split_prepare_data_args = shlex.join(prepare_unknown_args)
-        command = f"python -m nemo_skills.dataset.{split_dataset}.prepare_data"
+        command = f"python {get_dataset_path(split_dataset) / 'prepare_data.py'}"
         if split_prepare_data_args:
             command += f" {split_prepare_data_args}"
 
