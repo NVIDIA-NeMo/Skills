@@ -575,13 +575,6 @@ class Pipeline:
         if span_group_nodes and hardware and hardware.num_nodes is not None:
             num_nodes = hardware.num_nodes
 
-        # Only the server component (span_group_nodes=True) should claim group GPUs.
-        # Other components (client, sandbox) run on the same node but don't need GPUs.
-        if span_group_nodes:
-            gpus_per_node = hardware.num_gpus if hardware and hardware.num_gpus is not None else 0
-        else:
-            gpus_per_node = 0
-
         # Sandbox-specific srun overrides: allow the sandbox to survive individual
         # worker crashes (e.g. SIGILL from libraries compiled for a different CPU).
         # nemo-run hardcodes --kill-on-bad-exit=1 on every srun; appending =0
@@ -603,7 +596,7 @@ class Pipeline:
                 container=container_image,
                 num_nodes=num_nodes,
                 tasks_per_node=hardware.num_tasks if hardware and hardware.num_tasks is not None else 1,
-                gpus_per_node=gpus_per_node,
+                gpus_per_node=hardware.num_gpus if hardware and hardware.num_gpus is not None else 0,
                 job_name=job_name_override if job_name_override else command.name,
                 log_dir=log_dir,
                 log_prefix=exec_config["log_prefix"],
