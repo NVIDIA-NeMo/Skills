@@ -59,6 +59,30 @@ def get_dataset_name(dataset):
     return dataset
 
 
+def get_extra_benchmark_map():
+    """Load extra benchmark map from NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var if set.
+
+    Returns a dict mapping short names to directory paths, or empty dict.
+    """
+    map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+    if not map_path:
+        return {}
+    with open(map_path, "r") as f:
+        return json.load(f)
+
+
+def _load_external_dataset(dataset_path):
+    """Load dataset module from an external directory containing __init__.py."""
+    dataset_path = Path(dataset_path)
+    init_path = dataset_path / "__init__.py"
+    if not init_path.exists():
+        raise RuntimeError(f"Expected {init_path} to exist for external dataset {dataset_path}")
+    dataset_module = import_from_path(str(init_path))
+    # parent of benchmark dir so that data_path/benchmark_name/split.jsonl works
+    data_path = str(dataset_path.parent)
+    return dataset_module, data_path
+
+
 def get_default_dataset_module(dataset):
     data_path = "/nemo_run/code/nemo_skills/dataset"
     dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset}")
@@ -67,20 +91,47 @@ def get_default_dataset_module(dataset):
 
 
 def get_dataset_module(dataset):
-    """Get dataset module from nemo_skills.dataset or from a path to a directory containing __init__.py."""
+    """Get dataset module from nemo_skills.dataset, extra benchmark map, or a directory path.
+
+    Resolution order:
+    1. If dataset contains '/', treat as a direct path to a directory with __init__.py.
+    2. Otherwise, check both built-in datasets and the extra benchmark map.
+       - If found in both, raise an error (ambiguous).
+       - If found in exactly one, use it.
+       - If found in neither, raise an error.
+    """
     if "/" in dataset:
-        init_path = Path(dataset) / "__init__.py"
-        if not init_path.exists():
-            raise RuntimeError(f"Expected {init_path} to exist for external dataset {dataset}")
-        dataset_module = import_from_path(str(init_path))
-        # parent of benchmark dir so that data_path/benchmark_name/split.jsonl works
-        data_path = str(Path(dataset).parent)
-        return dataset_module, data_path
+        return _load_external_dataset(dataset)
+
+    # Check built-in
+    found_builtin = True
     try:
         dataset_module, data_path = get_default_dataset_module(dataset)
     except ModuleNotFoundError:
-        raise RuntimeError(f"Dataset {dataset} not found in nemo_skills.dataset")
-    return dataset_module, data_path
+        found_builtin = False
+
+    # Check extra benchmark map
+    extra_map = get_extra_benchmark_map()
+    found_in_map = dataset in extra_map
+
+    if found_builtin and found_in_map:
+        raise RuntimeError(
+            f"Dataset '{dataset}' found both as a built-in dataset and in the extra benchmark map "
+            f"(pointing to {extra_map[dataset]}). Please use the full path to resolve the ambiguity."
+        )
+
+    if found_in_map:
+        return _load_external_dataset(extra_map[dataset])
+
+    if found_builtin:
+        return dataset_module, data_path
+
+    map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+    if map_path:
+        raise RuntimeError(f"Dataset '{dataset}' not found in built-in datasets or extra benchmark map at {map_path}.")
+    raise RuntimeError(
+        f"Dataset '{dataset}' not found in built-in datasets. Did you forget to set NEMO_SKILLS_EXTRA_BENCHMARK_MAP?"
+    )
 
 
 def get_lean4_header():
