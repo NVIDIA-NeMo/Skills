@@ -56,9 +56,11 @@ except Exception:  # pragma: no cover - best effort
 
 DOMAIN_TO_LABEL = {
     "chem": "Chemistry",
-    "physics": "Physics",
+    "chemistry": "Chemistry",
     "phys": "Physics",
+    "physics": "Physics",
     "bio": "Biology",
+    "biology": "Biology",
 }
 
 KEEP_FIELDS = ("source", "type", "name", "doc", "domain")
@@ -125,9 +127,10 @@ def resolve_label(domain: str | None, label: str | None) -> str:
         raise ValueError("Use only one of --domain or --label.")
     if label is not None:
         return label
-    if domain not in DOMAIN_TO_LABEL:
+    domain_key = domain.lower()
+    if domain_key not in DOMAIN_TO_LABEL:
         raise ValueError(f"Unsupported domain: {domain}")
-    return DOMAIN_TO_LABEL[domain]
+    return DOMAIN_TO_LABEL[domain_key]
 
 
 def print_distribution(title: str, counter: Counter, keys: list[int] | None = None) -> None:
