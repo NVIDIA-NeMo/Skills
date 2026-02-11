@@ -42,9 +42,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
-# --- Fast JSON (optional) ----------------------------------------------------
 try:  # orjson is significantly faster; fallback to std json
     import orjson as _orjson  # type: ignore
 
@@ -102,9 +100,9 @@ def parse_messages(
     user_prompt_prefix: str,
     dump_json: bool,
 ) -> list[dict]:
-    messages: List[Dict] = []
+    messages: list[dict] = []
     tool_call_counter = 0
-    assistant_reasoning_buffer: Optional[Dict] = None
+    assistant_reasoning_buffer: dict | None = None
 
     full_interaction_str = (
         "<|start|>user<|message|>"
@@ -179,9 +177,9 @@ def parse_messages(
 
     if (
         len(messages) >= 2
-        and messages[-1].get("role") == "assistant"
+        and messages[-1]["role"] == "assistant"
         and "content" in messages[-1]
-        and messages[-2].get("role") == "assistant"
+        and messages[-2]["role"] == "assistant"
         and "reasoning_content" in messages[-2]
         and "tool_calls" not in messages[-2]
     ):
@@ -189,7 +187,7 @@ def parse_messages(
         messages.pop(-2)
 
     for msg in messages:
-        if msg.get("role") == "assistant" and "content" not in msg:
+        if msg["role"] == "assistant" and "content" not in msg:
             msg["content"] = ""
 
     return messages
@@ -202,10 +200,10 @@ class UsedNamesExtractor(ast.NodeVisitor):
     """
 
     def __init__(self):
-        self.import_aliases: Dict[str, str] = {}
-        self.wildcard_imports: Set[str] = set()
-        self.used_names: Set[str] = set()
-        self.imported_from_modules: Set[str] = set()
+        self.import_aliases: dict[str, str] = {}
+        self.wildcard_imports: set[str] = set()
+        self.used_names: set[str] = set()
+        self.imported_from_modules: set[str] = set()
 
     def visit_Import(self, node: ast.Import):
         for alias in node.names:
@@ -233,7 +231,7 @@ class UsedNamesExtractor(ast.NodeVisitor):
                 self.import_aliases[local_name] = full_path
         self.generic_visit(node)
 
-    def _get_full_attribute_path(self, node: ast.AST) -> Optional[str]:
+    def _get_full_attribute_path(self, node: ast.AST) -> str | None:
         if isinstance(node, ast.Name):
             local_name = node.id
             if local_name in self.import_aliases:
@@ -266,116 +264,7 @@ class UsedNamesExtractor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-class NameUsageChecker(ast.NodeVisitor):
-    """
-    AST visitor that tracks imports and checks if a specific fully-qualified name is used.
-    """
-
-    def __init__(self, target_name: str):
-        self.target_name = target_name
-        parts = target_name.split(".")
-        if len(parts) == 1:
-            self.target_module = target_name
-            self.target_attr = None
-        else:
-            self.target_parts = parts
-            self.target_module = None
-            self.target_attr = None
-
-        self.import_aliases: Dict[str, str] = {}
-        self.wildcard_imports: Set[str] = set()
-        self.found_usage = False
-
-    def visit_Import(self, node: ast.Import):
-        for alias in node.names:
-            module_name = alias.name
-            local_name = alias.asname if alias.asname else alias.name
-            self.import_aliases[local_name] = module_name
-            if "." in module_name and alias.asname is None:
-                first_component = module_name.split(".")[0]
-                if first_component not in self.import_aliases:
-                    self.import_aliases[first_component] = first_component
-        self.generic_visit(node)
-
-    def visit_ImportFrom(self, node: ast.ImportFrom):
-        module = node.module or ""
-
-        if module:
-            if self._check_match(module):
-                self.found_usage = True
-            if module == self.target_name or module.startswith(self.target_name + "."):
-                self.found_usage = True
-
-        for alias in node.names:
-            if alias.name == "*":
-                self.wildcard_imports.add(module)
-            else:
-                imported_name = alias.name
-                local_name = alias.asname if alias.asname else alias.name
-                full_path = f"{module}.{imported_name}" if module else imported_name
-                self.import_aliases[local_name] = full_path
-        self.generic_visit(node)
-
-    def _get_full_attribute_path(self, node: ast.AST, require_import: bool = True) -> Optional[str]:
-        if isinstance(node, ast.Name):
-            local_name = node.id
-            if local_name in self.import_aliases:
-                return self.import_aliases[local_name]
-            if require_import:
-                return None
-            return local_name
-        if isinstance(node, ast.Attribute):
-            base_path = self._get_full_attribute_path(node.value, require_import)
-            if base_path is None:
-                return None
-            return f"{base_path}.{node.attr}"
-        if isinstance(node, ast.Call):
-            return self._get_full_attribute_path(node.func, require_import)
-        return None
-
-    def _check_match(self, resolved_path: str) -> bool:
-        if resolved_path == self.target_name:
-            return True
-        if resolved_path.startswith(self.target_name + "."):
-            return True
-        return False
-
-    def _check_wildcard_match(self, name: str) -> bool:
-        parts = self.target_name.split(".")
-        if len(parts) < 2:
-            return False
-        for i in range(len(parts) - 1, 0, -1):
-            module_part = ".".join(parts[:i])
-            attr_part = ".".join(parts[i:])
-            if module_part in self.wildcard_imports:
-                if name == attr_part or name == parts[i] or attr_part.startswith(name + "."):
-                    return True
-        return False
-
-    def visit_Name(self, node: ast.Name):
-        name = node.id
-        if name in self.import_aliases:
-            resolved = self.import_aliases[name]
-            if self._check_match(resolved):
-                self.found_usage = True
-        if self._check_wildcard_match(name):
-            self.found_usage = True
-        self.generic_visit(node)
-
-    def visit_Attribute(self, node: ast.Attribute):
-        full_path = self._get_full_attribute_path(node)
-        if full_path and self._check_match(full_path):
-            self.found_usage = True
-        self.generic_visit(node)
-
-    def visit_Call(self, node: ast.Call):
-        full_path = self._get_full_attribute_path(node.func)
-        if full_path and self._check_match(full_path):
-            self.found_usage = True
-        self.generic_visit(node)
-
-
-def _extract_used_names_from_code(code: str) -> Tuple[Set[str], Set[str]]:
+def _extract_used_names_from_code(code: str) -> tuple[set[str], set[str]]:
     code = code.replace("\x00", "")
     try:
         tree = ast.parse(code)
@@ -386,7 +275,7 @@ def _extract_used_names_from_code(code: str) -> Tuple[Set[str], Set[str]]:
         return set(), set()
 
 
-def _check_name_in_extracted(name: str, used_names: Set[str], imported_from_modules: Set[str]) -> bool:
+def _check_name_in_extracted(name: str, used_names: set[str], imported_from_modules: set[str]) -> bool:
     if name in used_names:
         return True
     name_prefix = name + "."
@@ -402,7 +291,7 @@ def _check_name_in_extracted(name: str, used_names: Set[str], imported_from_modu
     return False
 
 
-def _check_any_name_in_extracted(all_names: Set[str], used_names: Set[str], imported_from_modules: Set[str]) -> bool:
+def _check_any_name_in_extracted(all_names: set[str], used_names: set[str], imported_from_modules: set[str]) -> bool:
     if all_names & used_names:
         return True
     for used in used_names:
@@ -420,7 +309,7 @@ def _check_any_name_in_extracted(all_names: Set[str], used_names: Set[str], impo
     return False
 
 
-def _find_matching_names(all_names: Set[str], used_names: Set[str], imported_from_modules: Set[str]) -> Set[str]:
+def _find_matching_names(all_names: set[str], used_names: set[str], imported_from_modules: set[str]) -> set[str]:
     matched = set()
     matched.update(all_names & used_names)
     for used in used_names:
@@ -441,9 +330,9 @@ def _find_matching_names(all_names: Set[str], used_names: Set[str], imported_fro
 def _extract_all_code_from_messages(messages: list, dump_json: bool) -> str:
     all_code_blocks = []
     for msg in messages:
-        if msg.get("role") == "assistant" and "tool_calls" in msg:
+        if msg["role"] == "assistant" and "tool_calls" in msg:
             for tool_call in msg["tool_calls"]:
-                if tool_call.get("function", {}).get("name") == "stateful_python_code_exec":
+                if tool_call["function"]["name"] == "stateful_python_code_exec":
                     args = tool_call["function"]["arguments"]
                     if dump_json:
                         code = _json_loads(args)["code"]
@@ -455,7 +344,7 @@ def _extract_all_code_from_messages(messages: list, dump_json: bool) -> str:
 
 def _has_boxed_in_last_assistant(messages: list) -> bool:
     for msg in reversed(messages):
-        if msg.get("role") == "assistant" and msg.get("content"):
+        if msg["role"] == "assistant" and msg.get("content"):
             return r"\boxed{" in msg["content"] or "\\boxed{" in msg["content"]
     return False
 
@@ -508,7 +397,7 @@ def _weighted_sample_indices(weights: list[float], k: int, rng: random.Random) -
     return [idx for _, idx in scored[:k]]
 
 
-_ALL_NAMES: Set[str] = set()
+_ALL_NAMES: set[str] = set()
 _USER_PROMPT_PREFIX = DEFAULT_USER_PROMPT_PREFIX
 _DUMP_JSON = True
 _CODE_ROUNDS_FIELD = "code_rounds_executed"
@@ -517,7 +406,7 @@ _REQUIRE_BOXED = True
 
 
 def _init_worker(
-    all_names: Set[str],
+    all_names: set[str],
     user_prompt_prefix: str,
     dump_json: bool,
     code_rounds_field: str,
@@ -539,60 +428,53 @@ def _init_worker(
     _REQUIRE_BOXED = require_boxed
 
 
-def process_line(line: str) -> Tuple[bool, bool, bool, bool]:
-    try:
-        data = _json_loads(line)
-        code_rounds = _get_code_rounds(data, _CODE_ROUNDS_FIELD, _REQUIRE_CODE_ROUNDS)
-        if code_rounds == 0:
-            return (True, False, False, False)
+def process_line(line: str) -> tuple[bool, bool, bool, bool]:
+    data = _json_loads(line)
+    code_rounds = _get_code_rounds(data, _CODE_ROUNDS_FIELD, _REQUIRE_CODE_ROUNDS)
+    if code_rounds == 0:
+        return (True, False, False, False)
 
-        messages = parse_messages(data["problem"], data["generation"], _USER_PROMPT_PREFIX, _DUMP_JSON)
-        if _REQUIRE_BOXED and not _has_boxed_in_last_assistant(messages):
-            return (False, False, False, False)
-
-        combined_code = _extract_all_code_from_messages(messages, dump_json=_DUMP_JSON)
-        if not combined_code:
-            return (True, True, False, False)
-
-        used_names, imported_from_modules = _extract_used_names_from_code(combined_code)
-        used_given_name = _check_name_in_extracted(data["name"], used_names, imported_from_modules)
-        used_any_name = _check_any_name_in_extracted(_ALL_NAMES, used_names, imported_from_modules)
-
-        return (True, True, used_given_name, used_any_name)
-    except Exception as e:
-        print(f"Error processing line: {e}")
+    messages = parse_messages(data["problem"], data["generation"], _USER_PROMPT_PREFIX, _DUMP_JSON)
+    if _REQUIRE_BOXED and not _has_boxed_in_last_assistant(messages):
         return (False, False, False, False)
 
+    combined_code = _extract_all_code_from_messages(messages, dump_json=_DUMP_JSON)
+    if not combined_code:
+        return (True, True, False, False)
 
-def process_line_for_sampling(args: Tuple[int, str]) -> Tuple[int, bool, bool, bool, bool, Tuple[str, ...]]:
+    used_names, imported_from_modules = _extract_used_names_from_code(combined_code)
+    used_given_name = _check_name_in_extracted(data["name"], used_names, imported_from_modules)
+    used_any_name = _check_any_name_in_extracted(_ALL_NAMES, used_names, imported_from_modules)
+
+    return (True, True, used_given_name, used_any_name)
+
+
+def process_line_for_sampling(args: tuple[int, str]) -> tuple[int, bool, bool, bool, bool, tuple[str, ...]]:
     line_idx, line = args
-    try:
-        data = _json_loads(line)
-        code_rounds = _get_code_rounds(data, _CODE_ROUNDS_FIELD, _REQUIRE_CODE_ROUNDS)
-        if code_rounds == 0:
-            return (line_idx, True, False, False, False, ())
+    data = _json_loads(line)
+    code_rounds = _get_code_rounds(data, _CODE_ROUNDS_FIELD, _REQUIRE_CODE_ROUNDS)
+    if code_rounds == 0:
+        return (line_idx, True, False, False, False, ())
 
-        messages = parse_messages(data["problem"], data["generation"], _USER_PROMPT_PREFIX, _DUMP_JSON)
-        has_boxed = _has_boxed_in_last_assistant(messages)
-        if _REQUIRE_BOXED and not has_boxed:
-            return (line_idx, True, False, False, False, ())
+    messages = parse_messages(data["problem"], data["generation"], _USER_PROMPT_PREFIX, _DUMP_JSON)
+    has_boxed = _has_boxed_in_last_assistant(messages)
+    if _REQUIRE_BOXED and not has_boxed:
+        return (line_idx, True, False, False, False, ())
 
-        combined_code = _extract_all_code_from_messages(messages, dump_json=_DUMP_JSON)
-        if not combined_code:
-            return (line_idx, True, True, has_boxed, False, ())
+    combined_code = _extract_all_code_from_messages(messages, dump_json=_DUMP_JSON)
+    if not combined_code:
+        return (line_idx, True, True, has_boxed, False, ())
 
-        used_names, imported_from_modules = _extract_used_names_from_code(combined_code)
-        used_given = _check_name_in_extracted(data["name"], used_names, imported_from_modules)
-        matched_names = _find_matching_names(_ALL_NAMES, used_names, imported_from_modules)
+    used_names, imported_from_modules = _extract_used_names_from_code(combined_code)
+    used_given = _check_name_in_extracted(data["name"], used_names, imported_from_modules)
+    matched_names = _find_matching_names(_ALL_NAMES, used_names, imported_from_modules)
 
-        return (line_idx, True, True, has_boxed, used_given, tuple(matched_names))
-    except Exception:
-        return (line_idx, False, False, False, False, ())
+    return (line_idx, True, True, has_boxed, used_given, tuple(matched_names))
 
 
 def run_stats(
     all_lines: list[str],
-    all_names: Set[str],
+    all_names: set[str],
     user_prompt_prefix: str,
     dump_json: bool,
     code_rounds_field: str,
@@ -640,36 +522,33 @@ def run_stats(
 
 
 def save_sampled_messages(
-    indices: List[int],
+    indices: list[int],
     all_lines: list[str],
     output_file: Path,
     description: str,
     user_prompt_prefix: str,
     dump_json: bool,
-    given_name_set: Set[int],
+    given_name_set: set[int],
 ) -> None:
     print(f"Saving {description} (dump_json={dump_json}) to {output_file}...")
     indices_set = set(indices)
     with output_file.open("w", encoding="utf-8") as f:
         for idx in _progress(sorted(indices_set), desc=f"Writing {description}", unit="record"):
             line = all_lines[idx]
-            try:
-                data = _json_loads(line)
-                messages = parse_messages(data["problem"], data["generation"], user_prompt_prefix, dump_json)
-                record = {
-                    "problem": data["problem"],
-                    "name": data["name"],
-                    "messages": messages,
-                    "used_given_name": idx in given_name_set,
-                }
-                f.write(_json_dumps(record) + "\n")
-            except Exception as e:
-                print(f"Error processing line {idx}: {e}")
+            data = _json_loads(line)
+            messages = parse_messages(data["problem"], data["generation"], user_prompt_prefix, dump_json)
+            record = {
+                "problem": data["problem"],
+                "name": data["name"],
+                "messages": messages,
+                "used_given_name": idx in given_name_set,
+            }
+            f.write(_json_dumps(record) + "\n")
 
 
 def run_sample(
     all_lines: list[str],
-    all_names: Set[str],
+    all_names: set[str],
     user_prompt_prefix: str,
     dump_json: bool,
     code_rounds_field: str,
@@ -690,7 +569,7 @@ def run_sample(
 
     indexed_lines = list(enumerate(all_lines))
     given_name_indices: list[int] = []
-    any_name_only_data: list[Tuple[int, Tuple[str, ...]]] = []
+    any_name_only_data: list[tuple[int, tuple[str, ...]]] = []
     name_usage_counts: Counter[str] = Counter()
     skipped_no_boxed = 0
 
@@ -811,7 +690,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input_files", type=str, nargs="+", default=None)
     parser.add_argument("--pattern", type=str, default="output-rs*.jsonl")
     parser.add_argument("--dataset_name", type=str, default="dataset")
-    parser.add_argument("--target", type=int, default=240_000)
+    parser.add_argument("--target", type=int, required=True, help="Target number of sampled records.")
     parser.add_argument("--output_dir", type=str, default="sampled_solutions")
     parser.add_argument("--random_seed", type=int, default=42)
     parser.add_argument("--num_workers", type=int, default=None, help="Default: os.cpu_count()//2")
@@ -855,13 +734,10 @@ if __name__ == "__main__":
     print(f"Total lines to process: {len(all_lines):,}")
 
     print("Gathering all unique names...")
-    all_names: Set[str] = set()
+    all_names: set[str] = set()
     for line in _progress(all_lines, desc="Extracting names", unit="line"):
-        try:
-            data = _json_loads(line)
-            all_names.add(data["name"])
-        except Exception:
-            pass
+        data = _json_loads(line)
+        all_names.add(data["name"])
     if not all_names:
         raise RuntimeError("No names found in input data.")
     print(f"Found {len(all_names):,} unique names to check against")

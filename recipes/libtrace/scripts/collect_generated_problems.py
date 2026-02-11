@@ -186,8 +186,8 @@ if __name__ == "__main__":
                     dropped_too_long += 1
                     if printed_dropped < args.max_dropped_examples:
                         printed_dropped += 1
-                        name = row.get("name", "<missing>")
-                        source = row.get("source", "<missing>")
+                        name = row["name"]
+                        source = row["source"]
                         print(
                             f"\nDropped too-long problem ({num_tokens:,} tokens > {args.max_problem_tokens:,}) "
                             f"from {source} {name} in {path.name}:{line_num}\n"

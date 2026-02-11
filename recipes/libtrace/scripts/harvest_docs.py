@@ -24,7 +24,7 @@ Example:
   ns run_cmd --cluster=local --container=sandbox \
     --log_dir /workspace/libtrace-results/harvest-docs-chem/logs \
     "python /nemo_run/code/recipes/libtrace/scripts/harvest_docs.py \
-      --field chem --output_dir /workspace/libtrace-results/harvest-docs-chem/results"
+      --domain chem --output_dir /workspace/libtrace-results/harvest-docs-chem/results"
 """
 
 from __future__ import annotations
@@ -264,11 +264,11 @@ def process_library(library_name: str, output_dir: Path) -> list[dict]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract library docs for training.")
     parser.add_argument(
-        "--field",
+        "--domain",
         type=str,
         choices=sorted(LIBRARY_GROUPS.keys()),
         default=None,
-        help="Library group to process (ignored if --libraries is provided).",
+        help="Domain / library group to process (ignored if --libraries is provided).",
     )
     parser.add_argument(
         "--libraries",
@@ -291,10 +291,10 @@ def parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
 
-    if args.field is None and args.libraries is None:
-        raise ValueError("Provide --field or --libraries.")
-    if args.field is not None and args.libraries is not None:
-        raise ValueError("Use only one of --field or --libraries.")
+    if args.domain is None and args.libraries is None:
+        raise ValueError("Provide --domain or --libraries.")
+    if args.domain is not None and args.libraries is not None:
+        raise ValueError("Use only one of --domain or --libraries.")
 
     return args
 
@@ -308,8 +308,8 @@ if __name__ == "__main__":
         libraries = args.libraries
         unified_name = args.unified_name or "custom_unified_docs.jsonl"
     else:
-        libraries = LIBRARY_GROUPS[args.field]
-        unified_name = args.unified_name or f"{args.field}_unified_docs.jsonl"
+        libraries = LIBRARY_GROUPS[args.domain]
+        unified_name = args.unified_name or f"{args.domain}_unified_docs.jsonl"
 
     print("\nStarting documentation extraction...")
     all_docs: list[dict] = []

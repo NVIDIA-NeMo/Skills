@@ -38,7 +38,7 @@ missing, rebuild the sandbox image with your dependencies and rerun.
 ns run_cmd --cluster=local --container=sandbox \
   --log_dir /workspace/libtrace-results/harvest-docs-chem/logs \
   "python /nemo_run/code/recipes/libtrace/scripts/harvest_docs.py \
-    --field chem \
+    --domain chem \
     --output_dir /workspace/libtrace-results/harvest-docs-chem/results"
 ```
 
