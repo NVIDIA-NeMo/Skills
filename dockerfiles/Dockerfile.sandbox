@@ -12,6 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# =============================================================================
+# Dependency Locking
+# =============================================================================
+# The sandbox uses pinned dependencies from two lock files:
+#   - requirements/sandbox-core.lock  (from code_execution.txt — used on CI / arm64)
+#   - requirements/sandbox.lock       (from code_execution.txt + stem.txt — used otherwise; superset of core)
+#
+# To regenerate after changing code_execution.txt or stem.txt:
+#     uv pip compile requirements/code_execution.txt \
+#         --python-version 3.10 -o requirements/sandbox-core.lock
+#     uv pip compile requirements/code_execution.txt requirements/stem.txt \
+#         --python-version 3.10 \
+#         --extra-index-url https://download.pytorch.org/whl/cpu \
+#         -o requirements/sandbox.lock
+# =============================================================================
+
 # Use the base image with Python 3.10 and Flask
 FROM tiangolo/uwsgi-nginx-flask:python3.10
 
@@ -59,26 +75,26 @@ RUN cd /lean4/my_project && \
 ENV LEAN_PATH="/lean4/my_project"
 ENV PATH="/lean4/my_project:$PATH"
 
-# Set up application code and install Python dependencies
-COPY requirements/code_execution.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-
-# Install STEM related libraries
-COPY requirements/stem.txt /app/stem_requirements.txt
-
-
 # Speed/size/env hygiene
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     UV_SYSTEM_PYTHON=1 \
     PATH="/root/.local/bin:${PATH}"
 
+# Install uv (pinned for reproducibility)
+RUN curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh
 
-# Install uv (adds to ~/.local/bin), then install deps
+# Set up application code directory
+WORKDIR /app
+
+# Install Python dependencies from lock file
+# - On CI/arm64: core dependencies only (sandbox-core.lock)
+# - Otherwise: full dependencies including STEM (sandbox.lock)
+COPY requirements/sandbox-core.lock /app/requirements-core.lock
+COPY requirements/sandbox.lock /app/requirements.lock
 RUN if [ "$GITHUB_CI" != "1" ] && [ "$TARGETARCH" != "arm64" ]; then \
-        curl -LsSf https://astral.sh/uv/install.sh | sh  && \
-        uv pip install --upgrade pip && \
-        uv pip install -r /app/stem_requirements.txt --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu; \
+        uv pip install --system -r /app/requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu; \
+    else \
+        uv pip install --system -r /app/requirements-core.lock; \
     fi
 
 # For scicode eval - create data directory and download test data
@@ -131,9 +147,6 @@ RUN gcc -shared -fPIC -o /usr/lib/libblock_network.so /tmp/block_network.c -ldl 
 # (start-with-nginx.sh changes more frequently than dependencies above)
 COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx.sh
 RUN chmod +x /start-with-nginx.sh
-
-# Set the working directory to /app
-WORKDIR /app
 
 # Environment variables for multi-worker setup
 ENV NGINX_PORT=6000
