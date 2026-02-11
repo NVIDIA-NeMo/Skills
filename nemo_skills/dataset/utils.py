@@ -155,24 +155,6 @@ def get_lean4_header():
     return LEAN4_HEADER
 
 
-def add_header_to_jsonl_inplace(jsonl_path, header):
-    """
-    Adds or updates the header field for all entries in a JSONL file.
-
-    Args:
-        jsonl_path (str): Path to the JSONL file.
-        header (str): The header string to add or update in each entry.
-    """
-    with open(jsonl_path, "r", encoding="utf-8") as file:
-        lines = file.readlines()
-
-    with open(jsonl_path, "w", encoding="utf-8") as file:
-        for line in lines:
-            data = json.loads(line)
-            data["header"] = header
-            file.write(json.dumps(data) + "\n")
-
-
 def download_with_retries(url, output_file, max_retries=3, retry_delay=1):
     """Download a file with retry logic."""
     for attempt in range(max_retries):

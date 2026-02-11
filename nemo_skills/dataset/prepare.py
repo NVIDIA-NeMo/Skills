@@ -17,16 +17,11 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from nemo_skills.dataset.utils import (
-    add_header_to_jsonl_inplace,
-    get_dataset_path,
-    get_lean4_header,
-)
+from nemo_skills.dataset.utils import get_dataset_path
 
 
 def prepare_datasets(
     datasets=None,
-    add_lean4_header=False,
     extra_args="",
     parallelism=20,
     retries=3,
@@ -59,12 +54,6 @@ def prepare_datasets(
                     raise
                 print(f"Retrying {dataset_name} after failure")
 
-        if add_lean4_header:
-            jsonl_files = list(dataset_path.glob("*.jsonl"))
-            header = get_lean4_header()
-            for jsonl_file in jsonl_files:
-                print(f"Adding Lean4 header to {jsonl_file}")
-                add_header_to_jsonl_inplace(jsonl_file, header)
         return dataset_name
 
     errors = []
@@ -88,9 +77,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare all datasets")
     parser.add_argument("datasets", nargs="+", help="Specify one or more datasets to prepare")
     parser.add_argument(
-        "--add_lean4_header", action="store_true", help="Add Lean4 header to JSONL files during preparation"
-    )
-    parser.add_argument(
         "--parallelism",
         type=int,
         default=20,
@@ -107,7 +93,6 @@ if __name__ == "__main__":
 
     prepare_datasets(
         args.datasets,
-        args.add_lean4_header,
         extra_args=extra_args,
         parallelism=args.parallelism,
         retries=args.retries,
