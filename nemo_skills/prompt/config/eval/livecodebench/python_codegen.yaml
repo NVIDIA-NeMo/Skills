@@ -1,6 +1,0 @@
-# default prompt for livecodebench Python
-
-user: |-
-  Here is a problem for which you need to generate an executable code in python programming language.
-
-  {question}

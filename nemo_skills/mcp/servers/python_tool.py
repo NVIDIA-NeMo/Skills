@@ -68,6 +68,12 @@ async def stateful_python_code_exec(
 
 def main():
     parser = argparse.ArgumentParser(description="MCP server for executing Python code in a sandbox")
+    parser.add_argument(
+        "--disable-session-restore",
+        action="store_true",
+        default=False,
+        help="Skip replaying session history after sandbox worker restarts (overrides config)",
+    )
     add_config_args(parser)
     args = parser.parse_args()
 
@@ -83,6 +89,9 @@ def main():
 
     global sandbox
     sandbox_cfg = OmegaConf.to_container(cfg.sandbox, resolve=True)
+    if args.disable_session_restore:
+        sandbox_cfg["disable_session_restore"] = True
+
     sandbox = get_sandbox(**sandbox_cfg)
     # Initialize and run the server
     mcp.run(transport="stdio")

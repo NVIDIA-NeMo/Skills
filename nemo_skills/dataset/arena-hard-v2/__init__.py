@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "code"
-METRICS_TYPE = "livecodebench"
-EVAL_SPLIT = "test_v6_2408_2505"
-GENERATION_ARGS = "++prompt_config=eval/livecodebench/default_reasoning ++eval_type=livecodebench"
+DATASET_GROUP = "chat"
+METRICS_TYPE = "arena"
+# using judgement directly in metrics, no need for special evaluation
+GENERATION_ARGS = "++prompt_config=generic/default"
+
+JUDGE_PIPELINE_ARGS = {
+    "generation_module": "nemo_skills.inference.eval.arena_judge",
+    "model": "gpt-4.1",
+    "server_type": "openai",
+    "server_address": "https://api.openai.com/v1",
+}
