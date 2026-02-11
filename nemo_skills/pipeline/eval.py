@@ -742,7 +742,9 @@ def eval(
                     f"python -m nemo_skills.pipeline.summarize_results {results_folder} "
                     f"    --benchmarks {benchmark} "
                     f"    --save_metrics_path {metric_file} "
+                    f"    --metric_type={metric_type or benchmark_args.metrics_type} "
                 )
+
                 if wandb_name:
                     command += f" --wandb_name={wandb_name} "
                 if wandb_group:
@@ -751,8 +753,6 @@ def eval(
                     command += f" --wandb_project={wandb_project} "
                 if data_dir:
                     command += f" --data_dir={data_dir} "
-                if metric_type:
-                    command += f" --metric_type={metric_type} "
                 if metrics_kwargs:
                     command += f" --metrics_kwargs='{kwargs_to_string(metrics_kwargs)}' "
 

@@ -42,6 +42,7 @@ class BenchmarkArgs:
     num_samples: int
     num_chunks: int | None
     eval_subfolder: str
+    metrics_type: str | None = None
     benchmark_group: str | None = None
     score_module: str | None = None
     job_ids: list[int] = field(default_factory=list)
@@ -170,6 +171,8 @@ def get_benchmark_args_from_module(
         LOG.info("Swe-bench requires extra docker privileges, setting NEMO_SKILLS_PRIVILEGED_DOCKER=1")
         os.environ["NEMO_SKILLS_PRIVILEGED_DOCKER"] = "1"
 
+    metrics_type = get_arg_from_module_or_dict(benchmark_module, "METRICS_TYPE", None, override_dict)
+
     return BenchmarkArgs(
         name=benchmark,
         input_file=input_file,
@@ -183,6 +186,7 @@ def get_benchmark_args_from_module(
         num_chunks=num_chunks,
         eval_subfolder=eval_subfolder,
         benchmark_group=benchmark_group,
+        metrics_type=metrics_type,
         sandbox_env_overrides=sandbox_env_overrides,
     )
 

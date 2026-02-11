@@ -267,20 +267,13 @@ def summarize_results(
         if not Path(benchmark_path).is_dir():
             continue
 
-        if metric_type is not None:
-            metrics_calculator = ComputeMetrics(
-                benchmark,
-                metric_type=metric_type,
-                max_samples=max_samples,
-                metrics_kwargs=metrics_kwargs,
-            )
-        else:
-            metrics_calculator = ComputeMetrics(
-                benchmark,
-                max_samples=max_samples,
-                max_seq_len=max_seq_len,
-                metrics_kwargs=metrics_kwargs,
-            )
+        metrics_calculator = ComputeMetrics(
+            benchmark,
+            metric_type=metric_type,
+            max_samples=max_samples,
+            max_seq_len=max_seq_len,
+            metrics_kwargs=metrics_kwargs,
+        )
 
         metrics = {}
 
