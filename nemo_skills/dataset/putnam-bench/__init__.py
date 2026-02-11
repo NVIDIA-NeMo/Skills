@@ -11,10 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 # Default evaluation and generation settings for the PutnamBench
-DATASET_GROUP = "lean4"
 METRICS_TYPE = "lean4-proof"
 GENERATION_ARGS = "++prompt_config=lean4/formal-proof ++eval_type=lean4-proof"
 REQUIRES_SANDBOX = True

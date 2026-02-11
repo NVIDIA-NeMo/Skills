@@ -20,7 +20,6 @@ except ModuleNotFoundError:
     from prepare_common import build_prepare_parser, parse_args_and_prepare_args
 
 DEFAULT_SETTINGS = """
-DATASET_GROUP = "long-context"
 METRICS_TYPE = "ruler"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "
@@ -33,8 +32,6 @@ TEXT_COMPLETIONS_EXTRA_ARGS = """\
     "++start_assistant_response_key=generation "
     "++inference.endpoint_type=text "
 """
-
-
 TOKENS_TO_GENERATE = {"niah": 128, "vt": 30, "cwe": 120, "fwe": 50, "qa": 32}
 MATCH_TYPE = {"niah": "all", "vt": "all", "cwe": "all", "fwe": "all", "qa": "part"}
 

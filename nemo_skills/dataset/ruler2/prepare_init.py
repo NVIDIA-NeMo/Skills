@@ -20,7 +20,6 @@ except ModuleNotFoundError:
     from prepare_common import build_prepare_parser, parse_known_args
 
 DEFAULT_SETTINGS = """
-DATASET_GROUP = "long-context"
 METRICS_TYPE = "{metrics_type}"
 GENERATION_ARGS = (
     "++prompt_config=generic/default "

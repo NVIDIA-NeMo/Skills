@@ -14,7 +14,6 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 PROMPT_CONFIG = "generic/default"
-DATASET_GROUP = "long-context"
 METRICS_TYPE = "aalcr"
 # using judgement directly in metrics, no need for special evaluation
 GENERATION_ARGS = "++prompt_config=generic/default"

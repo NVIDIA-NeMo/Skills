@@ -14,7 +14,6 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 
-DATASET_GROUP = "vlm"
 REQUIRES_DATA_DIR = True
 METRICS_TYPE = "multichoice"
 EVAL_SPLIT = "test"

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "math"
 METRICS_TYPE = "hle"  # This uses the MathMetrics class, but with compute_no_answer=False
 GENERATION_ARGS = "++prompt_config=generic/hle ++eval_type=math"
 EVAL_SPLIT = "text"
