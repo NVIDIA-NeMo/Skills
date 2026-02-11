@@ -23,8 +23,9 @@
 #     uv pip compile requirements/code_execution.txt \
 #         --python-version 3.10 -o requirements/sandbox-core.lock
 #     uv pip compile requirements/code_execution.txt requirements/stem.txt \
+#         --python-version 3.10 \
 #         --extra-index-url https://download.pytorch.org/whl/cpu \
-#         --python-version 3.10 -o requirements/sandbox.lock
+#         -o requirements/sandbox.lock
 # =============================================================================
 
 # Use the base image with Python 3.10 and Flask
@@ -85,14 +86,15 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # Set up application code directory
 WORKDIR /app
 
-# Install core Python dependencies from lock file (always)
+# Install Python dependencies from lock file
+# - On CI/arm64: core dependencies only (sandbox-core.lock)
+# - Otherwise: full dependencies including STEM (sandbox.lock)
 COPY requirements/sandbox-core.lock /app/requirements-core.lock
-RUN uv pip install --system -r /app/requirements-core.lock
-
-# Install full dependencies including STEM libraries (skip on CI/arm64)
 COPY requirements/sandbox.lock /app/requirements.lock
 RUN if [ "$GITHUB_CI" != "1" ] && [ "$TARGETARCH" != "arm64" ]; then \
         uv pip install --system -r /app/requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu; \
+    else \
+        uv pip install --system -r /app/requirements-core.lock; \
     fi
 
 # For scicode eval - create data directory and download test data
