@@ -22,7 +22,6 @@ from typing import List, Optional
 import typer
 
 import nemo_skills.pipeline.utils as pipeline_utils
-from nemo_skills.dataset.utils import ExtraDatasetType
 from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.generate import generate as _generate
@@ -407,17 +406,6 @@ def eval(
     ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(None, help="Can specify a custom location for slurm logs."),
-    extra_datasets: str = typer.Option(
-        None,
-        help="Path to a custom dataset folder that will be searched in addition to the main one. "
-        "Can also specify through NEMO_SKILLS_EXTRA_DATASETS.",
-    ),
-    extra_datasets_type: ExtraDatasetType = typer.Option(
-        "local",
-        envvar="NEMO_SKILLS_EXTRA_DATASETS_TYPE",
-        help="If you have extra datasets locally, set to 'local', if on cluster, set to 'cluster'."
-        "Can also specify through NEMO_SKILLS_EXTRA_DATASETS_TYPE environment variable.",
-    ),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     rerun_done: bool = typer.Option(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
@@ -486,10 +474,6 @@ def eval(
     except AttributeError:
         pass
     try:
-        extra_datasets_type = extra_datasets_type.value
-    except AttributeError:
-        pass
-    try:
         single_node_mode = single_node_mode.value
     except AttributeError:
         pass
@@ -540,12 +524,6 @@ def eval(
     env_vars = pipeline_utils.get_env_variables(cluster_config)
     data_dir = data_dir or env_vars.get("NEMO_SKILLS_DATA_DIR") or os.environ.get("NEMO_SKILLS_DATA_DIR")
 
-    if extra_datasets_type == ExtraDatasetType.cluster and cluster_config["executor"] != "slurm":
-        raise ValueError(
-            "Extra datasets type is set to 'cluster', but the executor is not 'slurm'. "
-            "Please use 'local' or change the cluster config."
-        )
-
     if log_dir is None:
         log_dir = f"{output_dir}/eval-logs"
 
@@ -563,7 +541,6 @@ def eval(
         cluster_config,
         benchmarks,
         split,
-        extra_datasets,
         num_jobs,
         starting_seed,
         output_dir,
@@ -573,7 +550,6 @@ def eval(
         server_parameters,
         extra_arguments,
         data_dir,
-        extra_datasets_type,
         exclusive,
         with_sandbox,
         keep_mounts_for_sandbox,
@@ -586,7 +562,6 @@ def eval(
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
     get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
-    should_package_extra_datasets = extra_datasets and extra_datasets_type == ExtraDatasetType.local
     has_tasks = False
     job_id_to_tasks = {}
     benchmark_to_judge_tasks = {}
@@ -630,7 +605,6 @@ def eval(
                         prev_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
                     ),
                     get_server_command=job_server_command,
-                    extra_package_dirs=[extra_datasets] if should_package_extra_datasets else None,
                     sbatch_kwargs=sbatch_kwargs,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,

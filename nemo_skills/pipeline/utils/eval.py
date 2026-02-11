@@ -187,27 +187,14 @@ def get_benchmark_args_from_module(
     )
 
 
-def add_default_args(
-    cluster_config, benchmark_or_group, split, data_dir, extra_datasets_type, extra_datasets, eval_requires_judge
-):
-    benchmark_or_group_module, data_path, is_on_cluster = get_dataset_module(
-        dataset=benchmark_or_group,
-        data_dir=data_dir,
-        cluster_config=cluster_config,
-        extra_datasets=extra_datasets,
-        extra_datasets_type=extra_datasets_type,
-    )
+def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge):
+    benchmark_or_group_module, data_path = get_dataset_module(dataset=benchmark_or_group)
+    is_on_cluster = False
 
     if getattr(benchmark_or_group_module, "IS_BENCHMARK_GROUP", False):
         benchmarks_args = []
         for benchmark, override_dict in benchmark_or_group_module.BENCHMARKS.items():
-            benchmark_module, data_path, is_on_cluster = get_dataset_module(
-                dataset=benchmark,
-                data_dir=data_dir,
-                cluster_config=cluster_config,
-                extra_datasets=extra_datasets,
-                extra_datasets_type=extra_datasets_type,
-            )
+            benchmark_module, data_path = get_dataset_module(dataset=benchmark)
             benchmark_args = get_benchmark_args_from_module(
                 benchmark_module=benchmark_module,
                 benchmark=benchmark,
@@ -249,7 +236,6 @@ def prepare_eval_commands(
     cluster_config,
     benchmarks_or_groups,
     split,
-    extra_datasets,
     num_jobs,
     starting_seed,
     output_dir,
@@ -259,7 +245,6 @@ def prepare_eval_commands(
     server_parameters,
     extra_arguments,
     data_dir,
-    extra_datasets_type,
     exclusive,
     with_sandbox,
     keep_mounts_for_sandbox,
@@ -282,8 +267,6 @@ def prepare_eval_commands(
         k: int(v) for k, v in [b.split(":") if ":" in b else (b, -1) for b in benchmarks_or_groups.split(",")]
     }
 
-    extra_datasets = extra_datasets or os.environ.get("NEMO_SKILLS_EXTRA_DATASETS")
-
     if num_jobs is None:
         if cluster_config["executor"] == "slurm":
             num_jobs = -1  # -1 means run all benchmarks in parallel
@@ -298,8 +281,6 @@ def prepare_eval_commands(
             benchmark_or_group,
             split,
             data_dir,
-            extra_datasets_type,
-            extra_datasets,
             eval_requires_judge=eval_requires_judge,
         )
         for benchmark_args in cur_benchmarks:
