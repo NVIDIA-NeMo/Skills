@@ -65,6 +65,7 @@ def eval_mcq(cfg):
         text, extract_from_boxed: bool = True, extract_regex: str | list[str] = r"The final answer is (.+)$", relaxed=False
     ):
         # extract prediction from boxed{} or regex
+        extracted_answer = None
         if isinstance(extract_regex, list):
             for regex in extract_regex:
                 extracted_answer = extract_answer(
