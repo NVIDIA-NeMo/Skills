@@ -23,6 +23,7 @@ import sys
 from dataclasses import field
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlparse
 
 import hydra
 import tomlkit
@@ -713,21 +714,40 @@ class SweBenchGenerationTask(GenerationTask):
                 }
             }
         else:
+            repo_name = urlparse(self.cfg.eval_harness_repo).path.strip("/")
+            if repo_name.endswith(".git"):
+                repo_name = repo_name[:-4]
+
             # Run full evaluation with streaming output
-            swe_bench_cmd = (
-                # copy installed repo & uv dir from /root_mount
-                "cp -r /root_mount/SWE-bench /root && "
-                "cp -r /root_mount/uv /root && "
-                "cd /root/SWE-bench && "
-                # run the evaluation with streaming output
-                f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
-                f"    --predictions_path {pred_mounted_path} "
-                f"    --instance_ids {data_point['instance_id']} "
-                f"    --run_id eval-outputs "
-                f"    --timeout {self.cfg.swebench_tests_timeout} "
-                f"    --dataset_name {self.cfg.input_file} && "
-                f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
-            )
+            if repo_name == "wasiahmad/SWE-bench_Pro-os":
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
+                    f"    --raw_sample_path {self.cfg.input_file} "
+                    f"    --patch_path {pred_mounted_path} "
+                    f"    --output_dir eval-outputs/{self.cfg.server.model}/{data_point['instance_id']} "
+                    f"    --scripts_dir /root/SWE-bench/run_scripts && "
+                    f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
+                )
+            else:
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
+                    f"    --predictions_path {pred_mounted_path} "
+                    f"    --instance_ids {data_point['instance_id']} "
+                    f"    --run_id eval-outputs "
+                    f"    --timeout {self.cfg.swebench_tests_timeout} "
+                    f"    --dataset_name {self.cfg.input_file} && "
+                    f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
+                )
 
             # Execute SWE-bench evaluation command
             search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
