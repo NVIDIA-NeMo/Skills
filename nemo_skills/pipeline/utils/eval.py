@@ -87,6 +87,7 @@ def get_benchmark_args_from_module(
     eval_requires_judge,
     benchmark_group=None,
     override_dict=None,
+    local_data_path=None,
 ):
     if split is None:
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
@@ -94,8 +95,11 @@ def get_benchmark_args_from_module(
     if not is_on_cluster:
         if pipeline_utils.is_mounted_filepath(cluster_config, data_path) or cluster_config["executor"] == "none":
             input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
-            unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
-            unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))
+            if local_data_path is not None:
+                unmounted_path = f"{local_data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
+            else:
+                unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
+                unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))
         else:
             # will be copied over in this case as it must come from extra datasets
             input_file = f"/nemo_run/code/{Path(data_path).name}/{benchmark.replace('.', '/')}/{split}.jsonl"
@@ -191,8 +195,18 @@ def get_benchmark_args_from_module(
     )
 
 
+def _resolve_data_path(data_path):
+    """Resolve external dataset data_path to a container-mounted path if needed."""
+    if not data_path.startswith("/nemo_run/code"):
+        local_data_path = data_path
+        data_path = pipeline_utils.resolve_external_data_path(data_path)
+        return data_path, local_data_path
+    return data_path, None
+
+
 def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge):
     benchmark_or_group_module, data_path = get_dataset_module(dataset=benchmark_or_group)
+    data_path, local_data_path = _resolve_data_path(data_path)
     is_on_cluster = False
 
     benchmark_or_group_name = get_dataset_name(benchmark_or_group)
@@ -201,6 +215,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
         benchmarks_args = []
         for benchmark, override_dict in benchmark_or_group_module.BENCHMARKS.items():
             benchmark_module, data_path = get_dataset_module(dataset=benchmark)
+            data_path, local_data_path = _resolve_data_path(data_path)
             benchmark_args = get_benchmark_args_from_module(
                 benchmark_module=benchmark_module,
                 benchmark=benchmark,
@@ -211,6 +226,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
                 is_on_cluster=is_on_cluster,
                 eval_requires_judge=eval_requires_judge,
                 override_dict=override_dict,
+                local_data_path=local_data_path,
             )
             if data_dir:
                 benchmark_args.generation_args += f" ++eval_config.data_dir={data_dir} "
@@ -230,6 +246,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
         data_path=data_path,
         is_on_cluster=is_on_cluster,
         eval_requires_judge=eval_requires_judge,
+        local_data_path=local_data_path,
     )
 
     if data_dir:

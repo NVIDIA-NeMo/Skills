@@ -233,16 +233,13 @@ Inside [`nemo_skills/dataset/gsm8k/__init__.py`](https://github.com/NVIDIA-NeMo/
 
 ```python
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = 'math'
 METRICS_TYPE = "math"
 GENERATION_ARGS = "++eval_type=math ++prompt_config=generic/math"
 ```
 
 The prompt config and default generation arguments are passed to the
 [nemo_skills/inference/generate.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/generate.py).
-The dataset group is used by [nemo_skills/dataset/prepare.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/prepare.py)
-to help download only benchmarks from a particular group if `--dataset_groups` parameter is used.
-Finally, the metrics type is used to pick a metrics class from [nemo_skills/evaluation/metrics/map_metrics.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py)
+The metrics type is used to pick a metrics class from [nemo_skills/evaluation/metrics/map_metrics.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py)
 which is called at the end of the evaluation to compute final scores.
 
 ## Adding new benchmarks

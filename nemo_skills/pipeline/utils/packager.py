@@ -76,6 +76,56 @@ def get_registered_external_repo(name: str) -> Optional[RepoMetadata]:
     return EXTERNAL_REPOS[name]
 
 
+def resolve_external_data_path(local_data_path: str | Path) -> str:
+    """Resolve a local external dataset path to its /nemo_run/code/ container path.
+
+    External repos registered via register_external_repo() are packaged and extracted
+    at /nemo_run/code/ relative to their git root. This function finds which registered
+    external repo the local_data_path belongs to and computes the correct container path.
+
+    Args:
+        local_data_path: Local filesystem path to the dataset's parent directory.
+
+    Returns:
+        The container path starting with /nemo_run/code/.
+
+    Raises:
+        RuntimeError: If local_data_path doesn't belong to any registered external repo.
+    """
+    local_data_path = Path(local_data_path).resolve()
+
+    for repo_name, repo_meta in EXTERNAL_REPOS.items():
+        if repo_name == "nemo_skills":
+            continue
+
+        repo_path = repo_meta.path.resolve()
+        try:
+            local_data_path.relative_to(repo_path)
+        except ValueError:
+            continue
+
+        # Found the matching repo. Compute path relative to the git root
+        # since git archive produces paths relative to it.
+        git_root = get_git_repo_path(repo_path)
+        if git_root is None:
+            raise RuntimeError(
+                f"External repo '{repo_name}' at '{repo_path}' is not a git repository. "
+                f"Only git repos can be registered for packaging."
+            )
+        effective_root = Path(git_root).resolve()
+        relative = local_data_path.relative_to(effective_root)
+        if str(relative) == ".":
+            return "/nemo_run/code"
+        return f"/nemo_run/code/{relative}"
+
+    registered = ", ".join(f"'{k}' ({v.path})" for k, v in EXTERNAL_REPOS.items() if k != "nemo_skills")
+    raise RuntimeError(
+        f"External dataset path '{local_data_path}' does not belong to any registered external repo. "
+        f"Registered external repos: {registered or 'none'}. "
+        f"Make sure the external repo containing this dataset calls register_external_repo()."
+    )
+
+
 def get_git_repo_path(path: str | Path = None):
     """Check if the path is a git repo.
 

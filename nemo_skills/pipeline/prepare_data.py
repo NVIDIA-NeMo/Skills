@@ -13,22 +13,25 @@
 # limitations under the License.
 
 import argparse
+import importlib
 import logging
 import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 from typing import List
 
 import typer
 
-from nemo_skills.dataset.utils import get_dataset_module, get_dataset_path
+from nemo_skills.dataset.utils import get_dataset_module, get_dataset_name, get_dataset_path
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.run_cmd import run_cmd as _run_cmd
 from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_env_variables,
     parse_kwargs,
+    resolve_external_data_path,
 )
 from nemo_skills.pipeline.utils.eval import get_arg_from_module_or_dict
 from nemo_skills.utils import get_logger_name, setup_logging
@@ -36,15 +39,14 @@ from nemo_skills.utils import get_logger_name, setup_logging
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
-def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str], list[str]]:
+def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str]]:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("datasets", nargs="*")
-    parser.add_argument("--dataset_groups", default=[], nargs="*")
     parser.add_argument("--add_lean4_header", action="store_true")
     parser.add_argument("--parallelism", type=int, default=20)
     parser.add_argument("--retries", type=int, default=0)
     parsed_args, unknown_args = parser.parse_known_args(args)
-    return parsed_args.datasets, parsed_args.dataset_groups, unknown_args
+    return parsed_args.datasets, unknown_args
 
 
 def _run_prepare_init_locally(datasets: list[str], prepare_unknown_args: list[str]):
@@ -111,12 +113,28 @@ def prepare_data(
     setup_logging(disable_hydra_logs=False, use_rich=True)
     extra_arguments = shlex.join(ctx.args)
     command = f"python -m nemo_skills.dataset.prepare {extra_arguments}".strip()
-    requested_datasets, dataset_groups, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
+    requested_datasets, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
     split_prepare_datasets = [
         d
         for d in requested_datasets
         if get_arg_from_module_or_dict(get_dataset_module(d)[0], "HAS_DYNAMIC_INIT", False)
     ]
+
+    if data_dir:
+        # Check for name collisions between external and built-in datasets.
+        # Both get copied into data_dir by name, so a collision would cause overwrites.
+        for dataset in requested_datasets:
+            name = get_dataset_name(dataset)
+            if "/" in dataset:
+                try:
+                    importlib.import_module(f"nemo_skills.dataset.{name}")
+                    raise ValueError(
+                        f"External dataset at '{dataset}' resolves to name '{name}' which conflicts "
+                        f"with a built-in dataset. Please rename the external dataset directory "
+                        f"to avoid this collision."
+                    )
+                except ModuleNotFoundError:
+                    pass
 
     if not data_dir and not skip_data_dir_check:
         for dataset in requested_datasets:
@@ -134,15 +152,31 @@ def prepare_data(
             "you have a corresponding 'local.yaml' cluster config."
         )
 
-    if len(requested_datasets) == 1 and len(split_prepare_datasets) == 1 and not dataset_groups:
+    if len(requested_datasets) == 1 and len(split_prepare_datasets) == 1:
         split_dataset = split_prepare_datasets[0]
         split_prepare_data_args = shlex.join(prepare_unknown_args)
-        command = f"python {get_dataset_path(split_dataset) / 'prepare_data.py'}"
+        dataset_path = get_dataset_path(split_dataset)
+        # Resolve local path to container-mounted path for the command
+        if "/" in split_dataset:
+            # External dataset - resolve via external repo registry
+            container_path = Path(resolve_external_data_path(dataset_path))
+        else:
+            # Built-in dataset
+            container_path = Path(f"/nemo_run/code/nemo_skills/dataset/{split_dataset}")
+        command = f"python {container_path / 'prepare_data.py'}"
         if split_prepare_data_args:
             command += f" {split_prepare_data_args}"
 
     if data_dir:
-        command += f" && mkdir -p {data_dir} && cp -r /nemo_run/code/nemo_skills/dataset/* {data_dir}"
+        command += f" && mkdir -p {data_dir}"
+        for dataset in requested_datasets:
+            name = get_dataset_name(dataset)
+            if "/" in dataset:
+                dataset_path = get_dataset_path(dataset)
+                container_dataset_path = resolve_external_data_path(dataset_path)
+                command += f" && cp -r {container_dataset_path} {data_dir}/{name}"
+            else:
+                command += f" && cp -r /nemo_run/code/nemo_skills/dataset/{name} {data_dir}/{name}"
 
     cluster_config = get_cluster_config(cluster, config_dir=config_dir)
     if cluster_config["executor"] == "local" and not data_dir:

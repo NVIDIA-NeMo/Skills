@@ -19,7 +19,6 @@ from pathlib import Path
 
 from nemo_skills.dataset.utils import (
     add_header_to_jsonl_inplace,
-    get_dataset_module,
     get_dataset_path,
     get_lean4_header,
 )
@@ -27,28 +26,16 @@ from nemo_skills.dataset.utils import (
 
 def prepare_datasets(
     datasets=None,
-    dataset_groups=None,
     add_lean4_header=False,
     extra_args="",
     parallelism=20,
     retries=3,
 ):
-    if datasets and dataset_groups:
-        raise ValueError("Cannot specify both datasets and dataset_groups")
-
     datasets_dir = Path(__file__).absolute().parents[0]
 
     if not datasets:
         default_datasets = [d.name for d in datasets_dir.glob("*") if d.is_dir() and d.name != "__pycache__"]
         datasets = default_datasets
-
-    if dataset_groups:
-        target_datasets = []
-        for dataset in datasets:
-            dataset_module, _ = get_dataset_module(dataset)
-            if getattr(dataset_module, "DATASET_GROUP", None) in dataset_groups:
-                target_datasets.append(dataset)
-        datasets = target_datasets
 
     max_workers = max(1, parallelism) if parallelism is not None else 1
 
@@ -72,8 +59,7 @@ def prepare_datasets(
                     raise
                 print(f"Retrying {dataset_name} after failure")
 
-        dataset_module, _ = get_dataset_module(dataset_name)
-        if getattr(dataset_module, "DATASET_GROUP", None) == "math" and add_lean4_header:
+        if add_lean4_header:
             jsonl_files = list(dataset_path.glob("*.jsonl"))
             header = get_lean4_header()
             for jsonl_file in jsonl_files:
@@ -102,13 +88,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare all datasets")
     parser.add_argument("datasets", nargs="+", help="Specify one or more datasets to prepare")
     parser.add_argument(
-        "--dataset_groups",
-        default=[],
-        nargs="*",
-        choices=["math", "code", "chat", "multichoice", "long-context", "tool", "vlm"],
-        help="Can specify a dataset group here",
-    )
-    parser.add_argument(
         "--add_lean4_header", action="store_true", help="Add Lean4 header to JSONL files during preparation"
     )
     parser.add_argument(
@@ -128,7 +107,6 @@ if __name__ == "__main__":
 
     prepare_datasets(
         args.datasets,
-        args.dataset_groups,
         args.add_lean4_header,
         extra_args=extra_args,
         parallelism=args.parallelism,
