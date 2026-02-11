@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict
 
 import nemo_skills.pipeline.utils as pipeline_utils
-from nemo_skills.dataset.utils import get_dataset_module, import_from_path
+from nemo_skills.dataset.utils import get_dataset_module, get_dataset_name, import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.utils import compute_chunk_ids, get_logger_name
@@ -195,6 +195,8 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
     benchmark_or_group_module, data_path = get_dataset_module(dataset=benchmark_or_group)
     is_on_cluster = False
 
+    benchmark_or_group_name = get_dataset_name(benchmark_or_group)
+
     if getattr(benchmark_or_group_module, "IS_BENCHMARK_GROUP", False):
         benchmarks_args = []
         for benchmark, override_dict in benchmark_or_group_module.BENCHMARKS.items():
@@ -202,7 +204,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
             benchmark_args = get_benchmark_args_from_module(
                 benchmark_module=benchmark_module,
                 benchmark=benchmark,
-                benchmark_group=benchmark_or_group,
+                benchmark_group=benchmark_or_group_name,
                 split=split,
                 cluster_config=cluster_config,
                 data_path=data_path,
@@ -219,7 +221,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
         return benchmarks_args
 
     # Single benchmark
-    benchmark = benchmark_or_group
+    benchmark = benchmark_or_group_name
     benchmark_args = get_benchmark_args_from_module(
         benchmark_module=benchmark_or_group_module,
         benchmark=benchmark,

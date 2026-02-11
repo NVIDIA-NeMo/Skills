@@ -52,6 +52,13 @@ def import_from_path(file_path, module_name=None):
     return module
 
 
+def get_dataset_name(dataset):
+    """Extract the canonical dataset name from a dataset identifier (short name or path)."""
+    if "/" in dataset:
+        return Path(dataset).name
+    return dataset
+
+
 def get_default_dataset_module(dataset):
     data_path = "/nemo_run/code/nemo_skills/dataset"
     dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset}")
@@ -60,7 +67,15 @@ def get_default_dataset_module(dataset):
 
 
 def get_dataset_module(dataset):
-    """Get dataset module from nemo_skills.dataset."""
+    """Get dataset module from nemo_skills.dataset or from a path to a directory containing __init__.py."""
+    if "/" in dataset:
+        init_path = Path(dataset) / "__init__.py"
+        if not init_path.exists():
+            raise RuntimeError(f"Expected {init_path} to exist for external dataset {dataset}")
+        dataset_module = import_from_path(str(init_path))
+        # parent of benchmark dir so that data_path/benchmark_name/split.jsonl works
+        data_path = str(Path(dataset).parent)
+        return dataset_module, data_path
     try:
         dataset_module, data_path = get_default_dataset_module(dataset)
     except ModuleNotFoundError:
