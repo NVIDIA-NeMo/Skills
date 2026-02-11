@@ -70,19 +70,16 @@ ns run_cmd --cluster=local \
 ## Step 3: Run relevance inference
 
 ```bash
-python /nemo_run/code/recipes/libtrace/scripts/run_applicability_relevance.py \
+ns generate \
   --cluster local \
-  --domain chem \
   --input_file /workspace/libtrace-results/prepare-inference-chem/results/chem_inference.jsonl \
   --output_dir /workspace/libtrace-results/applicability-relevance-chem/results \
   --log_dir /workspace/libtrace-results/applicability-relevance-chem/logs \
   --model openai/gpt-oss-120b \
   --server_type vllm \
-  --server_gpus 8
+  --server_gpus 8 \
+  ++prompt_config=/nemo_run/code/recipes/libtrace/prompts/applicability-relevance.yaml
 ```
-
-Prompt is located in `Skills/recipes/libtrace/prompts/`:
-- `applicability-relevance.yaml`
 
 ## Step 4: Filter applicability + relevance
 
@@ -102,7 +99,7 @@ Examples below use `chem`. Repeat the same steps for `phys` and `bio` by swappin
 the domain flag and input/output paths.
 
 ```bash
-python /nemo_run/code/recipes/libtrace/scripts/run_problem_generation.py \
+ns generate \
   --cluster local \
   --input_file /workspace/libtrace-results/filter-applicability-relevance-chem/results/chem_filtered.jsonl \
   --output_dir /workspace/libtrace-results/problem-generation-chem/results \
@@ -110,11 +107,9 @@ python /nemo_run/code/recipes/libtrace/scripts/run_problem_generation.py \
   --model openai/gpt-oss-120b \
   --server_type vllm \
   --server_gpus 8 \
-  --num_random_seeds 4
+  --num_random_seeds 4 \
+  ++prompt_config=/nemo_run/code/recipes/libtrace/prompts/problem-generation.yaml
 ```
-
-The default prompt config is `/nemo_run/code/recipes/libtrace/prompts/problem-generation.yaml`.
-You can override it with `--prompt_config /path/to/prompt.yaml`.
 
 ## Step 6: Collect generated problems
 
@@ -131,7 +126,7 @@ Use `--max_problem_tokens` / `--tokenizer` to adjust.
 ## Step 7: Solve problems with generic/general-boxed
 
 ```bash
-python /nemo_run/code/recipes/libtrace/scripts/run_boxed_inference.py \
+ns generate \
   --cluster local \
   --input_file /workspace/libtrace-results/collect-problems-chem/results/chem_problems.jsonl \
   --output_dir /workspace/libtrace-results/boxed-inference-chem/results \
@@ -143,14 +138,24 @@ python /nemo_run/code/recipes/libtrace/scripts/run_boxed_inference.py \
   --num_random_seeds 8 \
   --num_chunks 16 \
   --with_sandbox \
-  --extra_args "++inference.endpoint_type=text ++inference.tokens_to_generate=65536 ++inference.temperature=1.0 ++inference.top_p=1.0 ++code_execution=true ++code_tags=gpt-oss ++server.code_execution.max_code_executions=100 ++server.code_execution.code_execution_timeout=120 ++chat_template_kwargs.reasoning_effort=high ++chat_template_kwargs.builtin_tools=[python] ++max_concurrent_requests=32"
+  ++prompt_config=generic/general-boxed \
+  ++inference.endpoint_type=text \
+  ++inference.tokens_to_generate=65536 \
+  ++inference.temperature=1.0 \
+  ++inference.top_p=1.0 \
+  ++code_execution=true \
+  ++code_tags=gpt-oss \
+  ++server.code_execution.max_code_executions=100 \
+  ++server.code_execution.code_execution_timeout=120 \
+  ++chat_template_kwargs.reasoning_effort=high \
+  ++chat_template_kwargs.builtin_tools=[python] \
+  ++max_concurrent_requests=32
 ```
 
-Key `extra_args` additions vs defaults:
-- `server.code_execution.max_code_executions=100` — default is 8, too low for
-  scientific problems where the model iterates many times with code
-- `server.code_execution.code_execution_timeout=120` — per-execution timeout in
-  seconds (default 10s)
+Key overrides vs defaults:
+- `max_code_executions=100` — default is 8, too low for scientific problems
+  where the model iterates many times with code
+- `code_execution_timeout=120` — per-execution timeout in seconds (default 10s)
 
 ## Step 8: Gather solutions
 
