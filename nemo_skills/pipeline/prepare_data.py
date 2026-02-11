@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import logging
 import os
+import shlex
+import subprocess
+import sys
 from typing import List
 
 import typer
@@ -42,6 +46,30 @@ DATASETS_REQUIRE_DATA_DIR = [
     "musan",
     "mmmu-pro",
 ]
+
+DATASETS_WITH_SPLIT_PREPARE_SCRIPTS = [
+    "ruler",
+    "ruler2",
+]
+
+
+def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str], list[str]]:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("datasets", nargs="*")
+    parser.add_argument("--dataset_groups", default=[], nargs="*")
+    parser.add_argument("--add_lean4_header", action="store_true")
+    parser.add_argument("--parallelism", type=int, default=20)
+    parser.add_argument("--retries", type=int, default=0)
+    parsed_args, unknown_args = parser.parse_known_args(args)
+    return parsed_args.datasets, parsed_args.dataset_groups, unknown_args
+
+
+def _run_prepare_init_locally(datasets: list[str], prepare_unknown_args: list[str]):
+    for dataset in datasets:
+        subprocess.run(
+            [sys.executable, "-m", f"nemo_skills.dataset.{dataset}.prepare_init", *prepare_unknown_args],
+            check=True,
+        )
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -97,8 +125,10 @@ def prepare_data(
     Run `python -m nemo_skills.dataset.prepare --help` to see other supported arguments.
     """
     setup_logging(disable_hydra_logs=False, use_rich=True)
-    extra_arguments = f"{' '.join(ctx.args)}"
-    command = f"python -m nemo_skills.dataset.prepare {extra_arguments}"
+    extra_arguments = shlex.join(ctx.args)
+    command = f"python -m nemo_skills.dataset.prepare {extra_arguments}".strip()
+    requested_datasets, dataset_groups, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
+    split_prepare_datasets = [d for d in requested_datasets if d in DATASETS_WITH_SPLIT_PREPARE_SCRIPTS]
 
     if not data_dir and not skip_data_dir_check:
         for dataset in DATASETS_REQUIRE_DATA_DIR:
@@ -115,6 +145,13 @@ def prepare_data(
             "You can set it to 'local' if preparing data locally assuming "
             "you have a corresponding 'local.yaml' cluster config."
         )
+
+    if len(requested_datasets) == 1 and len(split_prepare_datasets) == 1 and not dataset_groups:
+        split_dataset = split_prepare_datasets[0]
+        split_prepare_data_args = shlex.join(prepare_unknown_args)
+        command = f"python -m nemo_skills.dataset.{split_dataset}.prepare_data"
+        if split_prepare_data_args:
+            command += f" {split_prepare_data_args}"
 
     if data_dir:
         command += f" && mkdir -p {data_dir} && cp -r /nemo_run/code/nemo_skills/dataset/* {data_dir}"
@@ -153,6 +190,9 @@ def prepare_data(
                 f"to avoid always specifying it as a parameter to `ns eval`."
             )
         # TODO: automatically add it to cluster config based on user prompt?
+
+    if split_prepare_datasets:
+        _run_prepare_init_locally(split_prepare_datasets, prepare_unknown_args)
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
