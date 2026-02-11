@@ -161,10 +161,10 @@ class CritPtEvaluator(BaseEvaluator):
 
         # Process aggregate statistics from API response
         # CritPt API returns aggregate accuracy, not per-example results
-        accuracy = response_data.get("accuracy", 0.0)
-        timeout_rate = response_data.get("timeout_rate", 0.0)
-        server_timeout_count = response_data.get("server_timeout_count", 0)
-        judge_error_count = response_data.get("judge_error_count", 0)
+        accuracy = response_data["accuracy"]
+        timeout_rate = response_data["timeout_rate"]
+        server_timeout_count = response_data["server_timeout_count"]
+        judge_error_count = response_data["judge_error_count"]
 
         LOG.info(
             f"API Results - Accuracy: {accuracy:.2%}, Timeout Rate: {timeout_rate:.2%}, "

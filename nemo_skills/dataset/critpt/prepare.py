@@ -25,7 +25,7 @@ if __name__ == "__main__":
     dataset = load_dataset("CritPt-Benchmark/CritPt", split="train")
 
     with open(output_file, "wt", encoding="utf-8") as fout:
-        for idx, problem in enumerate(dataset):
+        for problem in dataset:
             entry = {
                 "problem_id": problem["problem_id"],
                 "problem": problem["problem_description"],

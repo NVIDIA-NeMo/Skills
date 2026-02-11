@@ -133,8 +133,8 @@ class CritPtGenerationTask(GenerationTask):
 
         # Add turn-specific metadata
         turn2_result["intermediate"] = solution_turn1
-        turn2_result["num_generated_tokens_turn1"] = turn1_result.get("num_generated_tokens", 0)
-        turn2_result["num_generated_tokens_turn2"] = turn2_result.get("num_generated_tokens", 0)
+        turn2_result["num_generated_tokens_turn1"] = turn1_result["num_generated_tokens"]
+        turn2_result["num_generated_tokens_turn2"] = turn2_result["num_generated_tokens"]
 
         return turn2_result
 
