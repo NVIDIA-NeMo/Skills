@@ -8,7 +8,8 @@ The same workflow applies to chemistry, physics, and biology—swap the domain
 inputs and output paths.
 
 For the full walkthrough, command examples, and configuration details see
-[recipes/libtrace/README.md](/recipes/libtrace/README.md).
+the [recipes/libtrace/README.md](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/libtrace/README.md)
+in the repository.
 
 ## Pipeline overview
 
