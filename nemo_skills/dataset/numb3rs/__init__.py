@@ -64,4 +64,4 @@ EVAL_ARGS = (
 )
 
 # Generation settings - OpenAI format for audio-language models
-GENERATION_ARGS = "++prompt_format=openai"
+GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
