@@ -71,7 +71,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--languages",
-        default=SUPPORTED_LANGUAGES,
+        default=["DE-DE", "ES-LA", "FR-FR", "IT-IT", "JA-JP"],
         nargs="+",
         help="Languages to process.",
     )
