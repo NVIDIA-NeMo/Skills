@@ -1,214 +1,93 @@
-# Scientific knowledge
+# Scientific Knowledge
 
-More details are coming soon!
+Nemo-Skills can be used to evaluate an LLM on various STEM datasets.
 
-## Supported benchmarks
+## Dataset Overview
 
-### hle
-
-- Benchmark is defined in [`nemo_skills/dataset/hle/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hle/__init__.py)
-- Original benchmark source is [here](https://huggingface.co/datasets/cais/hle).
-- The `text` split includes all non-image examples. It is further divided into `eng`, `chem`, `bio`, `cs`, `phy`, `math`, `human`, `other`. Currently, **all** of these splits contain only text data.
-
-### SimpleQA
-
-- Benchmark is defined in [`nemo_skills/dataset/simpleqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/simpleqa/__init__.py)
-- Original benchmark source code for SimpleQA (OpenAI) is [here](https://github.com/openai/simple-evals/) and the leaderboard is [here](https://www.kaggle.com/benchmarks/openai/simpleqa). An improved version with 1,000 examples from Google, SimpleQA-verified, is [here](https://www.kaggle.com/benchmarks/deepmind/simpleqa-verified).
-- To use the SimpleQA-verified, set `split=verified`. To use the original version of SimpleQA, please set `split=test`.
-
-In the below configurations, we also use `gpt-oss-120b` as the judge model.
-
-#### Configuration: `gpt-oss-120b` with builtin tool (python)
+| <div style="width:55px; display:inline-block; text-align:center">Dataset</div> | <div style="width:105px; display:inline-block; text-align:center">Questions</div> | <div style="width:85px; display:inline-block; text-align:center">Types</div> | <div style="width:145px; display:inline-block; text-align:center">Domain</div> | <div style="width:60px; display:inline-block; text-align:center">Images?</div> | <div style="width:50px; display:inline-block; text-align:center">NS default</div> |
+|:---|:---:|:---:|:---|:---:|:---:|
+| **[HLE](https://huggingface.co/datasets/cais/hle)** | 2500 | Open ended, MCQ | Engineering, Physics, Chemistry, Bio, etc. | Yes | text only |
+| **[GPQA ](https://huggingface.co/datasets/Idavidrein/gpqa)** | 448 (main)<br>198 (diamond)</br>546 (ext.) | MCQ (4) | Physics, Chemistry, Biology | No | diamond |
+| **[SuperGPQA](https://huggingface.co/datasets/m-a-p/SuperGPQA)** | 26,529 | MCQ (≤ 10) | Science, Eng, Humanities, etc. | No | test |
+| **[MMLU-Pro](https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro)** | 12,032 | MCQ (≤ 10) | Multiple subjects | No | test |
+| **[SciCode](https://huggingface.co/datasets/SciCode1/SciCode)** | 80</br>(338 subtasks) | Code gen | Scientific computing | No | test+val |
+| **[FrontierScience](https://huggingface.co/datasets/openai/frontierscience)** | 100 | Short-answer | Physics, Chemistry, Biology | No | all |
+| **[Physics](https://huggingface.co/datasets/desimfj/PHYSICS)** | 1,000 (EN), 1,000 (ZH) | Open-ended | Physics | No | EN |
+| **[MMLU](https://huggingface.co/datasets/cais/mmlu)** | 14,042 | MCQ (4) | Multiple Subjects | No | test |
+| **[MMLU-Redux](https://huggingface.co/datasets/edinburgh-dawg/mmlu-redux)** | 5,385| MCQ (4) | Multiple Subjects | No | test |
+| **[SimpleQA](https://github.com/openai/simple-evals/)** | 4,326 (test), 1,000 (verified) | Open ended | Factuality, Parametric knowledge| No | verified |
 
 
+## Evaluate `NVIDIA-Nemotron-3-Nano` on an MCQ dataset
 
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, eval
-cluster = 'slurm'
-
+cluster = "slurm"
 eval(
     ctx=wrap_arguments(
-                "++inference.temperature=1.0 ++inference.tokens_to_generate=65536 "
-                "++code_tags=gpt-oss ++server.code_execution.max_code_executions=100 "
-                "++inference.endpoint_type=text ++chat_template_kwargs.builtin_tools=[python] "
-                "++chat_template_kwargs.reasoning_effort=high ++code_execution=true "
-                "++parse_reasoning=True "
-                '\'++end_reasoning_string="<|start|>assistant<|channel|>final<|message|>"\''
+        "++inference.temperature=1.0 ++inference.top_p=1.0 "
+        "++inference.tokens_to_generate=131072 "
+        "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
     ),
     cluster=cluster,
-    expname="simpleqa-gpt-oss-120b-tool-output-only",
-    model="openai/gpt-oss-120b",
     server_type="vllm",
-    server_gpus=8,
-    server_args="--async-scheduling",
-    benchmarks="simpleqa:2",
-    split="verified",
-    output_dir="/workspace/simpleqa-gpt-oss-120b-tool-output-only",
-    with_sandbox=True,
-    judge_model="openai/gpt-oss-120b",
-    judge_server_type="vllm",
-    judge_server_gpus=8,
-    judge_server_args="--async-scheduling  --reasoning-parser GptOss",
+    server_gpus=1,
+    server_args="--no-enable-prefix-caching --mamba_ssm_cache_dtype float32",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    benchmarks="gpqa:4",
+    output_dir="/workspace/Nano_V3_evals"
 )
 ```
+</br>
 
-
-
-#### Configuration: `gpt-oss-120b` without tool
-
-
+## Evaluate `NVIDIA-Nemotron-3-Nano` using LLM-as-a-judge
 
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, eval
-cluster = 'slurm'
+cluster = "slurm"
 eval(
     ctx=wrap_arguments(
-                "++inference.temperature=1.0 ++inference.tokens_to_generate=100000 "
-                "++inference.extra_body.reasoning_effort=high "
+       "++inference.temperature=1.0 ++inference.top_p=1.0 "
+        "++inference.tokens_to_generate=131072 "
+        "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
     ),
-    cluster="ord",
-    expname="simpleqa-gpt-oss-120b-notool",
-    model="openai/gpt-oss-120b",
+    cluster=cluster,
     server_type="vllm",
-    server_gpus=8,
-    server_args="--async-scheduling --reasoning-parser GptOss",
-    benchmarks="simpleqa:2",
-    split="verified",
-    output_dir="/workspace/simpleqa-gpt-oss-120b-notool",
-    judge_model="openai/gpt-oss-120b",
-    judge_server_type="vllm",
-    judge_server_gpus=8,
-    judge_server_args="--async-scheduling  --reasoning-parser GptOss",
-)
-```
-
-!!! note
-
-    The module name for `reasoning-parser` differs across `vllm` versions. Depending on your version, it might appear as `openai_gptoss` or `GptOss`. In the latest main branch, it is named `openai_gptoss`. You can verify this in [gptoss_reasoning_parser.py](https://github.com/vllm-project/vllm/blob/main/vllm/reasoning/gptoss_reasoning_parser.py) and confirm which version your environment uses.
-
-#### Result
-
-We also tested a variant where the full generation output was provided to the judge—disabling "parse_reasoning". This configuration, labeled `simpleqa-gpt-oss-120b-tool-full-generation`, produced results nearly identical to the standard setup where the reasoning portion is excluded from the judge’s input.
-
-
-
-| Run Name                                      |     pass@1 |   majority@2 |    pass@2 |
-|:----------------------------------------------|-----------:|-------------:|----------:|
-| simpleqa-gpt-oss-120b-notool                  | 12.93     |   12.93     | 17.22   |
-| simpleqa-gpt-oss-120b-tool-full-generation                    | 80.30    |   80.30    | 84.78   |
-| simpleqa-gpt-oss-120b-tool-output-only          | 79.51    |   79.51    | 83.74   |
-
-The reported number for `simpleqa-gpt-oss-120b-notool` is 13.1% according to this [kaggle page](https://www.kaggle.com/benchmarks/deepmind/simpleqa-verified).
-
-### FrontierScience-Olympiad
-
-- Benchmark is defined in [`nemo_skills/dataset/frontierscience-olympiad/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/frontierscience-olympiad/__init__.py)
-- Original benchmark source is [here](https://huggingface.co/datasets/openai/frontierscience).
-- Contains 100 short-answer questions crafted by international science olympiad medalists across physics, chemistry, and biology.
-- Available splits: `physics`, `chemistry`, `biology`, and `all` (all subjects combined, default).
-
-#### Configuration: `gpt-oss-20b` with builtin tool (python)
-
-```python
-from nemo_skills.pipeline.cli import wrap_arguments, eval
-
-eval(
-    ctx=wrap_arguments(
-        "++inference.temperature=1.0 ++inference.tokens_to_generate=65536 "
-        "++code_tags=gpt-oss ++server.code_execution.max_code_executions=100 "
-        "++inference.endpoint_type=text ++chat_template_kwargs.builtin_tools=[python] "
-        "++chat_template_kwargs.reasoning_effort=high ++code_execution=true"
-    ),
-    cluster="slurm",
-    expname="ghb-model_gpt_oss_20b",
-    model="openai/gpt-oss-20b",
-    server_type="vllm",
-    server_gpus=4,
-    server_args="--async-scheduling",
-    benchmarks="frontierscience-olympiad:20",
-    split="all",
-    num_chunks=1,
-    output_dir="/workspace/frontierscience-ghb-model_gpt_oss_20b",
-    with_sandbox=True,
-    wandb_project="frontier",
-    wandb_name="frontierscience-ghb-model_gpt_oss_20b",
+    server_gpus=1,
+    server_args="--no-enable-prefix-caching --mamba_ssm_cache_dtype float32",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    benchmarks="hle:4",
+    output_dir="/workspace/Nano_V3_evals",
     judge_model="openai/gpt-oss-120b",
     judge_server_type="vllm",
     judge_server_gpus=8,
     judge_server_args="--async-scheduling",
+    extra_judge_args="++chat_template_kwargs.reasoning_effort=high  ++inference.temperature=1.0 ++inference.top_p=1.0 ++inference.tokens_to_generate=120000 "
 )
+
 ```
 
-
-#### Configuration: `gpt-oss-120b` without tool
+## Evaluate `NVIDIA-Nemotron-3-Nano` on an MCQ dataset using tools
 
 ```python
 from nemo_skills.pipeline.cli import wrap_arguments, eval
-
+cluster = "slurm"
 eval(
     ctx=wrap_arguments(
-        "++inference.temperature=1.0 ++inference.tokens_to_generate=65536 "
-        "++inference.extra_body.reasoning_effort=high"
+        "++inference.temperature=0.6 ++inference.top_p=0.95 "
+        "++inference.tokens_to_generate=131072 "
+        "++chat_template_kwargs.enable_thinking=true ++parse_reasoning=True "
+        "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
+
     ),
-    cluster="slurm",
-    expname="ghn-model_gpt_oss_120b",
-    model="openai/gpt-oss-120b",
+    cluster=cluster,
     server_type="vllm",
-    server_gpus=8,
-    server_args="--async-scheduling",
-    benchmarks="frontierscience-olympiad:20",
-    split="all",
-    num_chunks=1,
-    output_dir="/workspace/frontierscience-ghn-model_gpt_oss_120b",
-    wandb_project="frontier",
-    wandb_name="frontierscience-ghn-model_gpt_oss_120b",
-    judge_model="openai/gpt-oss-120b",
-    judge_server_type="vllm",
-    judge_server_gpus=8,
-    judge_server_args="--async-scheduling",
+    server_gpus=1,
+    server_args="--no-enable-prefix-caching --mamba_ssm_cache_dtype float32 --enable-auto-tool-choice --tool-call-parser qwen3_coder",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    benchmarks="gpqa:4",
+    output_dir="/workspace/Nano_V3_evals",
+    with_sandbox=True,
+
 )
 ```
-
-#### Result
-
-| Run Name                                  |   pass@1 |   majority@8 |   pass@8 |
-|:------------------------------------------|---------:|-------------:|---------:|
-| gpt-oss-20b (no tool)                     |    49.74 |        47.00 |    71.98 |
-| gpt-oss-20b (with python tool)            |    36.94 |        37.38 |    73.61 |
-| gpt-oss-120b (no tool)                    |    60.53 |        61.13 |    79.25 |
-| gpt-oss-120b (with python tool)           |    54.05 |        53.00 |    80.07 |
-
-### SuperGPQA
-
-- Benchmark is defined in [`nemo_skills/dataset/supergpqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/supergpqa/__init__.py)
-- Original benchmark source is available in the [SuperGPQA repository](https://github.com/SuperGPQA/SuperGPQA). The official leaderboard is listed on the [SuperGPQA dataset page](https://supergpqa.github.io/#Dataset).
-- The `science` split contains all the data where the discipline is "Science". The default full split is `test`.
-
-### scicode
-
-!!! note
-
-    For scicode by default we evaluate on the combined dev + test split (containing 80 problems and 338 subtasks) for consistency with [AAI evaluation methodology](https://artificialanalysis.ai/methodology/intelligence-benchmarking). If you want to only evaluate on the test set, use `--split=test`.
-
-- Benchmark is defined in [`nemo_skills/dataset/scicode/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/scicode/__init__.py)
-- Original benchmark source is [here](https://github.com/scicode-bench/SciCode).
-
-### gpqa
-
-- Benchmark is defined in [`nemo_skills/dataset/gpqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/gpqa/__init__.py)
-- Original benchmark source is [here](https://github.com/idavidrein/gpqa).
-
-### mmlu-pro
-
-- Benchmark is defined in [`nemo_skills/dataset/mmlu-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu-pro/__init__.py)
-- Original benchmark source is [here](https://github.com/TIGER-AI-Lab/MMLU-Pro).
-
-### mmlu
-
-- Benchmark is defined in [`nemo_skills/dataset/mmlu/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu/__init__.py)
-- Original benchmark source is [here](https://github.com/hendrycks/test).
-
-### mmlu-redux
-
-- Benchmark is defined in [`nemo_skills/dataset/mmlu-redux/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu-redux/__init__.py)
-- Original benchmark source is [here](https://github.com/aryopg/mmlu-redux).
