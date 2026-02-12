@@ -189,18 +189,10 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
             include_patterns.append(str(nemo_skills_dir / "*"))
         else:
             # picking up local dataset files if we are in the right repo
-            include_patterns.append(str(nemo_skills_dir / "dataset/**/*.jsonl"))
-            subfolder_datasets = [
-                "ruler",
-                "ruler2",
-                "bfcl_v3",
-                "bfcl_v4",
-            ]  # TODO: read this from init.py in a dataset folder
-            # special logic for any dataset that creates subfolders
-            for subfolder_dataset in subfolder_datasets:
+            dataset_dir = nemo_skills_dir / "dataset"
+            for f in dataset_dir.rglob("*.jsonl"):
+                include_patterns.append(str(f))
                 include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
-                include_patterns.append(str(nemo_skills_dir / f"dataset/{subfolder_dataset}/*"))
-        include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
 
         root_package = run.GitArchivePackager(
             include_pattern=include_patterns,
