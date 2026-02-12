@@ -41,7 +41,8 @@ from nemo_skills.evaluation.evaluator.mcq import eval_mcq
 from nemo_skills.evaluation.evaluator.mmau_pro import eval_mmau_pro
 from nemo_skills.evaluation.evaluator.mrcr import eval_mrcr
 from nemo_skills.evaluation.evaluator.ruler import eval_ruler, eval_ruler2
-from nemo_skills.evaluation.evaluator.scicode import eval_scicode
+
+# from nemo_skills.evaluation.evaluator.scicode import eval_scicode
 
 EVALUATOR_MAP = {
     # Function-based evaluators (batch-only)
@@ -55,7 +56,7 @@ EVALUATOR_MAP = {
     "livecodebench": eval_livecodebench,
     "livebench_coding": eval_livebench_coding,
     "livecodebench_pro": eval_livecodebench_pro,
-    "scicode": eval_scicode,
+    # "scicode": eval_scicode,
     "mrcr": eval_mrcr,
     "bigcodebench": eval_bigcodebench,
     "human_eval_infilling": eval_human_eval_infilling,
