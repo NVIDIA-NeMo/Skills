@@ -60,6 +60,43 @@ class SweBenchMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions=predictions)
 
 
+class SciCodeMetrics(BaseMetrics):
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        subtask_status_list = prediction["eval_status"]
+        correct_subtasks = sum(subtask["process_status"] == "completed" for subtask in subtask_status_list)
+        return {
+            "problem_accuracy": correct_subtasks == len(subtask_status_list),
+            "subtask_accuracy": correct_subtasks,
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        prediction = prediction.copy()
+        subtask_status_list = prediction["eval_status"]
+        for subtask in subtask_status_list:
+            subtask["process_status"] = "error"
+        prediction["eval_status"] = subtask_status_list
+        return prediction
+
+    def update(self, predictions):
+        super().update(predictions)
+        self.subtasks_total += len(predictions[0]["eval_status"])
+        self._compute_pass_at_k(predictions)
+
+    def get_metrics(self):
+        metrics_dict = super().get_metrics()
+        for agg_mode in self.eval_dict.keys():
+            metrics_dict[agg_mode]["num_problems"] = metrics_dict[agg_mode].pop("num_entries")
+            metrics_dict[agg_mode]["num_subtasks"] = self.subtasks_total
+            # correcting subtask normalization
+            metrics_dict[agg_mode]["subtask_accuracy"] *= self.total / self.subtasks_total
+
+        return metrics_dict
+
+    def reset(self):
+        super().reset()
+        self.subtasks_total = 0
+
+
 class BigCodeBenchMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         return {

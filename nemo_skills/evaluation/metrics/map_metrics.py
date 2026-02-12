@@ -28,7 +28,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     EvalPlusMetrics,
     HumanEvalInfillingMetrics,
     LiveCodeBenchMetrics,
-    # SciCodeMetrics,
+    SciCodeMetrics,
     SweBenchMetrics,
 )
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
@@ -71,7 +71,7 @@ METRICS_MAP = {
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
-    # "scicode": SciCodeMetrics,
+    "scicode": SciCodeMetrics,
     "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,
     "aalcr": AALCRMetrics,
