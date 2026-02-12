@@ -18,4 +18,4 @@ DATASET_GROUP = "code"
 METRICS_TYPE = "swe-bench"
 # evaluation is fused with generation for efficiency
 GENERATION_MODULE = "nemo_skills.inference.eval.swebench"
-GENERATION_ARGS = "++multilingual=True ++eval_harness_repo=https://github.com/wasiahmad/SWE-bench_Pro-os.git"
+GENERATION_ARGS = "++multilingual=True ++dataset_type=swe_bench_pro ++eval_harness_repo=https://github.com/wasiahmad/SWE-bench_Pro-os.git"

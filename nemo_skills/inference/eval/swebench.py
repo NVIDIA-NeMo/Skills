@@ -47,6 +47,12 @@ class SupportedAgentFrameworks(str, Enum):
     openhands = "openhands"
 
 
+class SupportedDatasetTypes(str, Enum):
+    swe_bench = "swe_bench"
+    multi_swe_bench = "multi_swe_bench"
+    swe_bench_pro = "swe_bench_pro"
+
+
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
 # because they may not be supported by all LLM servers.
 @nested_dataclass(kw_only=True)
@@ -117,6 +123,9 @@ class SweBenchGenerationConfig:
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
     # For SWE-agent, this changes the default config to multilingual.yaml, which uses language-specific prompting.
     multilingual: bool = False
+
+    # Which dataset type we're running on. This determines which evaluation harness is used.
+    dataset_type: SupportedDatasetTypes = SupportedDatasetTypes.swe_bench
 
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
     eval_harness_repo: str = "https://github.com/Kipok/SWE-bench.git"
@@ -489,11 +498,17 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.multilingual:
             extra_fields["language"] = data_point["language"]
 
+        repo_location_setup = (
+            "mkdir -p /testbed && cp -r /app/. /testbed && "
+            if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro
+            else ""
+        )
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/SWE-agent && "
+            f"{repo_location_setup}"
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
@@ -596,6 +611,12 @@ class SweBenchGenerationTask(GenerationTask):
                 f" train "  # dataset split (always "train" for local datasets)
             )
 
+        repo_location_setup = (
+            "mkdir -p /testbed && cp -r /app/. /testbed && "
+            if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro
+            else ""
+        )
+
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -611,6 +632,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/tmux /root && "
             "cp -r /root_mount/jq /root && "
             "cd /root/OpenHands && "
+            f"{repo_location_setup}"
             # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
