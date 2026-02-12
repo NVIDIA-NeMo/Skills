@@ -253,3 +253,6 @@ To create a new benchmark follow this process:
    a fully custom generation module. See [scicode](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/scicode/__init__.py) or [swe-bench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench/__init__.py) for examples of this.
 4. Create a new [evaluation class](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/evaluator/__init__.py) (if cannot re-use existing one).
 5. Create a new [metrics class](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py) ( if cannot re-use existing one).
+
+You can also define benchmarks in a **separate git repository** without modifying NeMo-Skills.
+See [Custom benchmarks](./custom-benchmarks.md) for a full walkthrough.
