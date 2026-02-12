@@ -293,7 +293,8 @@ class SweBenchGenerationTask(GenerationTask):
                 # this will make a venv using poetry & install openhands dependencies
                 # we no longer use 'make build' because it installs lots of unnecessary dependencies, e.g. frontend
                 "make install-python-dependencies && "
-                "poetry run python -m pip install datasets"
+                # install datasets; downgrade cryptography to fix missing glibc 2.33 in some containers
+                "poetry run python -m pip install datasets cryptography==43.0.3"
             )
 
         else:
