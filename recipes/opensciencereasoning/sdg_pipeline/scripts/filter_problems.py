@@ -19,6 +19,7 @@ import logging
 import re
 import sys
 from pathlib import Path
+from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import KEY_FIELDS
 
 try:
     import orjson as _orjson  # type: ignore
@@ -186,20 +187,9 @@ def process_file(
                 if not match_option_format(problem, option_format_regex):
                     dropped += 1
                     continue
-            key_fields = [
-                "id", 
-                "problem", 
-                "expected_answer", 
-                "subtopic","topic", 
-                "difficulty_model_pass_rate", 
-                "difficulty_model_pass_at_n",
-                "difficulty_model","prompt",
-                "answer_regex", 
-                "_filled_prompt"
-            ]
 
             # add everything beside id problem and expected_answer to metadata
-            metadata = {k: v for k, v in obj.items() if k not in key_fields}
+            metadata = {k: v for k, v in obj.items() if k not in KEY_FIELDS}
             obj["metadata"] = metadata
             # remove old metadata keys
             for key in metadata.keys():
