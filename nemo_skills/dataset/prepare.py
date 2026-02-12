@@ -20,8 +20,30 @@ from pathlib import Path
 from nemo_skills.dataset.utils import get_dataset_path
 
 
+def parse_prepare_cli_arguments(args=None, datasets_nargs="+"):
+    parser = argparse.ArgumentParser(description="Prepare all datasets")
+    parser.add_argument("datasets", nargs=datasets_nargs, help="Specify one or more datasets to prepare")
+    parser.add_argument(
+        "--prepare_entrypoint", type=str, default="prepare.py", help="Entry point script for dataset preparation"
+    )
+    parser.add_argument(
+        "--parallelism",
+        type=int,
+        default=20,
+        help="Number of datasets to prepare in parallel",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=0,
+        help="Number of retries per dataset if preparation fails",
+    )
+    return parser.parse_known_args(args)
+
+
 def prepare_datasets(
     datasets=None,
+    prepare_entrypoint="prepare.py",
     extra_args="",
     parallelism=20,
     retries=3,
@@ -44,7 +66,7 @@ def prepare_datasets(
                 print(f"Preparing {dataset_name}")
             try:
                 subprocess.run(
-                    f"{sys.executable} {dataset_path / 'prepare.py'} {extra_args}",
+                    f"{sys.executable} {dataset_path / prepare_entrypoint} {extra_args}",
                     shell=True,
                     check=True,
                 )
@@ -74,25 +96,12 @@ def prepare_datasets(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Prepare all datasets")
-    parser.add_argument("datasets", nargs="+", help="Specify one or more datasets to prepare")
-    parser.add_argument(
-        "--parallelism",
-        type=int,
-        default=20,
-        help="Number of datasets to prepare in parallel",
-    )
-    parser.add_argument(
-        "--retries",
-        type=int,
-        default=0,
-        help="Number of retries per dataset if preparation fails",
-    )
-    args, unknown = parser.parse_known_args()
+    args, unknown = parse_prepare_cli_arguments()
     extra_args = " ".join(unknown)
 
     prepare_datasets(
         args.datasets,
+        prepare_entrypoint=args.prepare_entrypoint,
         extra_args=extra_args,
         parallelism=args.parallelism,
         retries=args.retries,
