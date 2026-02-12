@@ -48,10 +48,14 @@ def format_entry(entry: dict, language: str) -> dict:
 
 
 def main(args):
-    invalid = set(args.languages) - set(SUPPORTED_LANGUAGES)
+    languages = [lang for lang in args.languages if lang != "EN-US"]
+    if args.include_english:
+        languages.append("EN-US")
+    
+    invalid = set(languages) - set(SUPPORTED_LANGUAGES)
     if invalid:
         raise ValueError(f"Unsupported languages: {invalid}")
-    datasets = download_mmmlu_datasets(args.languages)
+    datasets = download_mmmlu_datasets(languages)
 
     data_dir = Path(__file__).absolute().parent
     output_file = data_dir / "test.jsonl"
@@ -70,6 +74,11 @@ if __name__ == "__main__":
         default=SUPPORTED_LANGUAGES,
         nargs="+",
         help="Languages to process.",
+    )
+    parser.add_argument(
+        "--include_english",
+        action="store_true",
+        help="Include English split which corresponds to the original MMLU dataset.",
     )
     args = parser.parse_args()
     main(args)
