@@ -49,13 +49,16 @@ EXTERNAL_REPOS = {
 }
 
 
-def register_external_repo(metadata: RepoMetadata):
+def register_external_repo(metadata: RepoMetadata, ignore_if_registered: bool = False):
     """Register an external repo to be packaged with the code in the experiment.
 
     Args:
         metadata (RepoMetadata): Metadata for the external repo.
+        ignore_if_registered (bool): If True, will not raise an error if the repo is already registered.
     """
     if metadata.name in EXTERNAL_REPOS:
+        if ignore_if_registered:
+            return
         raise ValueError(f"External repo {metadata.name} is already registered.")
 
     EXTERNAL_REPOS[metadata.name] = metadata
