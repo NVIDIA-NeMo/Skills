@@ -24,7 +24,7 @@ from typing import List
 
 import typer
 
-from nemo_skills.dataset.utils import get_dataset_module, get_dataset_name, get_dataset_path
+from nemo_skills.dataset.utils import get_dataset_module, get_dataset_name, get_dataset_path, get_extra_benchmark_map
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.run_cmd import run_cmd as _run_cmd
 from nemo_skills.pipeline.utils import (
@@ -42,7 +42,6 @@ LOG = logging.getLogger(get_logger_name(__file__))
 def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str]]:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("datasets", nargs="*")
-    parser.add_argument("--add_lean4_header", action="store_true")
     parser.add_argument("--parallelism", type=int, default=20)
     parser.add_argument("--retries", type=int, default=0)
     parsed_args, unknown_args = parser.parse_known_args(args)
@@ -56,6 +55,16 @@ def _run_prepare_init_locally(datasets: list[str], prepare_unknown_args: list[st
             [sys.executable, str(dataset_path / "prepare_init.py"), *prepare_unknown_args],
             check=True,
         )
+
+
+def _is_external_dataset(dataset: str, extra_benchmark_map: dict[str, str]) -> bool:
+    return "/" in dataset or dataset in extra_benchmark_map
+
+
+def _get_container_dataset_path(dataset: str, extra_benchmark_map: dict[str, str]) -> str:
+    if not _is_external_dataset(dataset, extra_benchmark_map):
+        return f"/nemo_run/code/nemo_skills/dataset/{get_dataset_name(dataset)}"
+    return resolve_external_data_path(get_dataset_path(dataset))
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -86,7 +95,9 @@ def prepare_data(
     with_sandbox: bool = typer.Option(False, help="Start a sandbox container alongside"),
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
-        help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+        help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that "
+        "sandbox executes LLM commands and could potentially lead to data loss. "
+        "So, we advise not to use this unless absolutely necessary.",
     ),
     log_dir: str = typer.Option(None, help="Custom location for slurm logs"),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
@@ -103,7 +114,8 @@ def prepare_data(
     ),
     sbatch_kwargs: str = typer.Option(
         "",
-        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+        help="Additional sbatch kwargs to pass to the job scheduler. "
+        "Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
 ):
     """Prepare datasets by running python -m nemo_skills.dataset.prepare.
@@ -114,6 +126,7 @@ def prepare_data(
     extra_arguments = shlex.join(ctx.args)
     command = f"python -m nemo_skills.dataset.prepare {extra_arguments}".strip()
     requested_datasets, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
+    extra_benchmark_map = get_extra_benchmark_map()
     split_prepare_datasets = [
         d
         for d in requested_datasets
@@ -125,7 +138,7 @@ def prepare_data(
         # Both get copied into data_dir by name, so a collision would cause overwrites.
         for dataset in requested_datasets:
             name = get_dataset_name(dataset)
-            if "/" in dataset:
+            if _is_external_dataset(dataset, extra_benchmark_map):
                 try:
                     importlib.import_module(f"nemo_skills.dataset.{name}")
                     raise ValueError(
@@ -155,14 +168,7 @@ def prepare_data(
     if len(requested_datasets) == 1 and len(split_prepare_datasets) == 1:
         split_dataset = split_prepare_datasets[0]
         split_prepare_data_args = shlex.join(prepare_unknown_args)
-        dataset_path = get_dataset_path(split_dataset)
-        # Resolve local path to container-mounted path for the command
-        if "/" in split_dataset:
-            # External dataset - resolve via external repo registry
-            container_path = Path(resolve_external_data_path(dataset_path))
-        else:
-            # Built-in dataset
-            container_path = Path(f"/nemo_run/code/nemo_skills/dataset/{split_dataset}")
+        container_path = Path(_get_container_dataset_path(split_dataset, extra_benchmark_map))
         command = f"python {container_path / 'prepare_data.py'}"
         if split_prepare_data_args:
             command += f" {split_prepare_data_args}"
@@ -171,12 +177,8 @@ def prepare_data(
         command += f" && mkdir -p {data_dir}"
         for dataset in requested_datasets:
             name = get_dataset_name(dataset)
-            if "/" in dataset:
-                dataset_path = get_dataset_path(dataset)
-                container_dataset_path = resolve_external_data_path(dataset_path)
-                command += f" && cp -r {container_dataset_path} {data_dir}/{name}"
-            else:
-                command += f" && cp -r /nemo_run/code/nemo_skills/dataset/{name} {data_dir}/{name}"
+            container_dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
+            command += f" && cp -r {container_dataset_path} {data_dir}/{name}"
 
     cluster_config = get_cluster_config(cluster, config_dir=config_dir)
     if cluster_config["executor"] == "local" and not data_dir:
