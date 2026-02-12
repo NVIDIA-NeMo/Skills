@@ -77,6 +77,9 @@ def _build_command(
     prepare_unknown_args,
 ):
     for dataset in requested_datasets:
+        # we always want to unconditionally check this to trigger import
+        # for init.py as it might need to register dataset for packaging
+        requires_data_dir = get_arg_from_module_or_dict(get_dataset_module(dataset)[0], "REQUIRES_DATA_DIR", False)
         if data_dir:
             # Check for name collisions between external and built-in datasets.
             # Both get copied into data_dir by name, so a collision would cause overwrites.
@@ -92,7 +95,7 @@ def _build_command(
                 except ModuleNotFoundError:
                     pass
         elif not skip_data_dir_check:
-            if get_arg_from_module_or_dict(get_dataset_module(dataset)[0], "REQUIRES_DATA_DIR", False):
+            if requires_data_dir:
                 raise ValueError(
                     f"Dataset {dataset} contains very large input data and it's recommended to have a "
                     "data_dir to be specified to avoid accidentally uploading large data on cluster with every job. "
@@ -194,16 +197,18 @@ def prepare_data(
         if get_arg_from_module_or_dict(get_dataset_module(d)[0], "HAS_DYNAMIC_INIT", False)
     ]
     non_split_prepare_datasets = [d for d in requested_datasets if d not in split_prepare_datasets]
-    command = "python -m nemo_skills.dataset.prepare "
-    command = _build_command(
-        command,
-        non_split_prepare_datasets,
-        data_dir,
-        extra_benchmark_map,
-        cluster_config,
-        skip_data_dir_check,
-        prepare_unknown_args,
-    )
+    command = "echo 'Starting data preparation'"
+    if non_split_prepare_datasets:
+        command += " && python -m nemo_skills.dataset.prepare "
+        command = _build_command(
+            command,
+            non_split_prepare_datasets,
+            data_dir,
+            extra_benchmark_map,
+            cluster_config,
+            skip_data_dir_check,
+            prepare_unknown_args,
+        )
 
     if split_prepare_datasets:
         _run_prepare_init_locally(split_prepare_datasets, prepare_unknown_args)
@@ -217,7 +222,7 @@ def prepare_data(
             skip_data_dir_check,
             prepare_unknown_args,
         )
-        command += " --prepare_entrypoint prepare_data.py"
+        command += " --prepare_entrypoint prepare_data.py "
 
     if data_dir:
         command += f" && mkdir -p {data_dir}"
