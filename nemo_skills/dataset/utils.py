@@ -79,12 +79,17 @@ def get_extra_benchmark_map():
     """Load extra benchmark map from NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var if set.
 
     Returns a dict mapping short names to directory paths, or empty dict.
+    Relative paths in the map are resolved relative to the map file's directory.
     """
     map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
     if not map_path:
         return {}
+    map_dir = Path(map_path).resolve().parent
     with open(map_path, "r") as f:
-        return json.load(f)
+        raw_map = json.load(f)
+    return {
+        name: str((map_dir / path).resolve()) if not os.path.isabs(path) else path for name, path in raw_map.items()
+    }
 
 
 def _load_external_dataset(dataset_path):
