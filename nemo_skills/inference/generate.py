@@ -273,6 +273,38 @@ cs.store(name="base_generation_config", node=GenerationTaskConfig)
 
 
 class GenerationTask:
+    # --- Declarative pipeline attributes ---
+    # Subclasses can override to declare their runtime needs generically.
+    # The pipeline reads these instead of hardcoding module-name checks.
+
+    # Container key in cluster_config["containers"]; None means use "nemo-skills" default.
+    CONTAINER_KEY: str | None = None
+
+    # Whether to wrap the command with torchrun for multi-GPU data-parallel inference.
+    USE_TORCHRUN: bool = False
+
+    @classmethod
+    def is_self_contained(cls, extra_arguments: str = "") -> bool:
+        """Whether this task manages its own model (no NeMo Skills server).
+
+        Override in subclasses. *extra_arguments* is the raw CLI extra args string
+        so that the decision can depend on runtime flags (e.g. model_type).
+        """
+        return False
+
+    @classmethod
+    def get_env_prefix(cls) -> str:
+        """Shell commands prepended before the main command (e.g. env exports).
+
+        Return an empty string if no special environment is needed.
+        """
+        return ""
+
+    @classmethod
+    def get_extra_package_dirs(cls) -> list[str]:
+        """Extra directories to package alongside nemo_run code."""
+        return []
+
     @classmethod
     def get_generation_default_args(cls) -> str:
         """
