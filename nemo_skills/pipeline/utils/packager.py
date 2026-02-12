@@ -228,8 +228,13 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
             repo_path = repo_meta.path
             if get_git_repo_path(repo_path):
                 # Extra repos is a git repos, so we need to package only committed files
+                # but also pick up generated jsonl files that may not be committed
+                git_root = get_git_repo_path(repo_path)
                 extra_repos[repo_name] = run.GitArchivePackager(
-                    basepath=str(repo_path), check_uncommitted_changes=check_uncommited_changes
+                    basepath=str(repo_path),
+                    include_pattern=[str(Path(git_root) / "**/*.jsonl")],
+                    include_pattern_relative_path=[str(Path(git_root).parent)],
+                    check_uncommitted_changes=check_uncommited_changes,
                 )
             else:
                 # Extra repos is not a git repo, so we need to package all files in the directory
