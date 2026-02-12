@@ -115,8 +115,7 @@ def resolve_external_data_path(local_data_path: str | Path) -> str:
                 f"External repo '{repo_name}' at '{repo_path}' is not a git repository. "
                 f"Only git repos can be registered for packaging."
             )
-        # taking a parent as main git repo will be packaged and put in a top-level folder
-        effective_root = Path(git_root).parent.resolve()
+        effective_root = Path(git_root).resolve()
         relative = local_data_path.relative_to(effective_root)
         if str(relative) == ".":
             return "/nemo_run/code"
