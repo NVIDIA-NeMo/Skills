@@ -14,26 +14,72 @@
 
 import json
 import os
+import time
+import urllib.request
 from pathlib import Path
 
 import pytest
 from utils import require_env_var
 
-from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
+from nemo_skills.pipeline.cli import eval, prepare_data, wrap_arguments
+from nemo_skills.pipeline.start_server import launch_server, stop_server
 from tests.conftest import docker_rm, docker_run
 
 FIXTURE_DIR = Path(__file__).absolute().parents[1] / "data" / "dummy_external_benchmark"
 
 
+# there is a built-in wait for server, but it doesn't have a timeout,
+# so waiting here explicitly to not block ci jobs forever in case of problems
+def _wait_for_server(server_address, timeout=600, interval=5):
+    """Poll the server's /models endpoint until it responds or timeout is reached."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            urllib.request.urlopen(f"{server_address}/models", timeout=5)
+            return
+        except Exception:
+            time.sleep(interval)
+    raise RuntimeError(f"Server at {server_address} failed to start within {timeout}s")
+
+
+# TODO: start using this in main test_eval.py as well and enable judge benchmarks through this
+@pytest.fixture(scope="module")
+def sglang_server():
+    """Start a shared sglang server for all tests in this module."""
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    config_dir = str(Path(__file__).absolute().parent)
+
+    exp, server_port = launch_server(
+        cluster="test-local",
+        config_dir=config_dir,
+        model=model_path,
+        server_type="sglang",
+        server_gpus=1,
+    )
+
+    server_address = f"http://localhost:{server_port}/v1"
+    try:
+        _wait_for_server(server_address)
+    except Exception:
+        stop_server(exp)
+        raise
+
+    yield server_address
+
+    stop_server(exp)
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("use_data_dir", [True, False])
-def test_external_benchmark_prepare_and_eval(use_data_dir):
+@pytest.mark.parametrize("use_full_path", [True, False])
+def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang_server):
     model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     config_dir = Path(__file__).absolute().parent
-    suffix = "with-data-dir" if use_data_dir else "no-data-dir"
-    base_dir = Path(f"/tmp/nemo-skills-tests/{model_type}/external-bench-{suffix}")
+    path_suffix = "full-path" if use_full_path else "map-name"
+    data_suffix = "with-data-dir" if use_data_dir else "no-data-dir"
+    base_dir = Path(f"/tmp/nemo-skills-tests/{model_type}/external-bench-{path_suffix}-{data_suffix}")
     data_dir = base_dir / "data"
     output_dir = base_dir / "eval-output"
 
@@ -64,16 +110,16 @@ def test_external_benchmark_prepare_and_eval(use_data_dir):
     try:
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path
 
-        # --- Prepare both datasets first ---
         data_dir_arg = str(data_dir) if use_data_dir else None
+        benchmark_arg = simple_bench_path if use_full_path else "my_simple_bench"
 
-        # Via map name
+        # --- Prepare ---
         prepare_data(
-            ctx=wrap_arguments("my_simple_bench"),
+            ctx=wrap_arguments(benchmark_arg),
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,
-            expname=f"prepare-ext-bench-{model_type}",
+            expname=f"prepare-ext-bench-{path_suffix}-{model_type}",
         )
 
         if use_data_dir:
@@ -85,45 +131,27 @@ def test_external_benchmark_prepare_and_eval(use_data_dir):
             lines = f.readlines()
         assert len(lines) == 1
 
-        # Via full path (reuses same data, just verifying the path works)
-        prepare_data(
-            ctx=wrap_arguments(simple_bench_path),
-            cluster="test-local",
-            config_dir=str(config_dir),
-            data_dir=data_dir_arg,
-            expname=f"prepare-ext-bench-path-{model_type}",
-        )
-
-        # --- Single eval with both benchmarks (one server launch) ---
+        # --- Eval (using the shared pre-launched server) ---
         eval(
             ctx=wrap_arguments(""),
             output_dir=str(output_dir),
-            benchmarks=f"my_simple_bench,{simple_bench_path}",
+            benchmarks=benchmark_arg,
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,
             model=model_path,
             server_type="sglang",
-            server_gpus=1,
-            server_nodes=1,
-            expname=f"eval-ext-bench-{model_type}",
-            auto_summarize_results=False,
+            server_address=sglang_server,
+            expname=f"eval-ext-bench-{path_suffix}-{model_type}",
         )
 
-        # Check output for map-name benchmark
+        # Check output
         eval_results_dir = Path(output_dir) / "eval-results" / "my_simple_bench"
         output_files = list(eval_results_dir.glob("output*.jsonl"))
         assert output_files, f"No output files found in {eval_results_dir}"
 
-        # Summarize results
-        run_cmd(
-            ctx=wrap_arguments(f"python -m nemo_skills.pipeline.summarize_results {output_dir}"),
-            cluster="test-local",
-            config_dir=str(config_dir),
-        )
-
         # Check metrics.json
-        metrics_file = eval_results_dir / "metrics.json"
+        metrics_file = Path(output_dir) / "eval-results" / "metrics.json"
         assert metrics_file.exists(), "Missing metrics.json"
         with open(metrics_file, "r") as f:
             metrics = json.load(f)
