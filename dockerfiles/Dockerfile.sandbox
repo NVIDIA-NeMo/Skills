@@ -30,6 +30,7 @@
 
 # Use the base image with Python 3.10 and Flask
 FROM tiangolo/uwsgi-nginx-flask:python3.10
+ARG CACHEBUST=2026-02-12
 
 # Install dependencies required for Lean 4, pypy3, and other tools
 ARG TARGETARCH
