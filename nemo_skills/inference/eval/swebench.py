@@ -753,7 +753,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --patch_path {pred_mounted_path} "
                     f"    --output_dir eval-outputs/{self.cfg.server.model}/{data_point['instance_id']} "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
-                    f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
+                    f"cp -r eval-outputs /trajectories_mount/"
                 )
             else:
                 swe_bench_cmd = (
