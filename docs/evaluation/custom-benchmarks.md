@@ -145,10 +145,14 @@ This example adds an optional **verify** step where the model is asked to double
 its own answer.
 
 ```python title="my_benchmarks/inference/word_count.py"
+import logging
+
 import hydra
 
 from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig
-from nemo_skills.utils import nested_dataclass
+from nemo_skills.utils import get_logger_name, nested_dataclass
+
+LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
@@ -268,7 +272,7 @@ class WordCountMetrics(BaseMetrics):
         predicted_answers = [pred["predicted_answer"] for pred in predictions]
         self._compute_pass_at_k(
             predictions=predictions,
-            predicted_answers=predicted_answer,
+            predicted_answers=predicted_answers,
         )
         self._compute_majority_at_k(
             predictions=predictions,

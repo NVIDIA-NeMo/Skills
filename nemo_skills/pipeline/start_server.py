@@ -165,7 +165,9 @@ def launch_server(
     if sandbox_port is None:
         sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
 
-    exp = get_exp("server", cluster_config).__enter__()
+    exp_ctx = get_exp("server", cluster_config)
+    exp = exp_ctx.__enter__()
+    exp._ctx = exp_ctx
 
     add_task(
         exp,
@@ -190,6 +192,9 @@ def stop_server(exp):
     """Stop a server started by launch_server."""
     for j in exp.jobs:
         exp.cancel(j.id)
+    ctx = getattr(exp, "_ctx", None)
+    if ctx is not None:
+        ctx.__exit__(None, None, None)
 
 
 @app.command()

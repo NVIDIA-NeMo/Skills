@@ -60,8 +60,7 @@ def prepare_setup_init_for_ns(output_folder, setup, tasks):
 
 if __name__ == "__main__":
     parser = build_prepare_parser(description="Prepare RULER2 dataset init files.")
-    args, unknown = parse_known_args(parser)
-    _ = unknown
+    args, _ = parse_known_args(parser)
     output_folder = Path(__file__).parent / args.setup
     for task in args.tasks:
         prepare_task_init_for_ns(output_folder, task)

@@ -478,8 +478,7 @@ def prepare_dataset(tasks, setup, max_seq_length, tokenizer_type, tokenizer_path
 
 if __name__ == "__main__":
     parser = build_prepare_parser(description="Prepare RULER2 dataset data.")
-    args, unknown = parse_known_args(parser)
-    _ = unknown
+    args, _ = parse_known_args(parser)
     prepare_dataset(
         args.tasks,
         args.setup,
