@@ -90,7 +90,7 @@ class CritPtGenerationTask(GenerationTask):
             return data_point["messages"]
 
         # Turn 1: Build messages from prompt config
-        turn1_messages = self.prompt_config_turn1.get_prompt().fill(input_dict=data_point)
+        turn1_messages = get_prompt(self.prompt_config_turn1).fill(input_dict=data_point)
 
         return turn1_messages
 
