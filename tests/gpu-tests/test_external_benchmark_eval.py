@@ -15,6 +15,7 @@
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def _wait_for_server(server_address, timeout=600, interval=5):
         try:
             urllib.request.urlopen(f"{server_address}/models", timeout=5)
             return
-        except Exception:
+        except urllib.error.URLError:
             time.sleep(interval)
     raise RuntimeError(f"Server at {server_address} failed to start within {timeout}s")
 
