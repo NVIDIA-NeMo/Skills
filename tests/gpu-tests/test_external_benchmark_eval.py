@@ -31,7 +31,7 @@ FIXTURE_DIR = Path(__file__).absolute().parents[1] / "data" / "dummy_external_be
 
 # there is a built-in wait for server, but it doesn't have a timeout,
 # so waiting here explicitly to not block ci jobs forever in case of problems
-def _wait_for_server(server_address, timeout=600, interval=5):
+def _wait_for_server(server_address, timeout=300, interval=5):
     """Poll the server's /models endpoint until it responds or timeout is reached."""
     start = time.time()
     while time.time() - start < timeout:
@@ -152,7 +152,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
         assert output_files, f"No output files found in {eval_results_dir}"
 
         # Check metrics.json
-        metrics_file = Path(output_dir) / "eval-results" / "metrics.json"
+        metrics_file = eval_results_dir / "metrics.json"
         assert metrics_file.exists(), "Missing metrics.json"
         with open(metrics_file, "r") as f:
             metrics = json.load(f)
