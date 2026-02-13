@@ -272,7 +272,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # 2. Manually install a compatible Python 3.12 binary
                 # We specify 'gnu' and 'linux' to ensure we get the most compatible build
-                "uv python install 3.12 --implementation cpython --os linux --arch x86_64 --libc gnu && "
+                "uv python install cpython-3.12-linux-x86_64-gnu && "
                 # 3. Create the venv using the python we just installed
                 # We remove --managed-python to prevent uv from trying to download the 'bad' version again
                 "uv venv --python 3.12 venv && "
