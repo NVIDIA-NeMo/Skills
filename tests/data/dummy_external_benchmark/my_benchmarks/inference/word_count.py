@@ -31,7 +31,7 @@ cs.store(name="base_generation_config", node=WordCountGenerationConfig)
 class WordCountGenerationTask(GenerationTask):
     """Generation task with an optional verification step."""
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         # Step 1: normal generation
         result = await super().process_single_datapoint(data_point, all_data)
 

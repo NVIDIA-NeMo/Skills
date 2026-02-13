@@ -608,7 +608,7 @@ class BFCLGenerationTask(GenerationTask):
             # If the thinking didn't finish, we can keep it empty
             return ""
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         """Process a single data point and return the result."""
         if data_point["single_turn"]:
             return await self._generate_single_data_point_single_turn(data_point)
