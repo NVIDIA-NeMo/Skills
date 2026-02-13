@@ -108,7 +108,7 @@ def test_external_benchmark_prepare_and_eval(run_location, use_data_dir, use_ful
         f"apk add --no-cache git && cd {ext_repo_dir} && git init && git add . && "
         f"GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=t@t "
         f"git commit -m init --no-gpg-sign && "
-        f"chown -R {os.getuid()}:{os.getgid()} {ext_repo_dir}"
+        f"chown -R {os.getuid()}:{os.getgid()} {base_dir}"
     )
 
     # Add to sys.path so custom generation modules are importable at submission time
