@@ -24,6 +24,7 @@ from utils import require_env_var
 
 from nemo_skills.pipeline.cli import eval, prepare_data, wrap_arguments
 from nemo_skills.pipeline.start_server import launch_server, stop_server
+from nemo_skills.pipeline.utils.packager import EXTERNAL_REPOS
 from tests.conftest import docker_rm, docker_run
 
 FIXTURE_DIR = Path(__file__).absolute().parents[1] / "data" / "dummy_external_benchmark"
@@ -104,6 +105,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
 
     benchmark_map_path = str(ext_repo_dir / "benchmark_map.json")
     simple_bench_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "my_simple_bench")
+    word_count_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "word_count")
 
     docker_rm([str(data_dir), str(output_dir)])
 
@@ -112,31 +114,45 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path
 
         data_dir_arg = str(data_dir) if use_data_dir else None
-        benchmark_arg = simple_bench_path if use_full_path else "my_simple_bench"
+        if use_full_path:
+            simple_bench_arg = simple_bench_path
+            word_count_arg = word_count_path
+        else:
+            simple_bench_arg = "my_simple_bench"
+            word_count_arg = "word_count"
 
-        # --- Prepare ---
+        # --- Prepare both benchmarks ---
         prepare_data(
-            ctx=wrap_arguments(benchmark_arg),
+            ctx=wrap_arguments(f"{simple_bench_arg} {word_count_arg}"),
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,
             expname=f"prepare-ext-bench-{path_suffix}-{model_type}",
         )
 
+        # Check my_simple_bench prepared (1 sample)
         if use_data_dir:
-            prepared_file = data_dir / "my_simple_bench" / "test.jsonl"
+            simple_prepared = data_dir / "my_simple_bench" / "test.jsonl"
         else:
-            prepared_file = Path(simple_bench_path) / "test.jsonl"
-        assert prepared_file.exists(), f"Expected {prepared_file} to exist after prepare_data"
-        with open(prepared_file, "r") as f:
-            lines = f.readlines()
-        assert len(lines) == 1
+            simple_prepared = Path(simple_bench_path) / "test.jsonl"
+        assert simple_prepared.exists(), f"Expected {simple_prepared} to exist after prepare_data"
+        with open(simple_prepared, "r") as f:
+            assert len(f.readlines()) == 1
 
-        # --- Eval (using the shared pre-launched server) ---
+        # Check word_count prepared (5 samples)
+        if use_data_dir:
+            wc_prepared = data_dir / "word_count" / "test.jsonl"
+        else:
+            wc_prepared = Path(word_count_path) / "test.jsonl"
+        assert wc_prepared.exists(), f"Expected {wc_prepared} to exist after prepare_data"
+        with open(wc_prepared, "r") as f:
+            assert len(f.readlines()) == 5
+
+        # --- Eval both benchmarks (using the shared pre-launched server) ---
         eval(
             ctx=wrap_arguments(""),
             output_dir=str(output_dir),
-            benchmarks=benchmark_arg,
+            benchmarks=f"{simple_bench_arg},{word_count_arg}",
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,
@@ -146,19 +162,20 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
             expname=f"eval-ext-bench-{path_suffix}-{model_type}",
         )
 
-        # Check output
-        eval_results_dir = Path(output_dir) / "eval-results" / "my_simple_bench"
-        output_files = list(eval_results_dir.glob("output*.jsonl"))
-        assert output_files, f"No output files found in {eval_results_dir}"
+        # Check output for both benchmarks
+        for bench_name in ["my_simple_bench", "word_count"]:
+            eval_results_dir = Path(output_dir) / "eval-results" / bench_name
+            output_files = list(eval_results_dir.glob("output*.jsonl"))
+            assert output_files, f"No output files found in {eval_results_dir}"
 
-        # Check metrics.json
-        metrics_file = eval_results_dir / "metrics.json"
-        assert metrics_file.exists(), "Missing metrics.json"
-        with open(metrics_file, "r") as f:
-            metrics = json.load(f)
-        assert "my_simple_bench" in metrics
+            metrics_file = eval_results_dir / "metrics.json"
+            assert metrics_file.exists(), f"Missing metrics.json for {bench_name}"
+            with open(metrics_file, "r") as f:
+                metrics = json.load(f)
+            assert bench_name in metrics
 
     finally:
+        EXTERNAL_REPOS.pop("my_benchmarks")
         if saved_env is not None:
             os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = saved_env
         else:
