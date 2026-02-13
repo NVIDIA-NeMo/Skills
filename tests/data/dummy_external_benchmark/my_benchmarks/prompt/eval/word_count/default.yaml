@@ -1,0 +1,5 @@
+user: |-
+  Count the number of words in the quoted sentence below.
+  Put your final answer (just the number) inside \boxed{{}}.
+
+  {sentence}
