@@ -316,6 +316,11 @@ View results:
 ns summarize_results --cluster=local /workspace/test-eval
 ```
 
+!!! note
+
+    You can also skip creating a benchmark map json, but then you'd need to reference
+    benchmark as an absolute path to the folder with __init__.py and prepare.py
+
 
 ## Minimal example
 
