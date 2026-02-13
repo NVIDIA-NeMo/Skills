@@ -33,8 +33,7 @@ from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
-LIVECODEBENCH_PYTHON_GIT_URL = "git+https://github.com/wasiahmad/livecodebench.git@livecodebench"
-LIVECODEBENCH_PYPY3_GIT_URL = "git+https://github.com/wasiahmad/livecodebench.git"
+LIVECODEBENCH_GIT_URL = "git+https://github.com/wasiahmad/livecodebench.git"
 
 
 @nested_dataclass(kw_only=True)
@@ -167,8 +166,7 @@ async def _install_packages_in_sandbox(sandbox: Sandbox, eval_config: LiveCodeBe
     """Installs required packages in the provided sandbox."""
     LOG.info(f"Installing livecodebench with {eval_config.interpreter} in sandbox...")
     pip_cmd = "pip" if eval_config.interpreter == "python" else "pypy3 -m pip"
-    git_url = LIVECODEBENCH_PYTHON_GIT_URL if eval_config.interpreter == "python" else LIVECODEBENCH_PYPY3_GIT_URL
-    cmd = f"{pip_cmd} install {git_url}"
+    cmd = f"{pip_cmd} install {LIVECODEBENCH_GIT_URL}"
 
     result, _ = await execute_in_sandbox_with_retries(
         sandbox, eval_config.num_retries, cmd, language="shell", timeout=300
@@ -183,7 +181,6 @@ async def _install_packages_in_sandbox(sandbox: Sandbox, eval_config: LiveCodeBe
 
 def _install_packages_locally(interpreter: str):
     """Installs packages on the local machine."""
-    git_url = LIVECODEBENCH_PYTHON_GIT_URL if interpreter == "python" else LIVECODEBENCH_PYPY3_GIT_URL
     try:
         from livecodebench.evaluate import evaluate
 
@@ -193,7 +190,7 @@ def _install_packages_locally(interpreter: str):
         try:
             # Use the specified python interpreter for installation
             pip_executable = sys.executable if interpreter == "python" else interpreter
-            subprocess.check_call([pip_executable, "-m", "pip", "install", git_url])
+            subprocess.check_call([pip_executable, "-m", "pip", "install", LIVECODEBENCH_GIT_URL])
             LOG.info("Package installed successfully!")
             from livecodebench.evaluate import evaluate
 

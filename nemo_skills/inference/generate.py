@@ -47,6 +47,7 @@ from nemo_skills.inference.model import (
     server_params,
 )
 from nemo_skills.inference.model.base import EndpointType
+from nemo_skills.inference.structured_outputs import STRUCTURED_OUTPUTS
 from nemo_skills.prompt.utils import get_prompt, get_token_count
 from nemo_skills.utils import (
     chunk_data,
@@ -199,6 +200,8 @@ class GenerationTaskConfig:
     #      --config-path /path/to/configs --config-name config
     schema_overrides: dict | None = field(default_factory=dict)
 
+    max_tool_calls: int = -1  # If >= 0, will limit the number of tool calls executed during generation to this number
+
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
     parse_reasoning: bool = False
@@ -219,6 +222,8 @@ class GenerationTaskConfig:
     # Evaluation setup if requested. If eval_type is set to None, evaluation is skipped
     eval_type: str | None = None  # "lean4-proof", "math", etc.
     eval_config: dict = field(default_factory=dict)  # Config for the evaluator
+
+    structured_output: str | None = None
 
     def __post_init__(self):
         self._post_init_validate_data()
@@ -470,6 +475,7 @@ class GenerationTask:
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
                 schema_overrides=self.cfg.schema_overrides,
+                max_tool_calls=self.cfg.max_tool_calls,
                 tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
                 data_dir=self.data_dir or "",
@@ -729,6 +735,9 @@ class GenerationTask:
             "prompt": self.fill_prompt(data_point, all_data),
             "stop_phrases": [self.cfg.stop_phrase] if self.cfg.stop_phrase else None,
         }
+
+        if self.cfg.structured_output is not None:
+            generation_params["response_format"] = STRUCTURED_OUTPUTS[self.cfg.structured_output]
 
         if self.cfg.code_execution:
             if self.cfg.override_max_code_executions and self.cfg.total_code_executions_in_prompt is not None:

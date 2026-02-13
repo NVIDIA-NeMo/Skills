@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,15 @@
 # limitations under the License.
 
 
-# this are requirements for code execution - put all packages that LLM should have access to in here
-annotated-types>=0.7.0
-flask
-gunicorn
-h5py
-# needed for persistent sessions
-ipython
-numpy
-pandas
-psutil
-scipy
-sympy
-tqdm
+# settings that define how evaluation should be done by default (all can be changed from cmdline)
+DATASET_GROUP = "chat"
+METRICS_TYPE = "arena"
+# using judgement directly in metrics, no need for special evaluation
+GENERATION_ARGS = "++prompt_config=generic/default"
+
+JUDGE_PIPELINE_ARGS = {
+    "generation_module": "nemo_skills.inference.eval.arena_judge",
+    "model": "gpt-4.1",
+    "server_type": "openai",
+    "server_address": "https://api.openai.com/v1",
+}
