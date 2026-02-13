@@ -587,9 +587,7 @@ class GenerationTask:
         for i, msg in enumerate(messages):
             if i < len(original_messages):
                 orig_msg = original_messages[i]
-                audios = orig_msg.get("audios") or (
-                    [orig_msg["audio"]] if "audio" in orig_msg else None
-                )
+                audios = orig_msg.get("audios") or ([orig_msg["audio"]] if "audio" in orig_msg else None)
                 if audios:
                     msg["audios"] = audios
 
