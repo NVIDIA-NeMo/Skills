@@ -18,7 +18,6 @@ import json
 import logging
 import os
 import re
-from dataclasses import field
 
 import requests
 
@@ -38,7 +37,6 @@ class CritPtEvaluatorConfig(BaseEvaluatorConfig):
 
     api_url: str = "https://artificialanalysis.ai/api/v2/critpt/evaluate"
     api_key_env: str = "ARTIFICIAL_ANALYSIS_API_KEY"
-    batch_metadata: dict = field(default_factory=dict)
     save_response: bool = True  # Save API response for debugging
 
 
@@ -144,9 +142,6 @@ class CritPtEvaluator(BaseEvaluator):
             # Submit to API
             LOG.info(f"Submitting {len(submissions)} predictions to CritPt API...")
             response_data = self._submit_to_api(submissions)
-            if response_data["status_code"] != 200:
-                LOG.error(f"Failed to submit predictions to CritPt API: {response_data}")
-                raise ValueError(f"Failed to submit predictions to CritPt API: {response_data}")
 
             # Save API response
             with open(response_file, "w") as f:
