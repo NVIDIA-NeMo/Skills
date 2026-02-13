@@ -14,15 +14,13 @@
 
 import json
 import os
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 from utils import require_env_var
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
-from tests.conftest import docker_rm
+from tests.conftest import docker_rm, docker_run
 
 FIXTURE_DIR = Path(__file__).absolute().parents[1] / "data" / "dummy_external_benchmark"
 
@@ -42,19 +40,19 @@ def test_external_benchmark_prepare_and_eval(use_data_dir):
     # Copy fixture to /tmp so docker mounts work via /tmp:/tmp
     ext_repo_dir = base_dir / "dummy_external_benchmark"
     docker_rm([str(ext_repo_dir)])
-    shutil.copytree(FIXTURE_DIR, ext_repo_dir)
+    # mounting /tmp and also main repo folder to be able to copy things
+    repo_path = Path(__file__).absolute().parents[2]
+    docker_run(
+        f"mkdir -p {ext_repo_dir.parent} && cp -r {FIXTURE_DIR} {ext_repo_dir}",
+        volume_paths=["/tmp:/tmp", f"{repo_path}:{repo_path}"],
+    )
 
     # Init git (needed for container packaging)
-    git_env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "test",
-        "GIT_COMMITTER_EMAIL": "t@t",
-    }
-    subprocess.run(["git", "init"], cwd=ext_repo_dir, check=True)
-    subprocess.run(["git", "add", "."], cwd=ext_repo_dir, check=True)
-    subprocess.run(["git", "commit", "-m", "init", "--no-gpg-sign"], cwd=ext_repo_dir, check=True, env=git_env)
+    docker_run(
+        f"apk add --no-cache git && cd {ext_repo_dir} && git init && git add . && "
+        f"GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=t@t "
+        f"git commit -m init --no-gpg-sign"
+    )
 
     benchmark_map_path = str(ext_repo_dir / "benchmark_map.json")
     simple_bench_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "my_simple_bench")
