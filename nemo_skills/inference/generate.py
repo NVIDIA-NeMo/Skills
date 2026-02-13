@@ -576,42 +576,35 @@ class GenerationTask:
         return remaining_data
 
     def _merge_audio_from_data(self, messages, data_point):
-        """Merge audio metadata from data_point into messages for the openai path.
+        """Copy audio metadata from original data messages into template-generated messages.
 
-        Audio may live either on messages (positional) or as top-level data_point fields.
-        We check both locations and attach audio to the first user message.
+        Normalizes to a single "audios" list on each message. Openai-format data always
+        has messages; top-level audio is not used in practice.
         """
-        if "messages" in data_point and isinstance(data_point["messages"], (list, ListConfig)):
-            # Copy audio fields from the original data messages at matching positions
-            original_messages = data_point["messages"]
-            for i, msg in enumerate(messages):
-                if i < len(original_messages):
-                    orig_msg = original_messages[i]
-                    if "audio" in orig_msg:
-                        msg["audio"] = orig_msg["audio"]
-                    if "audios" in orig_msg:
-                        msg["audios"] = orig_msg["audios"]
-        else:
-            # Audio may be a top-level field on the data point
-            has_audio = "audio" in data_point or "audios" in data_point
-            if has_audio:
-                user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-                if user_msg is not None:
-                    if "audio" in data_point:
-                        user_msg["audio"] = data_point["audio"]
-                    if "audios" in data_point:
-                        user_msg["audios"] = data_point["audios"]
+        if "messages" not in data_point or not isinstance(data_point["messages"], (list, ListConfig)):
+            return
+        original_messages = data_point["messages"]
+        for i, msg in enumerate(messages):
+            if i < len(original_messages):
+                orig_msg = original_messages[i]
+                audios = orig_msg.get("audios") or (
+                    [orig_msg["audio"]] if "audio" in orig_msg else None
+                )
+                if audios:
+                    msg["audios"] = audios
 
     # TODO: data will not include any samples skipped after restart
     def fill_prompt(self, data_point, data):
         """Passing in full data in case it's needed to fill the prompt in subclasses."""
         if self.cfg.prompt_format == "openai" and self.prompt is None:
             # Pure openai path -- messages come from the data
+            data_point = deepcopy(data_point)
             if self.cfg.user_message:
-                for msg in data_point["messages"]:
-                    if msg["role"] == "user":
-                        msg["content"] = self.cfg.user_message
-                        break
+                user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
+                assert len(user_msgs) == 1, (
+                    f"user_message override expects exactly 1 user message, found {len(user_msgs)}"
+                )
+                user_msgs[0]["content"] = self.cfg.user_message
             if self.cfg.prompt_suffix and data_point["messages"]:
                 data_point["messages"][-1]["content"] += self.cfg.prompt_suffix
             if self.cfg.system_message:

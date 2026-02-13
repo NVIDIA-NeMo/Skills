@@ -1030,7 +1030,7 @@ def test_prompt_config_with_openai_format():
     assert len(result) == 2
     assert result[0]["content"] == "You are an expert transcriptionist."
     assert result[1]["content"] == "Transcribe the audio file into English text."
-    assert result[1]["audio"] == {"path": "/data/audio.wav", "duration": 1.39}
+    assert result[1]["audios"] == [{"path": "/data/audio.wav", "duration": 1.39}]
 
 
 def test_user_message_override_openai_no_prompt_config():
@@ -1171,7 +1171,7 @@ def test_ns_path_template_fill():
 
 
 def test_merge_audio_from_data_positional():
-    """Test _merge_audio_from_data copies audio from original messages at matching positions."""
+    """Test _merge_audio_from_data copies audio from original messages at matching positions as audios list."""
     from nemo_skills.inference.generate import GenerationTask
 
     task = MagicMock(spec=GenerationTask)
@@ -1191,22 +1191,8 @@ def test_merge_audio_from_data_positional():
     task._merge_audio_from_data(messages, data_point)
 
     assert "audio" not in messages[0]
-    assert messages[1]["audio"] == {"path": "test.wav", "duration": 2.0}
-
-
-def test_merge_audio_from_data_toplevel():
-    """Test _merge_audio_from_data copies audio from top-level data_point fields."""
-    from nemo_skills.inference.generate import GenerationTask
-
-    task = MagicMock(spec=GenerationTask)
-    task._merge_audio_from_data = GenerationTask._merge_audio_from_data.__get__(task, GenerationTask)
-
-    messages = [{"role": "user", "content": "Transcribe this audio"}]
-    data_point = {"audio": {"path": "audio.wav", "duration": 1.5}}
-
-    task._merge_audio_from_data(messages, data_point)
-
-    assert messages[0]["audio"] == {"path": "audio.wav", "duration": 1.5}
+    assert "audios" not in messages[0]
+    assert messages[1]["audios"] == [{"path": "test.wav", "duration": 2.0}]
 
 
 def test_prompt_config_with_openai_and_suffix():
@@ -1235,7 +1221,7 @@ def test_prompt_config_with_openai_and_suffix():
 
 
 def test_audio_field_in_prompt_config():
-    """Test that audio_field/audio_list_field in PromptConfig attaches audio metadata to user message."""
+    """Test that audio_field in PromptConfig attaches audio metadata as audios list to user message."""
     prompt = get_prompt({"user": "Transcribe: {question}", "audio_field": "audio"})
 
     result = prompt.fill({"question": "What is being said?", "audio": {"path": "test.wav", "duration": 1.0}})
@@ -1243,12 +1229,13 @@ def test_audio_field_in_prompt_config():
     assert len(result) == 1
     assert result[0]["role"] == "user"
     assert result[0]["content"] == "Transcribe: What is being said?"
-    assert result[0]["audio"] == {"path": "test.wav", "duration": 1.0}
+    assert "audio" not in result[0]
+    assert result[0]["audios"] == [{"path": "test.wav", "duration": 1.0}]
 
 
 def test_audio_list_field_in_prompt_config():
-    """Test that audio_list_field in PromptConfig attaches multiple audios to user message."""
-    prompt = get_prompt({"user": "Transcribe all: {question}", "audio_list_field": "audios"})
+    """Test that audio_field with a list value attaches multiple audios to user message."""
+    prompt = get_prompt({"user": "Transcribe all: {question}", "audio_field": "audios"})
 
     audios = [{"path": "a.wav"}, {"path": "b.wav"}]
     result = prompt.fill({"question": "What is being said?", "audios": audios})

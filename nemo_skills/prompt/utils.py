@@ -106,10 +106,9 @@ class PromptConfig:
     image_field: str | None = None
     # Whether to put image before or after the text in multimodal content
     image_position: str = "before"  # "before" or "after"
-    # Audio support: field name(s) from input_dict containing audio metadata dict(s)
-    # When set, audio metadata is attached to the user message for model processing
-    audio_field: str | None = None  # single audio (e.g. "audio" -> {"path": "...", "duration": ...})
-    audio_list_field: str | None = None  # multiple audios (e.g. "audios" -> [{"path": "...", ...}, ...])
+    # Audio support: field name from input_dict containing audio metadata (dict or list of dicts)
+    # When set, audio metadata is attached to the user message as "audios" list for model processing
+    audio_field: str | None = None
 
 
 class Prompt:
@@ -298,11 +297,12 @@ class Prompt:
 
         user_message_dict = {"role": "user", "content": user_content}
 
-        # For audio: attach audio metadata to user message (model layer handles base64 conversion)
+        # For audio: attach audio metadata to user message as audios list (model layer handles base64 conversion)
         if self.config.audio_field and self.config.audio_field in input_dict:
-            user_message_dict["audio"] = input_dict[self.config.audio_field]
-        if self.config.audio_list_field and self.config.audio_list_field in input_dict:
-            user_message_dict["audios"] = input_dict[self.config.audio_list_field]
+            audio_data = input_dict[self.config.audio_field]
+            if isinstance(audio_data, dict):
+                audio_data = [audio_data]
+            user_message_dict["audios"] = audio_data
 
         messages.append(user_message_dict)
 
