@@ -28,6 +28,8 @@ DEFAULT_SPLITS = [
     ("25q3", "quater_2025_7_9", 144),
 ]
 
+FORMATTING_MESSAGE = "Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the c++ program runs, it reads the inputs, runs the algorithm and writes output to STDOUT."
+
 
 def download_testcases(local_dir, token):
     """
@@ -61,9 +63,10 @@ def process_problem_splits(output_dir, token):
             with open(output_file, "w", encoding="utf-8") as f:
                 for row in dataset:
                     output_record = dict(row)
-                    output_record["question"] = row["problem_statement"]
+                    output_record["question_content"] = row["problem_statement"]
+                    output_record["formatting_message"] = FORMATTING_MESSAGE
+                    output_record["starter_code"] = "```cpp\n// YOUR CODE HERE\n```"
                     output_record["subset_for_metrics"] = row["difficulty"]
-
                     f.write(json.dumps(output_record) + "\n")
 
         except Exception as e:
