@@ -446,9 +446,9 @@ class MegatronMCoreGenerationTask:
                             all_results[idx] = json.dumps(entry)
 
             mode = "a" if self.cfg.skip_filled and Path(self.cfg.output_file).exists() else "w"
+            merged_lines = [all_results[idx] + "\n" for idx in sorted(all_results.keys())]
             with open(self.cfg.output_file, mode, encoding="utf-8") as fout:
-                for idx in sorted(all_results.keys()):
-                    fout.write(all_results[idx] + "\n")
+                fout.writelines(merged_lines)
             LOG.info(
                 "Merged %d results from %d DP ranks into %s",
                 len(all_results), dp_size, self.cfg.output_file,
