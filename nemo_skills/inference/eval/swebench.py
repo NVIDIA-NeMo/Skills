@@ -257,9 +257,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/SWE-agent && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install swe-agent dependencies
-                # "uv venv --python 3.12 --managed-python venv && "
-                # FIX: Use the system python instead of --managed-python
-                "uv venv --python $(which python3) venv && "
+                "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e . && "
                 # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
