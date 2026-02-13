@@ -47,11 +47,12 @@ def test_external_benchmark_prepare_and_eval(use_data_dir):
         volume_paths=["/tmp:/tmp", f"{repo_path}:{repo_path}"],
     )
 
-    # Init git (needed for container packaging)
+    # Init git (needed for container packaging) and fix ownership so host user can access
     docker_run(
         f"apk add --no-cache git && cd {ext_repo_dir} && git init && git add . && "
         f"GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=t@t "
-        f"git commit -m init --no-gpg-sign"
+        f"git commit -m init --no-gpg-sign && "
+        f"chown -R {os.getuid()}:{os.getgid()} {ext_repo_dir}"
     )
 
     benchmark_map_path = str(ext_repo_dir / "benchmark_map.json")
@@ -97,7 +98,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir):
         eval(
             ctx=wrap_arguments(""),
             output_dir=str(output_dir),
-            benchmarks=f"my_simple_bench {simple_bench_path}",
+            benchmarks=f"my_simple_bench,{simple_bench_path}",
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,
