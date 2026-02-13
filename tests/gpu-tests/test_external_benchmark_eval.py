@@ -73,16 +73,23 @@ def sglang_server():
 
 
 @pytest.mark.gpu
+@pytest.mark.parametrize(
+    "run_location",
+    ["nemo_skills_repo", "outside_non_git_repo", "external_benchmark_git_repo"],
+)
 @pytest.mark.parametrize("use_data_dir", [True, False])
 @pytest.mark.parametrize("use_full_path", [True, False])
-def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang_server):
+def test_external_benchmark_prepare_and_eval(run_location, use_data_dir, use_full_path, sglang_server):
     model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     config_dir = Path(__file__).absolute().parent
     path_suffix = "full-path" if use_full_path else "map-name"
     data_suffix = "with-data-dir" if use_data_dir else "no-data-dir"
-    base_dir = Path(f"/tmp/nemo-skills-tests/{model_type}/external-bench-{path_suffix}-{data_suffix}")
+    location_suffix = run_location.replace("_", "-")
+    base_dir = Path(
+        f"/tmp/nemo-skills-tests/{model_type}/external-bench-{location_suffix}-{path_suffix}-{data_suffix}"
+    )
     data_dir = base_dir / "data"
     output_dir = base_dir / "eval-output"
 
@@ -112,11 +119,24 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
     benchmark_map_path = str(ext_repo_dir / "benchmark_map.json")
     simple_bench_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "my_simple_bench")
     word_count_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "word_count")
+    outside_non_git_dir = base_dir / "outside-non-git-run-dir"
+    outside_non_git_dir.mkdir(parents=True, exist_ok=True)
+
+    if run_location == "nemo_skills_repo":
+        run_cwd = Path(__file__).absolute().parents[2]
+    elif run_location == "outside_non_git_repo":
+        run_cwd = outside_non_git_dir
+    elif run_location == "external_benchmark_git_repo":
+        run_cwd = ext_repo_dir
+    else:
+        raise ValueError(f"Unsupported run_location={run_location}")
 
     docker_rm([str(data_dir), str(output_dir)])
 
     saved_env = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+    original_cwd = Path.cwd()
     try:
+        os.chdir(run_cwd)
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path
 
         data_dir_arg = str(data_dir) if use_data_dir else None
@@ -134,7 +154,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,
-            expname=f"prepare-ext-bench-{path_suffix}-{model_type}",
+            expname=f"prepare-ext-bench-{location_suffix}-{path_suffix}-{model_type}",
         )
 
         # Check my_simple_bench prepared (1 sample)
@@ -166,7 +186,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
             model=model_path,
             server_type="sglang",
             server_address=sglang_server,
-            expname=f"eval-ext-bench-{path_suffix}-{model_type}",
+            expname=f"eval-ext-bench-{location_suffix}-{path_suffix}-{model_type}",
         )
 
         # Check output for both benchmarks
@@ -182,6 +202,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
             assert bench_name in metrics
 
     finally:
+        os.chdir(original_cwd)
         sys.path.remove(str(ext_repo_dir))
         EXTERNAL_REPOS.pop("my_benchmarks")
         if saved_env is not None:
