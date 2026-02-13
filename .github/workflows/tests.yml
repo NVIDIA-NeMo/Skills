@@ -30,15 +30,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GHCR_PAT }}
 
-    - name: Free up disk space
+    - name: Free up disk space on Ubuntu
       run: |
-        # Remove unnecessary files on macOS
-        sudo rm -rf /usr/local/lib/android || true
-        sudo rm -rf /usr/local/.ghcup || true
-        sudo rm -rf /usr/local/lib/node_modules || true
-        brew cleanup || true
-        # Clear pip cache
-        pip cache purge || true
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
@@ -67,6 +64,12 @@ jobs:
           --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=min \
           --load \
           .
+
+        # Free up build cache before building the next image.
+        # buildx --load exports a tarball then imports layers, so both
+        # exist on disk at once. Pruning the builder cache between builds
+        # reclaims enough space for the sandbox image to load.
+        docker builder prune -f
 
         # Build sandbox-image with expected tag
         SANDBOX_HASH=$(sha256sum dockerfiles/Dockerfile.sandbox | cut -d' ' -f1 | cut -c1-12)
