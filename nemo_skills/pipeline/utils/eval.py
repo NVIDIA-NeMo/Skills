@@ -88,6 +88,7 @@ def get_benchmark_args_from_module(
     benchmark_group=None,
     override_dict=None,
     local_data_path=None,
+    data_dir=None,
 ):
     if split is None:
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
@@ -110,18 +111,26 @@ def get_benchmark_args_from_module(
         unmounted_path = pipeline_utils.get_unmounted_path(cluster_config, input_file)
 
     unmounted_path = str(unmounted_path)
+    # When data_dir is specified, use it for both input_file and the existence check
+    # data_dir is always assumed to be a mounted path
+    if data_dir:
+        data_dir_unmounted = pipeline_utils.get_unmounted_path(cluster_config, data_dir)
+        input_file = f"{data_dir}/{benchmark.replace('.', '/')}/{split}.jsonl"
+        check_path = f"{data_dir_unmounted}/{benchmark.replace('.', '/')}/{split}.jsonl"
+    else:
+        check_path = unmounted_path
     # checking if data file exists (can check locally as well)
     if is_on_cluster:
-        if not pipeline_utils.cluster_path_exists(cluster_config, unmounted_path):
+        if not pipeline_utils.cluster_path_exists(cluster_config, check_path):
             raise ValueError(
-                f"Data file {unmounted_path} does not exist on cluster. "
+                f"Data file {check_path} does not exist on cluster. "
                 "Please check the benchmark and split parameters. "
                 "Did you forget to run prepare data commands or add data_dir argument?"
             )
     else:
-        if not Path(unmounted_path).exists():
+        if not Path(check_path).exists():
             raise ValueError(
-                f"Data file {unmounted_path} does not exist locally. "
+                f"Data file {check_path} does not exist locally. "
                 "Please check the benchmark and split parameters. "
                 "Did you forget to run prepare data commands or add data_dir argument?"
             )
@@ -227,6 +236,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
                 eval_requires_judge=eval_requires_judge,
                 override_dict=override_dict,
                 local_data_path=local_data_path,
+                data_dir=data_dir,
             )
             if data_dir:
                 benchmark_args.generation_args += f" ++eval_config.data_dir={data_dir} "
@@ -247,6 +257,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
         is_on_cluster=is_on_cluster,
         eval_requires_judge=eval_requires_judge,
         local_data_path=local_data_path,
+        data_dir=data_dir,
     )
 
     if data_dir:
