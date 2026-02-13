@@ -14,6 +14,7 @@
 
 import json
 import os
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -103,6 +104,9 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
         f"chown -R {os.getuid()}:{os.getgid()} {ext_repo_dir}"
     )
 
+    # Install the external repo so that custom generation modules are importable at submission time
+    subprocess.run(["pip", "install", "-e", str(ext_repo_dir)], check=True)
+
     benchmark_map_path = str(ext_repo_dir / "benchmark_map.json")
     simple_bench_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "my_simple_bench")
     word_count_path = str(ext_repo_dir / "my_benchmarks" / "dataset" / "word_count")
@@ -175,6 +179,7 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
             assert bench_name in metrics
 
     finally:
+        subprocess.run(["pip", "uninstall", "-y", "my-benchmarks"], check=True)
         EXTERNAL_REPOS.pop("my_benchmarks")
         if saved_env is not None:
             os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = saved_env
