@@ -1,0 +1,66 @@
+import argparse
+import os
+
+from nemo_skills.pipeline.cli import generate, wrap_arguments
+
+
+def generate_synthetic_data(args, cluster, num_gpus, step=None, input_format_file=None):
+    os.makedirs("outputs/sdg_reason", exist_ok=True)
+    generate(
+        ctx=wrap_arguments(
+            f"++prompt_config=/workspace/data/prompt_reasoning.yaml "
+            f"++inference.temperature={args.temperature} "
+            f"++inference.tokens_to_generate={args.tokens_to_generate} "
+            f"++code_execution=false "
+            f"++skip_filled=false "
+            f"++use_completions_api=true "
+            f"++input_file={input_format_file} "
+        ),
+        cluster=cluster,
+        server_type="vllm",
+        input_file=input_format_file,
+        output_dir="/workspace/outputs/sdg_reason/",
+        # output_dir=f"/workspace/outputs/sdg_reason/step_{step}",
+        expname="incident-generation",
+        model="openai/gpt-oss-120b",
+        rerun_done=True,
+        server_gpus=num_gpus,
+    )
+
+    print(f"Finished generating step {step}")
+
+
+def generate_synthetic_data_oss_gpt(args, cluster, num_gpus):
+    pass
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate synthetic data using Qwen model")
+    parser.add_argument("--temperature", type=float, default=0.6, help="Inference temperature (default: 0.6)")
+    parser.add_argument(
+        "--tokens_to_generate", type=int, default=8192, help="Number of tokens to generate (default: 8192)"
+    )
+    # parser.add_argument('--gpus', type=int, default=detect_num_gpus(),
+    #                     help='Number of GPUs to use for generation')
+    parser.add_argument("--gpus", type=int, default=8, help="Number of GPUs to use for generation")
+    parser.add_argument("--llm", type=str, default="qwen2.5-32b-instruct", help="The LLM to use for generation")
+    parser.add_argument(
+        "--num_gpus", type=int, default=8, help="Number of GPUs to use (auto-detected if not specified)"
+    )
+
+    args = parser.parse_args()
+    cluster = "local"
+
+    num_gpus = args.num_gpus
+    print(f"Using {num_gpus} GPUs (specified via --gpus)")
+
+    if args.llm == "qwen2.5-32b-instruct":
+        generate_synthetic_data(
+            args, cluster, num_gpus, step=1, input_format_file="/workspace/outputs/sdg/formatted_output.json"
+        )
+    else:
+        generate_synthetic_data_oss_gpt(args, cluster, num_gpus)
+
+
+if __name__ == "__main__":
+    main()

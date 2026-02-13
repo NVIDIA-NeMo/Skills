@@ -1,0 +1,157 @@
+user: |-
+  You are an expert Process Auditor and Training Assistant for a Network Operations Center (NOC). Your goal is to retrospectively analyze a completed incident by comparing the work notes and chat logs against the official Standard Operating Procedure (SOP).
+
+  Your final output will be a standardized, step-by-step playbook in a structured JSON format. This playbook will be used to train new engineers and ensure process consistency.
+
+  # AVAILABLE TOOLS
+  (These are the standardized tools that map to engineer actions.)
+  Check_Alarm_Status[<site_or_element_id>]
+  - Purpose: Queries the alarm management system (e.g., via SNMP or OSS API) to retrieve current alarm details, severity, “time that alarm has been active”.
+  - Returns: Alarm status (active/cleared), alarm occurred timestamp, description.
+
+  Check_Element_Neighbors[<element_id>]
+  - Purpose: Go to the NMS/EMS/OSS, verify the neighbors of an element, adjacencies, and upstream devices to identify if there is a common alarm that is affecting an area or a router in the path to this element.
+  - Returns: Adjacent elements - alarm status(active/cleared). Return elements where alarms are found.
+
+  Check_Element_Health[<element_id>]
+  - Purpose: Polls to monitor the system, EMS/NM/Telemetry, and retrieve device health metrics (e.g., RU radiation, cell status). I
+  - Returns: Health report (e.g., "All RUs radiating, no locks"). Element OK- Element NOK
+
+  Execute_Remote_Action[<element_id>, '<action>']
+  - Purpose: Executes remote CLI commands (e.g., via SSH/Netconf) to unlock cells or restart elements like DU/RU.
+  - Returns: Successful Reset/Non-Successful Reset
+
+  Check_External_Issues[<site_or_area>]
+  - Purpose: Scans external monitors (like DownDetector or topology maps) for area-wide issues like fiber cuts or power outages.
+  - Returns: Output: List of issues (e.g., "Fiber cut detected"). Issue Detected/Not Detected, Type of Issue
+
+  Check_Apply_Configuration[<element_id>]
+  - Purpose: Retrieves and validates config files (e.g., gnb.conf) against the standard. If the configuration is wrong, it pushes the corrected configs remotely.
+  - Returns: Configuration Verified/Applied correctly or error.
+
+  Check_Performance['<kpi_metric_name>']
+  - Purpose: Fetches KPIs (e.g., PRACH success rate) from monitoring tools like Prometheus or kpi gathering tools. This tool will reply if trends are in line with expectations or not.
+  - Returns: KPI OK or KPIs NOK.
+
+  Create_Ticket['<department_name>', '<issue_details>']
+  - Purpose:  Logs and routes tickets to departments (e.g., Field Ops) via the ticketing system. It  (e.g., Jira/ServiceNow).
+  - Returns: Ticket ID. Once the ticket is resolved, the Create_Ticket tool will output the solution used to solve the issue.
+
+  Orchestration_tool['<action_command>']
+  - Purpose: Automates container ops (e.g., delete/reassign IP) using Kubernetes/Helm in O-RAN setups. Input: Action (E.g., Delete Container).
+  - Example Action: 'delete_pod_xyz', 'reassign_ip_address'
+  - Returns: Operation Successful()/Unsuccessful ()
+
+  Triage_Toolkit_Tool['<issue_type>']
+  - Purpose: Runs diagnostic scripts for container/pod issues.
+  - Example Issue Type: 'pod-crash-loop', 'container-networking'
+  - Returns: Triage report summary.
+
+  Check_remote_files[<element_id>]
+  - Purpose: Does ssh, telnet to the element, and reviews dump files, returns whether issues have been found in the network element or not
+  - Returns: No Issues Identified / Issues Identified.
+
+  # RULES
+  1. Analyze the Entire Log: Read the full context from start to finish to understand the incident's story and the actual sequence of actions.
+  2. Trace and Build the Workflow (Crucial): Your goal is to build a JSON array that represents the actual sequence of executed steps.
+    - Start at Step 1 of the SOP. Find the log evidence for it.
+    - Create the first JSON object in your array for this step. Fill in its details (action, tool, result).
+    - Read the "Flow-Deciding Answers/Outcomes" for that step (e.g., "if succeeds, go to step 4; if fails, escalate to step 8").
+    - Based on the result (see Rule 3), determine the next executed step.
+    - Find the log evidence for that next step (e.g., Step 8). Create the second JSON object in your array for Step 8.
+    - Repeat this process, following the workflow from step to step as dictated by the SOP's logic and the engineer's logs. Each executed step is a new object appended to your JSON array.
+  3. Generate Plausible Results:
+    - For every step you add to the JSON array, you must determine the tool_call used. If no tools were used, mark the result as null.
+    - If a tool was used the result field must not be null.
+    - If the log provides the tool's output, use it.
+    - If the log does not provide the output (e.g., "Engineer saw cells were locked"), you may generate a plausible, mock result that justifies the next action in the workflow (e.g., "result": "Cell 01: LOCKED, Cell 02: LOCKED").
+  4. Handle Skipped Steps: If a step is bypassed by the workflow (e.g., the flow jumps from Step 3 directly to Step 8), you do not create a JSON object for the skipped steps (4, 5, 6, 7). Your output array must only contain steps that were actually performed.
+  5. Synthesize Actions: For action_taken, transform the informal dialogue from the logs into a formal summary of what the engineer did.
+  6. Strict JSON Output Format:
+    - Your final output MUST be a valid JSON array of objects.
+    - The order of objects in the array must represent the chronological order of execution.
+    - The step_number field in each object must correspond to the step number from the SOP (this means the step_number values in the array will be non-sequential, like 1, 2, 3, 8, 9).
+    - Do not add any text, explanations, or markdown formatting before or after the JSON array.
+
+  # EXAMPLE OF CORRECT JSON OUTPUT FORMAT
+  (This example shows the workflow jumping from Step 3 to Step 8, as per the SOP logic "if fails, escalate to step 8")
+
+  ```json
+  [
+  {{
+    "step_number": 1,
+    "sop_step_title": "Acknowledge and Track the Initial Alert",
+    "status": "Completed",
+    "action_taken": "Acknowledged alarm INC12345 for site-123 and began investigation.",
+    "tool_call": "Check_Alarm_Status[site-123]",
+    "result": "ALARM: Site-123 | SEVERITY: Critical | STATUS: Active | DESC: Cell Down"
+  }},
+  {{
+    "step_number": 2,
+    "sop_step_title": "Check Site and Equipment Status",
+    "status": "Completed",
+    "action_taken": "Checked element health for site-123, confirmed locked cells.",
+    "tool_call": "Check_Element_Health[site-123]",
+    "result": "HEALTH_CHECK: Element site-123 | Cell 01: LOCKED, Cell 02: LOCKED, Cell 03: ACTIVE"
+  }},
+  {{
+    "step_number": 3,
+    "sop_step_title": "Perform Remote Actions (Reset/Unlock/Enable)",
+    "status": "Completed",
+    "action_taken": "Attempted remote unlock command on locked cells, but the command failed.",
+    "tool_call": "Execute_Remote_Action[site-123, 'unlock_cell']",
+    "result": "COMMAND_FAILED: Element not responding to unlock command. Error 503."
+  }},
+  {{
+    "step_number": 8,
+    "sop_step_title": "Investigate Persistent or Reoccurring Alarms and Coordinate Onsite Dispatch",
+    "status": "Completed",
+    "action_taken": "Remote actions failed. Creating ticket and dispatching field tech for investigation.",
+    "tool_call": "Create_Ticket['Field_Operations', 'Site-123 remote unlock failed. Element unresponsive. Please investigate.']",
+    "result": "TICKET_CREATED: TK78901"
+  }},
+  {{
+    "step_number": 9,
+    "sop_step_title": "Document All Actions and Status Updates",
+    "status": "Completed",
+    "action_taken": "Added all steps and findings to the incident log before closing.",
+    "tool_call": null,
+    "result": "Final actions documented. Incident closed."
+  }}
+  ]
+  ```
+  ---
+  ### Your Turn:
+
+  SOP:
+  {problem_code_reasoning_process}
+
+  Final step: end with a conclusion. Follow the conclusion given to you.
+
+  Incident Details:
+  * Number: {incident_identifier}
+  * Region: {geographical_territory}
+  * Category: {incident_classification}
+  * Subcategory: {incident_subtype}
+  * Market: {service_domain}
+  * Vendor: {equipment_provider}
+  * AOI: {operational_zone}
+  * Priority: {urgency_level}
+  * Locations: {affected_site}
+  * Short Description: {incident_summary}
+  * Opened At: {detection_timestamp}
+  * Assignment Group: {responsible_team}
+  * Problem Code: {fault_category}
+
+  Logs:
+  {action_chronicle}
+
+  Conclusion:
+  {resolution_summary}
+
+  resolution_method:
+  {resolution_method}
+
+  ### Correct Output:
+
+  /think
