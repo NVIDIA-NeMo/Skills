@@ -40,6 +40,7 @@ from nemo_skills.pipeline.prepare_data import _build_command
 from nemo_skills.pipeline.utils.packager import (
     EXTERNAL_REPOS,
     RepoMetadata,
+    get_packager,
     get_registered_external_repo,
     register_external_repo,
     resolve_external_data_path,
@@ -392,6 +393,14 @@ class TestPackager:
     def test_repo_metadata_invalid_path(self):
         with pytest.raises(ValueError, match="does not exist"):
             RepoMetadata(name="bad", path="/does/not/exist")
+
+    def test_get_packager_in_non_editable_git_repo_has_matching_include_paths(self, dummy_benchmark_git, monkeypatch):
+        """When running from a non-NeMo git repo, include pattern metadata must stay aligned."""
+        monkeypatch.chdir(dummy_benchmark_git)
+        packager = get_packager()
+        assert isinstance(packager.include_pattern, list)
+        assert isinstance(packager.include_pattern_relative_path, list)
+        assert len(packager.include_pattern) == len(packager.include_pattern_relative_path)
 
 
 # ---------------------------------------------------------------------------

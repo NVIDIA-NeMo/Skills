@@ -129,7 +129,8 @@ def test_external_benchmark_prepare_and_eval(use_data_dir, use_full_path, sglang
 
         # --- Prepare both benchmarks ---
         prepare_data(
-            ctx=wrap_arguments(f"{simple_bench_arg} {word_count_arg}"),
+            ctx=wrap_arguments(""),
+            datasets=[simple_bench_arg, word_count_arg],
             cluster="test-local",
             config_dir=str(config_dir),
             data_dir=data_dir_arg,

@@ -91,7 +91,8 @@ def test_aaa_prepare_and_eval_all_datasets():
 
     # Prepare all datasets - fail fast if any dataset preparation fails
     exp = prepare_data(
-        ctx=wrap_arguments(" ".join(dataset_names + ["bfcl_v3", "bfcl_v4"])),
+        ctx=wrap_arguments(""),
+        datasets=dataset_names + ["bfcl_v3", "bfcl_v4"],
         cluster="test-local",
         config_dir=str(config_dir),
         data_dir=str(data_dir),

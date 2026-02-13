@@ -186,6 +186,7 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
                 str(nemo_skills_dir / "*"),
             )
             include_patterns.append(str(nemo_skills_dir / "*"))
+            include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
         else:
             # picking up local dataset files if we are in the right repo
             dataset_dir = nemo_skills_dir / "dataset"

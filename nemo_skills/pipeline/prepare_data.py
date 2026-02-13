@@ -22,7 +22,6 @@ from typing import List
 
 import typer
 
-from nemo_skills.dataset.prepare import parse_prepare_cli_arguments
 from nemo_skills.dataset.utils import (
     get_dataset_module,
     get_dataset_name,
@@ -41,11 +40,6 @@ from nemo_skills.pipeline.utils.eval import get_arg_from_module_or_dict
 from nemo_skills.utils import get_logger_name, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str]]:
-    parsed_args, unknown_args = parse_prepare_cli_arguments(args, datasets_nargs="*")
-    return parsed_args.datasets, unknown_args
 
 
 def _run_prepare_init_locally(datasets: list[str], prepare_unknown_args: list[str]):
@@ -118,6 +112,7 @@ def _build_command(
 @typer_unpacker
 def prepare_data(
     ctx: typer.Context,
+    datasets: List[str],
     cluster: str = typer.Option(
         None,
         help="One of the configs inside config_dir or NEMO_SKILLS_CONFIG_DIR or ./cluster_configs.",
@@ -189,7 +184,11 @@ def prepare_data(
             "Data directory is required to be specified when using slurm executor. Please provide --data_dir argument."
         )
 
-    requested_datasets, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
+    requested_datasets = datasets
+    prepare_unknown_args = ctx.args
+    if not requested_datasets:
+        raise ValueError("Please provide at least one dataset to prepare.")
+
     extra_benchmark_map = get_extra_benchmark_map()
     split_prepare_datasets = [
         d
