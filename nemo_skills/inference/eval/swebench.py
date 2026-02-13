@@ -635,9 +635,6 @@ class SweBenchGenerationTask(GenerationTask):
             f"{repo_location_setup}"
             # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
-            # --- ADD THIS LINE BELOW ---
-            "ln -sf /root/uv/tool-bin/poetry /root/OpenHands/.venv/bin/poetry && "
-            # ---------------------------
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
             "ln -sf /root/jq/jq /usr/local/bin/jq && "
             # enable tmux appimage to run without fusermount
