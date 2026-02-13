@@ -751,8 +751,6 @@ def eval(
                     command += f" --wandb_group={wandb_group} "
                 if wandb_project:
                     command += f" --wandb_project={wandb_project} "
-                if data_dir:
-                    command += f" --data_dir={data_dir} "
                 if metrics_kwargs:
                     command += f" --metrics_kwargs='{kwargs_to_string(metrics_kwargs)}' "
 
