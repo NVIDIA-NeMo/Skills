@@ -738,11 +738,17 @@ def eval(
                 #       also maybe we should remove it from pipeline as it's not
                 #       really ever needed to be run directly anymore?
                 results_folder = f"{output_dir}/{Path(benchmark_args.eval_subfolder).parent}"
+                effective_metric_type = metric_type or benchmark_args.metrics_type
+                if not effective_metric_type:
+                    raise ValueError(
+                        f"metric_type is not defined for benchmark {benchmark}. "
+                        f"Please specify it via --metric_type or in the benchmark config."
+                    )
                 command = (
                     f"python -m nemo_skills.pipeline.summarize_results {results_folder} "
                     f"    --benchmarks {benchmark} "
                     f"    --save_metrics_path {metric_file} "
-                    f"    --metric_type={metric_type or benchmark_args.metrics_type} "
+                    f"    --metric_type={effective_metric_type} "
                 )
 
                 if wandb_name:

@@ -173,7 +173,6 @@ def evaluate(eval_type, eval_config):
 
     if is_class:
         evaluator = obj(eval_config)
-        print(f"evaluator: {evaluator}")
         return asyncio.run(evaluator.eval_full())
 
     return obj(eval_config)

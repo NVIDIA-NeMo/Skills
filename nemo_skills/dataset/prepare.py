@@ -35,7 +35,7 @@ def parse_prepare_cli_arguments(args=None, datasets_nargs="+"):
     parser.add_argument(
         "--retries",
         type=int,
-        default=0,
+        default=3,
         help="Number of retries per dataset if preparation fails",
     )
     return parser.parse_known_args(args)
