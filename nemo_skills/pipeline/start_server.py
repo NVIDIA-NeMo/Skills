@@ -165,6 +165,8 @@ def launch_server(
     if sandbox_port is None:
         sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
 
+    # TODO (igitman): this looks like leak, but also fixing it in a naive way makes everything hang.
+    #     Doesn't seem to cause issues, so keeping like this for now
     exp = get_exp("server", cluster_config).__enter__()
 
     add_task(
