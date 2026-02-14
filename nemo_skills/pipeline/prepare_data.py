@@ -76,6 +76,12 @@ def prepare_data(
     log_dir: str = typer.Option(None, help="Custom location for slurm logs"),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     check_mounted_paths: bool = typer.Option(False, help="Check mounted paths availability"),
+    installation_command: str | None = typer.Option(
+        None,
+        help="An installation command to run before main job. Only affects main task (not server or sandbox). "
+        "You can use an arbitrary command here and we will run it on a single rank for each node. "
+        "E.g. 'pip install my_package'",
+    ),
     skip_hf_home_check: bool | None = typer.Option(
         None,
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
@@ -173,6 +179,7 @@ def prepare_data(
         log_dir=log_dir,
         exclusive=exclusive,
         check_mounted_paths=check_mounted_paths,
+        installation_command=installation_command,
         skip_hf_home_check=skip_hf_home_check,
         sbatch_kwargs=sbatch_kwargs,
     )
