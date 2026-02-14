@@ -221,7 +221,7 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
         local_data_path = None
     else:
         data_path, local_data_path = _resolve_data_path(data_path)
-    is_on_cluster = False
+    is_on_cluster = bool(data_dir) and cluster_config["executor"] == "slurm"
 
     benchmark_or_group_name = get_dataset_name(benchmark_or_group)
 
