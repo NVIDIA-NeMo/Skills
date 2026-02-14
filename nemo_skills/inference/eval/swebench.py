@@ -250,36 +250,17 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_commit is None:
                     self.cfg.agent_framework_commit = "HEAD"
 
-            # setup_commands.append(
-            #     # clone the swe-agent repo
-            #     "rm -rf /root/SWE-agent && "
-            #     f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
-            #     "cd /root/SWE-agent && "
-            #     f"git checkout {self.cfg.agent_framework_commit} && "
-            #     # make venv & install swe-agent dependencies
-            #     "uv venv --python 3.12 --managed-python venv && "
-            #     "source venv/bin/activate && "
-            #     "uv pip install -e . && "
-            #     # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
-            #     "uv pip install rich==14.2.0"
-            # )
-
             setup_commands.append(
-                # 1. Clean up and clone the repo
+                # clone the swe-agent repo
                 "rm -rf /root/SWE-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
                 "cd /root/SWE-agent && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
-                # 2. Manually install a compatible Python 3.12 binary
-                # We specify 'gnu' and 'linux' to ensure we get the most compatible build
-                "uv python install cpython-3.12-linux-x86_64-gnu && "
-                # 3. Create the venv using the python we just installed
-                # We remove --managed-python to prevent uv from trying to download the 'bad' version again
-                "uv venv --python 3.12 venv && "
-                # 4. Activate and install dependencies
+                # make venv & install swe-agent dependencies
+                "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e . && "
-                # 5. Force downgrade rich
+                # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
                 "uv pip install rich==14.2.0"
             )
 
