@@ -36,7 +36,7 @@ from nemo_skills.evaluation.evaluator import (
 )
 from nemo_skills.evaluation.metrics.base import BaseMetrics
 from nemo_skills.evaluation.metrics.map_metrics import get_metrics
-from nemo_skills.pipeline.prepare_data import _build_command
+from nemo_skills.pipeline.prepare_data import _build_command, _parse_prepare_cli_arguments
 from nemo_skills.pipeline.utils.packager import (
     EXTERNAL_REPOS,
     RepoMetadata,
@@ -315,6 +315,37 @@ class TestBuildCommand:
             prepare_unknown_args=["--split", "test"],
         )
         assert "--split test" in cmd
+
+
+# ---------------------------------------------------------------------------
+# D2. ParsePrepareCLIArguments
+# ---------------------------------------------------------------------------
+
+
+class TestParsePrepareCLIArguments:
+    def test_datasets_separated_from_unknown_args(self):
+        datasets, unknown = _parse_prepare_cli_arguments(["gsm8k", "math-500", "--foo", "bar"])
+        assert datasets == ["gsm8k", "math-500"]
+        assert "--foo" in unknown
+        assert "bar" in unknown
+
+    def test_parallelism_and_retries_passed_through(self):
+        datasets, unknown = _parse_prepare_cli_arguments(
+            ["gsm8k", "--parallelism", "7", "--retries=2", "--foo", "bar"]
+        )
+        assert datasets == ["gsm8k"]
+        assert "--parallelism" in unknown
+        assert "7" in unknown
+        assert "--retries" in unknown
+        assert "2" in unknown
+        assert "--foo" in unknown
+        assert "bar" in unknown
+
+    def test_default_parallelism_and_retries_included(self):
+        datasets, unknown = _parse_prepare_cli_arguments(["gsm8k"])
+        assert datasets == ["gsm8k"]
+        assert "--parallelism" in unknown
+        assert "--retries" in unknown
 
 
 # ---------------------------------------------------------------------------

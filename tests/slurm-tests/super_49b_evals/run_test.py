@@ -279,8 +279,7 @@ def main():
     args = parser.parse_args()
 
     prepare_data(
-        ctx=wrap_arguments(""),
-        datasets=["gpqa", "mmlu-pro", "hle", "livecodebench", "scicode", "math-500", "aime24", "aime25"],
+        ctx=wrap_arguments("gpqa mmlu-pro hle livecodebench scicode math-500 aime24 aime25"),
     )
 
     setup(workspace=args.workspace, cluster=args.cluster, expname_prefix=args.expname_prefix)
