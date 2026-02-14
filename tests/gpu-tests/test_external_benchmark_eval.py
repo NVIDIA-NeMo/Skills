@@ -134,10 +134,14 @@ def test_external_benchmark_prepare_and_eval(run_location, use_data_dir, use_ful
     docker_rm([str(data_dir), str(output_dir)])
 
     saved_env = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+    saved_uncommitted_check = os.environ.get("NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK")
     original_cwd = Path.cwd()
     try:
         os.chdir(run_cwd)
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path
+        # CI prepares built-in datasets before running tests, leaving untracked .jsonl
+        # files in the repo. Disable the uncommitted-changes check so packaging succeeds.
+        os.environ["NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK"] = "1"
 
         data_dir_arg = str(data_dir) if use_data_dir else None
         if use_full_path:
@@ -208,3 +212,7 @@ def test_external_benchmark_prepare_and_eval(run_location, use_data_dir, use_ful
             os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = saved_env
         else:
             os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        if saved_uncommitted_check is not None:
+            os.environ["NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK"] = saved_uncommitted_check
+        else:
+            os.environ.pop("NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK", None)
