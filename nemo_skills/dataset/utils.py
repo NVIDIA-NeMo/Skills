@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import importlib
 import json
 import os
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -23,6 +25,7 @@ from typing import Dict
 from urllib.error import URLError
 
 from nemo_skills.evaluation.math_grader import extract_answer
+from nemo_skills.pipeline.utils import cluster_download_file, get_unmounted_path
 
 
 def add_rounding_instruction(data: Dict) -> Dict:
@@ -50,6 +53,31 @@ def import_from_path(file_path, module_name=None):
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+
+@contextlib.contextmanager
+def add_to_path(p):
+    old_path = sys.path
+    sys.path = sys.path[:]
+    sys.path.insert(0, str(p))
+    try:
+        yield
+    finally:
+        sys.path = old_path
+
+
+def _get_dataset_module_from_cluster(cluster_config, mounted_path):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = str(Path(tmpdir) / "init.py")
+        cluster_dataset_path = get_unmounted_path(cluster_config, mounted_path)
+        try:
+            cluster_download_file(cluster_config, cluster_dataset_path, tmp_path)
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"Init file {mounted_path} not found on the cluster. "
+                f"Please check the dataset name you're using. Did you forget to run prepare data commands?"
+            )
+        return import_from_path(tmp_path)
 
 
 def get_dataset_name(dataset):
@@ -111,7 +139,7 @@ def get_default_dataset_module(dataset):
     return dataset_module, data_path
 
 
-def get_dataset_module(dataset):
+def get_dataset_module(dataset, data_dir=None, cluster_config=None):
     """Get dataset module from nemo_skills.dataset, extra benchmark map, or a directory path.
 
     Resolution order:
@@ -119,7 +147,9 @@ def get_dataset_module(dataset):
     2. Otherwise, check both built-in datasets and the extra benchmark map.
        - If found in both, raise an error (ambiguous).
        - If found in exactly one, use it.
-       - If found in neither, raise an error.
+       - If found in neither, fall back to data_dir if provided.
+    3. If data_dir is provided and previous resolution failed, try to load the module
+       from data_dir (locally or by downloading from cluster).
     """
     if "/" in dataset:
         return _load_external_dataset(dataset)
@@ -146,6 +176,21 @@ def get_dataset_module(dataset):
 
     if found_builtin:
         return dataset_module, data_path
+
+    # Fall back to data_dir if provided
+    if data_dir:
+        dataset_as_path = dataset.replace(".", "/")
+        if cluster_config is None or cluster_config["executor"] == "none":
+            with add_to_path(data_dir):
+                dataset_module = importlib.import_module(dataset)
+        elif cluster_config["executor"] == "local":
+            with add_to_path(get_unmounted_path(cluster_config, data_dir)):
+                dataset_module = importlib.import_module(dataset)
+        else:
+            dataset_module = _get_dataset_module_from_cluster(
+                cluster_config, f"{data_dir}/{dataset_as_path}/__init__.py"
+            )
+        return dataset_module, data_dir
 
     map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
     if map_path:

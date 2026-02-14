@@ -24,9 +24,6 @@ def parse_prepare_cli_arguments(args=None, datasets_nargs="+"):
     parser = argparse.ArgumentParser(description="Prepare all datasets")
     parser.add_argument("datasets", nargs=datasets_nargs, help="Specify one or more datasets to prepare")
     parser.add_argument(
-        "--prepare_entrypoint", type=str, default="prepare.py", help="Entry point script for dataset preparation"
-    )
-    parser.add_argument(
         "--parallelism",
         type=int,
         default=20,
@@ -43,7 +40,6 @@ def parse_prepare_cli_arguments(args=None, datasets_nargs="+"):
 
 def prepare_datasets(
     datasets=None,
-    prepare_entrypoint="prepare.py",
     extra_args="",
     parallelism=20,
     retries=3,
@@ -66,7 +62,7 @@ def prepare_datasets(
                 print(f"Preparing {dataset_name}")
             try:
                 subprocess.run(
-                    f"{sys.executable} {dataset_path / prepare_entrypoint} {extra_args}",
+                    f"{sys.executable} {dataset_path / 'prepare.py'} {extra_args}",
                     shell=True,
                     check=True,
                 )
@@ -101,7 +97,6 @@ if __name__ == "__main__":
 
     prepare_datasets(
         args.datasets,
-        prepare_entrypoint=args.prepare_entrypoint,
         extra_args=extra_args,
         parallelism=args.parallelism,
         retries=args.retries,

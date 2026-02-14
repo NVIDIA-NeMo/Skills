@@ -13,4 +13,3 @@
 # limitations under the License.
 
 REQUIRES_DATA_DIR = True
-HAS_DYNAMIC_INIT = True

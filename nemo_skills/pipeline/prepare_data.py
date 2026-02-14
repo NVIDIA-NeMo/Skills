@@ -16,8 +16,6 @@ import importlib
 import logging
 import os
 import shlex
-import subprocess
-import sys
 from typing import List
 
 import typer
@@ -40,15 +38,6 @@ from nemo_skills.pipeline.utils.eval import get_arg_from_module_or_dict
 from nemo_skills.utils import get_logger_name, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
-
-
-def _run_prepare_init_locally(datasets: list[str], prepare_unknown_args: list[str]):
-    for dataset in datasets:
-        dataset_path = get_dataset_path(dataset)
-        subprocess.run(
-            [sys.executable, str(dataset_path / "prepare_init.py"), *prepare_unknown_args],
-            check=True,
-        )
 
 
 def _is_external_dataset(dataset: str, extra_benchmark_map: dict[str, str]) -> bool:
@@ -190,38 +179,16 @@ def prepare_data(
         raise ValueError("Please provide at least one dataset to prepare.")
 
     extra_benchmark_map = get_extra_benchmark_map()
-    split_prepare_datasets = [
-        d
-        for d in requested_datasets
-        if get_arg_from_module_or_dict(get_dataset_module(d)[0], "HAS_DYNAMIC_INIT", False)
-    ]
-    non_split_prepare_datasets = [d for d in requested_datasets if d not in split_prepare_datasets]
-    command = "echo 'Starting data preparation'"
-    if non_split_prepare_datasets:
-        command += " && python -m nemo_skills.dataset.prepare "
-        command = _build_command(
-            command,
-            non_split_prepare_datasets,
-            data_dir,
-            extra_benchmark_map,
-            cluster_config,
-            skip_data_dir_check,
-            prepare_unknown_args,
-        )
-
-    if split_prepare_datasets:
-        _run_prepare_init_locally(split_prepare_datasets, prepare_unknown_args)
-        command += " && python -m nemo_skills.dataset.prepare "
-        command = _build_command(
-            command,
-            split_prepare_datasets,
-            data_dir,
-            extra_benchmark_map,
-            cluster_config,
-            skip_data_dir_check,
-            prepare_unknown_args,
-        )
-        command += " --prepare_entrypoint prepare_data.py "
+    command = "python -m nemo_skills.dataset.prepare "
+    command = _build_command(
+        command,
+        requested_datasets,
+        data_dir,
+        extra_benchmark_map,
+        cluster_config,
+        skip_data_dir_check,
+        prepare_unknown_args,
+    )
 
     if data_dir:
         command += f" && mkdir -p {data_dir}"

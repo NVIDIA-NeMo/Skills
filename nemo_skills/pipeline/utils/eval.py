@@ -214,8 +214,13 @@ def _resolve_data_path(data_path):
 
 
 def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge):
-    benchmark_or_group_module, data_path = get_dataset_module(dataset=benchmark_or_group)
-    data_path, local_data_path = _resolve_data_path(data_path)
+    benchmark_or_group_module, data_path = get_dataset_module(
+        dataset=benchmark_or_group, data_dir=data_dir, cluster_config=cluster_config
+    )
+    if data_path == data_dir:
+        local_data_path = None
+    else:
+        data_path, local_data_path = _resolve_data_path(data_path)
     is_on_cluster = False
 
     benchmark_or_group_name = get_dataset_name(benchmark_or_group)
@@ -223,8 +228,13 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
     if getattr(benchmark_or_group_module, "IS_BENCHMARK_GROUP", False):
         benchmarks_args = []
         for benchmark, override_dict in benchmark_or_group_module.BENCHMARKS.items():
-            benchmark_module, data_path = get_dataset_module(dataset=benchmark)
-            data_path, local_data_path = _resolve_data_path(data_path)
+            benchmark_module, data_path = get_dataset_module(
+                dataset=benchmark, data_dir=data_dir, cluster_config=cluster_config
+            )
+            if data_path == data_dir:
+                local_data_path = None
+            else:
+                data_path, local_data_path = _resolve_data_path(data_path)
             benchmark_args = get_benchmark_args_from_module(
                 benchmark_module=benchmark_module,
                 benchmark=benchmark,
