@@ -37,7 +37,7 @@ class CritPtMetrics(BaseMetrics):
         Since CritPt API doesn't provide per-example correctness, the first n examples
         are marked as correct where n = int(aggregate_accuracy * total_examples).
         """
-        return {"full_dataset_accuracy": prediction["full_dataset_accuracy"]}
+        return {"accuracy": prediction["accuracy"]}
 
     def update(self, predictions):
         """Update metrics with new predictions.
@@ -53,5 +53,5 @@ class CritPtMetrics(BaseMetrics):
             "num_entries": as_int,
             "avg_tokens": as_int,
             "gen_seconds": as_int,
-            "full_dataset_accuracy": as_percentage,
+            "accuracy": as_percentage,
         }

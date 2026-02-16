@@ -17,7 +17,7 @@ system: >-
   3. **Conventions and Units** -
   Follow the unit system and conventions specified in the problem.
 
-  4. **Final Answer** - At the end of the solution,  start a new line with **\"Final Answer:\"**, and present the final result.
+  4. **Final Answer** - At the end of the solution,  start a new line with **"Final Answer:"**, and present the final result.
 
   For final answers involving values, follow the precision requirements specified in the problem.
   If no precision is specified:

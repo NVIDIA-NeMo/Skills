@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ class CritPtEvaluatorConfig(BaseEvaluatorConfig):
 
     api_url: str = "https://artificialanalysis.ai/api/v2/critpt/evaluate"
     api_key_env: str = "ARTIFICIAL_ANALYSIS_API_KEY"
-    save_response: bool = True  # Save API response for debugging
+    request_timeout: int = 600  # Timeout for API request in seconds
 
 
 class CritPtEvaluator(BaseEvaluator):
@@ -210,6 +210,7 @@ class CritPtEvaluator(BaseEvaluator):
             self.eval_config.api_url,
             json=payload,
             headers={"x-api-key": self.api_key},
+            timeout=self.eval_config.request_timeout,
         )
 
         response.raise_for_status()

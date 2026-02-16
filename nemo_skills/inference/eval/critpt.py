@@ -82,6 +82,8 @@ class CritPtGenerationTask(GenerationTask):
         # Load prompt templates for both turns
         self.prompt_config_turn1 = load_config(self.cfg.prompt_config_turn1)
         self.prompt_config_turn2 = load_config(self.cfg.prompt_config_turn2)
+        # Pre-load turn2 prompt instance to avoid repeated calls
+        self.turn2_prompt_instance = get_prompt(prompt_config=self.prompt_config_turn2)
 
     def fill_prompt(self, data_point, data):
         """Build messages list for turn 1, or return pre-built messages for turn 2."""
@@ -117,8 +119,7 @@ class CritPtGenerationTask(GenerationTask):
 
         # ===== Turn 2: Generate code using template =====
         # Build messages for turn 2: turn1_messages + assistant response + turn2_user_message
-        turn2_prompt_instance = get_prompt(prompt_config=self.cfg.prompt_config_turn2)
-        turn2_user_messages: List[dict] = turn2_prompt_instance.fill(input_dict=data_point)
+        turn2_user_messages: List[dict] = self.turn2_prompt_instance.fill(input_dict=data_point)
 
         turn2_messages = turn1_messages + [{"role": "assistant", "content": solution_turn1}] + turn2_user_messages
         LOG.debug(f"Turn 2 messages: {turn2_messages}")
@@ -128,7 +129,7 @@ class CritPtGenerationTask(GenerationTask):
         turn2_data_point = {"messages": turn2_messages}
         turn2_result = await super().process_single_datapoint(turn2_data_point, all_data)
 
-        if self.cfg.end_reasoning_string in turn2_result[self.cfg.generation_key]:
+        if self.cfg.parse_reasoning:
             parse_reasoning(turn2_result, self.cfg.generation_key, self.cfg.end_reasoning_string)
 
         # Add turn-specific metadata

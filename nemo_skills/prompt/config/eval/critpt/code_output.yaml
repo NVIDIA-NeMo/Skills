@@ -1,4 +1,4 @@
-
+# Compiled from https://github.com/CritPt-Benchmark/CritPt/blob/main/templates/prompt_template_default.yaml
 user: |-
   Populate your final answer into the code template provided below.
   This step is purely for formatting/display purposes. No additional reasoning or derivation should be performed.
