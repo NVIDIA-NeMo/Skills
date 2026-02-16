@@ -174,7 +174,7 @@ class CritPtEvaluator(BaseEvaluator):
                 "server_timeout_count": server_timeout_count,
                 "judge_error_count": judge_error_count,
             }
-            data_point["full_dataset_accuracy"] = accuracy
+            data_point["accuracy"] = accuracy
 
         # Write to temp file then replace original
         temp_file = self.eval_config.input_file + "-tmp"
