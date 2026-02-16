@@ -41,6 +41,7 @@ from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
 from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
+from nemo_skills.evaluation.metrics.physics_metrics import PhysicsMetrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
@@ -48,6 +49,7 @@ from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetric
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
+    "physics": PhysicsMetrics,
     "hle-aa": functools.partial(HLEAAMetrics, compute_no_answer=False, answer_key="generation"),
     "frontierscience-olympiad": functools.partial(
         MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
