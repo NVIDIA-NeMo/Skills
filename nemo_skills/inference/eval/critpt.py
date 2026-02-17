@@ -82,7 +82,8 @@ class CritPtGenerationTask(GenerationTask):
         # Load prompt templates for both turns
         self.prompt_config_turn1 = load_config(self.cfg.prompt_config_turn1)
         self.prompt_config_turn2 = load_config(self.cfg.prompt_config_turn2)
-        # Pre-load turn2 prompt instance to avoid repeated calls
+        # Pre-load prompt instance to avoid repeated calls
+        self.turn1_prompt_instance = get_prompt(prompt_config=self.prompt_config_turn1)
         self.turn2_prompt_instance = get_prompt(prompt_config=self.prompt_config_turn2)
 
     def fill_prompt(self, data_point, data):
@@ -92,7 +93,7 @@ class CritPtGenerationTask(GenerationTask):
             return data_point["messages"]
 
         # Turn 1: Build messages from prompt config
-        turn1_messages = get_prompt(self.prompt_config_turn1).fill(input_dict=data_point)
+        turn1_messages = self.turn1_prompt_instance.fill(input_dict=data_point)
 
         return turn1_messages
 
@@ -129,7 +130,7 @@ class CritPtGenerationTask(GenerationTask):
         turn2_data_point = {"messages": turn2_messages}
         turn2_result = await super().process_single_datapoint(turn2_data_point, all_data)
 
-        if self.cfg.parse_reasoning:
+        if self.cfg.parse_reasoning and self.cfg.end_reasoning_string in turn2_result[self.cfg.generation_key]:
             parse_reasoning(turn2_result, self.cfg.generation_key, self.cfg.end_reasoning_string)
 
         # Add turn-specific metadata
