@@ -26,6 +26,7 @@ from pathlib import Path
 
 import hydra
 import tomlkit
+import yaml
 from omegaconf import OmegaConf
 
 from nemo_skills.inference.generate import GenerationTask
@@ -44,6 +45,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class SupportedAgentFrameworks(str, Enum):
     swe_agent = "swe_agent"
     openhands = "openhands"
+    mini_swe_agent = "mini_swe_agent"
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
@@ -247,6 +249,27 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/SWE-agent && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install swe-agent dependencies
+                "uv venv --python 3.12 --managed-python venv && "
+                "source venv/bin/activate && "
+                "uv pip install -e . && "
+                # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
+                "uv pip install rich==14.2.0"
+            )
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+            if self.cfg.agent_framework_repo is None:
+                self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = "v2.0"
+            setup_commands.append(
+                # clone the swe-agent repo
+                "rm -rf /root/mini-swe-agent && "
+                f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
+                "cd /root/mini-swe-agent && "
+                # Bypass the interactive setup wizard by pointing to the default config
+                "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/benchmarks/swebench.yaml && "
+                f"git checkout {self.cfg.agent_framework_commit} && "
+                # make venv & install mini-swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e . && "
@@ -532,6 +555,102 @@ class SweBenchGenerationTask(GenerationTask):
 
         return pred_jsonl_file
 
+    async def _run_mini_swe_agent(self, data_point, api_base):
+        """
+        Runs mini-swe-agent on one instance.
+        Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
+        """
+        completion_kwargs = {
+            openai_param: getattr(self.cfg.inference, ns_param)
+            for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
+            if getattr(self.cfg.inference, ns_param) is not None
+        }
+        completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
+        if "top_logprobs" in completion_kwargs:
+            completion_kwargs["logprobs"] = True
+        if "reasoning_effort" in completion_kwargs:
+            completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
+
+        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
+        with open(base_config_path, "r") as f:
+            full_config = yaml.safe_load(f)
+
+        if "agent" not in full_config:
+            full_config["agent"] = {}
+        full_config["agent"]["step_limit"] = self.cfg.agent_max_turns
+
+        if "model" not in full_config:
+            full_config["model"] = {}
+        if "model_kwargs" not in full_config["model"]:
+            full_config["model"]["model_kwargs"] = {}
+
+        full_config["model"]["model_kwargs"].update(
+            {
+                **completion_kwargs,
+                "api_base": api_base,
+                "temperature": self.cfg.inference.temperature,
+                "top_p": self.cfg.inference.top_p,
+            }
+        )
+
+        (self.output_dir / "configs").mkdir(parents=True, exist_ok=True)
+        tmp_config_filename = f"configs/config_{data_point['instance_id']}.yaml"
+        host_tmp_path = os.path.join(self.output_dir, tmp_config_filename)
+
+        # Inside the container, this path maps to /trajectories_mount/
+        container_tmp_path = os.path.join("/trajectories_mount", tmp_config_filename)
+
+        with open(host_tmp_path, "w") as f:
+            yaml.dump(full_config, f)
+
+        try:
+            mini_swe_agent_cmd = (
+                "cp -r /root_mount/mini-swe-agent /root && "
+                "cp -r /root_mount/uv /root && "
+                "cd /root/mini-swe-agent && "
+                "export MSWEA_CONFIGURED=true && "
+                f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
+                f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
+                f"--config {container_tmp_path} "
+                f"--model hosted_vllm/{self.cfg.server.model} "
+                f"--task {shlex.quote(data_point['problem_statement'])} "
+                f"--output trajectories/{data_point['instance_id']}.traj.json "
+                f"--yolo "
+                f"--exit-immediately && "
+                "mkdir -p /trajectories_mount/trajectories && cp -r trajectories/* /trajectories_mount/trajectories/"
+            )
+
+            # Execute mini-swe-agent command
+            search_path = os.path.join(self.output_dir, "trajectories", f"{data_point['instance_id']}.traj.json")
+
+            pred_file = await self._execute_container_command(
+                data_point, mini_swe_agent_cmd, search_path, mode="agent"
+            )
+
+            with open(pred_file, "r") as f:
+                trajectory_dict = json.loads(f.read().strip())
+
+            pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
+            with open(pred_jsonl_file, "w") as f:
+                trajectory_info = trajectory_dict.get("info", {})
+                trajectory_info["model_name_or_path"] = self.cfg.server.model
+                trajectory_info["instance_id"] = data_point["instance_id"]
+
+                patch = trajectory_info.pop("submission", None)
+                if not patch:
+                    patch = None
+                elif not patch.endswith("\n"):
+                    patch += "\n"
+                trajectory_info["model_patch"] = patch
+
+                f.write(json.dumps(trajectory_info))
+
+            return pred_jsonl_file
+
+        finally:
+            if os.path.exists(host_tmp_path):
+                os.remove(host_tmp_path)
+
     async def _run_openhands(self, data_point, api_base):
         """
         Runs OpenHands on one instance.
@@ -688,6 +807,8 @@ class SweBenchGenerationTask(GenerationTask):
 
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             pred_file = await self._run_swe_agent(data_point, api_base)
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+            pred_file = await self._run_mini_swe_agent(data_point, api_base)
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             pred_file = await self._run_openhands(data_point, api_base)
         else:
