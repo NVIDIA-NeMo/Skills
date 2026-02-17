@@ -72,7 +72,7 @@ There is no separate `main.txt` — `pyproject.toml` composes the default instal
 **Boundary definition:**
 
 - **Core** = everything needed to run inference + evaluation locally (including all benchmark evaluator deps)
-- **Pipeline** = orchestration-only deps (`nemo_run`, `typer`, `wandb`, `click`, `nemo-evaluator-launcher`)
+- **Pipeline** = orchestration-only deps (`nemo_run`, `typer`, `click`, `nemo-evaluator-launcher`)
 
 All benchmark-specific dependencies (e.g., `faiss-cpu`, `sacrebleu`, `datasets`, `func-timeout`) go in `core/requirements.txt`. Eventually these should migrate to JIT (just-in-time) install so that benchmark deps are installed on demand at runtime, but until that is implemented, they must be in core so evaluators do not crash at runtime.
 
@@ -83,7 +83,7 @@ All benchmark-specific dependencies (e.g., `faiss-cpu`, `sacrebleu`, `datasets`,
 - `sacrebleu` -> `core/requirements.txt` (used by translation benchmark evaluator)
 - `faiss-cpu` -> `core/requirements.txt` (used by BFCL benchmark evaluator)
 - `nemo_run` -> `requirements/pipeline.txt` (cluster job orchestration)
-- `wandb` -> `requirements/pipeline.txt` (experiment tracking for cluster jobs)
+- `wandb` -> `core/requirements.txt` (used by summarize-results)
 
 **Examples of mistakes to avoid:**
 
