@@ -28,6 +28,32 @@ from nemo_skills.evaluation.math_grader import extract_answer
 from nemo_skills.pipeline.utils import cluster_download_file, get_unmounted_path
 
 
+def locate(path):
+    """Import an object by path using ``::`` or dotted notation.
+
+    Supported formats:
+        - ``module.path::name`` – importable module + attribute
+        - ``/path/to/file.py::name`` – file path + attribute
+        - ``module.path.name`` – standard dotted import (rsplit on last dot)
+
+    If *path* is not a string it is returned as-is.
+    """
+    if not isinstance(path, str):
+        return path
+
+    if "::" in path:
+        module_str, attr_name = path.split("::", 1)
+        if Path(module_str).is_file():
+            module = import_from_path(module_str)
+        else:
+            module = importlib.import_module(module_str)
+        return getattr(module, attr_name)
+
+    module_path, obj_name = path.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, obj_name)
+
+
 def add_rounding_instruction(data: Dict) -> Dict:
     try:
         float(data["expected_answer"])
@@ -87,29 +113,45 @@ def get_dataset_name(dataset):
     return dataset
 
 
-def get_dataset_path(dataset):
+def get_dataset_path(dataset, extra_benchmark_map=None):
     """Resolve a dataset identifier to its directory path.
 
     Resolution order:
     1. If dataset contains '/', treat as a direct path.
     2. Check extra benchmark map.
     3. Fall back to built-in dataset directory.
+
+    Args:
+        extra_benchmark_map: Either a dict mapping short names to directory paths,
+            or a path to a JSON file containing such a mapping.
+            If None, falls back to NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var.
     """
     if "/" in dataset:
         return Path(dataset)
-    extra_map = get_extra_benchmark_map()
+    extra_map = get_extra_benchmark_map(extra_benchmark_map)
     if dataset in extra_map:
         return Path(extra_map[dataset])
     return Path(__file__).parent / dataset
 
 
-def get_extra_benchmark_map():
-    """Load extra benchmark map from NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var if set.
+def get_extra_benchmark_map(extra_benchmark_map=None):
+    """Load extra benchmark map from argument or NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var.
+
+    Args:
+        extra_benchmark_map: Either a dict mapping short names to absolute directory paths,
+            or a path to a JSON file containing such a mapping.
+            If None, falls back to NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var.
 
     Returns a dict mapping short names to directory paths, or empty dict.
-    Relative paths in the map are resolved relative to the map file's directory.
+    When loading from a file, relative paths are resolved relative to the file's directory.
     """
-    map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+    if extra_benchmark_map is not None:
+        if isinstance(extra_benchmark_map, dict):
+            return extra_benchmark_map
+        map_path = extra_benchmark_map
+    else:
+        map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+
     if not map_path:
         return {}
     map_dir = Path(map_path).resolve().parent
@@ -139,7 +181,7 @@ def get_default_dataset_module(dataset):
     return dataset_module, data_path
 
 
-def get_dataset_module(dataset, data_dir=None, cluster_config=None):
+def get_dataset_module(dataset, data_dir=None, cluster_config=None, extra_benchmark_map=None):
     """Get dataset module from nemo_skills.dataset, extra benchmark map, or a directory path.
 
     Resolution order:
@@ -150,6 +192,11 @@ def get_dataset_module(dataset, data_dir=None, cluster_config=None):
        - If found in neither, fall back to data_dir if provided.
     3. If data_dir is provided and previous resolution failed, try to load the module
        from data_dir (locally or by downloading from cluster).
+
+    Args:
+        extra_benchmark_map: Either a dict mapping short names to directory paths,
+            or a path to a JSON file containing such a mapping.
+            If None, falls back to NEMO_SKILLS_EXTRA_BENCHMARK_MAP env var.
     """
     if "/" in dataset:
         return _load_external_dataset(dataset)
@@ -162,7 +209,7 @@ def get_dataset_module(dataset, data_dir=None, cluster_config=None):
         found_builtin = False
 
     # Check extra benchmark map
-    extra_map = get_extra_benchmark_map()
+    extra_map = get_extra_benchmark_map(extra_benchmark_map)
     found_in_map = dataset in extra_map
 
     if found_builtin and found_in_map:
@@ -192,11 +239,16 @@ def get_dataset_module(dataset, data_dir=None, cluster_config=None):
             )
         return dataset_module, data_dir
 
-    map_path = os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
-    if map_path:
-        raise RuntimeError(f"Dataset '{dataset}' not found in built-in datasets or extra benchmark map at {map_path}.")
+    map_path = (
+        extra_benchmark_map
+        if isinstance(extra_benchmark_map, str)
+        else os.environ.get("NEMO_SKILLS_EXTRA_BENCHMARK_MAP")
+    )
+    if map_path or isinstance(extra_benchmark_map, dict):
+        raise RuntimeError(f"Dataset '{dataset}' not found in built-in datasets or the extra benchmark map.")
     raise RuntimeError(
-        f"Dataset '{dataset}' not found in built-in datasets. Did you forget to set NEMO_SKILLS_EXTRA_BENCHMARK_MAP?"
+        f"Dataset '{dataset}' not found in built-in datasets. "
+        "Did you forget to pass extra_benchmark_map or set NEMO_SKILLS_EXTRA_BENCHMARK_MAP?"
     )
 
 

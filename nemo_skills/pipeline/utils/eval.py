@@ -213,9 +213,14 @@ def _resolve_data_path(data_path):
     return data_path, None
 
 
-def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge):
+def add_default_args(
+    cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge, extra_benchmark_map=None
+):
     benchmark_or_group_module, data_path = get_dataset_module(
-        dataset=benchmark_or_group, data_dir=data_dir, cluster_config=cluster_config
+        dataset=benchmark_or_group,
+        data_dir=data_dir,
+        cluster_config=cluster_config,
+        extra_benchmark_map=extra_benchmark_map,
     )
     if data_path == data_dir:
         local_data_path = None
@@ -229,7 +234,10 @@ def add_default_args(cluster_config, benchmark_or_group, split, data_dir, eval_r
         benchmarks_args = []
         for benchmark, override_dict in benchmark_or_group_module.BENCHMARKS.items():
             benchmark_module, data_path = get_dataset_module(
-                dataset=benchmark, data_dir=data_dir, cluster_config=cluster_config
+                dataset=benchmark,
+                data_dir=data_dir,
+                cluster_config=cluster_config,
+                extra_benchmark_map=extra_benchmark_map,
             )
             if data_path == data_dir:
                 local_data_path = None
@@ -296,6 +304,7 @@ def prepare_eval_commands(
     eval_requires_judge,
     generation_type=None,
     generation_module=None,
+    extra_benchmark_map=None,
 ):
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
 
@@ -326,6 +335,7 @@ def prepare_eval_commands(
             split,
             data_dir,
             eval_requires_judge=eval_requires_judge,
+            extra_benchmark_map=extra_benchmark_map,
         )
         for benchmark_args in cur_benchmarks:
             benchmark = benchmark_args.name

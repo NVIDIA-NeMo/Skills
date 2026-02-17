@@ -56,7 +56,7 @@ def _is_external_dataset(dataset: str, extra_benchmark_map: dict[str, str]) -> b
 def _get_container_dataset_path(dataset: str, extra_benchmark_map: dict[str, str]) -> str:
     if not _is_external_dataset(dataset, extra_benchmark_map):
         return f"/nemo_run/code/nemo_skills/dataset/{get_dataset_name(dataset)}"
-    return resolve_external_data_path(get_dataset_path(dataset))
+    return resolve_external_data_path(get_dataset_path(dataset, extra_benchmark_map=extra_benchmark_map))
 
 
 def _build_command(
@@ -151,6 +151,12 @@ def prepare_data(
         None,
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
+    extra_benchmark_map: str = typer.Option(
+        None,
+        help="Path to a JSON file mapping benchmark short names to directory paths. "
+        "Can also specify through NEMO_SKILLS_EXTRA_BENCHMARK_MAP environment variable. "
+        "When calling from Python, can also pass a dict directly.",
+    ),
     skip_data_dir_check: bool = typer.Option(
         False,
         help="Some datasets require very large input files and we will fail with error if data_dir "
@@ -189,7 +195,7 @@ def prepare_data(
 
     requested_datasets, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
 
-    extra_benchmark_map = get_extra_benchmark_map()
+    extra_benchmark_map = get_extra_benchmark_map(extra_benchmark_map)
     command = "python -m nemo_skills.dataset.prepare "
     command = _build_command(
         command,

@@ -160,6 +160,21 @@ class TestDatasetResolution:
         expected = str((dummy_benchmark_git / "my_benchmarks" / "dataset" / "word_count").resolve())
         assert str(result) == expected
 
+    def test_get_dataset_path_from_map_arg(self, dummy_benchmark_git):
+        """benchmark_map dict arg should work without env var."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        expected = str((dummy_benchmark_git / "my_benchmarks" / "dataset" / "word_count").resolve())
+        benchmark_map = {"word_count": expected}
+        result = get_dataset_path("word_count", extra_benchmark_map=benchmark_map)
+        assert str(result) == expected
+
+    def test_get_dataset_path_from_map_file_arg(self, benchmark_map_path, dummy_benchmark_git):
+        """benchmark_map path arg should work without env var."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        result = get_dataset_path("word_count", extra_benchmark_map=benchmark_map_path)
+        expected = str((dummy_benchmark_git / "my_benchmarks" / "dataset" / "word_count").resolve())
+        assert str(result) == expected
+
 
 # ---------------------------------------------------------------------------
 # B. ExtraBenchmarkMap
@@ -193,6 +208,21 @@ class TestExtraBenchmarkMap:
         result = get_extra_benchmark_map()
         assert result["abs_bench"] == abs_path
 
+    def test_dict_arg_returned_as_is(self):
+        """Passing a dict directly should return it without reading env var."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        benchmark_map = {"my_bench": "/abs/path/to/bench"}
+        result = get_extra_benchmark_map(benchmark_map)
+        assert result == benchmark_map
+
+    def test_file_path_arg(self, benchmark_map_path, dummy_benchmark_git):
+        """Passing a file path arg should load and resolve like the env var does."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        result = get_extra_benchmark_map(benchmark_map_path)
+        assert "word_count" in result
+        expected = str((dummy_benchmark_git / "my_benchmarks" / "dataset" / "word_count").resolve())
+        assert result["word_count"] == expected
+
 
 # ---------------------------------------------------------------------------
 # C. GetDatasetModule
@@ -215,6 +245,20 @@ class TestGetDatasetModule:
         module, data_path = get_dataset_module("word_count")
         assert module.METRICS_TYPE == "my_benchmarks.metrics.word_count::WordCountMetrics"
 
+    def test_from_map_arg(self, benchmark_map_path):
+        """benchmark_map file path arg should work without env var."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        module, data_path = get_dataset_module("word_count", extra_benchmark_map=benchmark_map_path)
+        assert module.METRICS_TYPE == "my_benchmarks.metrics.word_count::WordCountMetrics"
+
+    def test_from_map_dict_arg(self, dummy_benchmark_git):
+        """benchmark_map dict arg should work without env var."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        word_count_dir = str((dummy_benchmark_git / "my_benchmarks" / "dataset" / "word_count").resolve())
+        benchmark_map = {"word_count": word_count_dir}
+        module, data_path = get_dataset_module("word_count", extra_benchmark_map=benchmark_map)
+        assert module.METRICS_TYPE == "my_benchmarks.metrics.word_count::WordCountMetrics"
+
     def test_simple_bench_from_map(self, benchmark_map_path):
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path
         module, data_path = get_dataset_module("my_simple_bench")
@@ -228,14 +272,21 @@ class TestGetDatasetModule:
         with pytest.raises(RuntimeError, match="found both as a built-in dataset and in the extra benchmark map"):
             get_dataset_module("gsm8k")
 
+    def test_collision_builtin_and_map_dict_arg(self, tmp_path):
+        """Dict arg collision should also raise."""
+        os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
+        benchmark_map = {"gsm8k": str(tmp_path)}
+        with pytest.raises(RuntimeError, match="found both as a built-in dataset and in the extra benchmark map"):
+            get_dataset_module("gsm8k", extra_benchmark_map=benchmark_map)
+
     def test_not_found_no_map(self):
         os.environ.pop("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", None)
-        with pytest.raises(RuntimeError, match="Did you forget to set NEMO_SKILLS_EXTRA_BENCHMARK_MAP"):
+        with pytest.raises(RuntimeError, match="Did you forget to pass extra_benchmark_map or set"):
             get_dataset_module("nonexistent_bench_xyz")
 
     def test_not_found_with_map(self, benchmark_map_path):
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path
-        with pytest.raises(RuntimeError, match="not found in built-in datasets or extra benchmark map"):
+        with pytest.raises(RuntimeError, match="not found in built-in datasets or the extra benchmark map"):
             get_dataset_module("nonexistent_bench_xyz")
 
     def test_missing_init_py(self, tmp_path):

@@ -13,12 +13,10 @@
 # limitations under the License.
 
 import asyncio
-import importlib
 import inspect
-from pathlib import Path
 from typing import Any, Callable, Dict
 
-from nemo_skills.dataset.utils import import_from_path
+from nemo_skills.dataset.utils import locate
 from nemo_skills.evaluation.evaluator.audio import AudioEvaluator
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator
 from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
@@ -101,12 +99,7 @@ def _resolve_eval_type(eval_type: str):
     Returns (None, False) if eval_type is a plain string not found in either map.
     """
     if "::" in eval_type:
-        module_str, attr_str = eval_type.split("::", 1)
-        if Path(module_str).is_file():
-            module = import_from_path(module_str)
-        else:
-            module = importlib.import_module(module_str)
-        obj = getattr(module, attr_str)
+        obj = locate(eval_type)
         is_class = inspect.isclass(obj) and issubclass(obj, BaseEvaluator)
         return obj, is_class
 

@@ -446,6 +446,12 @@ def eval(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
+    extra_benchmark_map: str = typer.Option(
+        None,
+        help="Path to a JSON file mapping benchmark short names to directory paths. "
+        "Can also specify through NEMO_SKILLS_EXTRA_BENCHMARK_MAP environment variable. "
+        "When calling from Python, can also pass a dict directly.",
+    ),
     metric_type: Optional[str] = typer.Option(
         None,
         help="Specify metric type to use a specific metric calculator.",
@@ -557,6 +563,7 @@ def eval(
         eval_requires_judge=eval_requires_judge,
         generation_type=generation_type,
         generation_module=generation_module,
+        extra_benchmark_map=extra_benchmark_map,
     )
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
