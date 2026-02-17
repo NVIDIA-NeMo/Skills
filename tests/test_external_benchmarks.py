@@ -45,6 +45,7 @@ from nemo_skills.pipeline.utils.packager import (
     register_external_repo,
     resolve_external_data_path,
 )
+from nemo_skills.prompt.utils import get_config_path, load_config
 
 FIXTURE_DIR = Path(__file__).parent / "data" / "dummy_external_benchmark"
 
@@ -568,3 +569,34 @@ class TestCustomGenerationModule:
         metrics_file = dummy_benchmark_git / "my_benchmarks" / "metrics" / "word_count.py"
         m = get_metrics(f"{metrics_file}::WordCountMetrics")
         assert isinstance(m, BaseMetrics)
+
+
+# ---------------------------------------------------------------------------
+# K. PromptConfigResolution
+# ---------------------------------------------------------------------------
+
+
+class TestPromptConfigResolution:
+    def test_builtin_config(self):
+        """Built-in config should resolve to nemo_skills/prompt/config/."""
+        path = get_config_path("generic/math")
+        assert path.exists()
+        assert "nemo_skills/prompt/config/generic/math.yaml" in str(path)
+
+    def test_absolute_yaml_path(self, dummy_benchmark_git):
+        """Config ending in .yaml with absolute path should work directly."""
+        yaml_path = str(dummy_benchmark_git / "my_benchmarks" / "prompt" / "eval" / "word_count" / "default.yaml")
+        path = get_config_path(yaml_path)
+        assert path.exists()
+        assert str(path) == yaml_path
+
+    def test_relative_yaml_resolves_to_repo_root(self):
+        """Relative .yaml path should fall back to repo root resolution."""
+        path = get_config_path("nemo_skills/prompt/config/generic/math.yaml")
+        assert path.exists()
+        assert str(path).endswith("nemo_skills/prompt/config/generic/math.yaml")
+
+    def test_load_config_builtin(self):
+        """load_config with a short name should work."""
+        config = load_config("generic/math")
+        assert "user" in config

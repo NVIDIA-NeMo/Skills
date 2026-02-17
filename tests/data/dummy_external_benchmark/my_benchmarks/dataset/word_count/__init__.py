@@ -30,10 +30,9 @@ register_external_repo(
 METRICS_TYPE = "my_benchmarks.metrics.word_count::WordCountMetrics"
 
 # Default generation arguments
-# prompt_config ending in .yaml triggers absolute-path resolution;
-# /nemo_run/code/ is the root where code is extracted inside the container
+# prompt_config ending in .yaml is resolved relative to repo root
 GENERATION_ARGS = (
-    "++prompt_config=/nemo_run/code/my_benchmarks/prompt/eval/word_count/default.yaml "
+    "++prompt_config=my_benchmarks/prompt/eval/word_count/default.yaml "
     "++eval_type=my_benchmarks.evaluation.word_count::WordCountEvaluator"
 )
 

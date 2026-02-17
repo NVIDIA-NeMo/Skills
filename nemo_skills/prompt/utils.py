@@ -408,8 +408,10 @@ def get_config_path(config: str, config_dir: str | None = None, config_extension
 
     if config.endswith(f".{config_extension}"):
         config_path = Path(config).absolute()
-    elif config.startswith("nemo_skills"):
-        config_path = Path(__file__).parents[2].absolute() / f"{config}.{config_extension}"
+        # If not found, try relative to repo root (works for external packages
+        # whose code lives next to nemo_skills, e.g. in /nemo_run/code/)
+        if not config_path.is_file():
+            config_path = Path(__file__).parents[2].absolute() / config
     else:
         config_path = Path(config_dir) / f"{config}.{config_extension}"
 
@@ -422,9 +424,8 @@ def load_config(config: str, config_dir: str | None = None) -> dict:
 
     Args:
         config (str): The location of the prompt config file.
-            Can be the full path to a yaml file (if ends with .yaml) or one of the available configs.
-            If configs starts with nemo_skills we will look relative to the repo root.
-            If not, we will look relative to the config_dir parameter
+            If it ends with .yaml, it is treated as a path (absolute or relative to repo root).
+            Otherwise, it is looked up relative to config_dir.
         config_dir (str): The dir to look for the config file.
 
     Returns:

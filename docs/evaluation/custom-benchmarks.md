@@ -80,10 +80,9 @@ register_external_repo(
 METRICS_TYPE = "my_benchmarks.metrics.word_count::WordCountMetrics"
 
 # Default generation arguments
-# prompt_config ending in .yaml triggers absolute-path resolution;
-# /nemo_run/code/ is the root where code is extracted inside the container
+# prompt_config ending in .yaml is resolved relative to repo root
 GENERATION_ARGS = (
-    "++prompt_config=/nemo_run/code/my_benchmarks/prompt/eval/word_count/default.yaml "
+    "++prompt_config=my_benchmarks/prompt/eval/word_count/default.yaml "
     "++eval_type=my_benchmarks.evaluation.word_count::WordCountEvaluator"
 )
 
@@ -118,9 +117,9 @@ if __name__ == "__main__":
 
 ### Step 4 - Prompt template
 
-Prompt configs live in your external repo and are referenced by their full `.yaml`
-path. The path must end with `.yaml` so that the framework treats it as an absolute
-path rather than a built-in config name.
+Prompt configs live in your external repo and are referenced as a relative path
+ending in `.yaml`. You can also reference it as an absolute path, which in container
+would need to start with `/nemo_run/code/`, the directory where all packaged code lives.
 
 ```yaml title="my_benchmarks/prompt/eval/word_count/default.yaml"
 user: |-
@@ -133,7 +132,7 @@ user: |-
 In `GENERATION_ARGS` this is referenced as:
 
 ```
-++prompt_config=/nemo_run/code/my_benchmarks/prompt/eval/word_count/default.yaml
+++prompt_config=my_benchmarks/prompt/eval/word_count/default.yaml
 ```
 
 ### Step 5 - Custom generation module (optional)
