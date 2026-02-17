@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import contextlib
+import copy
 import logging
 import os
 import shlex
@@ -525,6 +526,8 @@ def add_task(
     executors = []
     # assuming server always has the largest resources request, so it needs to go first
     if server_config is not None and int(server_config["num_gpus"]) > 0:
+        # avoid mutating server_config, as it may be used again later in dependent jobs
+        server_config = copy.deepcopy(server_config)
         # do not pass container into the command builder
         # NOTE: avoid evaluating default (which would index cluster_config) unless needed
         server_container = server_config.pop("container", None)
