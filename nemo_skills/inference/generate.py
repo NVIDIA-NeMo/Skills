@@ -688,7 +688,7 @@ class GenerationTask:
         generation_params = {
             **inference_params,
             **self.extra_generate_params,
-            "prompt": self.fill_prompt(data_point, all_data, prompt_format),
+            "prompt": self.fill_prompt(data_point=data_point, data=all_data, prompt_format=prompt_format),
             "stop_phrases": [self.cfg.stop_phrase] if self.cfg.stop_phrase else None,
         }
 

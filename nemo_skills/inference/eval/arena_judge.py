@@ -102,7 +102,7 @@ class ArenaJudgeTask(GenerationTask):
         """Fill prompt with category-specific prompt config."""
         prompt_format = prompt_format or self.cfg.prompt_format
         if prompt_format == "openai":
-            return super().fill_prompt(data_point, data, prompt_format)
+            return super().fill_prompt(data_point=data_point, data=data, prompt_format=prompt_format)
 
         # Select the appropriate prompt based on category. If not defined, forcing fall-back to default prompt
         category = data_point.get("category")
