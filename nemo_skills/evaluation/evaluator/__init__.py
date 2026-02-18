@@ -28,6 +28,7 @@ from nemo_skills.evaluation.evaluator.code import (
     eval_livecodebench_pro,
 )
 from nemo_skills.evaluation.evaluator.compute_eval import ComputeEvalEvaluator
+from nemo_skills.evaluation.evaluator.dsbench import DSBenchEvaluator
 from nemo_skills.evaluation.evaluator.icpc import ICPCEvaluator
 from nemo_skills.evaluation.evaluator.ifbench import eval_ifbench
 from nemo_skills.evaluation.evaluator.ifeval import eval_if
@@ -72,6 +73,7 @@ EVALUATOR_CLASS_MAP = {
     "audio": AudioEvaluator,
     "bird": BirdEvaluator,
     "compute-eval": ComputeEvalEvaluator,
+    "dsbench": DSBenchEvaluator,
 }
 
 # Validation: Ensure no overlap between class and function maps
