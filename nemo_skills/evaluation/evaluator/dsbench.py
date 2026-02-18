@@ -60,14 +60,17 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
 
 
     # Try case-insensitive MCQ matching
-    mcq_options = "ABCDEFGHIJKLMNabcdefghijklmn"
-    norm_gt_mcq = str(gt_answer).strip()
+    mcq_options = "ABCDEFGHIJKLMN"
+    norm_gt_mcq = str(gt_answer).strip().upper()
+    norm_pred_mcq = str(predicted_answer).strip().upper()
     is_mcq = re.fullmatch("|".join(mcq_options), norm_gt_mcq)
-    parsed_gt = parse(gt_answer, [StringExtractionConfig(strings=tuple(mcq_options))])
-    parsed_pred = parse(predicted_answer, [StringExtractionConfig(strings=tuple(mcq_options))])
-    if is_mcq and verify(parsed_gt, parsed_pred):
-        return verify(parsed_gt, parsed_pred)
-    
+    if is_mcq:
+        parsed_gt = parse(norm_gt_mcq, [StringExtractionConfig(strings=tuple(mcq_options))])
+        parsed_pred = parse(norm_pred_mcq, [StringExtractionConfig(strings=tuple(mcq_options))])
+        mcq_result = verify(parsed_gt, parsed_pred)
+        if mcq_result:
+            return mcq_result
+                
     return math_equal(str(gt_answer), str(predicted_answer))
 
 
