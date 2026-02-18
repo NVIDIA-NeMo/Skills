@@ -423,7 +423,12 @@ class SweBenchGenerationTask(GenerationTask):
         container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
 
         # In alpine containers, install gcompat to fix issues with glibc
-        container_commands.append("if command -v apk >/dev/null 2>&1; then apk add --no-cache gcompat; fi")
+        container_commands.append(
+            "if command -v apk >/dev/null 2>&1; then "
+            "  echo 'http://dl-cdn.alpinelinux.org/alpine/v3.23/main' >>/etc/apk/repositories && "
+            "  apk add --no-cache gcompat; "
+            "fi"
+        )
 
         # Copy repo to /testbed before running the agent
         if mode == "agent" and self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
