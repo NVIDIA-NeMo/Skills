@@ -19,7 +19,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import KEY_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import KEY_FIELDS
 
 try:
     import orjson as _orjson  # type: ignore

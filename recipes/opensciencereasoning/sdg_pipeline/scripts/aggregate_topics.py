@@ -16,7 +16,7 @@ import argparse
 import json
 import logging
 
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
 
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
 
 LOG = logging.getLogger(__name__)
 

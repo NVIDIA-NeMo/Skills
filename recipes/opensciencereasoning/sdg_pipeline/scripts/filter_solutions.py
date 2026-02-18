@@ -20,29 +20,7 @@ import json
 import logging
 import os
 from typing import Dict, List, Optional, Sequence
-import re
-
-
-# ===========================
-# INTERNET DETECTION RULES
-# ===========================
-
-INTERNET_PATTERNS = {
-    "URL": r"https?://",
-    "HTTP_LIB": r"\b(requests|urllib|urllib3|httpx|aiohttp|http\.client)\b",
-    "SOCKET": r"\bimport\s+socket\b|\bsocket\.connect\(",
-    "CLI": r"\b(curl|wget|aria2|lynx)\b",
-    "SEARCH_API": r"\b(pubmed|ncbi|entrez|serpapi|bing|duckduckgo|google|wikipedia)\b",
-    "SCRAPING": r"\b(BeautifulSoup|selenium|playwright)\b",
-    "API_CLIENT": r"\b(openai|boto3|googleapiclient)\b",
-}
-
-COMPILED = {k: re.compile(v, re.IGNORECASE) for k, v in INTERNET_PATTERNS.items()}
-
-
-# ===========================
-# HELPERS
-# ===========================
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.regex_constants import COMPILED_INTERNET_PATTERNS
 
 def extract_python_calls(serialized_output):
     calls = []
@@ -72,7 +50,7 @@ def uses_internet(serialized_output):
         if not code:
             continue
 
-        for regex in COMPILED.values():
+        for regex in COMPILED_INTERNET_PATTERNS.values():
             if regex.search(code):
                 return True
 
@@ -88,6 +66,7 @@ def record_passes_filters(
     difficulty_pass_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     majority_voting_agreement_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     only_samples_with_ground_truth_answer: bool = False,
+    filter_internet: bool = False,
     metadata_filters: Optional[Dict[str, List[str]]] = None,
 ) -> tuple[bool, Optional[str]]:
     """Return (passes, filter_reason) tuple. filter_reason is set if record fails a filter."""
@@ -116,14 +95,13 @@ def record_passes_filters(
     if only_samples_with_ground_truth_answer and not record.get("expected_answer"):
         return False, "expected_answer"
 
+    if filter_internet and uses_internet(record.get("serialized_output", [])):
+        return False, "uses_internet"
+    
     for field, allowed in metadata_filters.items():
         candidate = record.get(field)
         if candidate not in allowed:
             return False, f"metadata:{field}"
-
-    if uses_internet(record.get("serialized_output", [])):
-        return False, "uses_internet"
-
     return True, None
 
 
@@ -160,6 +138,11 @@ def parse_args() -> argparse.Namespace:
         "--only_samples_with_ground_truth_answer",
         action="store_true",
         help="Keep only samples that have a ground truth answer",
+    )
+    parser.add_argument(
+        "--filter_internet",
+        action="store_true",
+        help="Filter out samples that use internet",
     )
     parser.add_argument(
         "--metadata_values",
@@ -203,6 +186,7 @@ def main() -> None:
                 difficulty_pass_rate_bounds=args.difficulty_model_pass_rate_range,
                 majority_voting_agreement_rate_bounds=args.majority_voting_agreement_rate_range,
                 only_samples_with_ground_truth_answer=args.only_samples_with_ground_truth_answer,
+                filter_internet=args.filter_internet,
                 metadata_filters=metadata_filters,
             )
 

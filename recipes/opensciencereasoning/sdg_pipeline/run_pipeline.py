@@ -24,7 +24,7 @@ from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
 from recipes.opensciencereasoning.sdg_pipeline.prompt.few_shots import few_shots
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
 
 # Final output file name for each stage
 OUTPUT_FILE = "final_result.jsonl"
@@ -259,16 +259,17 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
     num_chunks = stage_config.get("num_chunks")
     few_shots_name = stage_config.get("few_shots_name")
     generation_keys = stage_config.get("generation_keys", [])
-
+    end_marker = stage_config.get("end_marker")
     prev_name = None
     save_paths = {}
     topics_structure = {}
-    first_dep = run_after or None
+    prev_exp_name = run_after or None
     for i, name in enumerate(generation_keys):
         topics_structure[name] = stage_config[name]
         topics_json = json.dumps(stage_config[name], ensure_ascii=False)
         examples_json = json.dumps(few_shots[few_shots_name][name], ensure_ascii=False)
         extra_args = f"    --topic_key {shlex.quote(str(prev_name))} " if prev_name else ""
+        curr_exp_name = f"{expname}-prepare-for-{name}-labeling-{i}"
         run_cmd(
             ctx=wrap_arguments(
                 f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/prepare_topics.py "
@@ -281,13 +282,17 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             ),
             log_dir=f"{output_dir}/tmp/logs",
             cluster=cluster,
-            expname=f"{expname}-prepare-for-{name}-labeling-{i}",
-            run_after=first_dep if i == 0 else f"{expname}-{prev_name}-labeling-{i - 1}",
+            expname=curr_exp_name,
+            run_after=prev_exp_name,
         )
+        prev_exp_name = curr_exp_name
+        curr_exp_name = f"{expname}-{name}-labeling-{i}"
         generate(
             ctx=wrap_arguments(
                 f"++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/topics_labeling.yaml "
-                f"++generation_key={name} ",
+                f"++generation_key={name} "
+                f"++parse_reasoning=True "
+                f"{shlex.quote(end_marker)}"
             ),
             cluster=cluster,
             input_file=f"{output_dir}/tmp/prepared_for_{name}_labeling.jsonl",
@@ -298,9 +303,10 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             dependent_jobs=dependent_jobs,
             server_gpus=server_gpus,
             server_nodes=server_nodes,
-            expname=f"{expname}-{name}-labeling-{i}",
-            run_after=f"{expname}-prepare-for-{name}-labeling-{i}",
+            expname=curr_exp_name,
+            run_after=prev_exp_name,
         )
+        prev_exp_name = curr_exp_name
         input_file = f"{output_dir}/{name}/output.jsonl"
         prev_name = name
         save_paths[name] = f"{output_dir}/{name}/output.jsonl"
@@ -316,7 +322,7 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
         log_dir=f"{output_dir}/logs",
         cluster=cluster,
         expname=expname,
-        run_after=f"{expname}-{name}-labeling-{i}",
+        run_after=prev_exp_name,
     )
 
 
@@ -640,19 +646,15 @@ def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwa
     """
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
-    to_bucket = stage_config.get("to_bucket", True)
     bucket_field = stage_config.get("bucket_field", "output_token_length")
     bucket_sizes = stage_config.get("bucket_sizes", [16000, 32000, 64000])
     tokenizer_path = stage_config.get("tokenizer_path")
-
-    bucket_arg = "--to_bucket" if to_bucket else ""
     
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/process_messages_and_bucket.py "
             f"  {input_file} "
             f"  --output_dir {output_dir} "
-            f"  {bucket_arg} "
             f"  --bucket_field {bucket_field} "
             f"  --bucket_sizes {' '.join(map(str, bucket_sizes))} "
             f"  --tokenizer_path {tokenizer_path} "
@@ -662,7 +664,6 @@ def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwa
         log_dir=f"{output_dir}/logs",
         expname=expname,
         run_after=run_after,
-        partition="interactive"
     )
 
 
@@ -791,7 +792,7 @@ if __name__ == "__main__":
         default=None,
         help=(
             "Override config values using Hydra-style dotlist syntax. "
-            "Example: --override stages.process_messages_and_bucket.to_bucket=true stages.process_messages_and_bucket.tokenizer_path=/path/to/tokenizer. "
+            "Example: --override stages.process_messages_and_bucket.tokenizer_path=/path/to/tokenizer. "
             "Separate multiple overrides with spaces."
         ),
     )

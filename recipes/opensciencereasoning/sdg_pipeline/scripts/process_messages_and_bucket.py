@@ -97,7 +97,14 @@ def messages_to_string(
         formatted_messages.append(formatted_msg)
 
                 
-    chat_template_kwargs = chat_template_kwargs if chat_template_kwargs is not None else {}
+    if chat_template_kwargs is None:
+        chat_template_kwargs = {}
+    elif isinstance(chat_template_kwargs, str):
+        chat_template_kwargs = _json_loads(chat_template_kwargs)
+    elif not isinstance(chat_template_kwargs, dict):
+        raise TypeError(
+            f"chat_template_kwargs must be a mapping/dict, got {type(chat_template_kwargs).__name__}"
+        )
 
     return tokenizer.apply_chat_template(
         formatted_messages,
@@ -186,7 +193,6 @@ def process_jsonl(
     output_dir: str,
     tokenizer: AutoTokenizer,
     chat_template_kwargs: Dict[str, Any],
-    to_bucket: bool = False,
     bucket_sizes: List[int] = None,
     bucket_field: str = "output_token_length",
 ):
@@ -194,14 +200,13 @@ def process_jsonl(
     input_path = Path(input_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    if to_bucket and not bucket_sizes:
-        raise ValueError("If to_bucket=True, you must provide bucket_sizes (list of ints).")
+    logging.info(f"Processing file: {input_path}")
+    logging.info(f"Output directory: {output_dir}")
 
     # Prepare bucket files
     bucket_files = {}
     bucket_counts = {}
-    if to_bucket:
+    if bucket_sizes:
         for b in bucket_sizes:
             bucket_path = output_dir / f"{input_path.stem}_bucket_{b}.jsonl"
             bucket_files[b] = open(bucket_path, "w", encoding="utf-8")
@@ -236,7 +241,7 @@ def process_jsonl(
                 # Determine bucket field and length
                 length = obj.get(bucket_field, 0)
                 
-                if to_bucket:
+                if bucket_sizes:
                     b = bucket_index(length, bucket_sizes)
                     if b != -1:
                         bucket_files[b].write(dumped + "\n")
@@ -252,9 +257,10 @@ def process_jsonl(
                     logging.info(f"Processed {processed} lines")
 
             except Exception as e:
+                logging.info(f"Skipping line: {line[:100]}... due to error: {e}")
                 logging.error(f"Error processing line: {e}")
 
-    if to_bucket:
+    if bucket_sizes:
         for f in bucket_files.values():
             f.close()
     else:
@@ -262,7 +268,7 @@ def process_jsonl(
 
     # ---- Summary logging ----
     logging.info(f"✅ Done! Processed {processed} examples total.")
-    if to_bucket:
+    if bucket_sizes:
         logging.info("📊 Bucket distribution:")
         total = sum(bucket_counts.values())
         for b, count in bucket_counts.items():
@@ -285,7 +291,6 @@ if __name__ == "__main__":
     )
     parser.add_argument("input_file", type=str, help="Path to input .jsonl file with messages")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save processed files")
-    parser.add_argument("--to_bucket", action="store_true", help="Whether to bucket results by token length")
     parser.add_argument(
         "--bucket_sizes",
         default=[16000, 32000, 64000],
@@ -300,7 +305,12 @@ if __name__ == "__main__":
         help="Field to use for bucketing (output_token_length or input_token_length)",
     )
     parser.add_argument("--tokenizer_path", type=str, help="Model name for tokenizer")
-    parser.add_argument("--chat_template_kwargs", type=_json_std.loads, default="{}", help="Additional keyword arguments for chat template formatting")
+    parser.add_argument(
+        "--chat_template_kwargs",
+        type=_json_std.loads,
+        default={},
+        help="Additional keyword arguments for chat template formatting as a JSON object",
+    )
 
     args = parser.parse_args()
 
@@ -312,7 +322,6 @@ if __name__ == "__main__":
         args.output_dir,
         tokenizer,
         chat_template_kwargs,
-        args.to_bucket,
         args.bucket_sizes,
         args.bucket_field,
     )

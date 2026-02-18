@@ -97,6 +97,37 @@ def check_required_fields(record: dict, fields: set[str], stage: str, file_path:
         soft_assert(field in record, f"Stage {stage} missing field '{field}' in {file_path}")
 
 
+def resolve_config_path(raw_path: str, search_dir: Path) -> Path:
+    """Resolve a config reference to an absolute path.
+
+    Accepts absolute paths, repo-relative paths, or bare names (optionally without
+    the `.yaml`/`.yml` suffix). Bare names are looked up inside ``search_dir``.
+    """
+
+    candidate = Path(raw_path)
+
+    def expand_options(path: Path):
+        if path.suffix:
+            yield path
+        else:
+            yield path
+            yield path.with_suffix(".yaml")
+            yield path.with_suffix(".yml")
+
+    search_locations = []
+    if candidate.is_absolute():
+        search_locations.extend(expand_options(candidate))
+    else:
+        search_locations.extend(expand_options(search_dir / candidate))
+        search_locations.extend(expand_options(Path.cwd() / candidate))
+
+    for option in search_locations:
+        if option.exists():
+            return option.resolve()
+
+    raise FileNotFoundError(f"Could not resolve config path '{raw_path}'.")
+
+
 def apply_overrides(config: OmegaConf, override_paths: list[str], dotlist: list[str]) -> dict:
     merged = config
     if override_paths:
@@ -104,7 +135,7 @@ def apply_overrides(config: OmegaConf, override_paths: list[str], dotlist: list[
         merged = OmegaConf.merge(merged, *overrides)
     if dotlist:
         merged = OmegaConf.merge(merged, OmegaConf.from_dotlist(dotlist))
-    return OmegaConf.to_container(merged, resolve=True)
+    return OmegaConf.to_container(merged, resolve=True, structured_config_mode="dict")
 
 
 def collect_setting_labels(paths: list[str]) -> set[str]:
@@ -117,6 +148,10 @@ def collect_setting_labels(paths: list[str]) -> set[str]:
 
 
 def main():
+    configs_root = Path(__file__).resolve().parents[1] / "configs"
+    pipelines_dir = configs_root / "pipelines"
+    settings_dir = configs_root / "settings"
+
     parser = argparse.ArgumentParser(description="Validate SDG pipeline artifacts.")
     parser.add_argument("--config_path", required=True, help="Path to the merged pipeline config YAML")
     parser.add_argument("--variant", required=False, help="Optional label used only for logging")
@@ -134,12 +169,20 @@ def main():
     )
     args = parser.parse_args()
 
-    override_paths = [
-        piece.strip() for entry in args.settings_path or [] for piece in entry.split(",") if piece.strip()
-    ]
-    dotlist_overrides = [piece.strip() for entry in args.override or [] for piece in entry.split(",") if piece.strip()]
+    override_paths = []
+    for entry in args.settings_path or []:
+        for piece in entry.split(","):
+            cleaned = piece.strip()
+            if cleaned:
+                override_paths.append(str(resolve_config_path(cleaned, settings_dir)))
 
-    base_config = OmegaConf.load(args.config_path)
+    dotlist_overrides = []
+    if args.override:
+        for entry in args.override:
+            dotlist_overrides.append(entry.strip())
+
+    config_path = resolve_config_path(args.config_path, pipelines_dir)
+    base_config = OmegaConf.load(config_path)
     config = apply_overrides(base_config, override_paths, dotlist_overrides)
     applied_setting_labels = collect_setting_labels(override_paths)
 
