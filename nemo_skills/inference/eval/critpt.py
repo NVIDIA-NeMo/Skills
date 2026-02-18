@@ -129,9 +129,7 @@ class CritPtGenerationTask(GenerationTask):
         # fill_prompt will detect the "messages" key and return them directly
         turn2_data_point = {"messages": turn2_messages}
         turn2_result = await super().process_single_datapoint(turn2_data_point, all_data)
-
-        if self.cfg.parse_reasoning and self.cfg.end_reasoning_string in turn2_result[self.cfg.generation_key]:
-            parse_reasoning(turn2_result, self.cfg.generation_key, self.cfg.end_reasoning_string)
+        LOG.debug(f"Turn 2 result: {turn2_result[self.cfg.generation_key]}")
 
         # Add turn-specific metadata
         turn2_result["intermediate"] = solution_turn1
