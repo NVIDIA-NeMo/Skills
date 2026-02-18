@@ -131,7 +131,7 @@ def save_data(split, data_dir, display_root, incontext_data):
     metadata = []
     with open(metadata_path, 'r') as f:
         for line in f:
-            metadata.append(eval(line.strip()))
+            metadata.append(json.loads(line.strip()))
 
     # Process all tasks
     if not display_root:
