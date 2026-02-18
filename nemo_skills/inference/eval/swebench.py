@@ -416,8 +416,18 @@ class SweBenchGenerationTask(GenerationTask):
         logs_dir = self.output_dir / "apptainer_logs"
         logs_dir.mkdir(exist_ok=True)
 
+        # Commands to be executed in the Apptainer container, in order
+        container_commands = []
+
         # Fix localhost URLs not working sometimes
-        command = f"echo '127.0.0.1 localhost' >/etc/hosts && {command}"
+        container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
+
+        # Copy repo to /testbed before running the agent
+        if mode == "agent" and self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
+            container_commands.append("cp -r /app /testbed")
+
+        container_commands.append(command)
+        combined_command = " && ".join(container_commands)
 
         # Launch Apptainer container and execute the command
         apptainer_cmd = (
@@ -425,7 +435,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
             f"--mount type=bind,src=/root,dst=/root_mount,ro "
             f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
-            f" {container_name} bash -c {shlex.quote(command)}"
+            f" {container_name} bash -c {shlex.quote(combined_command)}"
         )
 
         # Retry apptainer command up to max_retries times
@@ -521,17 +531,11 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.multilingual:
             extra_fields["language"] = data_point["language"]
 
-        repo_location_setup = (
-            "mkdir -p /testbed && cp -r /app/. /testbed && "
-            if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro
-            else ""
-        )
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/SWE-agent && "
-            f"{repo_location_setup}"
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
@@ -730,12 +734,6 @@ class SweBenchGenerationTask(GenerationTask):
                 f" train "  # dataset split (always "train" for local datasets)
             )
 
-        repo_location_setup = (
-            "mkdir -p /testbed && cp -r /app/. /testbed && "
-            if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro
-            else ""
-        )
-
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -751,7 +749,6 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/tmux /root && "
             "cp -r /root_mount/jq /root && "
             "cd /root/OpenHands && "
-            f"{repo_location_setup}"
             # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
