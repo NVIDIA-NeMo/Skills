@@ -112,11 +112,7 @@ def save_data(split, data_dir, display_root, incontext_data):
 
         # Find and move data directory to standard location
         if not extracted_data_dir.exists():
-            extracted_data = list(data_dir.glob("*/data"))
-            if extracted_data:
-                shutil.move(str(extracted_data[0]), str(extracted_data_dir))
-            else:
-                raise FileNotFoundError("Could not find data directory after extraction")
+            raise FileNotFoundError(f"Could not find data directory after extraction in {extracted_data_dir}")
 
         # Clean up zip file
         zip_path.unlink()
