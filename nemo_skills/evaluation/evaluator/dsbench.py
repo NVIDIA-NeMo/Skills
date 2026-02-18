@@ -43,6 +43,7 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
         gt_answer = gt_answer
 
     if isinstance(predicted_answer, dict):
+        # check if all the keys in gt_answer are in predicted_answer and if the values are equal
         return all(relaxed_equal(gt_answer[k], predicted_answer.get(k)) for k in gt_answer.keys()) 
 
     if isinstance(predicted_answer, list):
@@ -72,9 +73,9 @@ class DSBenchEvaluator(MathEvaluator):
         data_point = await super().eval_single(data_point)
 
         # If symbolic_correct is False, try relaxed_equal
-        if not data_point.get("symbolic_correct", False):
+        if not data_point["symbolic_correct"]:
             expected_answer = data_point["expected_answer"]
-            predicted_answer = data_point.get("predicted_answer")
+            predicted_answer = data_point["predicted_answer"]
 
             if relaxed_equal(expected_answer, predicted_answer):
                 data_point["symbolic_correct"] = True
