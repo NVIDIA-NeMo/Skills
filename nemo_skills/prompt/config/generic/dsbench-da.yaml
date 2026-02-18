@@ -10,7 +10,7 @@ user: |-
   Avoid unnecessary mistakes in reading the files by first exploring the file to understand its structure and schema (e.g., sheet names, column names, nan values, etc.) and identify the relevant data for the question before jumping into solution.
 
   Put your final answer in \boxed{{your final answer}}. Format your answer based on the question type:
-  - Multiple choice: Put only the option letter case-sensitive (e.g., \boxed{{A}})
+  - Multiple choice: Put only the option letter (e.g., \boxed{{A}})
   - Single value: Put only the value (e.g., \boxed{{42}} or \boxed{{Antioch}})
   - Fill in the blanks: Put answers separated by commas (e.g., \boxed{{answer1, answer2, answer3}})
   - Multiple variables: Put a dictionary (e.g., \boxed{{{{"x": 10, "y": 20}}}})

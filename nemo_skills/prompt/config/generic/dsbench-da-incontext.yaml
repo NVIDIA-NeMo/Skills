@@ -8,4 +8,10 @@ user: |-
 
   {problem}
 
-  Put your final answer in \boxed{{your final answer}}. The answer in \boxed{{}} should be only your final answer with no extra text.
+  Put your final answer in \boxed{{your final answer}}. Format your answer based on the question type:
+  - Multiple choice: Put only the option letter (e.g., \boxed{{A}})
+  - Single value: Put only the value (e.g., \boxed{{42}} or \boxed{{Antioch}})
+  - Fill in the blanks: Put answers separated by commas (e.g., \boxed{{answer1, answer2, answer3}})
+  - Multiple variables: Put a dictionary (e.g., \boxed{{{{"x": 10, "y": 20}}}})
+
+  IMPORTANT: \boxed{{}} must contain ONLY your final answer with no additional text or explanation.
