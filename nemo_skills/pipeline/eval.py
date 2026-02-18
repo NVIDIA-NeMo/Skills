@@ -17,7 +17,7 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -458,6 +458,10 @@ def eval(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
+    metric_type: Optional[str] = typer.Option(
+        None,
+        help="Specify metric type to use a specific metric calculator.",
+    ),
     metrics_kwargs: str = typer.Option(
         "",
         help="Additional kwargs to pass to the metrics calculator. Values should be provided as a JSON string or as a `dict` if invoking from code.",
@@ -773,6 +777,8 @@ def eval(
                     command += f" --wandb_project={wandb_project} "
                 if data_dir:
                     command += f" --data_dir={data_dir} "
+                if metric_type:
+                    command += f" --metric_type={metric_type} "
                 if metrics_kwargs:
                     command += f" --metrics_kwargs='{kwargs_to_string(metrics_kwargs)}' "
 

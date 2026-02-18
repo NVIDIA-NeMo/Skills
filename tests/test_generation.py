@@ -192,3 +192,32 @@ def test_server_metadata_from_num_tasks(tmp_path):
     assert server_cmd.script.num_gpus == server_config["num_gpus"]
     assert groups[0].hardware.num_gpus == server_config["num_gpus"]
     assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
+
+
+def test_judge_generations_with_structured_output(tmp_path):
+    cmd = (
+        f"ns eval "
+        f"    --server_type=openai "
+        f"    --model=nvidia/nemotron-3-nano-30b-a3b "
+        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --benchmarks=hle "
+        f"    --output_dir={tmp_path} "
+        f"    --judge_model=nvidia/nemotron-3-nano-30b-a3b "
+        f"    --judge_server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --judge_server_type=openai "
+        f"    --metric_type=hle-aa "
+        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA" '
+        f"    ++max_samples=2 "
+        f"    ++inference.tokens_to_generate=1024 "  # to make test go fast
+    )
+    subprocess.run(cmd, shell=True, check=True)
+
+    # checking that output exists and has the expected format
+    with open(f"{tmp_path}/eval-results/hle/output.jsonl") as fin:
+        data = [json.loads(line) for line in fin.readlines()]
+    judgements = [json.loads(data[i]["judgement"]) for i in range(len(data))]
+    expected_keys = {"extracted_final_answer", "reasoning", "correct", "confidence"}
+    assert set(judgements[0].keys()) == expected_keys
+    assert set(judgements[1].keys()) == expected_keys
+    assert judgements[0]["correct"] in {"yes", "no"}
+    assert judgements[1]["correct"] in {"yes", "no"}

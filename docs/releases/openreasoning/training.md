@@ -105,7 +105,7 @@ def apply_format(elem, prompt):
 
 dataset = load_dataset("nvidia/Nemotron-Post-Training-Dataset-v1", split="code")
 
-prompt = get_prompt('eval/livecodebench/python_codegen_reasoning', tokenizer='Qwen/Qwen2.5-32B-Instruct', system_message="")
+prompt = get_prompt('eval/livecodebench/default_reasoning', tokenizer='Qwen/Qwen2.5-32B-Instruct', system_message="")
 func = partial(apply_format, prompt=prompt)
 dataset = dataset.map(func, num_proc=20)
 dataset = dataset.remove_columns(['messages'])
