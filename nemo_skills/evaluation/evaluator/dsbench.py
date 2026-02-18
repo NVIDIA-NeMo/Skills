@@ -36,17 +36,26 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
         return gt_answer is None
 
     try:
-        predicted_answer = json.loads(predicted_answer)
-        gt_answer = json.loads(gt_answer)
+        parsed_pred = json.loads(predicted_answer)
+        parsed_gt = json.loads(gt_answer)
+        predicted_answer, gt_answer = parsed_pred, parsed_gt
     except Exception:
-        predicted_answer = predicted_answer
-        gt_answer = gt_answer
+        pass  # keep original string forms
 
     if isinstance(predicted_answer, dict):
-        # check if all the keys in gt_answer are in predicted_answer and if the values are equal
+
+        if not isinstance(gt_answer, dict):
+            # check if any of the values in predicted_answer are equal to gt_answer
+            return any(relaxed_equal(gt_answer, p) for p in predicted_answer.values())
+        
+        # check if all the keys in gt_answer are in predicted_answer and if the values are equal; ok for predicted_answer to have more keys
         return all(relaxed_equal(gt_answer[k], predicted_answer.get(k)) for k in gt_answer.keys()) 
 
     if isinstance(predicted_answer, list):
+        if not isinstance(gt_answer, list):
+            # check if any of the values in predicted_answer are equal to gt_answer
+            return any(relaxed_equal(gt_answer, p) for p in predicted_answer)
+        # check if the lengths are equal and if all the values are equal
         return len(gt_answer) == len(predicted_answer) and all(relaxed_equal(e, p) for e, p in zip(gt_answer, predicted_answer))
 
 

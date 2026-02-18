@@ -44,9 +44,7 @@ def read_excel_to_text(excel_path):
 
         return combined_text
     except Exception as e:
-        # Graceful error handling - don't crash entire dataset preparation
-        print(f"Warning: Failed to read {excel_path}: {e}")
-        return f"[Failed to read Excel file: {excel_path.name}]"
+        raise RuntimeError(f"Failed to read Excel file {excel_path}: {e}") from e
 
 
 def format_paths_for_prompt(paths, actual_root, display_root):
@@ -179,7 +177,7 @@ def save_data(split, data_dir, display_root, incontext_data):
             display_root = display_root
         )
 
-        # Get image files (for future multimodal support)
+        # Get image files and csv files (for future multimodal and agentic support)
         image_files = []
         for ext in ['*.jpg', '*.png', '*.jpeg']:
             image_files.extend(task_dir.glob(ext))
