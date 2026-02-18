@@ -433,7 +433,9 @@ class SweBenchGenerationTask(GenerationTask):
         # Copy repo to /testbed before running the agent
         if mode == "agent" and self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
             # Avoid using bash cp because of "recursion detected" errors
-            container_commands.append('python -c \'import shutil; shutil.copytree("/app", "/testbed")\'')
+            container_commands.append(
+                'python -c \'import shutil; shutil.copytree("/app", "/testbed", ignore_dangling_symlinks=True)\''
+            )
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
