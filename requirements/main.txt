@@ -52,3 +52,8 @@ tqdm
 transformers
 typer >= 0.13
 wandb
+
+# Data Science Requirements
+pandas>=2.0.0
+openpyxl>=3.1.0
+pyxlsb>=1.0.10
