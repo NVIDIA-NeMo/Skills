@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from importlib.metadata import PackageNotFoundError, metadata
-
 try:
-    metadata("nemo-skills")
-except PackageNotFoundError:
+    import nemo_run  # noqa: F401
+except ModuleNotFoundError:
     raise ImportError(
         "nemo-skills-core is installed but pipeline functionality requires the full package. "
         "Install it with: pip install nemo-skills"
