@@ -549,7 +549,7 @@ class SweBenchGenerationTask(GenerationTask):
             # ensure pip is available in the venv, then reinstall numpy to fix glibc compatibility issues
             # numpy C extensions compiled in main container may not work in child containers with older glibc
             "/root/SWE-agent/venv/bin/python -m ensurepip --upgrade --default-pip && "
-            "/root/SWE-agent/venv/bin/python -m pip install --force-reinstall --no-cache-dir numpy && "
+            "/root/SWE-agent/venv/bin/python -m pip install --index-url https://pypi.org/simple --force-reinstall --no-cache-dir numpy && "
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
@@ -646,7 +646,7 @@ class SweBenchGenerationTask(GenerationTask):
                 # ensure pip is available in the venv, then reinstall numpy to fix glibc compatibility issues
                 # numpy C extensions compiled in main container may not work in child containers with older glibc
                 "/root/mini-swe-agent/venv/bin/python -m ensurepip --upgrade --default-pip && "
-                "/root/mini-swe-agent/venv/bin/python -m pip install --force-reinstall --no-cache-dir numpy && "
+                "/root/mini-swe-agent/venv/bin/python -m pip install --index-url https://pypi.org/simple --force-reinstall --no-cache-dir numpy && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
@@ -779,7 +779,7 @@ class SweBenchGenerationTask(GenerationTask):
             "source /root/OpenHands/.venv/bin/activate && "
             # reinstall numpy to fix glibc compatibility issues in child containers
             # numpy C extensions compiled in main container may not work in child containers with older glibc
-            "python -m pip install --force-reinstall --no-cache-dir numpy && "
+            "python -m pip install --index-url https://pypi.org/simple --force-reinstall --no-cache-dir numpy && "
             # copy dataset
             f"mkdir {data_dir} && "
             f"cp {self.cfg.input_file} {data_dir}/dataset.jsonl && "
@@ -889,7 +889,7 @@ class SweBenchGenerationTask(GenerationTask):
                     # ensure pip is available in the venv, then reinstall numpy to fix glibc compatibility issues
                     # numpy C extensions compiled in main container may not work in child containers with older glibc
                     "/root/SWE-bench/venv/bin/python -m ensurepip --upgrade --default-pip && "
-                    "/root/SWE-bench/venv/bin/python -m pip install --force-reinstall --no-cache-dir numpy && "
+                    "/root/SWE-bench/venv/bin/python -m pip install --index-url https://pypi.org/simple --force-reinstall --no-cache-dir numpy && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
                     f"    --raw_sample_path {self.cfg.input_file} "
@@ -907,7 +907,7 @@ class SweBenchGenerationTask(GenerationTask):
                     # ensure pip is available in the venv, then reinstall numpy to fix glibc compatibility issues
                     # numpy C extensions compiled in main container may not work in child containers with older glibc
                     "/root/SWE-bench/venv/bin/python -m ensurepip --upgrade --default-pip && "
-                    "/root/SWE-bench/venv/bin/python -m pip install --force-reinstall --no-cache-dir numpy && "
+                    "/root/SWE-bench/venv/bin/python -m pip install --index-url https://pypi.org/simple --force-reinstall --no-cache-dir numpy && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
                     f"    --predictions_path {pred_mounted_path} "
