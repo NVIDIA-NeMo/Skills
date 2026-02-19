@@ -609,7 +609,7 @@ class GenerationTask:
                     f"user_message override expects exactly 1 user message, found {len(user_msgs)}"
                 )
                 user_msgs[0]["content"] = self.cfg.user_message
-            if self.cfg.prompt_suffix and data_point["messages"]:
+            if self.cfg.prompt_suffix:
                 data_point["messages"][-1]["content"] += self.cfg.prompt_suffix
             if self.cfg.system_message:
                 if data_point["messages"][0]["role"] != "system":
