@@ -546,6 +546,9 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/SWE-agent /root && "
             "cp -r /root_mount/uv /root && "
             "cd /root/SWE-agent && "
+            # reinstall numpy to fix glibc compatibility issues in child containers
+            # numpy C extensions compiled in main container may not work in child containers with older glibc
+            "/root/SWE-agent/venv/bin/pip install --force-reinstall --no-cache-dir numpy && "
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
@@ -639,6 +642,9 @@ class SweBenchGenerationTask(GenerationTask):
                 "cp -r /root_mount/mini-swe-agent /root && "
                 "cp -r /root_mount/uv /root && "
                 "cd /root/mini-swe-agent && "
+                # reinstall numpy to fix glibc compatibility issues in child containers
+                # numpy C extensions compiled in main container may not work in child containers with older glibc
+                "/root/mini-swe-agent/venv/bin/pip install --force-reinstall --no-cache-dir numpy && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
@@ -769,6 +775,9 @@ class SweBenchGenerationTask(GenerationTask):
             "export NO_CLEANUP=1 && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
+            # reinstall numpy to fix glibc compatibility issues in child containers
+            # numpy C extensions compiled in main container may not work in child containers with older glibc
+            "pip install --force-reinstall --no-cache-dir numpy && "
             # copy dataset
             f"mkdir {data_dir} && "
             f"cp {self.cfg.input_file} {data_dir}/dataset.jsonl && "
@@ -875,6 +884,9 @@ class SweBenchGenerationTask(GenerationTask):
                     "cp -r /root_mount/SWE-bench /root && "
                     "cp -r /root_mount/uv /root && "
                     "cd /root/SWE-bench && "
+                    # reinstall numpy to fix glibc compatibility issues in child containers
+                    # numpy C extensions compiled in main container may not work in child containers with older glibc
+                    "/root/SWE-bench/venv/bin/pip install --force-reinstall --no-cache-dir numpy && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
                     f"    --raw_sample_path {self.cfg.input_file} "
@@ -889,6 +901,9 @@ class SweBenchGenerationTask(GenerationTask):
                     "cp -r /root_mount/SWE-bench /root && "
                     "cp -r /root_mount/uv /root && "
                     "cd /root/SWE-bench && "
+                    # reinstall numpy to fix glibc compatibility issues in child containers
+                    # numpy C extensions compiled in main container may not work in child containers with older glibc
+                    "/root/SWE-bench/venv/bin/pip install --force-reinstall --no-cache-dir numpy && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
                     f"    --predictions_path {pred_mounted_path} "
