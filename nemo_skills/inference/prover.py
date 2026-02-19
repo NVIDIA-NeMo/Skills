@@ -443,7 +443,7 @@ class ProverTask(GenerationTask):
 
         return new_results_dict
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         result = await self.pass_at_N(data_point, all_data)
         result_dict = {"generation": result}
 

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict
 
 import nemo_skills.pipeline.utils as pipeline_utils
-from nemo_skills.dataset.utils import get_dataset_module, import_from_path
+from nemo_skills.dataset.utils import get_dataset_module, get_dataset_name, import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.utils import compute_chunk_ids, get_logger_name
@@ -42,6 +42,7 @@ class BenchmarkArgs:
     num_samples: int
     num_chunks: int | None
     eval_subfolder: str
+    metrics_type: str | None = None
     benchmark_group: str | None = None
     score_module: str | None = None
     job_ids: list[int] = field(default_factory=list)
@@ -86,6 +87,8 @@ def get_benchmark_args_from_module(
     eval_requires_judge,
     benchmark_group=None,
     override_dict=None,
+    local_data_path=None,
+    data_dir=None,
 ):
     if split is None:
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
@@ -93,8 +96,11 @@ def get_benchmark_args_from_module(
     if not is_on_cluster:
         if pipeline_utils.is_mounted_filepath(cluster_config, data_path) or cluster_config["executor"] == "none":
             input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
-            unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
-            unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))
+            if local_data_path is not None:
+                unmounted_path = f"{local_data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
+            else:
+                unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
+                unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))
         else:
             # will be copied over in this case as it must come from extra datasets
             input_file = f"/nemo_run/code/{Path(data_path).name}/{benchmark.replace('.', '/')}/{split}.jsonl"
@@ -105,18 +111,26 @@ def get_benchmark_args_from_module(
         unmounted_path = pipeline_utils.get_unmounted_path(cluster_config, input_file)
 
     unmounted_path = str(unmounted_path)
+    # When data_dir is specified, use it for both input_file and the existence check
+    # data_dir is always assumed to be a mounted path
+    if data_dir:
+        data_dir_unmounted = pipeline_utils.get_unmounted_path(cluster_config, data_dir)
+        input_file = f"{data_dir}/{benchmark.replace('.', '/')}/{split}.jsonl"
+        check_path = f"{data_dir_unmounted}/{benchmark.replace('.', '/')}/{split}.jsonl"
+    else:
+        check_path = unmounted_path
     # checking if data file exists (can check locally as well)
     if is_on_cluster:
-        if not pipeline_utils.cluster_path_exists(cluster_config, unmounted_path):
+        if not pipeline_utils.cluster_path_exists(cluster_config, check_path):
             raise ValueError(
-                f"Data file {unmounted_path} does not exist on cluster. "
+                f"Data file {check_path} does not exist on cluster. "
                 "Please check the benchmark and split parameters. "
                 "Did you forget to run prepare data commands or add data_dir argument?"
             )
     else:
-        if not Path(unmounted_path).exists():
+        if not Path(check_path).exists():
             raise ValueError(
-                f"Data file {unmounted_path} does not exist locally. "
+                f"Data file {check_path} does not exist locally. "
                 "Please check the benchmark and split parameters. "
                 "Did you forget to run prepare data commands or add data_dir argument?"
             )
@@ -170,6 +184,8 @@ def get_benchmark_args_from_module(
         LOG.info("Swe-bench requires extra docker privileges, setting NEMO_SKILLS_PRIVILEGED_DOCKER=1")
         os.environ["NEMO_SKILLS_PRIVILEGED_DOCKER"] = "1"
 
+    metrics_type = get_arg_from_module_or_dict(benchmark_module, "METRICS_TYPE", None, override_dict)
+
     return BenchmarkArgs(
         name=benchmark,
         input_file=input_file,
@@ -183,41 +199,62 @@ def get_benchmark_args_from_module(
         num_chunks=num_chunks,
         eval_subfolder=eval_subfolder,
         benchmark_group=benchmark_group,
+        metrics_type=metrics_type,
         sandbox_env_overrides=sandbox_env_overrides,
     )
 
 
+def _resolve_data_path(data_path):
+    """Resolve external dataset data_path to a container-mounted path if needed."""
+    if not data_path.startswith("/nemo_run/code"):
+        local_data_path = data_path
+        data_path = pipeline_utils.resolve_external_data_path(data_path)
+        return data_path, local_data_path
+    return data_path, None
+
+
 def add_default_args(
-    cluster_config, benchmark_or_group, split, data_dir, extra_datasets_type, extra_datasets, eval_requires_judge
+    cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge, extra_benchmark_map=None
 ):
-    benchmark_or_group_module, data_path, is_on_cluster = get_dataset_module(
+    benchmark_or_group_module, data_path = get_dataset_module(
         dataset=benchmark_or_group,
         data_dir=data_dir,
         cluster_config=cluster_config,
-        extra_datasets=extra_datasets,
-        extra_datasets_type=extra_datasets_type,
+        extra_benchmark_map=extra_benchmark_map,
     )
+    if data_path == data_dir:
+        local_data_path = None
+    else:
+        data_path, local_data_path = _resolve_data_path(data_path)
+    is_on_cluster = bool(data_dir) and cluster_config["executor"] == "slurm"
+
+    benchmark_or_group_name = get_dataset_name(benchmark_or_group)
 
     if getattr(benchmark_or_group_module, "IS_BENCHMARK_GROUP", False):
         benchmarks_args = []
         for benchmark, override_dict in benchmark_or_group_module.BENCHMARKS.items():
-            benchmark_module, data_path, is_on_cluster = get_dataset_module(
+            benchmark_module, data_path = get_dataset_module(
                 dataset=benchmark,
                 data_dir=data_dir,
                 cluster_config=cluster_config,
-                extra_datasets=extra_datasets,
-                extra_datasets_type=extra_datasets_type,
+                extra_benchmark_map=extra_benchmark_map,
             )
+            if data_path == data_dir:
+                local_data_path = None
+            else:
+                data_path, local_data_path = _resolve_data_path(data_path)
             benchmark_args = get_benchmark_args_from_module(
                 benchmark_module=benchmark_module,
                 benchmark=benchmark,
-                benchmark_group=benchmark_or_group,
+                benchmark_group=benchmark_or_group_name,
                 split=split,
                 cluster_config=cluster_config,
                 data_path=data_path,
                 is_on_cluster=is_on_cluster,
                 eval_requires_judge=eval_requires_judge,
                 override_dict=override_dict,
+                local_data_path=local_data_path,
+                data_dir=data_dir,
             )
             if data_dir:
                 benchmark_args.generation_args += f" ++eval_config.data_dir={data_dir} "
@@ -228,7 +265,7 @@ def add_default_args(
         return benchmarks_args
 
     # Single benchmark
-    benchmark = benchmark_or_group
+    benchmark = benchmark_or_group_name
     benchmark_args = get_benchmark_args_from_module(
         benchmark_module=benchmark_or_group_module,
         benchmark=benchmark,
@@ -237,6 +274,8 @@ def add_default_args(
         data_path=data_path,
         is_on_cluster=is_on_cluster,
         eval_requires_judge=eval_requires_judge,
+        local_data_path=local_data_path,
+        data_dir=data_dir,
     )
 
     if data_dir:
@@ -249,7 +288,6 @@ def prepare_eval_commands(
     cluster_config,
     benchmarks_or_groups,
     split,
-    extra_datasets,
     num_jobs,
     starting_seed,
     output_dir,
@@ -259,7 +297,6 @@ def prepare_eval_commands(
     server_parameters,
     extra_arguments,
     data_dir,
-    extra_datasets_type,
     exclusive,
     with_sandbox,
     keep_mounts_for_sandbox,
@@ -267,6 +304,7 @@ def prepare_eval_commands(
     eval_requires_judge,
     generation_type=None,
     generation_module=None,
+    extra_benchmark_map=None,
 ):
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
 
@@ -282,8 +320,6 @@ def prepare_eval_commands(
         k: int(v) for k, v in [b.split(":") if ":" in b else (b, -1) for b in benchmarks_or_groups.split(",")]
     }
 
-    extra_datasets = extra_datasets or os.environ.get("NEMO_SKILLS_EXTRA_DATASETS")
-
     if num_jobs is None:
         if cluster_config["executor"] == "slurm":
             num_jobs = -1  # -1 means run all benchmarks in parallel
@@ -298,9 +334,8 @@ def prepare_eval_commands(
             benchmark_or_group,
             split,
             data_dir,
-            extra_datasets_type,
-            extra_datasets,
             eval_requires_judge=eval_requires_judge,
+            extra_benchmark_map=extra_benchmark_map,
         )
         for benchmark_args in cur_benchmarks:
             benchmark = benchmark_args.name

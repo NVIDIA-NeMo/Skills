@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DATASET_GROUP = "judge"
 METRICS_TYPE = "gradingbench"
 # This dataset is for evaluating grading ability - the model must grade proofs.
 GENERATION_ARGS = "++prompt_config=judge/imo_gradingbench ++eval_type=math"

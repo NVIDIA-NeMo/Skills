@@ -12,10 +12,8 @@
 # See the License for the specific lang
 
 import functools
-import importlib
-from pathlib import Path
 
-from nemo_skills.dataset.utils import import_from_path
+from nemo_skills.dataset.utils import locate
 from nemo_skills.evaluation.metrics.aalcr_metrics import AALCRMetrics
 from nemo_skills.evaluation.metrics.answer_judgement_metrics import AnswerJudgementMetrics
 from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
@@ -105,13 +103,7 @@ def get_metrics(metric_type: str, **kwargs):
     if metric_type in METRICS_MAP:
         metrics_cls = METRICS_MAP[metric_type]
     elif "::" in metric_type:
-        module_str, class_str = metric_type.split("::", 1)
-        if Path(module_str).is_file():
-            module = import_from_path(module_str)
-        else:
-            module = importlib.import_module(module_str)
-
-        metrics_cls = getattr(module, class_str)
+        metrics_cls = locate(metric_type)
 
     if metrics_cls is None:
         raise ValueError(
