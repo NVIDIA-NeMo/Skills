@@ -180,7 +180,7 @@ class VLLMMultimodalModel(VLLMModel):
 
         return api_key
 
-    def _build_request_body(self, top_k, min_p, repetition_penalty, extra_body: dict = None):
+    def _build_request_body(self, top_k, min_p, repetition_penalty, extra_body: dict | None = None):
         """Build request body, skipping vLLM-specific params for external APIs.
 
         Args:
@@ -312,7 +312,7 @@ class VLLMMultimodalModel(VLLMModel):
             New message dict with content converted to list format including audio.
         """
         if "audio" not in message and "audios" not in message:
-            return message
+            return copy.deepcopy(message)
 
         result = copy.deepcopy(message)
 
@@ -417,9 +417,7 @@ class VLLMMultimodalModel(VLLMModel):
         result = None
 
         # Track cumulative statistics across chunks
-        total_input_tokens = 0
-        total_generated_tokens = 0
-        total_time = 0.0
+        total_num_generated_tokens = 0
 
         for chunk_idx, audio_chunk in enumerate(chunks):
             chunk_messages = []
@@ -447,18 +445,13 @@ class VLLMMultimodalModel(VLLMModel):
 
                 chunk_messages.append(msg_copy)
 
-            # Preprocess messages before sending to model
-            chunk_messages = self._preprocess_messages_for_model(chunk_messages)
-
             # Generate for this chunk using parent's generate_async
             result = await super().generate_async(
                 prompt=chunk_messages, tokens_to_generate=tokens_to_generate, **kwargs
             )
 
             # Sum statistics from each chunk
-            total_input_tokens += result.get("input_tokens", 0)
-            total_generated_tokens += result.get("generated_tokens", 0)
-            total_time += result.get("time_elapsed", 0.0)
+            total_num_generated_tokens += result["num_generated_tokens"]
 
             generation = result["generation"]
             chunk_results.append(generation.strip())
@@ -466,17 +459,12 @@ class VLLMMultimodalModel(VLLMModel):
         # Aggregate results
         aggregated_text = " ".join(chunk_results)
 
-        if not result:
-            raise RuntimeError("Audio chunk generation returned no result")
-
         final_result = result.copy()
         final_result["generation"] = aggregated_text
         final_result["num_audio_chunks"] = len(chunks)
         final_result["audio_duration"] = duration
         # Update with summed statistics
-        final_result["input_tokens"] = total_input_tokens
-        final_result["generated_tokens"] = total_generated_tokens
-        final_result["time_elapsed"] = total_time
+        final_result["num_generated_tokens"] = total_num_generated_tokens
 
         return final_result
 
@@ -484,7 +472,7 @@ class VLLMMultimodalModel(VLLMModel):
         self,
         prompt: str | list[dict] | None = None,
         tokens_to_generate: int | None = None,
-        task_type: str = None,
+        task_type: str | None = None,
         **kwargs,
     ) -> dict:
         """Generate with automatic audio chunking for long audio files.
@@ -509,8 +497,7 @@ class VLLMMultimodalModel(VLLMModel):
                 return await self._generate_with_chunking(messages, audio_path, duration, tokens_to_generate, **kwargs)
 
             # No chunking needed - convert audio fields to base64 format
-            messages = [self.content_text_to_list(copy.deepcopy(msg)) for msg in messages]
-            messages = self._preprocess_messages_for_model(messages)
+            messages = [self.content_text_to_list(msg) for msg in messages]
             prompt = messages
 
         # Call parent's generate_async (which handles audio OUTPUT via _parse_chat_completion_response)
