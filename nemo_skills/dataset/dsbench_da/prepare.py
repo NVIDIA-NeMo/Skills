@@ -13,13 +13,11 @@
 # limitations under the License.
 
 import argparse
-import base64
 import json
-import os
-import shutil
-import urllib.request
 import zipfile
 from pathlib import Path
+
+from huggingface_hub import hf_hub_download
 
 
 def read_excel_to_text(excel_path):
@@ -28,14 +26,9 @@ def read_excel_to_text(excel_path):
 
     try:
         # Explicitly handle .xlsb files with pyxlsb engine
-        if excel_path.suffix == '.xlsb':
-            xls = pd.ExcelFile(excel_path, engine='pyxlsb')
-        else:
-            xls = pd.ExcelFile(excel_path)
-
-        sheets = {}
-        for sheet_name in xls.sheet_names:
-            sheets[sheet_name] = xls.parse(sheet_name)
+        engine = "pyxlsb" if excel_path.suffix == ".xlsb" else None
+        with pd.ExcelFile(excel_path, engine=engine) as xls:
+            sheets = {sheet_name: xls.parse(sheet_name) for sheet_name in xls.sheet_names}
 
         combined_text = ""
         for sheet_name, df in sheets.items():
@@ -78,52 +71,29 @@ def save_data(split, data_dir, display_root, incontext_data):
     data_dir.mkdir(parents=True, exist_ok=True)
 
     extracted_data_dir = data_dir / "data"
-    metadata_path = data_dir / "data.json"
 
-    # Download and extract if not already cached
-    if not extracted_data_dir.exists() or not metadata_path.exists():
+    # Extract if not already cached (hf_hub_download handles download caching)
+    if not extracted_data_dir.exists():
         print("  Downloading dataset from HuggingFace...")
-
-        # Download data.zip
-        print("    Downloading data.zip...")
-        zip_url = "https://huggingface.co/datasets/liqiang888/DSBench/resolve/main/data_analysis/data.zip"
-        zip_path = data_dir / "data.zip"
-        urllib.request.urlretrieve(zip_url, zip_path)
-
-        # Validate zip file size
-        zip_size = zip_path.stat().st_size
-        if zip_size < 1_000_000:  # < 1MB
-            raise ValueError(f"Downloaded zip is suspiciously small: {zip_size} bytes. Download may have failed.")
-
-        # Download metadata
-        print("    Downloading data.json...")
-        json_url = "https://huggingface.co/datasets/liqiang888/DSBench/resolve/main/data_analysis/data.json"
-        urllib.request.urlretrieve(json_url, metadata_path)
-
-        # Validate metadata file size
-        metadata_size = metadata_path.stat().st_size
-        if metadata_size == 0:
-            raise ValueError("Downloaded metadata is empty. Download may have failed.")
-
-        # Extract data
+        zip_path = Path(
+            hf_hub_download(repo_id="liqiang888/DSBench", filename="data_analysis/data.zip", repo_type="dataset")
+        )
         print("    Extracting data...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(data_dir)
-
-        # Find and move data directory to standard location
         if not extracted_data_dir.exists():
             raise FileNotFoundError(f"Could not find data directory after extraction in {extracted_data_dir}")
-
-        # Clean up zip file
-        zip_path.unlink()
         print(f"    Dataset cached to {data_dir}")
     else:
         print(f"  Using cached dataset from {data_dir}")
 
     # Load metadata
     print("  Loading metadata...")
+    metadata_path = Path(
+        hf_hub_download(repo_id="liqiang888/DSBench", filename="data_analysis/data.json", repo_type="dataset")
+    )
     metadata = []
-    with open(metadata_path, 'r') as f:
+    with open(metadata_path, "r") as f:
         for line in f:
             metadata.append(json.loads(line.strip()))
 
@@ -133,11 +103,13 @@ def save_data(split, data_dir, display_root, incontext_data):
     else:
         display_root = Path(display_root)
 
-    print(f"  Processing {len(metadata)} tasks at {extracted_data_dir} - using display root {display_root} for paths shown in the prompt...")
+    print(
+        f"  Processing {len(metadata)} tasks at {extracted_data_dir} - using display root {display_root} for paths shown in the prompt..."
+    )
     all_entries = []
 
     for task in metadata:
-        task_id = task['id']
+        task_id = task["id"]
         task_dir = extracted_data_dir / task_id
 
         if not task_dir.exists():
@@ -148,16 +120,16 @@ def save_data(split, data_dir, display_root, incontext_data):
             )
 
         # Read introduction
-        intro_file = task_dir / 'introduction.txt'
+        intro_file = task_dir / "introduction.txt"
         introduction = ""
         if intro_file.exists():
             introduction = intro_file.read_text(encoding="utf-8", errors="ignore")
 
         # Get data files - support all Excel formats
         excel_files = []
-        for ext in ['*.xlsx', '*.xlsb', '*.xlsm']:
+        for ext in ["*.xlsx", "*.xlsb", "*.xlsm"]:
             excel_files.extend(task_dir.glob(ext))
-        excel_files = [f for f in excel_files if 'answer' not in f.name.lower()]
+        excel_files = [f for f in excel_files if "answer" not in f.name.lower()]
 
         # Read Excel content for in-context mode
         if incontext_data:
@@ -167,22 +139,18 @@ def save_data(split, data_dir, display_root, incontext_data):
                 excel_content += f"The excel file {excel_file.name} is: {sheets_text}\n\n"
 
         # Format paths for tool mode (relative to data directory)
-        excel_paths = format_paths_for_prompt(
-            excel_files,
-            actual_root = extracted_data_dir,
-            display_root = display_root
-        )
+        excel_paths = format_paths_for_prompt(excel_files, actual_root=extracted_data_dir, display_root=display_root)
 
         # Get image files and csv files (for future multimodal and agentic support)
         image_files = []
-        for ext in ['*.jpg', '*.png', '*.jpeg']:
+        for ext in ["*.jpg", "*.png", "*.jpeg"]:
             image_files.extend(task_dir.glob(ext))
 
-        csv_files = list(task_dir.glob('*.csv')) # noqa: F841
+        csv_files = list(task_dir.glob("*.csv"))  # noqa: F841
 
         # Process each question
-        for idx, question_name in enumerate(task['questions']):
-            question_file = task_dir / f'{question_name}.txt'
+        for idx, question_name in enumerate(task["questions"]):
+            question_file = task_dir / f"{question_name}.txt"
 
             if not question_file.exists():
                 print(f"    Warning: {task_id}/{question_name}.txt not found, skipping")
@@ -199,20 +167,20 @@ def save_data(split, data_dir, display_root, incontext_data):
             # Create entry with all necessary fields
             entry = {
                 # Skills standard fields
-                'problem': problem_text,
-                'expected_answer': task['answers'][idx],
+                "problem": problem_text,
+                "expected_answer": task["answers"][idx],
                 # For tool mode
-                'excel_paths': excel_paths,
+                "excel_paths": excel_paths,
                 # Metadata
-                'task_id': task_id,
-                'question_id': question_name,
-                'task_name': task['name'],
-                'task_url': task['url'],
-                'task_year': task['year'],
+                "task_id": task_id,
+                "question_id": question_name,
+                "task_name": task["name"],
+                "task_url": task["url"],
+                "task_year": task["year"],
             }
 
             if incontext_data:
-                entry['excel_content'] = excel_content.strip()
+                entry["excel_content"] = excel_content.strip()
 
             all_entries.append(entry)
 
@@ -225,37 +193,29 @@ def save_data(split, data_dir, display_root, incontext_data):
 
     # Save to output file
     output_file = data_dir / f"{split}.jsonl"
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         for entry in all_entries:
-            f.write(json.dumps(entry) + '\n')
+            f.write(json.dumps(entry) + "\n")
 
     print(f"  ✓ Saved {len(all_entries)} questions to {output_file}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--split", default="test", choices=("test",), help="DSBench only has test split")
     parser.add_argument(
-        "--split",
-        default="test",
-        choices=("test",),
-        help="DSBench only has test split"
-    )
-    parser.add_argument(
-        "--data_dir",
-        type=str,
-        default=None,
-        help="Directory to save the data (defaults to dataset directory)"
+        "--data_dir", type=str, default=None, help="Directory to save the data (defaults to dataset directory)"
     )
     parser.add_argument(
         "--display_root",
         type=str,
         default=None,
-        help="Root directory to display in paths (absolute for abs paths, Path(\".\") for relative)"
+        help='Root directory to display in paths (absolute for abs paths, Path(".") for relative)',
     )
     parser.add_argument(
         "--incontext_data",
         action="store_true",
-        help="Have the excel files read in-context under 'excel_content' field (Default: False)"
+        help="Have the excel files read in-context under 'excel_content' field (Default: False)",
     )
     args = parser.parse_args()
     print(args)
