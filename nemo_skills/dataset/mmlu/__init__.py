@@ -14,6 +14,5 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 
-DATASET_GROUP = "multichoice"
 METRICS_TYPE = "multichoice"
 GENERATION_ARGS = "++prompt_config=eval/aai/mcq-4choices-boxed ++eval_type=multichoice"

@@ -13,8 +13,10 @@
 # limitations under the License.
 
 import asyncio
+import inspect
 from typing import Any, Callable, Dict
 
+from nemo_skills.dataset.utils import locate
 from nemo_skills.evaluation.evaluator.audio import AudioEvaluator
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator
 from nemo_skills.evaluation.evaluator.bfcl import eval_bfcl
@@ -85,13 +87,38 @@ if _overlap:
     )
 
 
+def _resolve_eval_type(eval_type: str):
+    """Resolve eval_type to either a class or function.
+
+    Supports two formats:
+        - Built-in string key: looks up in EVALUATOR_CLASS_MAP / EVALUATOR_MAP
+        - Path format with `::`: `module.path::name` or `/path/to/file.py::name`
+          Dynamically imports the module and returns the attribute.
+
+    Returns (obj, is_class) where is_class is True if obj is a BaseEvaluator subclass.
+    Returns (None, False) if eval_type is a plain string not found in either map.
+    """
+    if "::" in eval_type:
+        obj = locate(eval_type)
+        is_class = inspect.isclass(obj) and issubclass(obj, BaseEvaluator)
+        return obj, is_class
+
+    if eval_type in EVALUATOR_CLASS_MAP:
+        return EVALUATOR_CLASS_MAP[eval_type], True
+    if eval_type in EVALUATOR_MAP:
+        return EVALUATOR_MAP[eval_type], False
+    return None, False
+
+
 def is_evaluator_registered(eval_type: str):
     """Check if evaluator is registered in either class or function map."""
     return eval_type in EVALUATOR_CLASS_MAP or eval_type in EVALUATOR_MAP
 
 
-def register_evaluator(eval_type: str, eval_fn: Callable[[Dict[str, Any]], None]):
+def register_evaluator(eval_type: str, eval_fn: Callable[[Dict[str, Any]], None], ignore_if_registered: bool = False):
     if is_evaluator_registered(eval_type):
+        if ignore_if_registered:
+            return
         raise ValueError(f"Evaluator for {eval_type} already registered")
 
     EVALUATOR_MAP[eval_type] = eval_fn
@@ -99,38 +126,46 @@ def register_evaluator(eval_type: str, eval_fn: Callable[[Dict[str, Any]], None]
 
 def get_evaluator_class(eval_type: str, config: Dict[str, Any]) -> BaseEvaluator:
     """Get evaluator instance by type."""
-    if eval_type not in EVALUATOR_CLASS_MAP:
+    obj, is_class = _resolve_eval_type(eval_type)
+    if obj is None or not is_class:
         raise ValueError(
             f"Evaluator class not found for type: {eval_type}.\n"
             f"Available types with class support: {list(EVALUATOR_CLASS_MAP.keys())}\n"
-            f"All supported types: {list(EVALUATOR_MAP.keys())}"
+            f"All supported types: {list(EVALUATOR_MAP.keys())}\n"
+            f"Or use path format: module.path::ClassName or /path/to/file.py::ClassName"
         )
-
-    evaluator_class = EVALUATOR_CLASS_MAP[eval_type]
-    return evaluator_class(config)
+    return obj(config)
 
 
 def supports_single_eval(eval_type: str, config: Dict[str, Any]) -> bool:
     """Check if evaluator supports single data point evaluation during generation."""
-    if eval_type not in EVALUATOR_CLASS_MAP:
+    obj, is_class = _resolve_eval_type(eval_type)
+    if not is_class:
         return False  # Only class-based evaluators support single eval
 
-    evaluator = get_evaluator_class(eval_type, config)
+    evaluator = obj(config)
     return evaluator.supports_single_eval()
 
 
 def evaluate(eval_type, eval_config):
-    """Main evaluation function that handles both class-based and function-based evaluators."""
-    # Check if it's a class-based evaluator first
-    if eval_type in EVALUATOR_CLASS_MAP:
-        evaluator = get_evaluator_class(eval_type, eval_config)
-        print(f"evaluator: {evaluator}")
+    """Main evaluation function that handles both class-based and function-based evaluators.
+
+    eval_type can be a built-in string key or a path in the format:
+        - module.path::name (for importable modules)
+        - /path/to/file.py::name (for file-based imports)
+    """
+    obj, is_class = _resolve_eval_type(eval_type)
+
+    if obj is None:
+        all_types = list(EVALUATOR_CLASS_MAP.keys()) + list(EVALUATOR_MAP.keys())
+        raise ValueError(
+            f"Evaluator not found for type: {eval_type}.\n"
+            f"Supported types: {sorted(all_types)}\n"
+            f"Or use path format: module.path::name or /path/to/file.py::name"
+        )
+
+    if is_class:
+        evaluator = obj(eval_config)
         return asyncio.run(evaluator.eval_full())
 
-    # Fall back to function-based evaluator
-    if eval_type in EVALUATOR_MAP:
-        return EVALUATOR_MAP[eval_type](eval_config)
-
-    # Not found in either map
-    all_types = list(EVALUATOR_CLASS_MAP.keys()) + list(EVALUATOR_MAP.keys())
-    raise ValueError(f"Evaluator not found for type: {eval_type}.\nSupported types: {sorted(all_types)}")
+    return obj(eval_config)

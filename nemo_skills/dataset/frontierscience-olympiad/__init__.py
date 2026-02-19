@@ -13,12 +13,9 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "math"
 METRICS_TYPE = "frontierscience-olympiad"
 GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=math"
 EVAL_SPLIT = "all"
-
-
 JUDGE_PIPELINE_ARGS = {
     "model": "o3-mini-2025-01-31",
     "server_type": "openai",
