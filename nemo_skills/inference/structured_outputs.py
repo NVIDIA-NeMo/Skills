@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Literal
 
-# this are requirements for code execution - put all packages that LLM should have access to in here
-annotated-types>=0.7.0
-flask
-gunicorn
-h5py
-# needed for persistent sessions
-ipython
-numpy
-pandas
-psutil
-scipy
-sympy
-tqdm
+from pydantic import BaseModel
+
+
+class HLEJudgeAAResponseFormat(BaseModel):
+    extracted_final_answer: str
+    reasoning: str
+    correct: Literal["yes", "no"]
+    confidence: int
+
+
+STRUCTURED_OUTPUTS = {
+    "HLE_JUDGE_AA": HLEJudgeAAResponseFormat,
+}
