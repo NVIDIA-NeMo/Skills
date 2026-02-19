@@ -17,16 +17,16 @@ initial_dependency: None
 
 # Define the full sequence of stages for this mode
 pipeline_stages:
-  - filter_problems             # Filter problems based on format
-  - decontaminate               # Decontaminate problems
-  - topics_labeling             # Label topics and subtopics
-  - generate_solutions          # Generate solutions
-  - difficulty_estimation       # Estimate difficulty of problems
-  - aggregate                   # Aggregate all the metadata into a single file
-  - filter_solutions            # Filter solutions
-  - prepare_for_sft             # Prepare for SFT
+  # - filter_problems             # Filter problems based on format
+  # - decontaminate               # Decontaminate problems
+  # - topics_labeling             # Label topics and subtopics
+  # - generate_solutions          # Generate solutions
+  # - difficulty_estimation       # Estimate difficulty of problems
+  # - aggregate                   # Aggregate all the metadata into a single file
+  # - filter_solutions            # Filter solutions
+  # - prepare_for_sft             # Prepare for SFT
   - process_messages_and_bucket # Process messages + token lengths + buckets
-  - validate                    # Validate outputs and stage health
+  # - validate                    # Validate outputs and stage health
 
 # Directory structure configuration
 directories:
@@ -143,7 +143,7 @@ stages:
         model: /hf_models/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
-        server_nodes: 2
+        server_nodes: 1
         dependent_jobs: 1
         num_random_seeds: 5
         num_chunks: 20
@@ -173,7 +173,9 @@ stages:
     predicted_answer_regex_field: null # if specified will use the field in the input file to extract the predicted answer regex
     make_judgement: True
 
-    reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
+    chat_template_kwargs:
+      reasoning_effort: high
+    reasoning_effort: ++chat_template_kwargs.reasoning_effort=${stages.generate_solutions.chat_template_kwargs.reasoning_effort}
     prompt_config: ++prompt_config=generic/general-boxed
     tokens_to_generate: ++inference.tokens_to_generate=60000
     code_tags: ""
@@ -265,22 +267,16 @@ stages:
         ++filters.trim_solutions=false
         ${stages.generate_solutions.reasoning_effort}
         ${stages.generate_solutions.builtin_tools}
-        ++assistant_end="'<|return|>'"
     dependencies:
       - filter_solutions
 
   process_messages_and_bucket:
     output_dir: ${directories.step-8-process-messages-and-bucket}
     input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
-    tokenizer_path: /hf_models/gpt-oss-120b
-    chat_template_kwargs: 
-      ${stages.generate_solutions.chat_template_kwargs.reasoning_effort}
-    to_bucket: True
+    tokenizer_path: openai/gpt-oss-20b
+    chat_template_kwargs: ${stages.generate_solutions.chat_template_kwargs}
     bucket_field: output_token_length
-    bucket_sizes:
-      - 16000
-      - 32000
-      - 64000
+    bucket_sizes: null
     dependencies:
       - prepare_for_sft
 

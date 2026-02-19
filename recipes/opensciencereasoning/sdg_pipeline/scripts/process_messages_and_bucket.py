@@ -14,6 +14,7 @@
 # limitations under the License.
 
 # ---- Fast JSON (prefer orjson) ----
+import argparse
 import json as _json_std
 import logging
 import sys
@@ -58,7 +59,7 @@ def messages_to_string(
     messages: List[Dict[str, str]],
     tokenizer: Any,
     add_generation_prompt: bool,
-    chat_template_kwargs: dict | None = None,
+    chat_template_kwargs: Dict[str, Any] | None = None,
 ) -> str:
     """
     Convert a list of messages to a formatted string using tokenizer's chat template.
@@ -99,8 +100,6 @@ def messages_to_string(
                 
     if chat_template_kwargs is None:
         chat_template_kwargs = {}
-    elif isinstance(chat_template_kwargs, str):
-        chat_template_kwargs = _json_loads(chat_template_kwargs)
     elif not isinstance(chat_template_kwargs, dict):
         raise TypeError(
             f"chat_template_kwargs must be a mapping/dict, got {type(chat_template_kwargs).__name__}"
@@ -127,6 +126,20 @@ def bucket_index(length: int, bucket_sizes: List[int]) -> int:
         if length <= size:
             return size
     return -1  # overflow
+
+
+def _parse_chat_template_kwargs_json(raw: str) -> Dict[str, Any]:
+    try:
+        parsed = _json_std.loads(raw)
+    except Exception as exc:
+        raise argparse.ArgumentTypeError(
+            f"--chat_template_kwargs must be a JSON object string (e.g. '{{\"reasoning_effort\": \"high\"}}'). Parse error: {exc}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise argparse.ArgumentTypeError(
+            f"--chat_template_kwargs must be a JSON object, got {type(parsed).__name__}"
+        )
+    return parsed
 
 
 def extract_input_output_from_messages(obj: Dict[str, Any], tokenizer: AutoTokenizer, chat_template_kwargs: Dict[str, Any]) -> tuple:
@@ -307,9 +320,9 @@ if __name__ == "__main__":
     parser.add_argument("--tokenizer_path", type=str, help="Model name for tokenizer")
     parser.add_argument(
         "--chat_template_kwargs",
-        type=_json_std.loads,
+        type=_parse_chat_template_kwargs_json,
         default={},
-        help="Additional keyword arguments for chat template formatting as a JSON object",
+        help='Additional keyword arguments for chat template formatting as a JSON object string, e.g. {"reasoning_effort":"high"}',
     )
 
     args = parser.parse_args()

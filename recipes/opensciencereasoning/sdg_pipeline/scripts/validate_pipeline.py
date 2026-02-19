@@ -206,7 +206,7 @@ def main():
         if stage_name == "decontaminate":
             base_count = count_jsonl(output_dir / "final_result.jsonl")
 
-        if stage_name in {"bucket", "bucket_qwen"}:
+        if stage_name == "process_messages_and_bucket":
             if ensure_file(output_dir, f"{stage_name} output directory"):
                 files = sorted(output_dir.glob("*.jsonl"))
                 soft_assert(files, f"Stage {stage_name} produced no bucket files in {output_dir}")
