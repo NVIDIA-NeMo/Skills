@@ -1,3 +1,4 @@
+# Adapted from https://github.com/LiqiangJing/DSBench/blob/main/data_analysis/eval_GPT.ipynb
 # DSBench Data Analysis - In-context mode (Excel content embedded in prompt)
 
 system: "You are a data analyst. I will give you a background introduction and data analysis question. You must answer the question."

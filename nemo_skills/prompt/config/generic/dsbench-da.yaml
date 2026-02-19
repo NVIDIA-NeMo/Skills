@@ -1,5 +1,5 @@
 # DSBench Data Analysis - Tool mode (Python tool reads Excel files)
-
+# Adapted from https://raw.githubusercontent.com/LiqiangJing/DSBench/refs/heads/main/data_analysis/eva_autogen_gpt.ipynb
 user: |-
   {problem}
 
