@@ -67,6 +67,22 @@ def mock_vllm_multimodal_model(tmp_path):
         return model
 
 
+@pytest.fixture
+def mock_vllm_multimodal_model_input_audio(tmp_path):
+    """Create a mock VLLMMultimodalModel configured for input_audio."""
+    with patch.object(VLLMMultimodalModel, "__init__", lambda self, **kwargs: None):
+        model = VLLMMultimodalModel()
+        model.data_dir = str(tmp_path)
+        model.output_dir = None
+        model.output_audio_dir = None
+        model.enable_audio_chunking = True
+        model.audio_chunk_task_types = None
+        model.chunk_audio_threshold_sec = 30
+        model.audio_format = "input_audio"
+        model._tunnel = None
+        return model
+
+
 def test_content_text_to_list_with_audio(mock_vllm_multimodal_model, tmp_path):
     """Test converting string content with audio to list format.
 
@@ -86,17 +102,14 @@ def test_content_text_to_list_with_audio(mock_vllm_multimodal_model, tmp_path):
     assert result["content"][1]["type"] == "text"
 
 
-def test_content_text_to_list_with_input_audio_format(mock_vllm_multimodal_model, tmp_path):
+def test_content_text_to_list_with_input_audio_format(mock_vllm_multimodal_model_input_audio, tmp_path):
     """Test audio conversion with input_audio format (OpenAI native)."""
     audio_path = tmp_path / "test.wav"
     with open(audio_path, "wb") as f:
         f.write(b"RIFF" + b"\x00" * 100)
 
-    # Switch to input_audio format
-    mock_vllm_multimodal_model.audio_format = "input_audio"
-
     message = {"role": "user", "content": "Describe this audio", "audio": {"path": "test.wav"}}
-    result = mock_vllm_multimodal_model.content_text_to_list(message)
+    result = mock_vllm_multimodal_model_input_audio.content_text_to_list(message)
 
     assert isinstance(result["content"], list)
     assert len(result["content"]) == 2

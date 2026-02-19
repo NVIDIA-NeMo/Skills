@@ -76,7 +76,7 @@ class VLLMMultimodalModel(VLLMModel):
         enable_audio_chunking: bool = True,
         audio_chunk_task_types: list[str] | None = None,
         chunk_audio_threshold_sec: int = 30,
-        audio_format: str = "input_audio",
+        audio_format: str | None = None,
         **kwargs,
     ):
         """Initialize VLLMMultimodalModel with audio I/O and external API support.
@@ -87,7 +87,7 @@ class VLLMMultimodalModel(VLLMModel):
             enable_audio_chunking: Master switch for audio chunking.
             audio_chunk_task_types: If None, chunk all task types; if specified, only chunk these.
             chunk_audio_threshold_sec: Audio duration threshold for chunking (in seconds).
-            audio_format: Format for audio content ("audio_url" or "input_audio").
+            audio_format: Format for audio content ("audio_url" or "input_audio"). If None, select by mode.
             **kwargs: Other parameters passed to VLLMModel/BaseModel.
         """
         super().__init__(model=model, base_url=base_url, **kwargs)
@@ -100,6 +100,8 @@ class VLLMMultimodalModel(VLLMModel):
         self.audio_chunk_task_types = audio_chunk_task_types
         self.chunk_audio_threshold_sec = chunk_audio_threshold_sec
 
+        if audio_format is None:
+            audio_format = "input_audio" if self._external_api_mode else "audio_url"
         if audio_format not in ("audio_url", "input_audio"):
             raise ValueError(f"Unsupported audio_format '{audio_format}'. Use 'audio_url' or 'input_audio'.")
         self.audio_format = audio_format
@@ -221,9 +223,12 @@ class VLLMMultimodalModel(VLLMModel):
         if "generation" in result and result["generation"]:
             match = DEBUG_INFO_PATTERN.search(result["generation"])
             if match:
-                result["debug_info"] = json.loads(match.group(1))
-                # Strip debug_info from generation
-                result["generation"] = DEBUG_INFO_PATTERN.sub("", result["generation"])
+                try:
+                    result["debug_info"] = json.loads(match.group(1))
+                    # Strip debug_info from generation
+                    result["generation"] = DEBUG_INFO_PATTERN.sub("", result["generation"])
+                except json.JSONDecodeError:
+                    LOG.warning("Failed to parse debug_info JSON from content")
 
         choice = response.choices[0]
         if hasattr(choice.message, "audio") and choice.message.audio:
@@ -256,16 +261,20 @@ class VLLMMultimodalModel(VLLMModel):
             return audio_info
 
         if self.output_audio_dir:
-            audio_bytes = base64.b64decode(audio_base64)
-            filename = f"{response_id}.wav"
-            filepath = os.path.join(self.output_audio_dir, filename)
+            try:
+                audio_bytes = base64.b64decode(audio_base64)
+                filename = f"{response_id}.wav"
+                filepath = os.path.join(self.output_audio_dir, filename)
 
-            with open(filepath, "wb") as f:
-                f.write(audio_bytes)
+                with open(filepath, "wb") as f:
+                    f.write(audio_bytes)
 
-            audio_info["path"] = filepath
-            audio_info["size_bytes"] = len(audio_bytes)
-            LOG.info(f"Saved audio: {filepath} ({len(audio_bytes)} bytes)")
+                audio_info["path"] = filepath
+                audio_info["size_bytes"] = len(audio_bytes)
+                LOG.info(f"Saved audio: {filepath} ({len(audio_bytes)} bytes)")
+            except Exception as e:
+                LOG.warning(f"Failed to save audio: {e}")
+                audio_info["data"] = audio_base64
         else:
             audio_info["data"] = audio_base64
 
