@@ -152,11 +152,11 @@ class VLLMMultimodalModel(VLLMModel):
         # Auto-detect API key based on base_url
         if base_url:
             if "api.nvidia.com" in base_url or "inference-api.nvidia.com" in base_url:
-                api_key = os.getenv("NVIDIA_API_KEY")
+                api_key = os.getenv("NV_INFERENCE_API_KEY") or os.getenv("NVIDIA_API_KEY")
                 if not api_key:
                     raise ValueError(
-                        "NVIDIA_API_KEY is required for NVIDIA APIs and could not be found. "
-                        "Set NVIDIA_API_KEY environment variable or pass api_key explicitly."
+                        "NV_INFERENCE_API_KEY or NVIDIA_API_KEY is required for NVIDIA APIs and could not be found. "
+                        "Set NV_INFERENCE_API_KEY/NVIDIA_API_KEY environment variable or pass api_key explicitly."
                     )
                 return api_key
 
