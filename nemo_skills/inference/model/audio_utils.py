@@ -145,6 +145,8 @@ def make_audio_content_block(base64_audio: str, audio_format: str = "audio_url")
     if audio_format == "input_audio":
         # OpenAI native format (works with NVIDIA API / Gemini / Azure)
         return {"type": "input_audio", "input_audio": {"data": base64_audio, "format": "wav"}}
-    else:
+    elif audio_format == "audio_url":
         # Data URI format (works with vLLM / Qwen)
         return {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{base64_audio}"}}
+    else:
+        raise ValueError(f"Unsupported audio_format '{audio_format}'. Use 'audio_url' or 'input_audio'.")

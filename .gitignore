@@ -49,3 +49,6 @@ AGENTS.md
 .codex
 
 .idea
+
+#scripts at root level
+/*.sh
