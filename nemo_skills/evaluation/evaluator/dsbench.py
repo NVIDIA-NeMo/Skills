@@ -14,10 +14,10 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from math_verify import StringExtractionConfig, parse, verify
-import re
 
 from nemo_skills.evaluation.evaluator.math import MathEvaluator
 from nemo_skills.evaluation.math_grader import math_equal
@@ -45,21 +45,21 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
         pass  # keep original string form
 
     if isinstance(predicted_answer, dict):
-
         if not isinstance(gt_answer, dict):
             # check if any of the values in predicted_answer are equal to gt_answer
             return any(relaxed_equal(gt_answer, p) for p in predicted_answer.values())
 
         # check if all the keys in gt_answer are in predicted_answer and if the values are equal; ok for predicted_answer to have more keys
-        return all(relaxed_equal(gt_answer[k], predicted_answer.get(k)) for k in gt_answer.keys())
+        return all(k in predicted_answer and relaxed_equal(gt_answer[k], predicted_answer[k]) for k in gt_answer.keys())
 
     if isinstance(predicted_answer, list):
         if not isinstance(gt_answer, list):
             # check if any of the values in predicted_answer are equal to gt_answer
             return any(relaxed_equal(gt_answer, p) for p in predicted_answer)
         # check if the lengths are equal and if all the values are equal
-        return len(gt_answer) == len(predicted_answer) and all(relaxed_equal(e, p) for e, p in zip(gt_answer, predicted_answer))
-
+        return len(gt_answer) == len(predicted_answer) and all(
+            relaxed_equal(e, p) for e, p in zip(gt_answer, predicted_answer)
+        )
 
     # Try case-insensitive MCQ matching
     # TODO: add support for numeric and roman numeral MCQs (i.e. "1", "I", "2", "II", etc.)
