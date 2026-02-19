@@ -70,6 +70,7 @@ def test_nvidia_api_text_only():
 @requires_nvidia_api_key
 @requires_test_audio
 def test_nvidia_api_audio_input():
+    """Integration test: audio-input generation using a local test audio file."""
     model = VLLMMultimodalModel(
         model=MODEL,
         base_url=NVIDIA_BASE_URL,
@@ -129,6 +130,6 @@ def test_nvidia_api_audio_with_transcription_prompt():
 
     assert "generation" in result
     assert len(result["generation"]) > 0
-    assert result.get("num_generated_tokens", 0) > 0
+    assert result["num_generated_tokens"] > 0
     print(f"[transcription] generation: {result['generation'][:300]}")
-    print(f"[transcription] tokens: {result.get('num_generated_tokens')}")
+    print(f"[transcription] tokens: {result['num_generated_tokens']}")

@@ -632,7 +632,7 @@ class GenerationTask:
 
             # Filter out content types specified in drop_content_types config
             message["content"] = [
-                content for content in message["content"] if content.get("type") not in self.cfg.drop_content_types
+                content for content in message["content"] if content["type"] not in self.cfg.drop_content_types
             ]
 
     async def postprocess_single_output(self, output, original_data_point):
