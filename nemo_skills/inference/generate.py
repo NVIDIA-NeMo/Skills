@@ -91,7 +91,7 @@ class GenerationTaskConfig:
 
     input_file: str  # Path to the input file with data
     output_file: str  # Where to save the generations
-    prompt_config: Any = None  # How to format the data into prompts (str path, dict, or None)
+    prompt_config: str | dict | None = None  # How to format the data into prompts (str path, dict, or None)
 
     # Deprecated, please use endpoint_type in the InferenceConfig instead
     use_completions_api: bool = False
