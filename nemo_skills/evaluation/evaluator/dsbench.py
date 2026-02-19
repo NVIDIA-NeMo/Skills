@@ -36,11 +36,13 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
         return gt_answer is None
 
     try:
-        parsed_pred = json.loads(predicted_answer)
-        parsed_gt = json.loads(gt_answer)
-        predicted_answer, gt_answer = parsed_pred, parsed_gt
+        predicted_answer = json.loads(predicted_answer)
     except Exception:
-        pass  # keep original string forms
+        pass  # keep original string form
+    try:
+        gt_answer = json.loads(gt_answer)
+    except Exception:
+        pass  # keep original string form
 
     if isinstance(predicted_answer, dict):
 
@@ -60,7 +62,8 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
 
 
     # Try case-insensitive MCQ matching
-    mcq_options = "ABCDEFGHIJKLMN"
+    # TODO: add support for numeric and roman numeral MCQs (i.e. "1", "I", "2", "II", etc.)
+    mcq_options = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     norm_gt_mcq = str(gt_answer).strip().upper()
     norm_pred_mcq = str(predicted_answer).strip().upper()
     is_mcq = re.fullmatch("|".join(mcq_options), norm_gt_mcq)
