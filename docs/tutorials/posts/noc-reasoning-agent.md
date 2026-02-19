@@ -66,21 +66,17 @@ All scripts and prompts referenced in this tutorial are available in the [recipe
 
 ### Configure the environment
 
-Several scripts import shared modules from sibling directories. Before running the pipeline, set up the Python import paths:
+Several scripts import shared modules from sibling directories (e.g. `from src.tools import ...`). Set two environment variables before running any Python commands:
 
 ```shell
-# Mark downloaded directories as Python packages
-touch src/__init__.py src/filtering/__init__.py src/utils/__init__.py \
-      src/evaluation/__init__.py src/ns_pipelines/__init__.py
-
-# Add workspace to PYTHONPATH so scripts can find the src package
+# Add workspace to PYTHONPATH so Python can find the src package
 export PYTHONPATH=/workspace:$PYTHONPATH
 
 # Disable the uncommitted-changes check (useful during development)
 export NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK=1
 ```
 
-The `__init__.py` files tell Python that these directories are importable packages. The `PYTHONPATH` export ensures that `from src.tools import ...` resolves correctly in all subsequent commands.
+Python 3.3+ namespace packages allow importing from `src/` without `__init__.py` files, so only the `PYTHONPATH` is needed.
 
 The setup step above downloads a sample `data/synthetic_incidents.csv` into `/workspace`. To use your own data, replace this file with your incident CSV (same column schema). The sample file is also available in the [recipes/noc-reasoning-agent/data/](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent/data) directory of the Nemo-Skills repository.
 
