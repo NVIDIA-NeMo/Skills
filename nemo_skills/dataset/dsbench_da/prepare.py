@@ -20,7 +20,7 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 
 
-def read_excel_to_text(excel_path):
+def read_excel_to_text(excel_path: Path) -> str:
     """Read Excel file and convert to text representation."""
     import pandas as pd
 
@@ -40,7 +40,7 @@ def read_excel_to_text(excel_path):
         raise RuntimeError(f"Failed to read Excel file {excel_path}: {e}") from e
 
 
-def format_paths_for_prompt(paths, actual_root, display_root):
+def format_paths_for_prompt(paths: list[Path], actual_root: Path, display_root: Path) -> str:
     """Format file paths for display in prompt.
 
     Args:
@@ -63,7 +63,7 @@ def format_paths_for_prompt(paths, actual_root, display_root):
     return " ".join(formatted)
 
 
-def save_data(split, data_dir, display_root, incontext_data):
+def save_data(split: str, data_dir: str | Path, display_root: str | Path | None, incontext_data: bool) -> None:
     """Download and prepare DSBench data."""
     print(f"Preparing DSBench data for {split} split and saving to {data_dir}...")
 
@@ -95,7 +95,8 @@ def save_data(split, data_dir, display_root, incontext_data):
     metadata = []
     with open(metadata_path, "r") as f:
         for line in f:
-            metadata.append(json.loads(line.strip()))
+            if line.strip():
+                metadata.append(json.loads(line.strip()))
 
     # Process all tasks
     if not display_root:
@@ -141,12 +142,11 @@ def save_data(split, data_dir, display_root, incontext_data):
         # Format paths for tool mode (relative to data directory)
         excel_paths = format_paths_for_prompt(excel_files, actual_root=extracted_data_dir, display_root=display_root)
 
-        # Get image files and csv files (for future multimodal and agentic support)
-        image_files = []
-        for ext in ["*.jpg", "*.png", "*.jpeg"]:
-            image_files.extend(task_dir.glob(ext))
-
-        csv_files = list(task_dir.glob("*.csv"))  # noqa: F841
+        # Uncomment to get image files and csv files (for future multimodal and agentic support)
+        # image_files = []
+        # for ext in ["*.jpg", "*.png", "*.jpeg"]:
+        #     image_files.extend(task_dir.glob(ext))
+        # csv_files = list(task_dir.glob("*.csv"))
 
         # Process each question
         for idx, question_name in enumerate(task["questions"]):
