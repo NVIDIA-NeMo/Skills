@@ -91,7 +91,7 @@ class GenerationTaskConfig:
 
     input_file: str  # Path to the input file with data
     output_file: str  # Where to save the generations
-    prompt_config: str | dict | None = None  # How to format the data into prompts (str path, dict, or None)
+    prompt_config: Any = None  # How to format the data into prompts (str path, dict, or None)
 
     # Deprecated, please use endpoint_type in the InferenceConfig instead
     use_completions_api: bool = False
@@ -253,7 +253,8 @@ class GenerationTaskConfig:
             raise ValueError(f"prompt_format must be either 'ns' or 'openai', got '{self.prompt_format}'")
 
         if self.prompt_format == "ns":
-            assert self.prompt_config is not None, "prompt_config is required when prompt_format == 'ns'"
+            if self.prompt_config is None:
+                raise ValueError("prompt_config is required when prompt_format == 'ns'")
         for param, default_value in self._get_disallowed_params():
             if getattr(self, param) != default_value:
                 raise ValueError(f"{param} must be {default_value}")
@@ -590,12 +591,55 @@ class GenerationTask:
         if "messages" not in data_point or not isinstance(data_point["messages"], (list, ListConfig)):
             return
         original_messages = data_point["messages"]
-        for i, msg in enumerate(template_filled_messages):
-            if i < len(original_messages):
-                orig_msg = original_messages[i]
+        used_original_messages = [False] * len(original_messages)
+        for msg in template_filled_messages:
+            if "audios" in msg:
+                continue
+            for idx, orig_msg in enumerate(original_messages):
+                if used_original_messages[idx]:
+                    continue
+                if orig_msg["role"] != msg["role"]:
+                    continue
+                if "name" in msg and orig_msg.get("name") != msg["name"]:
+                    continue
+
                 audios = orig_msg.get("audios") or ([orig_msg["audio"]] if "audio" in orig_msg else None)
                 if audios:
                     msg["audios"] = audios
+                used_original_messages[idx] = True
+                break
+
+    @staticmethod
+    def _set_message_text_content(message: dict, text: str) -> None:
+        """Set text content for string or multimodal message content while preserving non-text items."""
+        content = message["content"]
+        if isinstance(content, str):
+            message["content"] = text
+            return
+        if not isinstance(content, list):
+            raise TypeError(f"Unexpected content type: {type(content)}")
+
+        for item in content:
+            if item.get("type") == "text":
+                item["text"] = text
+                return
+        content.insert(0, {"type": "text", "text": text})
+
+    @staticmethod
+    def _append_message_text_suffix(message: dict, suffix: str) -> None:
+        """Append suffix to text content for string or multimodal message content."""
+        content = message["content"]
+        if isinstance(content, str):
+            message["content"] = content + suffix
+            return
+        if not isinstance(content, list):
+            raise TypeError(f"Unexpected content type: {type(content)}")
+
+        for item in content:
+            if item.get("type") == "text":
+                item["text"] += suffix
+                return
+        content.append({"type": "text", "text": suffix})
 
     # TODO: data will not include any samples skipped after restart
     def fill_prompt(self, data_point, data):
@@ -605,12 +649,11 @@ class GenerationTask:
             data_point = deepcopy(data_point)
             if self.cfg.user_message:
                 user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
-                assert len(user_msgs) == 1, (
-                    f"user_message override expects exactly 1 user message, found {len(user_msgs)}"
-                )
-                user_msgs[0]["content"] = self.cfg.user_message
+                if len(user_msgs) != 1:
+                    raise ValueError(f"user_message override expects exactly 1 user message, found {len(user_msgs)}")
+                self._set_message_text_content(user_msgs[0], self.cfg.user_message)
             if self.cfg.prompt_suffix:
-                data_point["messages"][-1]["content"] += self.cfg.prompt_suffix
+                self._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
             if self.cfg.system_message:
                 if data_point["messages"][0]["role"] != "system":
                     data_point["messages"].insert(0, {"role": "system", "content": self.cfg.system_message})
@@ -631,7 +674,7 @@ class GenerationTask:
                 self._merge_audio_from_data(filled_prompt, data_point)
             if self.cfg.prompt_suffix:
                 if isinstance(filled_prompt, list):
-                    filled_prompt[-1]["content"] += self.cfg.prompt_suffix
+                    self._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
                 elif isinstance(filled_prompt, str):
                     filled_prompt += self.cfg.prompt_suffix
             return filled_prompt
@@ -652,7 +695,7 @@ class GenerationTask:
         )
         if self.cfg.prompt_suffix:
             if isinstance(filled_prompt, list):
-                filled_prompt[-1]["content"] += self.cfg.prompt_suffix
+                self._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
             elif isinstance(filled_prompt, str):
                 filled_prompt += self.cfg.prompt_suffix
         return filled_prompt

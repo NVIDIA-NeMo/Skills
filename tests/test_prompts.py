@@ -1163,28 +1163,27 @@ def test_ns_path_template_fill():
     assert result == [{"role": "user", "content": "Solve: 2 + 2"}]
 
 
-def test_merge_audio_from_data_positional():
-    """Test _merge_audio_from_data copies audio from original messages at matching positions as audios list."""
+def test_merge_audio_from_data_role_based():
+    """Test _merge_audio_from_data copies audio to matching-role messages."""
 
     task = MagicMock(spec=GenerationTask)
     task._merge_audio_from_data = GenerationTask._merge_audio_from_data.__get__(task, GenerationTask)
 
-    messages = [
+    template_filled_messages = [
         {"role": "system", "content": "system msg"},
         {"role": "user", "content": "user msg"},
     ]
     data_point = {
         "messages": [
-            {"role": "system", "content": "orig system"},
             {"role": "user", "content": "orig user", "audio": {"path": "test.wav", "duration": 2.0}},
         ],
     }
 
-    task._merge_audio_from_data(messages, data_point)
+    task._merge_audio_from_data(template_filled_messages, data_point)
 
-    assert "audio" not in messages[0]
-    assert "audios" not in messages[0]
-    assert messages[1]["audios"] == [{"path": "test.wav", "duration": 2.0}]
+    assert "audio" not in template_filled_messages[0]
+    assert "audios" not in template_filled_messages[0]
+    assert template_filled_messages[1]["audios"] == [{"path": "test.wav", "duration": 2.0}]
 
 
 def test_prompt_config_with_openai_and_suffix():
@@ -1208,6 +1207,62 @@ def test_prompt_config_with_openai_and_suffix():
     data_point = {}
     result = task.fill_prompt(data_point, [])
     assert result[-1]["content"] == "Transcribe /no_think"
+
+
+def test_user_message_override_openai_multimodal_content():
+    """User message override should replace only text portion for multimodal content."""
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = "Transcribe this"
+    task.prompt = None
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "audio_url", "audio_url": {"url": "data:audio/wav;base64,AAA"}},
+                    {"type": "text", "text": "Original text"},
+                ],
+            }
+        ]
+    }
+
+    result = task.fill_prompt(data_point, [])
+    assert isinstance(result[0]["content"], list)
+    assert result[0]["content"][0]["type"] == "audio_url"
+    assert result[0]["content"][1]["text"] == "Transcribe this"
+
+
+def test_prompt_suffix_openai_multimodal_content():
+    """Prompt suffix should update text portion for multimodal content."""
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = " /no_think"
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = None
+    task.prompt = None
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "audio_url", "audio_url": {"url": "data:audio/wav;base64,AAA"}},
+                    {"type": "text", "text": "Transcribe"},
+                ],
+            }
+        ]
+    }
+
+    result = task.fill_prompt(data_point, [])
+    assert result[0]["content"][1]["text"] == "Transcribe /no_think"
 
 
 def test_audio_field_in_prompt_config():
