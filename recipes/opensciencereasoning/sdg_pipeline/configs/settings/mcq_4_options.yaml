@@ -4,4 +4,6 @@ stages:
   generate_solutions:
     prompt_config: ++prompt_config=eval/aai/mcq-4choices
     predicted_answer_regex: 'Answer: ([A-D])(?![A-Za-z])'
+    chat_template_kwargs:
+      reasoning_effort: low
     make_judgement: False

@@ -26,6 +26,7 @@ TOPIC_FIELDS = {"topic", "subtopic"}
 DIFFICULTY_FIELDS = {"difficulty_model", "difficulty_model_pass_rate", "difficulty_model_pass_at_n"}
 SOLUTION_FIELDS = {
     "predicted_answer",
+    "serialized_output",
     "generation",
     "generation_model",
     "generation_model_pass_rate",

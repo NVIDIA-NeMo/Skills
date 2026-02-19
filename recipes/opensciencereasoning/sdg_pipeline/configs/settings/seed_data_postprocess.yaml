@@ -13,8 +13,8 @@ stages:
     generation_kwargs:
       args:
         input_file: ${input_file}
-    dependencies:
-      - initial_dependency
+    chat_template_kwargs:
+      reasoning_effort: low
   aggregate:
     metadata_files:
       - ${input_file}

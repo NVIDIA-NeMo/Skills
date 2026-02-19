@@ -647,8 +647,16 @@ def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwa
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
     bucket_field = stage_config.get("bucket_field", "output_token_length")
-    bucket_sizes = stage_config.get("bucket_sizes", [16000, 32000, 64000])
+    bucket_sizes = stage_config.get("bucket_sizes", None)
     tokenizer_path = stage_config.get("tokenizer_path")
+    chat_template_kwargs = stage_config.get("chat_template_kwargs", {})
+    if chat_template_kwargs is None:
+        chat_template_kwargs = {}
+    if not isinstance(chat_template_kwargs, dict):
+        raise TypeError(
+            "stages.process_messages_and_bucket.chat_template_kwargs must be a mapping/dict "
+            f"(received {type(chat_template_kwargs).__name__})."
+        )
     
     run_cmd(
         ctx=wrap_arguments(
@@ -656,9 +664,9 @@ def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwa
             f"  {input_file} "
             f"  --output_dir {output_dir} "
             f"  --bucket_field {bucket_field} "
-            f"  --bucket_sizes {' '.join(map(str, bucket_sizes))} "
+            f"  {('--bucket_sizes ' + ' '.join(map(str, bucket_sizes))) if bucket_sizes else ''} "
             f"  --tokenizer_path {tokenizer_path} "
-            f"  --chat_template_kwargs {shlex.quote(json.dumps(stage_config.get('chat_template_kwargs', {}), ensure_ascii=False))} "
+            f"  --chat_template_kwargs {shlex.quote(json.dumps(chat_template_kwargs, ensure_ascii=False))} "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",

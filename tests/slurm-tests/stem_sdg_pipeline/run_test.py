@@ -38,6 +38,12 @@ PIPELINE_VARIANTS = [
         "dataset": DATASET_BASE_PATH,
     },
     {
+        "name": "multiple_prompts",
+        "settings": ["multiple_prompts"],
+        "suffix": "multiple-prompts",
+        "dataset": DATASET_BASE_PATH,
+    },
+    {
         "name": "seed_data_postprocess",
         "settings": ["seed_data_postprocess"],
         "suffix": "seed-data-postprocess",
@@ -47,18 +53,6 @@ PIPELINE_VARIANTS = [
         "name": "seed_data_postprocess-python_enabled",
         "settings": ["seed_data_postprocess", "python_enabled"],
         "suffix": "seed_data_postprocess-python-enabled",
-        "dataset": DATASET_BASE_PATH,
-    },
-    {
-        "name": "seed_data_postprocess-convert_to_qwen",
-        "settings": ["seed_data_postprocess", "convert_to_qwen"],
-        "suffix": "seed_data_postprocess-convert_to_qwen",
-        "dataset": DATASET_BASE_PATH,
-    },
-    {
-        "name": "seed_data_postprocess-convert_to_qwen-python_enabled",
-        "settings": ["seed_data_postprocess", "convert_to_qwen", "python_enabled"],
-        "suffix": "seed_data_postprocess-convert_to_qwen-python-enabled",
         "dataset": DATASET_BASE_PATH,
     },
     {

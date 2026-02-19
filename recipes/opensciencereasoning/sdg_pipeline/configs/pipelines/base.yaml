@@ -17,16 +17,16 @@ initial_dependency: None
 
 # Define the full sequence of stages for this mode
 pipeline_stages:
-  # - filter_problems             # Filter problems based on format
-  # - decontaminate               # Decontaminate problems
-  # - topics_labeling             # Label topics and subtopics
-  # - generate_solutions          # Generate solutions
-  # - difficulty_estimation       # Estimate difficulty of problems
-  # - aggregate                   # Aggregate all the metadata into a single file
-  # - filter_solutions            # Filter solutions
-  # - prepare_for_sft             # Prepare for SFT
+  - filter_problems             # Filter problems based on format
+  - decontaminate               # Decontaminate problems
+  - topics_labeling             # Label topics and subtopics
+  - generate_solutions          # Generate solutions
+  - difficulty_estimation       # Estimate difficulty of problems
+  - aggregate                   # Aggregate all the metadata into a single file
+  - filter_solutions            # Filter solutions
+  - prepare_for_sft             # Prepare for SFT
   - process_messages_and_bucket # Process messages + token lengths + buckets
-  # - validate                    # Validate outputs and stage health
+  - validate                    # Validate outputs and stage health
 
 # Directory structure configuration
 directories:
@@ -63,7 +63,7 @@ stages:
       - ["mmlu", "test"]
       - ["mmlu-pro", "test"]
       - ["gpqa", "diamond"]
-    model: /hf_models/Qwen2.5-32B-Instruct
+    model: openai/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 1
     server_nodes: 1
@@ -75,7 +75,7 @@ stages:
   topics_labeling:
     output_dir: ${directories.step-2-topics-labeling}
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-    model: /hf_models/gpt-oss-120b
+    model: openai/gpt-oss-120b
     end_marker: ++end_reasoning_string="'<|start|>assistant<|channel|>final<|message|>'"
     server_type: sglang
     server_gpus: 8
@@ -139,8 +139,8 @@ stages:
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl  # Should have expected answers
 
     generation_kwargs:
-      args:
-        model: /hf_models/Qwen3-30B-A3B
+      args:§
+        model: Qwen/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -153,7 +153,7 @@ stages:
 
     judge_kwargs:
       args:
-        model: /hf_models/gpt-oss-20b
+        model: openai/gpt-oss-20b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -187,7 +187,7 @@ stages:
     generation_kwargs:
       args:
         input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-        model: /hf_models/gpt-oss-120b
+        model: openai/gpt-oss-120b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -216,7 +216,7 @@ stages:
         ++prompt_config=judge/general-judge
 
       args:
-        model: /hf_models/gpt-oss-20b
+        model: openai/gpt-oss-20b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -258,7 +258,7 @@ stages:
       ctx_args: >-
         ${stages.generate_solutions.prompt_config}
         ${stages.generate_solutions.code_tags}
-        ++tokenizer=/hf_models/gpt-oss-120b
+        ++tokenizer=openai/gpt-oss-120b
         ++filters.drop_multi_boxed=false
         ++filters.remove_len_outlier_problems=false
         ++filters.remove_len_outlier_solutions=false
