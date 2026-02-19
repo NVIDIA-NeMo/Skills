@@ -581,7 +581,7 @@ class GenerationTask:
 
         return remaining_data
 
-    def _merge_audio_from_data(self, messages, data_point):
+    def _merge_audio_from_data(self, template_filled_messages, data_point):
         """Copy audio metadata from original data messages into template-generated messages.
 
         Normalizes to a single "audios" list on each message. Openai-format data always
@@ -590,7 +590,7 @@ class GenerationTask:
         if "messages" not in data_point or not isinstance(data_point["messages"], (list, ListConfig)):
             return
         original_messages = data_point["messages"]
-        for i, msg in enumerate(messages):
+        for i, msg in enumerate(template_filled_messages):
             if i < len(original_messages):
                 orig_msg = original_messages[i]
                 audios = orig_msg.get("audios") or ([orig_msg["audio"]] if "audio" in orig_msg else None)
@@ -630,7 +630,7 @@ class GenerationTask:
             if isinstance(filled_prompt, list):
                 self._merge_audio_from_data(filled_prompt, data_point)
             if self.cfg.prompt_suffix:
-                if isinstance(filled_prompt, list) and filled_prompt:
+                if isinstance(filled_prompt, list):
                     filled_prompt[-1]["content"] += self.cfg.prompt_suffix
                 elif isinstance(filled_prompt, str):
                     filled_prompt += self.cfg.prompt_suffix
@@ -651,7 +651,7 @@ class GenerationTask:
             format_as_string=(self.cfg.inference.endpoint_type == EndpointType.text),
         )
         if self.cfg.prompt_suffix:
-            if isinstance(filled_prompt, list) and filled_prompt:
+            if isinstance(filled_prompt, list):
                 filled_prompt[-1]["content"] += self.cfg.prompt_suffix
             elif isinstance(filled_prompt, str):
                 filled_prompt += self.cfg.prompt_suffix

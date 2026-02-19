@@ -15,6 +15,8 @@
 
 from unittest.mock import MagicMock
 
+from nemo_skills.inference.generate import GenerationTask
+from nemo_skills.inference.model.base import EndpointType
 from nemo_skills.prompt.utils import get_prompt
 
 
@@ -988,8 +990,6 @@ Confidence: The extracted confidence score between 0|\\%| and 100|\\%| from [res
 
 def test_prompt_config_with_openai_format():
     """Test that prompt_config works with openai format -- template is applied and audio is merged."""
-    from nemo_skills.inference.generate import GenerationTask
-    from nemo_skills.inference.model.base import EndpointType
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
@@ -1035,7 +1035,6 @@ def test_prompt_config_with_openai_format():
 
 def test_user_message_override_openai_no_prompt_config():
     """Test user_message override on the openai path without prompt_config (pure data messages)."""
-    from nemo_skills.inference.generate import GenerationTask
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
@@ -1061,8 +1060,6 @@ def test_user_message_override_openai_no_prompt_config():
 
 def test_user_message_override_ns_path():
     """Test that user_message is wired through on the NS path (via prompt template)."""
-    from nemo_skills.inference.generate import GenerationTask
-    from nemo_skills.inference.model.base import EndpointType
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
@@ -1089,7 +1086,6 @@ def test_user_message_override_ns_path():
 
 def test_openai_prompt_suffix():
     """Test that prompt_suffix is applied on the openai path."""
-    from nemo_skills.inference.generate import GenerationTask
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
@@ -1112,7 +1108,6 @@ def test_openai_prompt_suffix():
 
 def test_openai_system_message_override():
     """Test that system_message override works on the openai path (data messages)."""
-    from nemo_skills.inference.generate import GenerationTask
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
@@ -1146,8 +1141,6 @@ def test_openai_system_message_override():
 
 def test_ns_path_template_fill():
     """Test that normal template-based prompt generation works on the NS path."""
-    from nemo_skills.inference.generate import GenerationTask
-    from nemo_skills.inference.model.base import EndpointType
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
@@ -1172,7 +1165,6 @@ def test_ns_path_template_fill():
 
 def test_merge_audio_from_data_positional():
     """Test _merge_audio_from_data copies audio from original messages at matching positions as audios list."""
-    from nemo_skills.inference.generate import GenerationTask
 
     task = MagicMock(spec=GenerationTask)
     task._merge_audio_from_data = GenerationTask._merge_audio_from_data.__get__(task, GenerationTask)
@@ -1197,8 +1189,6 @@ def test_merge_audio_from_data_positional():
 
 def test_prompt_config_with_openai_and_suffix():
     """Test prompt_config on openai path with prompt_suffix applied."""
-    from nemo_skills.inference.generate import GenerationTask
-    from nemo_skills.inference.model.base import EndpointType
 
     task = MagicMock(spec=GenerationTask)
     task.cfg = MagicMock()
