@@ -50,7 +50,9 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
             return any(relaxed_equal(gt_answer, p) for p in predicted_answer.values())
 
         # check if all the keys in gt_answer are in predicted_answer and if the values are equal; ok for predicted_answer to have more keys
-        return all(k in predicted_answer and relaxed_equal(gt_answer[k], predicted_answer[k]) for k in gt_answer.keys())
+        return all(
+            k in predicted_answer and relaxed_equal(gt_answer[k], predicted_answer[k]) for k in gt_answer.keys()
+        )
 
     if isinstance(predicted_answer, list):
         if not isinstance(gt_answer, list):
