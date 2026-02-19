@@ -17,7 +17,7 @@ See [nemo_skills/dataset](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_s
 
 !!! note
     If you're an NVIDIA employee, you can find more internal-only benchmarks at
-    https://gitlab-master.nvidia.com/igitman/nemo-skills-benchmarks.
+    [https://gitlab-master.nvidia.com/igitman/nemo-skills-benchmarks](https://gitlab-master.nvidia.com/igitman/nemo-skills-benchmarks).
 
 Here is how to run evaluation (using API model as an example,
 but same command works with self-hosted models both locally and on slurm).
