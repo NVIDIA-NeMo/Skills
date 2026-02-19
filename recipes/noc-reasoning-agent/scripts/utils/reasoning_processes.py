@@ -202,6 +202,7 @@ DEFAULT_REASONING_PROCESS = PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""
 
 # Synthetic data uses fault_category = workflow IDs (e.g. power_ac_failure_recovery). Map them to a reasoning process.
 SYNTHETIC_FAULT_CATEGORY_REASONING = {
+    # Power / Environment → mapped to Service-off SOP (power-related outage workflow)
     "power_ac_failure_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
     "power_dc_rectifier_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
     "power_battery_discharge_response": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
@@ -209,6 +210,45 @@ SYNTHETIC_FAULT_CATEGORY_REASONING = {
     "env_high_temperature_response": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
     "env_hvac_fault_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
     "env_water_intrusion_response": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
+    "env_battery_temperature_response": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
+    "env_cabinet_intrusion_response": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
+    # RAN → mapped to closest legacy SOP
+    "ran_software_upgrade_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Service-off", ""),
+    "ran_cell_site_down_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Node Down", ""),
+    "ran_interference_mitigation": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_speed_complaint_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_voice_quality_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_sector_outage_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Disabled Cells", ""),
+    "ran_prb_availability_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_cell_overshooting_correction": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_rru_communication_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Offline / Unreachable", ""),
+    "ran_dropped_calls_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_parameter_correction": PROBLEM_CODE_REASONING_PROCESS.get("Disabled Cells", ""),
+    "ran_antenna_tilt_recovery": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_vswr_alarm_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_handover_failure_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_backhaul_degradation_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Offline / Unreachable", ""),
+    "ran_cell_congestion_management": PROBLEM_CODE_REASONING_PROCESS.get("Degraded Prach", ""),
+    "ran_device_issue_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Offline / Unreachable", ""),
+    # Compute → mapped to VM/container legacy SOPs
+    "compute_vm_failure_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_container_crash_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_orchestrator_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_image_pull_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_k8s_node_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_storage_failure_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_cnf_pod_recovery": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    "compute_resource_exhaustion_resolution": PROBLEM_CODE_REASONING_PROCESS.get("VM is in not ready state", ""),
+    # Transport → mapped to Link Down / Circuit Down SOPs
+    "transport_routing_flap_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Link Down", ""),
+    "transport_microwave_degradation_response": PROBLEM_CODE_REASONING_PROCESS.get("Link Down", ""),
+    "transport_interface_errors_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Link Down", ""),
+    "transport_packet_loss_resolution": PROBLEM_CODE_REASONING_PROCESS.get("Link Down", ""),
+    # Signaling → mapped to N2 Link Down SOP
+    "signaling_routing_failure_recovery": PROBLEM_CODE_REASONING_PROCESS.get("N2 Link Down", ""),
+    "signaling_delay_resolution": PROBLEM_CODE_REASONING_PROCESS.get("N2 Link Down", ""),
+    "signaling_s1_n2_recovery": PROBLEM_CODE_REASONING_PROCESS.get("N2 Link Down", ""),
+    "signaling_sip_registration_recovery": PROBLEM_CODE_REASONING_PROCESS.get("N2 Link Down", ""),
 }
 
 

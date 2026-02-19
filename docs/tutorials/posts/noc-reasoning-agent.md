@@ -44,7 +44,6 @@ ns run_cmd --expname=prepare-noc --log_dir=/workspace/prepare-noc --cluster=loca
     'cd /workspace && \
     export RECIPE_PREFIX=https://raw.githubusercontent.com/NVIDIA-NeMo/Skills/refs/heads/main/recipes/noc-reasoning-agent && \
     mkdir -p src/filtering src/utils src/evaluation src/ns_pipelines data/prompts outputs && \
-    touch src/__init__.py src/filtering/__init__.py src/utils/__init__.py src/evaluation/__init__.py src/ns_pipelines/__init__.py && \
     wget $RECIPE_PREFIX/scripts/filtering/match_keywords.py -O src/filtering/match_keywords.py && \
     wget $RECIPE_PREFIX/scripts/filtering/filter_rows.py -O src/filtering/filter_rows.py && \
     wget $RECIPE_PREFIX/scripts/utils/create_input_jsonl_from_incidents.py -O src/utils/create_input_jsonl_from_incidents.py && \
@@ -65,15 +64,27 @@ ns run_cmd --expname=prepare-noc --log_dir=/workspace/prepare-noc --cluster=loca
 
 All scripts and prompts referenced in this tutorial are available in the [recipes/noc-reasoning-agent](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent) directory of the Nemo-Skills repository.
 
-In the following sections, we always use `--cluster=local`. Change to `--cluster=slurm` (or whatever you named the config) if running on a Slurm cluster. When using Slurm, commands will finish immediately and schedule jobs in the cluster queue.
+### Configure the environment
 
-Disable the uncommitted-changes check that can interfere with development workflows:
+Several scripts import shared modules from sibling directories. Before running the pipeline, set up the Python import paths:
 
 ```shell
+# Mark downloaded directories as Python packages
+touch src/__init__.py src/filtering/__init__.py src/utils/__init__.py \
+      src/evaluation/__init__.py src/ns_pipelines/__init__.py
+
+# Add workspace to PYTHONPATH so scripts can find the src package
+export PYTHONPATH=/workspace:$PYTHONPATH
+
+# Disable the uncommitted-changes check (useful during development)
 export NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK=1
 ```
 
+The `__init__.py` files tell Python that these directories are importable packages. The `PYTHONPATH` export ensures that `from src.tools import ...` resolves correctly in all subsequent commands.
+
 The setup step above downloads a sample `data/synthetic_incidents.csv` into `/workspace`. To use your own data, replace this file with your incident CSV (same column schema). The sample file is also available in the [recipes/noc-reasoning-agent/data/](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent/data) directory of the Nemo-Skills repository.
+
+In the following sections, we always use `--cluster=local`. Change to `--cluster=slurm` (or whatever you named the config) if running on a Slurm cluster. When using Slurm, commands will finish immediately and schedule jobs in the cluster queue.
 
 ## Data Processing
 
@@ -316,7 +327,7 @@ ns run_cmd \
 Create the ReAct agent input file containing incident prompts with tool response data:
 
 ```shell
-PYTHONPATH=$PWD python src/ns_pipelines/prepare_react_agent.py \
+python src/ns_pipelines/prepare_react_agent.py \
     outputs/testing_data_split.jsonl \
     outputs/sft-test-incidence.jsonl \
     --output outputs/final_agent_input.jsonl \
@@ -334,7 +345,7 @@ pip install --upgrade langgraph langchain langchain-huggingface transformers tor
 ### Run the Fine-Tuned Agent
 
 ```shell
-PYTHONPATH=$PWD python src/create_agent_with_tools_batch.py \
+python src/create_agent_with_tools_batch.py \
     --input outputs/final_agent_input.jsonl \
     --output outputs/agent_responses.jsonl \
     --weights_dir training/qwen3-32b-improved-hf
@@ -345,7 +356,7 @@ PYTHONPATH=$PWD python src/create_agent_with_tools_batch.py \
 For comparison, run the same evaluation using the original (non-fine-tuned) model:
 
 ```shell
-PYTHONPATH=$PWD python src/create_agent_with_tools_batch.py \
+python src/create_agent_with_tools_batch.py \
     --input outputs/final_agent_input.jsonl \
     --output outputs/baseline_agent_responses.jsonl \
     --weights_dir Qwen/Qwen3-32B

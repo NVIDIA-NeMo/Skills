@@ -22,8 +22,9 @@ ALLOWED_PROBLEM_CODES_LEGACY = [
     "MTA Alert",
 ]
 
-# Synthetic fault_category (workflow IDs from telco_synthetic_from_scratch). Extend as needed.
+# Synthetic fault_category (workflow IDs from telco_synthetic_from_scratch).
 ALLOWED_PROBLEM_CODES_SYNTHETIC = [
+    # Power / Environment
     "power_ac_failure_recovery",
     "power_dc_rectifier_recovery",
     "power_battery_discharge_response",
@@ -31,33 +32,45 @@ ALLOWED_PROBLEM_CODES_SYNTHETIC = [
     "env_high_temperature_response",
     "env_hvac_fault_recovery",
     "env_water_intrusion_response",
-    # Additional workflow IDs from synthetic data (sample_100_explicit_tools_llm)
+    "env_battery_temperature_response",
+    "env_cabinet_intrusion_response",
+    # RAN
     "ran_software_upgrade_recovery",
-    "compute_vm_failure_recovery",
     "ran_cell_site_down_recovery",
-    "compute_container_crash_recovery",
     "ran_interference_mitigation",
-    "compute_orchestrator_recovery",
     "ran_speed_complaint_resolution",
     "ran_voice_quality_resolution",
-    "compute_image_pull_recovery",
     "ran_sector_outage_recovery",
-    "transport_routing_flap_resolution",
-    "transport_microwave_degradation_response",
-    "signaling_routing_failure_recovery",
-    "compute_k8s_node_recovery",
     "ran_prb_availability_resolution",
-    "compute_storage_failure_recovery",
     "ran_cell_overshooting_correction",
     "ran_rru_communication_recovery",
-    "env_battery_temperature_response",
-    "compute_cnf_pod_recovery",
-    "signaling_delay_resolution",
     "ran_dropped_calls_resolution",
     "ran_parameter_correction",
     "ran_antenna_tilt_recovery",
     "ran_vswr_alarm_resolution",
     "ran_handover_failure_resolution",
+    "ran_backhaul_degradation_resolution",
+    "ran_cell_congestion_management",
+    "ran_device_issue_resolution",
+    # Compute
+    "compute_vm_failure_recovery",
+    "compute_container_crash_recovery",
+    "compute_orchestrator_recovery",
+    "compute_image_pull_recovery",
+    "compute_k8s_node_recovery",
+    "compute_storage_failure_recovery",
+    "compute_cnf_pod_recovery",
+    "compute_resource_exhaustion_resolution",
+    # Transport
+    "transport_routing_flap_resolution",
+    "transport_microwave_degradation_response",
+    "transport_interface_errors_resolution",
+    "transport_packet_loss_resolution",
+    # Signaling
+    "signaling_routing_failure_recovery",
+    "signaling_delay_resolution",
+    "signaling_s1_n2_recovery",
+    "signaling_sip_registration_recovery",
 ]
 
 # Combined: use for filtering so both legacy and synthetic data are supported.
