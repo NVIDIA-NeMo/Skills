@@ -30,8 +30,8 @@ TEST_AUDIO_T2 = TEST_AUDIO_DIR / "t2_16.wav"  # "sample 2 this is a test of text
 TEST_AUDIO_T3 = TEST_AUDIO_DIR / "t3_16.wav"  # "sample 3 hello how are you today"
 
 requires_nvidia_api_key = pytest.mark.skipif(
-    not os.getenv("NVIDIA_API_KEY"),
-    reason="NVIDIA_API_KEY environment variable not set",
+    not (os.getenv("NV_INFERENCE_API_KEY") or os.getenv("NVIDIA_API_KEY")),
+    reason="NV_INFERENCE_API_KEY/NVIDIA_API_KEY environment variable not set",
 )
 
 requires_test_audio = pytest.mark.skipif(
