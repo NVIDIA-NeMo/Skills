@@ -47,9 +47,9 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
         if not isinstance(gt_answer, dict):
             # check if any of the values in predicted_answer are equal to gt_answer
             return any(relaxed_equal(gt_answer, p) for p in predicted_answer.values())
-        
+
         # check if all the keys in gt_answer are in predicted_answer and if the values are equal; ok for predicted_answer to have more keys
-        return all(relaxed_equal(gt_answer[k], predicted_answer.get(k)) for k in gt_answer.keys()) 
+        return all(relaxed_equal(gt_answer[k], predicted_answer.get(k)) for k in gt_answer.keys())
 
     if isinstance(predicted_answer, list):
         if not isinstance(gt_answer, list):
@@ -70,7 +70,7 @@ def relaxed_equal(gt_answer: Any, predicted_answer: Any) -> bool:
         mcq_result = verify(parsed_gt, parsed_pred)
         if mcq_result:
             return mcq_result
-                
+
     return math_equal(str(gt_answer), str(predicted_answer))
 
 

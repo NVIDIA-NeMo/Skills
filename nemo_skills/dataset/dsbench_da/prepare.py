@@ -151,7 +151,7 @@ def save_data(split, data_dir, display_root, incontext_data):
         intro_file = task_dir / 'introduction.txt'
         introduction = ""
         if intro_file.exists():
-            introduction = intro_file.read_text(encoding='utf-8', errors='ignore')
+            introduction = intro_file.read_text(encoding="utf-8", errors="ignore")
 
         # Get data files - support all Excel formats
         excel_files = []
@@ -165,7 +165,7 @@ def save_data(split, data_dir, display_root, incontext_data):
             for excel_file in excel_files:
                 sheets_text = read_excel_to_text(excel_file)
                 excel_content += f"The excel file {excel_file.name} is: {sheets_text}\n\n"
-    
+
         # Format paths for tool mode (relative to data directory)
         excel_paths = format_paths_for_prompt(
             excel_files,
@@ -178,7 +178,7 @@ def save_data(split, data_dir, display_root, incontext_data):
         for ext in ['*.jpg', '*.png', '*.jpeg']:
             image_files.extend(task_dir.glob(ext))
 
-        csv_files = list(task_dir.glob('*.csv'))
+        csv_files = list(task_dir.glob('*.csv')) # noqa: F841
 
         # Process each question
         for idx, question_name in enumerate(task['questions']):
@@ -188,7 +188,7 @@ def save_data(split, data_dir, display_root, incontext_data):
                 print(f"    Warning: {task_id}/{question_name}.txt not found, skipping")
                 continue
 
-            question_text = question_file.read_text(encoding='utf-8', errors='ignore').strip()
+            question_text = question_file.read_text(encoding="utf-8", errors="ignore").strip()
 
             # Build problem text (introduction + question)
             problem_text = ""
