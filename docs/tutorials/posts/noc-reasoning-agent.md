@@ -44,6 +44,7 @@ ns run_cmd --expname=prepare-noc --log_dir=/workspace/prepare-noc --cluster=loca
     'cd /workspace && \
     export RECIPE_PREFIX=https://raw.githubusercontent.com/NVIDIA-NeMo/Skills/refs/heads/main/recipes/noc-reasoning-agent && \
     mkdir -p src/filtering src/utils src/evaluation src/ns_pipelines data/prompts outputs && \
+    touch src/__init__.py src/filtering/__init__.py src/utils/__init__.py src/evaluation/__init__.py src/ns_pipelines/__init__.py && \
     wget $RECIPE_PREFIX/scripts/filtering/match_keywords.py -O src/filtering/match_keywords.py && \
     wget $RECIPE_PREFIX/scripts/filtering/filter_rows.py -O src/filtering/filter_rows.py && \
     wget $RECIPE_PREFIX/scripts/utils/create_input_jsonl_from_incidents.py -O src/utils/create_input_jsonl_from_incidents.py && \
@@ -58,7 +59,8 @@ ns run_cmd --expname=prepare-noc --log_dir=/workspace/prepare-noc --cluster=loca
     wget $RECIPE_PREFIX/prompts/formatting_prompt.yaml -O data/prompts/formatting_prompt.yaml && \
     wget $RECIPE_PREFIX/prompts/shortened_prompt_reasoning.yaml -O data/prompts/shortened_prompt_reasoning.yaml && \
     wget $RECIPE_PREFIX/prompts/prompt_incident.yaml -O data/prompts/prompt_incident.yaml && \
-    wget $RECIPE_PREFIX/configs/noc_reasoning_sft.yaml -O data/noc_reasoning_sft.yaml'
+    wget $RECIPE_PREFIX/configs/noc_reasoning_sft.yaml -O data/noc_reasoning_sft.yaml && \
+    wget $RECIPE_PREFIX/data/synthetic_incidents.csv -O data/synthetic_incidents.csv'
 ```
 
 All scripts and prompts referenced in this tutorial are available in the [recipes/noc-reasoning-agent](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent) directory of the Nemo-Skills repository.
@@ -71,7 +73,7 @@ Disable the uncommitted-changes check that can interfere with development workfl
 export NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK=1
 ```
 
-Place your incident CSV data as `data/synthetic_incidents.csv` inside `/workspace` before proceeding. A sample file is included in the [recipes/noc-reasoning-agent/data/](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent/data) directory of the Nemo-Skills repository.
+The setup step above downloads a sample `data/synthetic_incidents.csv` into `/workspace`. To use your own data, replace this file with your incident CSV (same column schema). The sample file is also available in the [recipes/noc-reasoning-agent/data/](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent/data) directory of the Nemo-Skills repository.
 
 ## Data Processing
 
@@ -314,7 +316,7 @@ ns run_cmd \
 Create the ReAct agent input file containing incident prompts with tool response data:
 
 ```shell
-python src/ns_pipelines/prepare_react_agent.py \
+PYTHONPATH=$PWD python src/ns_pipelines/prepare_react_agent.py \
     outputs/testing_data_split.jsonl \
     outputs/sft-test-incidence.jsonl \
     --output outputs/final_agent_input.jsonl \

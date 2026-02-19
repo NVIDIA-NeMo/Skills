@@ -6,8 +6,12 @@ from typing import List
 
 import pandas as pd
 
-from .reasoning_processes import get_reasoning_process_for_fault_category
-from .schema_columns import INCIDENT_ID_COLUMN, REQUIRED_COLUMNS
+try:
+    from .reasoning_processes import get_reasoning_process_for_fault_category
+    from .schema_columns import INCIDENT_ID_COLUMN, REQUIRED_COLUMNS
+except ImportError:
+    from src.utils.reasoning_processes import get_reasoning_process_for_fault_category
+    from src.utils.schema_columns import INCIDENT_ID_COLUMN, REQUIRED_COLUMNS
 
 # For filter by problem code: synthetic uses fault_category (workflow IDs). Keep in sync with filter_rows.py.
 ALLOWED_PROBLEM_CODES = [
@@ -64,13 +68,11 @@ def coerce_to_str(value) -> str:
 
 def extract_examples_by_problem_code(df, num):
     fc_col = "fault_category" if "fault_category" in df.columns else "u_problem_code"
-    filtered_df = (
-        df[df[fc_col].isin(ALLOWED_PROBLEM_CODES)]
-        .groupby(fc_col, group_keys=False)
-        .apply(lambda x: x.sample(n=min(num, len(x)), random_state=42))
-        .reset_index(drop=True)
-    )
-    return filtered_df
+    subset = df[df[fc_col].isin(ALLOWED_PROBLEM_CODES)]
+    sampled = []
+    for _, group in subset.groupby(fc_col, group_keys=False):
+        sampled.append(group.sample(n=min(num, len(group)), random_state=42))
+    return pd.concat(sampled, ignore_index=True) if sampled else subset.head(0)
 
 
 def main():
@@ -92,10 +94,9 @@ def main():
 
     # Read CSV (handle BOM if present)
     try:
-        df = pd.read_csv(input_path, dtype=str, encoding="latin1")
+        df = pd.read_csv(input_path, dtype=str, encoding="utf-8-sig")
     except UnicodeDecodeError:
-        # Fallback to default encoding
-        df = pd.read_csv(input_path, dtype=str)
+        df = pd.read_csv(input_path, dtype=str, encoding="latin1")
 
     if args.examples_by_problem_code:
         df = extract_examples_by_problem_code(df, args.examples_by_problem_code)
