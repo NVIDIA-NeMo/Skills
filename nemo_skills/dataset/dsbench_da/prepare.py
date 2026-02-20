@@ -119,6 +119,11 @@ def save_data(split: str, data_dir: str | Path, display_root: str | Path | None,
                 f"Expected task {task_id} from metadata but directory is missing. "
                 "Data extraction may have failed."
             )
+        if len(task["answers"]) != len(task["questions"]):
+            raise ValueError(
+                f"Task {task_id}: mismatched questions ({len(task['questions'])}) "
+                f"and answers ({len(task['answers'])}) counts in metadata."
+            )
 
         # Read introduction
         intro_file = task_dir / "introduction.txt"
