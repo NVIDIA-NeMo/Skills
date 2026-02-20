@@ -127,14 +127,14 @@ class CheckContaminationTask(GenerationTask):
                 return {"generation": True}
         return None
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         """Process a single data point by running contamination checks on all similar items."""
         query_data = self._create_query_data(data_point)
 
         # Create tasks for all queries using super().process_single_datapoint
         tasks = []
         for query_point in query_data:
-            tasks.append(super().process_single_datapoint(query_point, all_data))
+            tasks.append(super().process_single_datapoint(query_point, all_data, prompt_format))
 
         query_results = await asyncio.gather(*tasks)
 

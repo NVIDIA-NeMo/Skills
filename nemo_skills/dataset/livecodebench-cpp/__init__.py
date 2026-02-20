@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "code"
 METRICS_TYPE = "livecodebench"
 EVAL_SPLIT = "v6_2408_2505"
 GENERATION_ARGS = (

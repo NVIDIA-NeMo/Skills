@@ -108,6 +108,92 @@ def create_job_tunnel(
     return subprocess.Popen(ssh_tunnel_args)
 
 
+def launch_server(
+    cluster,
+    model,
+    server_type,
+    server_gpus,
+    server_nodes=1,
+    server_args="",
+    server_entrypoint=None,
+    server_container=None,
+    config_dir=None,
+    log_dir=None,
+    mount_paths=None,
+    get_random_port=False,
+    check_mounted_paths=False,
+    tail_logs=False,
+    cmd="",
+    partition=None,
+    with_sandbox=False,
+    keep_mounts_for_sandbox=False,
+    server_port=None,
+    sandbox_port=None,
+    sbatch_kwargs=None,
+):
+    """Launch a model server in the background.
+
+    Returns (exp, server_port). Call stop_server(exp) to stop.
+    """
+    setup_logging(disable_hydra_logs=False, use_rich=True)
+
+    cluster_config = get_cluster_config(cluster, config_dir)
+    cluster_config = resolve_mount_paths(cluster_config, mount_paths)
+
+    try:
+        server_type = server_type.value
+    except AttributeError:
+        pass
+
+    log_dir = check_mounts(cluster_config, log_dir, check_mounted_paths=check_mounted_paths)
+
+    if server_port is None:
+        server_port = get_free_port(strategy="random") if get_random_port else 5000
+
+    server_config = {
+        "model_path": model,
+        "server_type": server_type,
+        "num_gpus": server_gpus,
+        "num_nodes": server_nodes,
+        "server_args": server_args,
+        "server_entrypoint": server_entrypoint,
+        "server_port": server_port,
+    }
+    if server_container:
+        server_config["container"] = server_container
+
+    if sandbox_port is None:
+        sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
+
+    # TODO (igitman): this looks like leak, but also fixing it in a naive way makes everything hang.
+    #     Doesn't seem to cause issues, so keeping like this for now
+    exp = get_exp("server", cluster_config).__enter__()
+
+    add_task(
+        exp,
+        cmd=cmd,
+        task_name="server",
+        log_dir=log_dir,
+        container=cluster_config["containers"]["nemo-skills"],
+        cluster_config=cluster_config,
+        partition=partition,
+        server_config=server_config,
+        with_sandbox=with_sandbox,
+        keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_port=sandbox_port,
+        sbatch_kwargs=sbatch_kwargs,
+    )
+    exp.run(detach=True, tail_logs=tail_logs)
+
+    return exp, server_config["server_port"]
+
+
+def stop_server(exp):
+    """Stop a server started by launch_server."""
+    for j in exp.jobs:
+        exp.cancel(j.id)
+
+
 @app.command()
 @typer_unpacker
 def start_server(
@@ -162,87 +248,68 @@ def start_server(
     sandbox_tunnel_port: int = typer.Option(6000, help="Local tunnel port for the sandbox server."),
 ):
     """Self-host a model server."""
-    setup_logging(disable_hydra_logs=False, use_rich=True)
+    server_port = get_free_port(strategy="random") if get_random_port else 5000
+    sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
 
-    cluster_config = get_cluster_config(cluster, config_dir)
-    cluster_config = resolve_mount_paths(cluster_config, mount_paths)
-
-    try:
-        server_type = server_type.value
-    except AttributeError:
-        pass
-
-    log_dir = check_mounts(cluster_config, log_dir, check_mounted_paths=check_mounted_paths)
-
-    server_config = {
-        "model_path": model,
-        "server_type": server_type,
-        "num_gpus": server_gpus,
-        "num_nodes": server_nodes,
-        "server_args": server_args,
-        "server_entrypoint": server_entrypoint,
-        "server_port": get_free_port(strategy="random") if get_random_port else 5000,
-    }
-    if server_container:
-        server_config["container"] = server_container
-
-    with get_exp("server", cluster_config) as exp:
-        cmd = ""
-        if launch_chat_interface:
-            server_address = f"localhost:{server_config['server_port']}"
-            cmd = set_python_path_and_wait_for_server(
-                server_address, get_gradio_chat_cmd(model, server_type, extra_chat_args)
-            )
-
-        sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
-        add_task(
-            exp,
-            cmd=cmd,
-            task_name="server",
-            log_dir=log_dir,
-            container=cluster_config["containers"]["nemo-skills"],
-            cluster_config=cluster_config,
-            partition=partition,
-            server_config=server_config,
-            with_sandbox=with_sandbox,
-            keep_mounts_for_sandbox=keep_mounts_for_sandbox,
-            sandbox_port=sandbox_port,
-            sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
+    cmd = ""
+    if launch_chat_interface:
+        cmd = set_python_path_and_wait_for_server(
+            f"localhost:{server_port}", get_gradio_chat_cmd(model, server_type, extra_chat_args)
         )
 
-        exp.run(detach=True, tail_logs=True)
+    exp, server_port = launch_server(
+        cluster=cluster,
+        model=model,
+        server_type=server_type,
+        server_gpus=server_gpus,
+        server_nodes=server_nodes,
+        server_args=server_args,
+        server_entrypoint=server_entrypoint,
+        server_container=server_container,
+        config_dir=config_dir,
+        log_dir=log_dir,
+        mount_paths=mount_paths,
+        get_random_port=get_random_port,
+        check_mounted_paths=check_mounted_paths,
+        tail_logs=True,
+        cmd=cmd,
+        partition=partition,
+        with_sandbox=with_sandbox,
+        keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        server_port=server_port,
+        sandbox_port=sandbox_port,
+        sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
+    )
 
-        ## NOTE: Use ctrl + c twice to cancel all experiment jobs.
-        signal.signal(signal.SIGINT, signal.default_int_handler)
-        try:
-            tunnel_procs = []
-            if create_tunnel:
-                if cluster_config.get("executor") != "slurm":
-                    raise NotImplementedError("Tunnels can only be used with slurm executor.")
+    ## NOTE: Use ctrl + c twice to cancel all experiment jobs.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        tunnel_procs = []
+        if create_tunnel:
+            cluster_config = get_cluster_config(cluster, config_dir)
+            if cluster_config.get("executor") != "slurm":
+                raise NotImplementedError("Tunnels can only be used with slurm executor.")
 
-                ## NOTE(sanyamk): Assumes first job in experiment corresponds to the server.
+            ## NOTE(sanyamk): Assumes first job in experiment corresponds to the server.
+            tunnel_procs.append(
+                create_job_tunnel(exp.jobs[0], exp._runner, server_port, local_port=server_tunnel_port)
+            )
+
+            if with_sandbox:
+                ## NOTE(sanyamk): Assumes last job in experiment corresponds to the sandbox.
                 tunnel_procs.append(
-                    create_job_tunnel(
-                        exp.jobs[0], exp._runner, server_config["server_port"], local_port=server_tunnel_port
-                    )
+                    create_job_tunnel(exp.jobs[-1], exp._runner, sandbox_port, local_port=sandbox_tunnel_port)
                 )
 
-                if with_sandbox:
-                    ## NOTE(sanyamk): Assumes last job in experiment corresponds to the sandbox.
-                    tunnel_procs.append(
-                        create_job_tunnel(exp.jobs[-1], exp._runner, sandbox_port, local_port=sandbox_tunnel_port)
-                    )
+        exp._wait_for_jobs(exp.jobs)
+    except (NotImplementedError, KeyboardInterrupt):
+        pass
+    finally:
+        for proc in tunnel_procs:
+            if proc and proc.poll() is None:
+                proc.terminate()
 
-            exp._wait_for_jobs(exp.jobs)
-        except (NotImplementedError, KeyboardInterrupt):
-            pass
-        finally:
-            for proc in tunnel_procs:
-                if proc and proc.poll() is None:
-                    proc.terminate()
-
-            for j in exp.jobs:
-                exp.cancel(j.id)
+        stop_server(exp)
 
 
 if __name__ == "__main__":

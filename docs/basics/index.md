@@ -8,13 +8,28 @@ locally and on slurm cluster). This will help you understand some important conc
 
 ## Setup
 
-First, let's install nemo-skills
+First, let's install nemo-skills.
+
+We highly recommend cloning the repository and installing in editable mode:
+
+```bash
+git clone https://github.com/NVIDIA-NeMo/Skills.git
+cd Skills
+pip install -e .
+```
+
+This is the most robust setup. During dataset preparation, nemo-skills may create `.jsonl` files (and in some
+cases `__init__.py` files) inside the installation directory. Editable installs make this behavior work reliably
+and keep cleanup straightforward.
+
+You can also install directly from GitHub:
 
 ```bash
 pip install git+https://github.com/NVIDIA-NeMo/Skills.git
 ```
 
-or if you have the repo cloned locally, you can run `pip install -e .` instead.
+That works in most cases, but it is more brittle for dataset preparation workflows and can require extra manual
+steps to fully uninstall nemo-skills.
 
 Now, let's create a simple file with just 3 data points that we want to run inference on
 
@@ -177,7 +192,7 @@ This time pick `slurm` for the config type and fill out all other required infor
 
 !!! note
     If you're an NVIDIA employee, we have a pre-configured cluster configs for internal usage with pre-built sqsh
-    containers available at https://gitlab-master.nvidia.com/igitman/nemo-skills-configs. You can most likely
+    containers available at [https://gitlab-master.nvidia.com/igitman/nemo-skills-configs](https://gitlab-master.nvidia.com/igitman/nemo-skills-configs). You can most likely
     skip the step below and reuse one of the existing configurations.
 
 You will also need to build .sqsh files for all containers or upload all `dockerfile:...` containers to

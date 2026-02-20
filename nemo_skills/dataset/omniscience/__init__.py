@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "math"
 METRICS_TYPE = "omniscience"
 GENERATION_ARGS = "++prompt_config=eval/aai/omni ++parse_reasoning=True "
 EVAL_SPLIT = "text"
