@@ -33,17 +33,6 @@ MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for
 - Benchmark is defined in [`nemo_skills/dataset/mmau-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmau-pro/__init__.py)
 - Original benchmark source is hosted on [HuggingFace](https://huggingface.co/datasets/gamma-lab-umd/MMAU-Pro)
 
-### Numb3rs
-
-Numb3rs is a speech benchmark for text normalization (TN) and inverse text normalization (ITN) evaluation. Contains ~10K samples with paired written/spoken forms and synthetic audio across 12 number categories.
-
-**Categories:** `ADDRESS`, `CARDINAL`, `DATE`, `DECIMAL`, `DIGIT`, `FRACTION`, `MEASURE`, `MONEY`, `ORDINAL`, `PLAIN`, `TELEPHONE`, `TIME`
-
-#### Dataset Location
-
-- Benchmark is defined in [`nemo_skills/dataset/numb3rs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/numb3rs/__init__.py)
-- Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/nvidia/Numb3rs)
-
 ## Preparing Data
 
 These benchmarks require audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.

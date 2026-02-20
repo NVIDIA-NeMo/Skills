@@ -268,8 +268,9 @@ def main():
         # Validate categories
         invalid = set(categories_to_prepare) - set(all_categories)
         if invalid:
-            print(f"Warning: Unknown categories will be skipped: {invalid}")
-            categories_to_prepare = [c for c in categories_to_prepare if c in all_categories]
+            invalid_str = ", ".join(sorted(invalid))
+            available_str = ", ".join(all_categories)
+            raise ValueError(f"Unknown categories: {invalid_str}. Available categories: {available_str}")
 
     if not categories_to_prepare:
         print("No valid categories to process")

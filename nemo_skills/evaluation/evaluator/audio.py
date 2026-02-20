@@ -33,7 +33,7 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
 
     prompt_config: str = "eval/speechlm/audio"
     normalize_asr_pc_standard_wer: bool = True
-    strip_helpful_prefixes: bool = True
+    strip_helpful_prefixes: bool = False
     apply_whisper_normalization: bool = True
     normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn"
     # Optional list of reference fields to calculate WER against (e.g., ["text_tn", "text_itn"])
@@ -263,6 +263,17 @@ def _remove_non_speech_elements(text: str) -> str:
 
 
 VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn")
+
+
+def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
+    """Resolve effective normalization mode for ASR-family tasks.
+
+    - no_tn_itn is explicit and does not use whisper normalization.
+    - Other modes respect apply_whisper_normalization toggle.
+    """
+    if config.normalization_mode == "no_tn_itn":
+        return "no_tn_itn"
+    return config.normalization_mode if config.apply_whisper_normalization else "none"
 
 
 def preprocess_asr_text(text: str, mode: str = "standard") -> str:
@@ -501,20 +512,8 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     if config.strip_helpful_prefixes:
         generation = strip_helpful_prefixes(generation)
 
-    if task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD", "AST", "Translation", "CER"] and not generation:
-        base = {
-            "is_correct": False,
-            "error": "missing_generation",
-        }
-        if task_type in ["AST", "Translation"]:
-            return {**base, "bleu": 0.0}
-        if task_type == "CER":
-            return {**base, "cer": 1.0}
-        # ASR / ASR-PC
-        return {**base, "wer": 1.0}
-
     if task_type == "ASR-PC":
-        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr_pc(
             expected_answer,
             generation,
@@ -524,19 +523,13 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         updates.update(metrics)
 
     elif task_type == "ASR":
-        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
         updates["predicted_answer"] = generation
 
     elif task_type == "ASR_LEADERBOARD":
-        # ASR_LEADERBOARD uses normalization_mode from config
-        # For no_tn_itn mode, always apply normalization (doesn't use whisper)
-        # For whisper-based modes, respect apply_whisper_normalization flag
-        if config.normalization_mode == "no_tn_itn":
-            mode = "no_tn_itn"
-        else:
-            mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
 
