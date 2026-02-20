@@ -53,12 +53,12 @@ CORE_MODULES = _discover_core_modules()
 def test_core_module_imports_without_nemo_run(module_name):
     """Each core module must import successfully when nemo_run is unavailable."""
     script = (
-        "import sys; "
+        "import sys, importlib; "
         # Block nemo_run from being importable
         "sys.modules['nemo_run'] = None; "
         "sys.modules['nemo_skills.pipeline'] = None; "
         "sys.modules['nemo_skills.pipeline.utils'] = None; "
-        f"import {module_name}; "
+        f"importlib.import_module('{module_name}'); "
         "print('OK')"
     )
     result = subprocess.run(
