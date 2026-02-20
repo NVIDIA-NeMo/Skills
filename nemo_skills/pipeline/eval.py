@@ -212,6 +212,66 @@ def _create_nvembed_judge_tasks(
     return [judge_task]
 
 
+def _create_custom_judge_tasks(
+    judge_pipeline_args,
+    dependent_tasks,
+    all_tasks,
+    _task_dependencies,
+    exp,
+    cluster_config,
+    expname,
+    benchmarks,
+    output_dir,
+    log_dir,
+    partition,
+    judge_server_gpus,
+    judge_server_nodes,
+    run_after,
+    reuse_code_exp,
+    reuse_code,
+    installation_command,
+    skip_hf_home_check,
+    sbatch_kwargs,
+):
+    """Create tasks using custom judge creator function from external repo.
+
+    The judge_creator_fn should be specified as a path string using :: notation:
+    - Module path: "external_repo.evaluation.judge_creator::create_judge_tasks"
+    - File path: "/path/to/judge_creator.py::create_judge_tasks"
+
+    This leverages nemo-skills' existing locate() pattern used for METRICS_TYPE
+    and eval_type, allowing external repos to define their own judge task creators.
+    """
+    from nemo_skills.dataset.utils import locate
+
+    judge_creator_path = judge_pipeline_args.pop("judge_creator_fn")
+    judge_creator_fn = locate(judge_creator_path)
+
+    # Call external judge creator with all necessary parameters
+    judge_tasks = judge_creator_fn(
+        exp=exp,
+        expname=expname,
+        benchmarks=benchmarks,
+        output_dir=output_dir,
+        judge_pipeline_args=judge_pipeline_args,
+        log_dir=log_dir,
+        cluster_config=cluster_config,
+        partition=partition,
+        judge_server_gpus=judge_server_gpus,
+        judge_server_nodes=judge_server_nodes,
+        dependent_tasks=dependent_tasks,
+        all_tasks=all_tasks,
+        _task_dependencies=_task_dependencies,
+        run_after=run_after,
+        reuse_code_exp=reuse_code_exp,
+        reuse_code=reuse_code,
+        installation_command=installation_command,
+        skip_hf_home_check=skip_hf_home_check,
+        sbatch_kwargs=sbatch_kwargs,
+    )
+    return judge_tasks
+
+
 def _create_llm_judge_tasks(
     ctx,
     expname,
@@ -690,6 +750,28 @@ def eval(
                     dependent_tasks=dependent_tasks,
                     all_tasks=all_tasks,
                     _task_dependencies=_task_dependencies,
+                    installation_command=installation_command,
+                    skip_hf_home_check=skip_hf_home_check,
+                    sbatch_kwargs=sbatch_kwargs,
+                )
+            elif benchmark_judge_type == "custom":
+                judge_tasks = _create_custom_judge_tasks(
+                    judge_pipeline_args=judge_pipeline_args,
+                    dependent_tasks=dependent_tasks,
+                    all_tasks=all_tasks,
+                    _task_dependencies=_task_dependencies,
+                    exp=exp,
+                    cluster_config=cluster_config,
+                    expname=expname,
+                    benchmarks=[benchmark],
+                    output_dir=output_dir,
+                    log_dir=log_dir,
+                    partition=partition,
+                    judge_server_gpus=judge_server_gpus,
+                    judge_server_nodes=judge_server_nodes,
+                    run_after=run_after,
+                    reuse_code_exp=reuse_code_exp,
+                    reuse_code=reuse_code,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
                     sbatch_kwargs=sbatch_kwargs,
