@@ -29,15 +29,14 @@ def read_excel_to_text(excel_path: Path) -> str:
         engine = "pyxlsb" if excel_path.suffix == ".xlsb" else None
         with pd.ExcelFile(excel_path, engine=engine) as xls:
             sheets = {sheet_name: xls.parse(sheet_name) for sheet_name in xls.sheet_names}
-
-        combined_text = ""
-        for sheet_name, df in sheets.items():
-            sheet_text = df.to_string(index=False)
-            combined_text += f"Sheet name: {sheet_name}\n{sheet_text}\n\n"
-
-        return combined_text
     except Exception as e:
         raise RuntimeError(f"Failed to read Excel file {excel_path}: {e}") from e
+
+    combined_text = ""
+    for sheet_name, df in sheets.items():
+        sheet_text = df.to_string(index=False)
+        combined_text += f"Sheet name: {sheet_name}\n{sheet_text}\n\n"
+    return combined_text
 
 
 def format_paths_for_prompt(paths: list[Path], actual_root: Path, display_root: Path) -> str:
