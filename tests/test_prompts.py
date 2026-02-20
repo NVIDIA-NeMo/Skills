@@ -13,7 +13,40 @@
 # limitations under the License.
 
 
-from nemo_skills.prompt.utils import get_prompt
+from unittest.mock import MagicMock
+
+from nemo_skills.prompt.utils import get_prompt, get_token_count
+
+
+def test_get_token_count_string():
+    tokenizer = MagicMock()
+    tokenizer.encode.return_value = [1, 2, 3, 4, 5]
+    assert get_token_count(tokenizer, "hello world") == 5
+    tokenizer.encode.assert_called_once_with("hello world", add_special_tokens=False)
+
+
+def test_get_token_count_messages_list_result():
+    """Test with old HF tokenizer behavior that returns a list of token ids."""
+    tokenizer = MagicMock()
+    tokenizer.apply_chat_template.return_value = [1, 2, 3, 4, 5, 6]
+    messages = [{"role": "user", "content": "hello"}]
+    assert get_token_count(tokenizer, messages) == 6
+
+
+def test_get_token_count_messages_dict_result():
+    """Test with new HF tokenizer behavior that returns a dict with input_ids."""
+    tokenizer = MagicMock()
+    tokenizer.apply_chat_template.return_value = {
+        "input_ids": [1, 2, 3, 4, 5, 6, 7],
+        "attention_mask": [1, 1, 1, 1, 1, 1, 1],
+    }
+    messages = [{"role": "user", "content": "hello"}]
+    assert get_token_count(tokenizer, messages) == 7
+
+
+def test_get_token_count_none():
+    assert get_token_count(None, "hello") is None
+    assert get_token_count(MagicMock(), None) is None
 
 
 def test_generic_math_problem_augmentation_prompt():
