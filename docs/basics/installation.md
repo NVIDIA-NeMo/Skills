@@ -46,8 +46,3 @@ pip install -e core/
 # Development (everything + dev tools)
 pip install -e ".[dev]"
 ```
-
-## Core / Pipeline boundary
-
-For contributors: the codebase enforces a one-way dependency rule between core
-and pipeline modules. See the [Dependency Boundary Guide](https://github.com/NVIDIA-NeMo/Skills/blob/main/core/README.md) for details.
