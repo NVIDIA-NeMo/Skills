@@ -54,7 +54,7 @@ BFCL_REQUIREMENTS = [
     "tqdm",
     "numpy==1.26.4",
     "pandas",
-    "huggingface_hub<1",  # pin to <1 to satisfy a requirement from another package
+    "huggingface_hub",
     "pydantic>=2.8.2",
     "python-dotenv>=1.0.1",
     "tree_sitter==0.21.3",
