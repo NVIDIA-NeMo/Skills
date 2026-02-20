@@ -395,9 +395,15 @@ def get_token_count(
             message if isinstance(message, dict) else message_to_dict(copy.deepcopy(message)) for message in messages
         ]
         try:
-            return len(tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools))
+            result = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools)
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(result, list):
+                result = result["input_ids"]
+            return len(result)
+
         except Exception as e:
             raise ValueError(f"Invalid chat message format: {e}")
+
     else:
         raise ValueError("messages must be a string or a list of dictionaries")
 
