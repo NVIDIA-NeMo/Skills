@@ -701,9 +701,7 @@ class GenerationTask:
 
         result = await self.generate_with_semaphore(**generation_params)
 
-        print("SDF", self.cfg.count_prompt_tokens)
         if self.cfg.count_prompt_tokens:
-            print("SD234F", generation_params["prompt"])
             num_input_tokens = get_token_count(self.hf_tokenizer, generation_params["prompt"])
             result["num_input_tokens"] = num_input_tokens
 
