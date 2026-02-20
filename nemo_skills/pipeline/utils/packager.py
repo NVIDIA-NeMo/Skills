@@ -49,13 +49,16 @@ EXTERNAL_REPOS = {
 }
 
 
-def register_external_repo(metadata: RepoMetadata):
+def register_external_repo(metadata: RepoMetadata, ignore_if_registered: bool = False):
     """Register an external repo to be packaged with the code in the experiment.
 
     Args:
         metadata (RepoMetadata): Metadata for the external repo.
+        ignore_if_registered (bool): If True, will not raise an error if the repo is already registered.
     """
     if metadata.name in EXTERNAL_REPOS:
+        if ignore_if_registered:
+            return
         raise ValueError(f"External repo {metadata.name} is already registered.")
 
     EXTERNAL_REPOS[metadata.name] = metadata
@@ -74,6 +77,56 @@ def get_registered_external_repo(name: str) -> Optional[RepoMetadata]:
         return None
 
     return EXTERNAL_REPOS[name]
+
+
+def resolve_external_data_path(local_data_path: str | Path) -> str:
+    """Resolve a local external dataset path to its /nemo_run/code/ container path.
+
+    External repos registered via register_external_repo() are packaged and extracted
+    at /nemo_run/code/ relative to their git root. This function finds which registered
+    external repo the local_data_path belongs to and computes the correct container path.
+
+    Args:
+        local_data_path: Local filesystem path to the dataset's parent directory.
+
+    Returns:
+        The container path starting with /nemo_run/code/.
+
+    Raises:
+        RuntimeError: If local_data_path doesn't belong to any registered external repo.
+    """
+    local_data_path = Path(local_data_path).resolve()
+
+    for repo_name, repo_meta in EXTERNAL_REPOS.items():
+        if repo_name == "nemo_skills":
+            continue
+
+        repo_path = repo_meta.path.resolve()
+        try:
+            local_data_path.relative_to(repo_path)
+        except ValueError:
+            continue
+
+        # Found the matching repo. Compute path relative to the git root
+        # since git archive produces paths relative to it.
+        git_root = get_git_repo_path(repo_path)
+        if git_root is None:
+            raise RuntimeError(
+                f"External repo '{repo_name}' at '{repo_path}' is not a git repository. "
+                f"Only git repos can be registered for packaging."
+            )
+        effective_root = Path(git_root).resolve()
+        relative = local_data_path.relative_to(effective_root)
+        if str(relative) == ".":
+            return "/nemo_run/code"
+        return f"/nemo_run/code/{relative}"
+
+    registered = ", ".join(f"'{k}' ({v.path})" for k, v in EXTERNAL_REPOS.items() if k != "nemo_skills")
+    raise RuntimeError(
+        f"External dataset path '{local_data_path}' does not belong to any registered external repo. "
+        f"Registered external repos: {registered or 'none'}. "
+        f"Make sure the external repo containing this dataset calls register_external_repo()."
+    )
 
 
 def get_git_repo_path(path: str | Path = None):
@@ -133,15 +186,13 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
                 str(nemo_skills_dir / "*"),
             )
             include_patterns.append(str(nemo_skills_dir / "*"))
+            include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
         else:
             # picking up local dataset files if we are in the right repo
-            include_patterns.append(str(nemo_skills_dir / "dataset/**/*.jsonl"))
-            subfolder_datasets = ["ruler", "bfcl_v3"]  # TODO: read this from init.py in a dataset folder
-            # special logic for any dataset that creates subfolders
-            for subfolder_dataset in subfolder_datasets:
+            dataset_dir = nemo_skills_dir / "dataset"
+            for f in dataset_dir.rglob("*.jsonl"):
+                include_patterns.append(str(f))
                 include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
-                include_patterns.append(str(nemo_skills_dir / f"dataset/{subfolder_dataset}/*"))
-        include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
 
         root_package = run.GitArchivePackager(
             include_pattern=include_patterns,
@@ -173,8 +224,16 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
             repo_path = repo_meta.path
             if get_git_repo_path(repo_path):
                 # Extra repos is a git repos, so we need to package only committed files
+                # but also pick up generated jsonl files that may not be committed
+                git_root = Path(get_git_repo_path(repo_path)).resolve()
+                jsonl_files = list(git_root.rglob("*.jsonl"))
+                include_pattern = [str(f) for f in jsonl_files]
+                include_pattern_relative_path = [str(git_root)] * len(jsonl_files)
                 extra_repos[repo_name] = run.GitArchivePackager(
-                    basepath=str(repo_path), check_uncommitted_changes=check_uncommited_changes
+                    basepath=str(repo_path),
+                    include_pattern=include_pattern,
+                    include_pattern_relative_path=include_pattern_relative_path,
+                    check_uncommitted_changes=check_uncommited_changes,
                 )
             else:
                 # Extra repos is not a git repo, so we need to package all files in the directory

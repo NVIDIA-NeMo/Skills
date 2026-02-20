@@ -211,7 +211,7 @@ class GenerationTaskConfig:
     enable_litellm_cache: bool = False
 
     # List of content types to drop from messages (e.g., base64 audio) to keep output files smaller
-    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url"])
+    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url", "input_audio"])
 
     # Audio configuration - set by benchmarks that need audio processing (mmau-pro, audiobench, etc.)
     enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
@@ -642,27 +642,28 @@ class GenerationTask:
         content.append({"type": "text", "text": suffix})
 
     # TODO: data will not include any samples skipped after restart
-    def fill_prompt(self, data_point, data):
+    def fill_prompt(self, data_point, data, prompt_format=None):
         """Passing in full data in case it's needed to fill the prompt in subclasses."""
-        if self.cfg.prompt_format == "openai" and self.prompt is None:
-            # Pure openai path -- messages come from the data
-            data_point = deepcopy(data_point)
-            if self.cfg.user_message:
-                user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
-                if len(user_msgs) != 1:
-                    raise ValueError(f"user_message override expects exactly 1 user message, found {len(user_msgs)}")
-                GenerationTask._set_message_text_content(user_msgs[0], self.cfg.user_message)
-            if self.cfg.prompt_suffix:
-                GenerationTask._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
-            if self.cfg.system_message:
-                if data_point["messages"][0]["role"] != "system":
-                    data_point["messages"].insert(0, {"role": "system", "content": self.cfg.system_message})
-                else:
-                    data_point["messages"][0]["content"] = self.cfg.system_message
-            return data_point["messages"]
+        prompt_format = prompt_format or self.cfg.prompt_format
+        if prompt_format == "openai":
+            if self.prompt is None:
+                # Pure openai path -- messages come from the data
+                data_point = deepcopy(data_point)
+                if self.cfg.user_message:
+                    user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
+                    if len(user_msgs) != 1:
+                        raise ValueError(f"user_message override expects exactly 1 user message, found {len(user_msgs)}")
+                    GenerationTask._set_message_text_content(user_msgs[0], self.cfg.user_message)
+                if self.cfg.prompt_suffix:
+                    GenerationTask._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
+                if self.cfg.system_message:
+                    if data_point["messages"][0]["role"] != "system":
+                        data_point["messages"].insert(0, {"role": "system", "content": self.cfg.system_message})
+                    else:
+                        data_point["messages"][0]["content"] = self.cfg.system_message
+                return data_point["messages"]
 
-        if self.cfg.prompt_format == "openai" and self.prompt is not None:
-            # openai path with prompt_config template -- build prompt from template, merge audio from data
+            # OpenAI path with prompt_config template -- build prompt from template, merge audio from data.
             data_point = deepcopy(data_point)
             filled_prompt = self.prompt.fill(
                 data_point,
@@ -675,7 +676,7 @@ class GenerationTask:
             if self.cfg.prompt_suffix:
                 if isinstance(filled_prompt, list):
                     GenerationTask._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
-                elif isinstance(filled_prompt, str):
+                else:
                     filled_prompt += self.cfg.prompt_suffix
             return filled_prompt
 
@@ -720,7 +721,7 @@ class GenerationTask:
 
             # Filter out content types specified in drop_content_types config
             message["content"] = [
-                content for content in message["content"] if content.get("type") not in self.cfg.drop_content_types
+                content for content in message["content"] if content["type"] not in self.cfg.drop_content_types
             ]
 
     async def postprocess_single_output(self, output, original_data_point):
@@ -764,7 +765,7 @@ class GenerationTask:
         # Override this method to customize the prefilling behavior.
         return None
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         # Handle inference config - check if it's a dataclass or already a dict
         if is_dataclass(self.cfg.inference):
             inference_params = asdict(self.cfg.inference)
@@ -775,7 +776,7 @@ class GenerationTask:
         generation_params = {
             **inference_params,
             **self.extra_generate_params,
-            "prompt": self.fill_prompt(data_point, all_data),
+            "prompt": self.fill_prompt(data_point=data_point, data=all_data, prompt_format=prompt_format),
             "stop_phrases": [self.cfg.stop_phrase] if self.cfg.stop_phrase else None,
         }
 

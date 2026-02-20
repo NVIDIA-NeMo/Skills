@@ -789,7 +789,7 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return pred_file
 
-    async def process_single_datapoint(self, data_point, data):
+    async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
         async with self.semaphore:
             return await self._process_single_datapoint_impl(data_point, data)

@@ -70,6 +70,7 @@ from nemo_skills.pipeline.utils.packager import (
     get_packager,
     get_registered_external_repo,
     register_external_repo,
+    resolve_external_data_path,
 )
 from nemo_skills.pipeline.utils.server import (
     SupportedServers,
