@@ -51,50 +51,14 @@ The following things are required when adding new benchmarks
 
 ### Respect the Core / Pipeline dependency boundary
 
-NeMo Skills is split into **Core** (agent runtime) and **Pipeline** (orchestration). The rule is simple:
+NeMo Skills is split into **Core** (inference, evaluation, tools, benchmarks) and **Pipeline** (CLI, cluster orchestration). The one-way rule:
 
-```
-Pipeline can import from Core.
-Core CANNOT import from Pipeline.
-```
+- **Pipeline** can import from **Core**
+- **Core** CANNOT import from **Pipeline** (no `nemo_run`, no `nemo_skills.pipeline`)
 
-Core modules are everything under `nemo_skills/` **except** `nemo_skills/pipeline/`. They must never have top-level imports from `nemo_skills.pipeline` or `nemo_run`. This boundary is enforced by `tests/test_dependency_isolation.py` which verifies that core modules import successfully without pipeline dependencies installed.
+When adding dependencies: inference/evaluation/benchmark deps go in `core/requirements.txt`, orchestration deps go in `requirements/pipeline.txt`. This boundary is enforced by `tests/test_dependency_isolation.py`.
 
-**When adding a new dependency**, put it in the right requirements file:
-
-| If the dependency is needed for... | Add it to |
-|---|---|
-| Inference, evaluation, tool calling, any benchmark evaluator | `core/requirements.txt` |
-| CLI commands (`ns`), cluster orchestration, experiment tracking | `requirements/pipeline.txt` |
-
-There is no separate `main.txt` — `pyproject.toml` composes the default install from `core/requirements.txt` + `requirements/pipeline.txt`. Each dependency lives in exactly one file.
-
-**Boundary definition:**
-
-- **Core** = everything needed to run inference + evaluation locally (including all benchmark evaluator deps)
-- **Pipeline** = orchestration-only deps (`nemo_run`, `typer`, `click`, `nemo-evaluator-launcher`)
-
-All benchmark-specific dependencies (e.g., `faiss-cpu`, `sacrebleu`, `datasets`, `func-timeout`) go in `core/requirements.txt`. Eventually these should migrate to JIT (just-in-time) install so that benchmark deps are installed on demand at runtime, but until that is implemented, they must be in core so evaluators do not crash at runtime.
-
-**Examples of correct placement:**
-
-- `httpx` -> `core/requirements.txt` (used by model inference clients)
-- `sympy` -> `core/requirements.txt` (used by math graders)
-- `sacrebleu` -> `core/requirements.txt` (used by translation benchmark evaluator)
-- `faiss-cpu` -> `core/requirements.txt` (used by BFCL benchmark evaluator)
-- `nemo_run` -> `requirements/pipeline.txt` (cluster job orchestration)
-- `wandb` -> `core/requirements.txt` (used by summarize-results)
-
-**Examples of mistakes to avoid:**
-
-- Adding `nemo_run` to `core/requirements.txt` -- it is a pipeline/orchestration dependency, core must not depend on it.
-- Adding `typer` to `core/requirements.txt` -- it is the CLI framework, only used by the pipeline layer.
-
-**When writing new core code:**
-
-- If you need something from `nemo_skills.pipeline`, your code probably belongs in pipeline, not core. Move it.
-- If you have a function that works locally but *also* needs a cluster variant, put the local version in core and a cluster-aware wrapper in `nemo_skills/pipeline/` (see `pipeline/dataset.py` for the pattern). The pipeline wrapper should **only** handle cluster I/O (SSH downloads, mount resolution), then delegate to core for all local logic.
-- If you absolutely must reference pipeline code from core for backwards compatibility, use a lazy import inside a function body with a `DeprecationWarning` (see `dataset/utils.py:get_dataset_module` for the pattern). Never add a top-level import.
+For full details (examples, common patterns, what to avoid), see [Dependency Boundary Guide](docs/core-pipeline-boundary.md).
 
 ### Keep the code elegant
 When adding new features, try to keep the code simple and elegant.

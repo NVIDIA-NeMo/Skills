@@ -1,5 +1,5 @@
 # Pipeline/orchestration dependencies (CLI, cluster management, experiment tracking).
-# These are additional to core.txt.
+# These are additional to core/requirements.txt.
 
 click < 8.2.0  # https://github.com/ai-dynamo/dynamo/issues/1039
 nemo-evaluator-launcher<0.1.47

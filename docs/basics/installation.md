@@ -47,28 +47,7 @@ pip install -e core/
 pip install -e ".[dev]"
 ```
 
-## Core / Pipeline architecture boundary
+## Core / Pipeline boundary
 
-The codebase enforces a one-way dependency rule: pipeline modules can import
-from core, but core modules must not import from pipeline.
-
-This boundary is enforced by `tests/test_dependency_isolation.py` which creates
-fresh virtualenvs and verifies that core modules import successfully without
-pipeline dependencies installed.
-
-### Dataset loading example
-
-The boundary shows up concretely in dataset loading:
-
-```python
-# Core: local-only dataset loading (no cluster deps)
-from nemo_skills.dataset.utils import get_dataset_module
-module, path, on_cluster = get_dataset_module("gsm8k")
-
-# Pipeline: cluster-aware dataset loading (SSH tunnels, mount resolution)
-from nemo_skills.pipeline.dataset import get_dataset_module
-module, path, on_cluster = get_dataset_module("gsm8k", cluster_config=cfg)
-```
-
-If you pass `cluster_config` to the core version, it will emit a
-`DeprecationWarning` and redirect to the pipeline version.
+For contributors: the codebase enforces a one-way dependency rule between core
+and pipeline modules. See the [Dependency Boundary Guide](../core-pipeline-boundary.md) for details.

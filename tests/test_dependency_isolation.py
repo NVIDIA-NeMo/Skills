@@ -22,22 +22,31 @@ These tests verify this by importing core modules in a subprocess where
 nemo_run is blocked via a sys.modules override.
 """
 
+import pathlib
 import subprocess
 import sys
 
 import pytest
 
-# Core modules that must be importable without nemo_run / pipeline
-CORE_MODULES = [
-    "nemo_skills.inference.generate",
-    "nemo_skills.inference.model",
-    "nemo_skills.evaluation.evaluator",
-    "nemo_skills.evaluation.math_grader",
-    "nemo_skills.dataset.utils",
-    "nemo_skills.mcp.tool_manager",
-    "nemo_skills.code_execution.sandbox",
-    "nemo_skills.utils",
-]
+
+def _discover_core_modules():
+    """Find all importable nemo_skills subpackages except pipeline."""
+    import nemo_skills
+
+    root = pathlib.Path(nemo_skills.__file__).parent
+    modules = []
+    for init in sorted(root.rglob("__init__.py")):
+        rel = init.parent.relative_to(root)
+        parts = rel.parts
+        if not parts:  # root __init__.py
+            continue
+        if parts[0] == "pipeline" or "__pycache__" in parts:
+            continue
+        modules.append("nemo_skills." + ".".join(parts))
+    return modules
+
+
+CORE_MODULES = _discover_core_modules()
 
 
 @pytest.mark.parametrize("module_name", CORE_MODULES)
