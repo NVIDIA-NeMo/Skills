@@ -44,8 +44,8 @@ All benchmark-specific dependencies (e.g., `faiss-cpu`, `sacrebleu`, `datasets`,
 ## Writing new core code
 
 - If you need something from `nemo_skills.pipeline`, your code probably belongs in pipeline, not core. Move it.
-- If you have a function that works locally but *also* needs a cluster variant, put the local version in core and a cluster-aware wrapper in `nemo_skills/pipeline/` (see `pipeline/dataset.py` for the pattern). The pipeline wrapper should **only** handle cluster I/O (SSH downloads, mount resolution), then delegate to core for all local logic.
-- If you absolutely must reference pipeline code from core for backwards compatibility, use a lazy import inside a function body with a `DeprecationWarning` (see `dataset/utils.py:get_dataset_module` for the pattern). Never add a top-level import.
+- If you have a function that works locally but *also* needs a cluster variant, keep both paths in the same function but use a **lazy import** for the pipeline code inside the branch that needs it (see `dataset/utils.py:get_dataset_module` for the pattern). Never add a top-level import.
+- The pipeline layer (`nemo_skills/pipeline/`) can provide thin wrappers or re-exports for convenience (see `pipeline/dataset.py`), but all local logic should live in core.
 
 ## Dataset loading example
 
@@ -54,11 +54,10 @@ The boundary shows up concretely in dataset loading:
 ```python
 # Core: local-only dataset loading (no cluster deps)
 from nemo_skills.dataset.utils import get_dataset_module
-module, path, on_cluster = get_dataset_module("gsm8k")
+module, data_path = get_dataset_module("gsm8k")
 
-# Pipeline: cluster-aware dataset loading (SSH tunnels, mount resolution)
-from nemo_skills.pipeline.dataset import get_dataset_module
-module, path, on_cluster = get_dataset_module("gsm8k", cluster_config=cfg)
+# Cluster-aware: same function, lazy pipeline imports inside
+module, data_path = get_dataset_module("gsm8k", cluster_config=cfg)
 ```
 
-If you pass `cluster_config` to the core version, it will emit a `DeprecationWarning` and redirect to the pipeline version.
+When `cluster_config` is provided, the function lazily imports from `nemo_skills.pipeline.utils` inside the code path that needs it — the top-level module stays free of pipeline dependencies.

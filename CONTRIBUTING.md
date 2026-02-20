@@ -58,7 +58,7 @@ NeMo Skills is split into **Core** (inference, evaluation, tools, benchmarks) an
 
 When adding dependencies: inference/evaluation/benchmark deps go in `core/requirements.txt`, orchestration deps go in `requirements/pipeline.txt`. This boundary is enforced by `tests/test_dependency_isolation.py`.
 
-For full details (examples, common patterns, what to avoid), see [Dependency Boundary Guide](docs/core-pipeline-boundary.md).
+For full details (examples, common patterns, what to avoid), see [Dependency Boundary Guide](core/README.md).
 
 ### Keep the code elegant
 When adding new features, try to keep the code simple and elegant.
