@@ -2,3 +2,8 @@ jiwer>=3.1.0,<4.0.0                   # Word/Character Error Rate computation
 sacrebleu               # BLEU score computation
 soundfile             # Audio file I/O for dataset preparation
 whisper-normalizer      # Lightweight text normalization (EnglishTextNormalizer)
+# torchcodec requires FFmpeg shared libraries (not installable via pip).
+# Install via system package manager before running pip install:
+#   Linux: sudo apt install ffmpeg
+#   macOS: brew install ffmpeg
+torchcodec
