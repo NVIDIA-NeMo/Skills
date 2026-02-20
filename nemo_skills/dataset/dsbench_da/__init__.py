@@ -14,7 +14,6 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 EVAL_SPLIT = "test"
-DATASET_GROUP = "code"
 METRICS_TYPE = "math"
 
 # Use DSBench evaluator (extends MathEvaluator) with relaxed extraction and case-insensitive MCQ and handling of dict and list.
