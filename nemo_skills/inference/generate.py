@@ -652,7 +652,9 @@ class GenerationTask:
                 if self.cfg.user_message:
                     user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
                     if len(user_msgs) != 1:
-                        raise ValueError(f"user_message override expects exactly 1 user message, found {len(user_msgs)}")
+                        raise ValueError(
+                            f"user_message override expects exactly 1 user message, found {len(user_msgs)}"
+                        )
                     GenerationTask._set_message_text_content(user_msgs[0], self.cfg.user_message)
                 if self.cfg.prompt_suffix:
                     GenerationTask._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
