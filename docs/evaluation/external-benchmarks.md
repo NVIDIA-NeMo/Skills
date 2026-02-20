@@ -1,4 +1,4 @@
-# Custom benchmarks
+# External benchmarks
 
 NeMo-Skills supports defining benchmarks in external repositories. This lets you
 keep proprietary data private, iterate on benchmarks independently of NeMo-Skills

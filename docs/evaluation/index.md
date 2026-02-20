@@ -259,4 +259,4 @@ To create a new benchmark follow this process:
 5. Create a new [metrics class](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/evaluation/metrics/map_metrics.py) ( if cannot re-use existing one).
 
 You can also define benchmarks in a **separate git repository** without modifying NeMo-Skills.
-See [Custom benchmarks](./custom-benchmarks.md) for a full walkthrough.
+See [External benchmarks](./external-benchmarks.md) for a full walkthrough.
