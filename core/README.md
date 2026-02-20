@@ -56,8 +56,9 @@ The boundary shows up concretely in dataset loading:
 from nemo_skills.dataset.utils import get_dataset_module
 module, data_path = get_dataset_module("gsm8k")
 
-# Cluster-aware: same function, lazy pipeline imports inside
+# Pipeline: cluster-aware wrapper (SSH downloads, mount resolution)
+from nemo_skills.pipeline.dataset import get_dataset_module
 module, data_path = get_dataset_module("gsm8k", cluster_config=cfg)
 ```
 
-When `cluster_config` is provided, the function lazily imports from `nemo_skills.pipeline.utils` inside the code path that needs it — the top-level module stays free of pipeline dependencies.
+The core version has zero pipeline imports. The pipeline wrapper delegates to core for local resolution and only adds cluster-specific logic (mount-path unmounting, SSH file downloads) when needed.
