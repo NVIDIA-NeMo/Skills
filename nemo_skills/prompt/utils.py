@@ -396,12 +396,9 @@ def get_token_count(
         ]
         try:
             result = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools)
-            # Handle newer HF tokenizer versions that return a dict instead of a list
-            print(result, type(result))
-            if isinstance(result, dict):
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(result, list):
                 result = result["input_ids"]
-                print("!@#")
-            print(len(result))
             return len(result)
 
         except Exception as e:

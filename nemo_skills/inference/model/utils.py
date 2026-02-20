@@ -96,8 +96,8 @@ class WrapperAutoTokenizer:
             return self.tokenizer.encode(prompt)
         elif isinstance(prompt, list):
             result = self.tokenizer.apply_chat_template(prompt, add_generation_prompt=True, tools=tools)
-            # Handle newer HF tokenizer versions that return a dict instead of a list
-            if isinstance(result, dict):
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(result, list):
                 result = result["input_ids"]
             return result
 
