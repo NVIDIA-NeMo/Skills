@@ -651,9 +651,9 @@ class GenerationTask:
                 user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
                 if len(user_msgs) != 1:
                     raise ValueError(f"user_message override expects exactly 1 user message, found {len(user_msgs)}")
-                self._set_message_text_content(user_msgs[0], self.cfg.user_message)
+                GenerationTask._set_message_text_content(user_msgs[0], self.cfg.user_message)
             if self.cfg.prompt_suffix:
-                self._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
+                GenerationTask._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
             if self.cfg.system_message:
                 if data_point["messages"][0]["role"] != "system":
                     data_point["messages"].insert(0, {"role": "system", "content": self.cfg.system_message})
@@ -674,7 +674,7 @@ class GenerationTask:
                 self._merge_audio_from_data(filled_prompt, data_point)
             if self.cfg.prompt_suffix:
                 if isinstance(filled_prompt, list):
-                    self._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
+                    GenerationTask._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
                 elif isinstance(filled_prompt, str):
                     filled_prompt += self.cfg.prompt_suffix
             return filled_prompt
@@ -695,7 +695,7 @@ class GenerationTask:
         )
         if self.cfg.prompt_suffix:
             if isinstance(filled_prompt, list):
-                self._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
+                GenerationTask._append_message_text_suffix(filled_prompt[-1], self.cfg.prompt_suffix)
             elif isinstance(filled_prompt, str):
                 filled_prompt += self.cfg.prompt_suffix
         return filled_prompt
