@@ -192,7 +192,7 @@ This time pick `slurm` for the config type and fill out all other required infor
 
 !!! note
     If you're an NVIDIA employee, we have a pre-configured cluster configs for internal usage with pre-built sqsh
-    containers available at https://gitlab-master.nvidia.com/igitman/nemo-skills-configs. You can most likely
+    containers available at [https://gitlab-master.nvidia.com/igitman/nemo-skills-configs](https://gitlab-master.nvidia.com/igitman/nemo-skills-configs). You can most likely
     skip the step below and reuse one of the existing configurations.
 
 You will also need to build .sqsh files for all containers or upload all `dockerfile:...` containers to
