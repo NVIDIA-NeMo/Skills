@@ -387,6 +387,7 @@ def get_token_count(
     if messages is None:
         return None
 
+    print("!@$#!@$", messages)
     if isinstance(messages, str):
         return len(tokenizer.encode(messages, add_special_tokens=False))
     elif isinstance(messages, list):
@@ -395,9 +396,18 @@ def get_token_count(
             message if isinstance(message, dict) else message_to_dict(copy.deepcopy(message)) for message in messages
         ]
         try:
+            print("ASDF", messages)
+            print(
+                "$#!@$!",
+                len(tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools)),
+                tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools),
+            )
+
             return len(tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools))
+
         except Exception as e:
             raise ValueError(f"Invalid chat message format: {e}")
+
     else:
         raise ValueError("messages must be a string or a list of dictionaries")
 
