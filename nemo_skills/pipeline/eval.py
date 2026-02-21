@@ -154,7 +154,6 @@ def eval(
         help="Path to the entrypoint of the server. "
         "If not specified, will use the default entrypoint for the server type.",
     ),
-    judge_type: str = typer.Option("llm", help="Type of judge to use: llm (default), nvembed, comet or custom"),
     judge_model: str = typer.Option(None, help="Path to the model to be used as a judge (if applicable)"),
     judge_server_address: str = typer.Option(None, help="Address of the server hosting the judge model"),
     judge_server_type: pipeline_utils.SupportedServers = typer.Option(
@@ -348,7 +347,7 @@ def eval(
         "generation_type": judge_generation_type,
         "generation_module": judge_generation_module,
     }
-    eval_requires_judge = any(param_value for param_value in cli_judge_pipeline_args.values()) or judge_type != "llm"
+    eval_requires_judge = any(param_value for param_value in cli_judge_pipeline_args.values())
 
     # Prepare cluster config and mount paths
     cluster_config = pipeline_utils.get_cluster_config(cluster, config_dir)
@@ -472,20 +471,13 @@ def eval(
             benchmark_args.eval_subfolder = benchmark_args.eval_subfolder[4:]
             judge_pipeline_args["output_dir"] = str(Path(output_dir) / benchmark_args.eval_subfolder)
 
-            # Check for per-benchmark judge_type, fall back to global judge_type
-            benchmark_judge_type = judge_pipeline_args.pop("judge_type", judge_type)
+            # judge_step is a :: path to the judge creator function (locate() convention).
+            # Benchmarks set this directly in JUDGE_PIPELINE_ARGS; falls back to None for LLM judge.
+            judge_creator_path = judge_pipeline_args.pop("judge_step", None)
 
-            # Create judge tasks based on judge type
-            # Use locate() pattern for extensible judge loading
-            judge_creator_path = None
-
-            if benchmark_judge_type == "nvembed":
-                judge_creator_path = "nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks"
-            elif benchmark_judge_type == "comet":
-                judge_pipeline_args["judge_model"] = judge_model
-                judge_creator_path = "nemo_skills.pipeline.judges.comet_judge::create_judge_tasks"
-            elif benchmark_judge_type == "custom":
-                judge_creator_path = judge_pipeline_args.pop("judge_creator_fn")
+            # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
+            if judge_model:
+                judge_pipeline_args.setdefault("judge_model", judge_model)
 
             if judge_creator_path:
                 # Use locate() to dynamically load judge creator function
