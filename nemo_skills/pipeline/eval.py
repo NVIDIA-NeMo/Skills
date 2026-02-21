@@ -154,7 +154,7 @@ def eval(
         help="Path to the entrypoint of the server. "
         "If not specified, will use the default entrypoint for the server type.",
     ),
-    judge_type: str = typer.Option("llm", help="Type of judge to use: 'llm' (default) or 'nvembed'"),
+    judge_type: str = typer.Option("llm", help="Type of judge to use: llm (default), nvembed, comet or custom"),
     judge_model: str = typer.Option(None, help="Path to the model to be used as a judge (if applicable)"),
     judge_server_address: str = typer.Option(None, help="Address of the server hosting the judge model"),
     judge_server_type: pipeline_utils.SupportedServers = typer.Option(
