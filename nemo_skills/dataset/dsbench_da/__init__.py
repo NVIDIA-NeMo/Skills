@@ -17,7 +17,7 @@ EVAL_SPLIT = "test"
 METRICS_TYPE = "math"
 
 # Use DSBench evaluator (extends MathEvaluator) with relaxed extraction and case-insensitive MCQ and handling of dict and list.
-GENERATION_ARGS = "++prompt_config=generic/dsbench-da ++eval_type=dsbench ++eval_config.relaxed=true"
+GENERATION_ARGS = "++prompt_config=generic/dsbench-da ++eval_type=dsbench ++eval_config.relaxed_extraction=true"
 
 # Recommend running LLM judge to verify dicts and lists correctly
 # JUDGE_PIPELINE_ARGS = {
