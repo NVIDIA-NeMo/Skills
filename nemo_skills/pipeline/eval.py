@@ -41,237 +41,6 @@ class SingleNodeMode(str, enum.Enum):
     parallel = "parallel"
 
 
-def _create_comet_judge_tasks(
-    exp,
-    expname,
-    benchmark,
-    judge_pipeline_args,
-    rerun_done,
-    log_dir,
-    server_parameters,
-    cluster_config,
-    judge_server_gpus,
-    judge_server_nodes,
-    partition,
-    run_after,
-    reuse_code_exp,
-    reuse_code,
-    dependent_tasks,
-    all_tasks,
-    _task_dependencies,
-    installation_command,
-    skip_hf_home_check,
-    sbatch_kwargs,
-):
-    """Create tasks for Comet judge evaluation."""
-    from nemo_skills.pipeline.utils.generation import get_remaining_jobs
-
-    output_dir_path = judge_pipeline_args.get("output_dir")
-    input_file = judge_pipeline_args.get("input_file")
-    comet_model_path = judge_pipeline_args.get("judge_model")
-
-    # Determine seeds to check
-    if input_file is None:
-        num_seeds = judge_pipeline_args.get("num_random_seeds", 1)
-        random_seeds = list(range(num_seeds))
-    else:
-        random_seeds = [None]
-
-    remaining_jobs = get_remaining_jobs(
-        cluster_config=cluster_config,
-        output_dir=output_dir_path,
-        random_seeds=random_seeds,
-        chunk_ids=[None],  # No chunking for judge task
-        rerun_done=rerun_done,
-    )
-
-    if not remaining_jobs or all(not chunks for chunks in remaining_jobs.values()):
-        LOG.info(f"Skipping Comet judge for {benchmark} - all output files and .done markers exist")
-        return []
-
-    # Build command to run xCOMET-XXL judge script
-    script_args = [f"--output-dir {output_dir_path} --comet-model-path {comet_model_path}"]
-
-    if input_file is None:
-        input_dir = judge_pipeline_args.get("input_dir")
-        script_args.append(f"--input-dir {input_dir}")
-        script_args.append(f"--num-seeds {num_seeds}")
-    else:
-        script_args.append(f"--input-file {input_file}")
-
-    run_cmd = f"pip install unbabel-comet && python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
-
-    # Create task with GPU support for Comet
-    judge_task = pipeline_utils.add_task(
-        exp,
-        cmd=run_cmd,
-        task_name=f"{expname}-{benchmark}-comet-judge",
-        log_dir=log_dir + "/judge",
-        container=cluster_config["containers"]["vllm"],
-        cluster_config=cluster_config,
-        num_gpus=judge_server_gpus or 1,
-        num_nodes=judge_server_nodes or 1,
-        partition=partition,
-        run_after=run_after,
-        reuse_code_exp=reuse_code_exp,
-        reuse_code=reuse_code,
-        task_dependencies=(
-            dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
-        ),
-        installation_command=installation_command,
-        skip_hf_home_check=skip_hf_home_check,
-        sbatch_kwargs=sbatch_kwargs,
-    )
-    return [judge_task]
-
-
-def _create_nvembed_judge_tasks(
-    exp,
-    expname,
-    benchmark,
-    judge_pipeline_args,
-    rerun_done,
-    log_dir,
-    server_parameters,
-    cluster_config,
-    judge_server_gpus,
-    judge_server_nodes,
-    partition,
-    run_after,
-    reuse_code_exp,
-    reuse_code,
-    dependent_tasks,
-    all_tasks,
-    _task_dependencies,
-    installation_command,
-    skip_hf_home_check,
-    sbatch_kwargs,
-):
-    """Create tasks for NVEmbed judge evaluation."""
-    from nemo_skills.pipeline.utils.generation import get_remaining_jobs
-
-    output_dir_path = judge_pipeline_args.get("output_dir")
-    input_file = judge_pipeline_args.get("input_file")
-
-    # Determine seeds to check
-    if input_file is None:
-        num_seeds = judge_pipeline_args.get("num_random_seeds", 1)
-        random_seeds = list(range(num_seeds))
-    else:
-        random_seeds = [None]
-
-    remaining_jobs = get_remaining_jobs(
-        cluster_config=cluster_config,
-        output_dir=output_dir_path,
-        random_seeds=random_seeds,
-        chunk_ids=[None],  # No chunking for judge task
-        rerun_done=rerun_done,
-    )
-
-    if not remaining_jobs or all(not chunks for chunks in remaining_jobs.values()):
-        LOG.info(f"Skipping NVEmbed judge for {benchmark} - all output files and .done markers exist")
-        return []
-
-    # Build command to run NVEmbed judge script
-    script_args = [f"--output-dir {output_dir_path}"]
-
-    if input_file is None:
-        input_dir = judge_pipeline_args.get("input_dir")
-        script_args.append(f"--input-dir {input_dir}")
-        script_args.append(f"--num-seeds {num_seeds}")
-    else:
-        script_args.append(f"--input-file {input_file}")
-
-    # Add skip-existing flag unless rerun_done is set
-    if not rerun_done:
-        script_args.append("--skip-existing")
-
-    run_cmd = f"python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/nvembed_judge.py {' '.join(script_args)}"
-
-    # Create task with GPU support for NVEmbed
-    judge_task = pipeline_utils.add_task(
-        exp,
-        cmd=run_cmd,
-        task_name=f"{expname}-{benchmark}-nvembed-judge",
-        log_dir=log_dir + "/judge",
-        container=cluster_config["containers"]["vllm"],
-        cluster_config=cluster_config,
-        num_gpus=judge_server_gpus or 1,
-        num_nodes=judge_server_nodes or 1,
-        partition=partition,
-        run_after=run_after,
-        reuse_code_exp=reuse_code_exp,
-        reuse_code=reuse_code,
-        task_dependencies=(
-            dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
-        ),
-        installation_command=installation_command,
-        skip_hf_home_check=skip_hf_home_check,
-        sbatch_kwargs=sbatch_kwargs,
-    )
-    return [judge_task]
-
-
-def _create_custom_judge_tasks(
-    judge_pipeline_args,
-    dependent_tasks,
-    all_tasks,
-    _task_dependencies,
-    exp,
-    cluster_config,
-    expname,
-    benchmarks,
-    output_dir,
-    log_dir,
-    partition,
-    judge_server_gpus,
-    judge_server_nodes,
-    run_after,
-    reuse_code_exp,
-    reuse_code,
-    installation_command,
-    skip_hf_home_check,
-    sbatch_kwargs,
-):
-    """Create tasks using custom judge creator function from external repo.
-
-    The judge_creator_fn should be specified as a path string using :: notation:
-    - Module path: "external_repo.evaluation.judge_creator::create_judge_tasks"
-    - File path: "/path/to/judge_creator.py::create_judge_tasks"
-
-    This leverages nemo-skills' existing locate() pattern used for METRICS_TYPE
-    and eval_type, allowing external repos to define their own judge task creators.
-    """
-    from nemo_skills.dataset.utils import locate
-
-    judge_creator_path = judge_pipeline_args.pop("judge_creator_fn")
-    judge_creator_fn = locate(judge_creator_path)
-
-    # Call external judge creator with all necessary parameters
-    judge_tasks = judge_creator_fn(
-        exp=exp,
-        expname=expname,
-        benchmarks=benchmarks,
-        output_dir=output_dir,
-        judge_pipeline_args=judge_pipeline_args,
-        log_dir=log_dir,
-        cluster_config=cluster_config,
-        partition=partition,
-        judge_server_gpus=judge_server_gpus,
-        judge_server_nodes=judge_server_nodes,
-        dependent_tasks=dependent_tasks,
-        all_tasks=all_tasks,
-        _task_dependencies=_task_dependencies,
-        run_after=run_after,
-        reuse_code_exp=reuse_code_exp,
-        reuse_code=reuse_code,
-        installation_command=installation_command,
-        skip_hf_home_check=skip_hf_home_check,
-        sbatch_kwargs=sbatch_kwargs,
-    )
-    return judge_tasks
-
-
 def _create_llm_judge_tasks(
     ctx,
     expname,
@@ -707,71 +476,42 @@ def eval(
             benchmark_judge_type = judge_pipeline_args.pop("judge_type", judge_type)
 
             # Create judge tasks based on judge type
+            # Use locate() pattern for extensible judge loading
+            judge_creator_path = None
+
             if benchmark_judge_type == "nvembed":
-                judge_tasks = _create_nvembed_judge_tasks(
-                    exp=exp,
-                    expname=expname,
-                    benchmark=benchmark,
-                    judge_pipeline_args=judge_pipeline_args,
-                    rerun_done=rerun_done,
-                    log_dir=log_dir,
-                    server_parameters=server_parameters,
-                    cluster_config=cluster_config,
-                    judge_server_gpus=judge_server_gpus,
-                    judge_server_nodes=judge_server_nodes,
-                    partition=partition,
-                    run_after=run_after,
-                    reuse_code_exp=reuse_code_exp,
-                    reuse_code=reuse_code,
-                    dependent_tasks=dependent_tasks,
-                    all_tasks=all_tasks,
-                    _task_dependencies=_task_dependencies,
-                    installation_command=installation_command,
-                    skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
-                )
+                judge_creator_path = "nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks"
             elif benchmark_judge_type == "comet":
                 judge_pipeline_args["judge_model"] = judge_model
-                judge_tasks = _create_comet_judge_tasks(
+                judge_creator_path = "nemo_skills.pipeline.judges.comet_judge::create_judge_tasks"
+            elif benchmark_judge_type == "custom":
+                judge_creator_path = judge_pipeline_args.pop("judge_creator_fn")
+
+            if judge_creator_path:
+                # Use locate() to dynamically load judge creator function
+                from nemo_skills.dataset.utils import locate
+
+                judge_creator_fn = locate(judge_creator_path)
+
+                # Call with standardized parameters
+                judge_tasks = judge_creator_fn(
                     exp=exp,
                     expname=expname,
-                    benchmark=benchmark,
+                    benchmarks=[benchmark],
                     judge_pipeline_args=judge_pipeline_args,
                     rerun_done=rerun_done,
                     log_dir=log_dir,
-                    server_parameters=server_parameters,
-                    cluster_config=cluster_config,
-                    judge_server_gpus=judge_server_gpus,
-                    judge_server_nodes=judge_server_nodes,
-                    partition=partition,
-                    run_after=run_after,
-                    reuse_code_exp=reuse_code_exp,
-                    reuse_code=reuse_code,
-                    dependent_tasks=dependent_tasks,
-                    all_tasks=all_tasks,
-                    _task_dependencies=_task_dependencies,
-                    installation_command=installation_command,
-                    skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
-                )
-            elif benchmark_judge_type == "custom":
-                judge_tasks = _create_custom_judge_tasks(
-                    judge_pipeline_args=judge_pipeline_args,
-                    dependent_tasks=dependent_tasks,
-                    all_tasks=all_tasks,
-                    _task_dependencies=_task_dependencies,
-                    exp=exp,
-                    cluster_config=cluster_config,
-                    expname=expname,
-                    benchmarks=[benchmark],
                     output_dir=output_dir,
-                    log_dir=log_dir,
-                    partition=partition,
+                    cluster_config=cluster_config,
                     judge_server_gpus=judge_server_gpus,
                     judge_server_nodes=judge_server_nodes,
+                    partition=partition,
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
+                    dependent_tasks=dependent_tasks,
+                    all_tasks=all_tasks,
+                    _task_dependencies=_task_dependencies,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
                     sbatch_kwargs=sbatch_kwargs,
