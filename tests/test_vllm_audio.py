@@ -42,6 +42,15 @@ def test_audio_file_to_base64():
         os.unlink(temp_path)
 
 
+def _is_valid_audio_content(content_item: dict) -> bool:
+    """Check if content item is a valid audio block (either format)."""
+    if content_item.get("type") == "audio_url":
+        return content_item.get("audio_url", {}).get("url", "").startswith("data:audio/wav;base64,")
+    elif content_item.get("type") == "input_audio":
+        return "data" in content_item.get("input_audio", {})
+    return False
+
+
 @pytest.fixture
 def mock_vllm_multimodal_model(tmp_path):
     """Create a mock VLLMMultimodalModel for testing audio preprocessing."""
@@ -53,6 +62,23 @@ def mock_vllm_multimodal_model(tmp_path):
         model.enable_audio_chunking = True
         model.audio_chunk_task_types = None
         model.chunk_audio_threshold_sec = 30
+        model.audio_format = "audio_url"  # Test audio_url format (for vLLM/Qwen)
+        model._tunnel = None
+        return model
+
+
+@pytest.fixture
+def mock_vllm_multimodal_model_input_audio(tmp_path):
+    """Create a mock VLLMMultimodalModel configured for input_audio."""
+    with patch.object(VLLMMultimodalModel, "__init__", lambda self, **kwargs: None):
+        model = VLLMMultimodalModel()
+        model.data_dir = str(tmp_path)
+        model.output_dir = None
+        model.output_audio_dir = None
+        model.enable_audio_chunking = True
+        model.audio_chunk_task_types = None
+        model.chunk_audio_threshold_sec = 30
+        model.audio_format = "input_audio"
         model._tunnel = None
         return model
 
@@ -72,8 +98,25 @@ def test_content_text_to_list_with_audio(mock_vllm_multimodal_model, tmp_path):
 
     assert isinstance(result["content"], list)
     assert len(result["content"]) == 2
-    assert result["content"][0]["type"] == "audio_url"
-    assert result["content"][0]["audio_url"]["url"].startswith("data:audio/wav;base64,")
+    assert _is_valid_audio_content(result["content"][0])
+    assert result["content"][1]["type"] == "text"
+
+
+def test_content_text_to_list_with_input_audio_format(mock_vllm_multimodal_model_input_audio, tmp_path):
+    """Test audio conversion with input_audio format (OpenAI native)."""
+    audio_path = tmp_path / "test.wav"
+    with open(audio_path, "wb") as f:
+        f.write(b"RIFF" + b"\x00" * 100)
+
+    message = {"role": "user", "content": "Describe this audio", "audio": {"path": "test.wav"}}
+    result = mock_vllm_multimodal_model_input_audio.content_text_to_list(message)
+
+    assert isinstance(result["content"], list)
+    assert len(result["content"]) == 2
+    # Verify input_audio format structure
+    assert result["content"][0]["type"] == "input_audio"
+    assert "data" in result["content"][0]["input_audio"]
+    assert result["content"][0]["input_audio"]["format"] == "wav"
     assert result["content"][1]["type"] == "text"
 
 
@@ -100,8 +143,8 @@ def test_content_text_to_list_with_multiple_audios(mock_vllm_multimodal_model, t
     assert isinstance(result["content"], list)
     assert len(result["content"]) == 3
     # Audio MUST come before text for Qwen Audio
-    assert result["content"][0]["type"] == "audio_url"
-    assert result["content"][1]["type"] == "audio_url"
+    assert _is_valid_audio_content(result["content"][0])
+    assert _is_valid_audio_content(result["content"][1])
     assert result["content"][2]["type"] == "text"
 
 

@@ -49,6 +49,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 BFCL_REQUIREMENTS = [
     # Source: https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/pyproject.toml
+    # we made changes listed in comments to speed up installation time
     "requests",
     "tqdm",
     "numpy==1.26.4",
@@ -67,7 +68,7 @@ BFCL_REQUIREMENTS = [
     "tabulate>=0.9.0",
     "datamodel-code-generator==0.25.7",
     "google-genai>=1.52.0",
-    "qwen-agent",
+    # "qwen-agent",  # disabling due to some issues (and shouldn't be needed)
     "mpmath==1.3.0",
     "tenacity>=8.5.0",
     "writer-sdk>=2.1.0",
@@ -77,7 +78,7 @@ BFCL_REQUIREMENTS = [
     "html2text",
     "rank_bm25==0.2.2",
     "google-search-results",
-    "sentence-transformers>=2.7.0",
+    # "sentence-transformers>=2.7.0",  # disabling to avoid full torch installation
     "faiss-cpu==1.11.0",
     "networkx==3.3",
     "filelock==3.20.0",
@@ -607,7 +608,7 @@ class BFCLGenerationTask(GenerationTask):
             # If the thinking didn't finish, we can keep it empty
             return ""
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         """Process a single data point and return the result."""
         if data_point["single_turn"]:
             return await self._generate_single_data_point_single_turn(data_point)

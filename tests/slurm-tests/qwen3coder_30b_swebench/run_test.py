@@ -53,10 +53,10 @@ def main():
     args = parser.parse_args()
 
     if args.container_formatter is None:
-        prepare_data_args = "swe-bench"
+        prepare_data_ctx = wrap_arguments("swe-bench")
     else:
-        prepare_data_args = f"swe-bench --container_formatter {args.container_formatter}"
-    prepare_data(ctx=wrap_arguments(prepare_data_args))
+        prepare_data_ctx = wrap_arguments(f"swe-bench --container_formatter {args.container_formatter}")
+    prepare_data(ctx=prepare_data_ctx)
 
     for agent_framework in ["openhands", "swe_agent"]:
         workspace = f"{args.workspace}/{agent_framework}"

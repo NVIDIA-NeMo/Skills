@@ -102,6 +102,7 @@ def test_get_benchmark_args_input_file_should_be_local_path_for_executor_none(tm
         JUDGE_ARGS="",
         NUM_SAMPLES=0,
         NUM_CHUNKS=0,
+        METRICS_TYPE="math",
     )
 
     result = get_benchmark_args_from_module(

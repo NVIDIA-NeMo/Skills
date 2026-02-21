@@ -95,7 +95,7 @@ class ScriptGenerationTask(GenerationTask):
         self.llm_kwargs = inference_params
         return nemo_llm
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         # Delegate processing to the user-provided script program
         # Get the function signature to check if llm is a parameter
         sig = inspect.signature(self._script_module.process_single)
@@ -105,9 +105,11 @@ class ScriptGenerationTask(GenerationTask):
             kwargs["llm_kwargs"] = self.llm_kwargs
         if "random_seed" in sig.parameters:
             kwargs["random_seed"] = self.random_seed
-        result = await self._script_module.process_single(**kwargs)
-        if "generation" not in result:
-            result["generation"] = "dummy generation key"  # To avoid error in dumping
+        async with self.semaphore:
+            result = await self._script_module.process_single(**kwargs)
+            if "generation" not in result:
+                result["generation"] = "dummy generation key"  # To avoid error in dumping
+
         return result
 
 

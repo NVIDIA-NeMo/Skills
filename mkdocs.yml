@@ -83,8 +83,10 @@ nav:
     - evaluation/tool-calling.md
     - evaluation/multilingual.md
     - evaluation/speech-audio.md
+    - evaluation/vlm.md
     - evaluation/other-benchmarks.md
     - evaluation/robustness.md
+    - External benchmarks: evaluation/external-benchmarks.md
   - Agentic Inference:
     - agentic_inference/parallel_thinking.md
     - agentic_inference/tool_calling.md

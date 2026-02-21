@@ -53,7 +53,7 @@ class CodeExecEvaluator(BaseEvaluator):
             f"max_output_characters={self.eval_config.max_output_characters}"
         )
         self.sandbox = get_sandbox(self.eval_config.sandbox)
-        self.sandbox.wait_for_sandbox(50)
+        self.sandbox.wait_for_sandbox(wait_timeout=240)
 
     async def eval_single(self, data: dict):
         """Evaluate single code during generation."""
@@ -461,7 +461,15 @@ def eval_human_eval_infilling(cfg):
                 raise ValueError(f"All samples should have the same split, but got {data_split} and {sample['split']}")
 
             sample = preprocess_code(sample, language="python", strip_whitespace=False)
-            sample["original_completion"] = sample["completion"]
+            # ---------------------------------------------------------
+            # remove one leading "\n" from the completion
+            # because LLM generated solutions are in the form: ```python\n<fill_in_the_middle>```
+            completion = sample["completion"]
+            if completion.startswith("\n"):
+                completion = completion[1:]
+            # ---------------------------------------------------------
+            sample["completion"] = completion
+            sample["original_completion"] = completion
             sample = postprocess_code(sample)
             samples.append(sample)
 

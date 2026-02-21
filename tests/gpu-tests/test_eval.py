@@ -92,8 +92,9 @@ def test_aaa_prepare_and_eval_all_datasets():
     docker_rm([str(data_dir)])
 
     # Prepare all datasets - fail fast if any dataset preparation fails
+    all_datasets = dataset_names + ["bfcl_v3", "bfcl_v4"]
     exp = prepare_data(
-        ctx=wrap_arguments(" ".join(dataset_names + ["bfcl_v3", "bfcl_v4"])),
+        ctx=wrap_arguments(" ".join(all_datasets)),
         cluster="test-local",
         config_dir=str(config_dir),
         data_dir=str(data_dir),
@@ -181,7 +182,8 @@ def test_aaa_prepare_and_eval_all_datasets():
     # It also needs a special eval arg
     # TODO: after summarize results works natively with eval groups, we can merge these
     # TODO: enable bfcl_v4 after figuring out why it's broken in this setup
-    bfcl_eval_args = "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC"
+    # setting 10 samples as bfcl is brittle when using only 2
+    bfcl_eval_args = "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC ++max_samples=10"
     eval(
         ctx=wrap_arguments(f"{common_ctx} {bfcl_eval_args}"),
         output_dir=output_dir,

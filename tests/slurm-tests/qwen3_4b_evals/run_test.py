@@ -22,11 +22,12 @@ def eval_qwen3_bfcl(workspace, cluster, expname_prefix, wandb_project):
 
     eval(
         ctx=wrap_arguments(
-            f"++inference.temperature=0.6 "
-            f"++inference.top_p=0.95 "
-            f"++inference.tokens_to_generate=8192 "
-            f"++model_name={model} "
-            f"++parse_reasoning=True "
+            "++inference.temperature=0.6 "
+            "++inference.top_p=0.95 "
+            "++inference.tokens_to_generate=8192 "
+            # somehow Qwen3-4B was removed from default names, but 8b should be same parser
+            "++model_name=Qwen/Qwen3-8B-FC "
+            "++parse_reasoning=True "
         ),
         cluster=cluster,
         benchmarks="bfcl_v3",
@@ -57,7 +58,6 @@ def eval_qwen3_online_genselect(workspace, cluster, expname_prefix, wandb_projec
             "++parallel_thinking.mode=genselect "
             "++server.enable_soft_fail=True "
             "++server.context_limit_retry_strategy=reduce_generation "
-            # "++skip_filled=False "
         ),
         cluster=cluster,
         benchmarks="aime24:1",
