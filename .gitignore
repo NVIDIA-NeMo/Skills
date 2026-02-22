@@ -47,7 +47,8 @@ nemo_skills/dataset/aalcr/lcr/
 CLAUDE.md
 AGENTS.md
 .codex
-
+.claude
+.cursor
 .idea
 
 #scripts at root level
