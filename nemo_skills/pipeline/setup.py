@@ -103,7 +103,7 @@ def setup():
             "as well as for your models (e.g. /trt_models, /hf_models).\n"
             "If you're setting up a Slurm config, make sure to use the cluster paths here.\n"
             "What mounts would you like to add? (comma separated)",
-            default=f"/home/{os.getlogin()}:/workspace" if config_type == "local" else None,
+            default=f"{os.path.expanduser('~')}:/workspace" if config_type == "local" else None,
         )
 
         # parse mounts early so we can validate HF_HOME against them
