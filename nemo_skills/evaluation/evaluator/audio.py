@@ -33,9 +33,12 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
 
     prompt_config: str = "eval/speechlm/audio"
     normalize_asr_pc_standard_wer: bool = True
-    strip_helpful_prefixes: bool = True
+    strip_helpful_prefixes: bool = False
     apply_whisper_normalization: bool = True
-    normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", or "none"
+    normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn"
+    # Optional list of reference fields to calculate WER against (e.g., ["text_tn", "text_itn"])
+    # For each field, WER will be computed and stored with corresponding metric name
+    reference_fields: list[str] | None = None
 
 
 # Known model failure responses that should be treated as empty transcriptions
@@ -71,16 +74,19 @@ def strip_helpful_prefixes(text: str) -> str:
     if match:
         result = match.group(1)
 
-    # Handle colon-quote patterns
-    if ":'" in result:
-        result = "'" + result.split(":'")[1]
-    elif ": '" in result:
-        result = "'" + result.split(": '")[1]
-
-    # Greedy single quote extraction
-    match = re.search(r"'(.*)'", result)
-    if match:
-        result = match.group(1)
+    # Handle colon-quote patterns (e.g., "The audio says: 'hello'")
+    if ": '" in result:
+        result = result.split(": '", 1)[1]
+        # Remove trailing quote (with punctuation either inside or outside)
+        result = re.sub(r"[.!?]?'[.!?]?\s*$", "", result)
+    elif ":'" in result:
+        result = result.split(":'", 1)[1]
+        result = re.sub(r"[.!?]?'[.!?]?\s*$", "", result)
+    else:
+        # Single quote extraction - only match quotes at end of string (not contractions like o'clock)
+        match = re.search(r"'(.+?)'\s*\.?\s*$", result)
+        if match:
+            result = match.group(1)
 
     return result.strip()
 
@@ -146,7 +152,7 @@ def evaluate_asr_pc(
         reference: Ground truth transcription.
         hypothesis: Model output transcription.
         normalize_standard_wer: Whether to apply normalization to standard WER.
-        normalization_mode: Normalization mode for standard WER ("standard", "audiobench", "hf_leaderboard", "none").
+        normalization_mode: Normalization mode for standard WER ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn").
     """
     import jiwer
 
@@ -256,7 +262,18 @@ def _remove_non_speech_elements(text: str) -> str:
     return re.sub(non_speech_patterns, "", text)
 
 
-VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none")
+VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn")
+
+
+def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
+    """Resolve effective normalization mode for ASR-family tasks.
+
+    - no_tn_itn is explicit and does not use whisper normalization.
+    - Other modes respect apply_whisper_normalization toggle.
+    """
+    if config.normalization_mode == "no_tn_itn":
+        return "no_tn_itn"
+    return config.normalization_mode if config.apply_whisper_normalization else "none"
 
 
 def preprocess_asr_text(text: str, mode: str = "standard") -> str:
@@ -265,10 +282,11 @@ def preprocess_asr_text(text: str, mode: str = "standard") -> str:
     Args:
         text: Raw text.
         mode: Normalization mode:
-            - "standard": Whisper normalization (default)
-            - "audiobench": Full AudioBench normalization
-            - "hf_leaderboard": HuggingFace leaderboard style
+            - "standard": Whisper normalization (default) - converts number words to digits
+            - "audiobench": Full AudioBench normalization (whisper + digits to words + more)
+            - "hf_leaderboard": HuggingFace leaderboard style (whisper normalization)
             - "none": No normalization (whitespace only)
+            - "no_tn_itn": Lowercase + remove punctuation, no number word conversion (for TN/ITN eval)
     """
     if mode not in VALID_NORMALIZATION_MODES:
         raise ValueError(
@@ -278,15 +296,13 @@ def preprocess_asr_text(text: str, mode: str = "standard") -> str:
     if mode == "none":
         return re.sub(r"\s+", " ", text).strip()
 
-    if mode == "hf_leaderboard":
-        import unicodedata
-
-        text = unicodedata.normalize("NFC", text)
+    if mode == "no_tn_itn":
+        # Lowercase + remove punctuation + whitespace normalization
         text = text.lower()
         text = re.sub(r"[^\w\s]", "", text)
         return re.sub(r"\s+", " ", text).strip()
 
-    # "standard" and "audiobench" both start with whisper normalization
+    # "standard", "audiobench", and "hf_leaderboard" all use whisper normalization
     from whisper_normalizer.english import EnglishTextNormalizer
 
     text = text.lower()
@@ -319,7 +335,7 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     Args:
         reference: Ground truth transcription.
         hypothesis: Model output transcription.
-        normalization_mode: "standard", "audiobench", "hf_leaderboard", or "none".
+        normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
     """
     import jiwer
 
@@ -496,20 +512,8 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     if config.strip_helpful_prefixes:
         generation = strip_helpful_prefixes(generation)
 
-    if task_type in ["ASR", "ASR-PC", "ASR_LEADERBOARD", "AST", "Translation", "CER"] and not generation:
-        base = {
-            "is_correct": False,
-            "error": "missing_generation",
-        }
-        if task_type in ["AST", "Translation"]:
-            return {**base, "bleu": 0.0}
-        if task_type == "CER":
-            return {**base, "cer": 1.0}
-        # ASR / ASR-PC
-        return {**base, "wer": 1.0}
-
     if task_type == "ASR-PC":
-        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr_pc(
             expected_answer,
             generation,
@@ -519,16 +523,26 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         updates.update(metrics)
 
     elif task_type == "ASR":
-        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
         updates["predicted_answer"] = generation
 
     elif task_type == "ASR_LEADERBOARD":
-        # ASR_LEADERBOARD uses normalization_mode from config (default hf_leaderboard set in dataset init)
-        mode = config.normalization_mode if config.apply_whisper_normalization else "none"
+        mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
+
+        # Additional WER calculation for specified reference fields
+        if config.reference_fields:
+            for ref_field in config.reference_fields:
+                ref_value = sample[ref_field]  # fail if field is missing - user-specified fields must exist
+                # Compute WER against this reference field
+                ref_metrics = evaluate_asr(ref_value, generation, normalization_mode=mode)
+                # Derive metric name from field name (e.g., "text_tn" -> "wer_tn")
+                metric_suffix = ref_field.replace("text_", "") if ref_field.startswith("text_") else ref_field
+                updates[f"wer_{metric_suffix}"] = ref_metrics["wer"]
+                updates[f"is_correct_{metric_suffix}"] = ref_metrics["is_correct"]
 
     elif task_type in ["AST", "Translation"]:
         metrics = evaluate_translation(expected_answer, generation)
