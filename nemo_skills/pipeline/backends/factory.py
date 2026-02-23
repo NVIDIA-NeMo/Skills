@@ -47,7 +47,7 @@ See nemo_skills.pipeline.backends.integration for detailed architecture notes.
 """
 
 import logging
-from typing import Dict, Optional, Type
+from typing import Dict, Type
 
 from nemo_skills.pipeline.backends.base import ComputeBackend
 from nemo_skills.utils import get_logger_name
@@ -126,18 +126,14 @@ class BackendFactory:
             if fallback and fallback_executor:
                 LOG.info(f"Attempting fallback to {fallback_executor} backend")
                 try:
-                    fallback_backend = BackendFactory._create_backend(
-                        fallback_executor, cluster_config
-                    )
+                    fallback_backend = BackendFactory._create_backend(fallback_executor, cluster_config)
                     if fallback_backend.health_check():
                         LOG.info(f"Successfully initialized fallback {fallback_executor} backend")
                         return fallback_backend
                 except Exception as fallback_error:
                     LOG.error(f"Fallback backend {fallback_executor} also failed: {fallback_error}")
 
-            raise RuntimeError(
-                f"Failed to initialize backend '{executor}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to initialize backend '{executor}': {e}") from e
 
     @staticmethod
     def _create_backend(executor: str, cluster_config: Dict) -> ComputeBackend:
@@ -175,9 +171,7 @@ class BackendFactory:
 
         else:
             available = list(_BACKEND_REGISTRY.keys()) + ["slurm", "kubernetes", "local", "none"]
-            raise ValueError(
-                f"Unknown executor '{executor}'. Available backends: {available}"
-            )
+            raise ValueError(f"Unknown executor '{executor}'. Available backends: {available}")
 
     @staticmethod
     def list_backends() -> list:

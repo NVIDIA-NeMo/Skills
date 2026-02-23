@@ -35,7 +35,7 @@ cp ../example-kubernetes.yaml ../my-cluster.yaml
 
 | File | Description |
 |------|-------------|
-| `rbac.yaml` | ServiceAccount, Role, and RoleBinding for job management |
+| `rbac.yaml` | ServiceAccount, Role, and RoleBinding for jobs/pods/services management |
 | `storage.yaml` | PVC templates for models, data, and results |
 | `image-pull-secret.yaml` | Instructions for creating image pull secrets |
 
@@ -48,6 +48,8 @@ kubectl get serviceaccount -n nemo-skills
 
 # Check RBAC
 kubectl auth can-i create jobs --as=system:serviceaccount:nemo-skills:nemo-skills-sa -n nemo-skills
+kubectl auth can-i create services --as=system:serviceaccount:nemo-skills:nemo-skills-sa -n nemo-skills
+kubectl auth can-i delete services --as=system:serviceaccount:nemo-skills:nemo-skills-sa -n nemo-skills
 
 # Check PVCs
 kubectl get pvc -n nemo-skills

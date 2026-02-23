@@ -1,0 +1,198 @@
+# Single-Node Multi-GPU SFT Validation Job
+#
+# Tests NeMo-Skills library imports, sft_nemo_rl() K8s routing,
+# NCCL multi-GPU communication, and DDP training on a single node.
+#
+# Usage:
+#   kubectl apply -f scripts/k8s-tests/manifests/single-node-sft-test.yaml
+#   kubectl wait --for=condition=complete --timeout=600s job/sft-single-node -n default
+#   kubectl logs -l job-name=sft-single-node -n default
+#   kubectl delete -f scripts/k8s-tests/manifests/single-node-sft-test.yaml
+#
+# Prerequisites:
+#   - nemo-skills/nemo-rl:latest image loaded in containerd on target node
+#   - GPU node with nvidia.com/gpu available
+#
+# Pass signal: "E2E SFT VALIDATION PASSED" in logs
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sft-single-node-script
+  namespace: default
+data:
+  validate_sft.py: |
+    #!/usr/bin/env python3
+    """Single-node E2E SFT validation — exercises NeMo-Skills K8s code paths."""
+
+    import os, sys
+
+    # --- Checkpoint 1: NeMo-Skills core imports ---
+    # Validates: nemo_skills package, inference config, pipeline declarative API
+    print("=== Checkpoint 1: NeMo-Skills imports ===")
+    try:
+        import nemo_skills
+        print(f"  nemo_skills version: {nemo_skills.__version__}")
+
+        # Pipeline declarative API (used by _run_sft_kubernetes to build K8s jobs)
+        from nemo_skills.pipeline.utils.declarative import Pipeline, Command, CommandGroup
+        print(f"  Pipeline/Command/CommandGroup: OK")
+
+        # K8s backend (Indexed Job, Headless Service, distributed env vars)
+        from nemo_skills.pipeline.backends.base import JobSpec, ContainerSpec, ResourceSpec
+        from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend
+        print(f"  KubernetesBackend/JobSpec: OK")
+
+        # Inference config (used by ns generate pipeline)
+        from nemo_skills.inference.generate import InferenceConfig, GenerationTaskConfig
+        print(f"  InferenceConfig/GenerationTaskConfig: OK")
+    except Exception as e:
+        print(f"FAIL: import error: {e}")
+        sys.exit(1)
+    print("  All imports OK")
+
+    # --- Checkpoint 2: sft_nemo_rl() CLI routing dry-run ---
+    # Validates: the actual CLI entry point routes to _run_sft_kubernetes()
+    # when executor=kubernetes, constructing a Pipeline with training + conversion jobs
+    print("\n=== Checkpoint 2: sft_nemo_rl() K8s routing (dry-run) ===")
+    try:
+        from nemo_skills.pipeline.nemo_rl import sft as sft_module
+        from unittest.mock import patch, MagicMock
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "default",
+            "containers": {"nemo-rl": "test:latest"},
+            "skip_hf_home_check": True,
+            "default_timeout": "01:00:00",
+            "mounts": [],
+        }
+
+        with patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline, \
+             patch("nemo_skills.pipeline.nemo_rl.sft.get_cluster_config", return_value=cluster_config), \
+             patch("nemo_skills.pipeline.nemo_rl.sft.resolve_mount_paths", return_value=cluster_config), \
+             patch("nemo_skills.pipeline.nemo_rl.sft.check_mounts", return_value=("/tmp/out", "/tmp/logs")), \
+             patch("nemo_skills.pipeline.nemo_rl.sft.get_env_variables", return_value={}), \
+             patch("nemo_skills.pipeline.nemo_rl.sft.get_mounted_path", side_effect=lambda c, p: p):
+            mock_pipeline = MagicMock()
+            mock_pipeline.run.return_value = None
+            MockPipeline.return_value = mock_pipeline
+
+            # Call the ACTUAL CLI function — proves routing works
+            sft_module.sft_nemo_rl(
+                ctx=MagicMock(args=[]),
+                cluster="test-k8s",
+                output_dir="/tmp/out",
+                hf_model="gpt2",
+                num_gpus=2, num_nodes=1,
+                backend="fsdp",
+                training_data="/tmp/train.jsonl",
+                skip_hf_home_check=True,
+                dry_run=True,
+            )
+
+            # Verify Pipeline was constructed with correct job structure
+            MockPipeline.assert_called_once()
+            jobs = MockPipeline.call_args.kwargs["jobs"]
+            assert len(jobs) == 2, f"Expected 2 jobs, got {len(jobs)}"
+            assert jobs[0]["group"].hardware.num_gpus == 2
+            assert jobs[1]["group"].hardware.num_gpus == 0  # conversion is CPU-only
+
+        print("  sft_nemo_rl() -> _run_sft_kubernetes() -> Pipeline: OK")
+        print(f"  Jobs: {len(jobs)} (training + conversion)")
+    except Exception as e:
+        print(f"FAIL: {e}")
+        import traceback; traceback.print_exc()
+        sys.exit(1)
+
+    # --- Checkpoint 3: PyTorch distributed + NCCL ---
+    # Validates: NCCL init, GPU detection, multi-GPU communication
+    print("\n=== Checkpoint 3: PyTorch distributed ===")
+    import torch
+    import torch.distributed as dist
+    import torch.nn as nn
+    from torch.nn.parallel import DistributedDataParallel as DDP
+
+    dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    world_size = dist.get_world_size()
+    device = torch.device(f"cuda:{local_rank}")
+    torch.cuda.set_device(device)
+    print(f"  [Rank {rank}/{world_size}] GPU: {torch.cuda.get_device_name(device)}")
+
+    # --- Checkpoint 4: DDP training ---
+    # Validates: gradient sync across GPUs via NCCL
+    print(f"\n=== Checkpoint 4: SFT training (Rank {rank}) ===")
+    model = DDP(nn.Sequential(nn.Linear(64, 256), nn.ReLU(), nn.Linear(256, 64)).to(device), device_ids=[local_rank])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    loss_fn = nn.MSELoss()
+
+    losses = []
+    for epoch in range(2):
+        for step in range(10):
+            x, y = torch.randn(16, 64, device=device), torch.randn(16, 64, device=device)
+            loss = loss_fn(model(x), y)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.item())
+        if rank == 0:
+            print(f"  Epoch {epoch}: loss={losses[-1]:.4f}")
+
+    # --- Checkpoint 5: NCCL all-reduce ---
+    # Validates: collective communication works (sum of all ranks)
+    print(f"\n=== Checkpoint 5: NCCL all-reduce (Rank {rank}) ===")
+    t = torch.ones(1, device=device) * rank
+    dist.all_reduce(t, op=dist.ReduceOp.SUM)
+    expected = sum(range(world_size))
+    assert abs(t.item() - expected) < 1e-4, f"Failed: {t.item()} != {expected}"
+    print(f"  sum={t.item()} (expected {expected}): OK")
+
+    dist.barrier()
+    if rank == 0:
+        import math
+        print(f"\n=== E2E SFT VALIDATION PASSED ===")
+        print(f"  nemo_skills: {nemo_skills.__version__}")
+        print(f"  World size: {world_size}")
+        print(f"  GPU: {torch.cuda.get_device_name(0)}")
+        print(f"  Final loss: {losses[-1]:.4f} (NaN: {math.isnan(losses[-1])})")
+        print(f"  NCCL all-reduce: verified")
+    dist.destroy_process_group()
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sft-single-node
+  namespace: default
+  labels:
+    app: nemo-skills
+    test: sft-e2e-single-node
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app: nemo-skills
+        test: sft-e2e-single-node
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: trainer
+        image: nemo-skills/nemo-rl:latest
+        imagePullPolicy: Never
+        env:
+        - {name: NCCL_DEBUG, value: "INFO"}
+        - {name: NCCL_DEBUG_SUBSYS, value: "INIT,NET"}
+        command: ["torchrun", "--nproc_per_node=2", "--master_port=29500", "/scripts/validate_sft.py"]
+        resources:
+          limits: {nvidia.com/gpu: "2"}
+          requests: {nvidia.com/gpu: "2", memory: "32Gi", cpu: "8"}
+        volumeMounts:
+        - {name: script, mountPath: /scripts}
+      tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      volumes:
+      - name: script
+        configMap: {name: sft-single-node-script}

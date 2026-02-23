@@ -1,0 +1,117 @@
+# Real NeMo-RL SFT Training Test
+#
+# Runs start_sft.py (the actual NeMo-RL SFT entry point) with:
+# - Qwen/Qwen2.5-0.5B model (500M params, downloaded from HuggingFace)
+# - 50 synthetic math Q&A examples
+# - Ray + DTensor FSDP backend
+# - NCCL multi-GPU communication
+#
+# Prerequisites:
+#   - nemo-skills/nemo-rl-full:latest image loaded in containerd
+#   - GPU node with nvidia.com/gpu available
+#
+# Usage:
+#   # Generate training data
+#   python scripts/k8s-tests/generate_sft_data.py 50 > /tmp/train.jsonl
+#   kubectl create configmap sft-train-data -n default --from-file=train.jsonl=/tmp/train.jsonl
+#
+#   # Run the test
+#   kubectl apply -f scripts/k8s-tests/manifests/real-nemo-rl-sft-test.yaml
+#   kubectl wait --for=condition=complete --timeout=1800s job/sft-nemo-rl-real -n default
+#   kubectl logs job/sft-nemo-rl-real -n default | grep -E "▶|step|loss|COMPLETED"
+#
+#   # Cleanup
+#   kubectl delete -f scripts/k8s-tests/manifests/real-nemo-rl-sft-test.yaml
+#   kubectl delete configmap sft-train-data -n default
+#
+# Pass signal: "REAL NEMO-RL SFT COMPLETED" in logs
+#
+# NeMo-Skills code paths exercised:
+#   - nemo_skills/training/nemo_rl/start_sft.py (actual SFT entry point)
+#   - nemo_skills/training/nemo_rl/configs/sft.yaml (Hydra config)
+#   - Ray cluster initialization (DTensorPolicyWorkerV2)
+#   - FSDP/DTensor distributed training
+#   - Sequence packing (modified_first_fit_decreasing)
+#   - NeMo-RL PromptResponseDataset (data loading + tokenization)
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sft-nemo-rl-script
+  namespace: default
+data:
+  run_sft.sh: |
+    #!/bin/bash
+    set -e
+    export NCCL_DEBUG=INFO
+    export PYTHONPATH=/opt/NeMo-Skills:/opt/NeMo-RL:$PYTHONPATH
+
+    echo "=== Real NeMo-RL SFT Training ==="
+    echo "Model: Qwen/Qwen2.5-0.5B (500M params)"
+    echo "Backend: FSDP/DTensor via Ray"
+
+    # Copy data from ConfigMap (read-only) to writable path
+    mkdir -p /tmp/sft-data
+    cp /data/train.jsonl /tmp/sft-data/train.jsonl
+
+    cd /opt/NeMo-RL
+    uv run --active python /opt/NeMo-Skills/nemo_skills/training/nemo_rl/start_sft.py \
+      ++policy.model_name=Qwen/Qwen2.5-0.5B \
+      ++cluster.gpus_per_node=2 \
+      ++cluster.num_nodes=1 \
+      ++checkpointing.checkpoint_must_save_by=00:00:30:00 \
+      ++checkpointing.enabled=false \
+      ++logger.log_dir=/tmp/sft-logs \
+      ++logger.wandb_enabled=false \
+      +data.train_data_path=/tmp/sft-data/train.jsonl \
+      ++sft.max_num_steps=10 \
+      ++sft.max_num_epochs=1 \
+      ++policy.train_global_batch_size=4 \
+      ++policy.train_micro_batch_size=2 \
+      2>&1
+
+    echo "=== REAL NEMO-RL SFT COMPLETED ==="
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sft-nemo-rl-real
+  namespace: default
+  labels:
+    app: nemo-skills
+    test: sft-nemo-rl-real
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app: nemo-skills
+        test: sft-nemo-rl-real
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: trainer
+        image: nemo-skills/nemo-rl-full:latest
+        imagePullPolicy: Never
+        env:
+        - {name: NCCL_DEBUG, value: "INFO"}
+        command: ["bash", "/scripts/run_sft.sh"]
+        resources:
+          limits: {nvidia.com/gpu: "2"}
+          requests: {nvidia.com/gpu: "2", memory: "64Gi", cpu: "16"}
+        volumeMounts:
+        - {name: script, mountPath: /scripts}
+        - {name: data, mountPath: /data}
+        - {name: dshm, mountPath: /dev/shm}
+      tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      volumes:
+      - name: script
+        configMap: {name: sft-nemo-rl-script}
+      - name: data
+        configMap: {name: sft-train-data}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

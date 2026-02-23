@@ -22,12 +22,12 @@ Tests cover:
 """
 
 import importlib.util
-from dataclasses import dataclass
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
 
 from nemo_skills.pipeline.backends.base import (
-    ComputeBackend,
     ContainerSpec,
     JobHandle,
     JobSpec,
@@ -35,7 +35,6 @@ from nemo_skills.pipeline.backends.base import (
     ResourceSpec,
 )
 from nemo_skills.pipeline.backends.factory import BackendFactory, get_backend
-
 
 # =============================================================================
 # Data Class Tests
@@ -51,7 +50,7 @@ class TestResourceSpec:
         assert spec.gpus == 0
         assert spec.cpus == 1
         assert spec.memory_request_gb is None  # Auto-calculate
-        assert spec.memory_limit_gb is None    # No limit
+        assert spec.memory_limit_gb is None  # No limit
 
     def test_custom_values(self):
         """Test custom resource values."""
@@ -323,12 +322,14 @@ class TestLocalBackend:
     def local_backend(self):
         """Create a local backend for testing."""
         from nemo_skills.pipeline.backends.local import LocalBackend
+
         return LocalBackend({"executor": "none"})
 
     @pytest.fixture
     def docker_backend(self):
         """Create a docker backend for testing."""
         from nemo_skills.pipeline.backends.local import LocalBackend
+
         return LocalBackend({"executor": "local"})
 
     def test_backend_name_none(self, local_backend):
@@ -451,9 +452,7 @@ class TestKubernetesBackend:
             "resource_pools": {
                 "gpu-a100": {
                     "node_selector": {"nvidia.com/gpu.product": "NVIDIA-A100"},
-                    "tolerations": [
-                        {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}
-                    ],
+                    "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
                 },
                 "cpu": {
                     "node_selector": {"node-type": "cpu"},
@@ -483,7 +482,9 @@ class TestKubernetesBackend:
         mock_client.V1PodTemplateSpec = MagicMock(return_value=MagicMock())
         mock_client.V1PodSpec = MagicMock(return_value=MagicMock())
         mock_client.V1Container = MagicMock(return_value=MagicMock())
-        mock_client.V1ResourceRequirements = MagicMock(side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests))
+        mock_client.V1ResourceRequirements = MagicMock(
+            side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests)
+        )
         mock_client.V1EnvVar = MagicMock(return_value=MagicMock())
         mock_client.V1ContainerPort = MagicMock(return_value=MagicMock())
         mock_client.V1Volume = MagicMock(return_value=MagicMock())
@@ -510,8 +511,8 @@ class TestKubernetesBackend:
         # Patch the kubernetes module in sys.modules
         with patch.dict("sys.modules", {"kubernetes": mock_k8s_module}):
             # Reload the module to pick up mocked kubernetes
-            import importlib
             import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
             original_available = k8s_module.K8S_AVAILABLE
             k8s_module.K8S_AVAILABLE = True
 
@@ -528,6 +529,7 @@ class TestKubernetesBackend:
     def test_import_error_without_kubernetes(self):
         """Test that ImportError is raised when kubernetes package is missing."""
         import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
         original_available = k8s_module.K8S_AVAILABLE
         k8s_module.K8S_AVAILABLE = False
         try:
@@ -540,6 +542,7 @@ class TestKubernetesBackend:
         """Test that non-kubernetes executor raises ValueError."""
         with patch.dict("sys.modules", {"kubernetes": mock_k8s_module}):
             import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
             original_available = k8s_module.K8S_AVAILABLE
             k8s_module.K8S_AVAILABLE = True
             try:
@@ -604,7 +607,7 @@ class TestKubernetesBackend:
         req = mock_k8s_backend._build_resource_requirements(resources)
 
         assert req.requests["memory"] == "256Gi"  # Explicit request
-        assert req.limits["memory"] == "512Gi"    # Explicit limit
+        assert req.limits["memory"] == "512Gi"  # Explicit limit
         assert req.limits["nvidia.com/gpu"] == "8"
 
     def test_build_resource_requirements_request_only(self, mock_k8s_backend):
@@ -613,11 +616,10 @@ class TestKubernetesBackend:
         req = mock_k8s_backend._build_resource_requirements(resources)
 
         assert req.requests["memory"] == "128Gi"  # Explicit request
-        assert "memory" not in req.limits          # No limit (can burst)
+        assert "memory" not in req.limits  # No limit (can burst)
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("kubernetes"),
-        reason="kubernetes package required for manifest structure tests"
+        not importlib.util.find_spec("kubernetes"), reason="kubernetes package required for manifest structure tests"
     )
     def test_build_job_manifest_single_container(self, k8s_config):
         """Test job manifest generation for single container job.
@@ -625,9 +627,13 @@ class TestKubernetesBackend:
         Requires real kubernetes package to verify object structure.
         """
         from kubernetes import config as k8s_config_module
-        with patch.object(k8s_config_module, "load_kube_config"), \
-             patch.object(k8s_config_module, "load_incluster_config"):
+
+        with (
+            patch.object(k8s_config_module, "load_kube_config"),
+            patch.object(k8s_config_module, "load_incluster_config"),
+        ):
             from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend
+
             backend = KubernetesBackend(k8s_config)
 
             container = ContainerSpec(
@@ -646,8 +652,7 @@ class TestKubernetesBackend:
             assert manifest.spec.template.spec.service_account_name == "nemo-skills-sa"
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("kubernetes"),
-        reason="kubernetes package required for manifest structure tests"
+        not importlib.util.find_spec("kubernetes"), reason="kubernetes package required for manifest structure tests"
     )
     def test_build_job_manifest_multi_container(self, k8s_config):
         """Test job manifest generation for multi-container job.
@@ -655,9 +660,13 @@ class TestKubernetesBackend:
         Requires real kubernetes package to verify object structure.
         """
         from kubernetes import config as k8s_config_module
-        with patch.object(k8s_config_module, "load_kube_config"), \
-             patch.object(k8s_config_module, "load_incluster_config"):
+
+        with (
+            patch.object(k8s_config_module, "load_kube_config"),
+            patch.object(k8s_config_module, "load_incluster_config"),
+        ):
             from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend
+
             backend = KubernetesBackend(k8s_config)
 
             server = ContainerSpec(
@@ -691,8 +700,7 @@ class TestKubernetesBackend:
             assert client_container.image == "nvcr.io/nvidia/nemo-skills:latest"
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("kubernetes"),
-        reason="kubernetes package required for manifest structure tests"
+        not importlib.util.find_spec("kubernetes"), reason="kubernetes package required for manifest structure tests"
     )
     def test_build_job_manifest_with_timeout(self, k8s_config):
         """Test job manifest includes timeout.
@@ -700,9 +708,13 @@ class TestKubernetesBackend:
         Requires real kubernetes package to verify object structure.
         """
         from kubernetes import config as k8s_config_module
-        with patch.object(k8s_config_module, "load_kube_config"), \
-             patch.object(k8s_config_module, "load_incluster_config"):
+
+        with (
+            patch.object(k8s_config_module, "load_kube_config"),
+            patch.object(k8s_config_module, "load_incluster_config"),
+        ):
             from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend
+
             backend = KubernetesBackend(k8s_config)
 
             container = ContainerSpec(
@@ -716,8 +728,7 @@ class TestKubernetesBackend:
             assert manifest.spec.active_deadline_seconds == 3600
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("kubernetes"),
-        reason="kubernetes package required for manifest structure tests"
+        not importlib.util.find_spec("kubernetes"), reason="kubernetes package required for manifest structure tests"
     )
     def test_build_job_manifest_with_volumes(self, k8s_config):
         """Test job manifest includes PVC volumes.
@@ -725,9 +736,13 @@ class TestKubernetesBackend:
         Requires real kubernetes package to verify object structure.
         """
         from kubernetes import config as k8s_config_module
-        with patch.object(k8s_config_module, "load_kube_config"), \
-             patch.object(k8s_config_module, "load_incluster_config"):
+
+        with (
+            patch.object(k8s_config_module, "load_kube_config"),
+            patch.object(k8s_config_module, "load_incluster_config"),
+        ):
             from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend
+
             backend = KubernetesBackend(k8s_config)
 
             container = ContainerSpec(
@@ -985,20 +1000,24 @@ class TestConfigValidation:
         from nemo_skills.pipeline.backends import validate_cluster_config
 
         # Kubernetes
-        errors = validate_cluster_config({
-            "executor": "kubernetes",
-            "namespace": "test",
-            "containers": {"app": "image"},
-        })
+        errors = validate_cluster_config(
+            {
+                "executor": "kubernetes",
+                "namespace": "test",
+                "containers": {"app": "image"},
+            }
+        )
         assert errors == []
 
         # Slurm
-        errors = validate_cluster_config({
-            "executor": "slurm",
-            "account": "test",
-            "partition": "gpu",
-            "containers": {"app": "image"},
-        })
+        errors = validate_cluster_config(
+            {
+                "executor": "slurm",
+                "account": "test",
+                "partition": "gpu",
+                "containers": {"app": "image"},
+            }
+        )
         assert errors == []
 
         # Local
@@ -1030,13 +1049,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_pipeline_routes_to_kubernetes(self):
         """Test that Pipeline.run() routes to Kubernetes for executor=kubernetes."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         # Create a simple script using nemo_run's Script
         script = run.Script(inline="echo hello")
@@ -1062,7 +1082,7 @@ class TestPipelineKubernetesIntegration:
         )
 
         # Mock the backend at the source module where it's imported from
-        with patch('nemo_skills.pipeline.backends.get_backend') as mock_get_backend:
+        with patch("nemo_skills.pipeline.backends.get_backend") as mock_get_backend:
             mock_backend = MagicMock()
             mock_handle = MagicMock()
             mock_handle.job_id = "test-123"
@@ -1070,7 +1090,7 @@ class TestPipelineKubernetesIntegration:
             mock_get_backend.return_value = mock_backend
 
             # Run without dry_run to test actual submission path
-            result = pipeline.run(dry_run=False)
+            pipeline.run(dry_run=False)
 
             # Should call get_backend with the config
             mock_get_backend.assert_called_once()
@@ -1079,13 +1099,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_pipeline_converts_command_group_to_job_spec(self):
         """Test that CommandGroup is correctly converted to JobSpec."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         script = run.Script(inline="python train.py")
         command = Command(script=script, container="nemo-skills", name="trainer")
@@ -1126,13 +1147,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_pipeline_multi_container_conversion(self):
         """Test conversion of multi-command group to multi-container JobSpec."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         server_script = run.Script(inline="python server.py --port 8000")
         server_script.port = 8000  # Add port attribute for container spec
@@ -1200,13 +1222,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_slurm_still_uses_nemo_run(self):
         """Test that Slurm executor still routes to NeMo-Run path."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         script = run.Script(inline="echo test")
         command = Command(script=script, container="nemo-skills", name="cmd")
@@ -1232,7 +1255,7 @@ class TestPipelineKubernetesIntegration:
         )
 
         # Mock _run_nemo_run to verify it's called for Slurm
-        with patch.object(pipeline, '_run_nemo_run') as mock_nemo_run:
+        with patch.object(pipeline, "_run_nemo_run") as mock_nemo_run:
             mock_nemo_run.return_value = MagicMock()
 
             pipeline.run(dry_run=True)
@@ -1242,13 +1265,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_kubernetes_does_not_use_nemo_run(self):
         """Test that Kubernetes executor does NOT use NeMo-Run path."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         script = run.Script(inline="echo test")
         command = Command(script=script, container="nemo-skills", name="cmd")
@@ -1273,8 +1297,10 @@ class TestPipelineKubernetesIntegration:
         )
 
         # Mock both methods to see which one gets called
-        with patch.object(pipeline, '_run_nemo_run') as mock_nemo_run, \
-             patch.object(pipeline, '_run_kubernetes') as mock_k8s:
+        with (
+            patch.object(pipeline, "_run_nemo_run") as mock_nemo_run,
+            patch.object(pipeline, "_run_kubernetes") as mock_k8s,
+        ):
             mock_k8s.return_value = MagicMock()
 
             pipeline.run(dry_run=True)
@@ -1335,7 +1361,7 @@ class TestPipelineKubernetesIntegration:
         )
 
         # Convert to JobSpec (this sets backend on script)
-        job_spec = pipeline._convert_groups_to_job_spec(
+        pipeline._convert_groups_to_job_spec(
             job_name="test-job",
             groups=[group],
             log_dir="/logs",
@@ -1378,13 +1404,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_memory_no_limit_by_default(self):
         """Test that memory is not limited by default (uses all available)."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         script = run.Script(inline="python train.py")
         command = Command(script=script, container="nemo-skills", name="trainer")
@@ -1420,13 +1447,14 @@ class TestPipelineKubernetesIntegration:
 
     def test_memory_explicit_limit(self):
         """Test that explicit memory_limit_gb sets a limit."""
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
             HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         script = run.Script(inline="python train.py")
         command = Command(script=script, container="nemo-skills", name="trainer")
@@ -1508,13 +1536,14 @@ class TestPipelineKubernetesIntegration:
     def test_auto_sequential_with_dependencies(self):
         """Test that sequential mode is auto-enabled when jobs have dependencies."""
         from unittest.mock import MagicMock, patch
+
+        import nemo_run as run
+
         from nemo_skills.pipeline.utils.declarative import (
             Command,
             CommandGroup,
-            HardwareConfig,
             Pipeline,
         )
-        import nemo_run as run
 
         # Create a simple pipeline with dependencies
         script1 = run.Script(inline="echo job1")
@@ -1551,6 +1580,7 @@ class TestPipelineKubernetesIntegration:
 
             # Import JobStatus for the mock
             from nemo_skills.pipeline.backends import JobStatus
+
             mock_backend.wait_for_completion.return_value = JobStatus.SUCCEEDED
 
             # Run with sequential=False - should auto-enable sequential due to dependencies
@@ -1564,3 +1594,1681 @@ class TestPipelineKubernetesIntegration:
                 assert mock_backend.wait_for_completion.called, (
                     "wait_for_completion should be called when dependencies exist"
                 )
+
+
+# =============================================================================
+# Multi-Node Distributed Training Tests
+# =============================================================================
+
+
+class TestJobSpecMultiNode:
+    """Tests for multi-node support in JobSpec."""
+
+    def test_single_node_default(self):
+        """Test that num_nodes defaults to 1."""
+        container = ContainerSpec(name="main", image="python:3.10", command=["echo"])
+        spec = JobSpec(name="job", containers=[container])
+        assert spec.num_nodes == 1
+        assert not spec.is_multi_node
+
+    def test_multi_node_spec(self):
+        """Test multi-node job spec."""
+        container = ContainerSpec(
+            name="trainer",
+            image="nemo:latest",
+            command=["torchrun", "train.py"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="distributed-job", containers=[container], num_nodes=4)
+        assert spec.num_nodes == 4
+        assert spec.is_multi_node
+        assert spec.total_gpus == 8
+
+    def test_invalid_num_nodes_raises(self):
+        """Test that num_nodes < 1 raises ValueError."""
+        container = ContainerSpec(name="main", image="nginx", command=["nginx"])
+        with pytest.raises(ValueError, match="num_nodes must be at least 1"):
+            JobSpec(name="job", containers=[container], num_nodes=0)
+
+    def test_single_node_is_not_multi_node(self):
+        """Test that num_nodes=1 is NOT multi-node."""
+        container = ContainerSpec(name="main", image="nginx", command=["nginx"])
+        spec = JobSpec(name="job", containers=[container], num_nodes=1)
+        assert not spec.is_multi_node
+
+
+class TestKubernetesMultiNode:
+    """Tests for multi-node distributed training in KubernetesBackend."""
+
+    @pytest.fixture
+    def k8s_config(self):
+        """Sample Kubernetes cluster config."""
+        return {
+            "executor": "kubernetes",
+            "namespace": "nemo-skills",
+            "containers": {
+                "nemo-skills": "nvcr.io/nvidia/nemo-skills:latest",
+            },
+            "service_account": "nemo-skills-sa",
+            "default_timeout": "6h",
+            "env_vars": ["HF_HOME=/models/hf-cache"],
+        }
+
+    @pytest.fixture
+    def mock_k8s_module(self):
+        """Create a fully mocked kubernetes module."""
+        mock_client = MagicMock()
+        mock_config = MagicMock()
+        mock_watch = MagicMock()
+
+        mock_client.V1Job = MagicMock(return_value=MagicMock())
+        mock_client.V1ObjectMeta = MagicMock(return_value=MagicMock())
+        mock_client.V1JobSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodTemplateSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1Container = MagicMock(return_value=MagicMock())
+        mock_client.V1ResourceRequirements = MagicMock(
+            side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests)
+        )
+        mock_client.V1EnvVar = MagicMock(side_effect=lambda **kwargs: MagicMock(**kwargs))
+        mock_client.V1ContainerPort = MagicMock(return_value=MagicMock())
+        mock_client.V1Volume = MagicMock(return_value=MagicMock())
+        mock_client.V1VolumeMount = MagicMock(return_value=MagicMock())
+        mock_client.V1PersistentVolumeClaimVolumeSource = MagicMock(return_value=MagicMock())
+        mock_client.V1LocalObjectReference = MagicMock(return_value=MagicMock())
+        mock_client.V1Toleration = MagicMock(return_value=MagicMock())
+        mock_client.V1Service = MagicMock(return_value=MagicMock())
+        mock_client.V1ServiceSpec = MagicMock(return_value=MagicMock())
+        mock_client.BatchV1Api = MagicMock(return_value=MagicMock())
+        mock_client.CoreV1Api = MagicMock(return_value=MagicMock())
+        mock_client.ApiException = Exception
+
+        mock_config.ConfigException = Exception
+
+        mock_kubernetes = MagicMock()
+        mock_kubernetes.client = mock_client
+        mock_kubernetes.config = mock_config
+        mock_kubernetes.watch = mock_watch
+
+        return mock_kubernetes
+
+    @pytest.fixture
+    def mock_k8s_backend(self, k8s_config, mock_k8s_module):
+        """Create a KubernetesBackend with mocked kubernetes module."""
+        with patch.dict("sys.modules", {"kubernetes": mock_k8s_module}):
+            import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
+            original_available = k8s_module.K8S_AVAILABLE
+            k8s_module.K8S_AVAILABLE = True
+            try:
+                backend = k8s_module.KubernetesBackend(k8s_config)
+                backend.batch_v1 = MagicMock()
+                backend.core_v1 = MagicMock()
+                yield backend
+            finally:
+                k8s_module.K8S_AVAILABLE = original_available
+
+    def test_single_node_no_headless_service(self, mock_k8s_backend):
+        """Test that single-node jobs do NOT create a headless service."""
+        mock_response = MagicMock()
+        mock_response.metadata.name = "single-job"
+        mock_response.metadata.uid = "uid-1"
+        mock_k8s_backend.batch_v1.create_namespaced_job.return_value = mock_response
+
+        container = ContainerSpec(
+            name="main",
+            image="nemo:latest",
+            command=["bash", "-c", "python train.py"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="single-job", containers=[container], num_nodes=1)
+
+        handle = mock_k8s_backend.submit_job(spec)
+
+        # Should NOT create a headless service
+        mock_k8s_backend.core_v1.create_namespaced_service.assert_not_called()
+        # Should still create the job
+        mock_k8s_backend.batch_v1.create_namespaced_job.assert_called_once()
+        assert handle.metadata.get("headless_service") is None
+
+    def test_multi_node_creates_headless_service(self, mock_k8s_backend):
+        """Test that multi-node jobs create a headless service."""
+        mock_response = MagicMock()
+        mock_response.metadata.name = "multi-job"
+        mock_response.metadata.uid = "uid-2"
+        mock_k8s_backend.batch_v1.create_namespaced_job.return_value = mock_response
+
+        container = ContainerSpec(
+            name="trainer",
+            image="nemo:latest",
+            command=["bash", "-c", "torchrun train.py"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="multi-job", containers=[container], num_nodes=2)
+
+        handle = mock_k8s_backend.submit_job(spec)
+
+        # Should create a headless service
+        mock_k8s_backend.core_v1.create_namespaced_service.assert_called_once()
+        # Should create the job
+        mock_k8s_backend.batch_v1.create_namespaced_job.assert_called_once()
+        # Handle should track the headless service
+        assert handle.metadata["headless_service"] == "multi-job-workers"
+
+    def test_multinode_submit_runs_rbac_preflight(self, mock_k8s_backend):
+        """Multi-node submit should run Service RBAC preflight before service creation."""
+        mock_response = MagicMock()
+        mock_response.metadata.name = "multi-job"
+        mock_response.metadata.uid = "uid-rbac"
+        mock_k8s_backend.batch_v1.create_namespaced_job.return_value = mock_response
+
+        container = ContainerSpec(
+            name="trainer",
+            image="nemo:latest",
+            command=["bash", "-c", "torchrun train.py"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="multi-rbac", containers=[container], num_nodes=2)
+
+        with patch.object(mock_k8s_backend, "_validate_multinode_service_rbac") as mock_preflight:
+            mock_k8s_backend.submit_job(spec)
+            mock_preflight.assert_called_once()
+
+    def test_single_node_submit_skips_rbac_preflight(self, mock_k8s_backend):
+        """Single-node submit should not run Service RBAC preflight."""
+        mock_response = MagicMock()
+        mock_response.metadata.name = "single-job"
+        mock_response.metadata.uid = "uid-single"
+        mock_k8s_backend.batch_v1.create_namespaced_job.return_value = mock_response
+
+        container = ContainerSpec(
+            name="main",
+            image="nemo:latest",
+            command=["bash", "-c", "python train.py"],
+            resources=ResourceSpec(gpus=1),
+        )
+        spec = JobSpec(name="single-rbac", containers=[container], num_nodes=1)
+
+        with patch.object(mock_k8s_backend, "_validate_multinode_service_rbac") as mock_preflight:
+            mock_k8s_backend.submit_job(spec)
+            mock_preflight.assert_not_called()
+
+    def test_rbac_preflight_missing_service_verb_raises(self, mock_k8s_backend):
+        """RBAC preflight should raise when required Service verbs are missing."""
+        client = mock_k8s_backend._k8s_client
+
+        auth_api = MagicMock()
+        # Required order: create, delete, get, list
+        allowed_seq = [True, False, True, True]
+        auth_api.create_self_subject_access_review.side_effect = [
+            SimpleNamespace(status=SimpleNamespace(allowed=allowed)) for allowed in allowed_seq
+        ]
+
+        client.AuthorizationV1Api = MagicMock(return_value=auth_api)
+        client.V1ResourceAttributes = MagicMock(side_effect=lambda **kw: SimpleNamespace(**kw))
+        client.V1SelfSubjectAccessReviewSpec = MagicMock(side_effect=lambda **kw: SimpleNamespace(**kw))
+        client.V1SelfSubjectAccessReview = MagicMock(side_effect=lambda **kw: SimpleNamespace(**kw))
+
+        with pytest.raises(RuntimeError, match="Missing verbs on services"):
+            mock_k8s_backend._validate_multinode_service_rbac()
+
+    def test_rbac_preflight_can_be_disabled(self, mock_k8s_backend):
+        """RBAC preflight should be skippable via cluster config."""
+        client = mock_k8s_backend._k8s_client
+        mock_k8s_backend.config["rbac_preflight"] = False
+        client.AuthorizationV1Api = MagicMock()
+
+        mock_k8s_backend._validate_multinode_service_rbac()
+
+        client.AuthorizationV1Api.assert_not_called()
+
+    def test_multi_node_indexed_job_spec(self, mock_k8s_backend):
+        """Test that multi-node builds an Indexed Job with correct completions."""
+        client = mock_k8s_backend._k8s_client
+
+        container = ContainerSpec(
+            name="trainer",
+            image="nemo:latest",
+            command=["bash", "-c", "torchrun train.py"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="dist-train", containers=[container], num_nodes=4)
+
+        mock_k8s_backend._build_job_manifest(spec, headless_service_name="dist-train-workers")
+
+        # Verify V1JobSpec was called with Indexed completion mode
+        job_spec_call = client.V1JobSpec.call_args
+        assert job_spec_call is not None
+        kwargs = job_spec_call.kwargs
+        assert kwargs["completion_mode"] == "Indexed"
+        assert kwargs["completions"] == 4
+        assert kwargs["parallelism"] == 4
+        assert kwargs["backoff_limit"] == 0
+
+    def test_single_node_not_indexed(self, mock_k8s_backend):
+        """Test that single-node jobs do NOT use Indexed completion mode."""
+        client = mock_k8s_backend._k8s_client
+
+        container = ContainerSpec(
+            name="main",
+            image="nemo:latest",
+            command=["bash", "-c", "python train.py"],
+        )
+        spec = JobSpec(name="single-train", containers=[container], num_nodes=1)
+
+        mock_k8s_backend._build_job_manifest(spec)
+
+        # Verify V1JobSpec was NOT called with completion_mode
+        job_spec_call = client.V1JobSpec.call_args
+        kwargs = job_spec_call.kwargs
+        assert "completion_mode" not in kwargs
+        assert "completions" not in kwargs
+        assert "parallelism" not in kwargs
+
+    def test_distributed_env_vars_injected(self, mock_k8s_backend):
+        """Test that distributed env vars are injected for multi-node launch."""
+        client = mock_k8s_backend._k8s_client
+
+        # Mock container that tracks env additions
+        mock_container = MagicMock()
+        mock_container.env = []
+        mock_container.command = ["bash", "-c", "torchrun train.py"]
+
+        container_spec = ContainerSpec(
+            name="trainer",
+            image="nemo:latest",
+            command=["bash", "-c", "torchrun train.py"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="train-job", containers=[container_spec], num_nodes=2)
+
+        mock_k8s_backend._inject_distributed_env_vars(
+            [mock_container],
+            spec,
+            "train-job-workers",
+        )
+
+        # Should have added 4 env vars (MASTER_ADDR, MASTER_PORT, WORLD_SIZE, LOCAL_RANK)
+        assert len(mock_container.env) == 4
+
+        # Verify env var names
+        env_names = [call.kwargs.get("name") for call in client.V1EnvVar.call_args_list[-4:]]
+        assert "MASTER_ADDR" in env_names
+        assert "MASTER_PORT" in env_names
+        assert "WORLD_SIZE" in env_names
+        assert "LOCAL_RANK" in env_names
+
+    def test_master_addr_dns_format(self, mock_k8s_backend):
+        """Test that MASTER_ADDR uses correct DNS format for pod-0."""
+        client = mock_k8s_backend._k8s_client
+
+        mock_container = MagicMock()
+        mock_container.env = []
+        mock_container.command = ["bash", "-c", "train"]
+
+        spec = JobSpec(
+            name="my-train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=3,
+        )
+
+        mock_k8s_backend._inject_distributed_env_vars(
+            [mock_container],
+            spec,
+            "my-train-workers",
+        )
+
+        # Find the MASTER_ADDR call
+        master_addr_calls = [c for c in client.V1EnvVar.call_args_list if c.kwargs.get("name") == "MASTER_ADDR"]
+        assert len(master_addr_calls) >= 1
+        master_addr = master_addr_calls[-1].kwargs["value"]
+
+        # Should follow DNS pattern: <job-name>-0.<service>.<namespace>.svc.cluster.local
+        assert master_addr == "my-train-0.my-train-workers.nemo-skills.svc.cluster.local"
+
+    def test_node_rank_injected_via_command(self, mock_k8s_backend):
+        """Test that rank env vars are exported from JOB_COMPLETION_INDEX in command."""
+        mock_container = MagicMock()
+        mock_container.env = []
+        mock_container.command = ["bash", "-c", "torchrun train.py"]
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+
+        mock_k8s_backend._inject_distributed_env_vars(
+            [mock_container],
+            spec,
+            "train-workers",
+        )
+
+        # The command should be prepended with rank exports
+        assert mock_container.command[2].startswith("export NODE_RANK=${JOB_COMPLETION_INDEX}")
+        assert "export RANK=${JOB_COMPLETION_INDEX}" in mock_container.command[2]
+        assert "export LOCAL_RANK=0" in mock_container.command[2]
+
+    def test_headless_service_publish_not_ready(self, mock_k8s_backend):
+        """Test that headless service has publish_not_ready_addresses=True."""
+        client = mock_k8s_backend._k8s_client
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["echo"])],
+            num_nodes=2,
+        )
+
+        mock_k8s_backend._build_headless_service(spec, "train-workers")
+
+        # Verify V1ServiceSpec was called with publish_not_ready_addresses=True
+        svc_spec_call = client.V1ServiceSpec.call_args
+        assert svc_spec_call.kwargs.get("publish_not_ready_addresses") is True
+        assert svc_spec_call.kwargs.get("cluster_ip") == "None"
+
+    def test_headless_service_selector_uses_job_labels(self, mock_k8s_backend):
+        """Test that service selectors stay aligned with pod labels when labels are overridden."""
+        client = mock_k8s_backend._k8s_client
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["echo"])],
+            num_nodes=2,
+            labels={"app": "custom-app"},
+        )
+        labels = mock_k8s_backend._build_job_labels(spec)
+        mock_k8s_backend._build_headless_service(spec, "train-workers", labels=labels)
+
+        svc_spec_call = client.V1ServiceSpec.call_args
+        assert svc_spec_call.kwargs.get("selector") == labels
+        assert svc_spec_call.kwargs.get("selector").get("app") == "custom-app"
+
+    def test_cleanup_deletes_headless_service(self, mock_k8s_backend):
+        """Test that cleanup deletes the headless service for multi-node jobs."""
+        handle = JobHandle(
+            job_id="multi-job",
+            backend="kubernetes",
+            metadata={
+                "namespace": "nemo-skills",
+                "headless_service": "multi-job-workers",
+            },
+        )
+
+        mock_k8s_backend.cleanup(handle)
+
+        # Should delete both the job and the headless service
+        mock_k8s_backend.batch_v1.delete_namespaced_job.assert_called_once()
+        mock_k8s_backend.core_v1.delete_namespaced_service.assert_called_once_with(
+            name="multi-job-workers",
+            namespace="nemo-skills",
+        )
+
+    def test_cleanup_skips_service_for_single_node(self, mock_k8s_backend):
+        """Test that cleanup does NOT delete service for single-node jobs."""
+        handle = JobHandle(
+            job_id="single-job",
+            backend="kubernetes",
+            metadata={"namespace": "nemo-skills"},
+        )
+
+        mock_k8s_backend.cleanup(handle)
+
+        mock_k8s_backend.batch_v1.delete_namespaced_job.assert_called_once()
+        mock_k8s_backend.core_v1.delete_namespaced_service.assert_not_called()
+
+    def test_headless_service_cleanup_on_job_create_failure(self, mock_k8s_backend):
+        """Test headless service is cleaned up if job creation fails."""
+        mock_k8s_backend.batch_v1.create_namespaced_job.side_effect = Exception("API error")
+
+        container = ContainerSpec(
+            name="trainer",
+            image="nemo:latest",
+            command=["bash", "-c", "train"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="fail-job", containers=[container], num_nodes=2)
+
+        with pytest.raises(RuntimeError, match="Failed to create Kubernetes job"):
+            mock_k8s_backend.submit_job(spec)
+
+        # Should have tried to clean up the headless service
+        mock_k8s_backend.core_v1.delete_namespaced_service.assert_called_once()
+
+
+class TestPipelineMultiNodeConversion:
+    """Tests for Pipeline converting multi-node HardwareConfig to JobSpec."""
+
+    def test_pipeline_passes_num_nodes_to_job_spec(self):
+        """Test that Pipeline._convert_groups_to_job_spec passes num_nodes from HardwareConfig."""
+        import nemo_run as run
+
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+
+        script = run.Script(inline="torchrun train.py")
+        command = Command(script=script, container="nemo-skills", name="trainer")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=8, num_nodes=2),
+            name="training",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "nemo:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="multi-node-test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "train", "group": group}],
+        )
+
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="train",
+            groups=[group],
+            log_dir="/logs",
+        )
+
+        assert job_spec.num_nodes == 2
+        assert job_spec.is_multi_node
+
+    def test_pipeline_single_node_default(self):
+        """Test that Pipeline._convert_groups_to_job_spec defaults to num_nodes=1."""
+        import nemo_run as run
+
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+
+        script = run.Script(inline="python train.py")
+        command = Command(script=script, container="nemo-skills", name="trainer")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=4),
+            name="training",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "nemo:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="single-node-test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "train", "group": group}],
+        )
+
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="train",
+            groups=[group],
+            log_dir="/logs",
+        )
+
+        assert job_spec.num_nodes == 1
+        assert not job_spec.is_multi_node
+
+    def test_multi_node_dry_run(self):
+        """Integration test: pipeline conversion yields a valid 2-node K8s manifest."""
+        import nemo_run as run
+
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+
+        script = run.Script(inline="torchrun --nproc_per_node=8 train.py")
+        command = Command(script=script, container="nemo-skills", name="sft-trainer")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=8, num_nodes=2),
+            name="sft-training",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "ml-training",
+            "containers": {"nemo-skills": "nvcr.io/nvidia/nemo:latest"},
+            "skip_hf_home_check": True,
+            "default_timeout": "24h",
+        }
+
+        pipeline = Pipeline(
+            name="sft-multi-node",
+            cluster_config=cluster_config,
+            jobs=[{"name": "sft-job", "group": group}],
+        )
+
+        # Dry-run path: should validate and skip submission.
+        with patch("nemo_skills.pipeline.backends.get_backend") as mock_get_backend:
+            mock_backend = MagicMock()
+            mock_get_backend.return_value = mock_backend
+
+            result = pipeline.run(dry_run=True)
+            assert result is None
+            mock_backend.submit_job.assert_not_called()
+
+        # Integration check: Pipeline -> JobSpec -> K8s manifest for 2-node job.
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="sft-job",
+            groups=[group],
+            log_dir="/logs",
+        )
+        assert job_spec.num_nodes == 2
+        assert job_spec.is_multi_node
+
+        mock_client = MagicMock()
+        mock_config = MagicMock()
+        mock_watch = MagicMock()
+        mock_client.V1Job = MagicMock(return_value=MagicMock())
+        mock_client.V1ObjectMeta = MagicMock(return_value=MagicMock())
+        mock_client.V1JobSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodTemplateSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1Container = MagicMock(return_value=MagicMock())
+        mock_client.V1ResourceRequirements = MagicMock(
+            side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests)
+        )
+        mock_client.V1EnvVar = MagicMock(side_effect=lambda **kwargs: MagicMock(**kwargs))
+        mock_client.V1ContainerPort = MagicMock(return_value=MagicMock())
+        mock_client.V1Volume = MagicMock(return_value=MagicMock())
+        mock_client.V1VolumeMount = MagicMock(return_value=MagicMock())
+        mock_client.V1PersistentVolumeClaimVolumeSource = MagicMock(return_value=MagicMock())
+        mock_client.V1LocalObjectReference = MagicMock(return_value=MagicMock())
+        mock_client.V1Toleration = MagicMock(return_value=MagicMock())
+        mock_client.V1Service = MagicMock(return_value=MagicMock())
+        mock_client.V1ServiceSpec = MagicMock(return_value=MagicMock())
+        mock_client.BatchV1Api = MagicMock(return_value=MagicMock())
+        mock_client.CoreV1Api = MagicMock(return_value=MagicMock())
+        mock_client.ApiException = Exception
+        mock_config.ConfigException = Exception
+
+        mock_kubernetes = MagicMock()
+        mock_kubernetes.client = mock_client
+        mock_kubernetes.config = mock_config
+        mock_kubernetes.watch = mock_watch
+
+        with patch.dict("sys.modules", {"kubernetes": mock_kubernetes}):
+            import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
+            original_available = k8s_module.K8S_AVAILABLE
+            k8s_module.K8S_AVAILABLE = True
+            try:
+                backend = k8s_module.KubernetesBackend(cluster_config)
+                backend._build_headless_service(
+                    job_spec,
+                    "sft-job-workers",
+                    labels=backend._build_job_labels(job_spec),
+                )
+                backend._build_job_manifest(job_spec, headless_service_name="sft-job-workers")
+            finally:
+                k8s_module.K8S_AVAILABLE = original_available
+
+        job_spec_call = mock_client.V1JobSpec.call_args
+        assert job_spec_call is not None
+        kwargs = job_spec_call.kwargs
+        assert kwargs["completion_mode"] == "Indexed"
+        assert kwargs["completions"] == 2
+        assert kwargs["parallelism"] == 2
+
+        svc_spec_call = mock_client.V1ServiceSpec.call_args
+        assert svc_spec_call is not None
+        assert svc_spec_call.kwargs["cluster_ip"] == "None"
+
+
+# =============================================================================
+# SFT Pipeline K8s Routing Tests
+# =============================================================================
+
+
+class TestSftKubernetesRouting:
+    """Tests for SFT pipeline routing to Kubernetes backend."""
+
+    def test_sft_routes_to_kubernetes_when_executor_is_k8s(self):
+        """Test that sft_nemo_rl() calls _run_sft_kubernetes for K8s executor."""
+        from nemo_skills.pipeline.nemo_rl.sft import _run_sft_kubernetes
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        # Mock Pipeline.run to avoid actual submission
+        with patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline:
+            mock_pipeline = MagicMock()
+            mock_pipeline.run.return_value = None
+            MockPipeline.return_value = mock_pipeline
+
+            _run_sft_kubernetes(
+                cluster_config=cluster_config,
+                train_cmd="torchrun train.py",
+                expname="test-sft",
+                output_dir="/output",
+                log_dir="/logs",
+                num_gpus=8,
+                num_nodes=2,
+                dependent_jobs=0,
+                partition="gpu",
+                final_hf_path=None,
+                conversion_step="last",
+                average_steps=None,
+                remove_checkpoints_after_average=False,
+                backend="fsdp",
+                max_position_embeddings=None,
+                installation_command=None,
+                dry_run=True,
+                run_after=None,
+            )
+
+            # Pipeline should be created and run
+            MockPipeline.assert_called_once()
+            mock_pipeline.run.assert_called_once_with(dry_run=True)
+
+            # Check pipeline was created with correct args
+            call_kwargs = MockPipeline.call_args.kwargs
+            assert call_kwargs["name"] == "test-sft"
+            assert call_kwargs["cluster_config"] == cluster_config
+
+            # Check jobs structure
+            jobs = call_kwargs["jobs"]
+            assert len(jobs) == 2  # 1 training + 1 conversion
+
+            # Training job should have num_nodes=2
+            train_job = jobs[0]
+            assert "sft-0" in train_job["name"]
+            assert train_job["group"].hardware.num_nodes == 2
+            assert train_job["group"].hardware.num_gpus == 8
+
+            # Conversion job should be CPU-only, single-node
+            convert_job = jobs[1]
+            assert "convert" in convert_job["name"]
+            assert convert_job["group"].hardware.num_nodes == 1
+            assert convert_job["group"].hardware.num_gpus == 0
+            # Conversion depends on training
+            assert convert_job["dependencies"] == [train_job]
+
+    def test_sft_kubernetes_with_average_steps(self):
+        """Test K8s SFT path generates correct jobs for checkpoint averaging."""
+        from nemo_skills.pipeline.nemo_rl.sft import _run_sft_kubernetes
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        with patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline:
+            mock_pipeline = MagicMock()
+            mock_pipeline.run.return_value = None
+            MockPipeline.return_value = mock_pipeline
+
+            _run_sft_kubernetes(
+                cluster_config=cluster_config,
+                train_cmd="torchrun train.py",
+                expname="test-sft",
+                output_dir="/output",
+                log_dir="/logs",
+                num_gpus=4,
+                num_nodes=1,
+                dependent_jobs=0,
+                partition=None,
+                final_hf_path=None,
+                conversion_step="last",
+                average_steps="100,200,300",
+                remove_checkpoints_after_average=False,
+                backend="fsdp",
+                max_position_embeddings=None,
+                installation_command=None,
+                dry_run=True,
+                run_after=None,
+            )
+
+            call_kwargs = MockPipeline.call_args.kwargs
+            jobs = call_kwargs["jobs"]
+
+            # 1 training + 3 conversions + 1 averaging = 5 jobs
+            assert len(jobs) == 5
+
+            # Last job should be the averaging job
+            avg_job = jobs[-1]
+            assert "average" in avg_job["name"]
+            # Average depends on all 3 conversion jobs
+            assert len(avg_job["dependencies"]) == 3
+
+    def test_sft_kubernetes_dependent_jobs_chain(self):
+        """Test that multiple dependent training jobs are chained sequentially."""
+        from nemo_skills.pipeline.nemo_rl.sft import _run_sft_kubernetes
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        with patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline:
+            mock_pipeline = MagicMock()
+            mock_pipeline.run.return_value = None
+            MockPipeline.return_value = mock_pipeline
+
+            _run_sft_kubernetes(
+                cluster_config=cluster_config,
+                train_cmd="torchrun train.py",
+                expname="test-sft",
+                output_dir="/output",
+                log_dir="/logs",
+                num_gpus=8,
+                num_nodes=2,
+                dependent_jobs=2,  # 3 total training jobs (0, 1, 2)
+                partition=None,
+                final_hf_path="/output/hf_model",
+                conversion_step="last",
+                average_steps=None,
+                remove_checkpoints_after_average=False,
+                backend="fsdp",
+                max_position_embeddings=None,
+                installation_command=None,
+                dry_run=True,
+                run_after=None,
+            )
+
+            call_kwargs = MockPipeline.call_args.kwargs
+            jobs = call_kwargs["jobs"]
+
+            # 3 training + 1 conversion = 4 jobs
+            assert len(jobs) == 4
+
+            # Training jobs should be chained
+            assert "dependencies" not in jobs[0] or jobs[0].get("dependencies") is None
+            assert jobs[1]["dependencies"] == [jobs[0]]
+            assert jobs[2]["dependencies"] == [jobs[1]]
+
+            # Conversion depends on last training
+            assert jobs[3]["dependencies"] == [jobs[2]]
+
+    def test_sft_slurm_path_not_affected(self):
+        """Test that Slurm executor does NOT trigger _run_sft_kubernetes."""
+        from nemo_skills.pipeline.nemo_rl import sft as sft_module
+
+        cluster_config = {
+            "executor": "slurm",
+            "account": "test",
+            "partition": "gpu",
+            "containers": {"nemo-rl": "image"},
+        }
+
+        # Slurm config should NOT trigger K8s path
+        assert cluster_config.get("executor") != "kubernetes"
+
+        # Patch _run_sft_kubernetes to verify it's NOT called for Slurm
+        with patch.object(sft_module, "_run_sft_kubernetes") as mock_k8s:
+            # Also need to patch the Slurm path (get_exp/run_exp) to avoid real execution
+            with (
+                patch("nemo_skills.pipeline.nemo_rl.sft.get_exp") as mock_get_exp,
+                patch("nemo_skills.pipeline.nemo_rl.sft.run_exp") as mock_run_exp,
+                patch("nemo_skills.pipeline.nemo_rl.sft.get_cluster_config", return_value=cluster_config),
+                patch("nemo_skills.pipeline.nemo_rl.sft.resolve_mount_paths", return_value=cluster_config),
+                patch("nemo_skills.pipeline.nemo_rl.sft.check_mounts", return_value=("/output", "/logs")),
+                patch("nemo_skills.pipeline.nemo_rl.sft.get_env_variables", return_value={}),
+                patch("nemo_skills.pipeline.nemo_rl.sft.get_mounted_path", side_effect=lambda c, p: p),
+                patch("nemo_skills.pipeline.nemo_rl.sft.add_task", return_value="task-1") as mock_add_task,
+            ):
+                mock_get_exp.return_value.__enter__ = MagicMock(return_value=MagicMock())
+                mock_get_exp.return_value.__exit__ = MagicMock(return_value=False)
+
+                sft_module.sft_nemo_rl(
+                    ctx=MagicMock(args=[]),
+                    cluster="test",
+                    output_dir="/output",
+                    hf_model="gpt2",
+                    num_gpus=2,
+                    num_nodes=1,
+                    backend="fsdp",
+                    training_data="/data/train.jsonl",
+                    skip_hf_home_check=True,
+                    dry_run=True,
+                )
+
+                # K8s path should NOT be called
+                mock_k8s.assert_not_called()
+                # Slurm path should execute task planning/submission flow
+                assert mock_add_task.called
+                mock_run_exp.assert_called_once()
+
+    def test_sft_kubernetes_routing_called(self):
+        """Test that sft_nemo_rl() calls _run_sft_kubernetes for K8s executor."""
+        from nemo_skills.pipeline.nemo_rl import sft as sft_module
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+            "default_timeout": "1h",
+            "mounts": [],
+        }
+
+        with (
+            patch.object(sft_module, "_run_sft_kubernetes", return_value=None) as mock_k8s,
+            patch("nemo_skills.pipeline.nemo_rl.sft.get_cluster_config", return_value=cluster_config),
+            patch("nemo_skills.pipeline.nemo_rl.sft.resolve_mount_paths", return_value=cluster_config),
+            patch("nemo_skills.pipeline.nemo_rl.sft.check_mounts", return_value=("/output", "/logs")),
+            patch("nemo_skills.pipeline.nemo_rl.sft.get_env_variables", return_value={}),
+            patch("nemo_skills.pipeline.nemo_rl.sft.get_mounted_path", side_effect=lambda c, p: p),
+        ):
+            sft_module.sft_nemo_rl(
+                ctx=MagicMock(args=[]),
+                cluster="test-k8s",
+                output_dir="/output",
+                hf_model="gpt2",
+                num_gpus=4,
+                num_nodes=2,
+                backend="fsdp",
+                training_data="/data/train.jsonl",
+                skip_hf_home_check=True,
+                dry_run=True,
+            )
+
+            # K8s path SHOULD be called
+            mock_k8s.assert_called_once()
+            call_kwargs = mock_k8s.call_args.kwargs
+            assert call_kwargs["num_nodes"] == 2
+            assert call_kwargs["num_gpus"] == 4
+            assert call_kwargs["skip_hf_home_check"] is True
+            assert "++checkpointing.checkpoint_must_save_by=00:00:45:00" in call_kwargs["train_cmd"]
+
+    def test_sft_kubernetes_cli_dry_run_builds_pipeline(self):
+        """Test CLI-path dry run builds expected K8s Pipeline/jobs via sft_nemo_rl()."""
+        from nemo_skills.pipeline.nemo_rl import sft as sft_module
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+            "mounts": [],
+        }
+
+        with (
+            patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline,
+            patch("nemo_skills.pipeline.nemo_rl.sft.get_cluster_config", return_value=cluster_config),
+            patch("nemo_skills.pipeline.nemo_rl.sft.resolve_mount_paths", return_value=cluster_config),
+            patch("nemo_skills.pipeline.nemo_rl.sft.check_mounts", return_value=("/output", "/logs")),
+            patch("nemo_skills.pipeline.nemo_rl.sft.get_env_variables", return_value={}),
+            patch("nemo_skills.pipeline.nemo_rl.sft.get_mounted_path", side_effect=lambda c, p: p),
+        ):
+            mock_pipeline = MagicMock()
+            mock_pipeline.run.return_value = None
+            MockPipeline.return_value = mock_pipeline
+
+            result = sft_module.sft_nemo_rl(
+                ctx=MagicMock(args=[]),
+                cluster="test-k8s",
+                output_dir="/output",
+                hf_model="gpt2",
+                num_gpus=4,
+                num_nodes=2,
+                backend="fsdp",
+                training_data="/data/train.jsonl",
+                skip_hf_home_check=True,
+                dry_run=True,
+            )
+
+            # sft_nemo_rl should return Pipeline.run result from K8s path
+            assert result is None
+            MockPipeline.assert_called_once()
+            mock_pipeline.run.assert_called_once_with(dry_run=True)
+
+            # Validate key routing params and generated jobs
+            call_kwargs = MockPipeline.call_args.kwargs
+            assert call_kwargs["cluster_config"] == cluster_config
+            assert call_kwargs["skip_hf_home_check"] is True
+
+            jobs = call_kwargs["jobs"]
+            assert len(jobs) == 2  # 1 training + 1 conversion
+            assert jobs[0]["group"].hardware.num_nodes == 2
+            assert jobs[0]["group"].hardware.num_gpus == 4
+            assert jobs[1]["group"].hardware.num_nodes == 1
+            assert jobs[1]["group"].hardware.num_gpus == 0
+            assert jobs[1]["dependencies"] == [jobs[0]]
+
+    def test_sft_conversion_jobs_are_cpu_only(self):
+        """Test that conversion/averaging jobs use num_gpus=0 (CPU-only)."""
+        from nemo_skills.pipeline.nemo_rl.sft import _run_sft_kubernetes
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        with patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline:
+            mock_pipeline = MagicMock()
+            mock_pipeline.run.return_value = None
+            MockPipeline.return_value = mock_pipeline
+
+            _run_sft_kubernetes(
+                cluster_config=cluster_config,
+                train_cmd="torchrun train.py",
+                expname="test",
+                output_dir="/output",
+                log_dir="/logs",
+                num_gpus=8,
+                num_nodes=2,
+                dependent_jobs=0,
+                partition=None,
+                final_hf_path=None,
+                conversion_step="last",
+                average_steps=None,
+                remove_checkpoints_after_average=False,
+                backend="fsdp",
+                max_position_embeddings=None,
+                installation_command=None,
+                dry_run=True,
+                run_after=None,
+            )
+
+            jobs = MockPipeline.call_args.kwargs["jobs"]
+            # Training job should have GPUs
+            assert jobs[0]["group"].hardware.num_gpus == 8
+            # Conversion job should be CPU-only
+            assert jobs[1]["group"].hardware.num_gpus == 0
+            assert jobs[1]["group"].hardware.num_nodes == 1
+
+
+# =============================================================================
+# RDMA/InfiniBand Resource Tests
+# =============================================================================
+
+
+class TestRdmaResources:
+    """Tests for RDMA/InfiniBand resource injection in multi-node jobs."""
+
+    @pytest.fixture
+    def k8s_config_with_rdma(self):
+        """K8s config with RDMA enabled."""
+        return {
+            "executor": "kubernetes",
+            "namespace": "nemo-skills",
+            "containers": {"nemo-skills": "nemo:latest"},
+            "service_account": "sa",
+            "rdma": {
+                "enabled": True,
+                "resource_name": "nvidia.com/rdma_shared_device",
+                "resource_count": 1,
+            },
+        }
+
+    @pytest.fixture
+    def k8s_config_no_rdma(self):
+        """K8s config without RDMA."""
+        return {
+            "executor": "kubernetes",
+            "namespace": "nemo-skills",
+            "containers": {"nemo-skills": "nemo:latest"},
+            "service_account": "sa",
+        }
+
+    @pytest.fixture
+    def mock_k8s_module(self):
+        """Mocked kubernetes module."""
+        mock_client = MagicMock()
+        mock_config = MagicMock()
+        mock_watch = MagicMock()
+
+        mock_client.V1Job = MagicMock(return_value=MagicMock())
+        mock_client.V1ObjectMeta = MagicMock(return_value=MagicMock())
+        mock_client.V1JobSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodTemplateSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1Container = MagicMock(return_value=MagicMock())
+        mock_client.V1ResourceRequirements = MagicMock(
+            side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests)
+        )
+        mock_client.V1EnvVar = MagicMock(side_effect=lambda **kwargs: MagicMock(**kwargs))
+        mock_client.V1ContainerPort = MagicMock(return_value=MagicMock())
+        mock_client.V1Volume = MagicMock(return_value=MagicMock())
+        mock_client.V1VolumeMount = MagicMock(return_value=MagicMock())
+        mock_client.V1PersistentVolumeClaimVolumeSource = MagicMock(return_value=MagicMock())
+        mock_client.V1LocalObjectReference = MagicMock(return_value=MagicMock())
+        mock_client.V1Toleration = MagicMock(return_value=MagicMock())
+        mock_client.V1Service = MagicMock(return_value=MagicMock())
+        mock_client.V1ServiceSpec = MagicMock(return_value=MagicMock())
+        mock_client.BatchV1Api = MagicMock(return_value=MagicMock())
+        mock_client.CoreV1Api = MagicMock(return_value=MagicMock())
+        mock_client.ApiException = Exception
+        mock_config.ConfigException = Exception
+
+        mock_kubernetes = MagicMock()
+        mock_kubernetes.client = mock_client
+        mock_kubernetes.config = mock_config
+        mock_kubernetes.watch = mock_watch
+        return mock_kubernetes
+
+    def _make_backend(self, config, mock_k8s_module):
+        """Helper to create a mocked KubernetesBackend."""
+        with patch.dict("sys.modules", {"kubernetes": mock_k8s_module}):
+            import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
+            original = k8s_module.K8S_AVAILABLE
+            k8s_module.K8S_AVAILABLE = True
+            try:
+                backend = k8s_module.KubernetesBackend(config)
+                backend.batch_v1 = MagicMock()
+                backend.core_v1 = MagicMock()
+                return backend
+            finally:
+                k8s_module.K8S_AVAILABLE = original
+
+    def test_rdma_added_for_multi_node_when_enabled(self, k8s_config_with_rdma, mock_k8s_module):
+        """RDMA resources are added to multi-node containers when config enables it."""
+        backend = self._make_backend(k8s_config_with_rdma, mock_k8s_module)
+
+        mock_container = MagicMock()
+        mock_container.resources = MagicMock()
+        mock_container.resources.limits = {"nvidia.com/gpu": "8"}
+        mock_container.resources.requests = {"nvidia.com/gpu": "8"}
+        mock_container.env = []
+        mock_container.command = ["bash", "-c", "train"]
+
+        backend._inject_rdma_resources([mock_container])
+
+        assert mock_container.resources.limits["nvidia.com/rdma_shared_device"] == "1"
+        assert mock_container.resources.requests["nvidia.com/rdma_shared_device"] == "1"
+
+    def test_rdma_not_added_when_disabled(self, k8s_config_no_rdma, mock_k8s_module):
+        """RDMA resources are NOT added when config doesn't enable it."""
+        backend = self._make_backend(k8s_config_no_rdma, mock_k8s_module)
+
+        mock_container = MagicMock()
+        mock_container.resources = MagicMock()
+        mock_container.resources.limits = {"nvidia.com/gpu": "8"}
+        mock_container.resources.requests = {"nvidia.com/gpu": "8"}
+
+        backend._inject_rdma_resources([mock_container])
+
+        assert "nvidia.com/rdma_shared_device" not in mock_container.resources.limits
+        assert "nvidia.com/rdma_shared_device" not in mock_container.resources.requests
+
+    def test_rdma_custom_resource_name(self, mock_k8s_module):
+        """Custom RDMA resource name and count are respected."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "rdma": {
+                "enabled": True,
+                "resource_name": "rdma/hca_shared_devices_a",
+                "resource_count": 2,
+            },
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        mock_container = MagicMock()
+        mock_container.resources = MagicMock()
+        mock_container.resources.limits = {"nvidia.com/gpu": "8"}
+        mock_container.resources.requests = {"nvidia.com/gpu": "8"}
+
+        backend._inject_rdma_resources([mock_container])
+
+        assert mock_container.resources.limits["rdma/hca_shared_devices_a"] == "2"
+        assert mock_container.resources.requests["rdma/hca_shared_devices_a"] == "2"
+
+    def test_rdma_not_added_to_cpu_only_container(self, k8s_config_with_rdma, mock_k8s_module):
+        """RDMA resources are not added to CPU-only containers."""
+        backend = self._make_backend(k8s_config_with_rdma, mock_k8s_module)
+
+        mock_container = MagicMock()
+        mock_container.resources = MagicMock()
+        mock_container.resources.limits = {"cpu": "4"}
+        mock_container.resources.requests = {"cpu": "4"}
+
+        backend._inject_rdma_resources([mock_container])
+
+        assert "nvidia.com/rdma_shared_device" not in mock_container.resources.limits
+        assert "nvidia.com/rdma_shared_device" not in mock_container.resources.requests
+
+    def test_rdma_not_injected_for_single_node(self, k8s_config_with_rdma, mock_k8s_module):
+        """Single-node manifest build does not invoke RDMA injection."""
+        backend = self._make_backend(k8s_config_with_rdma, mock_k8s_module)
+
+        container = ContainerSpec(
+            name="main",
+            image="nemo:latest",
+            command=["bash", "-c", "train"],
+            resources=ResourceSpec(gpus=8),
+        )
+        spec = JobSpec(name="single-job", containers=[container], num_nodes=1)
+
+        with patch.object(backend, "_inject_rdma_resources") as mock_inject:
+            backend._build_job_manifest(spec)
+        mock_inject.assert_not_called()
+
+    def test_sft_kubernetes_num_nodes_flows_to_hardware_config(self):
+        """Test num_nodes from CLI flows through to HardwareConfig in K8s path."""
+        from nemo_skills.pipeline.nemo_rl.sft import _run_sft_kubernetes
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-rl": "nemo-rl:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        for num_nodes in [1, 2, 4, 8]:
+            with patch("nemo_skills.pipeline.utils.declarative.Pipeline") as MockPipeline:
+                mock_pipeline = MagicMock()
+                mock_pipeline.run.return_value = None
+                MockPipeline.return_value = mock_pipeline
+
+                _run_sft_kubernetes(
+                    cluster_config=cluster_config,
+                    train_cmd="train",
+                    expname="test",
+                    output_dir="/out",
+                    log_dir="/logs",
+                    num_gpus=8,
+                    num_nodes=num_nodes,
+                    dependent_jobs=0,
+                    partition=None,
+                    final_hf_path=None,
+                    conversion_step="last",
+                    average_steps=None,
+                    remove_checkpoints_after_average=False,
+                    backend="fsdp",
+                    max_position_embeddings=None,
+                    installation_command=None,
+                    dry_run=True,
+                    run_after=None,
+                )
+
+                jobs = MockPipeline.call_args.kwargs["jobs"]
+                train_hw = jobs[0]["group"].hardware
+                assert train_hw.num_nodes == num_nodes, f"Expected {num_nodes}, got {train_hw.num_nodes}"
+
+
+# =============================================================================
+# DNS Check Init Container Tests
+# =============================================================================
+
+
+class TestDnsCheckInitContainer:
+    """Tests for DNS readiness init container in multi-node jobs."""
+
+    @pytest.fixture
+    def mock_k8s_module(self):
+        mock_client = MagicMock()
+        mock_config = MagicMock()
+        mock_watch = MagicMock()
+
+        mock_client.V1Job = MagicMock(return_value=MagicMock())
+        mock_client.V1ObjectMeta = MagicMock(return_value=MagicMock())
+        mock_client.V1JobSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodTemplateSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1Container = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1ResourceRequirements = MagicMock(
+            side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests)
+        )
+        mock_client.V1EnvVar = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1ContainerPort = MagicMock(return_value=MagicMock())
+        mock_client.V1Volume = MagicMock(return_value=MagicMock())
+        mock_client.V1VolumeMount = MagicMock(return_value=MagicMock())
+        mock_client.V1PersistentVolumeClaimVolumeSource = MagicMock(return_value=MagicMock())
+        mock_client.V1LocalObjectReference = MagicMock(return_value=MagicMock())
+        mock_client.V1Toleration = MagicMock(return_value=MagicMock())
+        mock_client.V1Service = MagicMock(return_value=MagicMock())
+        mock_client.V1ServiceSpec = MagicMock(return_value=MagicMock())
+        mock_client.BatchV1Api = MagicMock(return_value=MagicMock())
+        mock_client.CoreV1Api = MagicMock(return_value=MagicMock())
+        mock_client.ApiException = Exception
+        mock_config.ConfigException = Exception
+
+        mock_kubernetes = MagicMock()
+        mock_kubernetes.client = mock_client
+        mock_kubernetes.config = mock_config
+        mock_kubernetes.watch = mock_watch
+        return mock_kubernetes
+
+    def _make_backend(self, config, mock_k8s_module):
+        with patch.dict("sys.modules", {"kubernetes": mock_k8s_module}):
+            import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
+            original = k8s_module.K8S_AVAILABLE
+            k8s_module.K8S_AVAILABLE = True
+            try:
+                backend = k8s_module.KubernetesBackend(config)
+                backend.batch_v1 = MagicMock()
+                backend.core_v1 = MagicMock()
+                return backend
+            finally:
+                k8s_module.K8S_AVAILABLE = original
+
+    def test_init_container_present_for_multi_node(self, mock_k8s_module):
+        """Multi-node jobs get a DNS check init container by default."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        result = backend._build_dns_check_init_container(spec, "train-workers")
+
+        assert result is not None
+        # Check the V1Container call args (mock returns MagicMock, check kwargs)
+        v1_calls = [
+            c for c in mock_k8s_module.client.V1Container.call_args_list if c.kwargs.get("name") == "dns-check"
+        ]
+        assert len(v1_calls) == 1
+        call_kwargs = v1_calls[0].kwargs
+        assert call_kwargs["image"] == "busybox:1.36"
+        assert "train-0.train-workers.test.svc.cluster.local" in call_kwargs["command"][2]
+
+    def test_no_init_container_for_single_node(self, mock_k8s_module):
+        """Single-node jobs do NOT get an init container."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["echo"])],
+            num_nodes=1,
+        )
+
+        # _build_job_manifest for single-node should not set init_containers
+        with patch.object(backend, "_build_dns_check_init_container") as mock_dns:
+            backend._build_job_manifest(spec)
+            mock_dns.assert_not_called()
+
+    def test_init_container_disabled_via_config(self, mock_k8s_module):
+        """Init container skipped when dns_check.enabled is false."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "dns_check": {"enabled": False},
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        result = backend._build_dns_check_init_container(spec, "train-workers")
+        assert result is None
+
+    def test_init_container_custom_image_and_timeout(self, mock_k8s_module):
+        """Custom image and timeout are respected."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "dns_check": {
+                "enabled": True,
+                "image": "alpine:3.19",
+                "timeout_seconds": 60,
+            },
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="job",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=3,
+        )
+        result = backend._build_dns_check_init_container(spec, "job-workers")
+
+        assert result is not None
+        v1_calls = [
+            c for c in mock_k8s_module.client.V1Container.call_args_list if c.kwargs.get("name") == "dns-check"
+        ]
+        assert len(v1_calls) >= 1
+        call_kwargs = v1_calls[-1].kwargs
+        assert call_kwargs["image"] == "alpine:3.19"
+        assert "60" in call_kwargs["command"][2]  # timeout in script
+
+    def test_manifest_wires_dns_init_container_for_multi_node(self, mock_k8s_module):
+        """Multi-node manifest includes DNS init container when enabled."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        pod_specs = []
+
+        def _pod_spec_factory(**kwargs):
+            pod_spec = SimpleNamespace(**kwargs)
+            pod_specs.append(pod_spec)
+            return pod_spec
+
+        # Use a concrete object so attribute presence checks are reliable.
+        mock_k8s_module.client.V1PodSpec.side_effect = _pod_spec_factory
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        backend._build_job_manifest(spec, headless_service_name="train-workers")
+
+        assert len(pod_specs) == 1
+        pod_spec = pod_specs[0]
+        assert hasattr(pod_spec, "init_containers")
+        assert len(pod_spec.init_containers) == 1
+
+        dns_calls = [
+            c for c in mock_k8s_module.client.V1Container.call_args_list if c.kwargs.get("name") == "dns-check"
+        ]
+        assert len(dns_calls) == 1
+
+    def test_manifest_skips_dns_init_container_when_disabled(self, mock_k8s_module):
+        """Multi-node manifest omits DNS init container when disabled via config."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "dns_check": {"enabled": False},
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        pod_specs = []
+
+        def _pod_spec_factory(**kwargs):
+            pod_spec = SimpleNamespace(**kwargs)
+            pod_specs.append(pod_spec)
+            return pod_spec
+
+        mock_k8s_module.client.V1PodSpec.side_effect = _pod_spec_factory
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        backend._build_job_manifest(spec, headless_service_name="train-workers")
+
+        assert len(pod_specs) == 1
+        pod_spec = pod_specs[0]
+        assert not hasattr(pod_spec, "init_containers")
+
+        dns_calls = [
+            c for c in mock_k8s_module.client.V1Container.call_args_list if c.kwargs.get("name") == "dns-check"
+        ]
+        assert len(dns_calls) == 0
+
+
+# =============================================================================
+# Pod Anti-Affinity Tests
+# =============================================================================
+
+
+class TestPodAntiAffinity:
+    """Tests for pod anti-affinity in multi-node jobs."""
+
+    @pytest.fixture
+    def mock_k8s_module(self):
+        mock_client = MagicMock()
+        mock_config = MagicMock()
+        mock_watch = MagicMock()
+
+        mock_client.V1Job = MagicMock(return_value=MagicMock())
+        mock_client.V1ObjectMeta = MagicMock(return_value=MagicMock())
+        mock_client.V1JobSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodTemplateSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1PodSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1Container = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1ResourceRequirements = MagicMock(
+            side_effect=lambda limits, requests: MagicMock(limits=limits, requests=requests)
+        )
+        mock_client.V1EnvVar = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1ContainerPort = MagicMock(return_value=MagicMock())
+        mock_client.V1Volume = MagicMock(return_value=MagicMock())
+        mock_client.V1VolumeMount = MagicMock(return_value=MagicMock())
+        mock_client.V1PersistentVolumeClaimVolumeSource = MagicMock(return_value=MagicMock())
+        mock_client.V1LocalObjectReference = MagicMock(return_value=MagicMock())
+        mock_client.V1Toleration = MagicMock(return_value=MagicMock())
+        mock_client.V1Service = MagicMock(return_value=MagicMock())
+        mock_client.V1ServiceSpec = MagicMock(return_value=MagicMock())
+        mock_client.V1Affinity = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1PodAntiAffinity = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1WeightedPodAffinityTerm = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1PodAffinityTerm = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.V1LabelSelector = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+        mock_client.BatchV1Api = MagicMock(return_value=MagicMock())
+        mock_client.CoreV1Api = MagicMock(return_value=MagicMock())
+        mock_client.ApiException = Exception
+        mock_config.ConfigException = Exception
+
+        mock_kubernetes = MagicMock()
+        mock_kubernetes.client = mock_client
+        mock_kubernetes.config = mock_config
+        mock_kubernetes.watch = mock_watch
+        return mock_kubernetes
+
+    def _make_backend(self, config, mock_k8s_module):
+        with patch.dict("sys.modules", {"kubernetes": mock_k8s_module}):
+            import nemo_skills.pipeline.backends.kubernetes as k8s_module
+
+            original = k8s_module.K8S_AVAILABLE
+            k8s_module.K8S_AVAILABLE = True
+            try:
+                backend = k8s_module.KubernetesBackend(config)
+                backend.batch_v1 = MagicMock()
+                backend.core_v1 = MagicMock()
+                return backend
+            finally:
+                k8s_module.K8S_AVAILABLE = original
+
+    def test_anti_affinity_present_for_multi_node(self, mock_k8s_module):
+        """Multi-node jobs get pod anti-affinity by default."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        result = backend._build_pod_anti_affinity(spec)
+
+        assert result is not None
+        # V1Affinity should be created with pod_anti_affinity
+        affinity_call = mock_k8s_module.client.V1Affinity.call_args
+        assert affinity_call is not None
+
+        # V1PodAffinityTerm should use hostname topology key
+        term_call = mock_k8s_module.client.V1PodAffinityTerm.call_args
+        assert term_call.kwargs["topology_key"] == "kubernetes.io/hostname"
+
+        # Label selector should match full default job labels
+        selector_call = mock_k8s_module.client.V1LabelSelector.call_args
+        assert selector_call.kwargs["match_labels"] == {"app": "nemo-skills", "job-name": "train"}
+
+    def test_selector_uses_full_job_labels(self, mock_k8s_module):
+        """Anti-affinity selector uses the full job label set, including custom labels."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+            labels={"app": "custom-app", "team": "research"},
+        )
+        backend._build_pod_anti_affinity(spec)
+
+        selector_call = mock_k8s_module.client.V1LabelSelector.call_args
+        assert selector_call.kwargs["match_labels"] == backend._build_job_labels(spec)
+
+    def test_no_anti_affinity_for_single_node(self, mock_k8s_module):
+        """Single-node jobs do NOT get anti-affinity."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["echo"])],
+            num_nodes=1,
+        )
+
+        with patch.object(backend, "_build_pod_anti_affinity") as mock_affinity:
+            backend._build_job_manifest(spec)
+            mock_affinity.assert_not_called()
+
+    def test_anti_affinity_disabled_via_config(self, mock_k8s_module):
+        """Anti-affinity skipped when scheduling.spread_across_nodes is false."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "scheduling": {"spread_across_nodes": False},
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        result = backend._build_pod_anti_affinity(spec)
+        assert result is None
+
+    def test_custom_topology_key(self, mock_k8s_module):
+        """Custom topology key is respected."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "scheduling": {"topology_key": "topology.kubernetes.io/zone"},
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        backend._build_pod_anti_affinity(spec)
+
+        term_call = mock_k8s_module.client.V1PodAffinityTerm.call_args
+        assert term_call.kwargs["topology_key"] == "topology.kubernetes.io/zone"
+
+    def test_manifest_wires_anti_affinity_for_multi_node(self, mock_k8s_module):
+        """Multi-node manifest includes pod affinity when spread is enabled."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        pod_specs = []
+
+        def _pod_spec_factory(**kwargs):
+            pod_spec = SimpleNamespace(**kwargs)
+            pod_specs.append(pod_spec)
+            return pod_spec
+
+        mock_k8s_module.client.V1PodSpec.side_effect = _pod_spec_factory
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        backend._build_job_manifest(spec, headless_service_name="train-workers")
+
+        assert len(pod_specs) == 1
+        pod_spec = pod_specs[0]
+        assert hasattr(pod_spec, "affinity")
+        assert pod_spec.affinity is not None
+
+    def test_manifest_skips_anti_affinity_when_spread_disabled(self, mock_k8s_module):
+        """Multi-node manifest omits affinity when spread_across_nodes is disabled."""
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "img"},
+            "service_account": "sa",
+            "scheduling": {"spread_across_nodes": False},
+        }
+        backend = self._make_backend(config, mock_k8s_module)
+
+        pod_specs = []
+
+        def _pod_spec_factory(**kwargs):
+            pod_spec = SimpleNamespace(**kwargs)
+            pod_specs.append(pod_spec)
+            return pod_spec
+
+        mock_k8s_module.client.V1PodSpec.side_effect = _pod_spec_factory
+
+        spec = JobSpec(
+            name="train",
+            containers=[ContainerSpec(name="t", image="img", command=["bash", "-c", "train"])],
+            num_nodes=2,
+        )
+        backend._build_job_manifest(spec, headless_service_name="train-workers")
+
+        assert len(pod_specs) == 1
+        pod_spec = pod_specs[0]
+        assert not hasattr(pod_spec, "affinity")

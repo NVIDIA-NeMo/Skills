@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,11 @@ repos:
         args: ['--maxkb=1000']
       - id: check-case-conflict
       - id: check-yaml
-        exclude: ^mkdocs\.yml$
+        exclude: ^(mkdocs\.yml|cluster_configs/kubernetes/.*\.ya?ml|scripts/k8s-tests/(manifests|image-build)/.*\.ya?ml)$
+      - id: check-yaml
+        name: check-yaml-k8s-multidoc
+        files: ^(cluster_configs/kubernetes/.*\.ya?ml|scripts/k8s-tests/(manifests|image-build)/.*\.ya?ml)$
+        args: ['--allow-multiple-documents']
       - id: detect-private-key
       - id: end-of-file-fixer
         exclude: docs/|\.txt$|\.patch$|test$
@@ -45,6 +49,11 @@ repos:
 
   - repo: local
     hooks:
+      - id: validate-k8s-manifests
+        name: Validate Kubernetes manifests (kubeconform/kubectl)
+        entry: scripts/k8s-tests/validate_k8s_manifests.sh
+        language: system
+        files: ^(cluster_configs/kubernetes/.*\.ya?ml|scripts/k8s-tests/(manifests|image-build)/.*\.ya?ml)$
       - id: check-signoff
         name: Check Signed-off-by
         entry: bash -c 'if ! grep -q "Signed-off-by:" "$1"; then echo "❌ Commit message must be signed off. Use git commit -s to add it automatically."; exit 1; fi' --

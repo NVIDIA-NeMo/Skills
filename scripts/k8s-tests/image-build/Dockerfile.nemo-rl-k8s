@@ -1,0 +1,105 @@
+# Kaniko-compatible version of Dockerfile.nemo-rl
+# Replaces incompatible BuildKit features:
+#   - ADD --keep-git-dir -> RUN git clone
+#   - --mount=type=ssh -> removed (public repos only)
+#   - COPY --from=nemo-rl --exclude -> explicit COPY
+#
+# Usage:
+#   Built via Kaniko on K8s (see scripts/k8s-tests/image-build/)
+#
+# Build args:
+#   NEMO_RL_COMMIT: NeMo-RL commit to build from (default: pinned)
+#   NEMO_SKILLS_PATH: path to local NeMo-Skills code in build context (default: /skills)
+
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:25.05-cuda12.9-devel-ubuntu24.04
+
+# ── Stage 1: Clone NeMo-RL ──────────────────────────────────────────
+FROM ${BASE_IMAGE} AS nemo-rl-src
+
+ARG NEMO_RL_COMMIT=e95efb912a6909b5da91ffeb197debe91fd480d8
+
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    git clone --recurse-submodules https://github.com/NVIDIA-NeMo/RL.git /nemo-rl-src && \
+    cd /nemo-rl-src && \
+    git checkout ${NEMO_RL_COMMIT} && \
+    git submodule update --init --recursive && \
+    echo "NeMo-RL checked out at $(git rev-parse HEAD)"
+
+# ── Stage 2: Base system ────────────────────────────────────────────
+FROM ${BASE_IMAGE} AS base
+
+ENV NRL_CONTAINER=1
+USER root
+
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    export TZ=America/Los_Angeles && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        jq curl git rsync wget less vim gnupg && \
+    echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" | tee /etc/apt/sources.list.d/nvidia-devtools.list && \
+    apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub && \
+    apt-get update && \
+    apt-get install -y nsight-systems-cli && \
+    apt-get install -y --only-upgrade gnupg && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+ARG UV_VERSION=0.9.7
+ARG PYTHON_VERSION=3.12
+ENV PATH="/root/.local/bin:$PATH"
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh && \
+    uv python install ${PYTHON_VERSION}
+
+ENV RAY_USAGE_STATS_ENABLED=0
+ENV RAY_ENABLE_UV_RUN_RUNTIME_ENV=0
+ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
+
+# ── Stage 3: Install dependencies ──────────────────────────────────
+FROM base AS hermetic
+
+WORKDIR /opt/NeMo-RL
+
+ENV UV_PROJECT_ENVIRONMENT=/opt/nemo_rl_venv
+ENV UV_LINK_MODE=copy
+ENV TORCH_CUDA_ARCH_LIST="9.0 10.0"
+
+# Copy dependency files from the cloned repo
+COPY --from=nemo-rl-src /nemo-rl-src/pyproject.toml /nemo-rl-src/uv.lock ./
+COPY --from=nemo-rl-src /nemo-rl-src/nemo_rl/__init__.py /nemo-rl-src/nemo_rl/package_info.py ./nemo_rl/
+COPY --from=nemo-rl-src /nemo-rl-src/tools/build-custom-vllm.sh ./tools/build-custom-vllm.sh
+COPY --from=nemo-rl-src /nemo-rl-src/research/ ./research/
+COPY --from=nemo-rl-src /nemo-rl-src/3rdparty/ ./3rdparty/
+
+# Install all Python dependencies via uv sync
+RUN uv venv --seed && \
+    uv sync --link-mode symlink --locked --no-install-project && \
+    uv sync --link-mode symlink --locked --extra vllm --no-install-project && \
+    uv sync --link-mode symlink --locked --extra mcore --no-install-project && \
+    uv sync --link-mode symlink --locked --extra automodel --no-install-project && \
+    uv sync --link-mode symlink --locked --all-groups --no-install-project && \
+    find /root/.cache/uv -type d -path "*ray/_private/runtime_env/agent/thirdparty_files/aiohttp*" -exec rm -rf {} +
+
+ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
+ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
+
+# ── Stage 4: Release ────────────────────────────────────────────────
+FROM hermetic AS release
+
+WORKDIR /opt/NeMo-RL
+
+# Copy full NeMo-RL source (excluding already-copied pyproject.toml/uv.lock)
+COPY --from=nemo-rl-src /nemo-rl-src/ /opt/NeMo-RL/
+
+# Prefetch Ray venvs
+RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py || echo "prefetch_venvs.py not critical, continuing"
+
+# Generate fingerprint
+RUN python tools/generate_fingerprint.py > /opt/nemo_rl_container_fingerprint || echo "fingerprint not critical"
+
+# Install NeMo-Skills from build context
+COPY skills/ /opt/NeMo-Skills/
+RUN cd /opt/NeMo-Skills && uv pip install .
+
+# Verify
+RUN python -c "import nemo_skills; print(f'nemo_skills {nemo_skills.__version__}')"
+RUN python -c "from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend; print('KubernetesBackend: OK')"

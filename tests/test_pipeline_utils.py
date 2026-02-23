@@ -16,6 +16,7 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+from nemo_skills.pipeline.utils.cluster import get_timeout_str
 from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_expected_done_files,
@@ -42,6 +43,16 @@ def test_get_chunked_rs_filename():
     )
     assert get_chunked_rs_filename("/tmp/output", chunk_id=5) == "/tmp/output/output_chunk_5.jsonl"
     assert get_chunked_rs_filename("/tmp/output") == "/tmp/output/output.jsonl"
+
+
+def test_get_timeout_str_supports_k8s_hour_duration():
+    cluster_config = {"default_timeout": "6h"}
+    assert get_timeout_str(cluster_config, partition=None, with_save_delay=False) == "00:06:00:00"
+
+
+def test_get_timeout_str_supports_k8s_second_duration():
+    cluster_config = {"default_timeout": "45s"}
+    assert get_timeout_str(cluster_config, partition=None, with_save_delay=False) == "00:00:00:45"
 
 
 def test_get_expected_done_files():

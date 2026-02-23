@@ -1,0 +1,185 @@
+# Multi-Node Real NeMo-RL SFT Training Test
+#
+# Runs start_sft.py across 2 nodes using:
+# - Qwen/Qwen2.5-0.5B model (500M params)
+# - Tensor Parallelism (TP=2) within each node
+# - Data Parallelism across nodes (via FSDP)
+# - Headless Service + Indexed Job (same pattern as KubernetesBackend)
+# - Ray cluster for distributed orchestration
+#
+# Prerequisites:
+#   - nemo-skills/nemo-rl-full:latest image loaded on 2+ GPU nodes
+#   - kubectl create configmap sft-train-data --from-file=train.jsonl=<data>
+#
+# Usage:
+#   kubectl apply -f scripts/k8s-tests/manifests/real-nemo-rl-sft-multinode-test.yaml
+#   kubectl wait --for=condition=complete --timeout=1800s job/sft-nemo-rl-mn -n default
+#   kubectl logs -l job-name=sft-nemo-rl-mn -n default | grep -E "▶|step|COMPLETED"
+#   kubectl delete -f scripts/k8s-tests/manifests/real-nemo-rl-sft-multinode-test.yaml
+#
+# Pass signal: "REAL NEMO-RL MNMG SFT COMPLETED" in rank-0 logs
+#
+# NeMo-Skills / NeMo-RL code paths exercised:
+#   - start_sft.py with num_nodes=2
+#   - Ray multi-node cluster (head + worker)
+#   - DTensor FSDP across nodes
+#   - Tensor Parallelism (TP=2) within each node
+#   - NCCL inter-node communication (NET/Socket or IB)
+#   - NCCL intra-node communication (P2P/CUMEM via NVLink)
+#   - Headless Service DNS discovery (same as KubernetesBackend._build_headless_service)
+#   - Indexed Job with JOB_COMPLETION_INDEX (same as KubernetesBackend._inject_distributed_env_vars)
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sft-nemo-rl-mn-script
+  namespace: default
+data:
+  run_sft_mn.sh: |
+    #!/bin/bash
+    set -e
+    export NCCL_DEBUG=INFO
+    export PYTHONPATH=/opt/NeMo-Skills:/opt/NeMo-RL:$PYTHONPATH
+    export NODE_RANK=${JOB_COMPLETION_INDEX}
+
+    NUM_NODES=2
+    NUM_GPUS=2
+    MASTER_PORT=29500
+    # With hostNetwork, use the headless service DNS which resolves to node IPs
+    MASTER_ADDR=${MASTER_ADDR}
+
+    echo "=== Real NeMo-RL MNMG SFT Training ==="
+    echo "Model: Qwen/Qwen2.5-0.5B (500M params)"
+    echo "Nodes: ${NUM_NODES} x ${NUM_GPUS} GPUs"
+    echo "TP=2 (tensor parallel within node)"
+    echo "Node rank: ${NODE_RANK}"
+    echo "Node name: ${MY_NODE_NAME}"
+    echo "Master: ${MASTER_ADDR}:${MASTER_PORT}"
+
+    # Wait for master DNS
+    echo "Waiting for master DNS: ${MASTER_ADDR}..."
+    for i in $(seq 1 60); do
+      getent hosts ${MASTER_ADDR} > /dev/null 2>&1 && break
+      echo "  retry $i..."
+      sleep 2
+    done
+    if ! getent hosts ${MASTER_ADDR} > /dev/null 2>&1; then
+      echo "FAIL: Master DNS not resolvable after 120s"
+      exit 1
+    fi
+    echo "Master resolved."
+
+    # Copy data to writable path
+    mkdir -p /tmp/sft-data
+    cp /data/train.jsonl /tmp/sft-data/train.jsonl
+
+    cd /opt/NeMo-RL
+
+    # Ray head node (rank 0) starts Ray, workers join
+    if [ "${NODE_RANK}" = "0" ]; then
+      echo "Starting Ray head node..."
+      ray start --head --port=6379 --num-gpus=${NUM_GPUS}
+      sleep 5
+
+      uv run --active python /opt/NeMo-Skills/nemo_skills/training/nemo_rl/start_sft.py \
+        ++policy.model_name=Qwen/Qwen2.5-0.5B \
+        ++cluster.gpus_per_node=${NUM_GPUS} \
+        ++cluster.num_nodes=${NUM_NODES} \
+        ++checkpointing.checkpoint_must_save_by=00:00:30:00 \
+        ++checkpointing.enabled=false \
+        ++logger.log_dir=/tmp/sft-logs \
+        ++logger.wandb_enabled=false \
+        +data.train_data_path=/tmp/sft-data/train.jsonl \
+        ++sft.max_num_steps=10 \
+        ++sft.max_num_epochs=1 \
+        ++policy.train_global_batch_size=4 \
+        ++policy.train_micro_batch_size=2 \
+        ++policy.tensor_model_parallel_size=2 \
+        2>&1
+
+      echo "=== REAL NEMO-RL MNMG SFT COMPLETED ==="
+    else
+      echo "Starting Ray worker node (joining head at ${MASTER_ADDR}:6379)..."
+      ray start --address="${MASTER_ADDR}:6379" --num-gpus=${NUM_GPUS} --block || true
+      echo "Worker done (Ray head shut down)."
+    fi
+---
+# Headless Service for DNS-based pod discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: sft-nemo-rl-mn-workers
+  namespace: default
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    job-name: sft-nemo-rl-mn
+---
+# Indexed Job for multi-node training
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sft-nemo-rl-mn
+  namespace: default
+  labels:
+    app: nemo-skills
+    test: sft-nemo-rl-multinode
+spec:
+  completionMode: Indexed
+  completions: 2
+  parallelism: 2
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        job-name: sft-nemo-rl-mn
+    spec:
+      restartPolicy: Never
+      hostNetwork: true        # Required for Ray multi-node (arbitrary port communication)
+      dnsPolicy: ClusterFirstWithHostNet  # Keep K8s DNS with hostNetwork
+      subdomain: sft-nemo-rl-mn-workers
+      containers:
+      - name: trainer
+        image: nemo-skills/nemo-rl-full:latest
+        imagePullPolicy: Never
+        env:
+        - name: MASTER_ADDR
+          value: "sft-nemo-rl-mn-0.sft-nemo-rl-mn-workers.default.svc.cluster.local"
+        - name: MASTER_PORT
+          value: "29500"
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: RAY_USAGE_STATS_ENABLED
+          value: "0"
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        command: ["bash", "/scripts/run_sft_mn.sh"]
+        resources:
+          limits: {nvidia.com/gpu: "2"}
+          requests: {nvidia.com/gpu: "2", memory: "64Gi", cpu: "16"}
+        volumeMounts:
+        - {name: script, mountPath: /scripts}
+        - {name: data, mountPath: /data}
+        - {name: dshm, mountPath: /dev/shm}
+      tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                job-name: sft-nemo-rl-mn
+            topologyKey: kubernetes.io/hostname
+      volumes:
+      - name: script
+        configMap: {name: sft-nemo-rl-mn-script}
+      - name: data
+        configMap: {name: sft-train-data}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

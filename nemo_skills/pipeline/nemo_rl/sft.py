@@ -196,6 +196,167 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_pos
     return cmd
 
 
+def _run_sft_kubernetes(
+    cluster_config,
+    train_cmd,
+    expname,
+    output_dir,
+    log_dir,
+    num_gpus,
+    num_nodes,
+    dependent_jobs,
+    partition,
+    final_hf_path,
+    conversion_step,
+    average_steps,
+    remove_checkpoints_after_average,
+    backend,
+    max_position_embeddings,
+    installation_command,
+    dry_run,
+    run_after,
+    skip_hf_home_check=None,
+):
+    """Run SFT training on Kubernetes via Pipeline + KubernetesBackend.
+
+    This is the K8s-native path that uses Pipeline/CommandGroup/HardwareConfig
+    instead of the NeMo-Run add_task/get_executor path used for Slurm/local.
+    """
+    import nemo_run as run
+
+    from nemo_skills.pipeline.utils.declarative import (
+        Command,
+        CommandGroup,
+        HardwareConfig,
+        Pipeline,
+    )
+    from nemo_skills.pipeline.utils.exp import install_packages_wrap
+
+    container_name = "nemo-rl"
+
+    # Build training jobs
+    jobs = []
+    train_job_refs = []
+
+    for job_id in range(dependent_jobs + 1):
+        cmd = train_cmd
+        if installation_command:
+            cmd = install_packages_wrap(cmd, installation_command)
+
+        script = run.Script(inline=cmd)
+        command = Command(script=script, container=container_name, name="sft-trainer")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(
+                num_gpus=num_gpus,
+                num_nodes=num_nodes,
+                partition=partition,
+            ),
+            name=f"{expname}-sft-{job_id}",
+            log_dir=f"{log_dir}/training-logs",
+        )
+
+        job = {"name": f"{expname}-sft-{job_id}", "group": group}
+        # Chain dependent training jobs sequentially
+        if train_job_refs:
+            job["dependencies"] = [train_job_refs[-1]]
+        jobs.append(job)
+        train_job_refs.append(job)
+
+    # Build checkpoint conversion/averaging jobs
+    last_train_job = train_job_refs[-1] if train_job_refs else None
+
+    if average_steps is None:
+        # Single conversion job
+        convert_cmd = get_checkpoint_convert_cmd(
+            output_dir=output_dir,
+            final_hf_path=final_hf_path or f"{output_dir}/final_hf_model",
+            step=conversion_step,
+            backend=backend,
+            max_position_embeddings=max_position_embeddings,
+        )
+        if installation_command:
+            convert_cmd = install_packages_wrap(convert_cmd, installation_command)
+
+        convert_script = run.Script(inline=convert_cmd)
+        convert_command = Command(script=convert_script, container=container_name, name="convert")
+        convert_group = CommandGroup(
+            commands=[convert_command],
+            hardware=HardwareConfig(num_gpus=0, num_nodes=1, partition=partition),
+            name=f"{expname}-convert-final-ckpt",
+            log_dir=f"{log_dir}/convert-final-ckpt",
+        )
+
+        convert_job = {"name": f"{expname}-convert", "group": convert_group}
+        if last_train_job:
+            convert_job["dependencies"] = [last_train_job]
+        jobs.append(convert_job)
+    else:
+        # Convert each step, then average
+        steps = [int(x.strip()) for x in average_steps.split(",") if x.strip()]
+        convert_job_refs = []
+        for step in steps:
+            step_cmd = get_checkpoint_convert_cmd(
+                output_dir=output_dir,
+                final_hf_path=f"{output_dir}/hf_model_step_{step}",
+                step=step,
+                backend=backend,
+                max_position_embeddings=max_position_embeddings,
+            )
+            if installation_command:
+                step_cmd = install_packages_wrap(step_cmd, installation_command)
+
+            step_script = run.Script(inline=step_cmd)
+            step_command = Command(script=step_script, container=container_name, name=f"convert-{step}")
+            step_group = CommandGroup(
+                commands=[step_command],
+                hardware=HardwareConfig(num_gpus=0, num_nodes=1, partition=partition),
+                name=f"{expname}-convert-step-{step}",
+                log_dir=f"{log_dir}/convert-ckpt-step",
+            )
+            step_job = {"name": f"{expname}-convert-{step}", "group": step_group}
+            if last_train_job:
+                step_job["dependencies"] = [last_train_job]
+            jobs.append(step_job)
+            convert_job_refs.append(step_job)
+
+        # Averaging job depends on all conversions
+        avg_cmd = get_checkpoint_average_cmd(
+            output_dir=output_dir,
+            average_steps=average_steps,
+            backend=backend,
+            remove_checkpoints_after_average=remove_checkpoints_after_average,
+        )
+        if installation_command:
+            avg_cmd = install_packages_wrap(avg_cmd, installation_command)
+
+        avg_script = run.Script(inline=avg_cmd)
+        avg_command = Command(script=avg_script, container=container_name, name="average")
+        avg_group = CommandGroup(
+            commands=[avg_command],
+            hardware=HardwareConfig(num_gpus=0, num_nodes=1, partition=partition),
+            name=f"{expname}-average-ckpt",
+            log_dir=f"{log_dir}/average-ckpt",
+        )
+        avg_job = {
+            "name": f"{expname}-average",
+            "group": avg_group,
+            "dependencies": convert_job_refs,
+        }
+        jobs.append(avg_job)
+
+    # Create and run the pipeline
+    pipeline = Pipeline(
+        name=expname,
+        cluster_config=cluster_config,
+        jobs=jobs,
+        run_after=run_after,
+        skip_hf_home_check=skip_hf_home_check,
+    )
+
+    return pipeline.run(dry_run=dry_run)
+
+
 def get_checkpoint_average_cmd(output_dir, average_steps, backend, remove_checkpoints_after_average):
     cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
 
@@ -392,6 +553,31 @@ def sft_nemo_rl(
         backend=backend,
         profile_step_range=profile_step_range,
     )
+
+    # Route to Kubernetes backend if executor is 'kubernetes'
+    if cluster_config.get("executor") == "kubernetes":
+        LOG.info("Using Kubernetes backend for SFT training")
+        return _run_sft_kubernetes(
+            cluster_config=cluster_config,
+            train_cmd=train_cmd,
+            expname=expname,
+            output_dir=output_dir,
+            log_dir=log_dir,
+            num_gpus=num_gpus,
+            num_nodes=num_nodes,
+            dependent_jobs=dependent_jobs,
+            partition=partition,
+            final_hf_path=final_hf_path,
+            conversion_step=conversion_step,
+            average_steps=average_steps,
+            remove_checkpoints_after_average=remove_checkpoints_after_average,
+            backend=backend,
+            max_position_embeddings=max_position_embeddings,
+            installation_command=installation_command,
+            dry_run=dry_run,
+            run_after=run_after,
+            skip_hf_home_check=skip_hf_home_check,
+        )
 
     server_config = None
     env_update = {"RAY_LOG_SYNC_FREQUENCY": 20} if profile_step_range else {}

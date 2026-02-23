@@ -113,6 +113,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "delete", "get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -127,6 +130,9 @@ roleRef:
   name: nemo-skills-job-manager
   apiGroup: rbac.authorization.k8s.io
 ```
+
+`services` permissions are required for multi-node jobs because NeMo-Skills
+creates/deletes a Headless Service per distributed job.
 
 ### Step 3: Create Storage (PVCs)
 

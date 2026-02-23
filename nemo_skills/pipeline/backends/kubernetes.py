@@ -24,7 +24,7 @@ This backend submits jobs as Kubernetes Jobs with support for:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from nemo_skills.pipeline.backends.base import (
     ComputeBackend,
@@ -40,7 +40,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 # Check if kubernetes package is available
 try:
-    import kubernetes
+    import kubernetes  # noqa: F401
 
     K8S_AVAILABLE = True
 except ImportError:
@@ -72,8 +72,7 @@ class KubernetesBackend(ComputeBackend):
     def __init__(self, cluster_config: Dict):
         if not K8S_AVAILABLE:
             raise ImportError(
-                "kubernetes package is required for KubernetesBackend. "
-                "Install with: pip install kubernetes"
+                "kubernetes package is required for KubernetesBackend. Install with: pip install kubernetes"
             )
 
         # Import kubernetes modules now that we know they're available
@@ -123,12 +122,37 @@ class KubernetesBackend(ComputeBackend):
         return "kubernetes"
 
     def submit_job(self, spec: JobSpec) -> JobHandle:
-        """Submit a job to Kubernetes."""
+        """Submit a job to Kubernetes.
+
+        For multi-node jobs (num_nodes > 1), creates a Headless Service for
+        DNS-based pod discovery and an Indexed Job for stable pod identities.
+        """
         extra = {"job_name": spec.name, "namespace": self.namespace, "backend": "kubernetes"}
         LOG.info(f"Submitting Kubernetes job: {spec.name}", extra=extra)
 
+        headless_service_name = None
+
+        # For multi-node jobs, create a Headless Service first
+        if spec.is_multi_node:
+            self._validate_multinode_service_rbac()
+            headless_service_name = f"{spec.name}-workers"
+            labels = self._build_job_labels(spec)
+            LOG.info(
+                f"Creating Headless Service '{headless_service_name}' for {spec.num_nodes}-node distributed job",
+                extra=extra,
+            )
+            service = self._build_headless_service(spec, headless_service_name, labels)
+            try:
+                self.core_v1.create_namespaced_service(
+                    namespace=self.namespace,
+                    body=service,
+                )
+            except self._k8s_client.ApiException as e:
+                LOG.error(f"Failed to create Headless Service: {e}", extra=extra)
+                raise RuntimeError(f"Failed to create Headless Service: {e}") from e
+
         # Build and create the Job
-        k8s_job = self._build_job_manifest(spec)
+        k8s_job = self._build_job_manifest(spec, headless_service_name=headless_service_name)
 
         try:
             response = self.batch_v1.create_namespaced_job(
@@ -147,15 +171,31 @@ class KubernetesBackend(ComputeBackend):
                     "namespace": self.namespace,
                     "uid": response.metadata.uid,
                     "spec": spec,
+                    "headless_service": headless_service_name,
                 },
             )
 
         except self._k8s_client.ApiException as e:
             LOG.error(f"Failed to create Kubernetes job: {e}", extra=extra)
+            # Clean up the headless service if job creation fails
+            if headless_service_name:
+                try:
+                    self.core_v1.delete_namespaced_service(
+                        name=headless_service_name,
+                        namespace=self.namespace,
+                    )
+                except Exception:
+                    pass
             raise RuntimeError(f"Failed to create Kubernetes job: {e}") from e
 
-    def _build_job_manifest(self, spec: JobSpec):
-        """Build Kubernetes Job manifest from JobSpec."""
+    def _build_job_manifest(self, spec: JobSpec, headless_service_name: Optional[str] = None):
+        """Build Kubernetes Job manifest from JobSpec.
+
+        For single-node jobs: creates a standard K8s Job with one pod.
+        For multi-node jobs (num_nodes > 1): creates an Indexed Job with
+        completionMode="Indexed" for stable pod identities. Each pod gets
+        torchrun-compatible env vars injected for distributed training.
+        """
         client = self._k8s_client
 
         containers = []
@@ -163,12 +203,32 @@ class KubernetesBackend(ComputeBackend):
             container = self._build_container(container_spec)
             containers.append(container)
 
+        # For multi-node jobs, inject distributed training env vars and RDMA resources
+        if spec.is_multi_node and headless_service_name:
+            self._inject_distributed_env_vars(
+                containers,
+                spec,
+                headless_service_name,
+            )
+            self._inject_rdma_resources(containers)
+
         # Build Pod spec
         pod_spec = client.V1PodSpec(
             containers=containers,
             restart_policy="Never",
             service_account_name=self.config.get("service_account"),
         )
+
+        # For multi-node jobs, set the subdomain to match the headless service
+        # so pods get DNS names like <pod-name>.<service-name>.<namespace>.svc.cluster.local
+        if headless_service_name:
+            pod_spec.subdomain = headless_service_name
+
+        # For multi-node jobs, add an init container that waits for MASTER_ADDR DNS
+        if spec.is_multi_node and headless_service_name:
+            init_container = self._build_dns_check_init_container(spec, headless_service_name)
+            if init_container is not None:
+                pod_spec.init_containers = [init_container]
 
         # Add node selector from spec or resource pool
         node_selector = self._get_node_selector(spec)
@@ -180,12 +240,16 @@ class KubernetesBackend(ComputeBackend):
         if tolerations:
             pod_spec.tolerations = tolerations
 
+        # For multi-node jobs, add pod anti-affinity to spread across nodes
+        if spec.is_multi_node:
+            affinity = self._build_pod_anti_affinity(spec)
+            if affinity is not None:
+                pod_spec.affinity = affinity
+
         # Add image pull secrets
         image_pull_secrets = self.config.get("image_pull_secrets", [])
         if image_pull_secrets:
-            pod_spec.image_pull_secrets = [
-                client.V1LocalObjectReference(name=s) for s in image_pull_secrets
-            ]
+            pod_spec.image_pull_secrets = [client.V1LocalObjectReference(name=s) for s in image_pull_secrets]
 
         # Add volumes from storage config
         volumes, volume_mounts = self._build_volumes()
@@ -196,9 +260,23 @@ class KubernetesBackend(ComputeBackend):
                 container.volume_mounts = volume_mounts
 
         # Build Job labels
-        labels = {"app": "nemo-skills", "job-name": spec.name}
-        if spec.labels:
-            labels.update(spec.labels)
+        labels = self._build_job_labels(spec)
+
+        # Build Job spec kwargs
+        job_spec_kwargs = {
+            "template": client.V1PodTemplateSpec(
+                metadata=client.V1ObjectMeta(labels=labels),
+                spec=pod_spec,
+            ),
+            "backoff_limit": 0,
+            "active_deadline_seconds": spec.timeout_seconds or self._get_default_timeout(),
+        }
+
+        # For multi-node: use Indexed Job completion mode
+        if spec.is_multi_node:
+            job_spec_kwargs["completion_mode"] = "Indexed"
+            job_spec_kwargs["completions"] = spec.num_nodes
+            job_spec_kwargs["parallelism"] = spec.num_nodes
 
         # Build Job
         job = client.V1Job(
@@ -210,17 +288,301 @@ class KubernetesBackend(ComputeBackend):
                 labels=labels,
                 annotations=spec.annotations,
             ),
-            spec=client.V1JobSpec(
-                template=client.V1PodTemplateSpec(
-                    metadata=client.V1ObjectMeta(labels=labels),
-                    spec=pod_spec,
-                ),
-                backoff_limit=0,
-                active_deadline_seconds=spec.timeout_seconds or self._get_default_timeout(),
-            ),
+            spec=client.V1JobSpec(**job_spec_kwargs),
         )
 
         return job
+
+    def _build_job_labels(self, spec: JobSpec) -> Dict[str, str]:
+        """Build labels shared across Job, Pod template, and headless Service selector."""
+        labels = {"app": "nemo-skills", "job-name": spec.name}
+        if spec.labels:
+            labels.update(spec.labels)
+        return labels
+
+    def _validate_multinode_service_rbac(self) -> None:
+        """Preflight-check Service permissions required for multi-node jobs.
+
+        Multi-node jobs create and delete Headless Services. When the API server
+        supports SelfSubjectAccessReview, this check fails fast with a clear
+        message if the current service account/user is missing required
+        permissions.
+        """
+        if not self.config.get("rbac_preflight", True):
+            return
+
+        client = self._k8s_client
+        if not hasattr(client, "AuthorizationV1Api"):
+            return
+
+        required_verbs = ("create", "delete", "get", "list")
+
+        try:
+            auth_api = client.AuthorizationV1Api()
+        except Exception as e:
+            LOG.warning(f"Unable to initialize AuthorizationV1Api for RBAC preflight: {e}")
+            return
+
+        missing_verbs = []
+        for verb in required_verbs:
+            try:
+                review = client.V1SelfSubjectAccessReview(
+                    spec=client.V1SelfSubjectAccessReviewSpec(
+                        resource_attributes=client.V1ResourceAttributes(
+                            namespace=self.namespace,
+                            verb=verb,
+                            group="",
+                            resource="services",
+                        )
+                    )
+                )
+                response = auth_api.create_self_subject_access_review(body=review)
+                allowed = bool(getattr(response.status, "allowed", False))
+                if not allowed:
+                    missing_verbs.append(verb)
+            except Exception as e:
+                # If auth review itself isn't available/allowed, defer to normal API errors.
+                LOG.warning(f"RBAC preflight skipped for services '{verb}' check: {e}")
+                return
+
+        if missing_verbs:
+            missing = ", ".join(sorted(missing_verbs))
+            raise RuntimeError(
+                "Multi-node Kubernetes jobs require Service RBAC permissions. "
+                f"Missing verbs on services in namespace '{self.namespace}': {missing}. "
+                "Apply cluster_configs/kubernetes/rbac.yaml or equivalent Role/RoleBinding "
+                "before submitting multi-node jobs."
+            )
+
+    def _build_headless_service(self, spec: JobSpec, service_name: str, labels: Optional[Dict[str, str]] = None):
+        """Build a Headless Service for multi-node DNS-based pod discovery.
+
+        The Headless Service (clusterIP: None) enables DNS resolution of
+        individual pod hostnames. Combined with the pod subdomain, each
+        worker pod becomes addressable as:
+            <job-name>-<index>.<service-name>.<namespace>.svc.cluster.local
+
+        This is used by torchrun for MASTER_ADDR resolution.
+        """
+        client = self._k8s_client
+
+        if labels is None:
+            labels = self._build_job_labels(spec)
+
+        return client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=client.V1ObjectMeta(
+                name=service_name,
+                namespace=self.namespace,
+                labels=labels,
+            ),
+            spec=client.V1ServiceSpec(
+                cluster_ip="None",
+                selector=labels,
+                # Publish not-ready addresses so pods can discover each other
+                # during initialization before they pass readiness checks
+                publish_not_ready_addresses=True,
+            ),
+        )
+
+    def _inject_distributed_env_vars(
+        self,
+        containers: list,
+        spec: JobSpec,
+        headless_service_name: str,
+    ):
+        """Inject torchrun-compatible distributed training env vars into containers.
+
+        Sets the following environment variables for each container:
+        - MASTER_ADDR: DNS name of the rank-0 pod (the first indexed pod)
+        - MASTER_PORT: Port for distributed coordination (default: 29500)
+        - WORLD_SIZE: Total number of nodes (launcher-level)
+        - LOCAL_RANK: Defaults to 0 for the launcher process
+
+        NODE_RANK and RANK are derived from JOB_COMPLETION_INDEX at container
+        startup. K8s Indexed Jobs automatically set JOB_COMPLETION_INDEX
+        (0, 1, 2, ...). We prepend exports to each container command so
+        launchers (e.g. torchrun) see consistent distributed rank vars.
+        """
+        client = self._k8s_client
+
+        master_port = str(self.config.get("master_port", 29500))
+        # Master is the pod with index 0. Its DNS name follows the pattern:
+        # <job-name>-<index>.<service-name>.<namespace>.svc.cluster.local
+        # For Indexed Jobs, the pod hostname is set to <job-name>-<index>.
+        master_addr = f"{spec.name}-0.{headless_service_name}.{self.namespace}.svc.cluster.local"
+
+        dist_env_vars = [
+            client.V1EnvVar(name="MASTER_ADDR", value=master_addr),
+            client.V1EnvVar(name="MASTER_PORT", value=master_port),
+            client.V1EnvVar(name="WORLD_SIZE", value=str(spec.num_nodes)),
+            client.V1EnvVar(name="LOCAL_RANK", value="0"),
+        ]
+
+        for container in containers:
+            if container.env is None:
+                container.env = []
+            container.env.extend(dist_env_vars)
+
+            # Prepend distributed rank exports to the container command.
+            # Container commands use ["bash", "-c", "<cmd>"] format.
+            if container.command and len(container.command) >= 3 and container.command[0] == "bash":
+                original_cmd = container.command[2]
+                container.command[2] = (
+                    "export NODE_RANK=${JOB_COMPLETION_INDEX} && "
+                    "export RANK=${JOB_COMPLETION_INDEX} && "
+                    "export LOCAL_RANK=0 && " + original_cmd
+                )
+
+    def _inject_rdma_resources(self, containers: list):
+        """Add RDMA/InfiniBand resource requests to containers for multi-node jobs.
+
+        When the cluster config has `rdma.enabled: true`, adds the RDMA shared
+        device resource (e.g., `nvidia.com/rdma_shared_device`) to GPU container
+        resource requests/limits. This enables NCCL to use IB/RoCE for
+        inter-node communication instead of falling back to TCP/Socket.
+
+        Only called for multi-node jobs. The resource name and count are
+        configurable via the cluster config:
+
+            rdma:
+              enabled: true
+              resource_name: nvidia.com/rdma_shared_device  # default
+              resource_count: 1  # default
+        """
+        rdma_config = self.config.get("rdma", {})
+        if not rdma_config.get("enabled", False):
+            return
+
+        resource_name = rdma_config.get("resource_name", "nvidia.com/rdma_shared_device")
+        resource_count = str(rdma_config.get("resource_count", 1))
+
+        injected_containers = 0
+        for container in containers:
+            if container.resources is None:
+                continue
+
+            limits = container.resources.limits or {}
+            requests = container.resources.requests or {}
+
+            # RDMA is only relevant for GPU-bearing training containers.
+            gpu_count = limits.get("nvidia.com/gpu") or requests.get("nvidia.com/gpu")
+            if gpu_count is None:
+                continue
+
+            try:
+                if int(gpu_count) <= 0:
+                    continue
+            except (TypeError, ValueError):
+                # Keep behavior permissive if a custom quantity format appears.
+                pass
+
+            limits[resource_name] = resource_count
+            requests[resource_name] = resource_count
+            container.resources.limits = limits
+            container.resources.requests = requests
+            injected_containers += 1
+
+        LOG.info(
+            f"Added RDMA resource {resource_name}={resource_count} "
+            f"to {injected_containers} GPU container(s) in multi-node job",
+        )
+
+    def _build_dns_check_init_container(self, spec: JobSpec, headless_service_name: str):
+        """Build an init container that waits for MASTER_ADDR DNS to resolve.
+
+        For multi-node jobs, DNS records for the headless service take time to
+        propagate. This init container blocks until the rank-0 pod's FQDN
+        resolves, ensuring torchrun can connect on startup.
+
+        Controlled via cluster config:
+            dns_check:
+              enabled: true           # default: true for multi-node
+              image: busybox:1.36     # default
+              timeout_seconds: 300    # default
+
+        Returns None if dns_check is disabled.
+        """
+        dns_config = self.config.get("dns_check", {})
+
+        # Default enabled for multi-node, but respect explicit false
+        if not dns_config.get("enabled", True):
+            return None
+
+        client = self._k8s_client
+        image = dns_config.get("image", "busybox:1.36")
+        timeout = dns_config.get("timeout_seconds", 300)
+
+        master_addr = f"{spec.name}-0.{headless_service_name}.{self.namespace}.svc.cluster.local"
+
+        # Shell script: retry nslookup until success or timeout
+        check_script = (
+            f"echo 'Waiting for DNS: {master_addr}' && "
+            f"TIMEOUT={timeout} && ELAPSED=0 && "
+            "while ! nslookup " + master_addr + " > /dev/null 2>&1; do "
+            "  sleep 2 && ELAPSED=$((ELAPSED+2)) && "
+            "  if [ $ELAPSED -ge $TIMEOUT ]; then "
+            f"    echo 'DNS check timed out after {timeout}s' && exit 1; "
+            "  fi; "
+            "done && "
+            f"echo 'DNS resolved: {master_addr}'"
+        )
+
+        init_container = client.V1Container(
+            name="dns-check",
+            image=image,
+            command=["sh", "-c", check_script],
+            resources=client.V1ResourceRequirements(
+                requests={"cpu": "100m", "memory": "64Mi"},
+                limits={"cpu": "100m", "memory": "64Mi"},
+            ),
+        )
+
+        LOG.info(f"Added DNS check init container (image={image}, timeout={timeout}s)")
+        return init_container
+
+    def _build_pod_anti_affinity(self, spec: JobSpec):
+        """Build pod anti-affinity to spread multi-node pods across different nodes.
+
+        Uses preferredDuringSchedulingIgnoredDuringExecution (soft) so jobs
+        still schedule even if topology constraints can't be fully satisfied.
+
+        Controlled via cluster config:
+            scheduling:
+              spread_across_nodes: true                    # default: true for multi-node
+              topology_key: kubernetes.io/hostname          # default
+
+        Returns None if spread_across_nodes is disabled.
+        """
+        scheduling_config = self.config.get("scheduling", {})
+
+        if not scheduling_config.get("spread_across_nodes", True):
+            return None
+
+        client = self._k8s_client
+        topology_key = scheduling_config.get("topology_key", "kubernetes.io/hostname")
+
+        # Match pods from this job using the same labels applied to the Job/Pods.
+        labels = self._build_job_labels(spec)
+
+        pod_anti_affinity = client.V1PodAntiAffinity(
+            preferred_during_scheduling_ignored_during_execution=[
+                client.V1WeightedPodAffinityTerm(
+                    weight=100,
+                    pod_affinity_term=client.V1PodAffinityTerm(
+                        label_selector=client.V1LabelSelector(
+                            match_labels=labels,
+                        ),
+                        topology_key=topology_key,
+                    ),
+                ),
+            ],
+        )
+
+        affinity = client.V1Affinity(pod_anti_affinity=pod_anti_affinity)
+        LOG.info(f"Added pod anti-affinity (topology_key={topology_key}) for multi-node scheduling")
+        return affinity
 
     def _build_container(self, spec: ContainerSpec):
         """Build Kubernetes container spec."""
@@ -245,6 +607,10 @@ class KubernetesBackend(ComputeBackend):
         for port in spec.ports:
             ports.append(client.V1ContainerPort(container_port=port))
 
+        # Determine image pull policy from config (default: IfNotPresent)
+        # For locally-loaded images (via ctr import), use "Never"
+        image_pull_policy = self.config.get("image_pull_policy", "IfNotPresent")
+
         container = client.V1Container(
             name=spec.name,
             image=self._resolve_image(spec.image),
@@ -253,6 +619,7 @@ class KubernetesBackend(ComputeBackend):
             resources=resources,
             ports=ports if ports else None,
             working_dir=spec.working_dir,
+            image_pull_policy=image_pull_policy,
         )
 
         return container
@@ -436,9 +803,7 @@ class KubernetesBackend(ComputeBackend):
             LOG.warning(f"Error getting job status: {e}")
             return JobStatus.UNKNOWN
 
-    def wait_for_completion(
-        self, handle: JobHandle, timeout: Optional[int] = None
-    ) -> JobStatus:
+    def wait_for_completion(self, handle: JobHandle, timeout: Optional[int] = None) -> JobStatus:
         """Wait for job to complete using Kubernetes watch."""
         namespace = handle.metadata.get("namespace", self.namespace)
 
@@ -530,8 +895,21 @@ class KubernetesBackend(ComputeBackend):
             LOG.warning(f"Failed to get logs: {e}")
 
     def cleanup(self, handle: JobHandle) -> None:
-        """Clean up job resources."""
+        """Clean up job resources including headless services for multi-node jobs."""
         self.cancel_job(handle)
+
+        # Clean up headless service if this was a multi-node job
+        headless_service = handle.metadata.get("headless_service")
+        if headless_service:
+            namespace = handle.metadata.get("namespace", self.namespace)
+            try:
+                self.core_v1.delete_namespaced_service(
+                    name=headless_service,
+                    namespace=namespace,
+                )
+                LOG.info(f"Cleaned up headless service: {headless_service}")
+            except self._k8s_client.ApiException:
+                pass  # Service may already be deleted
 
     def health_check(self) -> bool:
         """Check Kubernetes API connectivity."""

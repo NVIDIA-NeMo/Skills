@@ -1,0 +1,108 @@
+# DaemonSet: Import nemo-rl.tar into containerd on all GPU nodes
+#
+# Prerequisites:
+#   - /raid/nemo-rl.tar must exist on every GPU node
+#     (either from Kaniko build or manual copy)
+#
+# Usage:
+#   kubectl apply -f scripts/k8s-tests/image-build/import-image.yaml
+#   kubectl logs -l app=nemo-skills,purpose=image-import -n default
+#
+# Pass criteria:
+#   - All DaemonSet pods succeed (no restarts)
+#   - Logs contain "unpacking" or "done" for the image
+#
+# Cleanup:
+#   kubectl delete daemonset import-nemo-rl -n default
+#
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: import-nemo-rl
+  labels:
+    app: nemo-skills
+    purpose: image-import
+spec:
+  selector:
+    matchLabels:
+      app: nemo-skills
+      purpose: image-import
+  template:
+    metadata:
+      labels:
+        app: nemo-skills
+        purpose: image-import
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      hostPID: true
+      containers:
+      - name: import
+        image: alpine:3.19
+        securityContext:
+          privileged: true
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "=== Importing nemo-rl image on $(hostname) ==="
+
+          # Install containerd client tools
+          apk add --no-cache containerd-ctr 2>/dev/null || apk add --no-cache containerd 2>/dev/null || true
+
+          # Check tarball exists
+          if [ ! -f /raid/nemo-rl.tar ]; then
+            echo "ERROR: /raid/nemo-rl.tar not found on this node"
+            exit 1
+          fi
+          ls -lh /raid/nemo-rl.tar
+
+          # Import into containerd's k8s.io namespace
+          # Try host ctr first, then container ctr
+          CTR=""
+          for path in /host-bin/ctr /usr/bin/ctr /usr/local/bin/ctr; do
+            if [ -x "$path" ]; then
+              CTR="$path"
+              break
+            fi
+          done
+
+          if [ -z "$CTR" ]; then
+            echo "ctr not found, trying nsenter to host"
+            CTR="nsenter -t 1 -m -u -i -n -p -- ctr"
+          fi
+
+          echo "Using: $CTR"
+          $CTR --address /run/containerd/containerd.sock \
+            -n k8s.io images import /raid/nemo-rl.tar
+
+          echo "=== Import complete on $(hostname) ==="
+          $CTR --address /run/containerd/containerd.sock \
+            -n k8s.io images list | grep nemo | head -5
+
+          # Keep running briefly so logs are capturable
+          sleep 10
+        volumeMounts:
+        - name: raid
+          mountPath: /raid
+          readOnly: true
+        - name: containerd-sock
+          mountPath: /run/containerd
+        - name: host-bin
+          mountPath: /host-bin
+          readOnly: true
+      volumes:
+      - name: raid
+        hostPath:
+          path: /raid
+      - name: containerd-sock
+        hostPath:
+          path: /run/containerd
+      - name: host-bin
+        hostPath:
+          path: /usr/local/bin

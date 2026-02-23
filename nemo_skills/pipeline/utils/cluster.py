@@ -40,13 +40,42 @@ _logged_required_env_vars = set()
 _logged_optional_env_vars = set()
 
 
+def _parse_simple_duration_timeout(value: str) -> Optional[timedelta]:
+    """Parse simple duration strings (e.g., ``6h``, ``30m``, ``45s``, ``2d``)."""
+    if not value:
+        return None
+
+    units = {
+        "d": "days",
+        "h": "hours",
+        "m": "minutes",
+        "s": "seconds",
+    }
+    suffix = value[-1]
+    amount = value[:-1]
+    if suffix in units and amount.isdigit():
+        return timedelta(**{units[suffix]: int(amount)})
+    return None
+
+
 def _parse_slurm_timeout(value: str) -> timedelta:
     """
-    Parse a slurm timeout string into a timedelta object.
+    Parse a timeout string into a timedelta object.
+
+    Supports both:
+    - Slurm format: "minutes", "minutes:seconds", "hours:minutes:seconds",
+      "days-hours", "days-hours:minutes", "days-hours:minutes:seconds"
+    - Simple duration format used in K8s configs: "6h", "30m", "45s", "2d"
+
     Time format for SLURM: "minutes", "minutes:seconds", "hours:minutes:seconds",
     "days-hours", "days-hours:minutes" and "days-hours:minutes:seconds"
     https://slurm.schedmd.com/sbatch.html#OPT_time
     """
+    value = value.strip().lower()
+    simple_timeout = _parse_simple_duration_timeout(value)
+    if simple_timeout is not None:
+        return simple_timeout
+
     days, hours, minutes, seconds = 0, 0, 0, 0
     days_in_value = "-" in value
     if days_in_value:

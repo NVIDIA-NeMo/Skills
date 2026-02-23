@@ -167,9 +167,7 @@ class SlurmBackend(ComputeBackend):
         LOG.warning("SlurmBackend.get_status() is not fully implemented")
         return JobStatus.RUNNING
 
-    def wait_for_completion(
-        self, handle: JobHandle, timeout: Optional[int] = None
-    ) -> JobStatus:
+    def wait_for_completion(self, handle: JobHandle, timeout: Optional[int] = None) -> JobStatus:
         """Wait for Slurm job to complete.
 
         Note: This requires integration with NeMo-Run's experiment tracking.
@@ -232,10 +230,13 @@ class SlurmBackend(ComputeBackend):
                 result = subprocess.run(
                     [
                         "ssh",
-                        "-o", "ConnectTimeout=5",
-                        "-o", "BatchMode=yes",
+                        "-o",
+                        "ConnectTimeout=5",
+                        "-o",
+                        "BatchMode=yes",
                         f"{ssh_tunnel.get('user')}@{ssh_tunnel.get('host')}",
-                        "echo", "ok",
+                        "echo",
+                        "ok",
                     ],
                     capture_output=True,
                     timeout=10,

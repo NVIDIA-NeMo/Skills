@@ -56,7 +56,7 @@ class ResourceSpec:
     gpus: int = 0
     cpus: int = 1
     memory_request_gb: Optional[float] = None  # None = auto-calculate based on GPUs
-    memory_limit_gb: Optional[float] = None    # None = no limit (can use available memory)
+    memory_limit_gb: Optional[float] = None  # None = no limit (can use available memory)
 
     def __post_init__(self):
         if self.gpus < 0:
@@ -123,9 +123,15 @@ class JobSpec:
     Multi-container jobs run in the same allocation and can communicate
     via localhost.
 
+    For multi-node distributed training (num_nodes > 1), the backend creates
+    multiple pods that communicate via a Headless Service. Each pod gets
+    torchrun-compatible environment variables (MASTER_ADDR, MASTER_PORT,
+    WORLD_SIZE, RANK, LOCAL_RANK) for distributed training coordination.
+
     Attributes:
         name: Unique name for the job.
         containers: List of containers to run (single = simple job, multiple = colocated).
+        num_nodes: Number of nodes (pods) for distributed training (default: 1).
         timeout_seconds: Maximum runtime in seconds (None = no limit).
         dependencies: Job IDs that must complete before this job starts.
         labels: Key-value labels for the job.
@@ -135,6 +141,7 @@ class JobSpec:
 
     name: str
     containers: List[ContainerSpec]
+    num_nodes: int = 1
     timeout_seconds: Optional[int] = None
     dependencies: Optional[List[str]] = None
     labels: Optional[Dict[str, str]] = None
@@ -146,8 +153,15 @@ class JobSpec:
             raise ValueError("Job name cannot be empty")
         if not self.containers:
             raise ValueError("Job must have at least one container")
+        if self.num_nodes < 1:
+            raise ValueError(f"num_nodes must be at least 1, got {self.num_nodes}")
         if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise ValueError(f"timeout_seconds must be positive, got {self.timeout_seconds}")
+
+    @property
+    def is_multi_node(self) -> bool:
+        """Check if this is a multi-node (distributed) job."""
+        return self.num_nodes > 1
 
     @property
     def is_multi_container(self) -> bool:
@@ -229,9 +243,7 @@ class ComputeBackend(ABC):
         pass
 
     @abstractmethod
-    def wait_for_completion(
-        self, handle: JobHandle, timeout: Optional[int] = None
-    ) -> JobStatus:
+    def wait_for_completion(self, handle: JobHandle, timeout: Optional[int] = None) -> JobStatus:
         """Block until the job completes or timeout is reached.
 
         Args:

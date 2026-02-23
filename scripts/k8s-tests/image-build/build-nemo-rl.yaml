@@ -1,0 +1,121 @@
+# Kaniko Job: Build nemo-rl container image and save as tarball to /raid
+#
+# The Dockerfile.nemo-rl uses multi-stage builds with git ADD and --mount=type=ssh
+# which Kaniko doesn't fully support. Instead, we use a two-stage approach:
+# 1. Init container clones the repos and prepares the build context
+# 2. Kaniko builds from a simplified Dockerfile
+#
+# For complex Dockerfiles, consider using docker buildx on a node with docker.
+# This manifest uses a simplified inline build that installs nemo-skills into
+# the NeMo-RL base image.
+#
+# Usage:
+#   kubectl apply -f scripts/k8s-tests/image-build/build-nemo-rl.yaml
+#   kubectl logs -f job/build-nemo-rl -n default
+#
+# Output: /raid/nemo-rl.tar on the GPU node where the job runs
+#
+# Pass criteria:
+#   - Job status: succeeded
+#   - /raid/nemo-rl.tar exists and is > 1GB
+#
+# Reproducibility:
+#   - This manifest is for REMOTE builds from GitHub (used with --remote flag).
+#   - Default mode in build-and-load.sh is LOCAL context (copies working tree).
+#   - For remote mode: use --commit <sha> in build-and-load.sh to pin revision.
+#
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-nemo-rl
+  labels:
+    app: nemo-skills
+    purpose: image-build
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 7200  # 2 hours max
+  template:
+    metadata:
+      labels:
+        app: nemo-skills
+        purpose: image-build
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      initContainers:
+      # Prepare build context: clone repos + create simplified Dockerfile
+      - name: prepare-context
+        image: alpine/git:latest
+        env:
+        - name: GIT_REF
+          value: refs/heads/main
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Fetching NeMo-Skills at ref: ${GIT_REF}"
+          git init /context/Skills
+          cd /context/Skills
+          git remote add origin https://github.com/NVIDIA-NeMo/Skills.git
+          git fetch --depth=1 origin "${GIT_REF}"
+          git checkout --detach FETCH_HEAD
+          echo "Checked out commit: $(git rev-parse HEAD)"
+
+          echo "Creating build Dockerfile..."
+          cat > /context/Dockerfile << 'DOCKERFILE'
+          ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.03-py3
+          FROM ${BASE_IMAGE}
+
+          # NVIDIA base images pin package versions via pip constraints.
+          # Clear all constraint mechanisms so pip can resolve nemo-skills deps freely.
+          RUN rm -f /etc/pip/constraint*.txt 2>/dev/null; \
+              echo '' > /etc/pip/constraint.txt 2>/dev/null || true
+          ENV PIP_CONSTRAINT=""
+
+          # Install NeMo-Skills
+          COPY Skills/ /opt/NeMo-Skills/
+          WORKDIR /opt/NeMo-Skills
+          RUN pip install --no-cache-dir -e .
+
+          # Install NeMo-RL
+          RUN pip install --no-cache-dir nemo-run
+
+          # Verify
+          RUN python -c "from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend; print('KubernetesBackend: OK')"
+          RUN python -c "import nemo_skills; print(f'nemo_skills {nemo_skills.__version__}')"
+          DOCKERFILE
+
+          echo "Context ready:"
+          ls -la /context/
+        volumeMounts:
+        - name: context
+          mountPath: /context
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - --dockerfile=/workspace/Dockerfile
+        - --context=/workspace
+        - --no-push
+        - --tarPath=/output/nemo-rl.tar
+        - --cache=false
+        - --log-format=text
+        - --destination=nemo-skills/nemo-rl:latest
+        volumeMounts:
+        - name: context
+          mountPath: /workspace
+        - name: raid
+          mountPath: /output
+      volumes:
+      - name: context
+        emptyDir: {}
+      - name: raid
+        hostPath:
+          path: /raid
+          type: DirectoryOrCreate

@@ -97,7 +97,6 @@ from typing import Dict, List, Optional
 
 from nemo_skills.pipeline.backends.base import (
     ContainerSpec,
-    JobHandle,
     JobSpec,
     JobStatus,
     ResourceSpec,

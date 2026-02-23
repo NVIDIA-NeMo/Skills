@@ -23,7 +23,7 @@ import subprocess
 import threading
 import time
 import uuid
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from nemo_skills.pipeline.backends.base import (
     ComputeBackend,
@@ -195,9 +195,7 @@ class LocalBackend(ComputeBackend):
             return JobStatus.UNKNOWN
         return job.status
 
-    def wait_for_completion(
-        self, handle: JobHandle, timeout: Optional[int] = None
-    ) -> JobStatus:
+    def wait_for_completion(self, handle: JobHandle, timeout: Optional[int] = None) -> JobStatus:
         """Wait for job to complete."""
         job = self._jobs.get(handle.job_id)
         if job is None:

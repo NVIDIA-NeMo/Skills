@@ -60,6 +60,7 @@ optional-dependencies = {dev = { file = ["requirements/common-tests.txt", "requi
 [tool.pytest.ini_options]
 markers = [
     "gpu: tests that require a GPU to run",
+    "integration: tests that require actual backend availability",
 ]
 addopts = "--ignore=tests/slurm-tests -W ignore::DeprecationWarning -W ignore::PendingDeprecationWarning"
 

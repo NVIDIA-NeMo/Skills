@@ -2,8 +2,8 @@
 
 This document tracks the implementation status, known limitations, and open issues for the Kubernetes backend port of NeMo-Skills.
 
-**Last Updated**: 2025-02-07
-**Status**: Beta - Single-node inference works; multi-node training not yet supported
+**Last Updated**: 2026-02-18
+**Status**: Beta - Single-node and multi-node multi-GPU SFT validated on H100 cluster
 
 ---
 
@@ -25,6 +25,8 @@ This document tracks the implementation status, known limitations, and open issu
 | Timeout handling | ✅ Complete | `activeDeadlineSeconds` |
 | Memory auto-calculation | ✅ Complete | 16GB + 32GB per GPU |
 | Job name sanitization | ✅ Complete | K8s-compliant names |
+| RDMA/IB resource requests | ✅ Complete | Opt-in via `rdma` config for multi-node jobs |
+| Multi-node RBAC preflight | ✅ Complete | Fast failure if `services` RBAC is missing |
 
 ### Degraded Functionality
 
@@ -38,7 +40,7 @@ This document tracks the implementation status, known limitations, and open issu
 
 | Feature | Slurm Support | K8s Status | Severity | Workaround |
 |---------|---------------|------------|----------|------------|
-| Multi-node training | `--num_nodes=N` | ❌ Not implemented | **High** | Need MPI Operator or Kubeflow Training Operator |
+| Multi-node training | `--num_nodes=N` | ✅ Backend + cluster validated (Indexed Job + Headless Service) | N/A | Pipeline integration (`ns nemo_rl sft`) pending |
 | Code packaging | NeMo-Run auto-packages | ❌ Not implemented | **Medium** | Bake code into images or mount via PVC |
 | SSH tunneling | `--create_tunnel` | ❌ Not implemented | **Medium** | Manual `kubectl port-forward` |
 | Log file paths | Writes to `{log_dir}/*.log` | ❌ Different | **Low** | Use `kubectl logs` instead |
@@ -113,8 +115,15 @@ Use this checklist when testing on a K8s cluster:
 - [ ] Large model requiring 8 GPUs on single node
 - [ ] Sequential job chain with dependencies
 
+### Multi-Node Training (NEW)
+- [x] Single-node multi-GPU SFT via Pipeline+KubernetesBackend (2x H100, GPT-2 124M, NCCL P2P/CUMEM)
+- [x] Multi-node multi-GPU SFT via Pipeline+KubernetesBackend (2 nodes x 2 GPUs, Indexed Job + Headless Service)
+- [x] NCCL P2P/CUMEM intra-node transport (NVLink-backed on H100)
+- [x] NCCL NET/Socket inter-node transport (IB not exposed in container — TCP fallback works)
+- [x] Multi-node ring+tree topology verified (nRanks=4, nNodes=2)
+- [ ] Pipeline integration (`ns nemo_rl sft --num_nodes=2` on K8s)
+
 ### Known to Fail
-- [ ] Multi-node training (`--num_nodes > 1`)
 - [ ] `--create_tunnel` for remote server access
 - [ ] External experiment dependencies (cross-pipeline)
 - [ ] Code packaging (`--reuse_code` patterns)

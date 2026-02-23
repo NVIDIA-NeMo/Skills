@@ -55,6 +55,11 @@ kubectl create secret docker-registry nvcr-secret \
 # Edit storage.yaml - replace REPLACE_WITH_YOUR_STORAGE_CLASS
 # Then apply
 kubectl apply -f storage.yaml
+
+# Verify RBAC (required for multi-node headless services)
+kubectl auth can-i create jobs --as=system:serviceaccount:nemo-skills:nemo-skills-sa -n nemo-skills
+kubectl auth can-i create services --as=system:serviceaccount:nemo-skills:nemo-skills-sa -n nemo-skills
+kubectl auth can-i delete services --as=system:serviceaccount:nemo-skills:nemo-skills-sa -n nemo-skills
 ```
 
 ## Step 2: Convert Cluster Configuration

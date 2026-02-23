@@ -18,7 +18,10 @@ import logging
 import re
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from nemo_skills.pipeline.backends.base import JobSpec
 
 import nemo_run as run
 
@@ -238,17 +241,17 @@ def _sanitize_k8s_name(name: str, max_length: int = 63) -> tuple[str, bool]:
     name = name.lower()
 
     # Replace invalid characters with hyphens (underscores, slashes, dots, etc.)
-    name = re.sub(r'[^a-z0-9-]', '-', name)
+    name = re.sub(r"[^a-z0-9-]", "-", name)
 
     # Collapse multiple consecutive hyphens into one
-    name = re.sub(r'-+', '-', name)
+    name = re.sub(r"-+", "-", name)
 
     # Strip leading/trailing hyphens
-    name = name.strip('-')
+    name = name.strip("-")
 
     # Truncate to max length, but don't end with a hyphen
     if len(name) > max_length:
-        name = name[:max_length].rstrip('-')
+        name = name[:max_length].rstrip("-")
 
     # Handle empty result
     if not name:
@@ -335,7 +338,7 @@ class HardwareConfig:
     num_nodes: Optional[int] = None
     num_tasks: Optional[int] = 1
     memory_request_gb: Optional[float] = None  # None = auto-calculate based on GPUs
-    memory_limit_gb: Optional[float] = None    # None = no limit
+    memory_limit_gb: Optional[float] = None  # None = no limit
     sbatch_kwargs: Optional[dict] = None
 
 
@@ -441,13 +444,14 @@ class Pipeline:
             Unique job name with timestamp suffix, truncated if necessary.
         """
         import time
+
         suffix = f"-{int(time.time()) % 100000:05d}"
         suffix_len = len(suffix)  # 6 characters
 
         # Truncate base name to leave room for suffix
         max_base_len = max_length - suffix_len
         if len(base_name) > max_base_len:
-            base_name = base_name[:max_base_len].rstrip('-')
+            base_name = base_name[:max_base_len].rstrip("-")
 
         return f"{base_name}{suffix}"
 
@@ -625,10 +629,7 @@ class Pipeline:
         """
         # Lazy import to avoid circular dependencies
         from nemo_skills.pipeline.backends import (
-            ContainerSpec,
-            JobSpec,
             JobStatus,
-            ResourceSpec,
             get_backend,
         )
 
@@ -699,9 +700,7 @@ class Pipeline:
                         raise ValueError(f"Job dependency must have a 'name' field: {dep}")
                     if dep_name in job_name_to_handle:
                         dependency_handles.append(job_name_to_handle[dep_name])
-                        LOG.info(
-                            f"Job '{original_job_name}' depends on internal job '{dep_name}'"
-                        )
+                        LOG.info(f"Job '{original_job_name}' depends on internal job '{dep_name}'")
                     else:
                         raise ValueError(
                             f"Job '{original_job_name}' depends on job '{dep_name}' which hasn't been processed yet. "
@@ -712,8 +711,12 @@ class Pipeline:
                     dependency_handles.append(dep)
                     LOG.info(f"Job '{original_job_name}' depends on handle (object)")
 
-            # Convert handles to job IDs for K8s
-            dependency_job_ids = [h.job_id for h in dependency_handles] if dependency_handles else None
+            # Convert handles to job IDs for K8s (handles may be None in dry-run)
+            dependency_job_ids = (
+                [h.job_id for h in dependency_handles if h is not None] if dependency_handles else None
+            )
+            if dependency_job_ids is not None and len(dependency_job_ids) == 0:
+                dependency_job_ids = None
 
             # Convert CommandGroups to JobSpec
             k8s_job_spec = self._convert_groups_to_job_spec(
@@ -726,6 +729,8 @@ class Pipeline:
 
             if dry_run:
                 self._print_dry_run_job(job_name, k8s_job_spec)
+                # Track job name so dependency resolution works in dry-run mode
+                job_name_to_handle[original_job_name] = None
                 continue
 
             # Submit the job
@@ -755,11 +760,15 @@ class Pipeline:
         groups: List[CommandGroup],
         log_dir: Optional[str] = None,
         dependencies: Optional[List[str]] = None,
-    ) -> "JobSpec":
+    ) -> JobSpec:
         """Convert CommandGroups to a Kubernetes JobSpec.
 
         All commands from all groups are converted to containers in a single
         multi-container Pod (Kubernetes equivalent of Slurm heterogeneous jobs).
+
+        For multi-node jobs (num_nodes > 1 in HardwareConfig), the JobSpec will
+        have num_nodes > 1 which tells the KubernetesBackend to create an
+        Indexed Job with a Headless Service for distributed training.
 
         Args:
             job_name: Name for the job
@@ -774,7 +783,7 @@ class Pipeline:
 
         containers = []
         node_selector = None
-        total_timeout = None
+        num_nodes = 1
 
         # Set backend on all scripts before processing
         for group in groups:
@@ -790,6 +799,10 @@ class Pipeline:
                 if group.hardware.partition in resource_pools:
                     pool_config = resource_pools[group.hardware.partition]
                     node_selector = pool_config.get("node_selector")
+
+            # Track the maximum num_nodes across groups
+            if group.hardware and group.hardware.num_nodes and group.hardware.num_nodes > num_nodes:
+                num_nodes = group.hardware.num_nodes
 
             for command in group.commands:
                 # Prepare the command (evaluates lazy commands)
@@ -816,7 +829,7 @@ class Pipeline:
                     gpus=hardware.num_gpus or 0,
                     cpus=hardware.num_tasks or 1,
                     memory_request_gb=hardware.memory_request_gb,  # None = auto-calculate
-                    memory_limit_gb=hardware.memory_limit_gb,      # None = no limit
+                    memory_limit_gb=hardware.memory_limit_gb,  # None = no limit
                 )
 
                 # Build environment variables
@@ -856,6 +869,7 @@ class Pipeline:
         return JobSpec(
             name=job_name,
             containers=containers,
+            num_nodes=num_nodes,
             timeout_seconds=timeout_seconds,
             dependencies=dependencies,
             labels=labels,
@@ -875,16 +889,16 @@ class Pipeline:
             return int(timeout_str)
 
         # Hours format (e.g., '6h')
-        if timeout_str.endswith('h'):
+        if timeout_str.endswith("h"):
             return int(timeout_str[:-1]) * 3600
 
         # Minutes format (e.g., '30m')
-        if timeout_str.endswith('m'):
+        if timeout_str.endswith("m"):
             return int(timeout_str[:-1]) * 60
 
         # HH:MM:SS format
-        if ':' in timeout_str:
-            parts = timeout_str.split(':')
+        if ":" in timeout_str:
+            parts = timeout_str.split(":")
             if len(parts) == 3:
                 hours, minutes, seconds = map(int, parts)
                 return hours * 3600 + minutes * 60 + seconds
@@ -895,11 +909,11 @@ class Pipeline:
         # Default
         return 6 * 3600
 
-    def _print_dry_run_job(self, job_name: str, spec: "JobSpec"):
+    def _print_dry_run_job(self, job_name: str, spec: JobSpec):
         """Print job details for dry run."""
-        LOG.info(f"\n{'='*60}")
+        LOG.info(f"\n{'=' * 60}")
         LOG.info(f"Job: {job_name}")
-        LOG.info(f"{'='*60}")
+        LOG.info(f"{'=' * 60}")
         LOG.info(f"Containers: {len(spec.containers)}")
         for container in spec.containers:
             LOG.info(f"  - {container.name}")

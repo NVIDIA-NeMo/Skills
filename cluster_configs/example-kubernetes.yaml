@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -90,7 +90,38 @@ env_vars:
   - NCCL_DEBUG=INFO
   # - CUDA_VISIBLE_DEVICES=all
 
+# RDMA/InfiniBand for multi-node GPU jobs (opt-in)
+# When enabled, multi-node jobs request RDMA shared devices so NCCL
+# can use IB/RoCE instead of falling back to TCP/Socket.
+# Requires NVIDIA Network Operator installed on the cluster.
+# rdma:
+#   enabled: true
+#   resource_name: nvidia.com/rdma_shared_device  # default
+#   resource_count: 1  # default (number of RDMA devices per container)
+
+# Pod scheduling for multi-node jobs
+# Spreads pods across different nodes to ensure multi-node training
+# uses distinct physical nodes (not all pods on the same node).
+# scheduling:
+#   spread_across_nodes: true                    # default: true for multi-node
+#   topology_key: kubernetes.io/hostname          # default (spread per node)
+
+# DNS readiness check for multi-node jobs (enabled by default for multi-node)
+# An init container waits for MASTER_ADDR DNS to resolve before training starts.
+# dns_check:
+#   enabled: true                # default: true for multi-node jobs
+#   image: busybox:1.36          # default (lightweight image for nslookup)
+#   timeout_seconds: 300         # default (5 minutes)
+
+# RBAC preflight checks for multi-node jobs (enabled by default)
+# Verifies create/delete/get/list permissions on Services before submit.
+# rbac_preflight: true
+
 # Fallback backend if Kubernetes is unavailable
+# Image pull policy (default: IfNotPresent)
+# Set to "Never" when using locally-loaded images via ctr import
+# image_pull_policy: Never
+
 # Useful for development/testing when K8s cluster is not accessible
 # fallback_executor: local
 
@@ -118,6 +149,9 @@ env_vars:
 #    - apiGroups: [""]
 #      resources: ["pods", "pods/log"]
 #      verbs: ["get", "list", "watch"]
+#    - apiGroups: [""]
+#      resources: ["services"]
+#      verbs: ["create", "delete", "get", "list"]  # Required for multi-node headless services
 #    EOF
 #
 # 4. Bind the role to the service account:
