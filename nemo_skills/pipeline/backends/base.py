@@ -42,20 +42,43 @@ class ResourceSpec:
     Attributes:
         gpus: Number of GPUs required (default: 0).
         cpus: Number of CPU cores required (default: 1).
-        memory_gb: Memory in gigabytes (default: 4.0).
+        memory_request_gb: Memory request in GB for scheduling. None = auto-calculate.
+        memory_limit_gb: Memory limit in GB. None = no limit (pod can use available memory).
+
+    Memory Behavior:
+        - request: Tells K8s how much to reserve for scheduling (ensures node has enough)
+        - limit: Caps how much the pod can use (None = no cap, can use all available)
+
+        By default, we auto-calculate a reasonable request based on GPU count
+        but don't set a limit, allowing GPU workloads to burst when memory is available.
     """
 
     gpus: int = 0
     cpus: int = 1
-    memory_gb: float = 4.0
+    memory_request_gb: Optional[float] = None  # None = auto-calculate based on GPUs
+    memory_limit_gb: Optional[float] = None    # None = no limit (can use available memory)
 
     def __post_init__(self):
         if self.gpus < 0:
             raise ValueError(f"gpus must be non-negative, got {self.gpus}")
         if self.cpus < 1:
             raise ValueError(f"cpus must be at least 1, got {self.cpus}")
-        if self.memory_gb <= 0:
-            raise ValueError(f"memory_gb must be positive, got {self.memory_gb}")
+        if self.memory_request_gb is not None and self.memory_request_gb <= 0:
+            raise ValueError(f"memory_request_gb must be positive, got {self.memory_request_gb}")
+        if self.memory_limit_gb is not None and self.memory_limit_gb <= 0:
+            raise ValueError(f"memory_limit_gb must be positive, got {self.memory_limit_gb}")
+
+    def get_memory_request_gb(self) -> float:
+        """Get memory request, auto-calculating if not specified.
+
+        Auto-calculation: 16GB base + 32GB per GPU.
+        This provides a reasonable reservation for scheduling while
+        allowing pods to use more if available (since we don't set limits by default).
+        """
+        if self.memory_request_gb is not None:
+            return self.memory_request_gb
+        # Auto-calculate: 16GB base + 32GB per GPU
+        return 16.0 + (self.gpus * 32.0)
 
 
 @dataclass

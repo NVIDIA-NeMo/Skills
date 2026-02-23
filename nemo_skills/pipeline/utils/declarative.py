@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
@@ -210,6 +211,53 @@ Advanced Example (Multiple jobs with dependencies and heterogeneous components):
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def _sanitize_k8s_name(name: str, max_length: int = 63) -> tuple[str, bool]:
+    """Sanitize a name to be Kubernetes-compliant.
+
+    Kubernetes naming requirements:
+    - Must be lowercase
+    - Only alphanumeric characters and hyphens
+    - Must start and end with alphanumeric character
+    - Maximum 63 characters
+
+    Note: This only handles format conversion. Uniqueness (to prevent job name
+    collisions) is handled by the K8s backend, similar to how local backend
+    adds UUID suffixes.
+
+    Args:
+        name: The original name to sanitize.
+        max_length: Maximum length (default 63 for K8s).
+
+    Returns:
+        Tuple of (sanitized_name, was_modified) where was_modified is True
+        if the name was changed during sanitization.
+    """
+    original = name
+
+    # Convert to lowercase
+    name = name.lower()
+
+    # Replace invalid characters with hyphens (underscores, slashes, dots, etc.)
+    name = re.sub(r'[^a-z0-9-]', '-', name)
+
+    # Collapse multiple consecutive hyphens into one
+    name = re.sub(r'-+', '-', name)
+
+    # Strip leading/trailing hyphens
+    name = name.strip('-')
+
+    # Truncate to max length, but don't end with a hyphen
+    if len(name) > max_length:
+        name = name[:max_length].rstrip('-')
+
+    # Handle empty result
+    if not name:
+        name = "job"
+
+    was_modified = name != original.lower() or original != original.lower()
+    return name, was_modified
+
+
 @dataclass
 class Command:
     """Declarative command for running tasks in containers using run.Script objects.
@@ -264,12 +312,30 @@ class Command:
 
 @dataclass
 class HardwareConfig:
-    """Hardware configuration for a group of tasks."""
+    """Hardware configuration for a group of tasks.
+
+    Attributes:
+        partition: Slurm partition or K8s resource pool name.
+        num_gpus: Number of GPUs per node.
+        num_nodes: Number of nodes for distributed jobs.
+        num_tasks: Number of tasks (processes) per node.
+        memory_request_gb: Memory request in GB for K8s scheduling. None = auto-calculate.
+        memory_limit_gb: Memory limit in GB. None = no limit (pod can burst).
+        sbatch_kwargs: Additional Slurm sbatch arguments.
+
+    Memory Behavior (Kubernetes):
+        - memory_request_gb: Reserved for scheduling (default: 16GB + 32GB per GPU)
+        - memory_limit_gb: Max usage cap (default: None = no limit, can use available)
+
+        This ensures proper scheduling while allowing GPU workloads to burst.
+    """
 
     partition: Optional[str] = None
     num_gpus: Optional[int] = None
     num_nodes: Optional[int] = None
     num_tasks: Optional[int] = 1
+    memory_request_gb: Optional[float] = None  # None = auto-calculate based on GPUs
+    memory_limit_gb: Optional[float] = None    # None = no limit
     sbatch_kwargs: Optional[dict] = None
 
 
@@ -356,6 +422,35 @@ class Pipeline:
             if not is_mounted_filepath(self.cluster_config, env_vars["HF_HOME"]):
                 raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
 
+    def _make_unique_job_name(self, base_name: str, max_length: int = 63) -> str:
+        """Generate a unique job name by adding a timestamp suffix.
+
+        This ensures job names are unique across re-runs, which is required for
+        Kubernetes (job names must be unique in namespace) and useful for Slurm
+        (makes it easier to distinguish job runs in logs/monitoring).
+
+        The suffix format is -XXXXX (6 chars: hyphen + 5 digits from timestamp),
+        giving uniqueness within ~27 hours which is sufficient for typical job
+        re-run scenarios.
+
+        Args:
+            base_name: The original job name (should already be sanitized for K8s).
+            max_length: Maximum total length (default 63 for K8s compatibility).
+
+        Returns:
+            Unique job name with timestamp suffix, truncated if necessary.
+        """
+        import time
+        suffix = f"-{int(time.time()) % 100000:05d}"
+        suffix_len = len(suffix)  # 6 characters
+
+        # Truncate base name to leave room for suffix
+        max_base_len = max_length - suffix_len
+        if len(base_name) > max_base_len:
+            base_name = base_name[:max_base_len].rstrip('-')
+
+        return f"{base_name}{suffix}"
+
     def run(self, dry_run: bool = False, log_dir: Optional[str] = None, _reuse_exp=None, sequential: bool = False):
         """Execute the pipeline on the appropriate backend.
 
@@ -390,7 +485,10 @@ class Pipeline:
         with get_exp(self.name, self.cluster_config, _reuse_exp) as exp:
             # Process each job in order
             for job_spec in self.jobs:
-                job_name = job_spec["name"]  # Already validated in _validate()
+                original_job_name = job_spec["name"]  # Already validated in _validate()
+                # Generate unique name for submission (consistent with K8s pathway)
+                job_name = self._make_unique_job_name(original_job_name)
+                LOG.info(f"Job '{original_job_name}' will be submitted as '{job_name}'")
 
                 # Separate internal and external dependencies from the start
                 # - Internal deps (task handles from current experiment) go to exp.add()
@@ -492,9 +590,9 @@ class Pipeline:
                 else:
                     raise ValueError(f"Job spec must have either 'group' or 'groups': {job_spec}")
 
-                # Track task handle for this job
-                job_name_to_handle[job_name] = task_handle
-                LOG.info(f"Added job '{job_name}' with task_handle={task_handle}")
+                # Track task handle by ORIGINAL name for dependency lookups
+                job_name_to_handle[original_job_name] = task_handle
+                LOG.info(f"Added job '{original_job_name}' (as '{job_name}') with task_handle={task_handle}")
 
             # Only run if not using existing experiment (matching generate_v0.py line 331)
             if not dry_run and not _reuse_exp:
@@ -537,16 +635,41 @@ class Pipeline:
         backend = get_backend(self.cluster_config)
         LOG.info(f"Using Kubernetes backend (namespace: {self.cluster_config.get('namespace', 'default')})")
 
-        # Track job name -> JobHandle for dependency resolution
+        # Check if any jobs have dependencies - if so, auto-enable sequential mode
+        # K8s Jobs don't have native dependency support like Slurm's afterok
+        has_dependencies = any(job_spec.get("dependencies") for job_spec in self.jobs)
+        if has_dependencies and not sequential:
+            LOG.warning(
+                "Pipeline has job dependencies but sequential=False. "
+                "Kubernetes does not support native job dependencies (like Slurm's afterok). "
+                "Auto-enabling sequential mode to ensure correct execution order."
+            )
+            sequential = True
+
+        # Track job name -> JobHandle for dependency resolution (keyed by ORIGINAL name)
         job_name_to_handle = {}
 
         # Collect all job specs for dry run display
         job_specs = []
 
         for job_spec in self.jobs:
-            job_name = job_spec["name"]
+            original_job_name = job_spec["name"]  # Already validated in _validate()
 
-            # Get the groups for this job
+            # Sanitize job name for Kubernetes compliance
+            sanitized_name, was_modified = _sanitize_k8s_name(original_job_name)
+            if was_modified:
+                LOG.warning(
+                    f"Job name '{original_job_name}' is not Kubernetes-compliant. "
+                    f"Sanitized to '{sanitized_name}'. "
+                    f"(K8s requires: lowercase, alphanumeric and hyphens only, max 63 chars)"
+                )
+
+            # Add unique suffix (consistent with NeMo-Run pathway)
+            # _make_unique_job_name handles truncation to keep total <= 63 chars
+            job_name = self._make_unique_job_name(sanitized_name)
+            LOG.info(f"Job '{original_job_name}' will be submitted as '{job_name}'")
+
+            # Get the groups for this job (same structure as _run_nemo_run)
             if "groups" in job_spec:
                 groups = job_spec["groups"]
             elif "group" in job_spec:
@@ -554,27 +677,50 @@ class Pipeline:
             else:
                 raise ValueError(f"Job spec must have either 'group' or 'groups': {job_spec}")
 
-            # Resolve dependencies
-            dependency_job_ids = []
+            # Handle dependencies (mirroring _run_nemo_run structure)
+            dependency_handles = []
             job_dependencies = job_spec.get("dependencies", [])
             if job_dependencies is None:
                 job_dependencies = []
 
+            # If no job-level dependencies, apply pipeline-level run_after (same as _run_nemo_run)
+            if not job_dependencies and self.run_after:
+                run_after_list = self.run_after if isinstance(self.run_after, list) else [self.run_after]
+                job_dependencies = run_after_list
+
             for dep in job_dependencies:
                 if isinstance(dep, str):
-                    # External dependency by name - not supported on K8s yet
-                    LOG.warning(f"External dependency '{dep}' not yet supported on Kubernetes, skipping")
+                    # String dependency = external experiment name - not supported on K8s
+                    LOG.warning(f"External dependency '{dep}' not supported on Kubernetes, skipping")
                 elif isinstance(dep, dict):
+                    # Dict dependency = internal job reference (same as _run_nemo_run)
                     dep_name = dep.get("name")
-                    if dep_name and dep_name in job_name_to_handle:
-                        dependency_job_ids.append(job_name_to_handle[dep_name].job_id)
+                    if not dep_name:
+                        raise ValueError(f"Job dependency must have a 'name' field: {dep}")
+                    if dep_name in job_name_to_handle:
+                        dependency_handles.append(job_name_to_handle[dep_name])
+                        LOG.info(
+                            f"Job '{original_job_name}' depends on internal job '{dep_name}'"
+                        )
+                    else:
+                        raise ValueError(
+                            f"Job '{original_job_name}' depends on job '{dep_name}' which hasn't been processed yet. "
+                            f"Make sure dependencies are listed before the jobs that depend on them in the jobs list."
+                        )
+                else:
+                    # Direct handle object (same as _run_nemo_run)
+                    dependency_handles.append(dep)
+                    LOG.info(f"Job '{original_job_name}' depends on handle (object)")
+
+            # Convert handles to job IDs for K8s
+            dependency_job_ids = [h.job_id for h in dependency_handles] if dependency_handles else None
 
             # Convert CommandGroups to JobSpec
             k8s_job_spec = self._convert_groups_to_job_spec(
                 job_name=job_name,
                 groups=groups,
                 log_dir=log_dir,
-                dependencies=dependency_job_ids if dependency_job_ids else None,
+                dependencies=dependency_job_ids,
             )
             job_specs.append((job_name, k8s_job_spec))
 
@@ -584,8 +730,9 @@ class Pipeline:
 
             # Submit the job
             handle = backend.submit_job(k8s_job_spec)
-            job_name_to_handle[job_name] = handle
-            LOG.info(f"Submitted job '{job_name}' (job_id: {handle.job_id})")
+            # Track by ORIGINAL name for dependency lookups
+            job_name_to_handle[original_job_name] = handle
+            LOG.info(f"Submitted job '{original_job_name}' as '{job_name}' (job_id: {handle.job_id})")
 
             # If sequential, wait for this job to complete before continuing
             if sequential:
@@ -662,23 +809,21 @@ class Pipeline:
                 container_image = self._resolve_container(exec_config, command, self.cluster_config)
 
                 # Build resource spec
+                # Memory request: auto-calculated if not specified (for K8s scheduling)
+                # Memory limit: None by default (pods can use available memory)
                 hardware = group.hardware or HardwareConfig()
                 resources = ResourceSpec(
                     gpus=hardware.num_gpus or 0,
                     cpus=hardware.num_tasks or 1,
-                    memory_gb=32.0,  # Default, could be made configurable
+                    memory_request_gb=hardware.memory_request_gb,  # None = auto-calculate
+                    memory_limit_gb=hardware.memory_limit_gb,      # None = no limit
                 )
 
                 # Build environment variables
+                # Note: Cluster-level env_vars are added by KubernetesBackend._build_container()
+                # Here we only add command-specific env vars and log directory
                 env_vars = {}
-                # Add cluster-level env vars
-                for env_entry in self.cluster_config.get("env_vars", []):
-                    if "=" in env_entry:
-                        key, value = env_entry.split("=", 1)
-                        env_vars[key] = value
-                # Add command-specific env vars
                 env_vars.update(exec_config.get("environment", {}))
-                # Add log directory if specified
                 if log_dir or group.log_dir:
                     env_vars["NEMO_LOG_DIR"] = log_dir or group.log_dir
 

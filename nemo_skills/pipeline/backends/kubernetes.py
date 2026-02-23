@@ -258,19 +258,36 @@ class KubernetesBackend(ComputeBackend):
         return container
 
     def _build_resource_requirements(self, resources: ResourceSpec):
-        """Build Kubernetes resource requirements."""
+        """Build Kubernetes resource requirements.
+
+        Memory handling:
+        - request: Always set (auto-calculated if not specified) for proper scheduling
+        - limit: Only set if explicitly specified, allowing pods to burst when memory available
+
+        This approach ensures K8s can schedule pods correctly while allowing
+        GPU workloads to use available memory beyond their reservation.
+        """
         client = self._k8s_client
 
-        limits = {
-            "memory": f"{resources.memory_gb}Gi",
-            "cpu": str(resources.cpus),
-        }
+        # Get memory request (auto-calculated if not specified)
+        memory_request = resources.get_memory_request_gb()
+
+        # Format memory as integer if whole number (16Gi not 16.0Gi)
+        def fmt_memory(gb: float) -> str:
+            return f"{int(gb)}Gi" if gb == int(gb) else f"{gb}Gi"
+
+        # Requests: what K8s reserves for scheduling
         requests = {
-            "memory": f"{resources.memory_gb}Gi",
             "cpu": str(resources.cpus),
+            "memory": fmt_memory(memory_request),
         }
 
-        # Add GPU resources
+        # Limits: caps on usage (memory limit only if explicitly set)
+        limits = {"cpu": str(resources.cpus)}
+        if resources.memory_limit_gb is not None:
+            limits["memory"] = fmt_memory(resources.memory_limit_gb)
+
+        # Add GPU resources (always set both request and limit)
         if resources.gpus > 0:
             limits["nvidia.com/gpu"] = str(resources.gpus)
             requests["nvidia.com/gpu"] = str(resources.gpus)

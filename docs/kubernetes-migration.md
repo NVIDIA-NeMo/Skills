@@ -132,6 +132,12 @@ env_vars:
 | `mounts` | `storage.*.pvc_name` + `mount_path` |
 | `default_timeout: "06:00:00"` | `default_timeout: "6h"` |
 
+**Migration Notes:**
+
+- **Job naming**: Both Slurm and K8s now get unique timestamp suffixes (e.g., `my-job-12345`) to prevent collisions on re-runs. For K8s, names are also sanitized to be K8s-compliant (lowercase, alphanumeric + hyphens, max 63 chars). Example: `Qwen2.5_Math_7B` → `qwen2-5-math-7b-12345`.
+
+- **Job dependencies**: Slurm's `--dependency=afterok` has no direct K8s equivalent. NeMo-Skills handles this by **auto-enabling sequential mode** when dependencies exist, ensuring jobs run in the correct order.
+
 ## Step 3: Populate Storage
 
 Copy your models and data to the PVCs:

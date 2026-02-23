@@ -50,14 +50,33 @@ class TestResourceSpec:
         spec = ResourceSpec()
         assert spec.gpus == 0
         assert spec.cpus == 1
-        assert spec.memory_gb == 4.0
+        assert spec.memory_request_gb is None  # Auto-calculate
+        assert spec.memory_limit_gb is None    # No limit
 
     def test_custom_values(self):
         """Test custom resource values."""
-        spec = ResourceSpec(gpus=8, cpus=16, memory_gb=64.0)
+        spec = ResourceSpec(gpus=8, cpus=16, memory_request_gb=128.0, memory_limit_gb=256.0)
         assert spec.gpus == 8
         assert spec.cpus == 16
-        assert spec.memory_gb == 64.0
+        assert spec.memory_request_gb == 128.0
+        assert spec.memory_limit_gb == 256.0
+
+    def test_memory_auto_calculate(self):
+        """Test auto-calculation of memory request based on GPUs."""
+        spec = ResourceSpec(gpus=4)
+        # Auto: 16GB base + 32GB per GPU = 16 + 128 = 144GB
+        assert spec.get_memory_request_gb() == 144.0
+
+    def test_memory_auto_calculate_no_gpus(self):
+        """Test auto-calculation of memory request with no GPUs."""
+        spec = ResourceSpec(gpus=0)
+        # Auto: 16GB base + 0 = 16GB
+        assert spec.get_memory_request_gb() == 16.0
+
+    def test_memory_request_override(self):
+        """Test explicit memory request overrides auto-calculation."""
+        spec = ResourceSpec(gpus=8, memory_request_gb=64.0)
+        assert spec.get_memory_request_gb() == 64.0  # Explicit, not auto
 
     def test_negative_gpus_raises(self):
         """Test that negative GPUs raise ValueError."""
@@ -69,10 +88,15 @@ class TestResourceSpec:
         with pytest.raises(ValueError, match="cpus must be at least 1"):
             ResourceSpec(cpus=0)
 
-    def test_negative_memory_raises(self):
-        """Test that negative memory raises ValueError."""
-        with pytest.raises(ValueError, match="memory_gb must be positive"):
-            ResourceSpec(memory_gb=-1.0)
+    def test_negative_memory_request_raises(self):
+        """Test that negative memory request raises ValueError."""
+        with pytest.raises(ValueError, match="memory_request_gb must be positive"):
+            ResourceSpec(memory_request_gb=-1.0)
+
+    def test_negative_memory_limit_raises(self):
+        """Test that negative memory limit raises ValueError."""
+        with pytest.raises(ValueError, match="memory_limit_gb must be positive"):
+            ResourceSpec(memory_limit_gb=-1.0)
 
 
 class TestContainerSpec:
@@ -100,7 +124,7 @@ class TestContainerSpec:
             command=["python", "-m", "vllm.entrypoints.api_server"],
             env_vars={"MODEL": "/models/llama", "PORT": "8000"},
             mounts=["/data:/data:ro"],
-            resources=ResourceSpec(gpus=8, memory_gb=64),
+            resources=ResourceSpec(gpus=8, memory_request_gb=64),
             ports=[8000],
             working_dir="/app",
         )
@@ -555,20 +579,41 @@ class TestKubernetesBackend:
 
     def test_build_resource_requirements_cpu_only(self, mock_k8s_backend):
         """Test resource requirements for CPU-only container."""
-        resources = ResourceSpec(gpus=0, cpus=4, memory_gb=16)
+        resources = ResourceSpec(gpus=0, cpus=4)
         req = mock_k8s_backend._build_resource_requirements(resources)
 
+        assert req.requests["cpu"] == "4"
+        assert req.requests["memory"] == "16Gi"  # Auto: 16 + 0*32 = 16GB
         assert req.limits["cpu"] == "4"
-        assert req.limits["memory"] == "16Gi"
+        assert "memory" not in req.limits  # No limit by default
         assert "nvidia.com/gpu" not in req.limits
 
-    def test_build_resource_requirements_with_gpu(self, mock_k8s_backend):
-        """Test resource requirements for GPU container."""
-        resources = ResourceSpec(gpus=8, cpus=16, memory_gb=64)
+    def test_build_resource_requirements_with_gpu_auto_memory(self, mock_k8s_backend):
+        """Test resource requirements with GPUs and auto-calculated memory request."""
+        resources = ResourceSpec(gpus=4, cpus=16)
         req = mock_k8s_backend._build_resource_requirements(resources)
 
+        assert req.requests["nvidia.com/gpu"] == "4"
+        assert req.requests["memory"] == "144Gi"  # Auto: 16 + 4*32 = 144GB
+        assert req.limits["nvidia.com/gpu"] == "4"
+        assert "memory" not in req.limits  # No limit by default
+
+    def test_build_resource_requirements_explicit_memory(self, mock_k8s_backend):
+        """Test resource requirements with explicit memory request and limit."""
+        resources = ResourceSpec(gpus=8, cpus=16, memory_request_gb=256, memory_limit_gb=512)
+        req = mock_k8s_backend._build_resource_requirements(resources)
+
+        assert req.requests["memory"] == "256Gi"  # Explicit request
+        assert req.limits["memory"] == "512Gi"    # Explicit limit
         assert req.limits["nvidia.com/gpu"] == "8"
-        assert req.requests["nvidia.com/gpu"] == "8"
+
+    def test_build_resource_requirements_request_only(self, mock_k8s_backend):
+        """Test resource requirements with explicit request but no limit."""
+        resources = ResourceSpec(gpus=8, cpus=16, memory_request_gb=128, memory_limit_gb=None)
+        req = mock_k8s_backend._build_resource_requirements(resources)
+
+        assert req.requests["memory"] == "128Gi"  # Explicit request
+        assert "memory" not in req.limits          # No limit (can burst)
 
     @pytest.mark.skipif(
         not importlib.util.find_spec("kubernetes"),
@@ -589,7 +634,7 @@ class TestKubernetesBackend:
                 name="main",
                 image="python:3.10",
                 command=["python", "script.py"],
-                resources=ResourceSpec(cpus=4, memory_gb=16),
+                resources=ResourceSpec(cpus=4, memory_request_gb=16),
             )
             spec = JobSpec(name="test-job", containers=[container])
 
@@ -619,7 +664,7 @@ class TestKubernetesBackend:
                 name="server",
                 image="vllm",
                 command=["python", "-m", "vllm.entrypoints.api_server"],
-                resources=ResourceSpec(gpus=8, memory_gb=64),
+                resources=ResourceSpec(gpus=8, memory_request_gb=64),
                 ports=[8000],
             )
             client = ContainerSpec(
@@ -1238,3 +1283,284 @@ class TestPipelineKubernetesIntegration:
             mock_k8s.assert_called_once()
             # _run_nemo_run should NOT be called
             mock_nemo_run.assert_not_called()
+
+    def test_hostname_ref_returns_localhost_for_kubernetes(self):
+        """Test that scripts return 'localhost' for hostname_ref on Kubernetes."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+
+        # Use DummyScript-like object that has hostname_ref
+        class TestScript:
+            def __init__(self):
+                self.inline = "echo test"
+                self.log_prefix = "main"
+                self.metadata = {}
+                self.het_group_index = None
+                self.backend = None
+
+            def set_inline(self, inline):
+                self.inline = inline
+
+            def hostname_ref(self) -> str:
+                if self.backend == "kubernetes":
+                    return "localhost"
+                if self.het_group_index is None:
+                    return "127.0.0.1"
+                return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
+
+        script = TestScript()
+        command = Command(script=script, container="nemo-skills", name="cmd")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=8),
+            name="inference",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "image"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="k8s-test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "job", "group": group}],
+        )
+
+        # Convert to JobSpec (this sets backend on script)
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="test-job",
+            groups=[group],
+            log_dir="/logs",
+        )
+
+        # After conversion, script.backend should be "kubernetes"
+        assert script.backend == "kubernetes"
+        # And hostname_ref should return localhost
+        assert script.hostname_ref() == "localhost"
+
+    def test_hostname_ref_returns_slurm_var_for_slurm(self):
+        """Test that scripts return SLURM env var for hostname_ref on Slurm."""
+
+        class TestScript:
+            def __init__(self):
+                self.inline = "echo test"
+                self.log_prefix = "main"
+                self.metadata = {}
+                self.het_group_index = None
+                self.backend = None
+
+            def set_inline(self, inline):
+                self.inline = inline
+
+            def hostname_ref(self) -> str:
+                if self.backend == "kubernetes":
+                    return "localhost"
+                if self.het_group_index is None:
+                    return "127.0.0.1"
+                return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
+
+        script = TestScript()
+
+        # Simulate Slurm heterogeneous job setup
+        script.backend = "slurm"
+        script.het_group_index = 0
+
+        # Should return SLURM environment variable reference
+        assert "SLURM_MASTER_NODE_HET_GROUP_0" in script.hostname_ref()
+
+    def test_memory_no_limit_by_default(self):
+        """Test that memory is not limited by default (uses all available)."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        script = run.Script(inline="python train.py")
+        command = Command(script=script, container="nemo-skills", name="trainer")
+
+        # Test with 8 GPUs, no explicit memory
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=8),  # No memory_gb specified
+            name="training",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "image"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "job", "group": group}],
+        )
+
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="test-job",
+            groups=[group],
+        )
+
+        # Memory limit should be None (no limit - pod uses available memory)
+        assert job_spec.containers[0].resources.memory_limit_gb is None
+
+    def test_memory_explicit_limit(self):
+        """Test that explicit memory_limit_gb sets a limit."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        script = run.Script(inline="python train.py")
+        command = Command(script=script, container="nemo-skills", name="trainer")
+
+        # Test with explicit memory limit
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=8, memory_limit_gb=512.0),  # Explicit 512GB limit
+            name="training",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "image"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "job", "group": group}],
+        )
+
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="test-job",
+            groups=[group],
+        )
+
+        # Memory limit should be the explicit value
+        assert job_spec.containers[0].resources.memory_limit_gb == 512.0
+
+    def test_job_name_sanitization(self):
+        """Test that job names are sanitized for Kubernetes compliance."""
+        from nemo_skills.pipeline.utils.declarative import _sanitize_k8s_name
+
+        # Test lowercase conversion
+        name, modified = _sanitize_k8s_name("MyJob")
+        assert name == "myjob"
+        assert modified is True
+
+        # Test underscore replacement
+        name, modified = _sanitize_k8s_name("my_job_name")
+        assert name == "my-job-name"
+        assert modified is True
+
+        # Test slash replacement
+        name, modified = _sanitize_k8s_name("Qwen2.5-Math-7B/gsm8k")
+        assert name == "qwen2-5-math-7b-gsm8k"
+        assert modified is True
+
+        # Test multiple invalid chars and collapsing
+        name, modified = _sanitize_k8s_name("my__job//name")
+        assert name == "my-job-name"
+        assert modified is True
+
+        # Test leading/trailing hyphen stripping
+        name, modified = _sanitize_k8s_name("-my-job-")
+        assert name == "my-job"
+        assert modified is True
+
+        # Test max length truncation
+        long_name = "a" * 100
+        name, modified = _sanitize_k8s_name(long_name)
+        assert len(name) <= 63
+        assert modified is True
+
+        # Test already valid name
+        name, modified = _sanitize_k8s_name("valid-job-name")
+        assert name == "valid-job-name"
+        assert modified is False
+
+        # Test empty result becomes "job"
+        name, modified = _sanitize_k8s_name("---")
+        assert name == "job"
+        assert modified is True
+
+    def test_auto_sequential_with_dependencies(self):
+        """Test that sequential mode is auto-enabled when jobs have dependencies."""
+        from unittest.mock import MagicMock, patch
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        # Create a simple pipeline with dependencies
+        script1 = run.Script(inline="echo job1")
+        script2 = run.Script(inline="echo job2")
+
+        cmd1 = Command(script=script1, container="nemo-skills", name="cmd1")
+        cmd2 = Command(script=script2, container="nemo-skills", name="cmd2")
+
+        group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/logs")
+        group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/logs")
+
+        job1 = {"name": "job1", "group": group1}
+        job2 = {"name": "job2", "group": group2, "dependencies": [job1]}
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "test-image"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="test-deps",
+            cluster_config=cluster_config,
+            jobs=[job1, job2],
+        )
+
+        # Mock the backend - patch where it's imported, not where it's defined
+        with patch("nemo_skills.pipeline.backends.get_backend") as mock_get_backend:
+            mock_backend = MagicMock()
+            mock_backend.submit_job.return_value = MagicMock(job_id="test-job-id")
+            mock_backend.wait_for_completion.return_value = MagicMock(value="succeeded")
+            mock_get_backend.return_value = mock_backend
+
+            # Import JobStatus for the mock
+            from nemo_skills.pipeline.backends import JobStatus
+            mock_backend.wait_for_completion.return_value = JobStatus.SUCCEEDED
+
+            # Run with sequential=False - should auto-enable sequential due to dependencies
+            with patch.object(pipeline, "_convert_groups_to_job_spec") as mock_convert:
+                mock_convert.return_value = MagicMock(name="test-job", containers=[])
+
+                # Run the pipeline (not dry_run so it actually submits)
+                pipeline._run_kubernetes(dry_run=False, sequential=False)
+
+                # Should have called wait_for_completion because sequential was auto-enabled
+                assert mock_backend.wait_for_completion.called, (
+                    "wait_for_completion should be called when dependencies exist"
+                )
