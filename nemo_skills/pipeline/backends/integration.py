@@ -295,11 +295,12 @@ def run_job_and_wait(
     backend = get_backend(cluster_config)
     handle = backend.submit_job(spec)
     LOG.info(f"Submitted job {handle.job_id} to {backend.name} backend")
-
-    status = backend.wait_for_completion(handle, timeout=timeout)
-    LOG.info(f"Job {handle.job_id} finished with status: {status.value}")
-
-    return status
+    try:
+        status = backend.wait_for_completion(handle, timeout=timeout)
+        LOG.info(f"Job {handle.job_id} finished with status: {status.value}")
+        return status
+    finally:
+        backend.cleanup(handle)
 
 
 def is_kubernetes_cluster(cluster_config: Dict) -> bool:

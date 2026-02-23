@@ -28,6 +28,21 @@ SERVICE_NAME="${JOB_NAME}-workers"
 MASTER_PORT=29500
 TIMEOUT_SECONDS=900  # 15 minutes
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLEANUP_DONE=0
+
+cleanup_resources() {
+    if [[ "$CLEANUP_DONE" -eq 1 ]]; then
+        return
+    fi
+    CLEANUP_DONE=1
+
+    echo ""
+    echo "Cleaning up Kubernetes resources..."
+    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+    kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+}
+
+trap cleanup_resources EXIT INT TERM
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -267,12 +282,7 @@ if [ -n "$FIRST_POD" ]; then
         --expected-gpus-per-node "$NUM_GPUS" || true
 fi
 
-# Cleanup
-echo ""
-read -p "Delete job and service? [y/N] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found
-    kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found
-    echo "Resources deleted."
+if [[ "$JOB_STATUS" != "succeeded" ]]; then
+    echo "Smoke test failed."
+    exit 1
 fi

@@ -106,10 +106,12 @@ class BackendFactory:
 
         # Normalize executor name
         executor = executor.lower()
+        primary_config = dict(cluster_config)
+        primary_config["executor"] = executor
 
         # Try primary backend
         try:
-            backend = BackendFactory._create_backend(executor, cluster_config)
+            backend = BackendFactory._create_backend(executor, primary_config)
 
             # Health check
             if backend.health_check():
@@ -124,9 +126,12 @@ class BackendFactory:
             # Try fallback if configured
             fallback_executor = cluster_config.get("fallback_executor")
             if fallback and fallback_executor:
+                fallback_executor = fallback_executor.lower()
                 LOG.info(f"Attempting fallback to {fallback_executor} backend")
                 try:
-                    fallback_backend = BackendFactory._create_backend(fallback_executor, cluster_config)
+                    fallback_config = dict(cluster_config)
+                    fallback_config["executor"] = fallback_executor
+                    fallback_backend = BackendFactory._create_backend(fallback_executor, fallback_config)
                     if fallback_backend.health_check():
                         LOG.info(f"Successfully initialized fallback {fallback_executor} backend")
                         return fallback_backend

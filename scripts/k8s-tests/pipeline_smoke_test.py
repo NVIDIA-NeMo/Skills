@@ -92,13 +92,7 @@ _SINGLE_NODE_TRAIN_TEMPLATE = (
 MULTI_NODE_TRAIN_CMD = """
 export NCCL_DEBUG=INFO
 export NCCL_DEBUG_SUBSYS=INIT,NET
-torchrun \\
-  --nproc_per_node={gpus} \\
-  --nnodes={nodes} \\
-  --node_rank=${{NODE_RANK:-0}} \\
-  --master_addr=${{MASTER_ADDR:-localhost}} \\
-  --master_port=${{MASTER_PORT:-29500}} \\
-  -c "
+cat > /tmp/multinode_smoke_train.py << 'PYEOF'
 import os, torch, torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
@@ -108,7 +102,7 @@ rank = int(os.environ.get('RANK', 0))
 local_rank = int(os.environ.get('LOCAL_RANK', 0))
 device = torch.device(f'cuda:{{local_rank}}')
 torch.cuda.set_device(device)
-print(f'[Rank {{rank}}] Node {{os.environ.get(\"NODE_RANK\",\"?\")}} GPU: {{torch.cuda.get_device_name(device)}}')
+print(f'[Rank {{rank}}] Node {{os.environ.get("NODE_RANK","?")}} GPU: {{torch.cuda.get_device_name(device)}}')
 
 model = DDP(nn.Linear(64, 64).to(device), device_ids=[local_rank])
 x = torch.randn(16, 64, device=device)
@@ -125,7 +119,14 @@ if rank == 0:
     print(f'  World size: {{dist.get_world_size()}}')
     print(f'  GPU: {{torch.cuda.get_device_name(0)}}')
 dist.destroy_process_group()
-"
+PYEOF
+torchrun \\
+  --nproc_per_node={gpus} \\
+  --nnodes={nodes} \\
+  --node_rank=${{NODE_RANK:-0}} \\
+  --master_addr=${{MASTER_ADDR:-localhost}} \\
+  --master_port=${{MASTER_PORT:-29500}} \\
+  /tmp/multinode_smoke_train.py
 """
 
 
@@ -243,11 +244,8 @@ def main():
 
         if status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
             print(f"\n--- Logs from {name} ---")
-            try:
-                for line in backend.get_logs(handle):
-                    print(line, end="" if line.endswith("\n") else "\n")
-            except Exception as e:
-                print(f"Failed to get logs: {e}")
+            for line in backend.get_logs(handle):
+                print(line, end="" if line.endswith("\n") else "\n")
 
         if status == JobStatus.FAILED:
             print(f"\nERROR: Job '{name}' failed")

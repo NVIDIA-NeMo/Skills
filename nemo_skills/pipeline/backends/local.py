@@ -94,7 +94,15 @@ class LocalBackend(ComputeBackend):
 
     def __init__(self, cluster_config: Dict):
         self.config = cluster_config
-        self.use_docker = cluster_config.get("executor") == "local"
+        try:
+            executor = cluster_config["executor"]
+        except KeyError as exc:
+            raise ValueError("LocalBackend requires executor='local' or 'none' in config") from exc
+
+        if executor not in {"local", "none"}:
+            raise ValueError("LocalBackend requires executor='local' or 'none' in config")
+
+        self.use_docker = executor == "local"
         self._jobs: Dict[str, LocalJob] = {}
 
     @property

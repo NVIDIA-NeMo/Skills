@@ -257,7 +257,7 @@ def _sanitize_k8s_name(name: str, max_length: int = 63) -> tuple[str, bool]:
     if not name:
         name = "job"
 
-    was_modified = name != original.lower() or original != original.lower()
+    was_modified = name != original
     return name, was_modified
 
 
@@ -537,9 +537,10 @@ class Pipeline:
                             LOG.info(f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)")
                     elif isinstance(dep, dict):
                         # Dict dependency = internal job reference (by job spec object)
-                        dep_name = dep.get("name")
-                        if not dep_name:
-                            raise ValueError(f"Job dependency must have a 'name' field: {dep}")
+                        try:
+                            dep_name = dep["name"]
+                        except KeyError as exc:
+                            raise ValueError(f"Job dependency must have a 'name' field: {dep}") from exc
                         if dep_name in job_name_to_handle:
                             internal_deps.append(job_name_to_handle[dep_name])
                             LOG.info(
@@ -695,9 +696,10 @@ class Pipeline:
                     LOG.warning(f"External dependency '{dep}' not supported on Kubernetes, skipping")
                 elif isinstance(dep, dict):
                     # Dict dependency = internal job reference (same as _run_nemo_run)
-                    dep_name = dep.get("name")
-                    if not dep_name:
-                        raise ValueError(f"Job dependency must have a 'name' field: {dep}")
+                    try:
+                        dep_name = dep["name"]
+                    except KeyError as exc:
+                        raise ValueError(f"Job dependency must have a 'name' field: {dep}") from exc
                     if dep_name in job_name_to_handle:
                         dependency_handles.append(job_name_to_handle[dep_name])
                         LOG.info(f"Job '{original_job_name}' depends on internal job '{dep_name}'")
@@ -744,8 +746,8 @@ class Pipeline:
                 LOG.info(f"Waiting for job '{job_name}' to complete (sequential mode)...")
                 status = backend.wait_for_completion(handle)
                 LOG.info(f"Job '{job_name}' completed with status: {status.value}")
-                if status == JobStatus.FAILED:
-                    raise RuntimeError(f"Job '{job_name}' failed, aborting pipeline")
+                if status != JobStatus.SUCCEEDED:
+                    raise RuntimeError(f"Job '{job_name}' did not succeed (status={status.value}), aborting pipeline")
 
         if dry_run:
             LOG.info("Dry run complete. No jobs were submitted.")
@@ -808,15 +810,12 @@ class Pipeline:
                 # Prepare the command (evaluates lazy commands)
                 script, exec_config = self._prepare_command(command, self.cluster_config)
 
-                # Get the command string
-                if callable(script.inline):
-                    cmd_result = script.inline()
-                    if isinstance(cmd_result, tuple):
-                        cmd_str, _ = cmd_result
-                    else:
-                        cmd_str = cmd_result
-                else:
-                    cmd_str = script.inline
+                # _prepare_command() resolves lazy callables; inline is expected to be a string now.
+                cmd_str = script.inline
+                if not isinstance(cmd_str, str):
+                    raise TypeError(
+                        f"Command '{command.name}' must resolve to a string inline command, got {type(cmd_str).__name__}"
+                    )
 
                 # Resolve container image
                 container_image = self._resolve_container(exec_config, command, self.cluster_config)
@@ -843,7 +842,15 @@ class Pipeline:
                 # Get ports from script if available
                 ports = []
                 if hasattr(script, "port"):
-                    ports = [script.port]
+                    script_port = script.port
+                    if isinstance(script_port, int) and 1 <= script_port <= 65535:
+                        ports = [script_port]
+                    elif script_port is not None:
+                        LOG.warning(
+                            "Ignoring invalid port value %r on command '%s'; expected int in [1, 65535]",
+                            script_port,
+                            command.name,
+                        )
 
                 # Create container spec
                 container = ContainerSpec(
@@ -926,7 +933,11 @@ class Pipeline:
             LOG.info(f"  - {container.name}")
             LOG.info(f"    Image: {container.image}")
             LOG.info(f"    GPUs: {container.resources.gpus}")
-            LOG.info(f"    Command: {' '.join(container.command[:50])}...")
+            command_text = " ".join(container.command)
+            max_chars = 200
+            if len(command_text) > max_chars:
+                command_text = f"{command_text[:max_chars]}..."
+            LOG.info(f"    Command: {command_text}")
         if spec.dependencies:
             LOG.info(f"Dependencies: {spec.dependencies}")
         LOG.info(f"Timeout: {spec.timeout_seconds}s")

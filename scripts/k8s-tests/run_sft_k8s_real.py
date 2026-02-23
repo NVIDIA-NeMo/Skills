@@ -171,11 +171,8 @@ def main():
 
         if status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
             print("\n--- Logs ---")
-            try:
-                for line in backend.get_logs(handle):
-                    print(line, end="" if line.endswith("\n") else "\n")
-            except Exception as e:
-                print(f"Log error: {e}")
+            for line in backend.get_logs(handle):
+                print(line, end="" if line.endswith("\n") else "\n")
 
         # Cleanup
         backend.cleanup(handle)

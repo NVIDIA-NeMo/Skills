@@ -26,6 +26,20 @@ IMAGE="${IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.03-py3}}"
 JOB_NAME="nemo-sft-smoke-$(date +%s | tail -c 6)"
 TIMEOUT_SECONDS=600  # 10 minutes
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLEANUP_DONE=0
+
+cleanup_resources() {
+    if [[ "$CLEANUP_DONE" -eq 1 ]]; then
+        return
+    fi
+    CLEANUP_DONE=1
+
+    echo ""
+    echo "Cleaning up Kubernetes resources..."
+    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+}
+
+trap cleanup_resources EXIT INT TERM
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -233,11 +247,7 @@ if [ -n "$POD_NAME" ]; then
     echo "Full logs saved to: $LOG_FILE"
 fi
 
-# Cleanup
-echo ""
-read -p "Delete job $JOB_NAME? [y/N] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found
-    echo "Job deleted."
+if [[ "$JOB_STATUS" != "succeeded" ]]; then
+    echo "Smoke test failed."
+    exit 1
 fi

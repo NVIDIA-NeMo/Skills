@@ -30,10 +30,17 @@ fi
 if command -v kubectl >/dev/null 2>&1; then
     echo "kubeconform not found; using kubectl --dry-run=client for validation..."
     for file in "${files[@]}"; do
-        # Try strict validation first. If schema download/strict validation is unavailable,
-        # fall back to parser-level validation to avoid false negatives in offline setups.
-        if ! kubectl apply --dry-run=client --validate=true -f "$file" >/dev/null 2>&1; then
-            kubectl apply --dry-run=client --validate=false -f "$file" >/dev/null
+        # Try strict schema validation first.
+        if ! output=$(kubectl apply --dry-run=client --validate=true -f "$file" 2>&1 >/dev/null); then
+            # Only fall back for known schema-retrieval/offline failures.
+            if grep -Eqi "openapi|schema|unable to retrieve|failed to download|connection refused|dial tcp|timeout|no such host|x509" <<<"$output"; then
+                echo "WARN: strict schema validation unavailable for $file; falling back to parser-only validation." >&2
+                kubectl apply --dry-run=client --validate=false -f "$file" >/dev/null
+            else
+                echo "ERROR: kubectl strict validation failed for $file" >&2
+                echo "$output" >&2
+                exit 1
+            fi
         fi
     done
     exit 0

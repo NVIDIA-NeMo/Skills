@@ -127,13 +127,15 @@ class SlurmBackend(ComputeBackend):
 
         # Submit using existing infrastructure
         with get_exp(spec.name, self.config) as exp:
+            requested_gpus = main_container.resources.gpus if main_container.resources.gpus is not None else None
+
             task = add_task(
                 exp=exp,
                 cmd=cmd,
                 task_name=spec.name,
                 cluster_config=self.config,
                 container=container_image,
-                num_gpus=main_container.resources.gpus or None,
+                num_gpus=requested_gpus,
                 num_nodes=1,
                 heterogeneous=is_heterogeneous,
             )

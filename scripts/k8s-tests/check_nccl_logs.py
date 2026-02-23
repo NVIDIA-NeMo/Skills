@@ -121,8 +121,10 @@ def parse_nccl_logs(log_text: str) -> NCCLCheckResult:
         if rank_match:
             result.ranks_seen.add(int(rank_match.group(1)))
 
-        # Errors
-        if "NCCL WARN" in line or "NCCL ERROR" in line:
+        # NCCL WARN lines are useful signal but not hard failures by themselves.
+        if "NCCL WARN" in line:
+            result.warnings.append(line.strip())
+        if "NCCL ERROR" in line:
             result.errors.append(line.strip())
 
     return result
@@ -189,9 +191,15 @@ def validate_result(
                 messages.append(f"FAIL: World size {result.world_size} != expected {expected_world}")
                 passed = False
 
+    # Check for NCCL warnings
+    if result.warnings:
+        messages.append(f"WARN: {len(result.warnings)} NCCL warning(s):")
+        for warn in result.warnings[:5]:
+            messages.append(f"  - {warn}")
+
     # Check for NCCL errors
     if result.errors:
-        messages.append(f"FAIL: {len(result.errors)} NCCL error(s)/warning(s):")
+        messages.append(f"FAIL: {len(result.errors)} NCCL error(s):")
         for err in result.errors[:5]:
             messages.append(f"  - {err}")
         passed = False

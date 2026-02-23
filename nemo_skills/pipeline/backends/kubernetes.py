@@ -88,7 +88,11 @@ class KubernetesBackend(ComputeBackend):
         self.config = cluster_config
 
         # Validate config
-        if cluster_config.get("executor") != "kubernetes":
+        try:
+            executor = cluster_config["executor"]
+        except KeyError as exc:
+            raise ValueError("KubernetesBackend requires executor='kubernetes' in config") from exc
+        if executor != "kubernetes":
             raise ValueError("KubernetesBackend requires executor='kubernetes' in config")
 
         self.namespace = cluster_config.get("namespace", "default")
@@ -499,7 +503,11 @@ class KubernetesBackend(ComputeBackend):
                     continue
             except (TypeError, ValueError):
                 # Keep behavior permissive if a custom quantity format appears.
-                pass
+                LOG.warning(
+                    "Unable to parse GPU quantity for container '%s' (value=%r); continuing RDMA resource injection",
+                    container.name,
+                    gpu_count,
+                )
 
             limits[resource_name] = resource_count
             requests[resource_name] = resource_count
