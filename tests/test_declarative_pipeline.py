@@ -35,13 +35,19 @@ class DummyScript:
         self.log_prefix = "main"
         self.metadata = {}
         self.het_group_index: Optional[int] = None
+        self.backend: Optional[str] = None
 
     def set_inline(self, inline):
         self.inline = inline
 
     def hostname_ref(self) -> str:
+        # Kubernetes: containers in the same Pod share localhost
+        if self.backend == "kubernetes":
+            return "localhost"
+        # Non-heterogeneous jobs or local execution
         if self.het_group_index is None:
             return "127.0.0.1"
+        # Slurm heterogeneous jobs
         return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
 
 
@@ -104,6 +110,26 @@ class TestCommand:
 
         hostname = script.hostname_ref()
         assert "${SLURM_MASTER_NODE_HET_GROUP_2" in hostname
+
+    def test_command_hostname_ref_kubernetes(self):
+        """Test that Kubernetes backend returns localhost for hostname_ref."""
+        script = DummyScript()
+        script.backend = "kubernetes"
+        # Even with het_group_index set, K8s should return localhost
+        script.het_group_index = 2
+        make_command(name="test", script=script)
+
+        hostname = script.hostname_ref()
+        assert hostname == "localhost"
+
+    def test_command_hostname_ref_kubernetes_no_het(self):
+        """Test that Kubernetes backend returns localhost without het_group_index."""
+        script = DummyScript()
+        script.backend = "kubernetes"
+        make_command(name="test", script=script)
+
+        hostname = script.hostname_ref()
+        assert hostname == "localhost"
 
 
 class TestCommandGroup:

@@ -65,7 +65,7 @@ class BaseJobScript(run.Script):
 
     This class provides:
     - het_group_index tracking for cross-component references in heterogeneous SLURM jobs
-    - hostname_ref() method for getting hostnames in het jobs
+    - hostname_ref() method for getting hostnames in het jobs (backend-aware)
     - Common pattern for Script initialization
 
     Attributes:
@@ -75,12 +75,18 @@ class BaseJobScript(run.Script):
             When True, the script spans all nodes specified in the group's num_nodes.
             This is important for multi-node setups with --overlap where the server
             needs multiple nodes but client/sandbox should run on the master node only.
+        backend: Compute backend type ('slurm', 'kubernetes', 'local', 'none').
+            Affects hostname resolution in hostname_ref(). For Kubernetes, containers
+            in the same Pod share localhost networking, so hostname_ref() returns
+            'localhost'. For Slurm heterogeneous jobs, it returns the SLURM_MASTER_NODE
+            environment variable reference.
     """
 
     het_group_index: Optional[int] = field(default=None, init=False, repr=False)
     span_group_nodes: bool = False  # Default: run on 1 node
     installation_command: Optional[str] = None
     entrypoint: str = field(default="bash", init=False)
+    backend: Optional[str] = field(default=None, init=False, repr=False)  # Set by Pipeline
 
     def __post_init__(self):
         """Wrap inline command with installation_command if provided."""
@@ -106,19 +112,31 @@ class BaseJobScript(run.Script):
         object.__setattr__(self, "inline", command)
 
     def hostname_ref(self) -> str:
-        """Get hostname reference for hetjob cross-component communication.
+        """Get hostname reference for cross-component communication.
 
-        Returns a shell variable reference that resolves to the master node hostname
-        for this het group. Uses environment variables automatically exported by nemo-run:
-            SLURM_MASTER_NODE_HET_GROUP_0, SLURM_MASTER_NODE_HET_GROUP_1, etc.
+        Returns a hostname string or shell variable reference that resolves to the
+        address where this component can be reached by other components in the same job.
 
-        These are set via:
-            export SLURM_MASTER_NODE_HET_GROUP_N=$(scontrol show hostnames $SLURM_JOB_NODELIST_HET_GROUP_N | head -n1)
+        Backend behavior:
+        - **Kubernetes**: Returns 'localhost' because containers in the same Pod share
+          the network namespace and can communicate via localhost.
+        - **Slurm heterogeneous jobs**: Returns a shell variable reference that resolves
+          to the master node hostname for this het group at runtime:
+          SLURM_MASTER_NODE_HET_GROUP_0, SLURM_MASTER_NODE_HET_GROUP_1, etc.
+        - **Local/None**: Returns '127.0.0.1' for local execution.
+
+        Returns:
+            Hostname string or shell variable reference for inter-component communication.
         """
-        if self.het_group_index is None:
-            return "127.0.0.1"  # Local fallback for non-heterogeneous jobs
+        # Kubernetes: containers in the same Pod share localhost
+        if self.backend == "kubernetes":
+            return "localhost"
 
-        # Use the environment variable exported by nemo-run
+        # Non-heterogeneous jobs or local execution
+        if self.het_group_index is None:
+            return "127.0.0.1"
+
+        # Slurm heterogeneous jobs: use the environment variable exported by nemo-run
         return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
 
 

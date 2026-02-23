@@ -624,11 +624,14 @@ class Pipeline:
         executors: List = []
         het_group_indices: List[int] = []
 
-        # Assign het_group_index values before evaluating any commands so cross-references
-        # (e.g., hostname_ref) see the correct indices regardless of processing order.
+        # Assign het_group_index and backend values before evaluating any commands so
+        # cross-references (e.g., hostname_ref) see the correct values regardless of
+        # processing order.
+        backend = cluster_config.get("executor", "slurm")
         for het_idx, group in enumerate(groups):
             for command in group.commands:
                 command.script.het_group_index = het_idx if heterogeneous else None
+                command.script.backend = backend
 
         # Prepare commands once and collect runtime data for a second pass where we
         # construct executors. This ensures all scripts have resolved cross-references.
