@@ -13,6 +13,5 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "chat"
 METRICS_TYPE = "if"
 GENERATION_ARGS = "++generation_key=response ++prompt_config=generic/default ++eval_type=ifbench"

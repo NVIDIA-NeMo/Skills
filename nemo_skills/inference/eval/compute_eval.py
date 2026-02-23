@@ -31,8 +31,8 @@ class ComputeEvalGenerationTask(GenerationTask):
     def __init__(self, cfg: GenerationTaskConfig):
         super().__init__(cfg)
 
-    async def process_single_datapoint(self, data_point, data):
-        res = await super().process_single_datapoint(data_point, data)
+    async def process_single_datapoint(self, data_point, data, prompt_format=None):
+        res = await super().process_single_datapoint(data_point, data, prompt_format)
         try:
             solution = FileSolution(
                 task_id=data_point["task_id"],
