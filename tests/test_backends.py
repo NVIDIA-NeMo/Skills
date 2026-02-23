@@ -830,3 +830,145 @@ class TestBackendIntegration:
         status = backend.wait_for_completion(handle, timeout=10)
 
         assert status == JobStatus.SUCCEEDED
+
+
+# =============================================================================
+# Config Validation Tests
+# =============================================================================
+
+
+class TestConfigValidation:
+    """Tests for cluster config validation utilities."""
+
+    def test_validate_kubernetes_config_valid(self):
+        """Test validation of a valid Kubernetes config."""
+        from nemo_skills.pipeline.backends import validate_kubernetes_config
+
+        config = {
+            "executor": "kubernetes",
+            "namespace": "nemo-skills",
+            "containers": {"vllm": "nvcr.io/nvidia/vllm:latest"},
+        }
+        errors = validate_kubernetes_config(config)
+        assert errors == []
+
+    def test_validate_kubernetes_config_full(self):
+        """Test validation of a full Kubernetes config."""
+        from nemo_skills.pipeline.backends import validate_kubernetes_config
+
+        config = {
+            "executor": "kubernetes",
+            "namespace": "nemo-skills",
+            "containers": {"vllm": "nvcr.io/nvidia/vllm:latest"},
+            "storage": {
+                "models": {"pvc_name": "models-pvc", "mount_path": "/models"},
+            },
+            "resource_pools": {
+                "gpu": {"node_selector": {"nvidia.com/gpu": "true"}},
+            },
+            "image_pull_secrets": ["nvcr-secret"],
+            "default_timeout": "6h",
+        }
+        errors = validate_kubernetes_config(config)
+        assert errors == []
+
+    def test_validate_kubernetes_config_missing_namespace(self):
+        """Test validation catches missing namespace."""
+        from nemo_skills.pipeline.backends import validate_kubernetes_config
+
+        config = {
+            "executor": "kubernetes",
+            "containers": {"vllm": "image"},
+        }
+        errors = validate_kubernetes_config(config)
+        assert any("namespace" in e for e in errors)
+
+    def test_validate_kubernetes_config_missing_containers(self):
+        """Test validation catches missing containers."""
+        from nemo_skills.pipeline.backends import validate_kubernetes_config
+
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+        }
+        errors = validate_kubernetes_config(config)
+        assert any("containers" in e for e in errors)
+
+    def test_validate_kubernetes_config_invalid_storage(self):
+        """Test validation catches invalid storage config."""
+        from nemo_skills.pipeline.backends import validate_kubernetes_config
+
+        config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"app": "image"},
+            "storage": {
+                "models": {"mount_path": "/models"},  # Missing pvc_name
+            },
+        }
+        errors = validate_kubernetes_config(config)
+        assert any("pvc_name" in e for e in errors)
+
+    def test_validate_slurm_config_valid(self):
+        """Test validation of a valid Slurm config."""
+        from nemo_skills.pipeline.backends import validate_slurm_config
+
+        config = {
+            "executor": "slurm",
+            "account": "research",
+            "partition": "gpu",
+            "containers": {"app": "image"},
+        }
+        errors = validate_slurm_config(config)
+        assert errors == []
+
+    def test_validate_slurm_config_missing_account(self):
+        """Test validation catches missing account."""
+        from nemo_skills.pipeline.backends import validate_slurm_config
+
+        config = {
+            "executor": "slurm",
+            "partition": "gpu",
+            "containers": {"app": "image"},
+        }
+        errors = validate_slurm_config(config)
+        assert any("account" in e for e in errors)
+
+    def test_validate_cluster_config_auto_detect(self):
+        """Test validate_cluster_config auto-detects executor type."""
+        from nemo_skills.pipeline.backends import validate_cluster_config
+
+        # Kubernetes
+        errors = validate_cluster_config({
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"app": "image"},
+        })
+        assert errors == []
+
+        # Slurm
+        errors = validate_cluster_config({
+            "executor": "slurm",
+            "account": "test",
+            "partition": "gpu",
+            "containers": {"app": "image"},
+        })
+        assert errors == []
+
+        # Local
+        errors = validate_cluster_config({"executor": "local"})
+        assert errors == []
+
+    def test_validate_cluster_config_missing_executor(self):
+        """Test validation catches missing executor."""
+        from nemo_skills.pipeline.backends import validate_cluster_config
+
+        errors = validate_cluster_config({})
+        assert "executor is required" in errors
+
+    def test_validate_cluster_config_unknown_executor(self):
+        """Test validation catches unknown executor."""
+        from nemo_skills.pipeline.backends import validate_cluster_config
+
+        errors = validate_cluster_config({"executor": "unknown"})
+        assert any("Unknown executor" in e for e in errors)
