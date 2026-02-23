@@ -335,20 +335,20 @@ def get_question_hash(question, options=None):
 
 
 def load_subset_ids(ids_file):
-    """Load a set of hash IDs."""
+    """Load subset IDs."""
     with open(ids_file, "rt", encoding="utf-8") as fin:
-        return {json.loads(line)["id"] for line in fin if line.strip()}
+        return [json.loads(line)["id"] for line in fin if line.strip()]
 
 
 def filter_by_subset(dataset, subset_ids, question_key="question", options_key=None):
     """Filter dataset entries by subset IDs."""
     hash_to_entry = {}
     for entry in dataset:
-        options = entry.get(options_key) if options_key else None
+        options = entry[options_key] if options_key else None
         h = get_question_hash(entry[question_key], options)
         hash_to_entry[h] = entry
 
-    no_match_ids = subset_ids - hash_to_entry.keys()
+    no_match_ids = set(subset_ids) - hash_to_entry.keys()
     if no_match_ids:
         raise ValueError(f"{len(no_match_ids)}/{len(subset_ids)} subset IDs not found in source split.")
     return [hash_to_entry[h] for h in subset_ids]
