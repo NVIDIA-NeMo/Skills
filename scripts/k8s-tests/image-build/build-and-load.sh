@@ -151,7 +151,7 @@ spec:
     - --tarPath=/output/nemo-rl.tar
     - --cache=false
     - --log-format=text
-    - --destination=nemo-skills/nemo-rl:latest
+    - --destination=nemo-skills/nemo-rl:${IMAGE_TAG}
     volumeMounts:
     - name: context
       mountPath: /workspace
