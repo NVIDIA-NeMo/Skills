@@ -183,19 +183,19 @@ python scripts/filtering/filter_rows.py \
 # Keep only remotely-solvable incidents — the target use case for automation
 python scripts/filtering/filter_rows.py \
     --input_csv data/filtered_file.csv \
-    --output_csv data/filtered_file.csv \
+    --output_csv data/filtered_soft_solve.csv \
     --filter_type soft_solve
 
 # Keep top 16 fault categories — focusing on common patterns
 # ensures the model learns what will be most frequently useful
 python scripts/filtering/filter_rows.py \
-    --input_csv data/filtered_file.csv \
-    --output_csv data/filtered_file.csv \
+    --input_csv data/filtered_soft_solve.csv \
+    --output_csv data/filtered_problem_codes.csv \
     --filter_type problem_codes
 
 # Keep top 10 resolution methods to create the finalized dataset
 python scripts/filtering/filter_rows.py \
-    --input_csv data/filtered_file.csv \
+    --input_csv data/filtered_problem_codes.csv \
     --output_csv data/finalized_dataset.csv \
     --filter_type close_codes
 ```
