@@ -82,8 +82,8 @@ Key orchestration features used throughout this tutorial:
 | Software | Purpose |
 | --- | --- |
 | **Docker** | Containerization for consistent environments |
-| **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html){target="_blank"}** | Allows Docker containers to access GPU resources |
-| **[Slurm](https://slurm.schedmd.com/){target="_blank"} with [NVIDIA/pyxis](https://github.com/NVIDIA/pyxis){target="_blank"}** (optional) | Cluster job scheduler for distributed workloads |
+| **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)** | Allows Docker containers to access GPU resources |
+| **[Slurm](https://slurm.schedmd.com/) with [NVIDIA/pyxis](https://github.com/NVIDIA/pyxis)** (optional) | Cluster job scheduler for distributed workloads |
 | **Python 3.10+** | Required Python version |
 | **NeMo-Skills CLI** | Main interface for running pipelines |
 
@@ -103,7 +103,7 @@ cd recipes/noc-reasoning-agent
 mkdir -p outputs
 ```
 
-All scripts, prompts, configs, and sample data for this tutorial live in this [recipes/noc-reasoning-agent](https://github.com/NVIDIA-NeMo/Skills/tree/main/recipes/noc-reasoning-agent){target="_blank"} directory. The `outputs/` directory will store all generated files.
+All scripts, prompts, configs, and sample data for this tutorial live in this recipes/noc-reasoning-agent directory. The `outputs/` directory will store all generated files.
 
 ### Configure the cluster
 
@@ -229,7 +229,7 @@ This places the model under `/data/models/gpt-oss-120b` on the host, which maps 
 
 ### Phase 1: Generate Structured Procedures
 
-Use the teacher model ([gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b){target="_blank"}) to generate step-by-step incident resolution procedures:
+Use the teacher model ([gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b)) to generate step-by-step incident resolution procedures:
 
 ```
 ns generate \
@@ -337,7 +337,7 @@ This step:
 
 ## Model Training
 
-With synthetic data generated, we fine-tune the model using [NeMo-RL](https://github.com/NVIDIA-NeMo/RL/){target="_blank"} with the Megatron backend.
+With synthetic data generated, we fine-tune the model using [NeMo-RL](https://github.com/NVIDIA-NeMo/RL/) with the Megatron backend.
 
 ### Prepare SFT Data
 
@@ -381,7 +381,7 @@ The prompt template in `prompt_incident.yaml` defines the NOC engineer system pr
 
 ### Run SFT Training
 
-Fine-tune [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B){target="_blank"} using NeMo-RL with the Megatron backend:
+Fine-tune [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B) using NeMo-RL with the Megatron backend:
 
 ```
 ns nemo_rl sft \
