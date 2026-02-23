@@ -6,12 +6,8 @@ from typing import List
 
 import pandas as pd
 
-try:
-    from .reasoning_processes import get_reasoning_process_for_fault_category
-    from .schema_columns import INCIDENT_ID_COLUMN, REQUIRED_COLUMNS
-except ImportError:
-    from src.utils.reasoning_processes import get_reasoning_process_for_fault_category
-    from src.utils.schema_columns import INCIDENT_ID_COLUMN, REQUIRED_COLUMNS
+from scripts.utils.reasoning_processes import get_reasoning_process_for_fault_category
+from scripts.utils.schema_columns import INCIDENT_ID_COLUMN, REQUIRED_COLUMNS
 
 # For filter by problem code: synthetic uses fault_category (workflow IDs). Keep in sync with filter_rows.py.
 ALLOWED_PROBLEM_CODES = [
@@ -81,11 +77,7 @@ ALLOWED_PROBLEM_CODES = [
 def coerce_to_str(value) -> str:
     if pd.isna(value):
         return ""
-    # Ensure any non-string is converted to string safely
-    try:
-        return str(value)
-    except Exception:
-        return ""
+    return str(value)
 
 
 def extract_examples_by_problem_code(df, num):
@@ -135,7 +127,7 @@ def main():
         df[start_col] = pd.to_datetime(df[start_col], errors="coerce")
         df[end_col] = pd.to_datetime(df[end_col], errors="coerce")
         df["time_to_resolve"] = (df[end_col] - df[start_col]).dt.total_seconds().fillna(0).astype(int)
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         print(f"Failed to parse datetime columns {start_col}, {end_col}: {e}")
         df["time_to_resolve"] = 0
 
@@ -164,7 +156,6 @@ def main():
     if args.required_incidents:
         with open(args.required_incidents, "r") as f:
             required_incidents = f.read().splitlines()
-        print(required_incidents)
         id_col = INCIDENT_ID_COLUMN if INCIDENT_ID_COLUMN in df.columns else "number"
         df = df[df[id_col].astype(str).isin(required_incidents)]
 

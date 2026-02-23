@@ -25,8 +25,8 @@ def split_generation_field(
     n = len(incidents)
     n_test = max(1, int(round(n * test_size))) if n > 0 else 0
     n_train = n - n_test
-    train_set = incidents[:n_train]
-    test_set = incidents[n_train:]
+    train_set = set(incidents[:n_train])
+    test_set = set(incidents[n_train:])
 
     train_rows = []
     test_rows = []
@@ -55,15 +55,10 @@ def split_generation_field(
                 row = json.loads(line)
                 number = row.get("incident_identifier", row.get("number"))
                 if number in test_set:
-                    ## In end
-                    print(row["response"])
-                    # exit()
-                    if "Close Code: [" in row["response"]:
-                        print("in")
+                    resolution = row.get("root_cause_secondary") or row.get("close_code", "")
+                    if resolution:
+                        row["expected"] = f"Close Code: [{resolution}]"
                         row["initial_background"] = row["background"]
-                        # if row["initial_background"] == "\n<think>\n":
-                        #     print(json.dumps(row, indent=4))
-                        #     exit()
                         row["background"] = "\n<think>\n"
                         current_iteration_test.append(row)
 

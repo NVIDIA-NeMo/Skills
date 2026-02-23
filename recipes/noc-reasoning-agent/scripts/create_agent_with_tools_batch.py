@@ -12,19 +12,25 @@ import torch
 from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
-from src.tools import (
+from scripts.tools import (
     ALL_TOOLS,
-    Check_Alarm_Status,
-    Check_Apply_Configuration,
-    Check_Element_Health,
-    Check_Element_Neighbors,
-    Check_External_Issues,
-    Check_Performance,
-    Check_remote_files,
-    Create_Ticket,
-    Execute_Remote_Action,
-    Orchestration_tool,
-    Triage_Toolkit_Tool,
+    apply_configuration,
+    create_trouble_ticket,
+    execute_remote_action,
+    inspect_logs,
+    orchestrate_workload,
+    query_alarm,
+    query_container_status,
+    query_external_factors,
+    query_performance,
+    query_power_system,
+    query_resource_health,
+    query_rf_status,
+    query_topology,
+    run_diagnostics,
+    test_connectivity,
+    verify_recovery,
+    verify_signaling_path,
 )
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
@@ -124,13 +130,16 @@ def main():
         help="Optional GPU index (e.g. 0). If omitted, device_map='auto' is used to spread the model across all available GPUs (recommended for large models).",
     )
     parser.add_argument("--limit", required=False)
+    parser.add_argument(
+        "--fresh", action="store_true",
+        help="Delete any existing output file and start from scratch instead of resuming.",
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
     output_path = Path(args.output)
     ensure_parent_dir(output_path)
-    skip = True
-    if skip and os.path.exists(output_path):
+    if args.fresh and os.path.exists(output_path):
         os.remove(output_path)
     processed_indices = load_processed_indices(output_path)
     print(f"[INFO] Found {len(processed_indices)} already processed rows. Resuming...")
@@ -154,7 +163,7 @@ def main():
     # Use all available GPUs by default (device_map="auto"); only pin to one GPU if --gpu is set
     device_map = "auto" if not args.gpu else None
     model = AutoModelForCausalLM.from_pretrained(
-        args.weights_dir, dtype=dtype, device_map=device_map, low_cpu_mem_usage=True
+        args.weights_dir, torch_dtype=dtype, device_map=device_map, low_cpu_mem_usage=True
     )
     if args.gpu:
         model.to(f"cuda:{str(args.gpu)}")
@@ -190,17 +199,23 @@ def main():
             ## WE need to fix this. Add system message and tool calling messages
             # separate user input messages
             TOOLS = {
-                "Check_Alarm_Status": lambda args: Check_Alarm_Status(**args),
-                "Check_Element_Neighbors": lambda args: Check_Element_Neighbors(**args),
-                "Check_Element_Health": lambda args: Check_Element_Health(**args),
-                "Execute_Remote_Action": lambda args: Execute_Remote_Action(**args),
-                "Check_External_Issues": lambda args: Check_External_Issues(**args),
-                "Check_Apply_Configuration": lambda args: Check_Apply_Configuration(**args),
-                "Check_Performance": lambda args: Check_Performance(**args),
-                "Create_Ticket": lambda args: Create_Ticket(**args),
-                "Orchestration_tool": lambda args: Orchestration_tool(**args),
-                "Triage_Toolkit_Tool": lambda args: Triage_Toolkit_Tool(**args),
-                "Check_remote_files": lambda args: Check_remote_files(**args),
+                "query_alarm": lambda args: query_alarm(**args),
+                "query_resource_health": lambda args: query_resource_health(**args),
+                "query_performance": lambda args: query_performance(**args),
+                "query_topology": lambda args: query_topology(**args),
+                "execute_remote_action": lambda args: execute_remote_action(**args),
+                "apply_configuration": lambda args: apply_configuration(**args),
+                "run_diagnostics": lambda args: run_diagnostics(**args),
+                "inspect_logs": lambda args: inspect_logs(**args),
+                "create_trouble_ticket": lambda args: create_trouble_ticket(**args),
+                "verify_recovery": lambda args: verify_recovery(**args),
+                "query_external_factors": lambda args: query_external_factors(**args),
+                "orchestrate_workload": lambda args: orchestrate_workload(**args),
+                "query_power_system": lambda args: query_power_system(**args),
+                "query_rf_status": lambda args: query_rf_status(**args),
+                "query_container_status": lambda args: query_container_status(**args),
+                "verify_signaling_path": lambda args: verify_signaling_path(**args),
+                "test_connectivity": lambda args: test_connectivity(**args),
             }
 
             end = False

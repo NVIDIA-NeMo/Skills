@@ -30,8 +30,7 @@ def load_processed_indices(output_path: Path):
                 # we record row_index for resume
                 if "row_index" in obj:
                     processed.add(int(obj["row_index"]))
-            except Exception:
-                # ignore malformed lines so we can keep going
+            except json.JSONDecodeError:
                 continue
     return processed
 

@@ -32,15 +32,6 @@ for metric, avg in averages.items():
     print(f"{metric}: {avg:.4f}")
 
 
-# Load JSONL file into a list
-data = []
-with open(file_path, "r", encoding="utf-8") as f:
-    for line in f:
-        data.append(json.loads(line))
-
-# Convert to DataFrame
-df = pd.DataFrame(data)
-
 # Select only the relevant columns
 columns_to_display = ["expected_answer", "agent_response", "llm_judge_reason"]
 df_subset = df[columns_to_display].head(10)

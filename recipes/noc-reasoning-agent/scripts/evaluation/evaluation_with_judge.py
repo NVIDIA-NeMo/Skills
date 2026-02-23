@@ -9,7 +9,7 @@ from tqdm import tqdm
 # Parse arguments for input JSONL path
 parser = argparse.ArgumentParser(description="Evaluation Pipeline for Agent Responses")
 parser.add_argument("input_jsonl", help="Path to agent_responses.jsonl containing expected_answer and agent_response")
-parser.add_argument("--output_file", help="Path to output")
+parser.add_argument("--output_file", default="evaluation_results.json", help="Path to output (default: evaluation_results.json)")
 parser.add_argument(
     "--nim_url", default="http://localhost:8000/v1", help="Base URL for NIM API (default: http://localhost:8000/v1)"
 )
@@ -92,45 +92,48 @@ def llm_judge_reasoning(expected, generated):
         return 0, "Error"
 
 
-# Loop over rows and evaluate
-evaluations = []
-for index, row in tqdm(df.iterrows(), total=len(df)):
+# First pass: extract generated reasoning parts for batched BERTScore
+candidates = []
+references = []
+row_data = []
+for index, row in df.iterrows():
     conclusion_expected = row["expected_answer"]
     reasoning_expected = row["output"]
     generated = row["agent_response"]
 
     if "Thought 1:" in generated:
         if generated.count("Thought 1:") == 1:
-            question_part, reasoning_tail = generated.split("Thought 1:", -1)
-            question_part = question_part.strip()
+            _, reasoning_tail = generated.split("Thought 1:", -1)
             generated_reasoning_part = "Thought 1:" + reasoning_tail
         elif generated.count("Thought 1:") >= 2:
-            # Find where the 2nd "Thought 1:" starts
             second_idx = generated.find("Thought 1:", generated.find("Thought 1:") + 1)
-            # Split into question and reasoning at the 2nd occurrence
-            question_part = generated[:second_idx].strip()
             generated_reasoning_part = generated[second_idx:].strip()
     else:
         generated_reasoning_part = generated
 
-    # Compute ROUGE
+    candidates.append(generated_reasoning_part)
+    references.append(conclusion_expected + reasoning_expected)
+    row_data.append((index, row, conclusion_expected, reasoning_expected, generated_reasoning_part))
+
+# Batched BERTScore computation (single model load)
+print("Computing BERTScore (batched)...")
+_, _, F1_all = bert_score(candidates, references, lang="en", verbose=True)
+
+# Second pass: compute ROUGE, LLM judge, and assemble output
+evaluations = []
+for i, (index, row, conclusion_expected, reasoning_expected, generated_reasoning_part) in enumerate(
+    tqdm(row_data, desc="Evaluating")
+):
     rouge_scores = rouge.score(conclusion_expected + reasoning_expected, generated_reasoning_part)
     rouge1 = rouge_scores["rouge1"].fmeasure
     rougeL = rouge_scores["rougeL"].fmeasure
+    bert_f1 = F1_all[i].item()
 
-    # Compute BERTScore (requires torch)
-    P, R, F1 = bert_score(
-        [generated_reasoning_part], [conclusion_expected + reasoning_expected], lang="en", verbose=False
-    )
-    bert_f1 = F1.mean().item()
-
-    # LLM Judge
     reasoning_judge_score, reasoning_judge_reason = llm_judge_reasoning(reasoning_expected, generated_reasoning_part)
     conclusion_judge_score, conclusion_judge_reason = llm_judge_final_output(
         conclusion_expected, generated_reasoning_part
     )
 
-    # Add to output row
     output_row = row.to_dict()
     output_row["rouge1"] = rouge1
     output_row["rougeL"] = rougeL
@@ -139,8 +142,6 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
     output_row["llm_reasoning_judge_reasoning"] = reasoning_judge_reason
     output_row["llm_conclusion_judge_score"] = conclusion_judge_score
     output_row["llm_conclusion_judge_reasoning"] = conclusion_judge_reason
-    if index == 1:
-        print(output_row)
     evaluations.append(output_row)
 
 # Save to output JSONL

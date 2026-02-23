@@ -9,12 +9,15 @@ from transformers import AutoTokenizer
 
 def _incident_id(data):
     """Synthetic schema uses incident_identifier; legacy uses number."""
-    return data.get("incident_identifier") or data.get("number")
+    incident_id = data.get("incident_identifier") or data.get("number")
+    if incident_id is None:
+        raise ValueError(f"Missing incident identifier in data: {list(data.keys())}")
+    return incident_id
 
 
 def _resolution_method(data):
-    """Synthetic schema uses resolution_method; legacy uses close_code."""
-    return data.get("resolution_method") or data.get("close_code", "")
+    """Synthetic schema uses root_cause_secondary; legacy uses close_code."""
+    return data.get("root_cause_secondary") or data.get("close_code", "")
 
 
 def extract_formatted_json_steps(input_file):
@@ -63,8 +66,6 @@ def extract_formatted_json_steps(input_file):
                 except json.JSONDecodeError as e:
                     print(text)
                     print(f"Error decoding JSON: {e}")
-                except Exception as e:
-                    print(f"An unexpected error occurred: {e}")
             except json.JSONDecodeError:
                 print(f"Skipping invalid line: {line.strip()}")
 
@@ -127,7 +128,7 @@ def prepare_data_for_reasoning_traces(jsonl_file, input_file, output_file):
                 incorrect_incidents += 1
 
     # print(json.dumps(new_jsonl, indent = 4))
-    print(f"{incorrect_incidents} incidents were not parsed correctly and disgarded.")
+    print(f"{incorrect_incidents} incidents were not parsed correctly and discarded.")
 
     with open(output_file, "w", encoding="utf-8") as f:
         for line in new_jsonl:
@@ -148,22 +149,23 @@ def token_converting(string, model):
 
     import re
 
-    # --- 1. Parse tool name and the raw arguments inside [...] ---
+    # --- 1. Parse tool name and the raw arguments inside [...] or (...) ---
     # Match "ToolName[args]" or "ToolName[ args ]"
     m = re.match(r"^\s*([A-Za-z_]\w*)\s*\[(.*)\]\s*$", str(string), re.DOTALL)
 
     if not m:
-        # Handle case with no arguments, e.g., Check_Time[]
-        m_no_args = re.match(r"^\s*([A-Za-z_]\w*)\s*\[\s*\]\s*$", str(string))
+        # Also accept parenthesis format: ToolName(args) or ToolName()
+        m = re.match(r"^\s*([A-Za-z_]\w*)\s*\((.*)\)\s*$", str(string), re.DOTALL)
+
+    if not m:
+        m_no_args = re.match(r"^\s*([A-Za-z_]\w*)\s*[\[\(]\s*[\]\)]\s*$", str(string))
         if m_no_args:
             tool_name = m_no_args.group(1)
             raw_args = ""
         else:
-            # If it doesn't match the syntax, return original string or raise error
-            # returning string allows the LLM to fail gracefully or retry
             return string
-
-    tool_name, raw_args = m.groups()
+    else:
+        tool_name, raw_args = m.groups()
 
     # --- 2. Smart Splitter ---
     # Splits by commas, but ignores commas inside single/double quotes.
@@ -193,104 +195,82 @@ def token_converting(string, model):
             )
 
     # --- 4. Tool-Specific Argument Mapping ---
+    # When no arguments are provided (model used tool_name() format), use "all"
+    # as default so the pipeline doesn't lose the entire incident.
+
+    def _first_pos(key, named_key=None):
+        """Return named arg, first positional arg, or 'all' as default."""
+        if named_key:
+            val = kv_args.get(named_key)
+            if val:
+                return val
+        return pos_args[0] if pos_args else "all"
 
     arg_dict = {}
 
-    # 1. Check_Alarm_Status[<site_or_element_id>]
-    if tool_name == "Check_Alarm_Status":
-        val = kv_args.get("site_or_element_id") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "site_or_element_id")
-        arg_dict = {"site_or_element_id": val}
+    if tool_name == "query_alarm":
+        arg_dict = {"site_or_element_id": _first_pos("site_or_element_id")}
 
-    # 2. Check_Element_Neighbors[<element_id>]
-    elif tool_name == "Check_Element_Neighbors":
-        val = kv_args.get("element_id") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "element_id")
-        arg_dict = {"element_id": val}
+    elif tool_name == "query_resource_health":
+        arg_dict = {"element_id": _first_pos("element_id")}
 
-    # 3. Check_Element_Health[<element_id>]
-    elif tool_name == "Check_Element_Health":
-        val = kv_args.get("element_id") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "element_id")
-        arg_dict = {"element_id": val}
+    elif tool_name == "query_performance":
+        arg_dict = {"metric_type": _first_pos("metric_type")}
 
-    # 4. Execute_Remote_Action[<element_id>, '<action>']
-    elif tool_name == "Execute_Remote_Action":
-        elem = kv_args.get("element_id")
-        act = kv_args.get("action")
+    elif tool_name == "query_topology":
+        arg_dict = {"element_id": _first_pos("element_id")}
 
-        if not elem and len(pos_args) > 0:
-            elem = pos_args[0]
-        if not act and len(pos_args) > 1:
-            act = pos_args[1]
-
-        if not elem or not act:
-            raise ValueError(f"{tool_name} requires 'element_id' and 'action'.")
+    elif tool_name == "execute_remote_action":
+        elem = kv_args.get("element_id") or (pos_args[0] if pos_args else "all")
+        act = kv_args.get("action") or (pos_args[1] if len(pos_args) > 1 else "default_action")
         arg_dict = {"element_id": elem, "action": act}
 
-    # 5. Check_External_Issues[<site_or_area>]
-    elif tool_name == "Check_External_Issues":
-        val = kv_args.get("site_or_area") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "site_or_area")
-        arg_dict = {"site_or_area": val}
+    elif tool_name == "apply_configuration":
+        elem = kv_args.get("element_id") or (pos_args[0] if pos_args else "all")
+        cfg = kv_args.get("config_type") or (pos_args[1] if len(pos_args) > 1 else None)
+        arg_dict = {"element_id": elem}
+        if cfg:
+            arg_dict["config_type"] = cfg
 
-    # 6. Check_Apply_Configuration[<element_id>]
-    elif tool_name == "Check_Apply_Configuration":
-        val = kv_args.get("element_id") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "element_id")
-        arg_dict = {"element_id": val}
+    elif tool_name == "run_diagnostics":
+        arg_dict = {"diagnostic_type": _first_pos("diagnostic_type")}
 
-    # 7. Check_Performance['<kpi_metric_name>']
-    elif tool_name == "Check_Performance":
-        val = kv_args.get("kpi_metric_name") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "kpi_metric_name")
-        arg_dict = {"kpi_metric_name": val}
+    elif tool_name == "inspect_logs":
+        arg_dict = {"log_type": _first_pos("log_type")}
 
-    # 8. Create_Ticket['<department_name>', '<issue_details>']
-    elif tool_name == "Create_Ticket":
-        dept = kv_args.get("department_name")
-        details = kv_args.get("issue_details")
+    elif tool_name == "create_trouble_ticket":
+        pri = kv_args.get("priority") or (pos_args[0] if pos_args else "medium")
+        team = kv_args.get("team") or (pos_args[1] if len(pos_args) > 1 else "unknown")
+        details = kv_args.get("issue_details") or (", ".join(pos_args[2:]) if len(pos_args) > 2 else "No details provided")
+        arg_dict = {"priority": pri, "team": team, "issue_details": details}
 
-        # Handle positional logic
-        if not dept and len(pos_args) >= 1:
-            dept = pos_args[0]
+    elif tool_name == "verify_recovery":
+        arg_dict = {"element_id": _first_pos("element_id")}
 
-        # If details weren't named, we assume everything after department is the details.
-        # We join them back with commas in case the split separated a sentence.
-        if not details and len(pos_args) >= 2:
-            details = ", ".join(pos_args[1:])
+    elif tool_name == "query_external_factors":
+        arg_dict = {"site_or_area": _first_pos("site_or_area")}
 
-        if not dept or not details:
-            raise ValueError(f"{tool_name} requires 'department_name' and 'issue_details'.")
+    elif tool_name == "orchestrate_workload":
+        act = kv_args.get("action") or (pos_args[0] if pos_args else "default")
+        typ = kv_args.get("type") or (pos_args[1] if len(pos_args) > 1 else None)
+        arg_dict = {"action": act}
+        if typ:
+            arg_dict["type"] = typ
 
-        arg_dict = {"department_name": dept, "issue_details": details}
+    elif tool_name == "query_power_system":
+        arg_dict = {"target": _first_pos("target")}
 
-    # 9. Orchestration_tool['<action_command>']
-    elif tool_name == "Orchestration_tool":
-        val = kv_args.get("action_command") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "action_command")
-        arg_dict = {"action_command": val}
+    elif tool_name == "query_rf_status":
+        arg_dict = {"sector_or_antenna_id": _first_pos("sector_or_antenna_id")}
 
-    # 10. Triage_Toolkit_Tool['<issue_type>']
-    elif tool_name == "Triage_Toolkit_Tool":
-        val = kv_args.get("issue_type") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "issue_type")
-        arg_dict = {"issue_type": val}
+    elif tool_name == "query_container_status":
+        arg_dict = {"type": _first_pos("type")}
 
-    # 11. Check_remote_files[<element_id>]
-    elif tool_name == "Check_remote_files":
-        val = kv_args.get("element_id") or (pos_args[0] if pos_args else None)
-        if not val:
-            req_pos(1, "element_id")
-        arg_dict = {"element_id": val}
+    elif tool_name == "verify_signaling_path":
+        arg_dict = {"interface": _first_pos("interface")}
+
+    elif tool_name == "test_connectivity":
+        arg_dict = {"test_type": _first_pos("test_type")}
 
     # --- Fallback for unknown tools ---
     else:
@@ -318,8 +298,8 @@ def merge_reasoning_steps(steps_taken, reasoning_steps, model="qwen32"):
                             steps_taken[number][i]["tool_call"], model
                         )
                     steps_taken[number][i]["thinking"] = reasoning_steps[number][steps_taken[number][i]["step_number"]]
-            except Exception as e:
-                print(e)
+            except (KeyError, ValueError) as e:
+                print(f"Error merging steps for incident {number}: {e}")
                 broken_numbers.append(number)
 
     for number in broken_numbers:
@@ -447,6 +427,33 @@ def qwen_token_converter(data, full_reasoning_steps, tokenizer=None):
             # We already added to current_assistant_content at the top of loop
             pass
 
+    # --- CASE D: Forced Conclusion ---
+    # If the last step had a tool_call (Case B never triggered), append
+    # an extra conclusion turn so the model learns to output a Close Code.
+    if turn > 0 and (turn - 1) in curriculum_learning_stages and turn not in curriculum_learning_stages:
+        close_code = _resolution_method(data)
+        if close_code:
+            total_tokens = len(
+                tokenizer.apply_chat_template(current_assistant_content, tokenize=True, add_generation_prompt=False)
+            )
+            sub_data = copy.deepcopy(data)
+            conclusion_msg = [
+                {"role": "user", "content": SFT_DUMMY_USER},
+                {
+                    "role": "assistant",
+                    "content": f"<think>\nAll troubleshooting steps have been completed and the incident has been resolved.\n</think>\n\nClose Code: [{close_code}]",
+                },
+            ]
+            raw = tokenizer.apply_chat_template(
+                conclusion_msg, tokenize=False, add_special_tokens=False, add_generation_prompt=False
+            )
+            sub_data["response"] = raw[pre_compute_idx:]
+            raw_background = tokenizer.apply_chat_template(
+                current_assistant_content, tokenize=False, add_special_tokens=False, add_generation_prompt=False
+            )
+            sub_data["background"] = raw_background[pre_compute_idx:]
+            curriculum_learning_stages[turn] = sub_data
+
     return curriculum_learning_stages, total_tokens
 
 
@@ -482,7 +489,7 @@ def compile_reasoning(jsonl_file, input_file, output_dir, reasoning_jsonl, token
 
                     if tokens > 0:
                         all_tokens.append(tokens)
-                except Exception as e:
+                except (KeyError, ValueError) as e:
                     print(f"Error for incident {number}: {e}")
                     incorrect_incidents += 1
             else:

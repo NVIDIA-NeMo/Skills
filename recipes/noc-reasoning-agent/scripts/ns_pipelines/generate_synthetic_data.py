@@ -31,28 +31,31 @@ def generate_synthetic_data(args, cluster, num_gpus, step=None, input_format_fil
 
 
 def generate_synthetic_data_oss_gpt(args, cluster, num_gpus):
-    pass
+    """Generate synthetic data using an OSS GPT model (not yet implemented)."""
+    raise NotImplementedError("OSS GPT generation path is not yet implemented")
 
 
 def main():
+    """CLI entry point for synthetic data generation."""
     parser = argparse.ArgumentParser(description="Generate synthetic data using Qwen model")
     parser.add_argument("--temperature", type=float, default=0.6, help="Inference temperature (default: 0.6)")
     parser.add_argument(
         "--tokens_to_generate", type=int, default=8192, help="Number of tokens to generate (default: 8192)"
     )
-    # parser.add_argument('--gpus', type=int, default=detect_num_gpus(),
-    #                     help='Number of GPUs to use for generation')
-    parser.add_argument("--gpus", type=int, default=8, help="Number of GPUs to use for generation")
-    parser.add_argument("--llm", type=str, default="qwen2.5-32b-instruct", help="The LLM to use for generation")
     parser.add_argument(
-        "--num_gpus", type=int, default=8, help="Number of GPUs to use (auto-detected if not specified)"
+        "--num_gpus", type=int, default=8, help="Number of GPUs to use (default: 8)"
+    )
+    parser.add_argument(
+        "--llm", type=str, default="qwen2.5-32b-instruct",
+        choices=["qwen2.5-32b-instruct"],
+        help="The LLM to use for generation",
     )
 
     args = parser.parse_args()
     cluster = "local"
 
     num_gpus = args.num_gpus
-    print(f"Using {num_gpus} GPUs (specified via --gpus)")
+    print(f"Using {num_gpus} GPUs (specified via --num_gpus)")
 
     if args.llm == "qwen2.5-32b-instruct":
         generate_synthetic_data(

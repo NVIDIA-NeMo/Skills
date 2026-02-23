@@ -103,12 +103,17 @@ ALLOWED_CLOSE_CODES = [
 ]
 
 
+def _load_csv(path: str) -> pd.DataFrame:
+    """Load CSV, falling back from latin1 to default encoding."""
+    try:
+        return pd.read_csv(path, encoding="latin1")
+    except UnicodeDecodeError:
+        return pd.read_csv(path)
+
+
 def filter_auto(input_csv, output_csv):
     """Filter incident data and save results to a new CSV."""
-    try:
-        df = pd.read_csv(input_csv, encoding="latin1")
-    except Exception:
-        df = pd.read_csv(input_csv)
+    df = _load_csv(input_csv)
 
     # Synthetic schema: resolution_method, resolution_summary
     res_col = df["resolution_method"] if "resolution_method" in df.columns else df["close_code"]
@@ -127,11 +132,8 @@ def filter_auto(input_csv, output_csv):
 
 
 def filter_soft_solve(input_csv, output_csv):
-    """Filter incident data and save results to a new CSV."""
-    try:
-        df = pd.read_csv(input_csv, encoding="latin1")
-    except Exception:
-        df = pd.read_csv(input_csv)
+    """Filter incident data to keep only soft_solve rows."""
+    df = _load_csv(input_csv)
 
     soft_solve_rows = df[df["solved_category"] == "soft_solve"]
 
@@ -142,10 +144,8 @@ def filter_soft_solve(input_csv, output_csv):
 
 
 def filter_problem_codes(input_csv, output_csv):
-    try:
-        df = pd.read_csv(input_csv, encoding="latin1")
-    except Exception:
-        df = pd.read_csv(input_csv)
+    """Filter CSV to keep only rows with allowed problem codes."""
+    df = _load_csv(input_csv)
 
     # Synthetic schema: fault_category
     pc_col = df["fault_category"] if "fault_category" in df.columns else df["u_problem_code"]
@@ -158,10 +158,8 @@ def filter_problem_codes(input_csv, output_csv):
 
 
 def filter_close_codes(input_csv, output_csv):
-    try:
-        df = pd.read_csv(input_csv, encoding="latin1")
-    except Exception:
-        df = pd.read_csv(input_csv)
+    """Filter CSV to keep only rows with allowed close codes."""
+    df = _load_csv(input_csv)
 
     # Synthetic schema: resolution_method
     res_col = df["resolution_method"] if "resolution_method" in df.columns else df["close_code"]
@@ -199,6 +197,8 @@ def main():
         filter_problem_codes(args.input_csv, args.output_csv)
     elif args.filter_type == "close_codes":
         filter_close_codes(args.input_csv, args.output_csv)
+    else:
+        parser.error(f"Unknown filter_type: {args.filter_type!r}. Choose from: auto, soft_solve, problem_codes, close_codes")
 
 
 if __name__ == "__main__":

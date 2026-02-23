@@ -4,7 +4,7 @@ import random
 import re
 
 import yaml
-from src.tools import ALL_TOOLS_STRING
+from scripts.tools import ALL_TOOLS_STRING
 
 
 def extract_number_from_input(input_text):
@@ -27,7 +27,8 @@ def get_tools(text):
     tool_calls = re.findall(r"<tool_call>(.*?)</tool_call>", text, flags=re.DOTALL)
     tool_response = re.findall(r"<tool_response>(.*?)</tool_response>", text, flags=re.DOTALL)
     # print(tool_calls)
-    assert len(tool_calls) == len(tool_response)
+    if len(tool_calls) != len(tool_response):
+        raise ValueError(f"Mismatch: {len(tool_calls)} tool_calls vs {len(tool_response)} tool_responses")
     for i in range(len(tool_calls)):
         # try:
         tool_block = tool_calls[i]
@@ -66,11 +67,8 @@ def main(file1_path, file2_path, prompt_config, output_path="output.jsonl"):
                 try:
                     d = json.loads(line)
                     number = d.get("incident_identifier", d.get("number"))
-                    if "Close Code: [" in d["response"]:
-                        # response
-                        # print(d["number"])
-                        # print(d["response"])
-                        matches = get_tools(d["initial_background"])
+                    if d.get("expected") or "Close Code: [" in d.get("response", ""):
+                        matches = get_tools(d.get("initial_background", ""))
                         if matches == (None, None):
                             print(f"No tools for incident {number}, skipping")
                             continue
@@ -128,7 +126,7 @@ def main(file1_path, file2_path, prompt_config, output_path="output.jsonl"):
 
             consolidated["system"] = system_prompt
             consolidated["input"] = data1[num]["formatted_input"]
-            consolidated["expected"] = data2[num][1]
+            consolidated["expected"] = data1[num].get("expected", data2[num][1])
             # consolidated["output"] =
 
             results.append(consolidated)

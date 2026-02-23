@@ -24,68 +24,38 @@ def parse_steps(reasoning):
 
 
 def parse_final_reasoning(generation_text):
-    """
-    Parses the 'generation' field to extract only the final
-    Thought, Action, and Observation steps.
-    """
-    # 1. Isolate the final, clean reasoning trace
-    # This regex looks for the block starting with "Question:" and ending with "Finish[...]"
+    """Parse the 'generation' field to extract the final Thought, Action, and Observation steps."""
     trace_block_match = re.search(
         r"Question:.*?(Finish\[.*?\])",
         generation_text,
-        re.DOTALL,  # Allows '.' to match newlines
+        re.DOTALL,
     )
 
-    # Find the last occurrence of "Finish"
-    last_index = generation_text.rfind("Finish")
-
-    if last_index != -1:
-        finish_text = generation_text[last_index:].strip()
-        print(finish_text)
+    if trace_block_match:
+        reasoning_trace = trace_block_match.group(0)
     else:
-        print("No 'Finish' found!")
+        last_index = generation_text.rfind("Finish")
+        if last_index != -1:
+            reasoning_trace = generation_text[last_index:].strip()
+        else:
+            return "Final reasoning trace not found."
 
-    return finish_text
-
-    if not trace_block_match:
-        return "Final reasoning trace not found."
-
-    reasoning_trace = trace_block_match.group(0)
-
-    # 2. Extract each individual Thought, Action, and Observation
-    # This regex finds all lines starting with the keywords
     step_pattern = re.compile(
         r"^(Thought|Action|Observation)\s+\d+:\s*(.*)$",
-        re.MULTILINE,  # Allows '^' to match the start of each line
+        re.MULTILINE,
     )
-
     steps = step_pattern.findall(reasoning_trace)
 
-    # 3. Format the results for clarity
-    parsed_steps = []
-    for step in steps:
-        kind = step[0]  # "Thought", "Action", or "Observation"
-        content = step[1]  # The text of the step
-        parsed_steps.append(f"**{kind}:** {content}")
-
-    return "\n".join(parsed_steps)
+    parsed_steps = [f"**{kind}:** {content}" for kind, content in steps]
+    return "\n".join(parsed_steps) if parsed_steps else reasoning_trace
 
 
 def find_finish_action(generation_text):
-    # Regex to capture everything inside Finish[ ... ]
-    # match = re.search(r"Finish\[(.*?)\]", generation_text, re.DOTALL)
-
-    # finish_action = match.group(1).strip()
-    # return finish_action
+    """Extract the Finish[...] action text from a generation string."""
     last_index = generation_text.rfind("Finish")
-
     if last_index != -1:
-        finish_text = generation_text[last_index:].strip()
-        # print(finish_text)
-    else:
-        print("No 'Finish' found!")
-
-    return finish_text
+        return generation_text[last_index:].strip()
+    return ""
 
 
 def parse_generation(generation_text):
@@ -195,8 +165,8 @@ def render(incident_data):
         <span class="incident-id">{incident_id}</span>
         <span class="short-desc">{short_desc}</span>
         <ul>
-            <li>Category: {incident_data.get("incident_classification", incident_data.get("category"))}</li>
-            <li>Problem Code: {incident_data.get("fault_category", incident_data.get("u_problem_code"))}</li>
+            <li>Category: {esc(incident_data.get("incident_classification", incident_data.get("category")))}</li>
+            <li>Problem Code: {esc(incident_data.get("fault_category", incident_data.get("u_problem_code")))}</li>
         </ul>
       </summary>
       <div class="incident-content">
@@ -215,19 +185,10 @@ def render(incident_data):
       </div>
     </details>
     """
-    # <div class='work-notes-container'>{incident_data.get("close_notes")}</div>
 
 
 def main(input_file, output_file, max_incidents=15, selected_criteria=None):
     """Main function to read, process, and write the HTML report."""
-    try:
-        with open(input_file, "r", encoding="utf-8") as f:
-            lines = [line for line in f if line.strip()]
-            data = [json.loads(line) for line in lines[:max_incidents]]
-    except FileNotFoundError:
-        print(f"Error: Input file not found at '{input_file}'")
-        return
-
     try:
         # 1. Load the entire dataset using pandas
         df = pd.read_json(input_file, lines=True)
@@ -242,57 +203,11 @@ def main(input_file, output_file, max_incidents=15, selected_criteria=None):
         print(f"Error: Could not parse {input_file}. Ensure it's a valid .jsonl file.")
         return
 
-    # 2. Define the 15 selection criteria based on our checklist
-    # selection_criteria = [
-    #     # Group 1: High Volume
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"query": "category == 'RAN'"},
-    #     {"name": "High-Volume RAN Auto-Resolution", "query": "category == 'RAN' and priority == 'Sev-3' and close_code == 'Auto Recover'"},
-
-    #     {"name": "High-Volume Transport FIM", "query": "category == 'Transport / Network' and priority == 'Sev-3' and assignment_group.str.contains('Transport FIM', na=False)"},
-    #     {"name": "Standard NOC Alarm Clearance", "query": "close_code == 'Alarm Cleared' and priority == 'Sev-4'"},
-    #     {"name": "Common Software Issue", "query": "u_probable_cause == 'Software'"},
-    #     {"name": "Common Hardware Issue", "query": "u_probable_cause == 'Hardware' and close_code == 'Fiber Repaired/Replaced'"},
-    #     # Group 2: Critical & Escalated
-    #     {"name": "High-Priority Emergency", "query": "priority == 'Sev-1' and assignment_group.str.contains('Emergency', na=False)"},
-    #     {"name": "Specialist Team Escalation", "query": "assignment_group.str.contains('NOCoE', na=False) and category == 'CORE'"},
-    #     {"name": "Long Work Notes", "query": "", "special": "longest_work_notes"}, # Special case
-    #     {"name": "High-Priority FIM Case", "query": "priority == 'Sev-2' and assignment_group.str.contains('FIM', na=False)"},
-    #     # Group 3: Diverse Scenarios
-    #     {"name": "Power-Related Outage", "query": "u_probable_cause == 'Power' and close_code == 'Commercial Power Restored'"},
-    #     {"name": "Network Fix Resolution", "query": "close_code == 'Network Fix' and category == 'Transport / Network'"},
-    #     {"name": "Vendor-Specific FIM (Mavenir)", "query": "assignment_group == 'Wireless - NOC RAN FIM - Mavenir'"},
-    #     {"name": "Site Monitoring Issue", "query": "category == 'Site Monitoring'"},
-    #     {"name": "WCS Category", "query": "category == 'WCS'"},
-    #     {"name": "CORE AO Case", "query": "assignment_group == 'Wireless - NOC Core AO'"},
-    # ]
-
-    selected_incidents = []
-    selected_indices = set()
-
-    available_df = df.drop(index=list(selected_indices))  # Exclude already chosen incidents
-
     if selected_criteria:
-        selected_incidents = available_df.query(f"category == '{selected_criteria}'")
+        filtered_df = df.query(f"category == '{selected_criteria}'")
     else:
-        selected_incidents = available_df
-    # print(selected_incidents)
-    # print(f"category == '{{{selected_criteria}}}'")
-    data = selected_incidents.head(max_incidents).to_dict(orient="records")
-
-    # data = selected_incidents
+        filtered_df = df
+    data = filtered_df.head(max_incidents).to_dict(orient="records")
 
     style = """
     <style>

@@ -44,15 +44,19 @@ def enrich_row(row, lookup):
     return row
 
 
-# ---------- Read input JSONL, enrich, write output JSONL ----------
+# ---------- Read input JSONL and enrich ----------
 enriched_rows = []
-with open(jsonl_path, "r", encoding="utf-8") as fin, open(output_jsonl_path, "w", encoding="utf-8") as fout:
+with open(jsonl_path, "r", encoding="utf-8") as fin:
     for line in fin:
         if not line.strip():
             continue
         row = json.loads(line)
         row = enrich_row(row, csv_idx)
         enriched_rows.append(row)
+
+# ---------- Write output JSONL ----------
+with open(output_jsonl_path, "w", encoding="utf-8") as fout:
+    for row in enriched_rows:
         fout.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 print(f"Wrote enriched JSONL → {output_jsonl_path}  (n={len(enriched_rows)})")

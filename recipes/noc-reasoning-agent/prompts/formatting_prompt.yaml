@@ -5,51 +5,85 @@ user: |-
 
   # AVAILABLE TOOLS
   (These are the standardized tools that map to engineer actions.)
-  Check_Alarm_Status[<site_or_element_id>]
-  - Purpose: Queries the alarm management system (e.g., via SNMP or OSS API) to retrieve current alarm details, severity, “time that alarm has been active”.
-  - Returns: Alarm status (active/cleared), alarm occurred timestamp, description.
 
-  Check_Element_Neighbors[<element_id>]
-  - Purpose: Go to the NMS/EMS/OSS, verify the neighbors of an element, adjacencies, and upstream devices to identify if there is a common alarm that is affecting an area or a router in the path to this element.
-  - Returns: Adjacent elements - alarm status(active/cleared). Return elements where alarms are found.
+  query_alarm[<site_or_element_id>]
+  - Purpose: Queries the alarm management system to retrieve current alarm details, severity, and active time.
+  - Returns: Alarm status (active/cleared), severity, timestamp, description.
 
-  Check_Element_Health[<element_id>]
-  - Purpose: Polls to monitor the system, EMS/NM/Telemetry, and retrieve device health metrics (e.g., RU radiation, cell status). I
-  - Returns: Health report (e.g., "All RUs radiating, no locks"). Element OK- Element NOK
+  query_resource_health[<element_id>]
+  - Purpose: Polls monitoring systems (EMS/NMS/Telemetry) to retrieve device health metrics such as CPU, memory, interface status, and cell state.
+  - Returns: Health report (e.g., "All systems operational" / "Fault detected").
 
-  Execute_Remote_Action[<element_id>, '<action>']
-  - Purpose: Executes remote CLI commands (e.g., via SSH/Netconf) to unlock cells or restart elements like DU/RU.
-  - Returns: Successful Reset/Non-Successful Reset
+  query_performance[<metric_type>]
+  - Purpose: Fetches KPIs from monitoring tools. Reports if trends are in line with expectations.
+  - Example Metrics: 'prb_utilization', 'throughput', 'handover_stats', 'volte_kpi', 'signaling_load'
+  - Returns: KPI status (OK / NOK / trend analysis).
 
-  Check_External_Issues[<site_or_area>]
-  - Purpose: Scans external monitors (like DownDetector or topology maps) for area-wide issues like fiber cuts or power outages.
-  - Returns: Output: List of issues (e.g., "Fiber cut detected"). Issue Detected/Not Detected, Type of Issue
+  query_topology[<element_id>]
+  - Purpose: Verifies neighbors, adjacencies, upstream devices, and identifies common alarms in an area. Maps affected services through topology.
+  - Returns: Adjacent elements with alarm status, affected services.
 
-  Check_Apply_Configuration[<element_id>]
-  - Purpose: Retrieves and validates config files (e.g., gnb.conf) against the standard. If the configuration is wrong, it pushes the corrected configs remotely.
-  - Returns: Configuration Verified/Applied correctly or error.
+  execute_remote_action[<element_id>, '<action>']
+  - Purpose: Executes remote CLI commands (SSH/Netconf) for resets, restarts, failovers, and other operational actions.
+  - Example Actions: 'enodeb_reset', 'generator_start', 'sctp_reset', 'hvac_reset', 'software_rollback'
+  - Returns: Execution result (Success/Fail).
 
-  Check_Performance['<kpi_metric_name>']
-  - Purpose: Fetches KPIs (e.g., PRACH success rate) from monitoring tools like Prometheus or kpi gathering tools. This tool will reply if trends are in line with expectations or not.
-  - Returns: KPI OK or KPIs NOK.
+  apply_configuration[<element_id>, '<config_type>']
+  - Purpose: Retrieves, validates, and pushes configuration changes. Supports parameter adjustments, load balancing, QoS policies, etc.
+  - Example Config Types: 'load_balancing', 'hvac_setpoint', 'handover_params', 'qos_policy'
+  - Returns: Configuration Verified/Applied or error.
 
-  Create_Ticket['<department_name>', '<issue_details>']
-  - Purpose:  Logs and routes tickets to departments (e.g., Field Ops) via the ticketing system. It  (e.g., Jira/ServiceNow).
-  - Returns: Ticket ID. Once the ticket is resolved, the Create_Ticket tool will output the solution used to solve the issue.
+  run_diagnostics[<diagnostic_type>]
+  - Purpose: Runs diagnostic scripts: config audits, OTDR tests, kubelet checks, resource analysis.
+  - Example Types: 'config_audit', 'otdr', 'kubelet', 'resource_usage', 'sidecar_health'
+  - Returns: Diagnostic report summary.
 
-  Orchestration_tool['<action_command>']
-  - Purpose: Automates container ops (e.g., delete/reassign IP) using Kubernetes/Helm in O-RAN setups. Input: Action (E.g., Delete Container).
-  - Example Action: 'delete_pod_xyz', 'reassign_ip_address'
-  - Returns: Operation Successful()/Unsuccessful ()
+  inspect_logs[<log_type>]
+  - Purpose: Connects to devices/containers and reviews system logs, dump files, and event records.
+  - Example Types: 'container', 'bbu_system', 'routing', 'access_control', 'upgrade'
+  - Returns: Log analysis (issues identified / no issues).
 
-  Triage_Toolkit_Tool['<issue_type>']
-  - Purpose: Runs diagnostic scripts for container/pod issues.
-  - Example Issue Type: 'pod-crash-loop', 'container-networking'
-  - Returns: Triage report summary.
+  create_trouble_ticket[<priority>, '<team>', '<issue_details>']
+  - Purpose: Logs and routes tickets to departments via the ticketing system.
+  - Example Teams: 'transport', 'core_operations', 'rf_engineering', 'devops'
+  - Returns: Ticket ID. Once resolved, outputs the solution used.
 
-  Check_remote_files[<element_id>]
-  - Purpose: Does ssh, telnet to the element, and reviews dump files, returns whether issues have been found in the network element or not
-  - Returns: No Issues Identified / Issues Identified.
+  verify_recovery[<element_id>]
+  - Purpose: Final verification step — confirms service restoration, alarm clearance, and operational status.
+  - Returns: Recovery status (recovered / degraded / ongoing).
+
+  query_external_factors[<site_or_area>]
+  - Purpose: Scans for external factors: weather conditions, fiber cuts, utility outages, maintenance windows, scheduled work.
+  - Returns: External issue report.
+
+  orchestrate_workload[<action>, '<type>']
+  - Purpose: Automates container/VM operations via Kubernetes or orchestrator: restart, scale, migrate, failover, drain.
+  - Example Actions: 'restart pod', 'scale deployment', 'migrate vm', 'failover cnf'
+  - Returns: Operation status (Successful/Unsuccessful).
+
+  query_power_system[<target>]
+  - Purpose: Queries power infrastructure status: UPS, battery, generator, rectifier, HVAC systems.
+  - Example Targets: 'ups', 'battery', 'generator', 'hvac', 'rectifier'
+  - Returns: Power system status and readings.
+
+  query_rf_status[<sector_or_antenna_id>]
+  - Purpose: Queries RF chain status: antenna health, PA status, VSWR, beamforming, RET controller.
+  - Returns: RF status report (transmit power, VSWR, antenna tilt, etc.).
+
+  query_container_status[<type>]
+  - Purpose: Queries Kubernetes pod/node/container state from the orchestrator.
+  - Example Types: 'pod', 'node', 'control_plane', 'cnf', 'service_mesh'
+  - Returns: Container/pod state details.
+
+  verify_signaling_path[<interface>]
+  - Purpose: Tests signaling protocol paths: SCTP, SIP, Diameter, GTP, SIGTRAN.
+  - Example Interfaces: 'SCTP', 'SIP', 'GTP', 'Diameter', 'SIGTRAN'
+  - Returns: Path status (healthy / degraded / down).
+
+  test_connectivity[<test_type>]
+  - Purpose: Tests IP/network connectivity: ICMP, backhaul, CPRI, peer connectivity, end-to-end quality.
+  - Example Types: 'backhaul', 'icmp', 'cpri', 'peer_connectivity', 'end_to_end'
+  - Returns: Connectivity test results.
 
   # RULES
   1. Analyze the Entire Log: Read the full context from start to finish to understand the incident's story and the actual sequence of actions.
@@ -80,43 +114,43 @@ user: |-
   [
   {{
     "step_number": 1,
-    "sop_step_title": "Acknowledge and Track the Initial Alert",
+    "sop_step_title": "Verify Site Outage",
     "status": "Completed",
-    "action_taken": "Acknowledged alarm INC12345 for site-123 and began investigation.",
-    "tool_call": "Check_Alarm_Status[site-123]",
-    "result": "ALARM: Site-123 | SEVERITY: Critical | STATUS: Active | DESC: Cell Down"
+    "action_taken": "Acknowledged alarm for site-123 and confirmed site unreachable.",
+    "tool_call": "query_alarm[site-123]",
+    "result": "ALARM: Site-123 | SEVERITY: Critical | STATUS: Active | DESC: Site unreachable - confirmed"
   }},
   {{
     "step_number": 2,
-    "sop_step_title": "Check Site and Equipment Status",
+    "sop_step_title": "Check Backhaul Status",
     "status": "Completed",
-    "action_taken": "Checked element health for site-123, confirmed locked cells.",
-    "tool_call": "Check_Element_Health[site-123]",
-    "result": "HEALTH_CHECK: Element site-123 | Cell 01: LOCKED, Cell 02: LOCKED, Cell 03: ACTIVE"
+    "action_taken": "Tested transport link to site, confirmed backhaul down.",
+    "tool_call": "test_connectivity[backhaul]",
+    "result": "TEST: Backhaul link to site-123 | STATUS: Down | Packet loss: 100%"
   }},
   {{
     "step_number": 3,
-    "sop_step_title": "Perform Remote Actions (Reset/Unlock/Enable)",
+    "sop_step_title": "Check Power Status",
     "status": "Completed",
-    "action_taken": "Attempted remote unlock command on locked cells, but the command failed.",
-    "tool_call": "Execute_Remote_Action[site-123, 'unlock_cell']",
-    "result": "COMMAND_FAILED: Element not responding to unlock command. Error 503."
+    "action_taken": "Attempted to query site power via remote monitoring but site was offline.",
+    "tool_call": "query_power_system[all]",
+    "result": "QUERY FAILED: Unable to reach site power monitoring - site offline"
   }},
   {{
     "step_number": 8,
-    "sop_step_title": "Investigate Persistent or Reoccurring Alarms and Coordinate Onsite Dispatch",
+    "sop_step_title": "Contact Transport Team",
     "status": "Completed",
-    "action_taken": "Remote actions failed. Creating ticket and dispatching field tech for investigation.",
-    "tool_call": "Create_Ticket['Field_Operations', 'Site-123 remote unlock failed. Element unresponsive. Please investigate.']",
-    "result": "TICKET_CREATED: TK78901"
+    "action_taken": "Backhaul down confirmed. Created critical ticket and escalated to transport team.",
+    "tool_call": "create_trouble_ticket[critical, 'transport', 'Site-123 backhaul down causing complete site outage']",
+    "result": "TICKET_CREATED: TK78901 | Assigned to: Transport Operations"
   }},
   {{
-    "step_number": 9,
-    "sop_step_title": "Document All Actions and Status Updates",
+    "step_number": 12,
+    "sop_step_title": "Document All Actions and Close Incident",
     "status": "Completed",
-    "action_taken": "Added all steps and findings to the incident log before closing.",
+    "action_taken": "Documented all troubleshooting steps and findings. Incident closed.",
     "tool_call": null,
-    "result": "Final actions documented. Incident closed."
+    "result": "All actions documented. Incident closed with resolution applied."
   }}
   ]
   ```
@@ -149,8 +183,8 @@ user: |-
   Conclusion:
   {resolution_summary}
 
-  resolution_method:
-  {resolution_method}
+  close_code:
+  {root_cause_secondary}
 
   ### Correct Output:
 

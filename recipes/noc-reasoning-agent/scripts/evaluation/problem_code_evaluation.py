@@ -13,29 +13,54 @@ args = parser.parse_args()
 # Expected is from ground truth (e.g. "Resolved", "Issue Corrected"); we check if response
 # contains the expected phrase OR any synonym that maps to the same meaning.
 CLOSE_CODE_SYNONYMS = {
-    "resolved": [
-        "resolved",
-        "commercial power restored",
-        "power restored",
-        "cold reboot",
-        "incident closed",
-        "issue resolved",
-        "activity completed",
-    ],
-    "issue corrected": [
-        "issue corrected",
-        "solved remotely",
-        "solved remotely (permanently)",
-        "cleared in testing",
-        "configuration corrected",
-        "software fix",
-        "network fix",
-        "performance improvement",
-        "activity completed",
-    ],
-    "activity completed": ["activity completed", "cleared in testing", "resolved"],
-    "ru reset": ["ru reset", "reset ru"],
-    "other": ["other"],
+    # RAN codes
+    "ran-001: cell service interruption": ["ran-001", "cell service interruption", "cell down", "site down"],
+    "ran-002: cell administratively disabled": ["ran-002", "cell administratively disabled", "cell locked"],
+    "ran-005: rrc setup success rate degraded": ["ran-005", "rrc setup", "rrc degraded"],
+    "ran-006: data radio bearer degradation": ["ran-006", "data radio bearer", "drb degradation"],
+    "ran-007: cell not radiating": ["ran-007", "cell not radiating", "no radiation"],
+    "ran-008: dormant cell detected": ["ran-008", "dormant cell"],
+    "ran-009: tx array fault": ["ran-009", "tx array fault", "antenna fault"],
+    "ran-011: remote radio unit alarm": ["ran-011", "remote radio unit", "rru alarm", "ru alarm"],
+    "ran-013: site communication failure": ["ran-013", "site communication failure"],
+    "ran-014: csr unreachable": ["ran-014", "csr unreachable"],
+    "ran-015: fronthaul link down": ["ran-015", "fronthaul link down", "fronthaul down"],
+    "ran-018: link flapping detected": ["ran-018", "link flapping"],
+    "ran-019: ptp synchronization failure": ["ran-019", "ptp synchronization", "ptp failure"],
+    # Power codes
+    "pwr-001: ac power failure": ["pwr-001", "ac power failure", "power failure"],
+    "pwr-002: dc rectifier failure": ["pwr-002", "dc rectifier failure", "rectifier failure"],
+    "pwr-003: battery discharge alert": ["pwr-003", "battery discharge"],
+    # Compute codes
+    "cmp-002: pod container creating": ["cmp-002", "pod container creating", "containercreating"],
+    "cmp-003: pod pending or evicted": ["cmp-003", "pod pending", "pod evicted"],
+    "cmp-004: pod crashloopbackoff": ["cmp-004", "crashloopbackoff", "crash loop"],
+    "cmp-005: pod terminating stuck": ["cmp-005", "pod terminating", "terminating stuck"],
+    "cmp-008: du function pod restart": ["cmp-008", "du function pod", "du pod restart"],
+    "cmp-010: site not scrolling": ["cmp-010", "site not scrolling"],
+    # Environment codes
+    "env-001: high temperature alert": ["env-001", "high temperature"],
+    "env-002: hvac system fault": ["env-002", "hvac system fault", "hvac fault"],
+    "env-005: cabinet intrusion detected": ["env-005", "cabinet intrusion"],
+    "env-006: battery high temperature": ["env-006", "battery high temperature"],
+    # Signaling codes
+    "sig-001: n2 interface down": ["sig-001", "n2 interface down"],
+    "sig-003: sctp association failure": ["sig-003", "sctp association", "sctp failure"],
+    "sig-009: e2 interface errors": ["sig-009", "e2 interface"],
+    "sig-010: cu communication failure": ["sig-010", "cu communication failure"],
+    # Service codes
+    "svc-002: data throughput degradation": ["svc-002", "data throughput degradation", "throughput degradation"],
+    "svc-003: call drop rate elevated": ["svc-003", "call drop rate"],
+    "svc-005: service accessibility degraded": ["svc-005", "service accessibility"],
+    # Transport codes
+    "trn-004: fiber path degradation": ["trn-004", "fiber path degradation"],
+    "trn-007: packet loss threshold exceeded": ["trn-007", "packet loss threshold"],
+    "trn-008: latency sla violation": ["trn-008", "latency sla violation"],
+    # Free-form codes
+    "access instability": ["access instability"],
+    "bgp issue": ["bgp issue", "bgp"],
+    "node not functional": ["node not functional"],
+    "problematic vm": ["problematic vm"],
 }
 
 
