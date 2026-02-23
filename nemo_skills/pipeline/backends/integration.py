@@ -337,3 +337,126 @@ def is_local_executor(cluster_config: Dict) -> bool:
         True if executor is 'local' or 'none'.
     """
     return cluster_config.get("executor") in ("local", "none")
+
+
+def validate_kubernetes_config(cluster_config: Dict) -> List[str]:
+    """Validate a Kubernetes cluster configuration.
+
+    Checks for required fields and common configuration issues.
+
+    Args:
+        cluster_config: Cluster configuration dict.
+
+    Returns:
+        List of validation error messages. Empty list if valid.
+
+    Example:
+        errors = validate_kubernetes_config(config)
+        if errors:
+            for error in errors:
+                print(f"Config error: {error}")
+    """
+    errors = []
+
+    # Check executor type
+    if cluster_config.get("executor") != "kubernetes":
+        errors.append("executor must be 'kubernetes'")
+
+    # Namespace check
+    namespace = cluster_config.get("namespace")
+    if not namespace:
+        errors.append("namespace is required")
+    elif not isinstance(namespace, str):
+        errors.append("namespace must be a string")
+
+    # Containers check
+    containers = cluster_config.get("containers")
+    if not containers:
+        errors.append("containers mapping is required")
+    elif not isinstance(containers, dict):
+        errors.append("containers must be a dict mapping names to images")
+
+    # Storage check (warning, not error)
+    storage = cluster_config.get("storage")
+    if storage:
+        if not isinstance(storage, dict):
+            errors.append("storage must be a dict")
+        else:
+            for name, config in storage.items():
+                if not config.get("pvc_name"):
+                    errors.append(f"storage.{name}.pvc_name is required")
+                if not config.get("mount_path"):
+                    errors.append(f"storage.{name}.mount_path is required")
+
+    # Resource pools check
+    resource_pools = cluster_config.get("resource_pools")
+    if resource_pools:
+        if not isinstance(resource_pools, dict):
+            errors.append("resource_pools must be a dict")
+        else:
+            for pool_name, pool_config in resource_pools.items():
+                if not isinstance(pool_config, dict):
+                    errors.append(f"resource_pools.{pool_name} must be a dict")
+
+    # Image pull secrets check
+    secrets = cluster_config.get("image_pull_secrets")
+    if secrets and not isinstance(secrets, list):
+        errors.append("image_pull_secrets must be a list")
+
+    # Timeout format check
+    timeout = cluster_config.get("default_timeout")
+    if timeout and not isinstance(timeout, str):
+        errors.append("default_timeout must be a string (e.g., '6h', '30m')")
+
+    return errors
+
+
+def validate_slurm_config(cluster_config: Dict) -> List[str]:
+    """Validate a Slurm cluster configuration.
+
+    Args:
+        cluster_config: Cluster configuration dict.
+
+    Returns:
+        List of validation error messages. Empty list if valid.
+    """
+    errors = []
+
+    if cluster_config.get("executor") != "slurm":
+        errors.append("executor must be 'slurm'")
+
+    if not cluster_config.get("account"):
+        errors.append("account is required for Slurm")
+
+    if not cluster_config.get("partition"):
+        errors.append("partition is required for Slurm")
+
+    containers = cluster_config.get("containers")
+    if not containers:
+        errors.append("containers mapping is required")
+
+    return errors
+
+
+def validate_cluster_config(cluster_config: Dict) -> List[str]:
+    """Validate a cluster configuration based on executor type.
+
+    Args:
+        cluster_config: Cluster configuration dict.
+
+    Returns:
+        List of validation error messages. Empty list if valid.
+    """
+    executor = cluster_config.get("executor")
+
+    if not executor:
+        return ["executor is required"]
+
+    if executor == "kubernetes":
+        return validate_kubernetes_config(cluster_config)
+    elif executor == "slurm":
+        return validate_slurm_config(cluster_config)
+    elif executor in ("local", "none"):
+        return []  # Minimal validation for local
+    else:
+        return [f"Unknown executor: {executor}"]

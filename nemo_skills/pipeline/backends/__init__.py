@@ -35,6 +35,9 @@ from nemo_skills.pipeline.backends.integration import (
     is_local_executor,
     is_slurm_cluster,
     run_job_and_wait,
+    validate_cluster_config,
+    validate_kubernetes_config,
+    validate_slurm_config,
 )
 
 __all__ = [
@@ -56,4 +59,8 @@ __all__ = [
     "is_local_executor",
     "is_slurm_cluster",
     "run_job_and_wait",
+    # Validation
+    "validate_cluster_config",
+    "validate_kubernetes_config",
+    "validate_slurm_config",
 ]
