@@ -97,6 +97,11 @@ class TestResourceSpec:
         with pytest.raises(ValueError, match="memory_limit_gb must be positive"):
             ResourceSpec(memory_limit_gb=-1.0)
 
+    def test_memory_request_exceeds_limit_raises(self):
+        """Test that memory request greater than limit raises ValueError."""
+        with pytest.raises(ValueError, match="cannot exceed"):
+            ResourceSpec(memory_request_gb=128.0, memory_limit_gb=64.0)
+
 
 class TestContainerSpec:
     """Tests for ContainerSpec data class."""
@@ -264,7 +269,7 @@ class TestBackendFactory:
 
     def test_missing_executor_raises(self):
         """Test that missing executor raises ValueError."""
-        with pytest.raises(ValueError, match="must contain 'executor' key"):
+        with pytest.raises(KeyError, match="executor"):
             BackendFactory.get_backend({})
 
     def test_unknown_executor_raises(self):
@@ -1219,6 +1224,9 @@ class TestPipelineKubernetesIntegration:
         assert pipeline._parse_timeout("01:30:00") == 1 * 3600 + 30 * 60
         assert pipeline._parse_timeout("06:00:00") == 6 * 3600
         assert pipeline._parse_timeout("") == 6 * 3600  # Default
+
+        with pytest.raises(ValueError, match="Unrecognized timeout format"):
+            pipeline._parse_timeout("6x")
 
     def test_slurm_still_uses_nemo_run(self):
         """Test that Slurm executor still routes to NeMo-Run path."""

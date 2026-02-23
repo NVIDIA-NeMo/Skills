@@ -160,7 +160,7 @@ def create_inference_job_spec(
         name="server",
         image=server_image,
         command=server_command,
-        resources=ResourceSpec(gpus=server_gpus, memory_gb=server_memory_gb),
+        resources=ResourceSpec(gpus=server_gpus, memory_request_gb=server_memory_gb),
         ports=[server_port],
     )
 
@@ -172,7 +172,7 @@ def create_inference_job_spec(
         name="client",
         image=client_image,
         command=client_command,
-        resources=ResourceSpec(gpus=0, memory_gb=16),
+        resources=ResourceSpec(gpus=0, memory_request_gb=16),
         env_vars=env,
     )
 
@@ -213,7 +213,7 @@ def create_training_job_spec(
         name="trainer",
         image=image,
         command=command,
-        resources=ResourceSpec(gpus=gpus, memory_gb=memory_gb),
+        resources=ResourceSpec(gpus=gpus, memory_request_gb=memory_gb),
         env_vars=env_vars or {},
     )
 
@@ -254,7 +254,7 @@ def create_data_processing_job_spec(
         name="processor",
         image=image,
         command=command,
-        resources=ResourceSpec(gpus=0, cpus=cpus, memory_gb=memory_gb),
+        resources=ResourceSpec(gpus=0, cpus=cpus, memory_request_gb=memory_gb),
         env_vars=env_vars or {},
     )
 

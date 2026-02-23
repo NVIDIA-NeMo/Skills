@@ -137,6 +137,10 @@ spec:
             fi
             sleep 2
           done
+          if ! getent hosts ${MASTER_ADDR} > /dev/null 2>&1; then
+            echo "FAIL: Master DNS ${MASTER_ADDR} not resolvable after 120s"
+            exit 1
+          fi
 
           cat > /tmp/multinode_train.py << 'PYEOF'
 """Multi-node distributed training smoke test."""

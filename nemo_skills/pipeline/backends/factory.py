@@ -100,7 +100,7 @@ class BackendFactory:
             ValueError: If executor type is not supported.
             RuntimeError: If backend initialization fails and no fallback available.
         """
-        executor = cluster_config.get("executor")
+        executor = cluster_config["executor"]
         if not executor:
             raise ValueError("cluster_config must contain 'executor' key")
 

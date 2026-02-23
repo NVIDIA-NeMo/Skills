@@ -9,7 +9,6 @@
 #
 # Build args:
 #   NEMO_RL_COMMIT: NeMo-RL commit to build from (default: pinned)
-#   NEMO_SKILLS_PATH: path to local NeMo-Skills code in build context (default: /skills)
 
 ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:25.05-cuda12.9-devel-ubuntu24.04
 
@@ -37,7 +36,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim gnupg && \
     echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" | tee /etc/apt/sources.list.d/nvidia-devtools.list && \
-    apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub && \
+    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture)/7fa2af80.pub && \
     apt-get update && \
     apt-get install -y nsight-systems-cli && \
     apt-get install -y --only-upgrade gnupg && \

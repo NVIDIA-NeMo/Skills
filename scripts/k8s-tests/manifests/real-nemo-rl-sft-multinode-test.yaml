@@ -100,7 +100,12 @@ data:
       echo "=== REAL NEMO-RL MNMG SFT COMPLETED ==="
     else
       echo "Starting Ray worker node (joining head at ${MASTER_ADDR}:6379)..."
-      ray start --address="${MASTER_ADDR}:6379" --num-gpus=${NUM_GPUS} --block || true
+      ray start --address="${MASTER_ADDR}:6379" --num-gpus=${NUM_GPUS} --block
+      RAY_EXIT=$?
+      if [ $RAY_EXIT -ne 0 ]; then
+        echo "FAIL: Ray worker exited with code $RAY_EXIT"
+        exit $RAY_EXIT
+      fi
       echo "Worker done (Ray head shut down)."
     fi
 ---

@@ -566,7 +566,6 @@ client = GenerationClientScript(
     model_names=["Qwen/Qwen2.5-Math-7B"],
     server_types=["vllm"],
     extra_arguments="++split=test ++prompt_config=generic/math",
-    cluster_config=cluster_config,
 )
 
 # Wrap in Commands with container assignments

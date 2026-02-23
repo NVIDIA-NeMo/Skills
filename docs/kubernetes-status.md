@@ -40,7 +40,7 @@ This document tracks the implementation status, known limitations, and open issu
 
 | Feature | Slurm Support | K8s Status | Severity | Workaround |
 |---------|---------------|------------|----------|------------|
-| Multi-node training | `--num_nodes=N` | ✅ Backend + cluster validated (Indexed Job + Headless Service) | N/A | Pipeline integration (`ns nemo_rl sft`) pending |
+| Multi-node CLI integration | `--num_nodes=N` | ❌ Pending (`ns nemo_rl sft` wiring) | **Medium** | Use validated Pipeline + KubernetesBackend multi-node path |
 | Code packaging | NeMo-Run auto-packages | ❌ Not implemented | **Medium** | Bake code into images or mount via PVC |
 | SSH tunneling | `--create_tunnel` | ❌ Not implemented | **Medium** | Manual `kubectl port-forward` |
 | Log file paths | Writes to `{log_dir}/*.log` | ❌ Different | **Low** | Use `kubectl logs` instead |
@@ -53,7 +53,7 @@ These limitations are not documented elsewhere and were discovered during code r
 
 | Gap | Where It Manifests | Notes |
 |-----|-------------------|-------|
-| Multi-node training needs MPI Operator | `ns nemo_rl sft --num_nodes=8` | K8s Jobs are single-pod; distributed training needs Kubeflow/MPI Operator |
+| Multi-node docs lag implementation | `ns nemo_rl sft --num_nodes=8` | Backend path is validated via Indexed Job + Headless Service; CLI docs/wiring are pending |
 | Job dependencies force sequential | `declarative.py:641-647` | Logged as warning at runtime only |
 | SSH tunneling not available | `ns start_server --create_tunnel` | No equivalent K8s implementation |
 | External dependencies skipped | `declarative.py:692-694` | Logged as warning at runtime only |
@@ -82,7 +82,7 @@ These TODOs are documented in the codebase:
 
 ### Discovered During Review
 
-- [ ] Multi-node distributed training - need to integrate with MPI Operator or Kubeflow
+- [ ] Multi-node CLI integration (`ns nemo_rl sft --num_nodes`) should route to validated Indexed Job + Headless Service path
 - [ ] Port-forwarding automation for `--create_tunnel` equivalent
 - [ ] Init container for code fetching (git clone or S3 download)
 - [ ] Documentation for CI/CD image build workflow

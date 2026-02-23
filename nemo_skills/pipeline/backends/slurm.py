@@ -47,6 +47,7 @@ TODO: Future improvements needed:
 """
 
 import logging
+import shlex
 from typing import Dict, Iterator, Optional
 
 from nemo_skills.pipeline.backends.base import (
@@ -87,7 +88,7 @@ class SlurmBackend(ComputeBackend):
         self.config = cluster_config
 
         # Validate required fields
-        if cluster_config.get("executor") != "slurm":
+        if cluster_config["executor"] != "slurm":
             raise ValueError("SlurmBackend requires executor='slurm' in config")
 
         # Track submitted jobs
@@ -117,7 +118,7 @@ class SlurmBackend(ComputeBackend):
         main_container = spec.containers[0]
 
         # Build command from container spec
-        cmd = " ".join(main_container.command)
+        cmd = shlex.join(main_container.command)
 
         # Resolve container image
         container_image = main_container.image
@@ -139,9 +140,9 @@ class SlurmBackend(ComputeBackend):
 
             # Store job info
             job_info = {
-                "experiment": exp,
                 "task": task,
                 "spec": spec,
+                "experiment_name": spec.name,
             }
             job_id = f"slurm-{spec.name}"
             self._jobs[job_id] = job_info
@@ -234,7 +235,7 @@ class SlurmBackend(ComputeBackend):
                         "ConnectTimeout=5",
                         "-o",
                         "BatchMode=yes",
-                        f"{ssh_tunnel.get('user')}@{ssh_tunnel.get('host')}",
+                        f"{ssh_tunnel['user']}@{ssh_tunnel['host']}",
                         "echo",
                         "ok",
                     ],

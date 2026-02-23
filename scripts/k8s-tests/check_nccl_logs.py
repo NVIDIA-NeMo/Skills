@@ -92,12 +92,14 @@ def parse_nccl_logs(log_text: str) -> NCCLCheckResult:
             if "NVLink" not in result.transport_used:
                 result.transport_used.append("NVLink")
 
-        if "IB" in line and ("NCCL INFO" in line or "transport" in line.lower()):
+        if re.search(r"\bIB\b|InfiniBand|ibverbs", line, re.IGNORECASE) and (
+            "NCCL INFO" in line or "transport" in line.lower()
+        ):
             result.ib_detected = True
             if "IB" not in result.transport_used:
                 result.transport_used.append("IB")
 
-        if re.search(r"NET.*Socket|TCP", line) and "NCCL" in line:
+        if re.search(r"NET.*(?:Socket|\bTCP\b)", line, re.IGNORECASE) and "NCCL" in line:
             result.tcp_fallback = True
             if "TCP/Socket" not in result.transport_used:
                 result.transport_used.append("TCP/Socket")

@@ -31,6 +31,7 @@ IMAGE="${IMAGE:-nemo-skills/nemo-rl:latest}"
 IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-Never}"
 JOB_NAME="mn-sft-test-$(date +%s | tail -c 6)"
 SVC="${JOB_NAME}-workers"
+CM_NAME="${JOB_NAME}-script"
 TIMEOUT=900
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -51,6 +52,13 @@ if [[ "$NUM_NODES" -lt 2 ]]; then
     exit 2
 fi
 
+cleanup() {
+    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null || true
+    kubectl delete svc "$SVC" -n "$NAMESPACE" --ignore-not-found 2>/dev/null || true
+    kubectl delete configmap "$CM_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 MASTER="${JOB_NAME}-0.${SVC}.${NAMESPACE}.svc.cluster.local"
 
 echo "================================================================"
@@ -66,8 +74,8 @@ echo "Master:     $MASTER"
 echo "================================================================"
 
 # --- Create training script ConfigMap ---
-kubectl delete configmap sft-e2e-script -n "$NAMESPACE" --ignore-not-found 2>/dev/null
-kubectl create configmap sft-e2e-script -n "$NAMESPACE" --from-literal=train.py='
+kubectl delete configmap "$CM_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
+kubectl create configmap "$CM_NAME" -n "$NAMESPACE" --from-literal=train.py='
 import os, sys
 import nemo_skills
 print(f"nemo_skills {nemo_skills.__version__}")
@@ -178,7 +186,7 @@ spec:
             topologyKey: kubernetes.io/hostname
       volumes:
       - name: script
-        configMap: {name: sft-e2e-script}
+        configMap: {name: ${CM_NAME}}
 EOF
 
 echo ""
@@ -261,10 +269,3 @@ else
     echo "================================================================"
     exit 1
 fi
-
-# --- Cleanup ---
-echo "Cleaning up..."
-kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
-kubectl delete svc "$SVC" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
-kubectl delete configmap sft-e2e-script -n "$NAMESPACE" --ignore-not-found 2>/dev/null
-echo "Done."

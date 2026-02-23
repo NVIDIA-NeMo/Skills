@@ -103,6 +103,7 @@ import os, torch, torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
 
+dist.init_process_group(backend='nccl')
 rank = int(os.environ.get('RANK', 0))
 local_rank = int(os.environ.get('LOCAL_RANK', 0))
 device = torch.device(f'cuda:{{local_rank}}')

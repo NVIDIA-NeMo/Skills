@@ -67,6 +67,14 @@ class ResourceSpec:
             raise ValueError(f"memory_request_gb must be positive, got {self.memory_request_gb}")
         if self.memory_limit_gb is not None and self.memory_limit_gb <= 0:
             raise ValueError(f"memory_limit_gb must be positive, got {self.memory_limit_gb}")
+        if (
+            self.memory_request_gb is not None
+            and self.memory_limit_gb is not None
+            and self.memory_request_gb > self.memory_limit_gb
+        ):
+            raise ValueError(
+                f"memory_request_gb ({self.memory_request_gb}) cannot exceed memory_limit_gb ({self.memory_limit_gb})"
+            )
 
     def get_memory_request_gb(self) -> float:
         """Get memory request, auto-calculating if not specified.

@@ -154,7 +154,7 @@ class LocalBackend(ComputeBackend):
 
         # Add GPU support
         if container_spec.resources.gpus > 0:
-            cmd.extend(["--gpus", f'"{container_spec.resources.gpus}"'])
+            cmd.extend(["--gpus", str(container_spec.resources.gpus)])
 
         # Add environment variables
         for key, value in container_spec.env_vars.items():
@@ -207,7 +207,7 @@ class LocalBackend(ComputeBackend):
             if status in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED):
                 return status
 
-            if timeout and (time.time() - start_time) > timeout:
+            if timeout is not None and (time.time() - start_time) > timeout:
                 return status
 
             time.sleep(1)

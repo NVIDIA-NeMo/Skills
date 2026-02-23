@@ -467,7 +467,7 @@ class Pipeline:
             _reuse_exp: Internal - reuse existing experiment object (for eval.py integration)
             sequential: If True, run tasks sequentially (only makes sense for local/none executors)
         """
-        executor = self.cluster_config.get("executor", "slurm")
+        executor = self.cluster_config["executor"]
 
         # Route to Kubernetes backend for kubernetes executor
         if executor == "kubernetes":
@@ -881,33 +881,40 @@ class Pipeline:
 
         Supports formats: '6h', '30m', '3600', '06:00:00'
         """
+        timeout_str = timeout_str.strip().lower()
+
         if not timeout_str:
             return 6 * 3600  # Default 6 hours
 
-        # Already seconds
-        if timeout_str.isdigit():
-            return int(timeout_str)
+        try:
+            # Already seconds
+            if timeout_str.isdigit():
+                return int(timeout_str)
 
-        # Hours format (e.g., '6h')
-        if timeout_str.endswith("h"):
-            return int(timeout_str[:-1]) * 3600
+            # Hours format (e.g., '6h')
+            if timeout_str.endswith("h"):
+                return int(timeout_str[:-1]) * 3600
 
-        # Minutes format (e.g., '30m')
-        if timeout_str.endswith("m"):
-            return int(timeout_str[:-1]) * 60
+            # Minutes format (e.g., '30m')
+            if timeout_str.endswith("m"):
+                return int(timeout_str[:-1]) * 60
 
-        # HH:MM:SS format
-        if ":" in timeout_str:
-            parts = timeout_str.split(":")
-            if len(parts) == 3:
-                hours, minutes, seconds = map(int, parts)
-                return hours * 3600 + minutes * 60 + seconds
-            elif len(parts) == 2:
-                minutes, seconds = map(int, parts)
-                return minutes * 60 + seconds
+            # HH:MM:SS format
+            if ":" in timeout_str:
+                parts = timeout_str.split(":")
+                if len(parts) == 3:
+                    hours, minutes, seconds = map(int, parts)
+                    return hours * 3600 + minutes * 60 + seconds
+                if len(parts) == 2:
+                    minutes, seconds = map(int, parts)
+                    return minutes * 60 + seconds
+        except ValueError as e:
+            raise ValueError(f"Invalid timeout format: '{timeout_str}'") from e
 
-        # Default
-        return 6 * 3600
+        raise ValueError(
+            f"Unrecognized timeout format: '{timeout_str}'. Supported formats: "
+            "'3600' (seconds), '6h' (hours), '30m' (minutes), '06:00:00' (HH:MM:SS)"
+        )
 
     def _print_dry_run_job(self, job_name: str, spec: JobSpec):
         """Print job details for dry run."""
@@ -1059,7 +1066,7 @@ class Pipeline:
         # Assign het_group_index and backend values before evaluating any commands so
         # cross-references (e.g., hostname_ref) see the correct values regardless of
         # processing order.
-        backend = cluster_config.get("executor", "slurm")
+        backend = cluster_config["executor"]
         for het_idx, group in enumerate(groups):
             for command in group.commands:
                 command.script.het_group_index = het_idx if heterogeneous else None

@@ -23,7 +23,10 @@ This backend submits jobs as Kubernetes Jobs with support for:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
+import re
 from typing import Dict, Iterator, List, Optional
 
 from nemo_skills.pipeline.backends.base import (
@@ -251,13 +254,27 @@ class KubernetesBackend(ComputeBackend):
         if image_pull_secrets:
             pod_spec.image_pull_secrets = [client.V1LocalObjectReference(name=s) for s in image_pull_secrets]
 
-        # Add volumes from storage config
+        # Add volumes from storage config and per-container mount overrides.
+        # Each container gets its own volume_mounts list to avoid shared mutable state.
         volumes, volume_mounts = self._build_volumes()
-        if volumes:
-            pod_spec.volumes = volumes
-            # Add volume mounts to all containers
-            for container in pod_spec.containers:
-                container.volume_mounts = volume_mounts
+        pod_spec.volumes = list(volumes) if volumes else []
+        shared_mounts = list(volume_mounts) if volume_mounts else []
+        existing_volumes = {v.name: v for v in pod_spec.volumes}
+
+        for container_spec, container in zip(spec.containers, pod_spec.containers):
+            container_mounts = list(shared_mounts)
+            extra_volumes, extra_mounts = self._build_container_mounts(
+                container_spec.mounts,
+                existing_volumes,
+            )
+            if extra_volumes:
+                pod_spec.volumes.extend(extra_volumes)
+            if extra_mounts:
+                container_mounts.extend(extra_mounts)
+            container.volume_mounts = container_mounts if container_mounts else None
+
+        if not pod_spec.volumes:
+            pod_spec.volumes = None
 
         # Build Job labels
         labels = self._build_job_labels(spec)
@@ -427,7 +444,13 @@ class KubernetesBackend(ComputeBackend):
 
             # Prepend distributed rank exports to the container command.
             # Container commands use ["bash", "-c", "<cmd>"] format.
-            if container.command and len(container.command) >= 3 and container.command[0] == "bash":
+            shell_name = os.path.basename(container.command[0]).lower() if container.command else ""
+            if (
+                container.command
+                and len(container.command) >= 3
+                and shell_name in {"bash", "sh"}
+                and container.command[1] == "-c"
+            ):
                 original_cmd = container.command[2]
                 container.command[2] = (
                     "export NODE_RANK=${JOB_COMPLETION_INDEX} && "
@@ -748,6 +771,76 @@ class KubernetesBackend(ComputeBackend):
 
         return volumes if volumes else None, mounts if mounts else None
 
+    def _build_container_mounts(self, mounts: List[str], existing_volumes: Dict[str, object]) -> tuple[list, list]:
+        """Build K8s volume mounts for ContainerSpec.mounts entries.
+
+        Supported mount syntax: 'src:dst[:ro|rw]'.
+        - If src matches an existing volume name, reuse it.
+        - If src is an absolute path, create a hostPath volume.
+        - Otherwise, treat src as a PVC claim name and create a PVC volume.
+        """
+        client = self._k8s_client
+        if not mounts:
+            return [], []
+
+        new_volumes = []
+        volume_mounts = []
+
+        for mount in mounts:
+            parts = mount.split(":")
+            if len(parts) not in (2, 3):
+                raise ValueError(
+                    f"Invalid mount '{mount}'. Expected format 'src:dst[:ro|rw]' in ContainerSpec.mounts."
+                )
+
+            source = parts[0].strip()
+            mount_path = parts[1].strip()
+            mode = parts[2].strip().lower() if len(parts) == 3 else ""
+
+            if not source or not mount_path:
+                raise ValueError(f"Invalid mount '{mount}': source and destination must be non-empty.")
+            if mode not in ("", "ro", "rw"):
+                raise ValueError(f"Invalid mount mode '{mode}' in '{mount}'. Supported modes: ro, rw.")
+
+            if source in existing_volumes:
+                volume_name = source
+            else:
+                volume_name = self._build_mount_volume_name(source)
+                if volume_name not in existing_volumes:
+                    if source.startswith("/"):
+                        volume = client.V1Volume(
+                            name=volume_name,
+                            host_path=client.V1HostPathVolumeSource(path=source),
+                        )
+                    else:
+                        volume = client.V1Volume(
+                            name=volume_name,
+                            persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=source),
+                        )
+                    existing_volumes[volume_name] = volume
+                    new_volumes.append(volume)
+
+            volume_mounts.append(
+                client.V1VolumeMount(
+                    name=volume_name,
+                    mount_path=mount_path,
+                    read_only=(mode == "ro"),
+                )
+            )
+
+        return new_volumes, volume_mounts
+
+    @staticmethod
+    def _build_mount_volume_name(source: str) -> str:
+        """Build a deterministic, K8s-safe volume name from a mount source."""
+        normalized = source.lower()
+        normalized = re.sub(r"[^a-z0-9-]+", "-", normalized).strip("-")
+        if not normalized:
+            normalized = "mount"
+        normalized = normalized[:40].rstrip("-")
+        digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:8]
+        return f"mnt-{normalized}-{digest}"[:63].rstrip("-")
+
     def _get_default_timeout(self) -> Optional[int]:
         """Get default timeout in seconds."""
         timeout_str = self.config.get("default_timeout")
@@ -760,23 +853,58 @@ class KubernetesBackend(ComputeBackend):
         """Parse timeout string to seconds (e.g., '6h' -> 21600)."""
         timeout_str = timeout_str.strip().lower()
 
-        if timeout_str.endswith("h"):
-            return int(timeout_str[:-1]) * 3600
-        elif timeout_str.endswith("m"):
-            return int(timeout_str[:-1]) * 60
-        elif timeout_str.endswith("s"):
-            return int(timeout_str[:-1])
-        elif ":" in timeout_str:
-            # HH:MM:SS format
-            parts = timeout_str.split(":")
-            if len(parts) == 3:
-                h, m, s = map(int, parts)
-                return h * 3600 + m * 60 + s
-            elif len(parts) == 2:
-                m, s = map(int, parts)
-                return m * 60 + s
+        try:
+            if timeout_str.endswith("h"):
+                return int(float(timeout_str[:-1]) * 3600)
+            if timeout_str.endswith("m"):
+                return int(float(timeout_str[:-1]) * 60)
+            if timeout_str.endswith("s"):
+                return int(float(timeout_str[:-1]))
+            if ":" in timeout_str:
+                parts = timeout_str.split(":")
+                if len(parts) == 3:
+                    h, m, s = map(int, parts)
+                    return h * 3600 + m * 60 + s
+                if len(parts) == 2:
+                    m, s = map(int, parts)
+                    return m * 60 + s
+                raise ValueError
+            return int(timeout_str)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid timeout format: '{timeout_str}'. Use '6h', '30m', '300s', or integer seconds."
+            ) from e
 
-        return int(timeout_str)
+    def _evaluate_job_status(self, job) -> JobStatus:
+        """Evaluate JobStatus from a Kubernetes Job object."""
+        status = job.status
+
+        for condition in getattr(status, "conditions", []) or []:
+            condition_type = getattr(condition, "type", None)
+            condition_status = str(getattr(condition, "status", "")).lower()
+            if condition_type == "Failed" and condition_status == "true":
+                return JobStatus.FAILED
+            if condition_type == "Complete" and condition_status == "true":
+                return JobStatus.SUCCEEDED
+
+        desired_completions = getattr(getattr(job, "spec", None), "completions", 1)
+        try:
+            desired_completions = int(desired_completions) if desired_completions is not None else 1
+        except (TypeError, ValueError):
+            desired_completions = 1
+        desired_completions = max(desired_completions, 1)
+
+        succeeded = int(getattr(status, "succeeded", 0) or 0)
+        failed = int(getattr(status, "failed", 0) or 0)
+        active = int(getattr(status, "active", 0) or 0)
+
+        if succeeded >= desired_completions:
+            return JobStatus.SUCCEEDED
+        if failed > 0 and active == 0:
+            return JobStatus.FAILED
+        if active > 0 or succeeded > 0:
+            return JobStatus.RUNNING
+        return JobStatus.PENDING
 
     def get_status(self, handle: JobHandle) -> JobStatus:
         """Get job status from Kubernetes API."""
@@ -785,17 +913,7 @@ class KubernetesBackend(ComputeBackend):
                 name=handle.job_id,
                 namespace=handle.metadata.get("namespace", self.namespace),
             )
-
-            status = job.status
-
-            if status.succeeded and status.succeeded > 0:
-                return JobStatus.SUCCEEDED
-            elif status.failed and status.failed > 0:
-                return JobStatus.FAILED
-            elif status.active and status.active > 0:
-                return JobStatus.RUNNING
-            else:
-                return JobStatus.PENDING
+            return self._evaluate_job_status(job)
 
         except self._k8s_client.ApiException as e:
             if e.status == 404:
@@ -816,12 +934,11 @@ class KubernetesBackend(ComputeBackend):
                 timeout_seconds=timeout,
             ):
                 job = event["object"]
-                status = job.status
-
-                if status.succeeded and status.succeeded > 0:
+                job_status = self._evaluate_job_status(job)
+                if job_status == JobStatus.SUCCEEDED:
                     w.stop()
                     return JobStatus.SUCCEEDED
-                elif status.failed and status.failed > 0:
+                if job_status == JobStatus.FAILED:
                     w.stop()
                     return JobStatus.FAILED
 

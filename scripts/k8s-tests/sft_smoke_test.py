@@ -198,6 +198,9 @@ def main():
         return
 
     result = pipeline.run(dry_run=False)
+    if result is None:
+        print("ERROR: Pipeline returned None (unexpected)")
+        sys.exit(1)
     print(f"\nSubmitted {len(result)} job(s)")
     for name, handle in result.items():
         print(f"  {name}: job_id={handle.job_id}")

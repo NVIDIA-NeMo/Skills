@@ -31,6 +31,7 @@ NUM_NODES="${NUM_NODES:-1}"
 IMAGE="${IMAGE:-nemo-skills/nemo-rl:latest}"
 IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-Never}"
 JOB_NAME="sft-e2e-validate-$(date +%s | tail -c 6)"
+CM_NAME="${JOB_NAME}-script"
 TIMEOUT=900
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -52,6 +53,12 @@ if [ "$NUM_NODES" -ne 1 ]; then
     echo "Use --nodes 1, or run multi-node validation via the Pipeline/KubernetesBackend path."
     exit 2
 fi
+
+cleanup() {
+    kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null || true
+    kubectl delete configmap "$CM_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
 
 echo "================================================================"
 echo "End-to-End SFT Validation on Kubernetes"
@@ -174,7 +181,7 @@ device = torch.device(f"cuda:{local_rank}")
 torch.cuda.set_device(device)
 print(f"  [Rank {rank}/{world_size}] GPU: {torch.cuda.get_device_name(device)}")
 
-# === Validation checkpoint 3: SFT-style training ===
+# === Validation checkpoint 4: SFT-style training ===
 print(f"\n=== Checkpoint 4: SFT training (Rank {rank}) ===")
 
 # Create synthetic dataset
@@ -205,7 +212,7 @@ for epoch in range(2):
     if rank == 0:
         print(f"  Epoch {epoch}: loss={losses[-1]:.4f}")
 
-# === Validation checkpoint 4: NCCL all-reduce ===
+# === Validation checkpoint 5: NCCL all-reduce ===
 print(f"\n=== Checkpoint 5: NCCL all-reduce (Rank {rank}) ===")
 tensor = torch.ones(1, device=device) * rank
 dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
@@ -232,8 +239,8 @@ dist.destroy_process_group()
 PYEOF
 
 # Write training script to a ConfigMap
-kubectl delete configmap sft-e2e-script -n "$NAMESPACE" --ignore-not-found 2>/dev/null
-kubectl create configmap sft-e2e-script \
+kubectl delete configmap "$CM_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
+kubectl create configmap "$CM_NAME" \
     --from-literal=validate_sft.py="$TRAIN_SCRIPT" \
     -n "$NAMESPACE"
 
@@ -286,7 +293,7 @@ spec:
       volumes:
       - name: script
         configMap:
-          name: sft-e2e-script
+          name: ${CM_NAME}
 EOF
 
 echo ""
@@ -346,6 +353,3 @@ else
     echo "================================================================"
     exit 1
 fi
-
-# Cleanup
-kubectl delete job "$JOB_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null

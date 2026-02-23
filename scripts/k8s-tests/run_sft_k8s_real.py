@@ -34,12 +34,6 @@ def main():
     parser.add_argument("--namespace", default="default")
     parser.add_argument("--image", default=os.environ.get("SFT_IMAGE", "nemo-skills/nemo-rl:latest"))
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument(
-        "--skip-conversion",
-        action="store_true",
-        default=True,
-        help="Skip checkpoint conversion job (default: True for testing)",
-    )
     args = parser.parse_args()
 
     print("================================================================")
@@ -102,7 +96,9 @@ def main():
         "    loss = trainer.state.log_history[-1].get('train_loss', 'N/A')\n"
         "    print(f'PIPELINE RUN PASSED: model=gpt2 loss={loss}')\n"
         "TRAINEOF\n"
-        f"torchrun --nproc_per_node={args.num_gpus} --master_port=29500 /tmp/train_pipeline.py"
+        f"torchrun --nproc_per_node={args.num_gpus} --nnodes={args.num_nodes} "
+        f"--node_rank=${{NODE_RANK:-0}} --master_addr=${{MASTER_ADDR:-localhost}} "
+        f"--master_port=29500 /tmp/train_pipeline.py"
     )
 
     cluster_config = {
