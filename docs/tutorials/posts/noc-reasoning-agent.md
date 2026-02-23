@@ -511,7 +511,18 @@ python scripts/evaluation/problem_code_evaluation.py outputs/agent_responses.jso
 python scripts/evaluation/problem_code_evaluation.py outputs/baseline_agent_responses.jsonl
 ```
 
-The evaluation script matches the model's predicted close code against the expected answer using synonym-aware matching (e.g. "Resolved" and "Issue Corrected" are both recognized). You should see a meaningful improvement in the fine-tuned model's accuracy compared to the baseline.
+The evaluation script matches the model's predicted close code against the expected answer using synonym-aware matching (e.g. "Resolved" and "Issue Corrected" are both recognized).
+
+#### Expected Results
+
+Using the provided synthetic dataset (21 test incidents), you should see results similar to:
+
+| Model | Total | Correct | Incorrect | Failed | Accuracy |
+| --- | --- | --- | --- | --- | --- |
+| **Fine-tuned Qwen3-32B** | 21 | 19 | 2 | 0 | **90.5%** |
+| **Baseline Qwen3-32B** | 21 | 17 | 4 | 0 | **81.0%** |
+
+With larger and more diverse training datasets, the fine-tuned model is expected to show a clearer accuracy gap over the baseline, particularly on complex multi-step incidents requiring domain-specific reasoning.
 
 ## Quick Reference
 
