@@ -112,7 +112,7 @@ def main():
     except UnicodeDecodeError:
         df = pd.read_csv(input_path, dtype=str, encoding="latin1")
 
-    if args.examples_by_problem_code:
+    if args.examples_by_problem_code is not None:
         df = extract_examples_by_problem_code(df, args.examples_by_problem_code)
         print(f"Extracted {len(df)} examples from the dataset.")
 
