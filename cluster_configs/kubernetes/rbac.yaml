@@ -1,0 +1,142 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# =============================================================================
+# NeMo-Skills Kubernetes RBAC Configuration
+# =============================================================================
+#
+# This file contains the minimum RBAC permissions required for NeMo-Skills
+# to manage jobs on a Kubernetes cluster.
+#
+# Usage:
+#   kubectl apply -f rbac.yaml
+#
+# To use a different namespace, replace 'nemo-skills' with your namespace:
+#   sed 's/nemo-skills/your-namespace/g' rbac.yaml | kubectl apply -f -
+#
+# =============================================================================
+
+---
+# Namespace for NeMo-Skills workloads
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: namespace
+
+---
+# ServiceAccount for NeMo-Skills job pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nemo-skills-sa
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: service-account
+
+---
+# Role with minimum permissions for job management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nemo-skills-job-manager
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: rbac
+rules:
+  # Job management - create, monitor, and delete jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "delete", "get", "list", "watch", "patch"]
+
+  # Pod access - required for log streaming and status monitoring
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Pod logs - required for log streaming
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+
+  # ConfigMaps - for job configuration (optional)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "delete", "get", "list", "watch"]
+
+  # Secrets - for pulling images from private registries (read-only)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+
+  # Events - for debugging job issues (read-only)
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding to grant permissions to the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nemo-skills-job-manager-binding
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: rbac
+subjects:
+  - kind: ServiceAccount
+    name: nemo-skills-sa
+    namespace: nemo-skills
+roleRef:
+  kind: Role
+  name: nemo-skills-job-manager
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Optional: ClusterRole for cross-namespace node inspection
+# Only needed if you want to query node resources/labels
+# Uncomment if required
+#
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: ClusterRole
+# metadata:
+#   name: nemo-skills-node-reader
+#   labels:
+#     app.kubernetes.io/name: nemo-skills
+#     app.kubernetes.io/component: rbac
+# rules:
+#   - apiGroups: [""]
+#     resources: ["nodes"]
+#     verbs: ["get", "list", "watch"]
+# ---
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: ClusterRoleBinding
+# metadata:
+#   name: nemo-skills-node-reader-binding
+#   labels:
+#     app.kubernetes.io/name: nemo-skills
+#     app.kubernetes.io/component: rbac
+# subjects:
+#   - kind: ServiceAccount
+#     name: nemo-skills-sa
+#     namespace: nemo-skills
+# roleRef:
+#   kind: ClusterRole
+#   name: nemo-skills-node-reader
+#   apiGroup: rbac.authorization.k8s.io

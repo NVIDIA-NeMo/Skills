@@ -1,0 +1,191 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# =============================================================================
+# NeMo-Skills Kubernetes Storage Configuration
+# =============================================================================
+#
+# This file contains PersistentVolumeClaim templates for NeMo-Skills workloads.
+# Modify the storageClassName and storage sizes to match your cluster.
+#
+# Prerequisites:
+#   - A StorageClass that supports ReadWriteMany (RWX) access mode
+#   - Common options: NFS, CephFS, Amazon EFS, Azure Files, GCP Filestore
+#
+# Usage:
+#   1. Update storageClassName to match your cluster's storage class
+#   2. Adjust storage sizes as needed
+#   3. Apply: kubectl apply -f storage.yaml
+#
+# =============================================================================
+
+---
+# PVC for model weights (typically large, read-heavy)
+# Recommended: ReadWriteMany for shared access across jobs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nemo-models-pvc
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: storage
+    nemo-skills.nvidia.com/storage-type: models
+spec:
+  accessModes:
+    - ReadWriteMany  # Required for concurrent job access
+  resources:
+    requests:
+      storage: 500Gi  # Adjust based on model sizes
+  # IMPORTANT: Update this to your cluster's RWX-capable storage class
+  # Examples:
+  #   - AWS EFS: efs-sc
+  #   - Azure Files: azurefile-csi
+  #   - GCP Filestore: filestore-sc
+  #   - NFS: nfs-client
+  storageClassName: "REPLACE_WITH_YOUR_STORAGE_CLASS"
+
+---
+# PVC for datasets and input data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nemo-data-pvc
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: storage
+    nemo-skills.nvidia.com/storage-type: data
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Gi  # Adjust based on dataset sizes
+  storageClassName: "REPLACE_WITH_YOUR_STORAGE_CLASS"
+
+---
+# PVC for job outputs and results
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nemo-results-pvc
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: storage
+    nemo-skills.nvidia.com/storage-type: results
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi  # Adjust based on expected output sizes
+  storageClassName: "REPLACE_WITH_YOUR_STORAGE_CLASS"
+
+---
+# PVC for Hugging Face cache (HF_HOME)
+# Caches downloaded models and tokenizers
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nemo-hf-cache-pvc
+  namespace: nemo-skills
+  labels:
+    app.kubernetes.io/name: nemo-skills
+    app.kubernetes.io/component: storage
+    nemo-skills.nvidia.com/storage-type: cache
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: "REPLACE_WITH_YOUR_STORAGE_CLASS"
+
+# =============================================================================
+# Alternative: Single shared PVC (simpler setup)
+# =============================================================================
+# If you prefer a single large volume instead of separate PVCs:
+#
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: nemo-skills-shared-pvc
+#   namespace: nemo-skills
+# spec:
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 1Ti
+#   storageClassName: "REPLACE_WITH_YOUR_STORAGE_CLASS"
+#
+# Then mount with subpaths in your cluster config:
+#   storage:
+#     models:
+#       pvc_name: nemo-skills-shared-pvc
+#       mount_path: /models
+#       sub_path: models
+#     data:
+#       pvc_name: nemo-skills-shared-pvc
+#       mount_path: /data
+#       sub_path: data
+
+# =============================================================================
+# Cloud-Specific Examples
+# =============================================================================
+
+# --- AWS EFS Example ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: nemo-models-pvc
+#   namespace: nemo-skills
+# spec:
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 500Gi
+#   storageClassName: efs-sc
+
+# --- Azure Files Example ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: nemo-models-pvc
+#   namespace: nemo-skills
+# spec:
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 500Gi
+#   storageClassName: azurefile-csi
+
+# --- GCP Filestore Example ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: nemo-models-pvc
+#   namespace: nemo-skills
+# spec:
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 500Gi
+#   storageClassName: filestore-sc

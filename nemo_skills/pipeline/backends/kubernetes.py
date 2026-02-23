@@ -124,7 +124,8 @@ class KubernetesBackend(ComputeBackend):
 
     def submit_job(self, spec: JobSpec) -> JobHandle:
         """Submit a job to Kubernetes."""
-        LOG.info(f"Submitting Kubernetes job: {spec.name}")
+        extra = {"job_name": spec.name, "namespace": self.namespace, "backend": "kubernetes"}
+        LOG.info(f"Submitting Kubernetes job: {spec.name}", extra=extra)
 
         # Build and create the Job
         k8s_job = self._build_job_manifest(spec)
@@ -136,7 +137,8 @@ class KubernetesBackend(ComputeBackend):
             )
 
             job_id = response.metadata.name
-            LOG.info(f"Created Kubernetes job: {job_id}")
+            extra.update({"job_id": job_id, "uid": response.metadata.uid})
+            LOG.info(f"Created Kubernetes job: {job_id}", extra=extra)
 
             return JobHandle(
                 job_id=job_id,
@@ -149,6 +151,7 @@ class KubernetesBackend(ComputeBackend):
             )
 
         except self._k8s_client.ApiException as e:
+            LOG.error(f"Failed to create Kubernetes job: {e}", extra=extra)
             raise RuntimeError(f"Failed to create Kubernetes job: {e}") from e
 
     def _build_job_manifest(self, spec: JobSpec):
