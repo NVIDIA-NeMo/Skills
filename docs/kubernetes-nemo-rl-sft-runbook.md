@@ -72,7 +72,7 @@ kubectl delete -f scripts/k8s-tests/manifests/real-nemo-rl-sft-test.yaml
 ```
 
 **What to look for:**
-```
+```text
 ▶ Setting up data...
 ▶ Setting up compute cluster...     ← Ray initializes
 ▶ Setting up model...               ← Qwen2.5-0.5B loads via DTensorPolicyWorkerV2
@@ -113,8 +113,8 @@ kubectl delete -f scripts/k8s-tests/manifests/real-nemo-rl-sft-multinode-test.ya
 ```
 
 **Architecture:**
-```
-Node 0 (Ray head, dgx-30):          Node 1 (Ray worker, dgx-29):
+```text
+Node 0 (Ray head):                  Node 1 (Ray worker):
 ┌──────────────────────────┐         ┌──────────────────────────┐
 │  Ray Head + start_sft.py │         │  Ray Worker (--block)    │
 │  ┌────────┬────────┐     │  NCCL   │  ┌────────┬────────┐    │
@@ -134,7 +134,7 @@ Node 0 (Ray head, dgx-30):          Node 1 (Ray worker, dgx-29):
 - **emptyDir Memory**: 16Gi `/dev/shm` for NCCL shared memory segments
 
 **What to look for:**
-```
+```text
 ✓ Ray cluster initialized with 2 nodes       ← Both nodes in Ray cluster
 Initializing lm_policy workers: 4 workers     ← Workers on both nodes
 ▶ Taking a training step...

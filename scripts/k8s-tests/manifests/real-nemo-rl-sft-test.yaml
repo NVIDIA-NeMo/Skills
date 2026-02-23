@@ -43,7 +43,6 @@ data:
   run_sft.sh: |
     #!/bin/bash
     set -e
-    export NCCL_DEBUG=INFO
     export PYTHONPATH=/opt/NeMo-Skills:/opt/NeMo-RL:$PYTHONPATH
 
     echo "=== Real NeMo-RL SFT Training ==="

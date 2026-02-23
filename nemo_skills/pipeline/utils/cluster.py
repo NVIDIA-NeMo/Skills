@@ -67,8 +67,6 @@ def _parse_slurm_timeout(value: str) -> timedelta:
       "days-hours", "days-hours:minutes", "days-hours:minutes:seconds"
     - Simple duration format used in K8s configs: "6h", "30m", "45s", "2d"
 
-    Time format for SLURM: "minutes", "minutes:seconds", "hours:minutes:seconds",
-    "days-hours", "days-hours:minutes" and "days-hours:minutes:seconds"
     https://slurm.schedmd.com/sbatch.html#OPT_time
     """
     value = value.strip().lower()

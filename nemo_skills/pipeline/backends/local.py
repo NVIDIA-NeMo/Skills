@@ -135,7 +135,7 @@ class LocalBackend(ComputeBackend):
         self._jobs[job_id] = job
 
         # Start log collection threads
-        for i, (proc, container_spec) in enumerate(zip(processes, spec.containers)):
+        for proc, container_spec in zip(processes, spec.containers, strict=True):
             thread = threading.Thread(
                 target=self._collect_logs,
                 args=(job, container_spec.name, proc),
@@ -191,9 +191,11 @@ class LocalBackend(ComputeBackend):
     def _collect_logs(self, job: LocalJob, container_name: str, proc: subprocess.Popen):
         """Collect logs from a process."""
         try:
+            if proc.stdout is None:
+                return
             for line in proc.stdout:
                 job.logs[container_name].append(line)
-        except Exception as e:
+        except (BrokenPipeError, IOError, OSError) as e:
             LOG.warning(f"Error collecting logs for {container_name}: {e}")
 
     def get_status(self, handle: JobHandle) -> JobStatus:
@@ -284,6 +286,6 @@ class LocalBackend(ComputeBackend):
                 timeout=10,
             )
             return result.returncode == 0
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             LOG.warning(f"Docker health check failed: {e}")
             return False

@@ -26,7 +26,7 @@ from nemo_skills.pipeline.backends.base import (
     JobStatus,
     ResourceSpec,
 )
-from nemo_skills.pipeline.backends.factory import BackendFactory, get_backend
+from nemo_skills.pipeline.backends.factory import BackendFactory, get_backend, register_backend
 from nemo_skills.pipeline.backends.integration import (
     create_data_processing_job_spec,
     create_inference_job_spec,
@@ -51,6 +51,7 @@ __all__ = [
     # Factory
     "BackendFactory",
     "get_backend",
+    "register_backend",
     # Integration utilities
     "create_data_processing_job_spec",
     "create_inference_job_spec",

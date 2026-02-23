@@ -118,6 +118,8 @@ class ContainerSpec:
             raise ValueError("Container name cannot be empty")
         if not self.image:
             raise ValueError("Container image cannot be empty")
+        if not self.command:
+            raise ValueError("Container command cannot be empty")
 
 
 @dataclass

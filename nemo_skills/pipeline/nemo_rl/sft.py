@@ -557,6 +557,28 @@ def sft_nemo_rl(
     # Route to Kubernetes backend if executor is 'kubernetes'
     if cluster_config.get("executor") == "kubernetes":
         LOG.info("Using Kubernetes backend for SFT training")
+        ignored_slurm_params = {}
+        if qos is not None:
+            ignored_slurm_params["qos"] = qos
+        if time_min is not None:
+            ignored_slurm_params["time_min"] = time_min
+        if exclusive is not True:
+            ignored_slurm_params["exclusive"] = exclusive
+        if sbatch_kwargs not in ("", None, {}):
+            ignored_slurm_params["sbatch_kwargs"] = sbatch_kwargs
+        if reuse_code is not True:
+            ignored_slurm_params["reuse_code"] = reuse_code
+        if reuse_code_exp is not None:
+            ignored_slurm_params["reuse_code_exp"] = reuse_code_exp
+        if _reuse_exp is not None:
+            ignored_slurm_params["_reuse_exp"] = _reuse_exp
+        if _task_dependencies:
+            ignored_slurm_params["_task_dependencies"] = _task_dependencies
+        if ignored_slurm_params:
+            LOG.warning(
+                "Ignoring Slurm-specific parameters for Kubernetes executor: %s",
+                ", ".join(sorted(ignored_slurm_params)),
+            )
         return _run_sft_kubernetes(
             cluster_config=cluster_config,
             train_cmd=train_cmd,
@@ -628,7 +650,7 @@ def sft_nemo_rl(
                 partition=partition,
                 num_nodes=1,
                 num_tasks=1,
-                num_gpus=num_gpus,
+                num_gpus=0,
                 run_after=run_after,
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,
@@ -658,7 +680,7 @@ def sft_nemo_rl(
                     partition=partition,
                     num_nodes=1,
                     num_tasks=1,
-                    num_gpus=num_gpus,
+                    num_gpus=0,
                     run_after=run_after,
                     reuse_code=reuse_code,
                     reuse_code_exp=reuse_code_exp,
@@ -684,7 +706,7 @@ def sft_nemo_rl(
                 partition=partition,
                 num_nodes=1,
                 num_tasks=1,
-                num_gpus=num_gpus,
+                num_gpus=0,
                 run_after=run_after,
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,

@@ -192,10 +192,37 @@ EOF
 echo ""
 echo "Job submitted. Waiting for completion (timeout: ${TIMEOUT}s)..."
 
-# --- Wait for completion ---
-if ! kubectl wait --for=condition=complete --timeout="${TIMEOUT}s" "job/$JOB_NAME" -n "$NAMESPACE"; then
+# --- Wait for completion/failure ---
+WAIT_RESULT="timeout"
+START_TIME=$(date +%s)
+while true; do
+    COMPLETE_STATUS=$(kubectl get "job/$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
+    FAILED_STATUS=$(kubectl get "job/$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)
+    if [ "$COMPLETE_STATUS" = "True" ]; then
+        WAIT_RESULT="complete"
+        break
+    fi
+    if [ "$FAILED_STATUS" = "True" ]; then
+        WAIT_RESULT="failed"
+        break
+    fi
+
+    NOW=$(date +%s)
+    if [ $((NOW - START_TIME)) -ge "$TIMEOUT" ]; then
+        WAIT_RESULT="timeout"
+        break
+    fi
+    sleep 5
+done
+
+if [ "$WAIT_RESULT" != "complete" ]; then
     echo ""
-    echo "FAILED — Job did not complete. Pod status:"
+    if [ "$WAIT_RESULT" = "failed" ]; then
+        echo "FAILED — Job reported Failed condition."
+    else
+        echo "FAILED — Job timed out before completion."
+    fi
+    echo "Pod status:"
     kubectl get pods -l "job-name=$JOB_NAME" -n "$NAMESPACE" -o wide
     echo ""
     echo "Logs from each pod:"

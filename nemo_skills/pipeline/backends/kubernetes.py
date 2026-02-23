@@ -265,7 +265,7 @@ class KubernetesBackend(ComputeBackend):
         shared_mounts = list(volume_mounts) if volume_mounts else []
         existing_volumes = {v.name: v for v in pod_spec.volumes}
 
-        for container_spec, container in zip(spec.containers, pod_spec.containers):
+        for container_spec, container in zip(spec.containers, pod_spec.containers, strict=True):
             container_mounts = list(shared_mounts)
             extra_volumes, extra_mounts = self._build_container_mounts(
                 container_spec.mounts,
@@ -981,7 +981,7 @@ class KubernetesBackend(ComputeBackend):
         """Stream logs from job pod."""
         namespace = handle.metadata.get("namespace", self.namespace)
 
-        # Find pod for this job
+        # Find pods for this job
         try:
             pods = self.core_v1.list_namespaced_pod(
                 namespace=namespace,
@@ -992,29 +992,42 @@ class KubernetesBackend(ComputeBackend):
                 LOG.warning(f"No pods found for job {handle.job_id}")
                 return
 
-            pod_name = pods.items[0].metadata.name
+            pod_names = sorted(
+                pod.metadata.name for pod in pods.items if pod.metadata is not None and pod.metadata.name is not None
+            )
+            if not pod_names:
+                LOG.warning(f"No named pods found for job {handle.job_id}")
+                return
 
-            # Stream logs
-            if follow:
-                logs = self.core_v1.read_namespaced_pod_log(
-                    name=pod_name,
-                    namespace=namespace,
-                    container=container,
-                    follow=True,
-                    _preload_content=False,
-                )
+            multi_pod = len(pod_names) > 1
 
-                for line in logs.stream():
-                    yield line.decode("utf-8")
-            else:
-                logs = self.core_v1.read_namespaced_pod_log(
-                    name=pod_name,
-                    namespace=namespace,
-                    container=container,
-                )
-
-                for line in logs.split("\n"):
-                    yield line
+            for pod_name in pod_names:
+                prefix = f"[{pod_name}] " if multi_pod else ""
+                try:
+                    if follow:
+                        logs = self.core_v1.read_namespaced_pod_log(
+                            name=pod_name,
+                            namespace=namespace,
+                            container=container,
+                            follow=True,
+                            _preload_content=False,
+                        )
+                        try:
+                            for line in logs.stream():
+                                decoded = line.decode("utf-8", errors="replace")
+                                yield f"{prefix}{decoded}" if prefix else decoded
+                        finally:
+                            logs.close()
+                    else:
+                        logs = self.core_v1.read_namespaced_pod_log(
+                            name=pod_name,
+                            namespace=namespace,
+                            container=container,
+                        )
+                        for line in logs.split("\n"):
+                            yield f"{prefix}{line}" if prefix else line
+                except self._k8s_client.ApiException as pod_error:
+                    LOG.warning(f"Failed to get logs from pod {pod_name}: {pod_error}")
 
         except self._k8s_client.ApiException as e:
             LOG.warning(f"Failed to get logs: {e}")

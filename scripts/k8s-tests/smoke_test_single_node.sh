@@ -15,14 +15,14 @@
 #   - A namespace with job creation permissions
 #
 # Usage:
-#   ./smoke_test_single_node.sh [--namespace default] [--gpus 2] [--image nvcr.io/nvidia/pytorch:25.03-py3]
+#   ./smoke_test_single_node.sh [--namespace default] [--gpus 2] [--image nvcr.io/nvidia/pytorch:25.04-py3]
 
 set -euo pipefail
 
 # Defaults
 NAMESPACE="${NAMESPACE:-default}"
 NUM_GPUS="${NUM_GPUS:-2}"
-IMAGE="${IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.03-py3}}"
+IMAGE="${IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.04-py3}}"
 JOB_NAME="nemo-sft-smoke-$(date +%s | tail -c 6)"
 TIMEOUT_SECONDS=600  # 10 minutes
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -200,16 +200,29 @@ echo "Job submitted: $JOB_NAME"
 echo "Waiting for job to complete..."
 
 # Wait for completion
-kubectl wait --for=condition=complete --timeout=${TIMEOUT_SECONDS}s \
-    -n "$NAMESPACE" "job/$JOB_NAME" 2>/dev/null && JOB_STATUS="succeeded" || JOB_STATUS="failed"
+if kubectl wait --for=condition=complete --timeout=${TIMEOUT_SECONDS}s \
+    -n "$NAMESPACE" "job/$JOB_NAME" 2>/dev/null; then
+    JOB_STATUS="succeeded"
+else
+    FAILED=$(kubectl get job "$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.status.failed}' 2>/dev/null || echo "0")
+    ACTIVE=$(kubectl get job "$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.status.active}' 2>/dev/null || echo "0")
+    CONDITIONS=$(kubectl get job "$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{range .status.conditions[*]}{.type}{"\n"}{end}' 2>/dev/null || true)
+    if [ "${FAILED:-0}" != "0" ] || echo "$CONDITIONS" | grep -q "^Failed$"; then
+        JOB_STATUS="failed"
+        echo "Job failed (failed pods=${FAILED:-0})"
+    elif [ "${ACTIVE:-0}" != "0" ]; then
+        JOB_STATUS="timeout"
+        echo "Job timed out or still running (active pods=${ACTIVE:-0})"
+    else
+        JOB_STATUS="timeout"
+        echo "Job did not complete before timeout (no explicit Failed condition)"
+    fi
+fi
 
 # Check if it actually failed vs timed out
 if [ "$JOB_STATUS" = "failed" ]; then
-    # Check if job failed or is still running
     FAILED=$(kubectl get job "$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.status.failed}' 2>/dev/null || echo "0")
-    if [ "${FAILED:-0}" = "0" ]; then
-        echo "Job timed out waiting for completion"
-    fi
+    echo "Job failure confirmed (failed pods=${FAILED:-0})"
 fi
 
 echo ""

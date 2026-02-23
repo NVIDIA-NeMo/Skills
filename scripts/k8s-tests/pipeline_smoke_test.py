@@ -40,19 +40,10 @@ import os
 import sys
 from pathlib import Path
 
-import nemo_run as run
-
 # Ensure the repository root is importable when this script is executed directly.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from nemo_skills.pipeline.utils.declarative import (  # noqa: E402
-    Command,
-    CommandGroup,
-    HardwareConfig,
-    Pipeline,
-)
 
 # Inline training script for the smoke test (PyTorch DDP, not full NeMo SFT)
 _SINGLE_NODE_TRAIN_TEMPLATE = (
@@ -132,6 +123,15 @@ torchrun \\
 
 def build_pipeline(mode, namespace, gpus, nodes, image):
     """Build a Pipeline using the declarative API."""
+    import nemo_run as run
+
+    from nemo_skills.pipeline.utils.declarative import (
+        Command,
+        CommandGroup,
+        HardwareConfig,
+        Pipeline,
+    )
+
     if mode == "single":
         cmd = _SINGLE_NODE_TRAIN_TEMPLATE.format(gpus=gpus)
         hw = HardwareConfig(num_gpus=gpus, num_nodes=1)
@@ -173,7 +173,8 @@ def main():
     parser.add_argument("--namespace", default="default")
     parser.add_argument("--gpus", type=int, default=2)
     parser.add_argument("--nodes", type=int, default=2, help="Used for --mode multi only")
-    parser.add_argument("--image", default=os.environ.get("PYTORCH_IMAGE", "nvcr.io/nvidia/pytorch:25.03-py3"))
+    parser.add_argument("--image", default=os.environ.get("PYTORCH_IMAGE", "nvcr.io/nvidia/pytorch:25.04-py3"))
+    parser.add_argument("--timeout", type=int, default=900, help="Wait timeout in seconds for real submission mode")
     args = parser.parse_args()
 
     if args.mode == "multi" and args.nodes < 2:
@@ -202,6 +203,8 @@ def main():
 
         # Also validate the JobSpec directly
         groups = [pipeline.jobs[0]["group"]]
+        # NOTE: This intentionally validates a private API. If its signature changes,
+        # this smoke test should be updated alongside Pipeline internals.
         job_spec = pipeline._convert_groups_to_job_spec(
             job_name="smoke-test",
             groups=groups,
@@ -239,16 +242,15 @@ def main():
 
     for name, handle in result.items():
         print(f"\nWaiting for job '{name}' to complete...")
-        status = backend.wait_for_completion(handle, timeout=900)
+        status = backend.wait_for_completion(handle, timeout=args.timeout)
         print(f"Job '{name}' status: {status.value}")
 
-        if status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-            print(f"\n--- Logs from {name} ---")
-            for line in backend.get_logs(handle):
-                print(line, end="" if line.endswith("\n") else "\n")
+        print(f"\n--- Logs from {name} ---")
+        for line in backend.get_logs(handle):
+            print(line, end="" if line.endswith("\n") else "\n")
 
-        if status == JobStatus.FAILED:
-            print(f"\nERROR: Job '{name}' failed")
+        if status != JobStatus.SUCCEEDED:
+            print(f"\nERROR: Job '{name}' did not succeed (status={status.value})")
             sys.exit(1)
 
     print("\n=== ALL JOBS COMPLETED SUCCESSFULLY ===")

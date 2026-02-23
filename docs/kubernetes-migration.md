@@ -276,7 +276,7 @@ kubectl describe nodes | grep -A5 "Allocated resources"
 kubectl get secret nvcr-secret -n nemo-skills
 
 # Test pull manually
-kubectl run test --image=nvcr.io/nvidia/pytorch:24.01-py3 \
+kubectl run test --image=nvcr.io/nvidia/pytorch:25.04-py3 \
   --overrides='{"spec":{"imagePullSecrets":[{"name":"nvcr-secret"}]}}' \
   -n nemo-skills --rm -it -- echo "Pull OK"
 ```

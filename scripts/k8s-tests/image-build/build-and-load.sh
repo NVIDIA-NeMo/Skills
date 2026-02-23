@@ -21,12 +21,28 @@ set -euo pipefail
 NAMESPACE="${NAMESPACE:-default}"
 CACHE_PATH="${CACHE_PATH:-$HOME/nemo-skills/nemo-rl.tar}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-BASE_IMAGE="${BASE_IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.03-py3}}"
+BASE_IMAGE="${BASE_IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.04-py3}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TARGET_NODES=""
 LOCAL_CONTEXT=true  # Default: build from local code (reproducible)
 GIT_COMMIT=""       # For --remote mode: pin to specific commit (default: HEAD/main)
+CLEANUP_PODS=()
+CLEANUP_JOBS=()
+
+cleanup_resources() {
+    local pod
+    local job
+
+    for pod in "${CLEANUP_PODS[@]}"; do
+        kubectl delete pod "$pod" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+    done
+    for job in "${CLEANUP_JOBS[@]}"; do
+        kubectl delete job "$job" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+    done
+}
+
+trap cleanup_resources EXIT INT TERM
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -74,6 +90,7 @@ else
         kubectl run build-prep --image=busybox:1.36 --restart=Never \
             --overrides="{\"spec\":{\"nodeName\":\"$FIRST_NODE\",\"containers\":[{\"name\":\"prep\",\"image\":\"busybox:1.36\",\"command\":[\"sleep\",\"3600\"],\"volumeMounts\":[{\"name\":\"raid\",\"mountPath\":\"/raid\"}]}],\"volumes\":[{\"name\":\"raid\",\"hostPath\":{\"path\":\"/raid\"}}]}}" \
             -n "$NAMESPACE" 2>/dev/null
+        CLEANUP_PODS+=("build-prep")
         kubectl wait --for=condition=Ready pod/build-prep -n "$NAMESPACE" --timeout=60s
         kubectl exec build-prep -n "$NAMESPACE" -- rm -rf /raid/build-context 2>/dev/null || true
         kubectl cp "$REPO_ROOT" "$NAMESPACE/build-prep:/raid/build-context"
@@ -126,7 +143,7 @@ spec:
   activeDeadlineSeconds: 7200
   initContainers:
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
+    image: gcr.io/kaniko-project/executor:v1.23.2
     args:
     - --dockerfile=/workspace/Dockerfile
     - --context=/workspace
@@ -156,6 +173,7 @@ spec:
       sizeLimit: 75Gi
 PODEOF
         BUILD_POD_NAME="build-nemo-rl-local"
+        CLEANUP_PODS+=("$BUILD_POD_NAME")
     else
         REMOTE_REF="${GIT_COMMIT:-refs/heads/main}"
         echo "Step 1: Building nemo-rl image from REMOTE (ref: $REMOTE_REF)..."
@@ -165,6 +183,7 @@ PODEOF
             | kubectl apply -n "$NAMESPACE" -f -
         echo "  Remote build pinned to: $REMOTE_REF"
         JOB_NAME="build-nemo-rl"
+        CLEANUP_JOBS+=("$JOB_NAME")
     fi
 
     echo "Waiting for build (this may take 5-10 minutes)..."
@@ -211,6 +230,7 @@ PODEOF
                     \"volumes\": [{\"name\": \"raid\", \"hostPath\": {\"path\": \"/raid\"}}]
                 }
             }" -n "$NAMESPACE" 2>/dev/null
+        CLEANUP_PODS+=("cache-copy")
         kubectl wait --for=condition=Ready pod/cache-copy -n "$NAMESPACE" --timeout=60s
         kubectl cp "$NAMESPACE/cache-copy:/raid/nemo-rl.tar" "$CACHE_PATH"
         kubectl delete pod cache-copy -n "$NAMESPACE" --ignore-not-found
@@ -230,8 +250,12 @@ for NODE in $TARGET_NODES; do
     echo "--- Node: $NODE ---"
 
     # Create a helper pod on this node
-    kubectl delete pod "load-$NODE" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
-    kubectl run "load-$NODE" --image=debian:bookworm-slim --restart=Never \
+    # Security note: loader must run privileged and mount host-root + containerd socket
+    # to execute ctr import on the host runtime. This is high risk and intended only
+    # for trusted test clusters; namespace scoping/readOnly host-root do not eliminate risk.
+    LOAD_POD="load-$NODE"
+    kubectl delete pod "$LOAD_POD" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
+    kubectl run "$LOAD_POD" --image=debian:bookworm-slim --restart=Never \
         --overrides="{
             \"spec\": {
                 \"nodeName\": \"$NODE\",
@@ -253,17 +277,18 @@ for NODE in $TARGET_NODES; do
                 ]
             }
         }" -n "$NAMESPACE" 2>/dev/null
-    kubectl wait --for=condition=Ready "pod/load-$NODE" -n "$NAMESPACE" --timeout=120s
+    CLEANUP_PODS+=("$LOAD_POD")
+    kubectl wait --for=condition=Ready "pod/$LOAD_POD" -n "$NAMESPACE" --timeout=120s
 
     # Copy tarball to the node's /raid via kubectl cp
     # Remove any stale/empty tarball first (from previous failed attempts)
-    kubectl exec "load-$NODE" -n "$NAMESPACE" -- rm -f /raid/nemo-rl.tar 2>/dev/null || true
+    kubectl exec "$LOAD_POD" -n "$NAMESPACE" -- rm -f /raid/nemo-rl.tar 2>/dev/null || true
     echo "  Copying tarball to $NODE ($(du -h "$CACHE_PATH" | cut -f1))..."
-    kubectl cp "$CACHE_PATH" "$NAMESPACE/load-$NODE:/raid/nemo-rl.tar"
+    kubectl cp "$CACHE_PATH" "$NAMESPACE/$LOAD_POD:/raid/nemo-rl.tar"
 
     # Import into containerd — find ctr on the host (various distro/CM paths)
     echo "  Importing into containerd..."
-    kubectl exec "load-$NODE" -n "$NAMESPACE" -- sh -c '
+    kubectl exec "$LOAD_POD" -n "$NAMESPACE" -- sh -c '
         CTR=""
         for p in \
             /host/cm/local/apps/containerd/2.1.3/bin/ctr \
@@ -289,7 +314,7 @@ for NODE in $TARGET_NODES; do
         echo "  Import complete on $(hostname)"
     '
 
-    kubectl delete pod "load-$NODE" -n "$NAMESPACE" --ignore-not-found
+    kubectl delete pod "$LOAD_POD" -n "$NAMESPACE" --ignore-not-found
     echo "  Done: $NODE"
 done
 
@@ -302,6 +327,7 @@ kubectl run nemo-rl-validate --image="nemo-skills/nemo-rl:$IMAGE_TAG" --restart=
     --image-pull-policy=Never \
     --overrides="{\"spec\":{\"nodeName\":\"$FIRST_NODE\"}}" \
     -n "$NAMESPACE" -- python -c "import nemo_skills; print(f'nemo_skills OK: {nemo_skills.__version__}')"
+CLEANUP_PODS+=("nemo-rl-validate")
 if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/nemo-rl-validate -n "$NAMESPACE" --timeout=180s; then
     echo "Validation FAILED. Pod details:"
     kubectl describe pod nemo-rl-validate -n "$NAMESPACE" || true

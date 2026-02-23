@@ -9,8 +9,8 @@
 #   kubectl logs -l app=nemo-skills,purpose=image-import -n default
 #
 # Pass criteria:
-#   - All DaemonSet pods succeed (no restarts)
-#   - Logs contain "unpacking" or "done" for the image
+#   - All DaemonSet pods are Running on GPU nodes
+#   - Logs contain "Import complete" for the image
 #
 # Cleanup:
 #   kubectl delete daemonset import-nemo-rl -n default
@@ -85,8 +85,8 @@ spec:
           $CTR --address /run/containerd/containerd.sock \
             -n k8s.io images list | grep nemo | head -5
 
-          # Keep running briefly so logs are capturable
-          sleep 10
+          echo "Import complete. Container will idle until DaemonSet is deleted."
+          sleep infinity
         volumeMounts:
         - name: raid
           mountPath: /raid

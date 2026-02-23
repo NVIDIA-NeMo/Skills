@@ -188,4 +188,3 @@ If any.
 ### External Resources
 - [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/)
 - [Kubeflow Training Operator](https://www.kubeflow.org/docs/components/training/)
-- [MPI Operator](https://github.com/kubeflow/mpi-operator)

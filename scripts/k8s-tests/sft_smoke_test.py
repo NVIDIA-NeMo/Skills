@@ -35,15 +35,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import nemo_run as run  # noqa: E402
-
-from nemo_skills.pipeline.utils.declarative import (  # noqa: E402
-    Command,
-    CommandGroup,
-    HardwareConfig,
-    Pipeline,
-)
-
 # The SFT training script that runs inside the container.
 # Fine-tunes GPT-2 (124M params) on 100 synthetic math Q&A examples.
 SFT_TRAIN_SCRIPT = r"""
@@ -140,11 +131,20 @@ if rank == 0:
 
 
 def main():
+    import nemo_run as run
+
+    from nemo_skills.pipeline.utils.declarative import (
+        Command,
+        CommandGroup,
+        HardwareConfig,
+        Pipeline,
+    )
+
     parser = argparse.ArgumentParser(description="SFT smoke test via Pipeline+KubernetesBackend")
     parser.add_argument("--namespace", default="default")
     parser.add_argument("--gpus", type=int, default=2)
     parser.add_argument("--nodes", type=int, default=1)
-    parser.add_argument("--image", default=os.environ.get("PYTORCH_IMAGE", "nvcr.io/nvidia/pytorch:25.03-py3"))
+    parser.add_argument("--image", default=os.environ.get("PYTORCH_IMAGE", "nvcr.io/nvidia/pytorch:25.04-py3"))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -214,11 +214,13 @@ def main():
         print(f"\nWaiting for job '{name}'...")
         status = backend.wait_for_completion(handle, timeout=1800)
         print(f"Status: {status.value}")
-        if status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-            print("\n--- Logs ---")
-            for line in backend.get_logs(handle):
-                print(line, end="" if line.endswith("\n") else "\n")
-        if status == JobStatus.FAILED:
+        print("\n--- Logs ---")
+        for line in backend.get_logs(handle):
+            print(line, end="" if line.endswith("\n") else "\n")
+        if status not in (JobStatus.SUCCEEDED, JobStatus.FAILED):
+            print(f"Job '{name}' did not reach terminal status before timeout (status={status.value}).")
+            sys.exit(1)
+        if status != JobStatus.SUCCEEDED:
             sys.exit(1)
 
     print("\n=== ALL JOBS COMPLETED ===")

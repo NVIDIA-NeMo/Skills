@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import time
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
@@ -322,6 +324,7 @@ class HardwareConfig:
         num_gpus: Number of GPUs per node.
         num_nodes: Number of nodes for distributed jobs.
         num_tasks: Number of tasks (processes) per node.
+        cpus: CPU cores per node/request for Kubernetes (defaults to heuristic from num_tasks).
         memory_request_gb: Memory request in GB for K8s scheduling. None = auto-calculate.
         memory_limit_gb: Memory limit in GB. None = no limit (pod can burst).
         sbatch_kwargs: Additional Slurm sbatch arguments.
@@ -337,6 +340,7 @@ class HardwareConfig:
     num_gpus: Optional[int] = None
     num_nodes: Optional[int] = None
     num_tasks: Optional[int] = 1
+    cpus: Optional[int] = None
     memory_request_gb: Optional[float] = None  # None = auto-calculate based on GPUs
     memory_limit_gb: Optional[float] = None  # None = no limit
     sbatch_kwargs: Optional[dict] = None
@@ -426,27 +430,25 @@ class Pipeline:
                 raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
 
     def _make_unique_job_name(self, base_name: str, max_length: int = 63) -> str:
-        """Generate a unique job name by adding a timestamp suffix.
+        """Generate a unique job name by adding a timestamp+pid suffix.
 
         This ensures job names are unique across re-runs, which is required for
         Kubernetes (job names must be unique in namespace) and useful for Slurm
         (makes it easier to distinguish job runs in logs/monitoring).
 
-        The suffix format is -XXXXX (6 chars: hyphen + 5 digits from timestamp),
-        giving uniqueness within ~27 hours which is sufficient for typical job
-        re-run scenarios.
+        The suffix format is -XXXXXYYYY (10 chars total), where:
+        - XXXXX: timestamp modulo 100000
+        - YYYY: process ID modulo 10000
 
         Args:
             base_name: The original job name (should already be sanitized for K8s).
             max_length: Maximum total length (default 63 for K8s compatibility).
 
         Returns:
-            Unique job name with timestamp suffix, truncated if necessary.
+            Unique job name with timestamp+pid suffix, truncated if necessary.
         """
-        import time
-
-        suffix = f"-{int(time.time()) % 100000:05d}"
-        suffix_len = len(suffix)  # 6 characters
+        suffix = f"-{int(time.time()) % 100000:05d}{os.getpid() % 10000:04d}"
+        suffix_len = len(suffix)  # 10 characters
 
         # Truncate base name to leave room for suffix
         max_base_len = max_length - suffix_len
@@ -693,7 +695,10 @@ class Pipeline:
             for dep in job_dependencies:
                 if isinstance(dep, str):
                     # String dependency = external experiment name - not supported on K8s
-                    LOG.warning(f"External dependency '{dep}' not supported on Kubernetes, skipping")
+                    raise ValueError(
+                        f"External string dependency '{dep}' not supported on Kubernetes. "
+                        "Use internal dict dependencies (job names) instead."
+                    )
                 elif isinstance(dep, dict):
                     # Dict dependency = internal job reference (same as _run_nemo_run)
                     try:
@@ -824,9 +829,13 @@ class Pipeline:
                 # Memory request: auto-calculated if not specified (for K8s scheduling)
                 # Memory limit: None by default (pods can use available memory)
                 hardware = group.hardware or HardwareConfig()
+                cpu_request = hardware.cpus
+                if cpu_request is None:
+                    cpu_floor = 4 if (hardware.num_gpus or 0) > 0 else 1
+                    cpu_request = max(hardware.num_tasks or 0, cpu_floor)
                 resources = ResourceSpec(
                     gpus=hardware.num_gpus or 0,
-                    cpus=hardware.num_tasks or 1,
+                    cpus=cpu_request,
                     memory_request_gb=hardware.memory_request_gb,  # None = auto-calculate
                     memory_limit_gb=hardware.memory_limit_gb,  # None = no limit
                 )

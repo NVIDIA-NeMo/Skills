@@ -22,7 +22,7 @@ set -euo pipefail
 NAMESPACE="${NAMESPACE:-default}"
 NUM_NODES="${NUM_NODES:-2}"
 NUM_GPUS="${NUM_GPUS:-2}"
-IMAGE="${IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.03-py3}}"
+IMAGE="${IMAGE:-${PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:25.04-py3}}"
 JOB_NAME="nemo-multinode-smoke-$(date +%s | tail -c 6)"
 SERVICE_NAME="${JOB_NAME}-workers"
 MASTER_PORT=29500

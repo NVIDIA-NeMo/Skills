@@ -23,7 +23,7 @@ This document captures the current state of multi-node multi-GPU SFT support on 
 ### Container Image
 
 - **Image**: `docker.io/nemo-skills/nemo-rl:latest`
-- **Base**: `nvcr.io/nvidia/pytorch:25.03-py3` (configurable via `BASE_IMAGE` env var)
+- **Base**: `nvcr.io/nvidia/pytorch:25.04-py3` (configurable via `BASE_IMAGE` env var)
 - **Contents**: nemo_skills 0.7.0 + KubernetesBackend + all pipeline backends
 - **Cached tarball**: `~/nemo-skills/nemo-rl.tar` (default `build-and-load.sh` cache path)
 
@@ -42,10 +42,12 @@ This document captures the current state of multi-node multi-GPU SFT support on 
 Check your CUDA driver version to pick a compatible PyTorch container:
 ```bash
 # Run on a GPU node to check driver version
-kubectl run driver-check --image=nvcr.io/nvidia/pytorch:25.03-py3 --restart=Never \
+kubectl run driver-check --image=nvcr.io/nvidia/pytorch:25.04-py3 --restart=Never \
     --overrides='{"spec":{"tolerations":[{"key":"nvidia.com/gpu","operator":"Exists","effect":"NoSchedule"}]}}' \
     -- nvidia-smi --query-gpu=driver_version --format=csv,noheader
-sleep 15 && kubectl logs driver-check && kubectl delete pod driver-check --ignore-not-found
+kubectl wait --for=condition=ContainersReady pod/driver-check --timeout=30s
+kubectl logs driver-check
+kubectl delete pod driver-check --ignore-not-found
 ```
 Then check compatibility at: https://docs.nvidia.com/deeplearning/frameworks/support-matrix/
 
@@ -92,7 +94,7 @@ kubectl get nodes -l nvidia.com/gpu.present=true -o custom-columns=NAME:.metadat
 
 To use a different base image:
 ```bash
-BASE_IMAGE=nvcr.io/nvidia/pytorch:25.03-py3 ./scripts/k8s-tests/image-build/build-and-load.sh --nodes "node-1 node-2"
+BASE_IMAGE=nvcr.io/nvidia/pytorch:25.04-py3 ./scripts/k8s-tests/image-build/build-and-load.sh --nodes "node-1 node-2"
 ```
 
 > **Notes**:
@@ -171,8 +173,7 @@ kubectl delete -f scripts/k8s-tests/manifests/multi-node-sft-test.yaml
 1. Creates a **Headless Service** for DNS-based pod discovery (same pattern as `KubernetesBackend._build_headless_service()` in `nemo_skills/pipeline/backends/kubernetes.py`)
 2. Creates an **Indexed Job** with `completionMode: Indexed` (same pattern as `KubernetesBackend._build_job_manifest()` when `num_nodes > 1`)
 3. Sets distributed env vars (`MASTER_ADDR`, `MASTER_PORT`, `NODE_RANK` from `JOB_COMPLETION_INDEX`) — mirrors `KubernetesBackend._inject_distributed_env_vars()`
-4. Applies **podAntiAffinity** to force pods onto separate nodes — mirrors `KubernetesBackend._build_pod_anti_affinity()`
-5. Uses **podAntiAffinity** to force one pod per node (add **nodeAffinity** if your cluster has heterogeneous GPU counts)
+4. Applies **podAntiAffinity** to force one pod per node — mirrors `KubernetesBackend._build_pod_anti_affinity()` (add **nodeAffinity** if your cluster has heterogeneous GPU counts)
 
 **NeMo-Skills code paths validated inside each container:**
 
@@ -199,10 +200,10 @@ For quick NCCL verification without needing the nemo-rl image:
 
 ```bash
 # Single-node (uses generic PyTorch image)
-PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:25.03-py3 ./scripts/k8s-tests/smoke_test_single_node.sh --gpus 2
+PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:25.04-py3 ./scripts/k8s-tests/smoke_test_single_node.sh --gpus 2
 
 # Multi-node
-PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:25.03-py3 ./scripts/k8s-tests/smoke_test_multi_node.sh --nodes 2 --gpus 2
+PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:25.04-py3 ./scripts/k8s-tests/smoke_test_multi_node.sh --nodes 2 --gpus 2
 ```
 
 ---
@@ -221,7 +222,7 @@ The image is loaded locally into containerd, not pulled from a registry. Ensure:
 - Check with: `kubectl describe pod <name>` → Events section
 
 ### CUDA driver too old
-`pytorch:26.01-py3` requires CUDA 13.1 but DGX nodes have driver 12080 (CUDA 12.8). Use `pytorch:25.03-py3` or older. Check compatibility at: https://docs.nvidia.com/deeplearning/frameworks/support-matrix/
+`pytorch:26.01-py3` requires CUDA 13.1 but DGX nodes have driver 12080 (CUDA 12.8). Use `pytorch:25.04-py3` or another driver-compatible tag. Check compatibility at: https://docs.nvidia.com/deeplearning/frameworks/support-matrix/
 
 ### Stale 0-byte tarballs on nodes
 Previous failed attempts can leave empty `/raid/nemo-rl.tar` files. The `build-and-load.sh` script cleans these automatically before copying, but if running manually: `kubectl exec <pod> -- rm -f /raid/nemo-rl.tar`

@@ -4,7 +4,7 @@ This directory contains Kubernetes manifests for setting up NeMo-Skills on a Kub
 
 ## Prerequisites
 
-- Kubernetes cluster 1.24+ (for native job dependencies)
+- Kubernetes cluster 1.24+ (multi-node Indexed Jobs + Headless Service pattern)
 - [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/getting-started.html) installed
 - Storage class that supports ReadWriteMany (RWX) access mode
 - `kubectl` configured to access your cluster

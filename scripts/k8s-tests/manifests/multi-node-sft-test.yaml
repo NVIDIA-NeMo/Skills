@@ -102,10 +102,18 @@ spec:
     spec:
       restartPolicy: Never
       subdomain: sft-multi-node-workers   # Enables DNS: <pod>.<subdomain>.<ns>.svc.cluster.local
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
       containers:
       - name: trainer
         image: nemo-skills/nemo-rl:latest
         imagePullPolicy: Never
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         env:
         # MASTER_ADDR: DNS name of the rank-0 pod via the headless service
         # Mirrors: KubernetesBackend._inject_distributed_env_vars()
@@ -127,6 +135,10 @@ spec:
             echo "  retry $i..."
             sleep 2
           done
+          if ! getent hosts sft-multi-node-0.sft-multi-node-workers.default.svc.cluster.local > /dev/null 2>&1; then
+            echo "FAIL: could not resolve master host sft-multi-node-0.sft-multi-node-workers.default.svc.cluster.local after 120s"
+            exit 1
+          fi
           torchrun --nproc_per_node=2 --nnodes=2 \
             --node_rank=${NODE_RANK} --master_addr=${MASTER_ADDR} \
             --master_port=29500 /scripts/train.py
@@ -135,6 +147,7 @@ spec:
           requests: {nvidia.com/gpu: "2", memory: "32Gi", cpu: "8"}
         volumeMounts:
         - {name: script, mountPath: /scripts}
+        - {name: tmp, mountPath: /tmp}
       tolerations:
       - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
       affinity:
@@ -151,3 +164,5 @@ spec:
       volumes:
       - name: script
         configMap: {name: sft-multi-node-script}
+      - name: tmp
+        emptyDir: {}

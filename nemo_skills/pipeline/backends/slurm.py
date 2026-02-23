@@ -129,7 +129,7 @@ class SlurmBackend(ComputeBackend):
         with get_exp(spec.name, self.config) as exp:
             requested_gpus = main_container.resources.gpus if main_container.resources.gpus is not None else None
 
-            task = add_task(
+            add_task(
                 exp=exp,
                 cmd=cmd,
                 task_name=spec.name,
@@ -142,7 +142,6 @@ class SlurmBackend(ComputeBackend):
 
             # Store job info
             job_info = {
-                "task": task,
                 "spec": spec,
                 "experiment_name": spec.name,
             }

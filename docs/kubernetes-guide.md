@@ -109,7 +109,7 @@ metadata:
 rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
-    verbs: ["create", "delete", "get", "list", "watch"]
+    verbs: ["create", "delete", "get", "list", "watch", "patch"]
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
@@ -677,7 +677,7 @@ NeMo-Skills automatically handles job naming:
 
 If you see logs like:
 
-```
+```text
 Job name 'Qwen2.5_Math_7B' is not Kubernetes-compliant. Sanitized to 'qwen2-5-math-7b'.
 Job 'Qwen2.5_Math_7B' will be submitted as 'qwen2-5-math-7b-12345'
 ```
@@ -698,7 +698,7 @@ The unique suffix ensures you can re-run experiments without "job already exists
 
 If you have pipelines with job dependencies and see:
 
-```
+```text
 Pipeline has job dependencies but sequential=False.
 Kubernetes does not support native job dependencies (like Slurm's afterok).
 Auto-enabling sequential mode to ensure correct execution order.
@@ -712,7 +712,7 @@ This means NeMo-Skills detected dependencies and is running jobs sequentially to
 
 When you run `ns generate --cluster my-kubernetes`, here's what happens:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         NeMo-Skills CLI                          │
 │                      (ns generate/eval/train)                    │

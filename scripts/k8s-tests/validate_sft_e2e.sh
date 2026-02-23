@@ -300,20 +300,28 @@ echo ""
 echo "Job submitted: $JOB_NAME"
 echo "Waiting for completion..."
 
+LOG_FILE="${SCRIPT_DIR}/logs/sft-e2e-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p "$(dirname "$LOG_FILE")"
+
 if ! kubectl wait --for=condition=complete --timeout="${TIMEOUT}s" "job/$JOB_NAME" -n "$NAMESPACE"; then
     echo ""
     echo "FAILED — Job did not complete. Logs:"
+    echo "FAILED — Job did not complete. Capturing diagnostics." >> "$LOG_FILE"
     POD=$(kubectl get pods -l "job-name=$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -n "$POD" ]; then
-        kubectl logs "$POD" -n "$NAMESPACE" --tail=50
+        {
+            echo "--- Diagnostic logs: $POD (tail=50) ---"
+            kubectl logs "$POD" -n "$NAMESPACE" --tail=50 || true
+        } | tee -a "$LOG_FILE"
+    else
+        echo "No pod found for failed job." | tee -a "$LOG_FILE"
     fi
+    echo "Failure log saved: $LOG_FILE"
     exit 1
 fi
 
 # Collect and check logs
 POD=$(kubectl get pods -l "job-name=$JOB_NAME" -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
-LOG_FILE="${SCRIPT_DIR}/logs/sft-e2e-$(date +%Y%m%d-%H%M%S).log"
-mkdir -p "$(dirname "$LOG_FILE")"
 kubectl logs "$POD" -n "$NAMESPACE" > "$LOG_FILE"
 
 echo ""

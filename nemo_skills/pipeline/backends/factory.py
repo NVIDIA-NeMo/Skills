@@ -100,45 +100,71 @@ class BackendFactory:
             ValueError: If executor type is not supported.
             RuntimeError: If backend initialization fails and no fallback available.
         """
+        if "executor" not in cluster_config:
+            raise ValueError("cluster_config must include an 'executor' key")
         executor = cluster_config["executor"]
-        if not executor:
-            raise ValueError("cluster_config must contain 'executor' key")
+        if not isinstance(executor, str) or not executor.strip():
+            raise ValueError("cluster_config['executor'] must be a non-empty string")
 
         # Normalize executor name
-        executor = executor.lower()
+        executor = executor.strip().lower()
         primary_config = dict(cluster_config)
         primary_config["executor"] = executor
+
+        primary_error = None
 
         # Try primary backend
         try:
             backend = BackendFactory._create_backend(executor, primary_config)
-
+        except ValueError:
+            # Preserve unknown/invalid executor errors as-is.
+            raise
+        except Exception as e:
+            primary_error = e
+        else:
             # Health check
             if backend.health_check():
                 LOG.info(f"Successfully initialized {executor} backend")
                 return backend
-            else:
-                raise RuntimeError(f"{executor} backend health check failed")
+            primary_error = RuntimeError(f"{executor} backend health check failed")
 
-        except Exception as e:
-            LOG.warning(f"Failed to initialize {executor} backend: {e}")
+        LOG.warning(f"Failed to initialize {executor} backend: {primary_error}")
 
-            # Try fallback if configured
-            fallback_executor = cluster_config.get("fallback_executor")
-            if fallback and fallback_executor:
-                fallback_executor = fallback_executor.lower()
-                LOG.info(f"Attempting fallback to {fallback_executor} backend")
-                try:
-                    fallback_config = dict(cluster_config)
-                    fallback_config["executor"] = fallback_executor
-                    fallback_backend = BackendFactory._create_backend(fallback_executor, fallback_config)
-                    if fallback_backend.health_check():
-                        LOG.info(f"Successfully initialized fallback {fallback_executor} backend")
-                        return fallback_backend
-                except Exception as fallback_error:
-                    LOG.error(f"Fallback backend {fallback_executor} also failed: {fallback_error}")
+        # Try fallback if configured
+        fallback_executor = cluster_config.get("fallback_executor")
+        if fallback and fallback_executor:
+            if not isinstance(fallback_executor, str) or not fallback_executor.strip():
+                LOG.error(f"Invalid fallback executor value: {fallback_executor!r}")
+                raise RuntimeError(
+                    f"Failed to initialize backend '{executor}': invalid fallback_executor value {fallback_executor!r}"
+                ) from primary_error
 
-            raise RuntimeError(f"Failed to initialize backend '{executor}': {e}") from e
+            fallback_executor = fallback_executor.strip().lower()
+            LOG.info(f"Attempting fallback to {fallback_executor} backend")
+            try:
+                fallback_config = dict(cluster_config)
+                fallback_config["executor"] = fallback_executor
+                fallback_backend = BackendFactory._create_backend(fallback_executor, fallback_config)
+            except ValueError:
+                # Preserve invalid fallback executor errors as-is.
+                raise
+            except Exception as fallback_error:
+                LOG.error(f"Fallback backend {fallback_executor} also failed: {fallback_error}")
+                raise RuntimeError(
+                    f"Failed to initialize backend '{executor}' and fallback '{fallback_executor}': {fallback_error}"
+                ) from primary_error
+
+            if fallback_backend.health_check():
+                LOG.info(f"Successfully initialized fallback {fallback_executor} backend")
+                return fallback_backend
+
+            LOG.error(f"Fallback backend {fallback_executor} health check failed")
+            raise RuntimeError(
+                f"Failed to initialize backend '{executor}': primary backend failed and "
+                f"fallback backend '{fallback_executor}' failed health check"
+            ) from primary_error
+
+        raise RuntimeError(f"Failed to initialize backend '{executor}': {primary_error}") from primary_error
 
     @staticmethod
     def _create_backend(executor: str, cluster_config: Dict) -> ComputeBackend:

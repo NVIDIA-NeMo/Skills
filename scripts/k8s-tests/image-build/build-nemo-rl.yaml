@@ -50,7 +50,7 @@ spec:
       initContainers:
       # Prepare build context: clone repos + create simplified Dockerfile
       - name: prepare-context
-        image: alpine/git:latest
+        image: alpine/git:v2.45.2
         env:
         - name: GIT_REF
           value: refs/heads/main
@@ -69,7 +69,7 @@ spec:
 
           echo "Creating build Dockerfile..."
           cat > /context/Dockerfile << 'DOCKERFILE'
-          ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.03-py3
+          ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.04-py3
           FROM ${BASE_IMAGE}
 
           # NVIDIA base images pin package versions via pip constraints.
@@ -98,7 +98,7 @@ spec:
           mountPath: /context
       containers:
       - name: kaniko
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:v1.23.2
         args:
         - --dockerfile=/workspace/Dockerfile
         - --context=/workspace

@@ -34,9 +34,12 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     export TZ=America/Los_Angeles && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        jq curl git rsync wget less vim gnupg && \
-    echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" | tee /etc/apt/sources.list.d/nvidia-devtools.list && \
-    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture)/7fa2af80.pub && \
+        jq curl git rsync wget less vim gnupg ca-certificates && \
+    UBUNTU_VER="$(. /etc/os-release && echo "${VERSION_ID}" | tr -d .)" && \
+    ARCH="$(dpkg --print-architecture)" && \
+    curl -fsSL -o /tmp/cuda-keyring.deb "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_VER}/${ARCH}/cuda-keyring_1.1-1_all.deb" && \
+    dpkg -i /tmp/cuda-keyring.deb && rm -f /tmp/cuda-keyring.deb && \
+    echo "deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/devtools/repos/ubuntu${UBUNTU_VER}/${ARCH} /" > /etc/apt/sources.list.d/nvidia-devtools.list && \
     apt-get update && \
     apt-get install -y nsight-systems-cli && \
     apt-get install -y --only-upgrade gnupg && \
@@ -96,7 +99,7 @@ RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py || echo "prefetc
 RUN python tools/generate_fingerprint.py > /opt/nemo_rl_container_fingerprint || echo "fingerprint not critical"
 
 # Install NeMo-Skills from build context
-COPY skills/ /opt/NeMo-Skills/
+COPY Skills/ /opt/NeMo-Skills/
 RUN cd /opt/NeMo-Skills && uv pip install .
 
 # Verify

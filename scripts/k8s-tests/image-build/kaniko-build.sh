@@ -33,9 +33,6 @@ BUILD_ALL=false
 TIMEOUT=7200  # 2 hours
 GIT_REF=""  # empty = use HEAD (integration/latest mode)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-
 # Simple Dockerfiles that Kaniko can build directly from git context
 SIMPLE_IMAGES="megatron nemo-skills sandbox vllm verl"
 
@@ -141,7 +138,7 @@ spec:
         effect: NoSchedule
       containers:
       - name: kaniko
-        image: gcr.io/kaniko-project/executor:latest
+        image: gcr.io/kaniko-project/executor:v1.23.2
         args:
         - --dockerfile=${dockerfile}
         - --context=git://github.com/NVIDIA-NeMo/Skills.git#${GIT_REF}
@@ -183,7 +180,9 @@ EOF
     build_node=$(kubectl get pod "$build_pod" -n "$NAMESPACE" -o jsonpath='{.spec.nodeName}')
 
     # Helper pod to access /raid on that node
-    kubectl run "copy-${name}" --image=busybox:1.36 --restart=Never \
+    local copy_pod="copy-${name}"
+    kubectl delete pod "$copy_pod" -n "$NAMESPACE" --ignore-not-found 2>/dev/null
+    kubectl run "$copy_pod" --image=busybox:1.36 --restart=Never \
         --overrides="{
             \"spec\": {
                 \"nodeName\": \"$build_node\",
@@ -196,10 +195,14 @@ EOF
                 \"volumes\": [{\"name\": \"raid\", \"hostPath\": {\"path\": \"/raid\"}}]
             }
         }" -n "$NAMESPACE" 2>/dev/null
-    kubectl wait --for=condition=Ready "pod/copy-${name}" -n "$NAMESPACE" --timeout=60s
-
-    kubectl cp "$NAMESPACE/copy-${name}:${tarball}" "$cache_path"
-    kubectl delete pod "copy-${name}" -n "$NAMESPACE" --ignore-not-found
+    cleanup_copy_pod() {
+        kubectl delete pod "$copy_pod" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
+    }
+    trap cleanup_copy_pod EXIT ERR
+    kubectl wait --for=condition=Ready "pod/$copy_pod" -n "$NAMESPACE" --timeout=60s
+    kubectl cp "$NAMESPACE/$copy_pod:${tarball}" "$cache_path"
+    trap - EXIT ERR
+    cleanup_copy_pod
 
     echo "Cached: $cache_path ($(du -h "$cache_path" | cut -f1))"
     kubectl delete job "$job_name" -n "$NAMESPACE" --ignore-not-found

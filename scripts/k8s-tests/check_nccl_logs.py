@@ -37,7 +37,7 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -134,7 +134,7 @@ def validate_result(
     result: NCCLCheckResult,
     expected_nodes: Optional[int] = None,
     expected_gpus_per_node: Optional[int] = None,
-) -> tuple:
+) -> Tuple[bool, List[str]]:
     """Validate NCCL check result against expectations.
 
     Returns (passed: bool, messages: list[str])
