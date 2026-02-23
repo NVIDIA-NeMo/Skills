@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DATASET_GROUP = "math"
 # Using judge metrics as we need an LLM to evaluate the proof
 METRICS_TYPE = "math"
 GENERATION_ARGS = "++prompt_config=generic/math ++eval_type=math"

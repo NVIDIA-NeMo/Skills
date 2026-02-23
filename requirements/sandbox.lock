@@ -1688,6 +1688,8 @@ pytz==2025.2
     #   yfinance
 pyvo==1.8
     # via astroquery
+pyxlsb==1.0.10
+    # via -r requirements/stem.txt
 pyyaml==6.0.3
     # via
     #   albumentations

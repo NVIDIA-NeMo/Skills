@@ -23,7 +23,6 @@ These tasks require an LLM judge for evaluation, matching MMAU-Pro evaluation se
 """
 
 # Dataset configuration - CRITICAL: needed for audio to work
-DATASET_GROUP = "speechlm"
 METRICS_TYPE = "audio"
 DEFAULT_SPLIT = "test"
 GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"

@@ -1,0 +1,4 @@
+{
+    "word_count": "./my_benchmarks/dataset/word_count",
+    "my_simple_bench": "./my_benchmarks/dataset/my_simple_bench"
+}

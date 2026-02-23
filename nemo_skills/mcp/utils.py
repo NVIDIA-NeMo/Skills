@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
-import importlib.util
 import json
 import logging
 import os
@@ -24,33 +22,13 @@ from mcp import StdioServerParameters
 from mcp.types import CallToolResult
 from omegaconf import DictConfig, OmegaConf
 
+from nemo_skills.dataset.utils import locate
 from nemo_skills.mcp.clients import MCPStdioClient, MCPStreamableHttpClient
 
+# locate is re-exported here for backward compatibility (used by mcp.config, tool_manager, etc.)
+__all__ = ["locate"]
+
 logger = logging.getLogger(__name__)
-
-
-def locate(path):
-    # If it's not a string, assume already an object and return
-    if not isinstance(path, str):
-        return path
-
-    # Double-colon syntax for both modules and files: module::Class or path.py::Class
-    if "::" in path:
-        left, attr_name = path.split("::", 1)
-        # If it's a file path (endswith .py or exists), load from file; otherwise import module
-        if left.endswith(".py") or os.path.exists(left):
-            module_name = os.path.splitext(os.path.basename(left))[0]
-            spec = importlib.util.spec_from_file_location(module_name, left)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return getattr(module, attr_name)
-        module = importlib.import_module(left)
-        return getattr(module, attr_name)
-
-    # Handle standard dotted module path
-    module_path, obj_name = path.rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    return getattr(module, obj_name)
 
 
 def exa_auth_connector(client: MCPStreamableHttpClient):

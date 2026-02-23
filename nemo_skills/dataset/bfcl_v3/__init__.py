@@ -11,9 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-DATASET_GROUP = "tool"
-
 SPLITS = [
     "simple_python",  # Simple function calls
     "parallel",  # Multiple function calls in parallel
