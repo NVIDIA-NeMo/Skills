@@ -48,7 +48,9 @@ def main(args):
     else:
         subset_file = SUBSETS_DIR / f"{args.split}.txt"
         if not subset_file.exists():
-            raise ValueError(f"Unknown split '{args.split}'. Expected 'validation', 'test', or a subset file at subsets/{args.split}.txt")
+            raise ValueError(
+                f"Unknown split '{args.split}'. Expected 'validation', 'test', or a subset file at subsets/{args.split}.txt"
+            )
         dataset = load_dataset("TIGER-Lab/MMLU-Pro")["test"]
         subset_ids = load_subset_ids(subset_file)
         dataset = filter_by_subset(dataset, subset_ids, question_key="question", options_key="options")
@@ -61,6 +63,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--split", default="test", choices=("validation", "test", "10pct_opt_v1"), help="Dataset split to process.")
+    parser.add_argument(
+        "--split", default="test", choices=("validation", "test", "10pct_opt_v1"), help="Dataset split to process."
+    )
     args = parser.parse_args()
     main(args)

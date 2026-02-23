@@ -328,10 +328,9 @@ def get_mcq_fields(question, choices):
 def get_question_hash(question, options=None):
     """Normalize question text and options and hash it.
     MMLU-Pro has duplicate questions with different options."""
-    norm = lambda s: " ".join(s.strip().lower().split())
-    parts = [norm(question)]
+    parts = [" ".join(question.strip().lower().split())]
     if options:
-        parts.extend(norm(o) for o in options)
+        parts.extend(" ".join(opt.strip().lower().split()) for opt in options)
     return hashlib.sha256(" ".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -351,8 +350,5 @@ def filter_by_subset(dataset, subset_ids, question_key="question", options_key=N
 
     no_match_ids = subset_ids - hash_to_entry.keys()
     if no_match_ids:
-        raise ValueError(
-            f"{len(no_match_ids)}/{len(subset_ids)} subset IDs not found in source split."
-        )
+        raise ValueError(f"{len(no_match_ids)}/{len(subset_ids)} subset IDs not found in source split.")
     return [hash_to_entry[h] for h in subset_ids]
-
