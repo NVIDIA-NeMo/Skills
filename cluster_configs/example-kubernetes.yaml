@@ -1,0 +1,156 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+executor: kubernetes
+
+# Kubernetes cluster configuration
+# kubeconfig: ~/.kube/config  # Optional: path to kubeconfig file (uses in-cluster config if omitted)
+# context: my-cluster-context  # Optional: kubectl context to use
+namespace: nemo-skills  # Kubernetes namespace for jobs
+
+# Container images
+containers:
+  # Map logical names to actual images
+  # These can be referenced by name in job specs
+  vllm: nvcr.io/nvidia/vllm:latest
+  nemo-skills: nvcr.io/nvidia/nemo-skills:latest
+  sglang: lmsysorg/sglang:latest
+  trtllm: nvcr.io/nvidia/tensorrt-llm:latest
+  sandbox: nvcr.io/nvidia/nemo-skills-sandbox:latest
+
+# Image pull secrets for private registries
+# image_pull_secrets:
+#   - nvcr-secret
+#   - private-registry-secret
+
+# Service account for pods (should have appropriate RBAC permissions)
+service_account: nemo-skills-sa
+
+# Resource pools for node scheduling
+# These map to node selectors and tolerations for GPU/CPU workloads
+resource_pools:
+  # GPU pool for inference/training workloads
+  gpu-a100:
+    node_selector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+  # GPU pool for H100 nodes
+  gpu-h100:
+    node_selector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+  # CPU pool for data processing workloads
+  cpu:
+    node_selector:
+      node-type: cpu-worker
+    tolerations: []
+
+# PVC-based storage configuration
+# These volumes are mounted to all containers in jobs
+storage:
+  models:
+    pvc_name: nemo-models-pvc
+    mount_path: /models
+  data:
+    pvc_name: nemo-data-pvc
+    mount_path: /data
+  results:
+    pvc_name: nemo-results-pvc
+    mount_path: /results
+
+# Job timeout settings
+default_timeout: "6h"
+timeouts:
+  inference: "2h"
+  training: "24h"
+  data-processing: "12h"
+
+# Environment variables for all containers
+env_vars:
+  - HF_HOME=/models/hf-cache
+  - NCCL_DEBUG=INFO
+  # - CUDA_VISIBLE_DEVICES=all
+
+# Fallback backend if Kubernetes is unavailable
+# Useful for development/testing when K8s cluster is not accessible
+# fallback_executor: local
+
+# =============================================================================
+# Setup Instructions
+# =============================================================================
+#
+# 1. Create the namespace:
+#    kubectl create namespace nemo-skills
+#
+# 2. Create a service account with appropriate permissions:
+#    kubectl create serviceaccount nemo-skills-sa -n nemo-skills
+#
+# 3. Create RBAC role for job management:
+#    kubectl apply -f - <<EOF
+#    apiVersion: rbac.authorization.k8s.io/v1
+#    kind: Role
+#    metadata:
+#      name: nemo-skills-role
+#      namespace: nemo-skills
+#    rules:
+#    - apiGroups: ["batch"]
+#      resources: ["jobs"]
+#      verbs: ["create", "delete", "get", "list", "watch"]
+#    - apiGroups: [""]
+#      resources: ["pods", "pods/log"]
+#      verbs: ["get", "list", "watch"]
+#    EOF
+#
+# 4. Bind the role to the service account:
+#    kubectl create rolebinding nemo-skills-binding \
+#      --role=nemo-skills-role \
+#      --serviceaccount=nemo-skills:nemo-skills-sa \
+#      -n nemo-skills
+#
+# 5. Create PVCs for storage (example for models):
+#    kubectl apply -f - <<EOF
+#    apiVersion: v1
+#    kind: PersistentVolumeClaim
+#    metadata:
+#      name: nemo-models-pvc
+#      namespace: nemo-skills
+#    spec:
+#      accessModes:
+#        - ReadWriteMany
+#      resources:
+#        requests:
+#          storage: 500Gi
+#      storageClassName: your-storage-class
+#    EOF
+#
+# 6. Create image pull secrets for private registries:
+#    kubectl create secret docker-registry nvcr-secret \
+#      --docker-server=nvcr.io \
+#      --docker-username='$oauthtoken' \
+#      --docker-password=<NGC_API_KEY> \
+#      -n nemo-skills
+#
+# 7. Ensure GPU Operator is installed for GPU scheduling:
+#    https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/getting-started.html
+#
+# 8. For multi-node GPU jobs with RDMA/InfiniBand, ensure Network Operator is installed:
+#    https://docs.nvidia.com/networking/display/cokan10/network+operator
