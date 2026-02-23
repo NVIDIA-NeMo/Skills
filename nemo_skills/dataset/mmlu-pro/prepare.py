@@ -61,6 +61,6 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--split", default="test", help="Dataset split to process: 'validation', 'test', or name of a subset file in subsets/ (without .txt).")
+    parser.add_argument("--split", default="test", choices=("validation", "test", "10pct_opt_v1"), help="Dataset split to process.")
     args = parser.parse_args()
     main(args)
