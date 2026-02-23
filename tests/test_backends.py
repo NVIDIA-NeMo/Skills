@@ -22,6 +22,7 @@ Tests cover:
 """
 
 import importlib.util
+from dataclasses import dataclass
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
@@ -972,3 +973,268 @@ class TestConfigValidation:
 
         errors = validate_cluster_config({"executor": "unknown"})
         assert any("Unknown executor" in e for e in errors)
+
+
+# =============================================================================
+# Pipeline Kubernetes Integration Tests
+# =============================================================================
+
+
+class TestPipelineKubernetesIntegration:
+    """Tests for Pipeline.run() with Kubernetes backend."""
+
+    def test_pipeline_routes_to_kubernetes(self):
+        """Test that Pipeline.run() routes to Kubernetes for executor=kubernetes."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        # Create a simple script using nemo_run's Script
+        script = run.Script(inline="echo hello")
+        command = Command(script=script, container="nemo-skills", name="test-cmd")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=1),
+            name="test-group",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test-ns",
+            "containers": {"nemo-skills": "test-image:latest"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="test-pipeline",
+            cluster_config=cluster_config,
+            jobs=[{"name": "test-job", "group": group}],
+        )
+
+        # Mock the backend at the source module where it's imported from
+        with patch('nemo_skills.pipeline.backends.get_backend') as mock_get_backend:
+            mock_backend = MagicMock()
+            mock_handle = MagicMock()
+            mock_handle.job_id = "test-123"
+            mock_backend.submit_job.return_value = mock_handle
+            mock_get_backend.return_value = mock_backend
+
+            # Run without dry_run to test actual submission path
+            result = pipeline.run(dry_run=False)
+
+            # Should call get_backend with the config
+            mock_get_backend.assert_called_once()
+            # Should call submit_job
+            mock_backend.submit_job.assert_called_once()
+
+    def test_pipeline_converts_command_group_to_job_spec(self):
+        """Test that CommandGroup is correctly converted to JobSpec."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        script = run.Script(inline="python train.py")
+        command = Command(script=script, container="nemo-skills", name="trainer")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(num_gpus=4, num_tasks=2),
+            name="training",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "ml-team",
+            "containers": {"nemo-skills": "nvcr.io/nvidia/nemo:latest"},
+            "skip_hf_home_check": True,
+            "default_timeout": "2h",
+        }
+
+        pipeline = Pipeline(
+            name="training-pipeline",
+            cluster_config=cluster_config,
+            jobs=[{"name": "train-job", "group": group}],
+        )
+
+        # Test the conversion method directly
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="train-job",
+            groups=[group],
+            log_dir="/logs",
+        )
+
+        assert job_spec.name == "train-job"
+        assert len(job_spec.containers) == 1
+        assert job_spec.containers[0].name == "trainer"
+        assert job_spec.containers[0].image == "nvcr.io/nvidia/nemo:latest"
+        assert job_spec.containers[0].resources.gpus == 4
+        assert job_spec.timeout_seconds == 2 * 3600  # 2 hours
+
+    def test_pipeline_multi_container_conversion(self):
+        """Test conversion of multi-command group to multi-container JobSpec."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        server_script = run.Script(inline="python server.py --port 8000")
+        server_script.port = 8000  # Add port attribute for container spec
+        client_script = run.Script(inline="python client.py")
+
+        server = Command(script=server_script, container="vllm", name="server")
+        client = Command(script=client_script, container="nemo-skills", name="client")
+
+        group = CommandGroup(
+            commands=[server, client],
+            hardware=HardwareConfig(num_gpus=8),
+            name="inference",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "inference",
+            "containers": {
+                "vllm": "vllm:latest",
+                "nemo-skills": "nemo-skills:latest",
+            },
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="inference-pipeline",
+            cluster_config=cluster_config,
+            jobs=[{"name": "infer", "group": group}],
+        )
+
+        job_spec = pipeline._convert_groups_to_job_spec(
+            job_name="infer",
+            groups=[group],
+        )
+
+        assert len(job_spec.containers) == 2
+        assert job_spec.containers[0].name == "server"
+        assert job_spec.containers[0].image == "vllm:latest"
+        assert job_spec.containers[1].name == "client"
+        assert job_spec.containers[1].image == "nemo-skills:latest"
+
+    def test_parse_timeout_formats(self):
+        """Test timeout parsing for various formats."""
+        from nemo_skills.pipeline.utils.declarative import Pipeline
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {},
+            "skip_hf_home_check": True,
+        }
+
+        # Create a minimal pipeline just to access the method
+        pipeline = Pipeline.__new__(Pipeline)
+        pipeline.cluster_config = cluster_config
+
+        # Test various formats
+        assert pipeline._parse_timeout("6h") == 6 * 3600
+        assert pipeline._parse_timeout("30m") == 30 * 60
+        assert pipeline._parse_timeout("3600") == 3600
+        assert pipeline._parse_timeout("01:30:00") == 1 * 3600 + 30 * 60
+        assert pipeline._parse_timeout("06:00:00") == 6 * 3600
+        assert pipeline._parse_timeout("") == 6 * 3600  # Default
+
+    def test_slurm_still_uses_nemo_run(self):
+        """Test that Slurm executor still routes to NeMo-Run path."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        script = run.Script(inline="echo test")
+        command = Command(script=script, container="nemo-skills", name="cmd")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(),
+            name="group",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "slurm",
+            "account": "test",
+            "partition": "gpu",
+            "containers": {"nemo-skills": "image"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="slurm-test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "job", "group": group}],
+        )
+
+        # Mock _run_nemo_run to verify it's called for Slurm
+        with patch.object(pipeline, '_run_nemo_run') as mock_nemo_run:
+            mock_nemo_run.return_value = MagicMock()
+
+            pipeline.run(dry_run=True)
+
+            # _run_nemo_run should be called for Slurm executor
+            mock_nemo_run.assert_called_once()
+
+    def test_kubernetes_does_not_use_nemo_run(self):
+        """Test that Kubernetes executor does NOT use NeMo-Run path."""
+        from nemo_skills.pipeline.utils.declarative import (
+            Command,
+            CommandGroup,
+            HardwareConfig,
+            Pipeline,
+        )
+        import nemo_run as run
+
+        script = run.Script(inline="echo test")
+        command = Command(script=script, container="nemo-skills", name="cmd")
+        group = CommandGroup(
+            commands=[command],
+            hardware=HardwareConfig(),
+            name="group",
+            log_dir="/logs",
+        )
+
+        cluster_config = {
+            "executor": "kubernetes",
+            "namespace": "test",
+            "containers": {"nemo-skills": "image"},
+            "skip_hf_home_check": True,
+        }
+
+        pipeline = Pipeline(
+            name="k8s-test",
+            cluster_config=cluster_config,
+            jobs=[{"name": "job", "group": group}],
+        )
+
+        # Mock both methods to see which one gets called
+        with patch.object(pipeline, '_run_nemo_run') as mock_nemo_run, \
+             patch.object(pipeline, '_run_kubernetes') as mock_k8s:
+            mock_k8s.return_value = MagicMock()
+
+            pipeline.run(dry_run=True)
+
+            # _run_kubernetes should be called for Kubernetes executor
+            mock_k8s.assert_called_once()
+            # _run_nemo_run should NOT be called
+            mock_nemo_run.assert_not_called()

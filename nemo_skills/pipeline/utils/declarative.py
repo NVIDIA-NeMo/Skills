@@ -40,6 +40,9 @@ from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
 from nemo_skills.pipeline.utils.server import wrap_python_path
 from nemo_skills.utils import get_logger_name
 
+# Import backend types for Kubernetes support (lazy import in method to avoid circular deps)
+# from nemo_skills.pipeline.backends import get_backend, JobSpec, ContainerSpec, ResourceSpec, JobStatus
+
 """
 Simplified declarative pipeline system using Command with run.Script objects.
 
@@ -354,13 +357,32 @@ class Pipeline:
                 raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
 
     def run(self, dry_run: bool = False, log_dir: Optional[str] = None, _reuse_exp=None, sequential: bool = False):
-        """Execute the pipeline by calling NeMo-Run directly.
+        """Execute the pipeline on the appropriate backend.
+
+        Routes to Kubernetes backend for executor='kubernetes', otherwise uses
+        the existing NeMo-Run based execution for Slurm/local backends.
 
         Args:
             dry_run: If True, validate without executing
             log_dir: Default log directory for groups that don't specify one (optional)
             _reuse_exp: Internal - reuse existing experiment object (for eval.py integration)
             sequential: If True, run tasks sequentially (only makes sense for local/none executors)
+        """
+        executor = self.cluster_config.get("executor", "slurm")
+
+        # Route to Kubernetes backend for kubernetes executor
+        if executor == "kubernetes":
+            return self._run_kubernetes(dry_run=dry_run, log_dir=log_dir, sequential=sequential)
+
+        # Use existing NeMo-Run based execution for Slurm/local
+        return self._run_nemo_run(dry_run=dry_run, log_dir=log_dir, _reuse_exp=_reuse_exp, sequential=sequential)
+
+    def _run_nemo_run(
+        self, dry_run: bool = False, log_dir: Optional[str] = None, _reuse_exp=None, sequential: bool = False
+    ):
+        """Execute the pipeline using NeMo-Run (for Slurm/local backends).
+
+        This is the existing implementation, extracted to a separate method.
         """
         # Track job name -> task handle for dependency resolution
         job_name_to_handle = {}
@@ -491,6 +513,257 @@ class Pipeline:
                 return list(job_name_to_handle.values())
 
             return exp
+
+    def _run_kubernetes(self, dry_run: bool = False, log_dir: Optional[str] = None, sequential: bool = False):
+        """Execute the pipeline using Kubernetes backend.
+
+        This method converts Pipeline jobs to JobSpecs and submits them
+        to the Kubernetes backend.
+
+        Args:
+            dry_run: If True, validate and show what would run without executing
+            log_dir: Default log directory for groups that don't specify one
+            sequential: If True, wait for each job to complete before starting the next
+        """
+        # Lazy import to avoid circular dependencies
+        from nemo_skills.pipeline.backends import (
+            ContainerSpec,
+            JobSpec,
+            JobStatus,
+            ResourceSpec,
+            get_backend,
+        )
+
+        backend = get_backend(self.cluster_config)
+        LOG.info(f"Using Kubernetes backend (namespace: {self.cluster_config.get('namespace', 'default')})")
+
+        # Track job name -> JobHandle for dependency resolution
+        job_name_to_handle = {}
+
+        # Collect all job specs for dry run display
+        job_specs = []
+
+        for job_spec in self.jobs:
+            job_name = job_spec["name"]
+
+            # Get the groups for this job
+            if "groups" in job_spec:
+                groups = job_spec["groups"]
+            elif "group" in job_spec:
+                groups = [job_spec["group"]]
+            else:
+                raise ValueError(f"Job spec must have either 'group' or 'groups': {job_spec}")
+
+            # Resolve dependencies
+            dependency_job_ids = []
+            job_dependencies = job_spec.get("dependencies", [])
+            if job_dependencies is None:
+                job_dependencies = []
+
+            for dep in job_dependencies:
+                if isinstance(dep, str):
+                    # External dependency by name - not supported on K8s yet
+                    LOG.warning(f"External dependency '{dep}' not yet supported on Kubernetes, skipping")
+                elif isinstance(dep, dict):
+                    dep_name = dep.get("name")
+                    if dep_name and dep_name in job_name_to_handle:
+                        dependency_job_ids.append(job_name_to_handle[dep_name].job_id)
+
+            # Convert CommandGroups to JobSpec
+            k8s_job_spec = self._convert_groups_to_job_spec(
+                job_name=job_name,
+                groups=groups,
+                log_dir=log_dir,
+                dependencies=dependency_job_ids if dependency_job_ids else None,
+            )
+            job_specs.append((job_name, k8s_job_spec))
+
+            if dry_run:
+                self._print_dry_run_job(job_name, k8s_job_spec)
+                continue
+
+            # Submit the job
+            handle = backend.submit_job(k8s_job_spec)
+            job_name_to_handle[job_name] = handle
+            LOG.info(f"Submitted job '{job_name}' (job_id: {handle.job_id})")
+
+            # If sequential, wait for this job to complete before continuing
+            if sequential:
+                LOG.info(f"Waiting for job '{job_name}' to complete (sequential mode)...")
+                status = backend.wait_for_completion(handle)
+                LOG.info(f"Job '{job_name}' completed with status: {status.value}")
+                if status == JobStatus.FAILED:
+                    raise RuntimeError(f"Job '{job_name}' failed, aborting pipeline")
+
+        if dry_run:
+            LOG.info("Dry run complete. No jobs were submitted.")
+            return None
+
+        # Return handles for monitoring
+        return job_name_to_handle
+
+    def _convert_groups_to_job_spec(
+        self,
+        job_name: str,
+        groups: List[CommandGroup],
+        log_dir: Optional[str] = None,
+        dependencies: Optional[List[str]] = None,
+    ) -> "JobSpec":
+        """Convert CommandGroups to a Kubernetes JobSpec.
+
+        All commands from all groups are converted to containers in a single
+        multi-container Pod (Kubernetes equivalent of Slurm heterogeneous jobs).
+
+        Args:
+            job_name: Name for the job
+            groups: List of CommandGroups to convert
+            log_dir: Log directory (for environment variables)
+            dependencies: List of job IDs this job depends on
+
+        Returns:
+            JobSpec ready for submission to KubernetesBackend
+        """
+        from nemo_skills.pipeline.backends import ContainerSpec, JobSpec, ResourceSpec
+
+        containers = []
+        node_selector = None
+        total_timeout = None
+
+        # Set backend on all scripts before processing
+        for group in groups:
+            for command in group.commands:
+                command.script.backend = "kubernetes"
+                # het_group_index not needed for K8s (all containers share localhost)
+                command.script.het_group_index = None
+
+        for group in groups:
+            # Get node selector from resource pool if specified
+            if group.hardware and group.hardware.partition:
+                resource_pools = self.cluster_config.get("resource_pools", {})
+                if group.hardware.partition in resource_pools:
+                    pool_config = resource_pools[group.hardware.partition]
+                    node_selector = pool_config.get("node_selector")
+
+            for command in group.commands:
+                # Prepare the command (evaluates lazy commands)
+                script, exec_config = self._prepare_command(command, self.cluster_config)
+
+                # Get the command string
+                if callable(script.inline):
+                    cmd_result = script.inline()
+                    if isinstance(cmd_result, tuple):
+                        cmd_str, _ = cmd_result
+                    else:
+                        cmd_str = cmd_result
+                else:
+                    cmd_str = script.inline
+
+                # Resolve container image
+                container_image = self._resolve_container(exec_config, command, self.cluster_config)
+
+                # Build resource spec
+                hardware = group.hardware or HardwareConfig()
+                resources = ResourceSpec(
+                    gpus=hardware.num_gpus or 0,
+                    cpus=hardware.num_tasks or 1,
+                    memory_gb=32.0,  # Default, could be made configurable
+                )
+
+                # Build environment variables
+                env_vars = {}
+                # Add cluster-level env vars
+                for env_entry in self.cluster_config.get("env_vars", []):
+                    if "=" in env_entry:
+                        key, value = env_entry.split("=", 1)
+                        env_vars[key] = value
+                # Add command-specific env vars
+                env_vars.update(exec_config.get("environment", {}))
+                # Add log directory if specified
+                if log_dir or group.log_dir:
+                    env_vars["NEMO_LOG_DIR"] = log_dir or group.log_dir
+
+                # Get ports from script if available
+                ports = []
+                if hasattr(script, "port"):
+                    ports = [script.port]
+
+                # Create container spec
+                container = ContainerSpec(
+                    name=command.name,
+                    image=container_image,
+                    command=["bash", "-c", cmd_str],
+                    env_vars=env_vars,
+                    resources=resources,
+                    ports=ports,
+                )
+                containers.append(container)
+
+        # Parse timeout from cluster config
+        timeout_str = self.cluster_config.get("default_timeout", "6h")
+        timeout_seconds = self._parse_timeout(timeout_str)
+
+        # Build labels
+        labels = {
+            "app": "nemo-skills",
+            "pipeline": self.name,
+        }
+
+        return JobSpec(
+            name=job_name,
+            containers=containers,
+            timeout_seconds=timeout_seconds,
+            dependencies=dependencies,
+            labels=labels,
+            node_selector=node_selector,
+        )
+
+    def _parse_timeout(self, timeout_str: str) -> int:
+        """Parse timeout string to seconds.
+
+        Supports formats: '6h', '30m', '3600', '06:00:00'
+        """
+        if not timeout_str:
+            return 6 * 3600  # Default 6 hours
+
+        # Already seconds
+        if timeout_str.isdigit():
+            return int(timeout_str)
+
+        # Hours format (e.g., '6h')
+        if timeout_str.endswith('h'):
+            return int(timeout_str[:-1]) * 3600
+
+        # Minutes format (e.g., '30m')
+        if timeout_str.endswith('m'):
+            return int(timeout_str[:-1]) * 60
+
+        # HH:MM:SS format
+        if ':' in timeout_str:
+            parts = timeout_str.split(':')
+            if len(parts) == 3:
+                hours, minutes, seconds = map(int, parts)
+                return hours * 3600 + minutes * 60 + seconds
+            elif len(parts) == 2:
+                minutes, seconds = map(int, parts)
+                return minutes * 60 + seconds
+
+        # Default
+        return 6 * 3600
+
+    def _print_dry_run_job(self, job_name: str, spec: "JobSpec"):
+        """Print job details for dry run."""
+        LOG.info(f"\n{'='*60}")
+        LOG.info(f"Job: {job_name}")
+        LOG.info(f"{'='*60}")
+        LOG.info(f"Containers: {len(spec.containers)}")
+        for container in spec.containers:
+            LOG.info(f"  - {container.name}")
+            LOG.info(f"    Image: {container.image}")
+            LOG.info(f"    GPUs: {container.resources.gpus}")
+            LOG.info(f"    Command: {' '.join(container.command[:50])}...")
+        if spec.dependencies:
+            LOG.info(f"Dependencies: {spec.dependencies}")
+        LOG.info(f"Timeout: {spec.timeout_seconds}s")
 
     def _prepare_command(self, command, cluster_config: Dict) -> Tuple[run.Script, Dict]:
         """Prepare command for execution.
