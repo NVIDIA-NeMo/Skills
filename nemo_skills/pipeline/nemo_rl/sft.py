@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""CLI entrypoint and helpers for NeMo-RL SFT orchestration."""
+
 import logging
 from dataclasses import dataclass
 from enum import Enum
@@ -47,12 +49,16 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 # Define supported backend options using Enum
 class SupportedBackends(str, Enum):
+    """Supported NeMo-RL training engine modes."""
+
     fsdp = "fsdp"
     megatron = "megatron"
 
 
 @dataclass
 class NemoRLTask:
+    """Bundle parameters used to compose the NeMo-RL SFT launch command."""
+
     model: str
     output_dir: str
     prompt_data: str
@@ -71,6 +77,7 @@ class NemoRLTask:
     extra_arguments: str = ""
 
     def format_train_args(self):
+        """Build CLI flags for trainer/model/checkpoint configuration."""
         cmd = (
             f"++policy.model_name={self.model} "
             f"++cluster.gpus_per_node={self.num_gpus} "
@@ -86,12 +93,14 @@ class NemoRLTask:
         return cmd
 
     def format_data_args(self):
+        """Build dataset-related CLI flags."""
         cmd = f"+data.train_data_path={self.prompt_data} "
         if self.eval_data is not None:
             cmd += f"+data.val_data_path={self.eval_data} "
         return cmd
 
     def format_wandb_args(self):
+        """Build and validate wandb logging arguments."""
         wandb_id = self.expname + ("-" + self.wandb_group if self.wandb_group else "") + "-" + self.wandb_project
         cmd = (
             f"++logger.wandb_enabled={not self.disable_wandb} "
@@ -112,6 +121,7 @@ class NemoRLTask:
         return cmd
 
     def get_cmd(self):
+        """Assemble the final shell command for launching NeMo-RL SFT."""
         self.logging_params = self.format_wandb_args()
 
         nsight_cmd = get_nsight_cmd(self.profile_step_range)
@@ -147,6 +157,7 @@ def get_training_cmd(
     backend,
     profile_step_range,
 ):
+    """Create the full training command string for an SFT run."""
     timeout = get_timeout_str(cluster_config, partition)
 
     task = NemoRLTask(
@@ -172,6 +183,7 @@ def get_training_cmd(
 
 
 def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
+    """Build the command that converts a NeMo-RL checkpoint to HuggingFace format."""
     cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
     if backend == "fsdp":
         cmd += "uv run --extra automodel python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
@@ -358,6 +370,7 @@ def _run_sft_kubernetes(
 
 
 def get_checkpoint_average_cmd(output_dir, average_steps, backend, remove_checkpoints_after_average):
+    """Build the command that averages multiple converted checkpoints."""
     cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
 
     if backend in ["fsdp", "megatron"]:

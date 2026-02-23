@@ -85,6 +85,7 @@ class SlurmBackend(ComputeBackend):
     """
 
     def __init__(self, cluster_config: Dict):
+        """Validate config and initialize in-memory job bookkeeping."""
         self.config = cluster_config
 
         # Validate required fields
@@ -96,6 +97,7 @@ class SlurmBackend(ComputeBackend):
 
     @property
     def name(self) -> str:
+        """Return backend identifier."""
         return "slurm"
 
     def submit_job(self, spec: JobSpec) -> JobHandle:

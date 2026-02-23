@@ -20,6 +20,8 @@
 #   PYTHONPATH=. .venv/bin/python scripts/k8s-tests/run_sft_k8s_real.py
 #   PYTHONPATH=. .venv/bin/python scripts/k8s-tests/run_sft_k8s_real.py --num-nodes 2 --num-gpus 2
 
+"""Submit and monitor a real SFT job through Pipeline + KubernetesBackend."""
+
 import argparse
 import os
 import sys
@@ -28,6 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def main():
+    """Build a minimal real SFT pipeline, submit it, and stream job logs."""
     parser = argparse.ArgumentParser(description="Real SFT K8s Pipeline Run")
     parser.add_argument("--num-gpus", type=int, default=2)
     parser.add_argument("--num-nodes", type=int, default=1)

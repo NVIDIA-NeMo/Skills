@@ -167,6 +167,7 @@ def build_pipeline(mode, namespace, gpus, nodes, image):
 
 
 def main():
+    """Run dry-run or real Kubernetes smoke tests through the declarative pipeline path."""
     parser = argparse.ArgumentParser(description="Pipeline+KubernetesBackend smoke test")
     parser.add_argument("--mode", choices=["single", "multi"], default="single")
     parser.add_argument("--dry-run", action="store_true", help="Validate manifests only")

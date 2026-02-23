@@ -212,6 +212,7 @@ def validate_result(
 
 
 def main():
+    """Parse CLI args, validate NCCL logs, and return pass/fail exit code."""
     parser = argparse.ArgumentParser(description="Validate NCCL logs for distributed training")
     parser.add_argument("--log-file", help="Path to log file (reads stdin if not specified)")
     parser.add_argument("--expected-nodes", type=int, help="Expected number of nodes")

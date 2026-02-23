@@ -50,7 +50,9 @@ ARG UV_VERSION=0.9.7
 ARG PYTHON_VERSION=3.12
 ENV PATH="/root/.local/bin:$PATH"
 RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh && \
-    uv python install ${PYTHON_VERSION}
+    uv python install ${PYTHON_VERSION} && \
+    install -m 0755 /root/.local/bin/uv /usr/local/bin/uv && \
+    if [ -f /root/.local/bin/uvx ]; then install -m 0755 /root/.local/bin/uvx /usr/local/bin/uvx; fi
 
 ENV RAY_USAGE_STATS_ENABLED=0
 ENV RAY_ENABLE_UV_RUN_RUNTIME_ENV=0
@@ -88,6 +90,7 @@ ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
 FROM hermetic AS release
 
 WORKDIR /opt/NeMo-RL
+ENV PATH="/usr/local/bin:/opt/nemo_rl_venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Copy full NeMo-RL source (excluding already-copied pyproject.toml/uv.lock)
 COPY --from=nemo-rl-src /nemo-rl-src/ /opt/NeMo-RL/
@@ -105,3 +108,10 @@ RUN cd /opt/NeMo-Skills && uv pip install .
 # Verify
 RUN python -c "import nemo_skills; print(f'nemo_skills {nemo_skills.__version__}')"
 RUN python -c "from nemo_skills.pipeline.backends.kubernetes import KubernetesBackend; print('KubernetesBackend: OK')"
+
+# Drop privileges for runtime execution.
+RUN useradd --create-home --uid 1000 --shell /bin/bash nemo && \
+    mkdir -p /home/nemo/.cache/uv && \
+    chown -R nemo:nemo /home/nemo /opt/NeMo-RL /opt/NeMo-Skills /opt/nemo_rl_venv /opt/ray_venvs
+ENV HOME=/home/nemo
+USER nemo

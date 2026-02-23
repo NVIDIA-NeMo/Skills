@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Declarative pipeline primitives for composing NeMo-Skills jobs."""
+
 from __future__ import annotations
 
 import logging
@@ -312,6 +314,7 @@ class Command:
         return self.script, execution_config
 
     def get_name(self) -> str:
+        """Return the logical command name used for logging and task naming."""
         return self.name
 
 
@@ -356,6 +359,7 @@ class CommandGroup:
         name: Optional[str] = None,
         log_dir: Optional[str] = None,
     ):
+        """Create a group of commands that share one hardware allocation."""
         self.commands = commands
         self.hardware = hardware or HardwareConfig()
         self.name = name
@@ -383,6 +387,7 @@ class Pipeline:
         with_ray: bool = False,
         run_after: Optional[Union[str, List[str]]] = None,  # Pipeline-level dependency on other experiments
     ):
+        """Initialize pipeline metadata, dependencies, and early validation."""
         self.name = name
         self.cluster_config = cluster_config
         self.reuse_code = reuse_code
@@ -976,6 +981,7 @@ class Pipeline:
         repo_root = str(nemo_repo.path.parent)
 
         def _replace(cmd: str) -> str:
+            """Rewrite container-oriented repo paths to local checkout paths."""
             return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
 
         inline_cmd = script.inline
@@ -985,6 +991,7 @@ class Pipeline:
             original_inline = inline_cmd
 
             def wrapped_inline():
+                """Proxy callable inline script while rewriting returned command text."""
                 result = original_inline()
                 if isinstance(result, tuple):
                     cmd, metadata = result

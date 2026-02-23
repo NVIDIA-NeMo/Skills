@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Cluster config loading, timeout parsing, tunnels, and transfer utilities."""
+
 import json
 import logging
 import os
@@ -102,6 +104,7 @@ def _parse_slurm_timeout(value: str) -> timedelta:
 
 
 def _get_timeout(cluster_config, partition, with_save_delay: bool = True) -> timedelta:
+    """Resolve timeout for the selected partition and return it as ``timedelta``."""
     default_timeout = cluster_config.get("default_timeout", "100-00:00:00")
     try:
         timeout_str = cluster_config["timeouts"][partition or cluster_config["partition"]]
@@ -306,6 +309,7 @@ def get_env_variables(cluster_config):
 
 @contextmanager
 def temporary_env_update(cluster_config, updates):
+    """Temporarily append env var overrides into ``cluster_config['env_vars']``."""
     original_env_vars = cluster_config.get("env_vars", []).copy()
     updated_env_vars = original_env_vars.copy()
     for key, value in updates.items():
@@ -318,6 +322,7 @@ def temporary_env_update(cluster_config, updates):
 
 
 def read_config(config_file):
+    """Load a cluster YAML config and normalize executor-specific fields."""
     with open(config_file, "rt", encoding="utf-8") as fin:
         cluster_config = yaml.safe_load(fin)
 
@@ -449,6 +454,7 @@ def _get_tunnel_cached(
     shell: str | None = None,
     pre_command: str | None = None,
 ):
+    """Create and cache an ``SSHTunnel`` instance for a unique tunnel config."""
     kwargs = dict(
         host=host,
         user=user,
@@ -471,12 +477,14 @@ def _get_tunnel_cached(
 
 
 def tunnel_hash(tunnel):
+    """Return a stable hash key for tunnel reuse bookkeeping."""
     if isinstance(tunnel, run.LocalTunnel):
         return "local"
     return f"{tunnel.job_dir}:{tunnel.host}:{tunnel.user}:{tunnel.identity}:{tunnel.shell}:{tunnel.pre_command}"
 
 
 def get_tunnel(cluster_config):
+    """Return local or SSH tunnel object based on cluster configuration."""
     if "ssh_tunnel" not in cluster_config:
         if cluster_config["executor"] == "slurm":
             LOG.info("No ssh_tunnel configuration found, assuming we are running from the cluster already.")
@@ -489,6 +497,7 @@ class OutputWatcher(StreamWatcher):
     """Class for streaming remote tar/compression process."""
 
     def submit(self, stream):
+        """Render progress lines emitted by the remote compression command."""
         print(stream, end="\r")
         sys.stdout.flush()
         return []
@@ -506,11 +515,13 @@ def progress_callback(transferred: int, total: int) -> None:
 
 
 def cluster_download_file(cluster_config: dict, remote_file: str, local_file: str):
+    """Download a single file from a remote cluster via the configured tunnel."""
     tunnel = get_tunnel(cluster_config)
     tunnel.get(remote_file, local_file)
 
 
 def cluster_path_exists(cluster_config: dict, remote_path: str):
+    """Check whether a path exists on the remote cluster filesystem."""
     tunnel = get_tunnel(cluster_config)
     result = tunnel.run(f'test -e {remote_path} && echo "Exists"', hide=True, warn=True)
     return "Exists" in result.stdout

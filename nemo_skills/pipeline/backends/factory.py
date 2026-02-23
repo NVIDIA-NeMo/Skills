@@ -68,6 +68,7 @@ def register_backend(name: str):
     """
 
     def decorator(cls: Type[ComputeBackend]):
+        """Register the decorated backend class under ``name``."""
         _BACKEND_REGISTRY[name] = cls
         return cls
 

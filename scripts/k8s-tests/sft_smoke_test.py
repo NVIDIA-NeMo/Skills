@@ -131,6 +131,7 @@ if rank == 0:
 
 
 def main():
+    """Launch a lightweight SFT smoke job and fail fast on non-success status."""
     import nemo_run as run
 
     from nemo_skills.pipeline.utils.declarative import (

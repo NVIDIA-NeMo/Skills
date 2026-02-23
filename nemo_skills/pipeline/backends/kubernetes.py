@@ -73,6 +73,7 @@ class KubernetesBackend(ComputeBackend):
     """
 
     def __init__(self, cluster_config: Dict):
+        """Initialize Kubernetes clients and validate executor configuration."""
         if not K8S_AVAILABLE:
             raise ImportError(
                 "kubernetes package is required for KubernetesBackend. Install with: pip install kubernetes"
@@ -126,6 +127,7 @@ class KubernetesBackend(ComputeBackend):
 
     @property
     def name(self) -> str:
+        """Return backend identifier."""
         return "kubernetes"
 
     def submit_job(self, spec: JobSpec) -> JobHandle:
@@ -672,6 +674,7 @@ class KubernetesBackend(ComputeBackend):
 
         # Format memory as integer if whole number (16Gi not 16.0Gi)
         def fmt_memory(gb: float) -> str:
+            """Format GiB values for Kubernetes resource fields."""
             return f"{int(gb)}Gi" if gb == int(gb) else f"{gb}Gi"
 
         # Requests: what K8s reserves for scheduling

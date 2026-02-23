@@ -41,6 +41,7 @@ class LocalJob:
     """Tracks a locally running job."""
 
     def __init__(self, job_id: str, processes: List[subprocess.Popen], spec: JobSpec):
+        """Store process handles and in-memory log buffers for one job."""
         self.job_id = job_id
         self.processes = processes
         self.spec = spec
@@ -51,6 +52,7 @@ class LocalJob:
 
     @property
     def status(self) -> JobStatus:
+        """Compute the current aggregate status across all processes."""
         if self._cancelled:
             return JobStatus.CANCELLED
 
@@ -93,6 +95,7 @@ class LocalBackend(ComputeBackend):
     """
 
     def __init__(self, cluster_config: Dict):
+        """Initialize local backend mode (docker vs native execution)."""
         self.config = cluster_config
         try:
             executor = cluster_config["executor"]
@@ -107,6 +110,7 @@ class LocalBackend(ComputeBackend):
 
     @property
     def name(self) -> str:
+        """Return backend identifier for this execution mode."""
         return "local" if self.use_docker else "none"
 
     def submit_job(self, spec: JobSpec) -> JobHandle:

@@ -97,6 +97,7 @@ class BaseJobScript(run.Script):
             original_inline = self.inline
 
             def wrapped_inline():
+                """Evaluate lazy inline command then prepend installation steps."""
                 result = original_inline()
                 if isinstance(result, tuple):
                     command, metadata = result
@@ -303,6 +304,7 @@ class SandboxScript(BaseJobScript):
         # Use a callable to return both command and environment variables
         # This ensures the sandbox's LISTEN_PORT and NGINX_PORT are properly set
         def build_cmd() -> Tuple[str, Dict]:
+            """Return sandbox command and merged environment metadata."""
             env = dict(metadata.get("environment", {}))
             # Apply user-specified environment overrides
             if self.env_overrides:

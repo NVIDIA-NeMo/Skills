@@ -59,6 +59,7 @@ class ResourceSpec:
     memory_limit_gb: Optional[float] = None  # None = no limit (can use available memory)
 
     def __post_init__(self):
+        """Validate numeric resource values and request/limit consistency."""
         if self.gpus < 0:
             raise ValueError(f"gpus must be non-negative, got {self.gpus}")
         if self.cpus < 1:
@@ -114,6 +115,7 @@ class ContainerSpec:
     working_dir: Optional[str] = None
 
     def __post_init__(self):
+        """Validate required container fields."""
         if not self.name:
             raise ValueError("Container name cannot be empty")
         if not self.image:
@@ -159,6 +161,7 @@ class JobSpec:
     annotations: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
+        """Validate required job metadata and basic limits."""
         if not self.name:
             raise ValueError("Job name cannot be empty")
         if not self.containers:
@@ -199,6 +202,7 @@ class JobHandle:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __str__(self) -> str:
+        """Return a compact backend-prefixed identifier for logging."""
         return f"JobHandle({self.backend}:{self.job_id})"
 
 

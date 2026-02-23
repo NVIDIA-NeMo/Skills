@@ -3,6 +3,8 @@
 #
 # Lightweight GPT-2 SFT workload for real K8s pipeline validation.
 
+"""Standalone GPT-2 mini-training workload used by Kubernetes SFT smoke tests."""
+
 import os
 import tempfile
 
@@ -21,6 +23,7 @@ class SFTDataset(Dataset):
     """Synthetic SFT dataset for smoke validation."""
 
     def __init__(self, tokenizer, n: int = 50):
+        """Build ``n`` synthetic math QA examples and tokenize them."""
         self.examples = []
         for i in range(n):
             text = f"Q: What is {i} + {i}? A: The answer is {i + i}."
@@ -29,13 +32,16 @@ class SFTDataset(Dataset):
             self.examples.append({k: torch.tensor(v) for k, v in enc.items()})
 
     def __len__(self):
+        """Return dataset size."""
         return len(self.examples)
 
     def __getitem__(self, i):
+        """Return one tokenized training example by index."""
         return self.examples[i]
 
 
 def main():
+    """Run a short Trainer-based GPT-2 SFT step and print pass signal on rank 0."""
     rank = int(os.environ.get("RANK", 0))
     print(f"[Rank {rank}] Loading GPT-2...")
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
