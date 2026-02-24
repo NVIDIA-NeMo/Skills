@@ -503,7 +503,7 @@ python scripts/create_agent_with_tools_batch.py \
 
 Evaluate both models by computing close-code accuracy (how often the model selects the correct resolution method):
 
-```
+```bash
 # Fine-tuned model
 python scripts/evaluation/problem_code_evaluation.py outputs/agent_responses.jsonl
 
