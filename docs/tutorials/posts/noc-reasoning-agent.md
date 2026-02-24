@@ -492,7 +492,7 @@ python scripts/create_agent_with_tools_batch.py \
 For comparison, run the same evaluation using the original (non-fine-tuned) base Qwen3-32B model.
 This lets you measure how much the SFT training improved close-code accuracy:
 
-```
+```bash
 python scripts/create_agent_with_tools_batch.py \
     --input outputs/final_agent_input.jsonl \
     --output outputs/baseline_agent_responses.jsonl \
