@@ -82,8 +82,8 @@ Key orchestration features used throughout this tutorial:
 | Software | Purpose |
 | --- | --- |
 | **Docker** | Containerization for consistent environments |
-| **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)** | Allows Docker containers to access GPU resources |
-| **[Slurm](https://slurm.schedmd.com/) with [NVIDIA/pyxis](https://github.com/NVIDIA/pyxis)** (optional) | Cluster job scheduler for distributed workloads |
+| **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html){target="_blank"}** | Allows Docker containers to access GPU resources |
+| **[Slurm](https://slurm.schedmd.com/){target="_blank"} with [NVIDIA/pyxis](https://github.com/NVIDIA/pyxis){target="_blank"}** (optional) | Cluster job scheduler for distributed workloads |
 | **Python 3.10+** | Required Python version |
 | **NeMo-Skills CLI** | Main interface for running pipelines |
 
