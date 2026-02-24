@@ -480,9 +480,8 @@ def eval(
             # Could be set directly in JUDGE_PIPELINE_ARGS; falls back to None for LLM judge.
             judge_step_fn = judge_pipeline_args.pop("judge_step_fn", judge_step_fn)
 
-            # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
-            if judge_model:
-                judge_pipeline_args.setdefault("judge_model", judge_model)
+            # TODO: we should rework the interface here to have consistent parameters between main llm and custom
+            # judge creation steps. E.g. things like judge_model assignment below shouldn't be necessary
 
             if judge_step_fn:
                 has_tasks = True
@@ -491,6 +490,10 @@ def eval(
                     from nemo_skills.dataset.utils import locate
 
                     judge_step_fn = locate(judge_step_fn)
+
+                # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
+                if judge_model:
+                    judge_pipeline_args.setdefault("judge_model", judge_model)
 
                 # Call with standardized parameters
                 judge_tasks = judge_step_fn(
