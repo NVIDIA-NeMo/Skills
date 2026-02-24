@@ -24,7 +24,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
 
-from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import KEY_FIELDS
 
 LOG = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                     key: value
                     for key, value in sample.items()
                     if key
-                    in BASE_FIELDS
+                    in KEY_FIELDS
                     + [
                         "generation_id",
                         "predicted_answer",
@@ -140,12 +140,6 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                         "judgement",
                         "majority_voting_agreement_rate",
                         "majority_voting_agreement_at_n",
-                        "subtopic","topic", 
-                        "difficulty_model_pass_rate", 
-                        "difficulty_model_pass_at_n",
-                        "difficulty_model","prompt",
-                        "answer_regex", 
-                        "_filled_prompt",
                         "tools",
                         "conversation",
                         "num_tool_calls",

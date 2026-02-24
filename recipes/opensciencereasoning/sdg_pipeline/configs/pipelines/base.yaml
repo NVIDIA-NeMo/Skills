@@ -63,7 +63,7 @@ stages:
       - ["mmlu", "test"]
       - ["mmlu-pro", "test"]
       - ["gpqa", "diamond"]
-    model: Qwen/Qwen2.5-32B-Instruct
+    model: /hf_models/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 1
     server_nodes: 1
@@ -75,7 +75,7 @@ stages:
   topics_labeling:
     output_dir: ${directories.step-2-topics-labeling}
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-    model: openai/gpt-oss-120b
+    model: /hf_models/gpt-oss-120b
     end_marker: ++end_reasoning_string="'<|start|>assistant<|channel|>final<|message|>'"
     server_type: sglang
     server_gpus: 8
@@ -140,7 +140,7 @@ stages:
 
     generation_kwargs:
       args:
-        model: Qwen/Qwen3-30B-A3B
+        model: /hf_models/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -153,7 +153,7 @@ stages:
 
     judge_kwargs:
       args:
-        model: openai/gpt-oss-20b
+        model: /hf_models/gpt-oss-20b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -187,7 +187,7 @@ stages:
     generation_kwargs:
       args:
         input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-        model: openai/gpt-oss-120b
+        model: /hf_models/gpt-oss-120b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -216,7 +216,7 @@ stages:
         ++prompt_config=judge/general-judge
 
       args:
-        model: openai/gpt-oss-20b
+        model: /hf_models/gpt-oss-20b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -258,7 +258,7 @@ stages:
       ctx_args: >-
         ${stages.generate_solutions.prompt_config}
         ${stages.generate_solutions.code_tags}
-        ++tokenizer=openai/gpt-oss-120b
+        ++tokenizer=/hf_models/gpt-oss-120b
         ++filters.drop_multi_boxed=false
         ++filters.remove_len_outlier_problems=false
         ++filters.remove_len_outlier_solutions=false
@@ -273,7 +273,7 @@ stages:
   process_messages_and_bucket:
     output_dir: ${directories.step-8-process-messages-and-bucket}
     input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
-    tokenizer_path: openai/gpt-oss-20b
+    tokenizer_path: /hf_models/gpt-oss-20b
     chat_template_kwargs: ${stages.generate_solutions.chat_template_kwargs}
     bucket_field: output_token_length
     bucket_sizes: null
