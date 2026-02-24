@@ -427,7 +427,7 @@ To evaluate the fine-tuned model, we use a ReAct (Reasoning + Acting) agent that
 
 Prepare the test set in the same format as training:
 
-```
+```bash
 ns run_cmd \
     --log_dir=/workspace/prepare-test-data-incidence \
     --expname=prep-test-data-inci \
