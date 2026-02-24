@@ -449,7 +449,7 @@ ns run_cmd \
 
 Create the ReAct agent input file containing incident prompts with tool response data:
 
-```
+```bash
 python scripts/ns_pipelines/prepare_react_agent.py \
     outputs/testing_data_split.jsonl \
     outputs/sft-test-incidence.jsonl \
