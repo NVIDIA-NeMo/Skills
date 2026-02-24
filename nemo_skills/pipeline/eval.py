@@ -154,6 +154,7 @@ def eval(
         help="Path to the entrypoint of the server. "
         "If not specified, will use the default entrypoint for the server type.",
     ),
+    judge_step: str = typer.Option(None, help="Path to the judge creator function to use for the judge (locate() convention). Eg: nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks"),
     judge_model: str = typer.Option(None, help="Path to the model to be used as a judge (if applicable)"),
     judge_server_address: str = typer.Option(None, help="Address of the server hosting the judge model"),
     judge_server_type: pipeline_utils.SupportedServers = typer.Option(
@@ -473,7 +474,7 @@ def eval(
 
             # judge_step is a :: path to the judge creator function (locate() convention).
             # Benchmarks set this directly in JUDGE_PIPELINE_ARGS; falls back to None for LLM judge.
-            judge_creator_path = judge_pipeline_args.pop("judge_step", None)
+            judge_creator_path = judge_pipeline_args.pop("judge_step", judge_step)
 
             # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
             if judge_model:
@@ -489,7 +490,7 @@ def eval(
                 judge_tasks = judge_creator_fn(
                     exp=exp,
                     expname=expname,
-                    benchmarks=[benchmark],
+                    benchmark=benchmark,
                     judge_pipeline_args=judge_pipeline_args,
                     rerun_done=rerun_done,
                     log_dir=log_dir,

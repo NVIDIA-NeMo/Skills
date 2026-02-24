@@ -26,7 +26,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 def create_judge_tasks(
     exp,
     expname,
-    benchmarks,
+    benchmark,
     judge_pipeline_args,
     rerun_done,
     log_dir,
@@ -50,7 +50,7 @@ def create_judge_tasks(
     Args:
         exp: NeMo-Run experiment object
         expname: Name of the experiment
-        benchmarks: List of benchmarks to evaluate (typically single benchmark)
+        benchmark: Benchmark to evaluate
         judge_pipeline_args: Configuration for judge pipeline
         rerun_done: Whether to rerun already completed jobs
         log_dir: Directory for logs
@@ -72,8 +72,6 @@ def create_judge_tasks(
     Returns:
         List of judge tasks created
     """
-    benchmark = benchmarks[0]  # Comet judge works on single benchmark
-
     output_dir_path = judge_pipeline_args.get("output_dir")
     input_file = judge_pipeline_args.get("input_file")
     comet_model_path = judge_pipeline_args.get("judge_model")
