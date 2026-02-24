@@ -7,7 +7,7 @@ hide:
 
 # Teaching a Model to Reason Over Telecom Network Incidents
 
-This tutorial walks you through a complete pipeline for fine-tuning a reasoning model that can autonomously diagnose and resolve telecom network incidents. Using Nemo-Skills together with a NoC Reasoning Agent, we will take [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B){target="_blank"} and teach it to perform step-by-step root-cause analysis with tool-calling — the same workflow a human NOC (Network Operations Center) engineer follows today.
+This tutorial walks you through a complete pipeline for fine-tuning a reasoning model that can autonomously diagnose and resolve telecom network incidents. Using Nemo-Skills together with a NoC Reasoning Agent, we will take <a href="https://huggingface.co/Qwen/Qwen3-32B" target="_blank">Qwen3-32B</a> and teach it to perform step-by-step root-cause analysis with tool-calling — the same workflow a human NOC (Network Operations Center) engineer follows today.
 
 If you're following along, you'll need access to an NVIDIA DGX box (or equivalent) with eight NVIDIA A100 (or newer) GPUs, or a Slurm cluster with similarly configured nodes. The full pipeline — from data processing through training to evaluation — takes several hours depending on dataset size and hardware.
 
