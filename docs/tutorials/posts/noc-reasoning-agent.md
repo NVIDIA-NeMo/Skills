@@ -93,7 +93,7 @@ Key orchestration features used throughout this tutorial:
 
 Clone the repository, install the package, and navigate to the recipe directory:
 
-```
+```bash
 git clone https://github.com/NVIDIA-NeMo/Skills.git
 cd Skills
 python3 -m venv venv
