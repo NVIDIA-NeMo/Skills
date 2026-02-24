@@ -18,10 +18,12 @@ KEY_FIELDS = [
                 "id", 
                 "problem", 
                 "expected_answer", 
-                "subtopic","topic", 
+                "subtopic",
+                "topic", 
                 "difficulty_model_pass_rate", 
                 "difficulty_model_pass_at_n",
-                "difficulty_model","prompt",
+                "difficulty_model",
+                "prompt",
                 "answer_regex", 
                 "_filled_prompt"
             ]

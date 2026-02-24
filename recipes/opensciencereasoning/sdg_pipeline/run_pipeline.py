@@ -393,19 +393,17 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
             **judge_args,
         )
 
-        generation_dir = f"{output_dir}/judgement"
-        # When judgement is made, pass the generation data directory for mapping
-        generation_data_arg = f"    --generation_data_dir '{output_dir}/with_predictions' "
+        judgement_arg = f"    --judgement_dir '{output_dir}/judgement' "
     else:
-        generation_data_arg = ""
+        judgement_arg = ""
 
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_solutions.py "
-            f"    --input_dir '{generation_dir}' "
+            f"    --generation_dir '{generation_dir}' "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
             f"    --generation_model '{generation_args['model'].split('/')[-1]}' "
-            f"{generation_data_arg}"
+            f"{judgement_arg}"
         ),
         cluster=cluster,
         expname=expname,

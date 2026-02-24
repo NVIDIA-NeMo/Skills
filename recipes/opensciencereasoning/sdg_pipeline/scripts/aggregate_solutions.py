@@ -57,18 +57,22 @@ def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aggregate solution generations into final_result.jsonl")
-    parser.add_argument("--input_dir", required=True, help="Directory containing generation or judgement outputs")
+    parser.add_argument("--generation_dir", required=True, help="Directory containing generation outputs")
+    parser.add_argument(
+        "--judgement_dir",
+        default=None,
+        help="Optional directory containing judgement outputs. When provided, judgements are mapped onto generation data using generation_id",
+    )
     parser.add_argument("--output_file", required=True, help="Where to write the aggregated JSONL")
     parser.add_argument("--generation_model", required=True, help="Identifier of the generation model to record")
-    parser.add_argument("--generation_data_dir", default=None, help="Directory containing generation data (if different from input_dir). When provided, judgements will be mapped to generation data by generation_id")
 
     return parser.parse_args()
 
 
-def aggregate_samples(files: Iterable[Path], generation_data_files: Iterable[Path] = None) -> List[Dict]:
+def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterable[Path] = None) -> List[Dict]:
     """Read generation/judgement files and enrich them with correctness metrics.
     
-    If generation_data_files is provided, this function will:
+    If judgement_files is provided, this function will:
     1. Load all generation data indexed by generation_id
     2. Load judgement files and map judgements to generation data by generation_id
     3. Take ONLY the judgement field from judgement files, keeping all other data from generation files
@@ -76,11 +80,13 @@ def aggregate_samples(files: Iterable[Path], generation_data_files: Iterable[Pat
     per_problem_stats: Dict[str, Dict[str, int]] = defaultdict(lambda: {"total": 0, "correct": 0})
     all_samples: List[Dict] = []
     
-    # If generation_data_files is provided, load generation data first
+    source_files = judgement_files if judgement_files else generation_files
+
+    # If judgement_files are provided, load generation data first
     generation_data_map = {}
-    if generation_data_files:
+    if judgement_files:
         LOG.info("Loading generation data files for mapping...")
-        for gen_file in generation_data_files:
+        for gen_file in generation_files:
             LOG.info("Reading generation data from %s", gen_file)
             with open(gen_file) as fin:
                 for line in fin:
@@ -92,7 +98,7 @@ def aggregate_samples(files: Iterable[Path], generation_data_files: Iterable[Pat
                         generation_data_map[gen_id] = gen_sample
         LOG.info("Loaded %d generation samples", len(generation_data_map))
 
-    for file_path in files:
+    for file_path in source_files:
         LOG.info("Reading %s", file_path)
         with open(file_path) as fin:
             for line in fin:
@@ -102,7 +108,7 @@ def aggregate_samples(files: Iterable[Path], generation_data_files: Iterable[Pat
                     continue
                 
                 # If we have generation data, map judgement to it
-                if generation_data_files:
+                if judgement_files:
                     gen_id = sample.get("generation_id")
                     if not gen_id:
                         # Try to reconstruct generation_id from file and sample
@@ -175,27 +181,31 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    input_dir = Path(args.input_dir)
-    if not input_dir.exists() or not input_dir.is_dir():
-        raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
+    generation_dir = Path(args.generation_dir)
+    if not generation_dir.exists() or not generation_dir.is_dir():
+        raise FileNotFoundError(f"Generation directory does not exist: {generation_dir}")
 
-    files = sorted(input_dir.glob(DEFAULT_OUTPUT_PATTERN))
-    if not files:
-        LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, input_dir)
-        open(args.output_file, "w").close()
-        return
-    
-    # Load generation data files if provided
-    generation_data_files = None
-    if args.generation_data_dir:
-        generation_data_dir = Path(args.generation_data_dir)
-        if not generation_data_dir.exists() or not generation_data_dir.is_dir():
-            raise FileNotFoundError(f"Generation data directory does not exist: {generation_data_dir}")
-        generation_data_files = sorted(generation_data_dir.glob(DEFAULT_OUTPUT_PATTERN))
-        if not generation_data_files:
-            LOG.warning("No generation data files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_data_dir)
+    generation_files = sorted(generation_dir.glob(DEFAULT_OUTPUT_PATTERN))
+    if args.judgement_dir:
+        judgement_dir = Path(args.judgement_dir)
+        if not judgement_dir.exists() or not judgement_dir.is_dir():
+            raise FileNotFoundError(f"Judgement directory does not exist: {judgement_dir}")
 
-    samples = aggregate_samples(files, generation_data_files)
+        judgement_files = sorted(judgement_dir.glob(DEFAULT_OUTPUT_PATTERN))
+
+        if not judgement_files:
+            LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, judgement_dir)
+            open(args.output_file, "w").close()
+            return
+        if not generation_files:
+            LOG.warning("No generation data files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_dir)
+        samples = aggregate_samples(generation_files, judgement_files)
+    else:
+        if not generation_files:
+            LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_dir)
+            open(args.output_file, "w").close()
+            return
+        samples = aggregate_samples(generation_files)
 
     with open(args.output_file, "w") as fout:
         for sample in samples:

@@ -63,7 +63,7 @@ stages:
       - ["mmlu", "test"]
       - ["mmlu-pro", "test"]
       - ["gpqa", "diamond"]
-    model: openai/Qwen2.5-32B-Instruct
+    model: Qwen/Qwen2.5-32B-Instruct
     server_type: sglang
     server_gpus: 1
     server_nodes: 1
@@ -139,7 +139,7 @@ stages:
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl  # Should have expected answers
 
     generation_kwargs:
-      args:§
+      args:
         model: Qwen/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
