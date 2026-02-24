@@ -53,6 +53,8 @@ _EVALUATOR_CLASS_MAP_PATHS = {
     "audio": "nemo_skills.evaluation.evaluator.audio:AudioEvaluator",
     "bird": "nemo_skills.evaluation.evaluator.bird:BirdEvaluator",
     "compute-eval": "nemo_skills.evaluation.evaluator.compute_eval:ComputeEvalEvaluator",
+    "critpt": "nemo_skills.evaluation.evaluator.critpt:CritPtEvaluator",
+    "dsbench": "nemo_skills.evaluation.evaluator.dsbench:DSBenchEvaluator",
 }
 
 # Validation: Ensure no overlap between class and function maps
