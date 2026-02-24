@@ -37,6 +37,7 @@ scikit-learn
 sentence_transformers
 serpapi
 sympy
+torchcodec
 tqdm
 transformers
 wandb
