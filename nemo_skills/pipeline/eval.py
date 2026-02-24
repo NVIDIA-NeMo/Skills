@@ -154,7 +154,10 @@ def eval(
         help="Path to the entrypoint of the server. "
         "If not specified, will use the default entrypoint for the server type.",
     ),
-    judge_path: str = typer.Option(None, help="Path to the judge creator function to use for the judge (locate() convention). Eg: nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks"),
+    judge_path: str = typer.Option(
+        None,
+        help="Path to the judge creator function to use for the judge (locate() convention). Eg: nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks",
+    ),
     judge_model: str = typer.Option(None, help="Path to the model to be used as a judge (if applicable)"),
     judge_server_address: str = typer.Option(None, help="Address of the server hosting the judge model"),
     judge_server_type: pipeline_utils.SupportedServers = typer.Option(
