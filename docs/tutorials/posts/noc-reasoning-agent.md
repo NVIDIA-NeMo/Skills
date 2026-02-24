@@ -139,7 +139,7 @@ When you run any `ns` command, Nemo-Skills spins up a Docker container with the 
 
 Several scripts import shared modules from sibling directories (e.g. `from scripts.tools import ...`). Add the recipe directory to `PYTHONPATH` so Python can resolve these imports:
 
-```
+```bash
 export PYTHONPATH=$(pwd):$PYTHONPATH
 export NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK=1
 ```
