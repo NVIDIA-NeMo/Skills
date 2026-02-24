@@ -154,9 +154,10 @@ def eval(
         help="Path to the entrypoint of the server. "
         "If not specified, will use the default entrypoint for the server type.",
     ),
-    judge_path: str = typer.Option(
+    judge_step_fn: str = typer.Option(
         None,
-        help="Path to the judge creator function to use for the judge (locate() convention). Eg: nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks",
+        help="Path to the judge step creator function to use for the judge (locate() convention). "
+        "Eg: nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks. Can also accept callable directly.",
     ),
     judge_model: str = typer.Option(None, help="Path to the model to be used as a judge (if applicable)"),
     judge_server_address: str = typer.Option(None, help="Address of the server hosting the judge model"),
@@ -351,7 +352,7 @@ def eval(
         "generation_type": judge_generation_type,
         "generation_module": judge_generation_module,
     }
-    eval_requires_judge = any(param_value for param_value in cli_judge_pipeline_args.values())
+    eval_requires_judge = any(param_value for param_value in cli_judge_pipeline_args.values()) or judge_step_fn
 
     # Prepare cluster config and mount paths
     cluster_config = pipeline_utils.get_cluster_config(cluster, config_dir)
@@ -475,22 +476,24 @@ def eval(
             benchmark_args.eval_subfolder = benchmark_args.eval_subfolder[4:]
             judge_pipeline_args["output_dir"] = str(Path(output_dir) / benchmark_args.eval_subfolder)
 
-            # judge_path is a :: path to the judge creator function (locate() convention).
-            # Benchmarks set this directly in JUDGE_PIPELINE_ARGS; falls back to None for LLM judge.
-            judge_creator_path = judge_pipeline_args.pop("judge_path", judge_path)
+            # judge_step_fn is a :: path to the judge creator function (locate() convention).
+            # Could be set directly in JUDGE_PIPELINE_ARGS; falls back to None for LLM judge.
+            judge_step_fn = judge_pipeline_args.pop("judge_step_fn", judge_step_fn)
 
             # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
             if judge_model:
                 judge_pipeline_args.setdefault("judge_model", judge_model)
 
-            if judge_creator_path:
-                # Use locate() to dynamically load judge creator function
-                from nemo_skills.dataset.utils import locate
+            if judge_step_fn:
+                has_tasks = True
+                if not callable(judge_step_fn):
+                    # Use locate() to dynamically load judge creator function
+                    from nemo_skills.dataset.utils import locate
 
-                judge_creator_fn = locate(judge_creator_path)
+                    judge_step_fn = locate(judge_step_fn)
 
                 # Call with standardized parameters
-                judge_tasks = judge_creator_fn(
+                judge_tasks = judge_step_fn(
                     exp=exp,
                     expname=expname,
                     benchmark=benchmark,
