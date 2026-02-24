@@ -463,7 +463,7 @@ python scripts/ns_pipelines/prepare_react_agent.py \
 
 Install the additional libraries needed for the ReAct agent:
 
-```
+```bash
 pip install --upgrade langgraph langchain langchain-huggingface transformers torch accelerate pandas
 ```
 
