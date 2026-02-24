@@ -157,7 +157,7 @@ Classify incidents into categories based on solution type:
 - **Physical Intervention** — Requires a human on-site
 - **Unknown** — Uncategorized
 
-```
+```bash
 python scripts/filtering/match_keywords.py \
     --input_csv data/synthetic_incidents.csv \
     --output_csv data/categorized_incidents.csv
