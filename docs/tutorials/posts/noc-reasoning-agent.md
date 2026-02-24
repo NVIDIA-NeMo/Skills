@@ -109,7 +109,7 @@ All scripts, prompts, configs, and sample data for this tutorial live in this re
 
 Run `ns setup` to configure how Nemo-Skills launches containers and mounts your project directory:
 
-```
+```bash
 ns setup
 ```
 
