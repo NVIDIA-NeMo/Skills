@@ -15,6 +15,7 @@
 import argparse
 import json
 import os
+import logging
 from typing import List, Optional, Union
 
 
@@ -54,9 +55,15 @@ def prepare_topics(
       - topics_to_choose: backtick-quoted, comma-separated labels
       - prompt_examples: rendered few-shot examples (empty if none)
     """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Preparing topics: input={input_file}, output={output_file}, topic_key={topic_key}, generation_key={generation_key}")
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    total = 0
+    written = 0
+    skipped = 0
     with open(input_file, "r") as fin, open(output_file, "w") as fout:
         for line in fin:
+            total += 1
             sample = json.loads(line)
             # Determine allowed topics/subtopics for this sample
             if topic_key:
@@ -64,6 +71,8 @@ def prepare_topics(
                 topics = topics_to_choose.get(prev_value, [])
                 # Skip if there are no subtopics for this previously selected topic
                 if not topics:
+                    logger.debug(f"Skipping sample with prior label '{prev_value}' (no subtopics found)")
+                    skipped += 1
                     continue
                 examples_source = prompt_examples.get(prev_value, {})
             else:
@@ -73,7 +82,8 @@ def prepare_topics(
             sample["topics_to_choose"] = ", ".join([f"`{topic}`" for topic in topics])
             sample["prompt_examples"] = prepare_examples(examples_source, generation_key) if examples_source else ""
             fout.write(json.dumps(sample) + "\n")
-
+            written += 1
+    logger.info(f"Finished preparing topics. Total: {total}, Written: {written}, Skipped: {skipped}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -108,6 +118,10 @@ if __name__ == "__main__":
         help="Name of the label key to generate in this round (e.g., 'subtopics')",
     )
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logger = logging.getLogger(__name__)
+    logger.info("Starting prepare_topics script")
+    logger.info(f"Args: input_file={args.input_file}, output_file={args.output_file}, topic_key={args.topic_key}, generation_key={args.generation_key}")
     prepare_topics(
         args.input_file,
         args.output_file,
@@ -116,3 +130,4 @@ if __name__ == "__main__":
         args.topic_key,
         args.generation_key,
     )
+    logger.info("prepare_topics script completed successfully")

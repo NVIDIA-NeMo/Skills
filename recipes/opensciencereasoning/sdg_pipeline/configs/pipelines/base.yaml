@@ -25,10 +25,7 @@ pipeline_stages:
   - aggregate                   # Aggregate all the metadata into a single file
   - filter_solutions            # Filter solutions
   - prepare_for_sft             # Prepare for SFT
-  - convert_to_messages_format  # Convert to messages format for training
-  - bucket                      # Bucket by token length
-  - convert_to_qwen_format      # Convert to Qwen format
-  - bucket_qwen                 # Bucket by token length for Qwen format
+  - process_messages_and_bucket # Process messages + token lengths + buckets
   - validate                    # Validate outputs and stage health
 
 # Directory structure configuration
@@ -41,10 +38,7 @@ directories:
   step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate
   step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions
   step-7-prepare-for-sft: ${base_output_dir}/solution-sdg/step-7-prepare-for-sft
-  step-8-convert-to-messages-format: ${base_output_dir}/solution-sdg/step-8-convert-to-messages-format
-  step-9-bucket: ${base_output_dir}/solution-sdg/step-9-bucket
-  step-10-convert-to-qwen-format: ${base_output_dir}/solution-sdg/step-10-convert-to-qwen-format
-  step-11-bucket-qwen: ${base_output_dir}/solution-sdg/step-11-bucket-qwen
+  step-8-process-messages-and-bucket: ${base_output_dir}/solution-sdg/step-8-process-messages-and-bucket
   validate: ${base_output_dir}/solution-sdg/validate
 
 # Stage-specific configurations
@@ -81,7 +75,8 @@ stages:
   topics_labeling:
     output_dir: ${directories.step-2-topics-labeling}
     input_file: ${directories.step-1-decontaminate}/final_result.jsonl
-    model: /hf_models/Qwen2.5-32B-Instruct
+    model: /hf_models/gpt-oss-120b
+    end_marker: ++end_reasoning_string="'<|start|>assistant<|channel|>final<|message|>'"
     server_type: sglang
     server_gpus: 8
     server_nodes: 1
@@ -100,21 +95,42 @@ stages:
       Chemistry:
         - Organic Chemistry
         - Inorganic Chemistry
-        - General Chemistry
+        - Physical Chemistry
+        - Analytical Chemistry
+        - Biochemistry
       Physics:
-        - Quantum Mechanics
         - Classical Mechanics
-        - General Physics
-        - Relativistic Mechanics
-        - Electromagnetism and Photonics
-        - Optics and Acoustics
+        - Thermodynamics
+        - Electromagnetism
+        - Optics
+        - Acoustics
+        - Statistical Mechanics
+        - Quantum Mechanics
+        - Relativity (Special and General)
+        - Atomic Physics
+        - Nuclear Physics
+        - Particle Physics
         - Condensed Matter Physics
-        - High-energy Particle Physics
+        - Plasma Physics
         - Astrophysics
+        - Cosmology
+        - Geophysics
+        - Biophysics
+        - Computational Physics
+        - Mathematical Physics
       Biology:
-        - Genetics
+        - Cell Biology
         - Molecular Biology
-        - General Biology
+        - Genetics
+        - Evolutionary Biology
+        - Ecology
+        - Anatomy
+        - Physiology
+        - Developmental Biology
+        - Microbiology
+        - Botany
+        - Zoology
+        - Biochemistry
     dependencies:
       - decontaminate
 
@@ -127,7 +143,7 @@ stages:
         model: /hf_models/Qwen3-30B-A3B
         server_type: vllm
         server_gpus: 8
-        server_nodes: 2
+        server_nodes: 1
         dependent_jobs: 1
         num_random_seeds: 5
         num_chunks: 20
@@ -137,7 +153,7 @@ stages:
 
     judge_kwargs:
       args:
-        model: /hf_models/Qwen2.5-32B-Instruct
+        model: /hf_models/gpt-oss-20b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -157,14 +173,16 @@ stages:
     predicted_answer_regex_field: null # if specified will use the field in the input file to extract the predicted answer regex
     make_judgement: True
 
-    reasoning_effort: ++chat_template_kwargs.reasoning_effort=high
+    chat_template_kwargs:
+      reasoning_effort: high
+    reasoning_effort: ++chat_template_kwargs.reasoning_effort=${stages.generate_solutions.chat_template_kwargs.reasoning_effort}
     prompt_config: ++prompt_config=generic/general-boxed
     tokens_to_generate: ++inference.tokens_to_generate=60000
     code_tags: ""
     enable_code_execution: ""
     code_execution_limits: ""
     builtin_tools: ""
-    endpoint_type: ++inference.endpoint_type=text
+    endpoint_type: ++inference.endpoint_type=chat
 
     generation_kwargs:
       args:
@@ -193,10 +211,12 @@ stages:
         ${stages.generate_solutions.builtin_tools}
 
     judge_kwargs:
+      endpoint_type: ++inference.endpoint_type=text
       ctx_args: >-
         ++prompt_config=judge/general-judge
+
       args:
-        model: /hf_models/Qwen2.5-32B-Instruct
+        model: /hf_models/gpt-oss-20b
         server_type: vllm
         server_gpus: 8
         server_nodes: 1
@@ -247,46 +267,18 @@ stages:
         ++filters.trim_solutions=false
         ${stages.generate_solutions.reasoning_effort}
         ${stages.generate_solutions.builtin_tools}
-        ++assistant_end="'<|return|>'"
     dependencies:
       - filter_solutions
 
-  convert_to_messages_format:
-    output_dir: ${directories.step-8-convert-to-messages-format}
+  process_messages_and_bucket:
+    output_dir: ${directories.step-8-process-messages-and-bucket}
     input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
+    tokenizer_path: /hf_models/gpt-oss-20b
+    chat_template_kwargs: ${stages.generate_solutions.chat_template_kwargs}
+    bucket_field: output_token_length
+    bucket_sizes: null
     dependencies:
       - prepare_for_sft
-
-  bucket:
-    input_file: ${directories.step-7-prepare-for-sft}/final_result.jsonl
-    output_dir: ${directories.step-9-bucket}
-    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
-    bucket_sizes:
-      - 16000
-      - 32000
-      - 64000
-    dependencies:
-      - prepare_for_sft
-
-  convert_to_qwen_format:
-    enabled: False
-    output_dir: ${directories.step-10-convert-to-qwen-format}
-    input_file: ${directories.step-8-convert-to-messages-format}/final_result.jsonl
-    tools: ${stages.generate_solutions.builtin_tools}
-    dependencies:
-      - convert_to_messages_format
-
-  bucket_qwen:
-    enabled: False
-    input_file: ${directories.step-10-convert-to-qwen-format}/final_result.jsonl
-    output_dir: ${directories.step-11-bucket-qwen}
-    tokenizer_path: /hf_models/Qwen2.5-32B-Instruct
-    bucket_sizes:
-      - 16000
-      - 32000
-      - 64000
-    dependencies:
-      - convert_to_qwen_format
 
   validate:
     output_dir: ${directories.validate}

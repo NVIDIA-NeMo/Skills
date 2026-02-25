@@ -20,6 +20,41 @@ import json
 import logging
 import os
 from typing import Dict, List, Optional, Sequence
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.regex_constants import COMPILED_INTERNET_PATTERNS
+
+def extract_python_calls(serialized_output):
+    calls = []
+    for msg in serialized_output:
+        tool_calls = msg.get("tool_calls")
+        for call in tool_calls if tool_calls else []:
+            fn = call.get("function", {})
+            name = fn.get("name", "")
+            if "python" in name.lower():
+                calls.append(call)
+    return calls
+
+
+def extract_python_code(call):
+    try:
+        payload = json.loads(call["function"].get("arguments", ""))
+        return payload.get("code")
+    except Exception:
+        return None
+
+
+def uses_internet(serialized_output):
+    python_calls = extract_python_calls(serialized_output)
+
+    for call in python_calls:
+        code = extract_python_code(call)
+        if not code:
+            continue
+
+        for regex in COMPILED_INTERNET_PATTERNS.values():
+            if regex.search(code):
+                return True
+
+    return False
 
 LOG = logging.getLogger(__name__)
 
@@ -31,36 +66,43 @@ def record_passes_filters(
     difficulty_pass_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     majority_voting_agreement_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     only_samples_with_ground_truth_answer: bool = False,
+    filter_internet: bool = False,
     metadata_filters: Optional[Dict[str, List[str]]] = None,
-) -> bool:
-    """Return True when a record satisfies correctness, pass-rate, and metadata constraints."""
+) -> tuple[bool, Optional[str]]:
+    """Return (passes, filter_reason) tuple. filter_reason is set if record fails a filter."""
     metadata_filters = metadata_filters or {}
     if only_correct and not record.get("is_correct"):
-        return False
-    if gen_pass_rate_bounds and (
-        gen_pass_rate_bounds[0] >= record["generation_model_pass_rate"]
-        or gen_pass_rate_bounds[1] < record["generation_model_pass_rate"]
+        return False, "is_correct"
+    
+    gen_pass_rate = record.get("generation_model_pass_rate")
+    if gen_pass_rate is not None and gen_pass_rate_bounds and (
+        gen_pass_rate_bounds[0] >= gen_pass_rate or gen_pass_rate_bounds[1] < gen_pass_rate
     ):
-        return False
-    if difficulty_pass_rate_bounds and (
-        difficulty_pass_rate_bounds[0] >= record["difficulty_model_pass_rate"]
-        or difficulty_pass_rate_bounds[1] < record["difficulty_model_pass_rate"]
+        return False, "generation_model_pass_rate"
+    
+    diff_pass_rate = record.get("difficulty_model_pass_rate")
+    if diff_pass_rate is not None and difficulty_pass_rate_bounds and (
+        difficulty_pass_rate_bounds[0] >= diff_pass_rate or difficulty_pass_rate_bounds[1] < diff_pass_rate
     ):
-        return False
-    if majority_voting_agreement_rate_bounds and (
-        majority_voting_agreement_rate_bounds[0] >= record["majority_voting_agreement_rate"]
-        or majority_voting_agreement_rate_bounds[1] < record["majority_voting_agreement_rate"]
+        return False, "difficulty_model_pass_rate"
+    
+    mv_agreement_rate = record.get("majority_voting_agreement_rate")
+    if mv_agreement_rate is not None and majority_voting_agreement_rate_bounds and (
+        majority_voting_agreement_rate_bounds[0] >= mv_agreement_rate or majority_voting_agreement_rate_bounds[1] < mv_agreement_rate
     ):
-        return False
-    if only_samples_with_ground_truth_answer and not record["expected_answer"]:
-        return False
+        return False, "majority_voting_agreement_rate"
+    
+    if only_samples_with_ground_truth_answer and not record.get("expected_answer"):
+        return False, "expected_answer"
 
+    if filter_internet and uses_internet(record.get("serialized_output", [])):
+        return False, "uses_internet"
+    
     for field, allowed in metadata_filters.items():
         candidate = record.get(field)
         if candidate not in allowed:
-            return False
-
-    return True
+            return False, f"metadata:{field}"
+    return True, None
 
 
 def parse_args() -> argparse.Namespace:
@@ -98,6 +140,11 @@ def parse_args() -> argparse.Namespace:
         help="Keep only samples that have a ground truth answer",
     )
     parser.add_argument(
+        "--filter_internet",
+        action="store_true",
+        help="Filter out samples that use internet",
+    )
+    parser.add_argument(
         "--metadata_values",
         type=json.loads,
         default={},
@@ -119,6 +166,7 @@ def main() -> None:
 
     total_records = 0
     written_records = 0
+    filter_stats = {}
 
     metadata_filters: Dict[str, List[str]] = args.metadata_values or {}
 
@@ -131,17 +179,22 @@ def main() -> None:
             total_records += 1
             record = json.loads(line)
 
-            if record_passes_filters(
+            passes, filter_reason = record_passes_filters(
                 record,
                 only_correct=args.only_correct_solutions,
                 gen_pass_rate_bounds=args.generation_model_pass_rate_range,
                 difficulty_pass_rate_bounds=args.difficulty_model_pass_rate_range,
                 majority_voting_agreement_rate_bounds=args.majority_voting_agreement_rate_range,
                 only_samples_with_ground_truth_answer=args.only_samples_with_ground_truth_answer,
+                filter_internet=args.filter_internet,
                 metadata_filters=metadata_filters,
-            ):
+            )
+
+            if passes:
                 fout.write(json.dumps(record, ensure_ascii=False) + "\n")
                 written_records += 1
+            else:
+                filter_stats[filter_reason] = filter_stats.get(filter_reason, 0) + 1
 
     LOG.info(
         "Filtered %s -> %s records (%.2f%% kept) into %s",
@@ -150,6 +203,11 @@ def main() -> None:
         (written_records / total_records * 100) if total_records else 0.0,
         args.output_file,
     )
+    
+    if filter_stats:
+        LOG.info("Filter statistics:")
+        for filter_name, count in sorted(filter_stats.items(), key=lambda x: x[1], reverse=True):
+            LOG.info(f"  {filter_name}: {count} records filtered ({count / total_records * 100:.2f}%)")
 
 
 if __name__ == "__main__":

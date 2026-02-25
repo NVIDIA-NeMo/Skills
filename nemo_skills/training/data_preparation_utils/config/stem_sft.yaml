@@ -91,6 +91,7 @@ processors:
       - "solutions"   # GenSelect keys
       - "num_solutions"
       - "max_idx"
+      - "serialized_output"
 
   # this will optimize processors inside to avoid serializing data to disk
   - _target_: nemo_skills.training.data_preparation_utils.merge_processor.MergeProcessor
@@ -247,7 +248,7 @@ processors:
     random_seed: ${random_seed}
     do_shuffle: ${do_shuffle}
 
-  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.WriteFinalSftManifest
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.WriteFinalConversationManifest
     output_manifest_file: ${output_path}
     prompt_config: ${prompt_config}
     tokenizer: ${tokenizer}

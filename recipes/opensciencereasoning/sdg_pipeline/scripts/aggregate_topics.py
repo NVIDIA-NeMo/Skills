@@ -16,7 +16,9 @@ import argparse
 import json
 import logging
 
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
+
+logger = logging.getLogger(__name__)
 
 
 def check_topic_structure(sample: dict, topics_structure: dict, names: list):
@@ -38,15 +40,18 @@ def check_topic_structure(sample: dict, topics_structure: dict, names: list):
     def set_undefined_from(index: int):
         for j in range(index, len(names)):
             sample[names[j]] = "undefined"
+        logger.debug(f"Set {names[index:]} to 'undefined' for problem starting with: {sample['problem'][:50]}...")
 
     # First level: list of allowed values
     first_name = names[0]
     first_allowed = topics_structure.get(first_name, [])
     first_value = sample.get(first_name)
     if first_value == "Other":
+        logger.debug(f"First level '{first_name}' is 'Other', setting subsequent levels to 'undefined'")
         set_undefined_from(1)
         return
     if first_value not in first_allowed:
+        logger.warning(f"Invalid first level value '{first_value}' for '{first_name}', expected one of {first_allowed}")
         sample[first_name] = "undefined"
         set_undefined_from(1)
         return
@@ -59,6 +64,7 @@ def check_topic_structure(sample: dict, topics_structure: dict, names: list):
         curr_value = sample.get(curr_name)
 
         if curr_value == "Other":
+            logger.debug(f"Level '{curr_name}' is 'Other', setting subsequent levels to 'undefined'")
             set_undefined_from(i + 1)
             return
 
@@ -69,6 +75,10 @@ def check_topic_structure(sample: dict, topics_structure: dict, names: list):
             allowed = mapping_or_list
 
         if curr_value not in allowed:
+            logger.warning(
+                f"Invalid value '{curr_value}' for '{curr_name}' given parent '{prev_name}={prev_value}', "
+                f"expected one of {allowed}"
+            )
             sample[curr_name] = "undefined"
             set_undefined_from(i + 1)
             return
@@ -81,19 +91,42 @@ def aggregate_topics(input_files: dict, output_file: str, topics_structure: dict
     - `topics_structure`: control structure used to filter invalid hierarchical pairs
     - `names`: ordered list of keys defining the hierarchy (e.g., ["topics", "subtopics"]).
     """
+    logger.info(f"Starting topic aggregation for {len(input_files)} topic levels: {list(input_files.keys())}")
+    logger.info(f"Hierarchy order: {names}")
+    
     data = {}
     for topic_key, file in input_files.items():
+        logger.info(f"Reading {topic_key} labels from: {file}")
+        line_count = 0
         with open(file, "r") as f:
             for line in f:
                 sample = json.loads(line)
                 if sample["problem"] not in data:
                     data[sample["problem"]] = sample
                 data[sample["problem"]][topic_key] = sample[topic_key]
+                line_count += 1
+        logger.info(f"Read {line_count} samples for {topic_key}")
+    
+    logger.info(f"Total unique problems: {len(data)}")
+    logger.info(f"Validating topic structure and writing to: {output_file}")
+    
+    validation_stats = {"valid": 0, "modified": 0}
     with open(output_file, "w") as f:
         for sample in data.values():
+            original_values = {name: sample.get(name) for name in names}
             check_topic_structure(sample, topics_structure, names)
+            modified_values = {name: sample.get(name) for name in names}
+            
+            if original_values != modified_values:
+                validation_stats["modified"] += 1
+            else:
+                validation_stats["valid"] += 1
+                
             sample = {key: value for key, value in sample.items() if key in BASE_FIELDS + names}
             f.write(json.dumps(sample) + "\n")
+    
+    logger.info(f"Aggregation complete: {validation_stats['valid']} valid, {validation_stats['modified']} modified")
+    logger.info(f"Output written to: {output_file}")
 
 
 def main():
@@ -122,7 +155,15 @@ def main():
         help="JSON: ordered list of hierarchy keys (e.g., ['topics','subtopics'])",
     )
     args = parser.parse_args()
+    
+    logger.info("Starting topic aggregation script")
+    logger.info(f"Input files: {args.input_files}")
+    logger.info(f"Output file: {args.output_file}")
+    logger.info(f"Names: {args.names}")
+    
     aggregate_topics(args.input_files, args.output_file, args.topics_structure, args.names)
+    
+    logger.info("Topic aggregation script completed successfully")
 
 
 if __name__ == "__main__":
