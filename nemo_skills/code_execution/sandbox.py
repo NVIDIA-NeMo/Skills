@@ -171,20 +171,9 @@ class Sandbox(abc.ABC):
         request["session_id"] = request_session_id_str
         try:
             output = await self._send_request(request, timeout)
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            LOG.warning("Sandbox communication error for session %s: %s", request_session_id, e)
             output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
-        except httpx.TransportError as e:
-            # Catches all transport/connection errors: RemoteProtocolError, ConnectError, NetworkError, etc.
-            LOG.warning(f"Sandbox connection error for session {request_session_id}: {e}")
-            output = {
-                "process_status": "error",
-                "stdout": "",
-                "stderr": (
-                    f"Sandbox environment crashed: {e}\n"
-                    "Session state was lost. You need to re-import all modules and re-define all variables "
-                    "before continuing. Consider simplifying the code to avoid crashes.\n"
-                ),
-            }
         new_session_created = output.pop("new_session_created", False)
 
         # Rebuild state by re-executing history first, then execute the new code.
@@ -217,17 +206,9 @@ class Sandbox(abc.ABC):
                     restore_request["session_id"] = request_session_id_str
                     try:
                         restore_output = await self._send_request(restore_request, timeout)
-                    except httpx.TimeoutException:
+                    except (httpx.TimeoutException, httpx.TransportError) as e:
+                        LOG.warning("Sandbox communication error for session %s: %s", request_session_id, e)
                         restore_output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
-                    except httpx.TransportError as e:
-                        LOG.warning(
-                            f"Sandbox connection error during state restoration for session {request_session_id}: {e}"
-                        )
-                        restore_output = {
-                            "process_status": "error",
-                            "stdout": "",
-                            "stderr": f"Sandbox crashed during state restoration: {e}\n",
-                        }
 
                     if restore_output.get("process_status") != "completed":
                         LOG.error(
@@ -267,19 +248,9 @@ class Sandbox(abc.ABC):
             exec_request["session_id"] = request_session_id_str
             try:
                 output = await self._send_request(exec_request, timeout)
-            except httpx.TimeoutException:
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                LOG.warning("Sandbox communication error for session %s: %s", request_session_id, e)
                 output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
-            except httpx.TransportError as e:
-                LOG.warning(f"Sandbox connection error during execution for session {request_session_id}: {e}")
-                output = {
-                    "process_status": "error",
-                    "stdout": "",
-                    "stderr": (
-                        f"Sandbox environment crashed: {e}\n"
-                        "Session state was lost. You need to re-import all modules and re-define all variables "
-                        "before continuing. Consider simplifying the code to avoid crashes.\n"
-                    ),
-                }
 
         elif session_id is not None and new_session_created and self.disable_session_restore:
             # Session was recreated but restore is disabled — clear stale history and warn the model.
@@ -311,11 +282,9 @@ class Sandbox(abc.ABC):
         request = self._prepare_request(TO_EXECUTE, timeout, "lean4")
         try:
             output = await self._send_request(request, timeout)
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            LOG.warning("Sandbox communication error during Lean4 proof check: %s", e)
             return "timeout"
-        except httpx.TransportError as e:
-            LOG.warning(f"Sandbox connection error during Lean4 proof check: {e}")
-            return "error"
         return determine_proof_status(output)
 
     def _check_ready(self, timeout: float = 5.0) -> bool:
