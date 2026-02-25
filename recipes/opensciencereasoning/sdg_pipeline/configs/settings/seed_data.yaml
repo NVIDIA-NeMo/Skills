@@ -10,9 +10,7 @@ stages:
     make_judgement: False
   prepare_for_sft:
     enabled: False
-  convert_to_messages_format:
-    enabled: False
-  bucket:
+  process_messages_and_bucket:
     enabled: False
 
   aggregate:

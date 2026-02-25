@@ -24,7 +24,7 @@ from nemo_skills.pipeline.cli import generate, run_cmd, wrap_arguments
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
 from recipes.opensciencereasoning.sdg_pipeline.prompt.few_shots import few_shots
-from recipes.opensciencereasoning.sdg_pipeline.scripts.constants import BASE_FIELDS
+from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
 
 # Final output file name for each stage
 OUTPUT_FILE = "final_result.jsonl"
@@ -86,9 +86,49 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
     an MCQ option count and optional regex pattern, and moves all remaining fields
     into a `metadata` mapping. The resulting filtered dataset is written to
     `final_result.jsonl` inside `output_dir` for downstream stages.
+    
+    If diversity_prompts_path is provided, it first maps random prompts and answer_regex
+    patterns to each sample before running the main filter_problems process.
     """
     input_file = stage_config.get("input_file")
     output_dir = stage_config["output_dir"]
+    diversity_prompts_path = stage_config.get("diversity_prompts_path", None)
+    
+    # Handle diversity prompts mapping if configured
+    if diversity_prompts_path:
+        print(f"Mapping diversity prompts from: {diversity_prompts_path}")
+        
+        # Create temporary file with mapped prompts
+        mapped_input_file = f"{output_dir}/tmp/input_with_diversity_prompts.jsonl"
+        
+        # Run diversity prompts mapping
+        map_prompts_cmd = (
+            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/map_diversity_prompts.py "
+            f"{input_file} "
+            f"{mapped_input_file} "
+            f"--prompts_path {diversity_prompts_path} "
+            f"--prompt_key {stage_config.get('diversity_prompts_prompt_key', 'prompt')} "
+            f"--answer_regex_key {stage_config.get('diversity_prompts_answer_regex_key', 'answer_regex')} "
+            f"--seed {stage_config.get('diversity_prompts_seed', 42)} "
+        )
+        
+        run_cmd(
+            cluster=cluster,
+            container="nemo-skills",
+            log_dir=f"{output_dir}/tmp/logs",
+            expname=f"{expname}_map_diversity_prompts",
+            ctx=wrap_arguments(map_prompts_cmd),
+            run_after=run_after,
+        )
+        
+        # Use the mapped file as input for filter_problems
+        actual_input_file = mapped_input_file
+        filter_run_after = f"{expname}_map_diversity_prompts"
+    else:
+        actual_input_file = input_file
+        filter_run_after = run_after
+    
+    # Prepare filter_problems arguments
     option_format_regex = stage_config.get("option_format_regex", None)
     option_format_regex = f" --option_format_regex '{option_format_regex}' " if option_format_regex else ""
 
@@ -100,7 +140,7 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
 
     cmd = (
         f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/filter_problems.py "
-        f"{input_file} "
+        f"{actual_input_file} "
         f"{output_dir}/{OUTPUT_FILE}"
         + (" --deduplicate" if stage_config.get("deduplicate", False) else "")
         + (" --remove_images" if stage_config.get("remove_images", False) else "")
@@ -126,7 +166,7 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
         log_dir=f"{output_dir}/logs",
         expname=expname,
         ctx=wrapped_cmd,
-        run_after=run_after,
+        run_after=filter_run_after,
     )
 
 
@@ -219,16 +259,17 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
     num_chunks = stage_config.get("num_chunks")
     few_shots_name = stage_config.get("few_shots_name")
     generation_keys = stage_config.get("generation_keys", [])
-
+    end_marker = stage_config.get("end_marker")
     prev_name = None
     save_paths = {}
     topics_structure = {}
-    first_dep = run_after or None
+    prev_exp_name = run_after or None
     for i, name in enumerate(generation_keys):
         topics_structure[name] = stage_config[name]
         topics_json = json.dumps(stage_config[name], ensure_ascii=False)
         examples_json = json.dumps(few_shots[few_shots_name][name], ensure_ascii=False)
         extra_args = f"    --topic_key {shlex.quote(str(prev_name))} " if prev_name else ""
+        curr_exp_name = f"{expname}-prepare-for-{name}-labeling-{i}"
         run_cmd(
             ctx=wrap_arguments(
                 f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/prepare_topics.py "
@@ -241,13 +282,17 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             ),
             log_dir=f"{output_dir}/tmp/logs",
             cluster=cluster,
-            expname=f"{expname}-prepare-for-{name}-labeling-{i}",
-            run_after=first_dep if i == 0 else f"{expname}-{prev_name}-labeling-{i - 1}",
+            expname=curr_exp_name,
+            run_after=prev_exp_name,
         )
+        prev_exp_name = curr_exp_name
+        curr_exp_name = f"{expname}-{name}-labeling-{i}"
         generate(
             ctx=wrap_arguments(
                 f"++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/topics_labeling.yaml "
-                f"++generation_key={name} ",
+                f"++generation_key={name} "
+                f"++parse_reasoning=True "
+                f"{shlex.quote(end_marker)}"
             ),
             cluster=cluster,
             input_file=f"{output_dir}/tmp/prepared_for_{name}_labeling.jsonl",
@@ -258,9 +303,10 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             dependent_jobs=dependent_jobs,
             server_gpus=server_gpus,
             server_nodes=server_nodes,
-            expname=f"{expname}-{name}-labeling-{i}",
-            run_after=f"{expname}-prepare-for-{name}-labeling-{i}",
+            expname=curr_exp_name,
+            run_after=prev_exp_name,
         )
+        prev_exp_name = curr_exp_name
         input_file = f"{output_dir}/{name}/output.jsonl"
         prev_name = name
         save_paths[name] = f"{output_dir}/{name}/output.jsonl"
@@ -276,7 +322,7 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
         log_dir=f"{output_dir}/logs",
         cluster=cluster,
         expname=expname,
-        run_after=f"{expname}-{name}-labeling-{i}",
+        run_after=prev_exp_name,
     )
 
 
@@ -347,14 +393,17 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
             **judge_args,
         )
 
-        generation_dir = f"{output_dir}/judgement"
+        judgement_arg = f"    --judgement_dir '{output_dir}/judgement' "
+    else:
+        judgement_arg = ""
 
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_solutions.py "
-            f"    --input_dir '{generation_dir}' "
+            f"    --generation_dir '{generation_dir}' "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
             f"    --generation_model '{generation_args['model'].split('/')[-1]}' "
+            f"{judgement_arg}"
         ),
         cluster=cluster,
         expname=expname,
@@ -538,6 +587,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
 
     cmd = (
         f"mkdir -p {output_dir} && python -m nemo_skills.training.prepare_data "
+        f"    --config-name='stem_sft.yaml' "
         f"    ++input_files='{input_file}' "
         f"    ++output_path='{output_dir}/prepared.jsonl' "
         f"    ++add_unlabeled=True "
@@ -582,72 +632,39 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
         )
 
 
-def convert_to_messages_format(cluster, expname, run_after, stage_config, **kwargs):
-    """Convert the final results into a messages format for chat-based models.
-
-    This stage reads the `input_file`, reformats each sample into a messages
-    structure suitable for chat models, and writes the output to `final_result.jsonl`.
+def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwargs):
+    """Process messages into input/output, calculate token lengths, and bucket by token size.
+    
+    This unified stage:
+      1. Reads messages format from input file
+      2. Extracts and formats input (system + user prompts) and output (assistant, reasoning, etc.)
+      3. Calculates input_token_length and output_token_length for each sample
+      4. Optionally buckets samples by token length using the configured tokenizer
+      5. Writes output file with full data including token lengths, and bucketed files if enabled
     """
     input_file = stage_config["input_file"]
     output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/{OUTPUT_FILE}"
-
+    bucket_field = stage_config.get("bucket_field", "output_token_length")
+    bucket_sizes = stage_config.get("bucket_sizes", None)
+    tokenizer_path = stage_config.get("tokenizer_path")
+    chat_template_kwargs = stage_config.get("chat_template_kwargs", {})
+    if chat_template_kwargs is None:
+        chat_template_kwargs = {}
+    if not isinstance(chat_template_kwargs, dict):
+        raise TypeError(
+            "stages.process_messages_and_bucket.chat_template_kwargs must be a mapping/dict "
+            f"(received {type(chat_template_kwargs).__name__})."
+        )
+    
     run_cmd(
         ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/convert_to_messages.py "
-            f"  {input_file} "
-            f"  {output_file} "
-        ),
-        cluster=cluster,
-        log_dir=f"{output_dir}/logs",
-        expname=expname,
-        run_after=run_after,
-    )
-
-
-def convert_to_qwen_format(cluster, expname, run_after, stage_config, **kwargs):
-    """Convert the messages format into a Qwen-compatible structure."""
-
-    input_file = stage_config["input_file"]
-    output_dir = stage_config["output_dir"]
-    output_file = f"{output_dir}/{OUTPUT_FILE}"
-
-    with_tools = "--add-tools" if stage_config.get("tools", False) else ""
-
-    run_cmd(
-        ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/convert_to_qwen.py "
-            f"  {input_file} "
-            f"  {output_file} "
-            f"  {with_tools} "
-        ),
-        cluster=cluster,
-        log_dir=f"{output_dir}/logs",
-        expname=expname,
-        run_after=run_after,
-    )
-
-
-def bucket(cluster, expname, run_after, stage_config, **kwargs):
-    """Bucket samples by token length using the configured tokenizer.
-
-    Each record is augmented with its `out_token_length`, which is the
-    per-sample statistic written back to the JSONL output. It emits one JSONL file
-    per configured bucket (for example `{stem}_bucket_16000.jsonl`) plus an overflow
-    file, placing samples into the file whose upper bound matches their token length.
-    Bucket counts and percentages are also reported via the script's logs.
-    """
-    input_file = stage_config["input_file"]
-    output_dir = stage_config["output_dir"]
-
-    run_cmd(
-        ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/calculate_tkn_len_and_bucket.py "
+            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/process_messages_and_bucket.py "
             f"  {input_file} "
             f"  --output_dir {output_dir} "
-            f"  --to_bucket "
-            f"  --bucket_sizes {' '.join(map(str, stage_config.get('bucket_sizes', [16000, 32000, 64000])))} "
-            f"  --tokenizer_path {stage_config.get('tokenizer_path')} "
+            f"  --bucket_field {bucket_field} "
+            f"  {('--bucket_sizes ' + ' '.join(map(str, bucket_sizes))) if bucket_sizes else ''} "
+            f"  --tokenizer_path {tokenizer_path} "
+            f"  --chat_template_kwargs {shlex.quote(json.dumps(chat_template_kwargs, ensure_ascii=False))} "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
@@ -741,10 +758,7 @@ stages_map = {
     "aggregate": aggregate,
     "filter_solutions": filter_solutions,
     "prepare_for_sft": prepare_for_sft,
-    "convert_to_messages_format": convert_to_messages_format,
-    "bucket": bucket,
-    "bucket_qwen": bucket,
-    "convert_to_qwen_format": convert_to_qwen_format,
+    "process_messages_and_bucket": process_messages_and_bucket,
     "validate": validate,
 }
 
@@ -784,7 +798,7 @@ if __name__ == "__main__":
         default=None,
         help=(
             "Override config values using Hydra-style dotlist syntax. "
-            "Example: --override stages.convert_to_messages_format.enabled=false stages.bucket.enabled=false. "
+            "Example: --override stages.process_messages_and_bucket.tokenizer_path=/path/to/tokenizer. "
             "Separate multiple overrides with spaces."
         ),
     )

@@ -10,7 +10,7 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
 
 ## SFT Data Flow
 - Runs every step from the seed flow.
-- Adds SFT formatting: [`generate_solutions`](run_pipeline.py) always runs to gather model reasoning traces, then [`prepare_for_sft`](run_pipeline.py) and [`convert_to_messages`](scripts/convert_to_messages.py) convert the results into instruction-tuning-friendly JSONL files (both input-output pairs and chat message format). Runs bucketing based on token length via [`bucket`](scripts/calculate_tkn_len_and_bucket.py).
+- Adds SFT formatting: [`generate_solutions`](run_pipeline.py) runs to gather model reasoning traces, then [`prepare_for_sft`](run_pipeline.py) formats instruction-tuning records and [`process_messages_and_bucket`](run_pipeline.py) builds message-style fields, computes token lengths, and optionally emits bucketed shards.
 
 ## Stage Reference
 - [`filter_problems`](scripts/filter_problems.py): Required first step - see [How filter_problems Filters Data](#how-filter_problems-filters-data) section for filtering details and [How To Use](#how-to-use) section for the input file requirements. Accepts `input_file`, `output_dir`, and optional field names (`problem_field`, `expected_answer_field`, `id_field`). Supports deduplication (`deduplicate`), removal of samples with image references (`remove_images`), MCQ option counting (`num_options`), and an option regex check (`option_format_regex`). Produces `final_result.jsonl` where each record has:
@@ -29,11 +29,9 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - Optional `judgement/output*.jsonl`: contains `judgement` strings when `make_judgement` is enabled. The aggregated stage output also adds `is_correct`, `generation_model_pass_rate`, `generation_model_pass_at_n`, and `generation_model` to each sample.
 - [`difficulty_estimation`](run_pipeline.py): Requires GT answers. Uses [`remove_redundant_fields.py`](scripts/remove_redundant_fields.py) to keep baseline keys, generates boxed-format solutions (`generation_kwargs`), judges them (`judge_kwargs`), and writes `final_result.jsonl` with `difficulty_model`, `difficulty_model_pass_rate`, and `difficulty_model_pass_at_n` fields (see [`aggregate_difficulty.py`](scripts/aggregate_difficulty.py)).
 - [`aggregate`](scripts/aggregate_metadata.py): Merges metadata (`metadata_files`) and optional solution glob (`solutions_path`) into `final_result.jsonl`. The resulting records combine base fields with appended metadata and solution statistics.
-- [`filter_solutions`](scripts/filter_solutions.py): Applies correctness/pass-rate/metadata filters. Parameters: `only_correct_solutions`, `generation_model_pass_rate_range`, `difficulty_model_pass_rate_range`, `majority_voting_agreement_rate_range`, `metadata_values`. The filtered output preserves the same schema as the input `final_result.jsonl`.
 - [`prepare_for_sft`](run_pipeline.py): Calls `nemo_skills.training.prepare_data` via the configured `prepare_data_kwargs` (tokenizer, prompt config, formatting toggles). Outputs an instruction-tuning JSONL file.
-- [`convert_to_messages`](scripts/convert_to_messages.py): Converts the instruction-tuning JSONL file into messages format.
-- [`bucket`](scripts/calculate_tkn_len_and_bucket.py): Appends `out_token_length` to each sample and optionally shard data into token-length buckets. It emits per-bucket files (e.g., `{stem}_bucket_16000.jsonl`) plus an overflow file alongside log summaries of bucket counts and percentages.
-- [`convert_to_qwen`](scripts/convert_to_qwen.py): Converts the message-formatted JSONL into Qwen-style multi-turn data, optionally embedding tool metadata when Python tools were enabled earlier in the pipeline. Currently only supports the Python tool chain.
+- [`filter_solutions`](scripts/filter_solutions.py): Applies correctness/pass-rate/metadata filters. Parameters: `only_correct_solutions`, `generation_model_pass_rate_range`, `difficulty_model_pass_rate_range`, `metadata_values`, `only_samples_with_ground_truth_answer`. The filtered output preserves the same schema as the input `final_result.jsonl`.
+- [`process_messages_and_bucket`](run_pipeline.py): Uses [`scripts/process_messages_and_bucket.py`](scripts/process_messages_and_bucket.py) to transform prepared rows into input/output message text, compute `input_token_length` and `output_token_length`, and optionally split into token-length buckets based on `bucket_field` and `bucket_sizes`.
 - [`validate`](scripts/validate_pipeline.py): Reuses the automated checker to verify artifacts exist, counts add up, and required metadata fields are present, so failures point directly to the problematic stage. See [What the Validation Stage Covers](#what-the-validation-stage-covers) for details and caveats.
 
 ## Config Layout
@@ -46,7 +44,6 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - `seed_data` — trim the pipeline to the [Seed Data Flow](#seed-data-flow) used to generate seed datasets. It assumes the dataset has GT answers if not explicitly specified `without_gt`.
   - `seed_data_postprocess` — keep only the generation → filtering → SFT preparation stages for postprocessing above existing seed data.
   - `multiple_prompts` — allow the usage of multiple prompts for the generation. Section [Using the multiple_prompts Setting](#using-the-multiple-prompts-setting) describes the setting in detail.
-  - `convert_to_qwen` — enables the Qwen-format conversion and bucketing stages (`convert_to_qwen_format` and `bucket_qwen`).
   - `kimi_k2` — reroute `generate_solutions` to the Kimi-K2-Thinking model.
 
 Launch the pipeline by selecting the base config and stacking the overrides you need:
@@ -100,7 +97,7 @@ Settings are merged in the order you pass them; later entries win when they touc
     --override input_file=$INPUT_FILE cluster=slurm
   ```
 
-Settings merge recursively, so combining (for example) `seed_data` and `mcq` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
+Settings merge recursively, so combining (for example) `seed_data` and `mcq_4_options` simply updates the overlapping stage configuration without reintroducing skipped stages. All settings can be applied in any order except for `seed_data` and `without_gt`—`seed_data` should always be applied before `without_gt`.
 
 ## How `filter_problems` Filters Data
 1. Normalizes field names based on the configured aliases (`problem_field`, `expected_answer_field`, `id_field`).
@@ -132,7 +129,7 @@ Example fixture entry:
 ## What the Validation Stage Covers
 The validation stage is a lightweight smoke test that ensures the pipeline produced the artifacts we expect:
 
-- Checks every enabled stage emitted `final_result.jsonl`, counts the records, and enforces equality constraints between stages (for example, `bucket` totals must match `filter_solutions` counts, and `convert_to_qwen_format` must match `bucket_qwen` totals).
+- Checks every enabled stage emitted `final_result.jsonl`, counts the records, and enforces expected cross-stage consistency constraints (including message-processing outputs when `process_messages_and_bucket` is enabled).
 - Verifies key metadata fields (topics, difficulty, solution stats, etc.) are present in representative samples based on which upstream stages ran.
 - For `without_gt` settings, asserts that expected answers are absent/present in the right stages and that majority-voting metadata exists.
 
