@@ -69,6 +69,7 @@ class OpenAIModel(BaseModel):
         assert kwargs.pop("reasoning_effort", None) is None, (
             "reasoning_effort is not supported by completion requests."
         )
+        assert kwargs.pop("response_format", None) is None, "response_format is not supported by completion requests."
         assert kwargs.pop("top_k", -1) == -1, "`top_k` is not supported by OpenAI API, please set it to -1."
         assert kwargs.pop("min_p", 0.0) == 0.0, "`min_p` is not supported by OpenAI API, please set it to 0.0."
         assert kwargs.pop("repetition_penalty", 1.0) == 1.0, (
@@ -100,6 +101,7 @@ class OpenAIModel(BaseModel):
         reasoning_effort: str | None,
         extra_body: dict = None,
         tools: list[dict] | None = None,
+        response_format=None,
     ) -> dict:
         # Validations
         if top_k != -1:
@@ -110,6 +112,10 @@ class OpenAIModel(BaseModel):
             raise ValueError("`top_logprobs` is not supported with stream=True.")
         if extra_body:
             raise ValueError("`extra_body` is not supported by OpenAI API")
+        if repetition_penalty != 1.0:
+            raise ValueError(
+                "`repetition_penalty` is not supported by OpenAI API, please set it to default value `1.0`."
+            )
 
         params = {
             "messages": messages,
@@ -118,6 +124,7 @@ class OpenAIModel(BaseModel):
             "timeout": timeout,
             "stream": stream,
             "tools": tools,
+            "response_format": response_format,
         }
 
         if self._is_reasoning_model(self.model):
@@ -129,10 +136,6 @@ class OpenAIModel(BaseModel):
             if top_p != 0.95:
                 raise ValueError(
                     "`top_p` is not supported by reasoning models, please set it to default value `0.95`."
-                )
-            if repetition_penalty != 1.0:
-                raise ValueError(
-                    "`repetition_penalty` is not supported by reasoning models, please set it to default value `1.0`."
                 )
             if top_logprobs is not None:
                 raise ValueError("`top_logprobs` is not supported by reasoning models, please set it to `None`.")
@@ -148,7 +151,6 @@ class OpenAIModel(BaseModel):
             # Standard model parameters
             if reasoning_effort is not None:
                 raise ValueError("`reasoning_effort` is only supported by reasoning models.")
-            params["presence_penalty"] = repetition_penalty
             params["logprobs"] = top_logprobs is not None
             params["top_logprobs"] = top_logprobs
             params["max_completion_tokens"] = tokens_to_generate

@@ -47,6 +47,7 @@ from nemo_skills.inference.model import (
     server_params,
 )
 from nemo_skills.inference.model.base import EndpointType
+from nemo_skills.inference.structured_outputs import STRUCTURED_OUTPUTS
 from nemo_skills.prompt.utils import get_prompt, get_token_count
 from nemo_skills.utils import (
     chunk_data,
@@ -198,6 +199,8 @@ class GenerationTaskConfig:
     #      --config-path /path/to/configs --config-name config
     schema_overrides: dict | None = field(default_factory=dict)
 
+    max_tool_calls: int = -1  # If >= 0, will limit the number of tool calls executed during generation to this number
+
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
     parse_reasoning: bool = False
@@ -207,7 +210,7 @@ class GenerationTaskConfig:
     enable_litellm_cache: bool = False
 
     # List of content types to drop from messages (e.g., base64 audio) to keep output files smaller
-    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url"])
+    drop_content_types: list[str] = field(default_factory=lambda: ["audio_url", "input_audio"])
 
     # Audio configuration - set by benchmarks that need audio processing (mmau-pro, audiobench, etc.)
     enable_audio: bool = False  # Enable audio preprocessing (set by benchmark configs)
@@ -218,6 +221,8 @@ class GenerationTaskConfig:
     # Evaluation setup if requested. If eval_type is set to None, evaluation is skipped
     eval_type: str | None = None  # "lean4-proof", "math", etc.
     eval_config: dict = field(default_factory=dict)  # Config for the evaluator
+
+    structured_output: str | None = None
 
     def __post_init__(self):
         self._post_init_validate_data()
@@ -468,6 +473,7 @@ class GenerationTask:
                 tool_modules=self.cfg.tool_modules,
                 tool_overrides=self.cfg.tool_overrides,
                 schema_overrides=self.cfg.schema_overrides,
+                max_tool_calls=self.cfg.max_tool_calls,
                 tokenizer=self.tokenizer,
                 additional_config={"sandbox": self.cfg.sandbox},
                 data_dir=self.data_dir or "",
@@ -574,9 +580,10 @@ class GenerationTask:
         return remaining_data
 
     # TODO: data will not include any samples skipped after restart
-    def fill_prompt(self, data_point, data):
+    def fill_prompt(self, data_point, data, prompt_format=None):
         """Passing in full data in case it's needed to fill the prompt in subclasses."""
-        if self.cfg.prompt_format == "openai":
+        prompt_format = prompt_format or self.cfg.prompt_format
+        if prompt_format == "openai":
             if self.cfg.prompt_suffix:
                 data_point["messages"][-1]["content"] += self.cfg.prompt_suffix
             if self.cfg.system_message:
@@ -626,7 +633,7 @@ class GenerationTask:
 
             # Filter out content types specified in drop_content_types config
             message["content"] = [
-                content for content in message["content"] if content.get("type") not in self.cfg.drop_content_types
+                content for content in message["content"] if content["type"] not in self.cfg.drop_content_types
             ]
 
     async def postprocess_single_output(self, output, original_data_point):
@@ -670,7 +677,7 @@ class GenerationTask:
         # Override this method to customize the prefilling behavior.
         return None
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         # Handle inference config - check if it's a dataclass or already a dict
         if is_dataclass(self.cfg.inference):
             inference_params = asdict(self.cfg.inference)
@@ -681,9 +688,12 @@ class GenerationTask:
         generation_params = {
             **inference_params,
             **self.extra_generate_params,
-            "prompt": self.fill_prompt(data_point, all_data),
+            "prompt": self.fill_prompt(data_point=data_point, data=all_data, prompt_format=prompt_format),
             "stop_phrases": [self.cfg.stop_phrase] if self.cfg.stop_phrase else None,
         }
+
+        if self.cfg.structured_output is not None:
+            generation_params["response_format"] = STRUCTURED_OUTPUTS[self.cfg.structured_output]
 
         if self.cfg.code_execution:
             if self.cfg.override_max_code_executions and self.cfg.total_code_executions_in_prompt is not None:

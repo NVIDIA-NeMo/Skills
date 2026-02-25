@@ -57,6 +57,7 @@ class GeminiModel(BaseModel):
         reasoning_effort: str | None,
         extra_body: dict = None,
         tools: list[dict] | None = None,
+        response_format=None,
     ) -> dict:
         """
         https://github.com/BerriAI/litellm/blob/v1.75.0-nightly/litellm/constants.py#L45-L56
@@ -72,6 +73,8 @@ class GeminiModel(BaseModel):
             "`repetition_penalty` is not supported by Gemini API, please set it to default value `1.0`."
         )
         assert not extra_body, "`extra_body` is not supported by Gemini API, please set it to None or empty dict"
+        if response_format is not None:
+            raise NotImplementedError()
 
         # Vertext AI params: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference
         # litellm default params: https://github.com/BerriAI/litellm/blob/v1.75.0-nightly/litellm/llms/gemini/chat/transformation.py#L73-L90

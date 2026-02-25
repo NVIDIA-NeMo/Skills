@@ -12,6 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 EVAL_SPLIT = "all"
-DATASET_GROUP = "long-context"
 METRICS_TYPE = "mrcr"
 GENERATION_ARGS = "++prompt_format=openai ++eval_type=mrcr"

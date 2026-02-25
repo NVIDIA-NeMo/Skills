@@ -49,6 +49,7 @@ class ToolCallingWrapper:
         tool_overrides: dict | None = None,
         additional_config: dict | None = None,
         schema_overrides: dict | None = None,
+        max_tool_calls: int = -1,
     ):
         self.model = model
         additional_config = additional_config or {}
@@ -62,6 +63,7 @@ class ToolCallingWrapper:
 
         self.schema_overrides = load_schema_overrides(schema_overrides)
         self.schema_mappings = {}  # Built when tools are listed
+        self.max_tool_calls = max_tool_calls
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
@@ -131,6 +133,7 @@ class ToolCallingWrapper:
 
         # assigning a unique request id to pass to tool calls if they need to be stateful
         request_id = str(uuid.uuid4())
+        tool_calls_executed = 0
 
         while True:
             if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
@@ -154,6 +157,14 @@ class ToolCallingWrapper:
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
                 tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
+                if self.max_tool_calls >= 0 and tool_calls_executed + len(tool_calls) > self.max_tool_calls:
+                    LOG.info(
+                        "Tool call limit reached (max_tool_calls=%s); stopping generation.",
+                        self.max_tool_calls,
+                    )
+                    result_steps["finish_reason"].append("tool_call_limit_reached")
+                    break
+
                 tool_calls_output_messages = await self._execute_tool_calls(
                     tool_calls, request_id=request_id, endpoint_type=endpoint_type
                 )
@@ -161,10 +172,14 @@ class ToolCallingWrapper:
                 conversation.extend(tool_calls_output_messages)
 
                 result_steps["num_tool_calls"].append(len(tool_calls))
+                tool_calls_executed += len(tool_calls)
 
                 continue
 
             break
+
+        # TODO: currently if number of tool calls is reached, the final conversation
+        #       is "broken" (tool call, but not output). Not sure what's a better option, though
 
         result_steps["generation"] = "".join(result_steps["generation"])
         result_steps["num_generated_tokens"] = sum(result_steps["num_generated_tokens"])

@@ -72,7 +72,7 @@ class MathMetrics(BaseMetrics):
         if "symbolic_correct" in prediction:
             correctness_dict["symbolic_correct"] = prediction["symbolic_correct"]
         if "judgement" in prediction:
-            correctness_dict["judge_correct"] = is_correct_judgement(prediction["judgement"])
+            correctness_dict["judge_correct"] = self.is_correct_judgement(prediction["judgement"])
         if "judge_correct" in correctness_dict and "symbolic_correct" in correctness_dict:
             correctness_dict["both_correct"] = (
                 correctness_dict["symbolic_correct"] and correctness_dict["judge_correct"]
@@ -80,6 +80,10 @@ class MathMetrics(BaseMetrics):
             correctness_dict["any_correct"] = correctness_dict["symbolic_correct"] or correctness_dict["judge_correct"]
 
         return correctness_dict
+
+    def is_correct_judgement(self, judgement: str) -> bool:
+        """Check if the judgement is correct."""
+        return is_correct_judgement(judgement)
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         prediction = prediction.copy()

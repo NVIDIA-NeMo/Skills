@@ -87,14 +87,6 @@ from nemo_skills.utils import get_logger_name  # noqa: E402
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
-# Define the configuration as a dictionary
-DEFAULT_SETTINGS = """
-DATASET_GROUP = "tool"
-METRICS_TYPE = "bfcl"
-GENERATION_ARGS = "++eval_type=bfcl"
-GENERATION_MODULE = "nemo_skills.inference.eval.bfcl"
-"""
-
 
 # Adapted from - https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/bfcl_eval/utils.py#L403
 def process_multi_turn_test_case(instance):
@@ -194,9 +186,6 @@ def download_and_process_bfcl_data(repo_url, subfolder_path, output_dir, scoring
                 split_dirname = os.path.join(output_dir, test_category)
                 if not os.path.exists(split_dirname):
                     os.makedirs(split_dirname)
-
-                with open(os.path.join(split_dirname, "__init__.py"), "w") as f:
-                    f.write(DEFAULT_SETTINGS)
 
                 output_file = os.path.join(split_dirname, "test.jsonl")
                 test_entries = load_dataset_entry(target_folder, test_category)

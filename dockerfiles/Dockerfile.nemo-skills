@@ -9,7 +9,8 @@ RUN apt-get update && \
     curl \
     wget \
     git \
-    git-lfs && \
+    git-lfs \
+    ffmpeg && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 

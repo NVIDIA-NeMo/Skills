@@ -18,7 +18,6 @@ todo: We are working on providing the data files that are necessary to run ICPC 
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=icpc"
-DATASET_GROUP = "code"
 METRICS_TYPE = "icpc"
 
 # environment variables required by this benchmark

@@ -19,11 +19,9 @@ Test sets (evaluation only):
 - test-other: More challenging speech with various acoustic conditions (~2.9k samples)
 """
 
-DATASET_GROUP = "speechlm"
+REQUIRES_DATA_DIR = True
 METRICS_TYPE = "audio"
 DEFAULT_SPLIT = "test-clean"
-
-
 EVAL_SPLIT = "test-clean"
 EVAL_ARGS = "++eval_type=audio"
 GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"

@@ -1,4 +1,10 @@
 user: |-
-  {question}
+  ### Question:
+  {question_content}
+
+  ### Format: {formatting_message}
+  {starter_code}
 
   Please avoid using `sys.stdin.buffer` to process input, and avoid using `threading`.
+
+  ### Answer: (use the provided format with backticks)
