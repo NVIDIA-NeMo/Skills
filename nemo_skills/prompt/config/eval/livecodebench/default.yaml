@@ -1,0 +1,8 @@
+user: |-
+  ### Question:
+  {question_content}
+
+  ### Format: {formatting_message}
+  {starter_code}
+
+  ### Answer: (use the provided format with backticks)

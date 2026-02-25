@@ -15,12 +15,16 @@ http {
         default   $http_x_session_id;
     }
 
-    # Define upstream servers (dynamically populated)
+    # Define upstream servers (dynamically populated by start-with-nginx.sh)
+    # Supports both single-node (localhost TCP) and multi-node (cross-node TCP) modes:
+    #   Single-node: server 127.0.0.1:50001 ...;
+    #   Multi-node:  server node1:50001 ...;  server node2:50001 ...;
     upstream sandbox_workers {
         # Use consistent hashing on real session_id or random request_id
+        # This ensures requests with the same X-Session-ID always go to the same worker
         hash $hash_key consistent;
 
-        # Worker servers will be inserted here by sed
+        # Worker servers will be inserted here (TCP endpoints)
 ${UPSTREAM_SERVERS}
     }
 

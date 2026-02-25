@@ -13,6 +13,7 @@
 
 import json
 import logging
+import re
 from typing import Union
 
 from nemo_skills.utils import get_logger_name
@@ -34,12 +35,38 @@ def read_predictions(predictions, line_idx, file_handles):
 
 
 def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
-    if "Judgement:" in judgement:
-        verdict = judgement.split("Judgement:")[-1].strip()
-        if verdict.lower().startswith("yes"):
-            return True
-        elif verdict.lower().startswith("no"):
-            return False
+    """Parse judgement text to determine correctness.
+
+    Supports multiple formats:
+    - "Judgement: Yes/No" (standard format, also handles markdown bold)
+    - "\\boxed{Correct/Incorrect}" (IMO AnswerBench format)
+    - "<points>N out of 7</points>" (IMO ProofBench format: 6-7 = correct, 0-1 = incorrect)
+    """
+    if judgement:
+        # Format 1: "Judgement: Yes/No" (standard format)
+        # Match both plain "Judgement:" and markdown bold "**Judgement**:" formats,
+        # this happens for gpt-4o which is AA Judge model.
+        match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
+        if match:
+            verdict = judgement[match.end() :].strip().lstrip("*").strip()
+            if verdict.lower().startswith("yes"):
+                return True
+            elif verdict.lower().startswith("no"):
+                return False
+
+        # Format 2: "\boxed{Correct/Incorrect}" (IMO AnswerBench format)
+        boxed_match = re.search(r"\\boxed\s*\{\s*(Correct|Incorrect)\s*\}", judgement, re.IGNORECASE)
+        if boxed_match:
+            verdict = boxed_match.group(1).lower()
+            return verdict == "correct"
+
+        # Format 3: "<points>N out of 7</points>" (IMO ProofBench format)
+        # 7 or 6 points = correct/almost correct (True)
+        # 1 or 0 points = partial/incorrect (False)
+        points_match = re.search(r"<points>\s*(\d+)\s*out of 7\s*</points>", judgement, re.IGNORECASE)
+        if points_match:
+            points = int(points_match.group(1))
+            return points >= 6  # 6-7 is correct/almost, 0-1 is incorrect/partial
 
     if return_none:
         return None

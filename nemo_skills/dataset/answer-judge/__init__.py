@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "math"
 METRICS_TYPE = "answer-judgement"
 # using judgement directly in metrics, no need for special evaluation
 GENERATION_ARGS = "++prompt_config=judge/math ++generation_key=judgement"

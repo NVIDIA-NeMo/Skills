@@ -40,9 +40,66 @@ logging.basicConfig(
     format=f"[worker {worker_id}] %(asctime)s %(levelname)s: %(message)s",
 )
 
+# =============================================================================
+# Network Blocking Configuration (Defense in Depth)
+# =============================================================================
+# When NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1, we use TWO layers of protection
+# to prevent LLM-generated code from making network requests:
+#
+# LAYER 1: libblock_network.so (via /etc/ld.so.preload, set by start-with-nginx.sh)
+#   - Intercepts socket() syscalls at the C library level
+#   - Blocks any NEW PROCESS that exec()'s (curl, wget, python3 subprocess, etc.)
+#   - System-enforced by the dynamic linker - user code CANNOT bypass it
+#   - Limitation: Doesn't affect forked processes (no exec = no linker = no preload)
+#
+# LAYER 2: Python socket patch (below, in shell_worker function)
+#   - Patches socket.socket and _socket.socket at Python level
+#   - Blocks code running in the IPython shell_worker (which is forked, not exec'd)
+#   - Limitation: Only works for Python code in the same process
+#
+# WHY BOTH ARE NEEDED:
+#   | Attack Vector                              | Python Patch | ld.so.preload |
+#   |--------------------------------------------|--------------|---------------|
+#   | socket.socket() in IPython                 |  Blocked     |    (forked)   |
+#   | import _socket; _socket.socket() in IPython|  Blocked     |    (forked)   |
+#   | subprocess.run(["curl", url])              |  Can't help  |    Blocked    |
+#   | subprocess.run(["python3",...], env={})    |  Can't help  |    Blocked    |
+#   | requests.get() in IPython                  |  Blocked     |    (forked)   |
+#
+# Neither layer alone is sufficient - together they cover all adversarial scenarios.
+# =============================================================================
+BLOCK_NETWORK = os.getenv("NEMO_SKILLS_SANDBOX_BLOCK_NETWORK", "0") == "1"
+if BLOCK_NETWORK:
+    logging.info("Network blocking mode enabled")
+
 
 # Worker that runs inside the shell process and owns a TerminalInteractiveShell()
 def shell_worker(conn):
+    # LAYER 2: Python-level socket blocking for IPython sessions
+    # The shell_worker is forked (not exec'd) from the uWSGI worker, so it does NOT
+    # get the ld.so.preload library loaded. We must patch Python's socket module directly.
+    # This blocks: socket.socket(), _socket.socket(), requests.get(), urllib, etc.
+    if BLOCK_NETWORK:
+        import _socket as _socket_module  # Low-level C extension
+        import socket as socket_module  # High-level module
+
+        class BlockedSocket(_socket_module.socket):
+            def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+                # Allow Unix domain sockets (needed for IPC)
+                # Check both AF_UNIX and AF_LOCAL for consistency with C implementation
+                af_local = getattr(_socket_module, "AF_LOCAL", _socket_module.AF_UNIX)
+                if family in (_socket_module.AF_UNIX, af_local):
+                    super().__init__(family, type, proto, fileno)
+                # Block IPv4/IPv6
+                elif family in (_socket_module.AF_INET, _socket_module.AF_INET6):
+                    raise OSError(101, "Network is unreachable (blocked by sandbox)")
+                else:
+                    super().__init__(family, type, proto, fileno)
+
+        # Patch BOTH modules to prevent bypass attempts
+        _socket_module.socket = BlockedSocket  # Blocks: import _socket; _socket.socket()
+        socket_module.socket = BlockedSocket  # Blocks: import socket; socket.socket()
+
     shell = TerminalInteractiveShell()
     try:
         while True:

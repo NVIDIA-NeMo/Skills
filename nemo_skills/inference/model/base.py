@@ -31,7 +31,8 @@ from .utils import ServerTokenizer, WrapperAutoTokenizer, trim_after_stop_phrase
 LOG = logging.getLogger(get_logger_name(__file__))
 
 # The logging worker sometimes does not stop. We patch it to disable its functionality.
-# TODO: Remove this once LiteLLM fixes it.
+# This issue is fixed in the latest litellm, keeping it here to avoid breaking previous containers
+# We can remove it once everyone is moved to the latest container
 patch_litellm_logging_worker()
 
 
@@ -75,9 +76,16 @@ class BaseModel:
         enable_soft_fail: bool = False,
         context_limit_retry_strategy: str | None = None,
         num_special_tokens_budget: int = 100,
+        # Directory paths for data and output
+        data_dir: str = "",
+        output_dir: str | None = None,
+        # Request tokenizer initialization independent of soft_fail
+        require_tokenizer: bool = False,
     ):
         self._tunnel = None
         self.model_name_or_path = model
+        self.data_dir = data_dir
+        self.output_dir = output_dir
         self.server_host = host
         self.server_port = port
         self.ssh_server = ssh_server
@@ -120,7 +128,7 @@ class BaseModel:
         else:
             self.base_url = base_url
 
-        if enable_soft_fail:
+        if enable_soft_fail or require_tokenizer:
             self.tokenizer = self._get_tokenizer(tokenizer)
         else:
             self.tokenizer = None
@@ -196,7 +204,11 @@ class BaseModel:
         if tokenizer is None:
             return None
         if isinstance(tokenizer, str):
-            return WrapperAutoTokenizer(tokenizer)
+            try:
+                return WrapperAutoTokenizer(tokenizer)
+            except OSError:
+                LOG.warning(f"Tokenizer not found at '{tokenizer}', trying fallback to server /tokenize endpoint")
+                return None
 
     @abc.abstractmethod
     def _build_chat_request_params(self, **kwargs) -> dict:
@@ -230,6 +242,7 @@ class BaseModel:
         tools: list[dict] | None = None,
         include_response: bool = False,
         extra_body: dict = None,
+        response_format=None,
     ) -> dict:
         if endpoint_type is None:
             # Infering completion type from prompt
@@ -255,6 +268,7 @@ class BaseModel:
             "reasoning_effort": reasoning_effort,
             "tools": tools,
             "extra_body": extra_body,
+            "response_format": response_format,
         }
 
         # TODO: remove this after we no longer use gpt-oss or it's fixed in vllm
@@ -308,7 +322,12 @@ class BaseModel:
                             continue
 
                         LOG.error(f"BadRequestError after {max_retries} retries, returning empty response: {e}")
-                        return {"generation": "", "reasoning_content": "", "num_generated_tokens": 0}
+                        return {
+                            "generation": "",
+                            "reasoning_content": "",
+                            "num_generated_tokens": 0,
+                            "serialized_output": [],
+                        }
                     else:
                         raise e
 

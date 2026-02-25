@@ -25,8 +25,11 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class MathMetrics(BaseMetrics):
     # TODO: how can we ensure that user-defined aggregations have all the same metrics as in base?
 
-    def __init__(self, compute_no_answer: bool = True, answer_key: str = "predicted_answer"):
+    def __init__(
+        self, compute_no_answer: bool = True, question_key: str = "problem", answer_key: str = "predicted_answer"
+    ):
         super().__init__(compute_no_answer=compute_no_answer)
+        self.question_key = question_key
         self.answer_key = answer_key
 
     def _compute_reward_at_k(self, predictions: list[dict]):
@@ -69,7 +72,7 @@ class MathMetrics(BaseMetrics):
         if "symbolic_correct" in prediction:
             correctness_dict["symbolic_correct"] = prediction["symbolic_correct"]
         if "judgement" in prediction:
-            correctness_dict["judge_correct"] = is_correct_judgement(prediction["judgement"])
+            correctness_dict["judge_correct"] = self.is_correct_judgement(prediction["judgement"])
         if "judge_correct" in correctness_dict and "symbolic_correct" in correctness_dict:
             correctness_dict["both_correct"] = (
                 correctness_dict["symbolic_correct"] and correctness_dict["judge_correct"]
@@ -77,6 +80,10 @@ class MathMetrics(BaseMetrics):
             correctness_dict["any_correct"] = correctness_dict["symbolic_correct"] or correctness_dict["judge_correct"]
 
         return correctness_dict
+
+    def is_correct_judgement(self, judgement: str) -> bool:
+        """Check if the judgement is correct."""
+        return is_correct_judgement(judgement)
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         prediction = prediction.copy()
@@ -113,7 +120,7 @@ class MathMetrics(BaseMetrics):
                     "Question: %s\nPredicted answer: %s\nExpected answer: %s\nLLM reasoning: %s\n",
                     correctness_dict["symbolic_correct"],
                     correctness_dict["judge_correct"],
-                    prediction["problem"],
+                    prediction[self.question_key],
                     prediction[self.answer_key],
                     prediction["expected_answer"],
                     prediction["judgement"],

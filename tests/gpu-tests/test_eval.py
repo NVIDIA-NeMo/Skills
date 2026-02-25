@@ -23,6 +23,183 @@ from utils import require_env_var
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 from tests.conftest import docker_rm
 
+# Datasets excluded from test_aaa_prepare_and_eval_all_datasets
+# These don't support max_samples, require explicit parameters, or are very heavy to prepare
+EXCLUDED_DATASETS = {
+    "__pycache__",
+    "ruler",
+    "ruler2",
+    "bigcodebench",
+    "livecodebench",
+    "livebench_coding",
+    "livecodebench-pro",
+    "livecodebench-cpp",
+    "ioi",
+    "bfcl_v4",
+    "bfcl_v3",  # not really excluded, just handled separately below
+    "swe-bench",
+    "swe-bench-multilingual",
+    "swe-rebench",
+    "aai",
+    "human-eval",
+    "human-eval-infilling",
+    "mbpp",
+    "mmau-pro",
+    "asr-leaderboard",
+    "mrcr",
+    "audiobench",
+    "librispeech-pc",
+    "musan",
+    "numb3rs",
+    # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
+    "compute-eval",
+    # CritPt requires exactly 70 submissions and external API key (ARTIFICIAL_ANALYSIS_API_KEY)
+    "critpt",
+}
+
+
+def get_preparable_datasets():
+    """Get list of datasets that can be prepared for testing."""
+    datasets_dir = Path(__file__).absolute().parents[2] / "nemo_skills" / "dataset"
+    return sorted(
+        dataset.name
+        for dataset in datasets_dir.iterdir()
+        if dataset.is_dir() and (dataset / "prepare.py").exists() and dataset.name not in EXCLUDED_DATASETS
+    )
+
+
+# Run this test first to catch data prep failures early.
+@pytest.mark.gpu
+def test_aaa_prepare_and_eval_all_datasets():
+    """Prepare and evaluate all datasets. Runs first to catch data prep failures early."""
+    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
+    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
+
+    config_dir = Path(__file__).absolute().parent
+    dataset_names = get_preparable_datasets()
+
+    assert dataset_names, "No datasets found to prepare and evaluate"
+
+    judge_datasets = []
+    for dataset in dataset_names:
+        dataset_module = import_module(f"nemo_skills.dataset.{dataset}")
+        # Check if JUDGE_PIPELINE_ARGS exists (even if empty dict, which is falsy)
+        if hasattr(dataset_module, "JUDGE_PIPELINE_ARGS"):
+            judge_datasets.append(dataset)
+
+    non_judge_datasets = [dataset for dataset in dataset_names if dataset not in judge_datasets]
+
+    data_dir = Path(f"/tmp/nemo-skills-tests/{model_type}/data")
+    docker_rm([str(data_dir)])
+
+    # Prepare all datasets - fail fast if any dataset preparation fails
+    all_datasets = dataset_names + ["bfcl_v3", "bfcl_v4"]
+    exp = prepare_data(
+        ctx=wrap_arguments(" ".join(all_datasets)),
+        cluster="test-local",
+        config_dir=str(config_dir),
+        data_dir=str(data_dir),
+        expname=f"prepare-all-datasets-{model_type}",
+    )
+
+    # Check experiment status - nemo_run doesn't raise exceptions on task failure
+    status_dict = exp.status(return_dict=True)
+    failed_tasks = []
+    for task_name, status_info in status_dict.items():
+        status = str(status_info.get("status", "")).upper()
+        if "FAILED" in status or "ERROR" in status:
+            failed_tasks.append(task_name)
+    assert not failed_tasks, f"Data preparation tasks failed: {failed_tasks}"
+
+    # Verify that data files were actually created for each dataset
+    missing_datasets = []
+    for dataset in dataset_names:
+        dataset_path = data_dir / dataset
+        if not dataset_path.exists():
+            missing_datasets.append(dataset)
+        else:
+            # Check that at least one .jsonl file exists
+            jsonl_files = list(dataset_path.glob("*.jsonl"))
+            if not jsonl_files:
+                # Some datasets (e.g., bfcl_*) place jsonl files in subfolders.
+                jsonl_files = [
+                    jsonl_path for jsonl_path in dataset_path.rglob("*.jsonl") if jsonl_path.parent != dataset_path
+                ]
+                if not jsonl_files:
+                    missing_datasets.append(f"{dataset} (no .jsonl files)")
+
+    assert not missing_datasets, f"Data files missing for datasets: {missing_datasets}"
+
+    # Now run evaluation
+    eval_kwargs = dict(
+        cluster="test-local",
+        config_dir=str(config_dir),
+        data_dir=str(data_dir),
+        model=model_path,
+        server_type="sglang",
+        server_gpus=1,
+        server_nodes=1,
+    )
+
+    common_ctx = "++max_samples=2 ++inference.tokens_to_generate=100 ++server.enable_soft_fail=True "
+
+    output_dir = f"/tmp/nemo-skills-tests/{model_type}/all-datasets-eval"
+    docker_rm([output_dir])
+    eval(
+        ctx=wrap_arguments(common_ctx),
+        output_dir=output_dir,
+        benchmarks=",".join(non_judge_datasets),
+        expname=f"eval-all-datasets-{model_type}",
+        auto_summarize_results=False,
+        **eval_kwargs,
+    )
+
+    run_cmd(
+        ctx=wrap_arguments(f"python -m nemo_skills.pipeline.summarize_results {output_dir}"),
+        cluster="test-local",
+        config_dir=str(config_dir),
+    )
+
+    eval_results_dir = Path(output_dir) / "eval-results"
+
+    missing_outputs = []
+    for dataset in non_judge_datasets:
+        dataset_output_dir = eval_results_dir / dataset
+        output_files = list(dataset_output_dir.glob("output*.jsonl"))
+        if not output_files:
+            missing_outputs.append(dataset)
+
+    assert not missing_outputs, f"Missing eval outputs for datasets: {missing_outputs}"
+
+    summary_metrics_file = eval_results_dir / "metrics.json"
+    assert summary_metrics_file.exists(), "Missing metrics.json summary for non-bfcl datasets"
+    with open(summary_metrics_file, "r") as f:
+        summary_metrics = json.load(f)
+
+    missing_metrics = [dataset for dataset in non_judge_datasets if dataset not in summary_metrics]
+    assert not missing_metrics, f"Missing metrics for datasets in metrics.json: {missing_metrics}"
+
+    # have to process bfcl separately as it's eval group and fails on summarize results.
+    # It also needs a special eval arg
+    # TODO: after summarize results works natively with eval groups, we can merge these
+    # TODO: enable bfcl_v4 after figuring out why it's broken in this setup
+    # setting 10 samples as bfcl is brittle when using only 2
+    bfcl_eval_args = "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC ++max_samples=10"
+    eval(
+        ctx=wrap_arguments(f"{common_ctx} {bfcl_eval_args}"),
+        output_dir=output_dir,
+        benchmarks="bfcl_v3",
+        expname=f"eval-all-datasets-{model_type}-bfcl",
+        auto_summarize_results=True,
+        **eval_kwargs,
+    )
+
+    bfcl_metrics_file = eval_results_dir / "bfcl_v3" / "metrics.json"
+    assert bfcl_metrics_file.exists(), "Missing metrics.json for dataset bfcl_v3"
+
+    # TODO: add same for judge_datasets after generate supports num_jobs
+    # (otherwise it starts judge every time and takes forever)
+
 
 @pytest.mark.gpu
 def test_trtllm_eval():
@@ -212,99 +389,3 @@ def test_megatron_eval():
     # TODO: something is broken in megatron inference here as this should be 50!
     assert metrics["symbolic_correct"] >= 40
     assert metrics["num_entries"] == 5
-
-
-@pytest.mark.gpu
-def test_prepare_and_eval_all_datasets():
-    model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
-    model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
-
-    config_dir = Path(__file__).absolute().parent
-    datasets_dir = Path(__file__).absolute().parents[2] / "nemo_skills" / "dataset"
-    # not testing datasets that don't support max_samples, require explicit parameters or are very heavy to prepare
-    excluded_datasets = {
-        "__pycache__",
-        "ruler",
-        "bigcodebench",
-        "livecodebench",
-        "livebench_coding",
-        "livecodebench-pro",
-        "livecodebench-cpp",
-        "ioi24",
-        "ioi25",
-        "bfcl_v3",
-        "swe-bench",
-        "aai",
-        "human-eval",
-        "human-eval-infilling",
-        "mbpp",
-        "mmau-pro",
-    }
-
-    dataset_names = sorted(
-        dataset.name
-        for dataset in datasets_dir.iterdir()
-        if dataset.is_dir() and (dataset / "prepare.py").exists() and dataset.name not in excluded_datasets
-    )
-
-    assert dataset_names, "No datasets found to prepare and evaluate"
-
-    judge_datasets = []
-    for dataset in dataset_names:
-        dataset_module = import_module(f"nemo_skills.dataset.{dataset}")
-        if getattr(dataset_module, "JUDGE_PIPELINE_ARGS", None):
-            judge_datasets.append(dataset)
-
-    non_judge_datasets = [dataset for dataset in dataset_names if dataset not in judge_datasets]
-
-    data_dir = Path(f"/tmp/nemo-skills-tests/{model_type}/data")
-    docker_rm([str(data_dir)])
-
-    prepare_data(
-        ctx=wrap_arguments(" ".join(dataset_names)),
-        cluster="test-local",
-        config_dir=str(config_dir),
-        data_dir=str(data_dir),
-        expname=f"prepare-all-datasets-{model_type}",
-    )
-
-    eval_kwargs = dict(
-        cluster="test-local",
-        config_dir=str(config_dir),
-        data_dir=str(data_dir),
-        model=model_path,
-        server_type="sglang",
-        server_gpus=1,
-        server_nodes=1,
-        auto_summarize_results=False,
-    )
-
-    common_ctx = "++max_samples=2 ++inference.tokens_to_generate=100 ++server.enable_soft_fail=True "
-
-    output_dir = f"/tmp/nemo-skills-tests/{model_type}/all-datasets-eval"
-    docker_rm([output_dir])
-    eval(
-        ctx=wrap_arguments(common_ctx),
-        output_dir=output_dir,
-        benchmarks=",".join(non_judge_datasets),
-        expname=f"eval-all-datasets-{model_type}",
-        **eval_kwargs,
-    )
-
-    run_cmd(
-        ctx=wrap_arguments(f"python -m nemo_skills.pipeline.summarize_results {output_dir}"),
-        cluster="test-local",
-        config_dir=str(config_dir),
-    )
-
-    eval_results_dir = Path(output_dir) / "eval-results"
-    metrics_path = eval_results_dir / "metrics.json"
-    assert metrics_path.exists(), "Missing aggregated metrics file"
-    with metrics_path.open() as f:
-        metrics = json.load(f)
-
-    for dataset in non_judge_datasets:
-        assert dataset in metrics, f"Missing metrics for {dataset}"
-
-    # TODO: add same for judge_datasets after generate supports num_jobs
-    # (otherwise it starts judge every time and takes forever)

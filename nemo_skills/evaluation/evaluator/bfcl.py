@@ -15,8 +15,10 @@
 
 import json
 import logging
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 try:
@@ -36,6 +38,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class BFCLEvaluatorConfig(BaseEvaluatorConfig):
     model: str = "o4-mini-2025-04-16-FC"  # Uses the same eval as Llama-Nemotron
     timeout: int = 300
+    partial_eval: bool = False
 
 
 def eval_bfcl(cfg):
@@ -65,12 +68,29 @@ def eval_bfcl(cfg):
 
     try:
         # Run BFCL evaluation using the CLI
-        # We need the OpenAI model class decoding functions for evaluation but not really the actual API key for evaluation
+        # We need the OpenAI model class decoding functions for evaluation but not
+        # really the actual API key for evaluation
         # So we set the API key to a dummy value
-        cmd = f"OPENAI_API_KEY=dummy bfcl evaluate --model {eval_config.model} --test-category {test_category}"
 
-        LOG.info(f"Running BFCL evaluation: {cmd}")
-        subprocess.run(cmd, shell=True, check=True, timeout=eval_config.timeout)
+        # note that it's important to explicitly reuse parent environment as bfcl has extra reqs installed at runtime
+        cmd = [
+            sys.executable,
+            "-m",
+            "bfcl_eval",
+            "evaluate",
+            "--model",
+            eval_config.model,
+            "--test-category",
+            test_category,
+        ]
+        if eval_config.partial_eval:
+            cmd.append("--partial-eval")
+
+        env = os.environ.copy()
+        env["OPENAI_API_KEY"] = "dummy"
+
+        LOG.info("Running BFCL evaluation: %s", " ".join(cmd))
+        subprocess.run(cmd, check=True, timeout=eval_config.timeout, env=env)
 
         # Merge the bfcl_input_file with the score_file, and write to the original file
         _merge_bfcl_results(jsonl_file, bfcl_input_file, score_file)

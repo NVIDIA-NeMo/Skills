@@ -24,8 +24,10 @@ from nemo_skills.mcp.adapters import (
     format_tool_list_by_endpoint_type,
     format_tool_response_by_endpoint_type,
     get_tool_details_by_endpoint_type,
+    load_schema_overrides,
+    remap_tool_call,
 )
-from nemo_skills.mcp.tool_manager import ToolManager
+from nemo_skills.mcp.tool_manager import FatalToolError, ToolManager
 from nemo_skills.utils import get_logger_name
 
 from .base import BaseModel, EndpointType
@@ -46,19 +48,22 @@ class ToolCallingWrapper:
         tool_modules: list[str] | None = None,
         tool_overrides: dict | None = None,
         additional_config: dict | None = None,
+        schema_overrides: dict | None = None,
+        max_tool_calls: int = -1,
     ):
         self.model = model
         additional_config = additional_config or {}
 
-        self.tool_manager = None
-
-        # Module-based tool loading only
         assert tool_modules, "tool_modules must be provided for tool calling"
         self.tool_manager = ToolManager(
             module_specs=tool_modules,
             overrides=tool_overrides or {},
             context=additional_config,
         )
+
+        self.schema_overrides = load_schema_overrides(schema_overrides)
+        self.schema_mappings = {}  # Built when tools are listed
+        self.max_tool_calls = max_tool_calls
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
@@ -67,6 +72,7 @@ class ToolCallingWrapper:
         ##
         # TODO(sanyamk): Not all tool arguments might necessarily be in JSON format.
         #   Kept here to handle errors for now.
+
         try:
             tool_args = json.loads(tool_args)
         except json.decoder.JSONDecodeError as e:
@@ -75,9 +81,17 @@ class ToolCallingWrapper:
             return {"error": "Tool argument parsing failed."}
 
         ## TODO(sanyamk): Only exceptions related to tool execution here, all others must fail.
+        # Remap model's tool name/args back to original schema
+        original_tool_name, tool_args = remap_tool_call(tool_name, tool_args, self.schema_mappings)
+
         try:
             # Allow providers to specify extra_args behavior internally if needed in the future
-            result = await self.tool_manager.execute_tool(tool_name, tool_args, extra_args={"request_id": request_id})
+            result = await self.tool_manager.execute_tool(
+                original_tool_name, tool_args, extra_args={"request_id": request_id}
+            )
+        except FatalToolError:
+            # Fatal errors should propagate up and stop the process
+            raise
         except Exception as e:
             LOG.exception(e)
             return {"error": "Tool execution failed."}
@@ -109,7 +123,9 @@ class ToolCallingWrapper:
 
         # This assumes that the available tools do not change during the generation.
         raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
-        tools = format_tool_list_by_endpoint_type(raw_tools, endpoint_type)
+        tools, self.schema_mappings = format_tool_list_by_endpoint_type(
+            raw_tools, endpoint_type, schema_overrides=self.schema_overrides
+        )
         LOG.info("Available Tools: %s", tools)
 
         result_steps = defaultdict(list)
@@ -117,6 +133,7 @@ class ToolCallingWrapper:
 
         # assigning a unique request id to pass to tool calls if they need to be stateful
         request_id = str(uuid.uuid4())
+        tool_calls_executed = 0
 
         while True:
             if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
@@ -140,6 +157,14 @@ class ToolCallingWrapper:
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
                 tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
+                if self.max_tool_calls >= 0 and tool_calls_executed + len(tool_calls) > self.max_tool_calls:
+                    LOG.info(
+                        "Tool call limit reached (max_tool_calls=%s); stopping generation.",
+                        self.max_tool_calls,
+                    )
+                    result_steps["finish_reason"].append("tool_call_limit_reached")
+                    break
+
                 tool_calls_output_messages = await self._execute_tool_calls(
                     tool_calls, request_id=request_id, endpoint_type=endpoint_type
                 )
@@ -147,14 +172,19 @@ class ToolCallingWrapper:
                 conversation.extend(tool_calls_output_messages)
 
                 result_steps["num_tool_calls"].append(len(tool_calls))
+                tool_calls_executed += len(tool_calls)
 
                 continue
 
             break
 
+        # TODO: currently if number of tool calls is reached, the final conversation
+        #       is "broken" (tool call, but not output). Not sure what's a better option, though
+
         result_steps["generation"] = "".join(result_steps["generation"])
         result_steps["num_generated_tokens"] = sum(result_steps["num_generated_tokens"])
         result_steps["num_tool_calls"] = sum(result_steps["num_tool_calls"])
         result_steps["conversation"] = conversation
+        result_steps["tools"] = tools  # Schema sent to model (with overrides applied)
 
         return result_steps

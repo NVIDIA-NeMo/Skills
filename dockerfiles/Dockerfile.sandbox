@@ -12,6 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# =============================================================================
+# Dependency Locking
+# =============================================================================
+# The sandbox uses pinned dependencies from two lock files:
+#   - requirements/sandbox-core.lock  (from code_execution.txt — used on CI / arm64)
+#   - requirements/sandbox.lock       (from code_execution.txt + stem.txt — used otherwise; superset of core)
+#
+# To regenerate after changing code_execution.txt or stem.txt:
+#     uv pip compile requirements/code_execution.txt \
+#         --python-version 3.10 -o requirements/sandbox-core.lock
+#     uv pip compile requirements/code_execution.txt requirements/stem.txt \
+#         --python-version 3.10 \
+#         --extra-index-url https://download.pytorch.org/whl/cpu \
+#         -o requirements/sandbox.lock
+# =============================================================================
+
 # Use the base image with Python 3.10 and Flask
 FROM tiangolo/uwsgi-nginx-flask:python3.10
 
@@ -59,9 +75,27 @@ RUN cd /lean4/my_project && \
 ENV LEAN_PATH="/lean4/my_project"
 ENV PATH="/lean4/my_project:$PATH"
 
-# Set up application code and install Python dependencies
-COPY requirements/code_execution.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Speed/size/env hygiene
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_SYSTEM_PYTHON=1 \
+    PATH="/root/.local/bin:${PATH}"
+
+# Install uv (pinned for reproducibility)
+RUN curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh
+
+# Set up application code directory
+WORKDIR /app
+
+# Install Python dependencies from lock file
+# - On CI/arm64: core dependencies only (sandbox-core.lock)
+# - Otherwise: full dependencies including STEM (sandbox.lock)
+COPY requirements/sandbox-core.lock /app/requirements-core.lock
+COPY requirements/sandbox.lock /app/requirements.lock
+RUN if [ "$GITHUB_CI" != "1" ] && [ "$TARGETARCH" != "arm64" ]; then \
+        uv pip install --system -r /app/requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu; \
+    else \
+        uv pip install --system -r /app/requirements-core.lock; \
+    fi
 
 # For scicode eval - create data directory and download test data
 # Set GITHUB_CI=1 build arg to skip download (useful for CI when download fails)
@@ -73,15 +107,46 @@ RUN mkdir -p /data && pip install gdown && \
 
 COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.py
 
-# Copy nginx configuration template and startup scripts
+# Copy nginx configuration templates
 COPY dockerfiles/sandbox/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY dockerfiles/sandbox/nginx-worker-proxy.conf.template /etc/nginx/nginx-worker-proxy.conf.template
+
+# =============================================================================
+# Network Blocking for Sandboxed Code Execution (Defense in Depth)
+# =============================================================================
+# When NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1 is set, we use TWO layers of protection:
+#
+# LAYER 1: libblock_network.so (this library, via /etc/ld.so.preload)
+#   - Intercepts socket() syscalls at the C library level
+#   - Blocks any NEW PROCESS that exec()'s (curl, wget, python3 subprocess, etc.)
+#   - System-enforced by the dynamic linker - user code CANNOT bypass it
+#   - Limitation: Doesn't affect forked processes (no exec = no linker = no preload)
+#
+# LAYER 2: Python socket patch (in local_sandbox_server.py shell_worker)
+#   - Patches socket.socket and _socket.socket at Python level
+#   - Blocks code running in the IPython shell_worker (which is forked, not exec'd)
+#   - Limitation: Only works for Python code in the same process
+#
+# WHY BOTH ARE NEEDED:
+#   | Attack Vector                              | Python Patch | ld.so.preload |
+#   |--------------------------------------------|--------------|---------------|
+#   | socket.socket() in IPython                 |  Blocked     |    (forked)   |
+#   | import _socket; _socket.socket() in IPython|  Blocked     |    (forked)   |
+#   | subprocess.run(["curl", url])              |  Can't help  |    Blocked    |
+#   | subprocess.run(["python3",...], env={})    |  Can't help  |    Blocked    |
+#   | requests.get() in IPython                  |  Blocked     |    (forked)   |
+#
+# Neither layer alone is sufficient - together they cover different adversarial scenarios.
+# =============================================================================
+COPY dockerfiles/sandbox/block_network.c /tmp/block_network.c
+RUN gcc -shared -fPIC -o /usr/lib/libblock_network.so /tmp/block_network.c -ldl && \
+    rm /tmp/block_network.c && \
+    echo "Built libblock_network.so for network isolation"
+
+# Copy startup script late in Dockerfile for better cache utilization
+# (start-with-nginx.sh changes more frequently than dependencies above)
 COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx.sh
-
-# Make scripts executable
 RUN chmod +x /start-with-nginx.sh
-
-# Set the working directory to /app
-WORKDIR /app
 
 # Environment variables for multi-worker setup
 ENV NGINX_PORT=6000
@@ -102,4 +167,4 @@ ENV UWSGI_PROCESSES=$UWSGI_PROCESSES
 ENV LISTEN_PORT=6000
 RUN echo "uwsgi_read_timeout 14400s;" > /etc/nginx/conf.d/custom_timeout.conf
 
-CMD /start-with-nginx.sh
+CMD ["/start-with-nginx.sh"]

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import contextlib
+import copy
 import logging
 import os
 import shlex
@@ -176,6 +177,7 @@ def get_executor(
     sbatch_kwargs: dict | None = None,
     overlap: bool = False,
     with_ray: bool = False,
+    ray_template: str | None = None,
 ):
     """Create and configure a nemo-run executor for the target environment.
 
@@ -355,6 +357,10 @@ def get_executor(
         "env_vars": env_vars,
     }
 
+    # Add ray_template if provided
+    if ray_template is not None:
+        executor_params["ray_template"] = ray_template
+
     # Update with explicit_kwargs to allow overriding default values
     if explicit_kwargs:
         # Check which parameters are being overridden
@@ -441,6 +447,7 @@ def add_task(
     skip_hf_home_check: bool | None = None,
     dry_run: bool = False,
     sandbox_env_overrides: list[str] | None = None,
+    ray_template: str | None = None,
 ):
     """Wrapper for nemo-run exp.add to help setting up executors and dependencies.
 
@@ -519,6 +526,8 @@ def add_task(
     executors = []
     # assuming server always has the largest resources request, so it needs to go first
     if server_config is not None and int(server_config["num_gpus"]) > 0:
+        # avoid mutating server_config, as it may be used again later in dependent jobs
+        server_config = copy.deepcopy(server_config)
         # do not pass container into the command builder
         # NOTE: avoid evaluating default (which would index cluster_config) unless needed
         server_container = server_config.pop("container", None)
@@ -542,6 +551,7 @@ def add_task(
             het_group=het_group,
             total_het_groups=total_het_groups,
             with_ray=with_ray,
+            ray_template=ray_template,
         )
         if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
             server_cmd = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
@@ -586,6 +596,7 @@ def add_task(
                         total_het_groups=total_het_groups,
                         overlap=(server_config is not None) or with_sandbox,
                         with_ray=with_ray,
+                        ray_template=ray_template,
                     )
                 )
                 het_group_indices.append(het_group)
@@ -630,6 +641,7 @@ def add_task(
                 total_het_groups=total_het_groups,
                 overlap=True,
                 with_ray=with_ray,
+                ray_template=ray_template,
             )
             executors.append(sandbox_executor)
             het_group_indices.append(het_group)

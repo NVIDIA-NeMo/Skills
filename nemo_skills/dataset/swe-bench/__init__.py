@@ -14,7 +14,6 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 EVAL_SPLIT = "default"
-DATASET_GROUP = "code"
 METRICS_TYPE = "swe-bench"
 # evaluation is fused with generation for efficiency
 GENERATION_MODULE = "nemo_skills.inference.eval.swebench"

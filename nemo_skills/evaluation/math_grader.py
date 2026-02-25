@@ -65,17 +65,24 @@ def math_equal(gt_answer, predicted_answer, take_modulo: int | None = None, **kw
     gt_answer = _additional_normalization(gt_answer)
     predicted_answer = _additional_normalization(predicted_answer)
 
-    # Try literal comparison
-    literal_pattern = r"[a-zA-Z ,]+|[0-9 ]+"
     normalized_gt = normalize_latex(gt_answer, NormalizationConfig)
     normalized_pred = normalize_latex(predicted_answer, NormalizationConfig)
-    is_literal = re.fullmatch(literal_pattern, normalized_gt) and re.fullmatch(literal_pattern, normalized_pred)
     is_normalized_equal = normalized_gt.replace(" ", "") == normalized_pred.replace(" ", "")
 
-    if is_literal or is_normalized_equal:
-        return is_normalized_equal
+    # Fast path: if normalized strings are equal, no need for symbolic comparison
+    if is_normalized_equal:
+        return True
 
-    # Fallback to symbolic comparison
+    # For TEXT literals (not numeric), use direct string comparison
+    text_literal_pattern = r"[a-zA-Z ,]+"
+    is_text_literal = re.fullmatch(text_literal_pattern, normalized_gt) and re.fullmatch(
+        text_literal_pattern, normalized_pred
+    )
+    if is_text_literal:
+        return False  # Already checked is_normalized_equal above
+
+    # Fallback to symbolic comparison via math_verify
+    # This handles leading zeros ("016" == "16"), fractions, expressions, etc.
     current_gt_answer = gt_answer
     current_predicted_answer = predicted_answer
 
@@ -96,11 +103,11 @@ def extract_answer(
     string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$", relaxed=False
 ):
     """Extract Answer String from \\boxed expression or based on regex
-    If relaxed=True: try both methods, boxed first.
+    If relaxed=True: try both methods, regex first.
     If relaxed=False: use only one method based on extract_from_boxed flag.
     """
     if relaxed:
-        return search_boxed(string) or search_regex(string, extract_regex)
+        return search_regex(string, extract_regex) or search_boxed(string)
 
     if extract_from_boxed:
         return search_boxed(string)

@@ -7,6 +7,7 @@ export NEMO_SKILLS_TEST_MODEL_TYPE=qwen
 # Switch to Qwen3 model for other tests
 export NEMO_SKILLS_TEST_HF_MODEL=Qwen/Qwen3-1.7B
 # generation/evaluation tests
+pytest tests/gpu-tests/test_external_benchmark_eval.py -s -x
 pytest tests/gpu-tests/test_eval.py -s -x
 pytest tests/gpu-tests/test_generate.py -s -x
 pytest tests/gpu-tests/test_judge.py -s -x
@@ -16,6 +17,9 @@ pytest tests/gpu-tests/test_nemo_evaluator.py -s -x
 # For contamination test, reasoning models are not a good choice. Switching to a instruct model.
 export NEMO_SKILLS_TEST_HF_MODEL=Qwen/Qwen3-4B-Instruct-2507
 pytest tests/gpu-tests/test_contamination.py -s -x
+
+# Tool calling tests (uses same Qwen3-4B-Instruct model)
+pytest tests/gpu-tests/test_tool_calling.py -s -x
 
 # TODO: Add fast context retry tests
 # pytest tests/gpu-tests/test_context_retry.py -s -x

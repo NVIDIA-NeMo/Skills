@@ -1,0 +1,6 @@
+user: |-
+  {question}
+  Write an executable Python solution. The output should look like:
+  ```python
+  [Insert the Python code here.]
+  ```

@@ -31,7 +31,7 @@ class MCQEvaluatorConfig(BaseEvaluatorConfig):
     # only used if extract_from_boxed is False
     extract_regex: str = r"The final answer is (.+)$"
     # if relaxed is True:
-    #   extract from boxed FIRST, if not found, extract from regex
+    #   extract from regex FIRST, if not found, extract from boxed
     # if relaxed is False:
     #   if extract_from_boxed is True -> extract from boxed{} ONLY
     #   else extract from regex ONLY

@@ -1,0 +1,18 @@
+# DSBench Data Analysis - Tool mode (Python tool reads Excel files)
+# Adapted from https://raw.githubusercontent.com/LiqiangJing/DSBench/refs/heads/main/data_analysis/eva_autogen_gpt.ipynb
+user: |-
+  {problem}
+
+  The worksheet can be obtained in the path: {excel_paths}
+
+  Feel free to use python tool to read the files or perform other actions or calculations.
+
+  Avoid unnecessary mistakes in reading the files by first exploring the file to understand its structure and schema (e.g., sheet names, column names, nan values, etc.) and identify the relevant data for the question before jumping into solution.
+
+  Put your final answer in \boxed{{your final answer}}. Format your answer based on the question type:
+  - Multiple choice: Put only the option letter (e.g., \boxed{{A}})
+  - Single value: Put only the value (e.g., \boxed{{42}} or \boxed{{Antioch}})
+  - Fill in the blanks: Put answers separated by commas (e.g., \boxed{{answer1, answer2, answer3}})
+  - Multiple variables: Put a dictionary (e.g., \boxed{{{{"x": 10, "y": 20}}}})
+
+  IMPORTANT: \boxed{{}} must contain ONLY your final answer with no additional text or explanation.
