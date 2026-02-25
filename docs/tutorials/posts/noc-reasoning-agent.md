@@ -169,7 +169,7 @@ The script uses keyword matching against resolution codes to assign each inciden
 
 Apply a series of filters to narrow the dataset to high-quality, actionable incidents:
 
-```
+```bash
 # Remove auto-recovered incidents (rows with "Auto Recovered" resolution
 # or "Event Cleared with No Action Taken" in the resolution summary)
 python scripts/filtering/filter_rows.py \
@@ -201,7 +201,7 @@ python scripts/filtering/filter_rows.py \
 
 Convert the filtered CSV into the JSONL format required by Nemo-Skills:
 
-```
+```bash
 python scripts/utils/create_input_jsonl_from_incidents.py \
     --input data/finalized_dataset.csv \
     --output outputs/input_incident.jsonl \
@@ -218,7 +218,7 @@ With the input data prepared, we use a powerful teacher model to generate struct
 
 Before generating synthetic data, download the teacher model weights so they are available inside the container. Download the model to the `/data/models` directory (which is mounted at `/models` inside the container):
 
-```
+```bash
 python -c "from huggingface_hub import snapshot_download; snapshot_download('openai/gpt-oss-120b', local_dir='/data/models/gpt-oss-120b')"
 ```
 
@@ -228,7 +228,7 @@ This places the model under `/data/models/gpt-oss-120b` on the host, which maps 
 
 Use the teacher model ([gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b)) to generate step-by-step incident resolution procedures:
 
-```
+```bash
 ns generate \
     --cluster=local \
     --server_type=vllm \
@@ -274,7 +274,7 @@ The `ns generate` command starts a vLLM server, sends each incident through the 
 
 Extract structured resolution steps from the raw model output:
 
-```
+```bash
 python scripts/utils/format_reasoning_json.py \
     --input outputs/sdg/output.jsonl \
     --output outputs/sdg/formatted_output.json \
@@ -288,7 +288,7 @@ This transforms the raw model output into structured JSON with extracted reasoni
 
 Run the teacher model again to add detailed thinking traces to each procedural step:
 
-```
+```bash
 ns generate \
     --cluster=local \
     --server_type=vllm \
@@ -316,7 +316,7 @@ ns generate \
 
 Merge the structured procedures with reasoning traces into a model-ingestable format:
 
-```
+```bash
 python scripts/utils/format_reasoning_json.py \
     --input outputs/sdg/output.jsonl \
     --output_dir outputs/sdg/full_data \
@@ -340,7 +340,7 @@ With synthetic data generated, we fine-tune the model using [NeMo-RL](https://gi
 
 First, split the data into training and testing sets:
 
-```
+```bash
 python scripts/utils/split_incident_data.py \
     --input_dir outputs/sdg/full_data \
     --train_output outputs/training_data_split.jsonl \
@@ -349,7 +349,7 @@ python scripts/utils/split_incident_data.py \
 
 Then prepare the data in the format required for supervised fine-tuning. This command runs inside the Nemo-Skills container via `ns run_cmd`:
 
-```
+```bash
 ns run_cmd \
     --log_dir=/workspace/prepare-sft-data-incidence \
     --expname=prep-sft-data-inci \
@@ -380,7 +380,7 @@ The prompt template in `prompt_incident.yaml` defines the NOC engineer system pr
 
 Fine-tune [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B) using NeMo-RL with the Megatron backend:
 
-```
+```bash
 ns nemo_rl sft \
     --cluster=local \
     --expname=training \
@@ -474,7 +474,7 @@ These libraries provide:
 
 ### Run the Fine-Tuned Agent
 
-```
+```bash
 python scripts/create_agent_with_tools_batch.py \
     --input outputs/final_agent_input.jsonl \
     --output outputs/agent_responses.jsonl \
@@ -564,7 +564,7 @@ Skills/recipes/noc-reasoning-agent/
 
 If you see `PermissionError: [Errno 13] Permission denied` when writing to output directories:
 
-```
+```bash
 sudo chown -R $(whoami):$(whoami) ./outputs/
 ```
 
@@ -583,7 +583,7 @@ Then re-run the failing `ns` command.
 
 If Docker containers fail to build or pull, try a clean reinstall of Nemo-Skills:
 
-```
+```bash
 pip uninstall nemo_skills -y
 pip cache purge
 cd /path/to/Skills
