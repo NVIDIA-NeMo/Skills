@@ -1,15 +1,78 @@
+diff --git a/evaluation_lib.py b/evaluation_lib.py
+index a0db9e7..912a26e 100644
+--- a/evaluation_lib.py
++++ b/evaluation_lib.py
+@@ -18,6 +18,7 @@
+ import collections
+ import dataclasses
+ import json
++import logging
+ from typing import Dict, Optional, Union
+ 
+ import instructions_registry
+@@ -90,10 +91,19 @@ def test_instruction_following_strict(
+     if args and "prompt" in args:
+       instruction.build_description(prompt=inp.prompt)
+ 
+-    if response.strip() and instruction.check_following(response):
+-      is_following_list.append(True)
+-    else:
+-      is_following_list.append(False)
++
++    response_has_content = bool(response.strip())
++    follows_instruction = False
++    if response_has_content:
++      try:
++        follows_instruction = instruction.check_following(response)
++      except Exception:  # pylint: disable=broad-except
++        logging.exception(
++            "check_following failed for instruction %s (prompt key %s)",
++            instruction_id,
++            inp.key,
++        )
++    is_following_list.append(response_has_content and follows_instruction)
+ 
+   return OutputExample(
+       instruction_id_list=inp.instruction_id_list,
+@@ -142,9 +152,18 @@ def test_instruction_following_loose(
+ 
+     is_following = False
+     for r in all_responses:
+-      if r.strip() and instruction.check_following(r):
+-        is_following = True
+-        break
++      if not r.strip():
++        continue
++      try:
++        if instruction.check_following(r):
++          is_following = True
++          break
++      except Exception:  # pylint: disable=broad-except
++        logging.exception(
++            "check_following failed for instruction %s (prompt key %s)",
++            instruction_id,
++            inp.key,
++        )
+ 
+     is_following_list.append(is_following)
+ 
+@@ -217,3 +236,4 @@ def print_report(outputs):
+   for instruction_id in sorted(tier1_total.keys()):
+     accuracy = tier1_correct[instruction_id] / tier1_total[instruction_id]
+     print(f"{instruction_id} {accuracy}")
++
 diff --git a/instructions.py b/instructions.py
-index d3071c7..e303de7 100644
+index f32ff48..e587c9e 100644
 --- a/instructions.py
 +++ b/instructions.py
-@@ -31,7 +31,9 @@ import io
-
+@@ -30,7 +30,9 @@ import io
+ 
  import instructions_util
-
+ 
 -download('en_core_web_sm')
 +# assumed to be predownloaded
 +print("skipping download of en_core_web_sm")
 +# download('en_core_web_sm')
-
+ 
  logger = logging.getLogger(__name__)
-
+ 

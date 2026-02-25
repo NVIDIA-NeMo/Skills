@@ -27,7 +27,9 @@ class GeminiModel(BaseModel):
             - gemini-2.5-flash: thinking budget 0-24576 (default: no thinking)
             - gemini-2.5-flash-lite: thinking budget 0-24576 (default: no thinking)
         """
-        super().__init__(base_url="", *args, **kwargs)
+        # Use empty string only if no base_url provided (uses litellm's default Gemini endpoint)
+        # Otherwise pass through the custom base_url
+        super().__init__(base_url=base_url if base_url else "", *args, **kwargs)
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         api_key = super()._get_api_key(api_key, api_key_env_var, base_url)
@@ -55,6 +57,7 @@ class GeminiModel(BaseModel):
         reasoning_effort: str | None,
         extra_body: dict = None,
         tools: list[dict] | None = None,
+        response_format=None,
     ) -> dict:
         """
         https://github.com/BerriAI/litellm/blob/v1.75.0-nightly/litellm/constants.py#L45-L56
@@ -70,6 +73,8 @@ class GeminiModel(BaseModel):
             "`repetition_penalty` is not supported by Gemini API, please set it to default value `1.0`."
         )
         assert not extra_body, "`extra_body` is not supported by Gemini API, please set it to None or empty dict"
+        if response_format is not None:
+            raise NotImplementedError()
 
         # Vertext AI params: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference
         # litellm default params: https://github.com/BerriAI/litellm/blob/v1.75.0-nightly/litellm/llms/gemini/chat/transformation.py#L73-L90
@@ -100,7 +105,9 @@ class GeminiModel(BaseModel):
             params["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": -1,
+                "include_thoughts": True,
             }
+            params["allowed_openai_params"].append("thinking")
 
         params["reasoning_effort"] = reasoning_effort
 

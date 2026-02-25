@@ -154,6 +154,8 @@ class CodeExecutionWrapper:
                 # if there's an unfinished code block
                 if output.count(code_end) + 1 == output.count(code_begin):
                     output += code_end
+                    # Count tokens for the manually added code_end
+                    num_generated_tokens += len(self.model.tokenizer.encode(code_end))
 
                 # Update the prompt based on format
                 if is_openai_format:
@@ -162,16 +164,14 @@ class CodeExecutionWrapper:
                 else:
                     request["prompt"] += output
 
-                # if it's the extra iteration, we don't execute the code block and just finish
-
-                if generation_index == effective_max_code_executions:
-                    break
                 # adjusting requested tokens to account for what has been generated already
                 request["tokens_to_generate"] -= num_generated_tokens
                 total_num_generated_tokens += num_generated_tokens
                 generation_time += int(time.time() - generation_time_start)
-                # TODO: currently we don't account for tokens in the code output that we add to the prompt
-                #       in most cases the output should be small though
+
+                # if it's the extra iteration, we don't execute the code block and just finish
+                if generation_index == effective_max_code_executions:
+                    break
                 if request["tokens_to_generate"] <= 0:
                     break
                 # .rfind(code_end, 0, -1) searches for the second-to-last occurrence of code_end and checks
@@ -195,6 +195,12 @@ class CodeExecutionWrapper:
                     if "process_status" in execution_dict and execution_dict["process_status"] == "timeout":
                         num_code_timeouts += 1
 
+                    # Account for tokens in the code output
+                    code_output_tokens = len(self.model.tokenizer.encode(code_output))
+                    request["tokens_to_generate"] -= code_output_tokens
+                    total_num_generated_tokens += code_output_tokens
+                    if request["tokens_to_generate"] <= 0:
+                        break
                     if is_openai_format:
                         request["prompt"][-2]["content"] += code_output
                     else:
@@ -270,6 +276,12 @@ class CodeExecutionWrapper:
 
         Not every server supports that, so make sure to override this method directly if that's not the case.
         """
+        if self.model.tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is required for CodeExecutionWrapper to correctly count tokens. "
+                "Please initialize the model with require_tokenizer=True or provide a valid tokenizer."
+            )
+
         if top_logprobs is not None:  # TODO: add this
             raise NotImplementedError("top_logprobs is not supported yet.")
 
@@ -363,23 +375,24 @@ class CodeExecutionWrapper:
                 model_token_iterator = await self.model.generate_async(prompt=current_full_prompt, **request)
 
                 current_output_segment = ""
-                num_generated_tokens = 0
                 async for chunk in model_token_iterator:
                     yield chunk
                     current_output_segment += chunk["generation"]
-                    num_generated_tokens += 1
-
-                request["tokens_to_generate"] -= num_generated_tokens
-                if request["tokens_to_generate"] <= 0:
-                    break
-                if not current_output_segment:
-                    break
 
                 # openai and trtllm don't show what stop word was triggered, so we assume that it was `code_end`
                 # if there's an unfinished code block
                 if current_output_segment.count(code_end) + 1 == current_output_segment.count(code_begin):
                     current_output_segment += code_end
                     yield {"generation": code_end}
+
+                # Calculate token count for this segment (after adding code_end if needed)
+                num_generated_tokens = len(self.model.tokenizer.encode(current_output_segment))
+
+                request["tokens_to_generate"] -= num_generated_tokens
+                if request["tokens_to_generate"] <= 0:
+                    break
+                if not current_output_segment:
+                    break
 
                 # Update the prompt based on format
                 if is_openai_format:
@@ -416,6 +429,12 @@ class CodeExecutionWrapper:
                         remaining_code_executions,
                     )
                     yield {"generation": formatted_code_output}  # Yield the entire formatted code output as one chunk
+
+                    # Account for tokens in the code output
+                    code_output_tokens = len(self.model.tokenizer.encode(formatted_code_output))
+                    request["tokens_to_generate"] -= code_output_tokens
+                    if request["tokens_to_generate"] <= 0:
+                        break
 
                     # Append executed code's output to the prompt
                     if is_openai_format:

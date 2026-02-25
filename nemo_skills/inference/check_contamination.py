@@ -20,15 +20,24 @@ from dataclasses import field
 
 import hydra
 
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerationTask,
+    GenerationTaskConfig,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
-from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
+from nemo_skills.utils import (
+    get_help_message,
+    get_logger_name,
+    nested_dataclass,
+    setup_logging,
+)
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
 @nested_dataclass(kw_only=True)
-class CheckContaminationConfig(GenerateSolutionsConfig):
+class CheckContaminationConfig(GenerationTaskConfig):
     """LLM-based check contamination parameters.
     For the full list of supported parameters, use 'python -m nemo_skills.inference.generate --help'
     """
@@ -118,14 +127,14 @@ class CheckContaminationTask(GenerationTask):
                 return {"generation": True}
         return None
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         """Process a single data point by running contamination checks on all similar items."""
         query_data = self._create_query_data(data_point)
 
         # Create tasks for all queries using super().process_single_datapoint
         tasks = []
         for query_point in query_data:
-            tasks.append(super().process_single_datapoint(query_point, all_data))
+            tasks.append(super().process_single_datapoint(query_point, all_data, prompt_format))
 
         query_results = await asyncio.gather(*tasks)
 

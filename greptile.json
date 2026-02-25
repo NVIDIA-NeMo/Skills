@@ -1,0 +1,26 @@
+{
+  "commentTypes": ["logic", "syntax", "style"],
+  "instructions": "Review code following the guidelines in CONTRIBUTING.md. Be concise, actionable, and focus on critical issues.",
+  "includeBranches": ["main", "chtruong/*"],
+  "strictness": 3,
+  "summarySection": {
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
+  },
+  "issuesTableSection": {
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
+  },
+  "confidenceScoreSection": {
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
+  },
+  "sequenceDiagramSection": {
+    "included": false,
+    "collapsible": false,
+    "defaultOpen": false
+  }
+}

@@ -31,6 +31,16 @@ from typing import Any, Dict, Iterable, List
 from nemo_skills.mcp.utils import locate
 
 
+class FatalToolError(Exception):
+    """Exception for fatal tool errors that should stop the entire process.
+
+    Use this for unrecoverable errors like authentication failures where
+    continuing would be pointless (e.g., invalid API keys).
+    """
+
+    pass
+
+
 class Tool(ABC):
     """Abstract base for module-based tools.
 
@@ -58,6 +68,9 @@ class Tool(ABC):
         pass
 
     async def shutdown(self) -> None:  # Optional hook
+        return None
+
+    def post_configure(self) -> None:
         return None
 
 
@@ -98,6 +111,7 @@ class ToolManager:
                 raise ValueError(f"Duplicate tool class registered: '{provider_key}'")
 
             tool.configure((overrides.get(provider_key) if overrides else None), context)
+            tool.post_configure()
             self._tools[provider_key] = tool
 
     async def shutdown(self) -> None:

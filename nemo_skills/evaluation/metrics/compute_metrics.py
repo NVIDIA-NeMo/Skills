@@ -25,10 +25,6 @@ class ComputeMetrics:
     def __init__(
         self,
         benchmark,
-        data_dir=None,
-        cluster_config=None,
-        extra_datasets=None,
-        extra_datasets_type=None,
         max_samples=-1,
         metric_type=None,
         max_seq_len=None,
@@ -38,13 +34,7 @@ class ComputeMetrics:
         self.metric_type = metric_type
         self.max_seq_len = max_seq_len
         if self.metric_type is None:
-            benchmark_module, _, _ = get_dataset_module(
-                benchmark,
-                data_dir=data_dir,
-                cluster_config=cluster_config,
-                extra_datasets=extra_datasets,
-                extra_datasets_type=extra_datasets_type,
-            )
+            benchmark_module, _ = get_dataset_module(benchmark)
             self.metric_type = benchmark_module.METRICS_TYPE
 
         # Dictionary to store metrics calculators for different subsets

@@ -71,6 +71,9 @@ class MCPClientTool(Tool):
                 return value
         return value
 
+    def post_configure(self) -> None:
+        pass
+
     def configure(self, overrides: Dict[str, Any] | None = None, context: Dict[str, Any] | None = None) -> None:
         cfg = dict(self._config)
         if overrides:

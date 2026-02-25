@@ -104,7 +104,7 @@ For example, in a benchmark's `__init__.py` file, you can add default LLM-as-jud
 
 ```bash
 JUDGE_PIPELINE_ARGS = {
-    "model": "o3-mini-20250131",
+    "model": "o3-mini-2025-01-31",
     "server_type": "openai",
     "server_address": "https://api.openai.com/v1",
 }
@@ -233,3 +233,21 @@ In either case you can always customize the judge prompt by setting a new `++pro
 
 - Benchmark is defined in [`nemo_skills/dataset/beyond-aime/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/beyond-aime/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/ByteDance-Seed/BeyondAIME).
+
+### imo-answerbench
+
+- Benchmark is defined in [`nemo_skills/dataset/imo-answerbench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/imo-answerbench/__init__.py)
+- Original benchmark source is [here](https://github.com/google-deepmind/superhuman/tree/main/imobench).
+- Part of IMO-Bench from [this paper](https://arxiv.org/abs/2511.01846). Tests mathematical answer equivalence using LLM-as-a-judge.
+
+### imo-proofbench
+
+- Benchmark is defined in [`nemo_skills/dataset/imo-proofbench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/imo-proofbench/__init__.py)
+- Original benchmark source is [here](https://github.com/google-deepmind/superhuman/tree/main/imobench).
+- Part of IMO-Bench from [this paper](https://arxiv.org/abs/2511.01846). Evaluates full mathematical proofs using LLM-as-a-judge with a detailed rubric.
+
+### imo-gradingbench
+
+- Benchmark is defined in [`nemo_skills/dataset/imo-gradingbench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/imo-gradingbench/__init__.py)
+- Original benchmark source is [here](https://github.com/google-deepmind/superhuman/tree/main/imobench).
+- Part of IMO-Bench from [this paper](https://arxiv.org/abs/2511.01846). Meta-benchmark for evaluating how well models can grade mathematical solutions.

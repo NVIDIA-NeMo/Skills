@@ -101,6 +101,11 @@ class PromptConfig:
     system: str | None = None
     code_tags: CodeTags = None
     few_shot_examples: FewShotExamplesConfig = field(default_factory=FewShotExamplesConfig)
+    # VLM support: if set, the field name from input_dict containing the image path
+    # When set, user content will be a multimodal list with image_url + text
+    image_field: str | None = None
+    # Whether to put image before or after the text in multimodal content
+    image_position: str = "before"  # "before" or "after"
 
 
 class Prompt:
@@ -112,7 +117,7 @@ class Prompt:
         if self.tokenizer:
             # assuming it's the object already if not str
             if isinstance(self.tokenizer, str):
-                self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer, trust_remote_code=True)
 
     def build_filled_example(self, example_dict: Dict[str, Any]) -> str:
         """Builds a filled example string based on the example dictionary."""
@@ -264,11 +269,30 @@ class Prompt:
 
         if self.config.system is not None:
             messages = [
-                {"role": "system", "content": self.config.system},
+                {"role": "system", "content": self.config.system.format(**input_dict)},
             ]
         else:
             messages = []
-        messages.append({"role": "user", "content": self.build_user_message(input_dict)})
+
+        # Build user message content
+        user_text = self.build_user_message(input_dict)
+
+        # For VLM: if image_field is set, build multimodal content with image + text
+        if self.config.image_field and self.config.image_field in input_dict:
+            image_path = input_dict[self.config.image_field]
+            text_part = {"type": "text", "text": user_text}
+            image_part = {"type": "image_url", "image_url": {"url": image_path}}
+
+            if self.config.image_position == "before":
+                user_content = [image_part, text_part]
+            elif self.config.image_position == "after":
+                user_content = [text_part, image_part]
+            else:
+                raise ValueError(f"Invalid image_position '{self.config.image_position}'. Must be 'before' or 'after'")
+        else:
+            user_content = user_text
+
+        messages.append({"role": "user", "content": user_content})
 
         if not format_as_string:
             if start_assistant_response_key:
@@ -297,10 +321,15 @@ class Prompt:
                         raise ValueError(
                             "The model doesn't support chat template, can't format messages which contain non-user values"
                         )
+                    user_content = messages[0]["content"]
+                    # Handle multimodal content - extract text for base models (no chat template)
+                    if isinstance(user_content, list):
+                        text_parts = [item["text"] for item in user_content if item.get("type") == "text"]
+                        user_content = " ".join(text_parts)
                     if hasattr(self.tokenizer, "bos_token"):
-                        messages_string = self.tokenizer.bos_token + messages[0]["content"]
+                        messages_string = self.tokenizer.bos_token + user_content
                     else:
-                        messages_string = messages[0]["content"]
+                        messages_string = user_content
                 else:
                     raise e
             if start_assistant_response_key:
@@ -366,9 +395,15 @@ def get_token_count(
             message if isinstance(message, dict) else message_to_dict(copy.deepcopy(message)) for message in messages
         ]
         try:
-            return len(tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools))
+            result = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools)
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(result, list):
+                result = result["input_ids"]
+            return len(result)
+
         except Exception as e:
             raise ValueError(f"Invalid chat message format: {e}")
+
     else:
         raise ValueError("messages must be a string or a list of dictionaries")
 
@@ -379,8 +414,10 @@ def get_config_path(config: str, config_dir: str | None = None, config_extension
 
     if config.endswith(f".{config_extension}"):
         config_path = Path(config).absolute()
-    elif config.startswith("nemo_skills"):
-        config_path = Path(__file__).parents[2].absolute() / f"{config}.{config_extension}"
+        # If not found, try relative to repo root (works for external packages
+        # whose code lives next to nemo_skills, e.g. in /nemo_run/code/)
+        if not config_path.is_file():
+            config_path = Path(__file__).parents[2].absolute() / config
     else:
         config_path = Path(config_dir) / f"{config}.{config_extension}"
 
@@ -393,9 +430,8 @@ def load_config(config: str, config_dir: str | None = None) -> dict:
 
     Args:
         config (str): The location of the prompt config file.
-            Can be the full path to a yaml file (if ends with .yaml) or one of the available configs.
-            If configs starts with nemo_skills we will look relative to the repo root.
-            If not, we will look relative to the config_dir parameter
+            If it ends with .yaml, it is treated as a path (absolute or relative to repo root).
+            Otherwise, it is looked up relative to config_dir.
         config_dir (str): The dir to look for the config file.
 
     Returns:

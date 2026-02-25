@@ -1,0 +1,7 @@
+# /home/gnalbandyan/grigor/code/ns_pr/Skills/nemo_skills/prompt/config/eval/livecodebench/python_codegen.yaml
+# default prompt for livecodebench Python
+
+user: |-
+  Here is a problem for which you need to generate an executable code in python programming language.
+
+  {question}

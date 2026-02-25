@@ -51,6 +51,7 @@ ns generate \
   --model Qwen/Qwen3-8B \
   --server_type vllm \
   --server_gpus 1 \
+  --server_args '--enable-auto-tool-choice --tool-call-parser hermes' \
   --with_sandbox true \
   ++tool_modules=[nemo_skills.mcp.servers.python_tool.PythonTool] \
   ++inference.tokens_to_generate=8192 \
@@ -73,6 +74,7 @@ generate(
     model='Qwen/Qwen3-8B',
     server_type='vllm',
     server_gpus=1,
+    server_args='--enable-auto-tool-choice --tool-call-parser hermes',
     input_file='data.jsonl',
     output_dir='outputs',
     with_sandbox=True,  # Required for PythonTool
@@ -269,6 +271,7 @@ ns generate \
   --model Qwen/Qwen3-8B \
   --server_type vllm \
   --server_gpus 1 \
+  --server_args '--enable-auto-tool-choice --tool-call-parser hermes' \
   ++tool_modules=[/absolute/path/to/calculator_tool.py::CalculatorTool] \
   ++tool_overrides.CalculatorTool.default_precision=4
 ```
@@ -287,6 +290,7 @@ generate(
     model='Qwen/Qwen3-8B',
     server_type='vllm',
     server_gpus=1,
+    server_args='--enable-auto-tool-choice --tool-call-parser hermes',
     input_file='data.jsonl',
     output_dir='outputs',
 )
@@ -342,6 +346,7 @@ generate(
     model='Qwen/Qwen3-8B',
     server_type='vllm',
     server_gpus=1,
+    server_args='--enable-auto-tool-choice --tool-call-parser hermes',
     input_file='data.jsonl',
     output_dir='outputs',
     with_sandbox=True,

@@ -121,3 +121,15 @@ class HumanEvalInfillingMetrics(BaseMetrics):
     def update(self, predictions):
         super().update(predictions)
         self._compute_pass_at_k(predictions=predictions)
+
+
+class ComputeEvalMetrics(BaseMetrics):
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        return {"accuracy": prediction["passed"]}
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {"passed": False}
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)

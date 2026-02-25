@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Define MMAU-Pro as a benchmark group with three separate evaluation types
-DATASET_GROUP = "speechlm"
+REQUIRES_DATA_DIR = True
 IS_BENCHMARK_GROUP = True
 SCORE_MODULE = "nemo_skills.dataset.mmau-pro.mmau_pro_score"
 

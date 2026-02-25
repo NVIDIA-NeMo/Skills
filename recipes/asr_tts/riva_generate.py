@@ -20,7 +20,11 @@ from pathlib import Path
 
 import hydra
 
-from nemo_skills.inference.generate import GenerateSolutionsConfig, GenerationTask, InferenceConfig
+from nemo_skills.inference.generate import (
+    GenerationTask,
+    GenerationTaskConfig,
+    InferenceConfig,
+)
 from nemo_skills.inference.model import server_params
 from nemo_skills.inference.model.nim_utils import ASRExtraConfig, TTSExtraConfig
 from nemo_skills.utils import get_help_message, nested_dataclass, setup_logging
@@ -29,7 +33,7 @@ LOG = logging.getLogger(__name__)
 
 
 @nested_dataclass(kw_only=True)
-class RivaGenerateConfig(GenerateSolutionsConfig):
+class RivaGenerateConfig(GenerationTaskConfig):
     inference: InferenceConfig = field(default_factory=InferenceConfig)
     server: dict = field(default_factory=dict)
 
@@ -127,7 +131,7 @@ class RivaGenerationTask(GenerationTask):
     def setup_prompt(self):
         return None
 
-    def fill_prompt(self, data_point, all_data):
+    def fill_prompt(self, data_point, all_data, prompt_format=None):
         if self.cfg.generation_type == "tts":
             return data_point.get("text", data_point.get("prompt", ""))
         else:
@@ -137,7 +141,7 @@ class RivaGenerationTask(GenerationTask):
         if data:
             LOG.info(f"Example input: {self.fill_prompt(data[0], data)}")
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         prompt = self.fill_prompt(data_point, all_data)
         if not prompt:
             raise ValueError(f"Empty input for datapoint {data_point}")

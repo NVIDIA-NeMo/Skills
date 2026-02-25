@@ -188,7 +188,7 @@ ns eval \
 
 #### Command for HLE Eval
 
-For HLE, because symbolic comparison is not sufficient to determine the correctness of the output, we use the recommended `o3-mini-20250131` model as the judge. Note that this model is the default in Nemo-Skills, and we have just added this argument for illustration purposes. To evaluate for the [Artificial Analysis Index (AAI) setting, please use the gpt-4o-20240806 model as the judge](https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview){target="_blank"}.
+For HLE, because symbolic comparison is not sufficient to determine the correctness of the output, we use the recommended `o3-mini-2025-01-31` model as the judge. Note that this model is the default in Nemo-Skills, and we have just added this argument for illustration purposes. To evaluate for the [Artificial Analysis Index (AAI) setting, please use the gpt-4o-20240806 model as the judge](https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview){target="_blank"}.
 
 Note that using any of the OpenAI hosted models requires `OPENAI_API_KEY`. Alternatively, a self-hosted judge model can also be used for judgement. For example, `--judge_model="/workspace/NVIDIA-Nemotron-Nano-9B-v2"`  in tandem with `--judge_server_type="vllm" --judge_server_gpus 1` will use the `NVIDIA-Nemotron-Nano-9B-v2` itself as a judge.
 
@@ -202,7 +202,7 @@ ns eval \
     --server_type=vllm \
     --server_gpus=1 \
     --server_args="--mamba_ssm_cache_dtype float32 " \
-    --judge_model="o3-mini-20250131" \
+    --judge_model="o3-mini-2025-01-31" \
     --extra_judge_args="++inference.tokens_to_generate=4096 ++max_concurrent_requests=8" \
     ++parse_reasoning=True \
     ++inference.tokens_to_generate=32768 \

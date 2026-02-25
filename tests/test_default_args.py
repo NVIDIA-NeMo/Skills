@@ -20,3 +20,11 @@ from nemo_skills.pipeline.cli import generate, wrap_arguments
 def test_error_on_missing_default():
     with pytest.raises(TypeError):
         generate(ctx=wrap_arguments(""))
+
+
+def test_wrap_arguments_empty_string():
+    assert wrap_arguments("").args == []
+
+
+def test_wrap_arguments_drops_extra_spaces():
+    assert wrap_arguments("++a=1   ++b=2 ").args == ["++a=1", "++b=2"]
