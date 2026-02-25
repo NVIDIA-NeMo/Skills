@@ -181,6 +181,7 @@ def test_server_metadata_from_num_tasks(tmp_path):
         installation_command=None,
         with_sandbox=False,
         partition=None,
+        account=None,
         keep_mounts_for_sandbox=False,
         task_name="test-task",
         log_dir="/tmp/logs",
