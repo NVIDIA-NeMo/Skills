@@ -1,4 +1,4 @@
-# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-try:
-    import nemo_run  # noqa: F401
-except ModuleNotFoundError:
-    raise ImportError(
-        "nemo-skills-core is installed but pipeline functionality requires the full package. "
-        "Install it with: pip install nemo-skills"
-    ) from None
+import sys
+
+
+def main():
+    print("nemo-skills-core is installed (lightweight mode).\nFor the full ns CLI, run: pip install nemo-skills")
+    sys.exit(1)
