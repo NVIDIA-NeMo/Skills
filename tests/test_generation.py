@@ -24,6 +24,7 @@ from nemo_skills.pipeline.generate import _create_job_unified
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
+@pytest.mark.timeout(300)
 def test_eval_gsm8k_api(tmp_path):
     cmd = (
         f"ns eval "
@@ -33,6 +34,7 @@ def test_eval_gsm8k_api(tmp_path):
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
+        f"    ++inference.timeout=120 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -51,6 +53,7 @@ def test_eval_gsm8k_api(tmp_path):
     assert metrics["symbolic_correct"] >= 80
 
 
+@pytest.mark.timeout(300)
 def test_eval_judge_api(tmp_path):
     cmd = (
         f"ns eval "
@@ -64,6 +67,7 @@ def test_eval_judge_api(tmp_path):
         f"    --judge_server_type=openai "
         f"    --judge_generation_type=math_judge "
         f"    ++max_samples=2 "
+        f"    ++inference.timeout=120 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
