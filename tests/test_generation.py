@@ -66,6 +66,7 @@ def test_eval_judge_api(tmp_path):
         f"    --judge_server_address=https://inference-api.nvidia.com/v1/ "
         f"    --judge_server_type=openai "
         f"    --judge_generation_type=math_judge "
+        f"    --extra_judge_args='++inference.timeout=120' "
         f"    ++max_samples=2 "
         f"    ++inference.timeout=120 "
     )
