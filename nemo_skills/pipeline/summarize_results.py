@@ -24,7 +24,6 @@ from typing import Optional
 
 import typer
 
-from nemo_skills.dataset.utils import ExtraDatasetType
 from nemo_skills.evaluation.metrics import ComputeMetrics, default_formatting
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.utils import (
@@ -32,7 +31,6 @@ from nemo_skills.pipeline.utils import (
     cluster_download_dir,
     cluster_upload,
     get_cluster_config,
-    get_env_variables,
     get_unmounted_path,
     parse_kwargs,
     resolve_mount_paths,
@@ -47,6 +45,17 @@ def get_subset_name(benchmark: str, subset: str) -> str:
     if subset == "_all_":
         return benchmark
     return f"{benchmark}-{subset}"
+
+
+def _set_asr_leaderboard_macro_wer(metrics: dict):
+    """Override _all_ WER with macro average across ASR leaderboard subsets."""
+    subset_names = [subset for subset in metrics if subset != "_all_"]
+    if not subset_names:
+        return
+
+    for eval_mode, overall_metrics in metrics["_all_"].items():
+        subset_wers = [metrics[subset][eval_mode]["wer"] for subset in subset_names]
+        overall_metrics["wer"] = round(sum(subset_wers) / len(subset_wers), 2)
 
 
 def add_benchmark_groups(results, metrics_to_print, evaluations_to_print):
@@ -154,26 +163,10 @@ def summarize_results(
         help="Specify benchmarks to run (comma separated). "
         "If not specified, all benchmarks in the results_dir will be used.",
     ),
-    data_dir: str = typer.Option(
-        None,
-        help="Path to the data directory. If not specified, will use the default nemo_skills/dataset path. "
-        "Can also specify through NEMO_SKILLS_DATA_DIR environment variable.",
-    ),
     remote_tar_dir: str = typer.Option(None, help="Directory where remote tar files are created on clusters"),
     debug: bool = typer.Option(False, help="Print debug information"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     max_samples: int = typer.Option(-1, help="Limit metric computation only to first `max_samples`"),
-    extra_datasets: str = typer.Option(
-        None,
-        help="Path to a custom dataset folder that will be searched in addition to the main one. "
-        "Can also specify through NEMO_SKILLS_EXTRA_DATASETS.",
-    ),
-    extra_datasets_type: ExtraDatasetType = typer.Option(
-        "local",
-        envvar="NEMO_SKILLS_EXTRA_DATASETS_TYPE",
-        help="If you have extra datasets locally, set to 'local', if on cluster, set to 'cluster'."
-        "Can also specify through NEMO_SKILLS_EXTRA_DATASETS_TYPE environment variable.",
-    ),
     metric_type: Optional[str] = typer.Option(
         None,
         help="Specify metric type to use a specific metric calculator.",
@@ -228,8 +221,6 @@ def summarize_results(
                 verbose=verbose,
             )
             results_dir = Path(temp_dir) / Path(results_dir).name
-        env_vars = get_env_variables(cluster_config)
-        data_dir = data_dir or env_vars.get("NEMO_SKILLS_DATA_DIR") or os.environ.get("NEMO_SKILLS_DATA_DIR")
     else:
         cluster_config = None
 
@@ -287,24 +278,13 @@ def summarize_results(
         if not Path(benchmark_path).is_dir():
             continue
 
-        if metric_type is not None:
-            metrics_calculator = ComputeMetrics(
-                benchmark,
-                metric_type=metric_type,
-                max_samples=max_samples,
-                metrics_kwargs=metrics_kwargs,
-            )
-        else:
-            metrics_calculator = ComputeMetrics(
-                benchmark,
-                data_dir=data_dir,
-                cluster_config=cluster_config,
-                extra_datasets=extra_datasets,
-                extra_datasets_type=extra_datasets_type,
-                max_samples=max_samples,
-                max_seq_len=max_seq_len,
-                metrics_kwargs=metrics_kwargs,
-            )
+        metrics_calculator = ComputeMetrics(
+            benchmark,
+            metric_type=metric_type,
+            max_samples=max_samples,
+            max_seq_len=max_seq_len,
+            metrics_kwargs=metrics_kwargs,
+        )
 
         metrics = {}
 
@@ -334,6 +314,8 @@ def summarize_results(
             input_files = [f"{benchmark_path}/output.jsonl"]
 
         metrics = metrics_calculator.compute_metrics(input_files=input_files)
+        if benchmark == "asr-leaderboard" and len(metrics) > 1:
+            _set_asr_leaderboard_macro_wer(metrics)
         if len(metrics) > 1:  # has subsets
             for subset, subset_metrics in metrics.items():
                 results[get_subset_name(benchmark, subset)].update(subset_metrics)

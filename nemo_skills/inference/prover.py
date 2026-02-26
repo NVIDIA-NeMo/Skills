@@ -283,6 +283,9 @@ class ProverTask(GenerationTask):
             prefix_tokens = self.hf_tokenizer.apply_chat_template(
                 prepared_conversation, tokenize=True, add_generation_prompt=True
             )
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(prefix_tokens, list):
+                prefix_tokens = prefix_tokens["input_ids"]
             num_tokens_prefix = len(prefix_tokens)
             prefix = self.hf_tokenizer.apply_chat_template(
                 prepared_conversation, tokenize=False, add_generation_prompt=True
@@ -443,7 +446,7 @@ class ProverTask(GenerationTask):
 
         return new_results_dict
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         result = await self.pass_at_N(data_point, all_data)
         result_dict = {"generation": result}
 

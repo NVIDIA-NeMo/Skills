@@ -305,7 +305,7 @@ class AutoformalizeTask(GenerationTask):
             "success": results_dict["passed_compile_judge"],
         }
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         result = await self._single_data_point_generate(data_point, all_data)
         result_dict = {"generation": result}
         return result_dict

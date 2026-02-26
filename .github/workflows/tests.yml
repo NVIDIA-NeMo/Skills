@@ -30,15 +30,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GHCR_PAT }}
 
-    - name: Free up disk space
+    - name: Free up disk space on Ubuntu
       run: |
-        # Remove unnecessary files on macOS
-        sudo rm -rf /usr/local/lib/android || true
-        sudo rm -rf /usr/local/.ghcup || true
-        sudo rm -rf /usr/local/lib/node_modules || true
-        brew cleanup || true
-        # Clear pip cache
-        pip cache purge || true
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
@@ -68,6 +65,12 @@ jobs:
           --load \
           .
 
+        # Free up build cache before building the next image.
+        # buildx --load exports a tarball then imports layers, so both
+        # exist on disk at once. Pruning the builder cache between builds
+        # reclaims enough space for the sandbox image to load.
+        docker builder prune -f
+
         # Build sandbox-image with expected tag
         SANDBOX_HASH=$(sha256sum dockerfiles/Dockerfile.sandbox | cut -d' ' -f1 | cut -c1-12)
         SANDBOX_TAG="locally-built-dockerfiles-dockerfile-sandbox:${SANDBOX_HASH}"
@@ -82,6 +85,7 @@ jobs:
           .
     - name: Run all tests
       env:
+        NV_INFERENCE_API_KEY: ${{ secrets.NV_INFERENCE_API_KEY }}
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
@@ -91,5 +95,5 @@ jobs:
         docker run --rm --network=host -v /nemo_run:/nemo_run nemo-skills-sandbox-image &
         sleep 10
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
-        ns prepare_data gsm8k math-500
+        ns prepare_data gsm8k math-500 hle
         python -m pytest tests/ -m "not gpu" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv

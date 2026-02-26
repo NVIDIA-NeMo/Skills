@@ -13,7 +13,6 @@
 # limitations under the License.
 
 EVAL_SPLIT = "eval"
-DATASET_GROUP = "code"
 METRICS_TYPE = "compute-eval"
 GENERATION_MODULE = "nemo_skills.inference.eval.compute_eval"
 GENERATION_ARGS = "++prompt_config=compute-eval/baseline ++eval_type=compute-eval"

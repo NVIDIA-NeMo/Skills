@@ -408,3 +408,78 @@ or
 ns prepare_data librispeech-pc --split test-other --data_dir=/path/to/data
 ```
 
+## Numb3rs
+
+Numb3rs is a speech benchmark for evaluating text normalization (TN) and inverse text normalization (ITN) capabilities of audio-language models. It contains paired written/spoken forms with corresponding synthetic audio, allowing evaluation of whether a model transcribes numbers in written form (e.g., `$100`, `3.14`) or spoken form (e.g., `one hundred dollars`, `three point one four`).
+
+**Dataset:** [nvidia/Numb3rs on HuggingFace](https://huggingface.co/datasets/nvidia/Numb3rs)
+
+**Categories:** `ADDRESS`, `CARDINAL`, `DATE`, `DECIMAL`, `DIGIT`, `FRACTION`, `MEASURE`, `MONEY`, `ORDINAL`, `PLAIN`, `TELEPHONE`, `TIME`
+
+**Size:** ~10K samples, ~4.89h total audio duration
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/numb3rs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/numb3rs/__init__.py)
+- Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/nvidia/Numb3rs)
+
+### Key Features
+
+- **Dual reference evaluation**: Each sample has both a written form (`text_tn`) and a spoken form (`text_itn`). WER is computed against both references.
+- **Three prompt variants** generated as separate split files:
+    - `test_neutral`: Neutral transcription prompt ("Transcribe the audio file into English text.")
+    - `test_tn`: Text normalization prompt — expects written form (e.g., `$100`)
+    - `test_itn`: Inverse text normalization prompt — expects spoken form (e.g., `one hundred dollars`)
+- **Special normalization mode** `no_tn_itn`: Applies only lowercase + punctuation removal (no whisper normalization that would convert number words to digits, which would defeat the purpose of TN/ITN evaluation).
+
+### Preparing Numb3rs Data
+
+Numb3rs requires audio files for evaluation. **Audio files are downloaded by default** from HuggingFace.
+
+```bash
+ns prepare_data numb3rs --data_dir=/path/to/data --cluster=<cluster_name>
+```
+
+To prepare without saving audio files:
+
+```bash
+ns prepare_data numb3rs --no-audio --skip_data_dir_check
+```
+
+Prepare specific categories only:
+
+```bash
+ns prepare_data numb3rs --categories CARDINAL DATE MONEY --data_dir=/path/to/data
+```
+
+Set a custom audio path prefix (for non-standard mount points):
+
+```bash
+ns prepare_data numb3rs --audio-prefix /my/custom/path --data_dir=/path/to/data
+```
+
+### Running Numb3rs Evaluation
+
+The `--split` flag selects the prompt variant:
+
+```bash
+# Neutral prompt (default)
+ns eval --benchmarks=numb3rs:1 --split=test_neutral ...
+
+# Text normalization prompt (expects written form, e.g. "$100")
+ns eval --benchmarks=numb3rs:1 --split=test_tn ...
+
+# Inverse text normalization prompt (expects spoken form, e.g. "one hundred dollars")
+ns eval --benchmarks=numb3rs:1 --split=test_itn ...
+```
+
+### Understanding Numb3rs Results
+
+Numb3rs reports the following metrics:
+
+- **wer**: Word Error Rate against the expected answer (written form for TN, spoken form for ITN/neutral)
+- **wer_tn**: WER against the written form reference (`text_tn`)
+- **wer_itn**: WER against the spoken form reference (`text_itn`)
+- **success_rate**: Percentage of samples with WER < 0.5
+
+Per-category breakdowns (e.g., `numb3rs-numb3rs_CARDINAL`, `numb3rs-numb3rs_MONEY`) are included automatically.

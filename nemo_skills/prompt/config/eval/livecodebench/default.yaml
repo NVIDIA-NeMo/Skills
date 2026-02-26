@@ -1,8 +1,8 @@
 user: |-
-  ### Question
-  {question}
+  ### Question:
+  {question_content}
 
-  {formatting_message}
+  ### Format: {formatting_message}
   {starter_code}
 
   ### Answer: (use the provided format with backticks)

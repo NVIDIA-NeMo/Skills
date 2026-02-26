@@ -95,7 +95,7 @@ class ScriptGenerationTask(GenerationTask):
         self.llm_kwargs = inference_params
         return nemo_llm
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         # Delegate processing to the user-provided script program
         # Get the function signature to check if llm is a parameter
         sig = inspect.signature(self._script_module.process_single)

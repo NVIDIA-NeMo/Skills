@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "code"
 METRICS_TYPE = "bigcodebench"
 EVAL_SPLIT = "full"
 GENERATION_ARGS = "++prompt_config=eval/bigcodebench/codegen ++eval_type=bigcodebench"

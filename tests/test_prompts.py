@@ -13,7 +13,35 @@
 # limitations under the License.
 
 
-from nemo_skills.prompt.utils import get_prompt
+from transformers import AutoTokenizer
+
+from nemo_skills.prompt.utils import get_prompt, get_token_count
+
+
+def test_get_token_count():
+    tokenizer = AutoTokenizer.from_pretrained("nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16", trust_remote_code=True)
+    messages = [{"role": "user", "content": "hello"}]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get the weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"location": {"type": "string"}},
+                    "required": ["location"],
+                },
+            },
+        }
+    ]
+
+    assert get_token_count(tokenizer, "hello") == 1
+    assert get_token_count(tokenizer, messages) == 17
+    assert get_token_count(tokenizer, messages, tools=tools) == 266
+    assert get_token_count(None, "hello") is None
+    assert get_token_count(tokenizer, None) is None
 
 
 def test_generic_math_problem_augmentation_prompt():
