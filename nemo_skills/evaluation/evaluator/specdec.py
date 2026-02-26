@@ -34,7 +34,13 @@ class SpecdecEvaluatorConfig(BaseEvaluatorConfig):
             the before/after delta from the server's ``/metrics`` endpoint.
     """
 
-    specdec_stats: dict
+    specdec_stats: dict[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.specdec_stats, dict):
+            raise TypeError(f"specdec_stats must be a dictionary, got {type(self.specdec_stats)}")
+
+        super().__post_init__()
 
 
 def eval_specdec(cfg: dict[str, Any]) -> None:
