@@ -332,7 +332,7 @@ def get_executor(
     job_details_class = CustomJobDetailsRay if with_ray else CustomJobDetails
 
     # Resolve account with fallback to cluster_config
-    account = account or cluster_config.get("account")
+    account = account or cluster_config["account"]
 
     # Build executor parameters as a dictionary to avoid duplicate parameters
     executor_params = {
