@@ -24,15 +24,19 @@ from nemo_skills.pipeline.generate import _create_job_unified
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
+@pytest.mark.timeout(300)
 def test_eval_gsm8k_api(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --server_address=https://inference-api.nvidia.com/v1/ "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -51,19 +55,24 @@ def test_eval_gsm8k_api(tmp_path):
     assert metrics["symbolic_correct"] >= 80
 
 
+@pytest.mark.timeout(300)
 def test_eval_judge_api(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --server_address=https://inference-api.nvidia.com/v1/ "
         f"    --benchmarks=math-500 "
         f"    --output_dir={tmp_path} "
-        f"    --judge_model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --judge_model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --judge_server_address=https://inference-api.nvidia.com/v1/ "
         f"    --judge_server_type=openai "
         f"    --judge_generation_type=math_judge "
+        f"    --extra_judge_args='++max_concurrent_requests=1 ++inference.timeout=120 ++server.max_retries=1' "
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -87,7 +96,7 @@ def test_fail_on_api_key_env_var(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --server_address=https://inference-api.nvidia.com/v1/ "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
@@ -102,17 +111,21 @@ def test_fail_on_api_key_env_var(tmp_path):
     ), result.stdout.decode()
 
 
+@pytest.mark.timeout(300)
 def test_succeed_on_api_key_env_var(tmp_path):
     cmd = (
         f"export MY_CUSTOM_KEY=$NVIDIA_API_KEY && "
         f"unset NVIDIA_API_KEY && "
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --server_address=https://inference-api.nvidia.com/v1/ "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
         f"    ++server.api_key_env_var=MY_CUSTOM_KEY "
     )
     subprocess.run(cmd, shell=True, check=True)
@@ -132,16 +145,20 @@ def test_succeed_on_api_key_env_var(tmp_path):
     assert metrics["symbolic_correct"] >= 80
 
 
+@pytest.mark.timeout(300)
 @pytest.mark.parametrize("format", ["list", "dict"])
 def test_generate_openai_format(tmp_path, format):
     cmd = (
         f"ns generate "
         f"    --server_type=openai "
-        f"    --model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --server_address=https://inference-api.nvidia.com/v1/ "
         f"    --input_file=/nemo_run/code/tests/data/openai-input-{format}.test "
         f"    --output_dir={tmp_path} "
         f"    ++prompt_format=openai "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -181,6 +198,7 @@ def test_server_metadata_from_num_tasks(tmp_path):
         installation_command=None,
         with_sandbox=False,
         partition=None,
+        account=None,
         keep_mounts_for_sandbox=False,
         task_name="test-task",
         log_dir="/tmp/logs",
@@ -194,20 +212,24 @@ def test_server_metadata_from_num_tasks(tmp_path):
     assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
 
 
+@pytest.mark.timeout(300)
 def test_judge_generations_with_structured_output(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --server_address=https://inference-api.nvidia.com/v1/ "
         f"    --benchmarks=hle "
         f"    --output_dir={tmp_path} "
-        f"    --judge_model=nvidia/nvidia/Nemotron-3-Nano-30B-A3B "
+        f"    --judge_model=nvidia/nvidia/nemotron-nano-30b-v3 "
         f"    --judge_server_address=https://inference-api.nvidia.com/v1/ "
         f"    --judge_server_type=openai "
         f"    --metric_type=hle-aa "
-        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA" '
+        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA ++max_concurrent_requests=1 ++inference.timeout=120 ++server.max_retries=1" '
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
         f"    ++inference.tokens_to_generate=1024 "  # to make test go fast
     )
     subprocess.run(cmd, shell=True, check=True)
