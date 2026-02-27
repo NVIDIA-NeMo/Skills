@@ -14,6 +14,7 @@
 
 
 from unittest.mock import MagicMock
+
 from transformers import AutoTokenizer
 
 from nemo_skills.inference.generate import GenerationTask
