@@ -51,10 +51,12 @@ def format_entry(entry: dict, language: str) -> dict:
 
 def main(args):
     languages = [lang for lang in args.languages if lang != "EN-US"]
+    valid_languages = set(SUPPORTED_LANGUAGES)
     if args.include_english:
+        valid_languages.add("EN-US")
         languages.append("EN-US")
 
-    invalid = set(languages) - set(SUPPORTED_LANGUAGES)
+    invalid = set(languages) - valid_languages
     if invalid:
         raise ValueError(f"Unsupported languages: {invalid}")
     datasets = download_mmmlu_datasets(languages)
