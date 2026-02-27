@@ -31,12 +31,9 @@ def format_entry(entry: dict, language: str) -> dict:
     expected_answer = entry[Schema.ANSWER]
     category = subject2category.get(entry[Schema.SUBJECT], "other")
     regexes = [
-        MULTILINGUAL_ANSWER_PATTERN_TEMPLATE.format(answer_regex)
-        for answer_regex in MULTILINGUAL_ANSWER_REGEXES
+        MULTILINGUAL_ANSWER_PATTERN_TEMPLATE.format(answer_regex) for answer_regex in MULTILINGUAL_ANSWER_REGEXES
     ]
-    LETTER_REGEX = (
-        r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
-    )
+    LETTER_REGEX = r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
     GREEDY_REGEX = r"[\s\S]*" + LETTER_REGEX
     regexes.append(GREEDY_REGEX)  # Matches the last A/B/C/D letter in the response
     return {

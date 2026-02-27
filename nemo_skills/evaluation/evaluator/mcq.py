@@ -24,6 +24,7 @@ from nemo_skills.utils import get_logger_name, nested_dataclass
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+
 def normalize_extracted_answer(extracted_answer: str) -> str:
     return (
         # In arabic these are the letters used for A-D in multiple choice questions
@@ -62,7 +63,10 @@ def eval_mcq(cfg):
     eval_config = MCQEvaluatorConfig(**cfg)
 
     def extract_letter(
-        text, extract_from_boxed: bool = True, extract_regex: str | list[str] = r"The final answer is (.+)$", relaxed=False
+        text,
+        extract_from_boxed: bool = True,
+        extract_regex: str | list[str] = r"The final answer is (.+)$",
+        relaxed=False,
     ):
         # extract prediction from boxed{} or regex
         extracted_answer = None
@@ -77,10 +81,10 @@ def eval_mcq(cfg):
             extracted_answer = extract_answer(
                 text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex, relaxed=relaxed
             )
-        
+
         if extracted_answer is not None:
             extracted_answer = normalize_extracted_answer(extracted_answer)
-        
+
         parsed_letter = None
         if extracted_answer is not None:
             if len(extracted_answer) == 1:

@@ -107,9 +107,7 @@ C) {C}
 D) {D}
 """.strip()
 
-MULTILINGUAL_ANSWER_PATTERN_TEMPLATE = (
-    "(?i){}[ \t]*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])"
-)
+MULTILINGUAL_ANSWER_PATTERN_TEMPLATE = "(?i){}[ \t]*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])"
 # All the different ways "Answer" is written in different languages
 MULTILINGUAL_ANSWER_REGEXES = [
     "Answer\s*:",
@@ -191,8 +189,6 @@ def format_multichoice_question(row):
 
 def get_mcq_fields(entry: dict):
     options_dict = {letter: entry[letter] for letter in Schema.OPTIONS}
-    options_text = "\n".join(
-        f"{letter}) {option}" for letter, option in options_dict.items()
-    )
+    options_text = "\n".join(f"{letter}) {option}" for letter, option in options_dict.items())
     prompt = format_multichoice_question(entry)
     return {"question": prompt, "options": options_text, **options_dict}
