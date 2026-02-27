@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# settings that define how evaluation should be done by default (all can be changed from cmdline)
-METRICS_TYPE = "math"
-GENERATION_ARGS = "++prompt_config=generic/math ++eval_type=math"
+"""Judge implementations for evaluation pipeline."""
