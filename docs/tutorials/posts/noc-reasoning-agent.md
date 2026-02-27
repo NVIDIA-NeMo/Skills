@@ -1,5 +1,5 @@
 ---
-date: 2026-02-13
+date: 2026-02-27
 readtime: 30
 hide:
   - toc
@@ -84,6 +84,8 @@ Key orchestration features used throughout this tutorial:
 | **<a href="https://slurm.schedmd.com/" target="_blank">Slurm</a> with <a href="https://github.com/NVIDIA/pyxis" target="_blank">NVIDIA/pyxis</a>** (optional) | Cluster job scheduler for distributed workloads |
 | **Python 3.10+** | Required Python version |
 | **NeMo-Skills CLI** | Main interface for running pipelines |
+
+
 ## Setup
 
 ### Install Nemo-Skills
