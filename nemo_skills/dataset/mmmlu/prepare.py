@@ -33,9 +33,11 @@ def format_entry(entry: dict, language: str) -> dict:
         MULTILINGUAL_ANSWER_PATTERN_TEMPLATE.format(answer_regex)
         for answer_regex in MULTILINGUAL_ANSWER_REGEXES
     ]
-    LETTER_REGEX = r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
+    LETTER_REGEX = (
+        r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
+    )
     GREEDY_REGEX = r"[\s\S]*" + LETTER_REGEX
-    regexes.append(GREEDY_REGEX) # Matches the last A/B/C/D letter in the response
+    regexes.append(GREEDY_REGEX)  # Matches the last A/B/C/D letter in the response
     return {
         "expected_answer": expected_answer,
         "extract_from_boxed": False,
@@ -51,7 +53,7 @@ def main(args):
     languages = [lang for lang in args.languages if lang != "EN-US"]
     if args.include_english:
         languages.append("EN-US")
-    
+
     invalid = set(languages) - set(SUPPORTED_LANGUAGES)
     if invalid:
         raise ValueError(f"Unsupported languages: {invalid}")
@@ -71,7 +73,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--languages",
-        default=["DE-DE", "ES-LA", "FR-FR", "IT-IT", "JA-JP"],
+        default=SUPPORTED_LANGUAGES,
         nargs="+",
         help="Languages to process.",
     )

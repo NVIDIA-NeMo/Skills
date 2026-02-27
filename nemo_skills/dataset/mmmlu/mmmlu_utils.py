@@ -20,7 +20,6 @@ from pathlib import Path
 
 
 SUPPORTED_LANGUAGES = [
-    "EN-US",  # English (mmlu)
     "AR-XY",  # Arabic
     "BN-BD",  # Bengali
     "DE-DE",  # German
