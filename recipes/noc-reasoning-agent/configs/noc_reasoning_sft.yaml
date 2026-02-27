@@ -1,0 +1,150 @@
+processors_to_run: all
+
+output_path: ???
+# prompt_config: null
+preprocessed_dataset_files: null
+input_files: null
+
+
+# --- Data Keys ---
+# These keys MUST match the output of your preprocessing script.
+input_key: "background"
+output_key: "response"
+
+# --- SFT Formatting ---
+# Define the tokenizer and the final chat format for the model.
+tokenizer: "Qwen/Qwen3-32B" # EDIT THIS or override via CLI
+
+# This uses a separate YAML file to define the chat template.
+# This makes the configuration cleaner and more reusable.
+prompt_config: "/workspace/data/prompt_incident.yaml" # EDIT THIS or override via CLI
+
+# -----------------
+# --- General Settings ---
+# -----------------
+do_shuffle: false
+deduplicate: true
+exclude_optional_keys: true
+random_seed: 42
+num_output_samples: null
+add_correct: true
+add_incorrect: false
+add_unlabeled: true # Set to true as requested
+
+# -----------------
+# --- Quality Control Filters ---
+# -----------------
+# Most filters are disabled because the data is text-based reasoning, not math or code.
+# This prevents the pipeline from incorrectly discarding valid data.
+
+
+contamination_file: null
+
+filters:
+  drop_multi_boxed: false
+  remove_contaminated: false         # can be enabled if you have a contamination file
+  majority_filter: false
+  trim_solutions: false              # Your data doesn't use the \boxed{} syntax
+  trim_prefix: false
+  drop_incorrect_arithmetic: false
+  split_arithmetic: false
+  remove_len_outlier_problems: false # Keep all data regardless of length
+  remove_len_outlier_solutions: false
+  code_text_filter: null
+  remove_code_errors: false
+  remove_verification_code: false
+  remove_matplotlib: false
+  remove_no_code: false
+  remove_no_think_tags: false         # Enabled, as requested
+
+# ================================================================================= #
+#          Processor Pipeline (Usually does not need to be changed)                 #
+# ================================================================================= #
+processors:
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.ReadData
+    input_files: ${input_files}    # This line ensures the processor gets the input file path
+    input_key: ${input_key}
+    output_key: ${output_key}
+    add_unlabeled: ${add_unlabeled}
+    deduplicate: ${deduplicate}
+    keys_to_keep:
+    - "expected_answer"
+    - "incident_identifier"
+    - "incident_classification"
+    - "urgency_level"
+    - "geographical_territory"
+    - "incident_subtype"
+    - "service_domain"
+    - "equipment_provider"
+    - "operational_zone"
+    - "affected_site"
+    - "incident_summary"
+    - "detection_timestamp"
+    - "escalation_date"
+    - "responsible_team"
+    - "fault_category"
+    - "action_chronicle"
+    - "resolution_summary"
+    - "resolution_method"
+    - "problem_code_reasoning_process"
+
+  - _target_: nemo_skills.training.data_preparation_utils.merge_processor.MergeProcessor
+    _recursive_: false
+    processor_configs:
+    - _target_: nemo_skills.training.data_preparation_utils.filters.RemoveContaminated
+      should_run: ${filters.remove_contaminated}
+      contamination_file: ${contamination_file}
+
+    - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexMatch #removing errors
+      should_run: ${filters.remove_code_errors}
+      text_key: ${output_key}
+      regex_patterns:
+        - 'Traceback (most recent call last)'
+        - '<output cut>'
+        - 'Timed out'
+        - 'SyntaxError'
+      test_cases:
+        - { input: { generation: "My solution:\n---Traceback (most recent call last)---\nSomething else" }, output: null }
+        - { input: { generation: "My solution:\nSome long output<output cut>\nSomething else" }, output: null }
+        - { input: { generation: "My solution:\nTimed out\nSomething else" }, output: null }
+        - { input: { generation: "My solution:\n[0;31mSyntaxError\u001b\nSomething else" }, output: null }
+        - { input: { generation: "My solution, no errors" }, output: { generation: "My solution, no errors" } }
+
+    - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexNotMatch # filtering out tool calling
+      should_run: ${filters.remove_no_code}
+      text_key: ${output_key}
+      regex_patterns:
+        - '<tool_call>'
+        - '</tool_call>'
+      test_cases:
+        - { input: { generation: "My solution:\n---<tool_call>---\nSomething else" }, output: null }
+        - { input: { generation: "My solution:\ncode</tool_call>\nSomething else" }, output: null }
+        - { input: { generation: "<tool_call>code</tool_call>" }, output: { generation: "<tool_call>code</tool_call>" } }
+
+    - _target_: nemo_skills.training.data_preparation_utils.filters.DropIfRegexNotMatch # filtering out if no think tags
+      should_run: ${filters.remove_no_think_tags}
+      text_key: ${output_key}
+      regex_patterns:
+        - '</think>'
+      test_cases:
+        - { input: { generation: "My solution:\n---</think>---\nSomething else" }, output: { generation: "My solution:\n---</think>---\nSomething else" } }
+        - { input: { generation: "<think>My solution:\n\nSomething else" }, output: null }
+        - { input: { generation: "<think>thinking</think>summary" }, output: { generation: "<think>thinking</think>summary" } }
+
+
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.GroupSamples
+    group_key: ${input_key}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.ShuffleAndDownsampleData
+    num_samples: ${num_output_samples}
+    random_seed: ${random_seed}
+    do_shuffle: ${do_shuffle}
+
+  - _target_: nemo_skills.training.data_preparation_utils.preprocessing.WriteFinalSftManifest
+    output_manifest_file: ${output_path}
+    prompt_config: ${prompt_config}
+    tokenizer: ${tokenizer}
+    input_key: ${input_key}
+    output_key: ${output_key}
+    exclude_optional_keys: ${exclude_optional_keys}
