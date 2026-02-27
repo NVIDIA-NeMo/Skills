@@ -15,14 +15,15 @@
 import argparse
 import json
 from pathlib import Path
+
 from nemo_skills.dataset.mmmlu.mmmlu_utils import (
-    download_mmmlu_datasets,
-    SUPPORTED_LANGUAGES,
-    Schema,
-    subject2category,
-    get_mcq_fields,
     MULTILINGUAL_ANSWER_PATTERN_TEMPLATE,
     MULTILINGUAL_ANSWER_REGEXES,
+    SUPPORTED_LANGUAGES,
+    Schema,
+    download_mmmlu_datasets,
+    get_mcq_fields,
+    subject2category,
 )
 
 

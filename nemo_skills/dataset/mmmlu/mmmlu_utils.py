@@ -14,10 +14,10 @@
 
 
 import os
-import pandas
 import urllib.request
 from pathlib import Path
 
+import pandas
 
 SUPPORTED_LANGUAGES = [
     "AR-XY",  # Arabic
