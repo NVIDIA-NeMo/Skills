@@ -264,6 +264,7 @@ class HardwareConfig:
     """Hardware configuration for a group of tasks."""
 
     partition: Optional[str] = None
+    account: Optional[str] = None
     num_gpus: Optional[int] = None
     num_nodes: Optional[int] = None
     num_tasks: Optional[int] = 1
@@ -585,6 +586,7 @@ class Pipeline:
                 log_dir=log_dir,
                 log_prefix=exec_config["log_prefix"],
                 partition=hardware.partition if hardware else None,
+                account=hardware.account if hardware else None,
                 heterogeneous=heterogeneous,
                 het_group=het_group,
                 total_het_groups=total_het_groups,
