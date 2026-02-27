@@ -1,0 +1,43 @@
+# Core dependencies for inference, evaluation, tool calling, and all benchmark evaluators.
+# No cluster orchestration deps (nemo_run, typer, etc.)
+# NOTE: benchmark-specific deps are included here because JIT install is not yet implemented.
+# Once JIT install is ready, benchmark deps can be moved to per-benchmark extras.
+
+bs4
+compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@2d14770
+datasets
+editdistance
+evalplus @ git+https://github.com/evalplus/evalplus@c91370f
+faiss-cpu
+fire
+flask
+func-timeout
+gradio
+httpx
+huggingface_hub
+hydra-core
+ipython
+iso639-lang
+langcodes
+language-data
+litellm[caching]
+math-verify[antlr4_9_3]
+mcp
+numpy
+openai
+openpyxl>=3.1.0
+pandas>=2.0.0
+pyxlsb>=1.0.10
+pyyaml
+rank_bm25
+requests
+rich
+sacrebleu
+scikit-learn
+sentence_transformers
+serpapi
+sympy
+torchcodec
+tqdm
+transformers
+wandb
