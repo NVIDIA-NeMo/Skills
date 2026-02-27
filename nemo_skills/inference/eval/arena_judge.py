@@ -98,10 +98,11 @@ class ArenaJudgeTask(GenerationTask):
         LOG.info("Prompt used (default): %s", default_prompt)
         return default_prompt
 
-    def fill_prompt(self, data_point, data):
+    def fill_prompt(self, data_point, data, prompt_format=None):
         """Fill prompt with category-specific prompt config."""
-        if self.cfg.prompt_format == "openai":
-            return super().fill_prompt(data_point, data)
+        prompt_format = prompt_format or self.cfg.prompt_format
+        if prompt_format == "openai":
+            return super().fill_prompt(data_point=data_point, data=data, prompt_format=prompt_format)
 
         # Select the appropriate prompt based on category. If not defined, forcing fall-back to default prompt
         category = data_point.get("category")
@@ -139,7 +140,7 @@ class ArenaJudgeTask(GenerationTask):
             "Example prompt:\nData dictionary: %s\nPrompt: %s", data_point, self.fill_prompt(data_point, all_data)
         )
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         gen_base_data = data_point.copy()
         gen_base_data["answer_1"] = data_point["generation"]
         gen_base_data["answer_2"] = data_point["baseline_answer"]
@@ -150,8 +151,8 @@ class ArenaJudgeTask(GenerationTask):
 
         # Make two async calls instead of one batch call
         llm_output_1, llm_output_2 = await asyncio.gather(
-            super().process_single_datapoint(gen_base_data, all_data),
-            super().process_single_datapoint(base_gen_data, all_data),
+            super().process_single_datapoint(gen_base_data, all_data, prompt_format),
+            super().process_single_datapoint(base_gen_data, all_data, prompt_format),
         )
 
         return {

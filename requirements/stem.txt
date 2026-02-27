@@ -102,7 +102,7 @@ ocl
 open_tamil
 opencv-python
 openmc_data
-openpyxl
+openpyxl>=3.1.0 
 optopy
 ortools
 osmnx
@@ -149,6 +149,7 @@ pyteomics
 pytesseract
 python-igraph
 python-snappy
+pyxlsb>=1.0.10
 qiskit
 quote
 quotes
