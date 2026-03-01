@@ -29,17 +29,8 @@ The evaluation is executed by the following process:
 ### SPEED-Bench
 
 - Benchmark is defined in [`nemo_skills/dataset/speed-bench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/speed-bench/__init__.py)
-- Original benchmark source is [here](https://huggingface.co/datasets/nvidia/SPEED-Bench).
-
-#### License
-
-GOVERNING TERMS: This dataset is governed by the NVIDIA Evaluation Dataset License Agreement.
-
-ADDITIONAL INFORMATION: MIT for bigcode/humanevalpack, RUCAIBox/MMATH, RUCAIBox/BAMBOO and EQ-Bench. Apache 2.0 for Writing Bench and Spec-Bench. CC BY 4.0 for FBK-MT/MCIF. MIT and Apache 2.0 for tianyang/repobench_python_v1.1, JetBrains-Research/lca-project-level-code-completion and tianyang/repobench_java_v1.1.
-
-NOTICE: For each dataset a user elects to use, the user is responsible for checking if the dataset license is fit for the intended purpose. The `prepare_data.py` script automatically fetches data from all the source datasets.
-
-Additional details are in [HuggingFace dataset repository](https://huggingface.co/datasets/nvidia/SPEED-Bench).
+- Original benchmark source, is [here](https://huggingface.co/datasets/nvidia/SPEED-Bench).
+- NOTICE: This dataset is governed by the [NVIDIA Evaluation Dataset License Agreement](https://huggingface.co/datasets/nvidia/SPEED-Bench/blob/main/License.pdf). For each dataset a user elects to use, the user is responsible for checking if the dataset license is fit for the intended purpose. The `prepare_data` script automatically fetches data from all the source datasets.
 
 #### Data preparation
 

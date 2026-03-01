@@ -40,8 +40,6 @@ class SpecdecEvaluatorConfig(BaseEvaluatorConfig):
         if not isinstance(self.specdec_stats, dict):
             raise TypeError(f"specdec_stats must be a dictionary, got {type(self.specdec_stats)}")
 
-        super().__post_init__()
-
 
 def eval_specdec(cfg: dict[str, Any]) -> None:
     """Evaluate speculative decoding performance using pre-computed delta stats.
