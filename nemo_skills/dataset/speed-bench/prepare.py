@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import argparse
-import logging
 import random
 import re
 from enum import Enum
@@ -24,11 +23,6 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from datasets import Dataset, concatenate_datasets, load_dataset
-
-from nemo_skills.utils import get_logger_name
-
-LOG = logging.getLogger(get_logger_name(__file__))
-
 
 DATASET_CONFIG = Literal[
     "qualitative", "throughput_1k", "throughput_2k", "throughput_8k", "throughput_16k", "throughput_32k"
@@ -352,8 +346,6 @@ her fear and anger)."""
         ),
         "No motivation provided",
     )
-    if motivation == "No motivation provided":
-        LOG.warning("no motivation provided for character %s", character)
     other_character_profiles_str = "\n\n".join(
         [
             f"{character_name}: {character_profile}"
@@ -591,7 +583,9 @@ def _resolve_external_data(dataset: Dataset, speed_config: DATASET_CONFIG | str)
     Returns:
         The dataset with all turns fully resolved.
     """
-    return dataset.map(_fetch_all_turns_data, fn_kwargs={"speed_config": speed_config})
+    return dataset.map(
+        _fetch_all_turns_data, fn_kwargs={"speed_config": speed_config}, desc=f"Preparing config {speed_config}"
+    )
 
 
 def prepare_data(args: argparse.Namespace) -> None:
@@ -609,8 +603,6 @@ def prepare_data(args: argparse.Namespace) -> None:
     configs = get_args(DATASET_CONFIG) if args.config == "all" else [args.config]
 
     for config in configs:
-        LOG.info(f"Preparing config '{config}' ...")
-
         dataset = load_dataset("nvidia/SPEED-Bench", config, split="test")
         dataset = _resolve_external_data(dataset, config)
         dataset = dataset.map(
@@ -619,7 +611,6 @@ def prepare_data(args: argparse.Namespace) -> None:
         )
         output_path = args.output_dir / f"{config}.jsonl"
         dataset.to_json(output_path)
-        LOG.info(f"  -> Saved to {output_path}")
 
 
 if __name__ == "__main__":
