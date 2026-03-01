@@ -86,3 +86,11 @@ ns eval \
     --server_type=vllm \
     ++inference.tokens_to_generate=1024
 ```
+
+Example evaluation metrics:
+
+```
+--------------------------------------------- speed-bench ----------------------------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | spec_acceptance_length | spec_acceptance_rate
+pass@1          | 880         | 463        | 104         | 2.37                   | 45.52
+```
