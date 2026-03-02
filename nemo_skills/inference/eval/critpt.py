@@ -86,7 +86,7 @@ class CritPtGenerationTask(GenerationTask):
         self.turn1_prompt_instance = get_prompt(prompt_config=self.prompt_config_turn1)
         self.turn2_prompt_instance = get_prompt(prompt_config=self.prompt_config_turn2)
 
-    def fill_prompt(self, data_point, data):
+    def fill_prompt(self, data_point, data, prompt_format=None):
         """Build messages list for turn 1, or return pre-built messages for turn 2."""
         # If messages are already provided (turn 2), just return them
         if "messages" in data_point:
