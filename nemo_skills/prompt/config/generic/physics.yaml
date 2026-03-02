@@ -1,0 +1,8 @@
+# adapted from https://arxiv.org/abs/2506.00022
+
+user: |-
+    Below is an open-ended problem in Physics. Please answer this problem adhering to the following rules:
+    1. Please use LaTeX format to represent the variables and formulas used in the solution process and results.
+    2. Please put the final answer(s) in \boxed{{}}, note that the unit of the answer should not be included in \boxed{{}}.
+    3. If there are multiple final answers, please seperated them by commas in \boxed{{}}, e.g., \boxed{{answer 1, answer 2}}.
+    Problem: {problem}
