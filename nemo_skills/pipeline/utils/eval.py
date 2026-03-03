@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Dict
 
 import nemo_skills.pipeline.utils as pipeline_utils
-from nemo_skills.dataset.utils import get_dataset_module, get_dataset_name, import_from_path
+from nemo_skills.dataset.utils import get_dataset_name, import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP
 from nemo_skills.inference.generate import GenerationTask
+from nemo_skills.pipeline.dataset import get_dataset_module
 from nemo_skills.utils import compute_chunk_ids, get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))

@@ -169,6 +169,7 @@ def get_executor(
     log_prefix: str = "main",
     mounts=None,
     partition=None,
+    account=None,
     dependencies=None,
     extra_package_dirs: tuple[str] | None = None,
     heterogeneous=False,
@@ -178,6 +179,7 @@ def get_executor(
     overlap: bool = False,
     with_ray: bool = False,
     ray_template: str | None = None,
+    extra_srun_args: list[str] | None = None,
 ):
     """Create and configure a nemo-run executor for the target environment.
 
@@ -211,6 +213,7 @@ def get_executor(
             taken from `cluster_config`.
         partition: SLURM partition override. If omitted, inferred from `gpus_per_node`
             and `cluster_config`.
+        account: SLURM account override. If omitted, uses `cluster_config["account"]`.
         dependencies: SLURM job handles to depend on. The dependency type is taken from
             `cluster_config['dependency_type']` (default: "afterany").
         extra_package_dirs: Additional directories to package with the code for remote
@@ -325,13 +328,18 @@ def get_executor(
         srun_args.append("--overlap")
     if not cluster_config.get("disable_gpus_per_node", False) and gpus_per_node is not None:
         srun_args.append(f"--gpus-per-node={gpus_per_node}")
+    if extra_srun_args:
+        srun_args.extend(extra_srun_args)
 
     dependency_type = cluster_config.get("dependency_type", "afterany")
     job_details_class = CustomJobDetailsRay if with_ray else CustomJobDetails
 
+    # Resolve account with fallback to cluster_config
+    account = account or cluster_config["account"]
+
     # Build executor parameters as a dictionary to avoid duplicate parameters
     executor_params = {
-        "account": cluster_config["account"],
+        "account": account,
         "partition": partition,
         "nodes": num_nodes,
         "ntasks_per_node": tasks_per_node,
@@ -430,7 +438,9 @@ def add_task(
     num_nodes=1,
     log_dir=None,
     partition=None,
+    account=None,
     with_sandbox=False,
+    sandbox_container=None,
     keep_mounts_for_sandbox=False,
     sandbox_port: int | None = None,
     server_config=None,
@@ -541,6 +551,7 @@ def add_task(
             tasks_per_node=num_server_tasks,
             gpus_per_node=server_config["num_gpus"],
             partition=partition,
+            account=account,
             dependencies=dependencies,
             job_name=task_name,
             log_dir=log_dir,
@@ -585,6 +596,7 @@ def add_task(
                         tasks_per_node=cur_tasks,
                         gpus_per_node=num_gpus if server_config is None else 0,
                         partition=partition,
+                        account=account,
                         dependencies=dependencies,
                         job_name=task_name,
                         log_dir=log_dir,
@@ -624,11 +636,12 @@ def add_task(
             commands.append(get_sandbox_command(cluster_config))
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
-                container=cluster_config["containers"]["sandbox"],
+                container=sandbox_container or cluster_config["containers"]["sandbox"],
                 num_nodes=executors[0].nodes if cluster_config["executor"] == "slurm" else 1,
                 tasks_per_node=1,
                 gpus_per_node=0,
                 partition=partition,
+                account=account,
                 mounts=None if keep_mounts_for_sandbox else [],
                 dependencies=dependencies,
                 job_name=task_name,
@@ -642,6 +655,18 @@ def add_task(
                 overlap=True,
                 with_ray=with_ray,
                 ray_template=ray_template,
+                # Allow the sandbox to survive individual worker crashes (e.g. SIGILL
+                # from libraries compiled for a different CPU).  nemo-run hardcodes
+                # --kill-on-bad-exit=1 on every srun; appending =0 overrides it so
+                # that start-with-nginx.sh can restart crashed workers instead of
+                # srun killing the entire step.
+                # Also disable PMI/PMIx for the sandbox step. The sandbox runs a
+                # single SLURM task but spawns many child processes (uwsgi workers,
+                # IPython shells). On some clusters, PMIx can treat child crashes
+                # (e.g., SIGILL from native libraries) as fatal and cancel the
+                # entire step. Overriding --mpi=none avoids PMIx involvement for
+                # this sidecar step.
+                extra_srun_args=["--kill-on-bad-exit=0", "--mpi=none"],
             )
             executors.append(sandbox_executor)
             het_group_indices.append(het_group)
