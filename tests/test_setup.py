@@ -24,14 +24,12 @@ from nemo_skills.pipeline.cli import app
 runner = CliRunner()
 
 
-def test_local_setup_crashes_without_login_session():
-    """ns setup crashes in containers/VMs when creating a local config.
+def test_local_setup_without_login_session():
+    """ns setup should work in containers/VMs even when os.getlogin() fails.
 
-    os.getlogin() is called on line 106 to compute the default mount path.
-    In environments without a login session (containers, VMs, systemd
-    services), this raises OSError before the user can provide input.
-
-    See: https://github.com/NVIDIA-NeMo/Skills/issues/1269
+    Regression test for https://github.com/NVIDIA-NeMo/Skills/issues/1269
+    The default mount path now uses os.path.expanduser('~') instead of
+    os.getlogin(), so it works in environments without a login session.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         with patch("os.getlogin", side_effect=OSError("[Errno 6] No such device or address")):
@@ -40,7 +38,7 @@ def test_local_setup_crashes_without_login_session():
                     tmpdir,  # config dir
                     "local",  # config type
                     "local",  # config name
-                    "/tmp:/workspace",  # mounts (never reached — default eval crashes)
+                    "/tmp:/workspace",  # mounts
                     "",  # HF_HOME
                     "",  # env vars
                     "n",  # pull containers
@@ -49,23 +47,25 @@ def test_local_setup_crashes_without_login_session():
             )
             result = runner.invoke(app, ["setup"], input=prompts)
 
-            assert result.exit_code != 0, (
-                f"Expected crash from os.getlogin() OSError, but exited with code {result.exit_code}.\n"
-                f"Output: {result.output}"
-            )
-            assert isinstance(result.exception, OSError), (
-                f"Expected OSError, got {type(result.exception).__name__}: {result.exception}"
+            assert result.exit_code == 0, (
+                f"Expected setup to succeed without os.getlogin(), but exited with code {result.exit_code}.\n"
+                f"Output: {result.output}\nException: {result.exception}"
             )
 
+            config_file = os.path.join(tmpdir, "local.yaml")
+            assert os.path.exists(config_file)
+            with open(config_file) as f:
+                config = yaml.safe_load(f)
+            assert config["executor"] == "local"
+            assert "/tmp:/workspace" in config["mounts"]
 
-def test_slurm_setup_crashes_without_login_session():
-    """ns setup crashes in containers/VMs when creating a slurm config with SSH.
 
-    os.getlogin() is called on line 175 as the default SSH username.
-    The mounts prompt is unaffected (default is None for slurm), but
-    the SSH username prompt crashes.
+def test_slurm_setup_without_login_session():
+    """ns setup should work for slurm+SSH even when os.getlogin() fails.
 
-    See: https://github.com/NVIDIA-NeMo/Skills/issues/1269
+    Regression test for https://github.com/NVIDIA-NeMo/Skills/issues/1269
+    The default SSH username now uses getpass.getuser() instead of
+    os.getlogin(), so it works in environments without a login session.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         with patch("os.getlogin", side_effect=OSError("[Errno 6] No such device or address")):
@@ -74,12 +74,12 @@ def test_slurm_setup_crashes_without_login_session():
                     tmpdir,  # config dir
                     "slurm",  # config type
                     "slurm",  # config name
-                    "/lustre:/lustre",  # mounts (OK — default is None for slurm)
+                    "/lustre:/lustre",  # mounts
                     "",  # HF_HOME
                     "",  # env vars
                     "y",  # SSH access
                     "cluster.example.com",  # SSH hostname
-                    "testuser",  # SSH username (never reached — default eval crashes)
+                    "testuser",  # SSH username
                     "",  # SSH key
                     "/tmp/jobs",  # job dir
                     "myaccount",  # account
@@ -90,13 +90,17 @@ def test_slurm_setup_crashes_without_login_session():
             )
             result = runner.invoke(app, ["setup"], input=prompts)
 
-            assert result.exit_code != 0, (
-                f"Expected crash from os.getlogin() OSError, but exited with code {result.exit_code}.\n"
-                f"Output: {result.output}"
+            assert result.exit_code == 0, (
+                f"Expected setup to succeed without os.getlogin(), but exited with code {result.exit_code}.\n"
+                f"Output: {result.output}\nException: {result.exception}"
             )
-            assert isinstance(result.exception, OSError), (
-                f"Expected OSError, got {type(result.exception).__name__}: {result.exception}"
-            )
+
+            config_file = os.path.join(tmpdir, "slurm.yaml")
+            assert os.path.exists(config_file)
+            with open(config_file) as f:
+                config = yaml.safe_load(f)
+            assert config["executor"] == "slurm"
+            assert config["ssh_tunnel"]["user"] == "testuser"
 
 
 def test_local_setup_succeeds_with_login_session():
