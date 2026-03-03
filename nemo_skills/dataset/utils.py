@@ -306,10 +306,12 @@ def get_mcq_fields(question, choices):
 def get_question_hash(question, options=None):
     """Normalize question text and options and hash it.
     MMLU-Pro has duplicate questions with different options."""
-    parts = [" ".join(question.strip().lower().split())]
-    if options:
-        parts.extend(" ".join(opt.strip().lower().split()) for opt in options)
-    return hashlib.sha256(" ".join(parts).encode("utf-8")).hexdigest()
+    normalized = {
+        "question": " ".join(question.strip().lower().split()),
+        "options": [" ".join(opt.strip().lower().split()) for opt in options] if options is not None else None,
+    }
+    payload = json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def load_subset_ids(ids_file):
@@ -321,10 +323,17 @@ def load_subset_ids(ids_file):
 def filter_by_subset(dataset, subset_ids, question_key="question", options_key=None):
     """Filter dataset entries by subset IDs."""
     hash_to_entry = {}
+    duplicate_hashes = set()
     for entry in dataset:
         options = entry[options_key] if options_key else None
         h = get_question_hash(entry[question_key], options)
+        if h in hash_to_entry:
+            duplicate_hashes.add(h)
+            continue
         hash_to_entry[h] = entry
+
+    if duplicate_hashes:
+        raise ValueError(f"Found {len(duplicate_hashes)} duplicate source IDs; subset mapping is ambiguous.")
 
     no_match_ids = set(subset_ids) - hash_to_entry.keys()
     if no_match_ids:
