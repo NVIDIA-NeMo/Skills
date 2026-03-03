@@ -171,7 +171,8 @@ class Sandbox(abc.ABC):
         request["session_id"] = request_session_id_str
         try:
             output = await self._send_request(request, timeout)
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            LOG.warning("Sandbox communication error for session %s: %s", request_session_id, e)
             output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
         new_session_created = output.pop("new_session_created", False)
 
@@ -205,7 +206,8 @@ class Sandbox(abc.ABC):
                     restore_request["session_id"] = request_session_id_str
                     try:
                         restore_output = await self._send_request(restore_request, timeout)
-                    except httpx.TimeoutException:
+                    except (httpx.TimeoutException, httpx.TransportError) as e:
+                        LOG.warning("Sandbox communication error for session %s: %s", request_session_id, e)
                         restore_output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
 
                     if restore_output.get("process_status") != "completed":
@@ -246,7 +248,8 @@ class Sandbox(abc.ABC):
             exec_request["session_id"] = request_session_id_str
             try:
                 output = await self._send_request(exec_request, timeout)
-            except httpx.TimeoutException:
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                LOG.warning("Sandbox communication error for session %s: %s", request_session_id, e)
                 output = {"process_status": "timeout", "stdout": "", "stderr": "Client timed out\n"}
 
         elif session_id is not None and new_session_created and self.disable_session_restore:
@@ -279,7 +282,8 @@ class Sandbox(abc.ABC):
         request = self._prepare_request(TO_EXECUTE, timeout, "lean4")
         try:
             output = await self._send_request(request, timeout)
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            LOG.warning("Sandbox communication error during Lean4 proof check: %s", e)
             return "timeout"
         return determine_proof_status(output)
 
@@ -362,18 +366,17 @@ class LocalSandbox(Sandbox):
                     return
                 response.raise_for_status()
             except (
-                httpx.ReadTimeout,  # retry for other communication errors and statuses
-                httpx.ConnectError,
-                httpx.ConnectTimeout,
-                httpx.RemoteProtocolError,
+                httpx.TransportError,  # Covers ReadError, ConnectError, RemoteProtocolError, etc.
+                httpx.TimeoutException,
                 httpx.HTTPStatusError,
             ) as e:
                 LOG.warning("Retry %d/%d deleting session %s – %s", attempt + 1, max_retries, session_id, e)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay)
                 else:
-                    LOG.warning(f"Failed to delete session {session_id} after {max_retries} attempts. ")
+                    LOG.warning(f"Failed to delete session {session_id} after {max_retries} attempts.")
             except Exception as e:
+                # Don't crash on delete failures - just log and continue
                 LOG.warning(
                     "Failed to delete session %s: %s (type: %s, repr: %r)\nTraceback:\n%s",
                     session_id,
@@ -382,7 +385,7 @@ class LocalSandbox(Sandbox):
                     e,
                     traceback.format_exc(),
                 )
-                raise  # Re-raise unexpected exceptions
+                return  # Best-effort cleanup, don't crash
 
 
 sandboxes = {
