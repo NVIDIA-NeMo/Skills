@@ -12,35 +12,98 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import logging
 import os
+import shlex
 from typing import List
 
 import typer
 
+from nemo_skills.dataset.prepare import parse_prepare_cli_arguments
+from nemo_skills.dataset.utils import (
+    get_dataset_module,
+    get_dataset_name,
+    get_dataset_path,
+    get_extra_benchmark_map,
+)
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.run_cmd import run_cmd as _run_cmd
 from nemo_skills.pipeline.utils import (
     get_cluster_config,
     get_env_variables,
     parse_kwargs,
+    resolve_external_data_path,
 )
+from nemo_skills.pipeline.utils.eval import get_arg_from_module_or_dict
 from nemo_skills.utils import get_logger_name, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
-# TODO: read this from init.py
-DATASETS_REQUIRE_DATA_DIR = [
-    "ruler",
-    "ioi24",
-    "mmau-pro",
-    "librispeech-pc",
-    "audiobench",
-    "asr-leaderboard",
-    "musan",
-    "mmmu-pro",
-]
+def _parse_prepare_cli_arguments(args: list[str]) -> tuple[list[str], list[str]]:
+    parsed_args, unknown_args = parse_prepare_cli_arguments(args, datasets_nargs="*")
+    # Re-inject parallelism/retries so they are passed through to the prepare command
+    unknown_args += ["--parallelism", str(parsed_args.parallelism)]
+    unknown_args += ["--retries", str(parsed_args.retries)]
+    return parsed_args.datasets, unknown_args
+
+
+def _is_external_dataset(dataset: str, extra_benchmark_map: dict[str, str]) -> bool:
+    return "/" in dataset or dataset in extra_benchmark_map
+
+
+def _get_container_dataset_path(dataset: str, extra_benchmark_map: dict[str, str]) -> str:
+    if not _is_external_dataset(dataset, extra_benchmark_map):
+        return f"/nemo_run/code/nemo_skills/dataset/{get_dataset_name(dataset)}"
+    return resolve_external_data_path(get_dataset_path(dataset, extra_benchmark_map=extra_benchmark_map))
+
+
+def _build_command(
+    command,
+    requested_datasets,
+    data_dir,
+    extra_benchmark_map,
+    cluster_config,
+    skip_data_dir_check,
+    prepare_unknown_args,
+):
+    for dataset in requested_datasets:
+        # we always want to unconditionally check this to trigger import
+        # for init.py as it might need to register dataset for packaging
+        requires_data_dir = get_arg_from_module_or_dict(get_dataset_module(dataset)[0], "REQUIRES_DATA_DIR", False)
+        if data_dir:
+            # Check for name collisions between external and built-in datasets.
+            # Both get copied into data_dir by name, so a collision would cause overwrites.
+            name = get_dataset_name(dataset)
+            if _is_external_dataset(dataset, extra_benchmark_map):
+                try:
+                    importlib.import_module(f"nemo_skills.dataset.{name}")
+                    raise ValueError(
+                        f"External dataset at '{dataset}' resolves to name '{name}' which conflicts "
+                        f"with a built-in dataset. Please rename the external dataset directory "
+                        f"to avoid this collision."
+                    )
+                except ModuleNotFoundError:
+                    pass
+        elif not skip_data_dir_check:
+            if requires_data_dir:
+                raise ValueError(
+                    f"Dataset {dataset} contains very large input data and it's recommended to have a "
+                    "data_dir to be specified to avoid accidentally uploading large data on cluster with every job. "
+                    "Please provide --data_dir argument or set --skip_data_dir_check to bypass this safety check."
+                )
+
+        # external datasets we resolve to the full path if used inside container
+        if cluster_config["executor"] != "none" and _is_external_dataset(dataset, extra_benchmark_map):
+            container_dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
+            command += f" {container_dataset_path} "
+        # if not running inside container or using built-in datasets, we don't need to change things
+        else:
+            command += f" {dataset} "
+
+    command += shlex.join(prepare_unknown_args)
+    return command
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -71,7 +134,9 @@ def prepare_data(
     with_sandbox: bool = typer.Option(False, help="Start a sandbox container alongside"),
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
-        help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+        help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that "
+        "sandbox executes LLM commands and could potentially lead to data loss. "
+        "So, we advise not to use this unless absolutely necessary.",
     ),
     log_dir: str = typer.Option(None, help="Custom location for slurm logs"),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
@@ -86,6 +151,12 @@ def prepare_data(
         None,
         help="If True, skip checking that HF_HOME env var is defined in the cluster config.",
     ),
+    extra_benchmark_map: str = typer.Option(
+        None,
+        help="Path to a JSON file mapping benchmark short names to directory paths. "
+        "Can also specify through NEMO_SKILLS_EXTRA_BENCHMARK_MAP environment variable. "
+        "When calling from Python, can also pass a dict directly.",
+    ),
     skip_data_dir_check: bool = typer.Option(
         False,
         help="Some datasets require very large input files and we will fail with error if data_dir "
@@ -94,7 +165,8 @@ def prepare_data(
     ),
     sbatch_kwargs: str = typer.Option(
         "",
-        help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
+        help="Additional sbatch kwargs to pass to the job scheduler. "
+        "Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
 ):
     """Prepare datasets by running python -m nemo_skills.dataset.prepare.
@@ -102,27 +174,12 @@ def prepare_data(
     Run `python -m nemo_skills.dataset.prepare --help` to see other supported arguments.
     """
     setup_logging(disable_hydra_logs=False, use_rich=True)
-    extra_arguments = f"{' '.join(ctx.args)}"
-    command = f"python -m nemo_skills.dataset.prepare {extra_arguments}"
-
-    if not data_dir and not skip_data_dir_check:
-        for dataset in DATASETS_REQUIRE_DATA_DIR:
-            if dataset in extra_arguments:
-                raise ValueError(
-                    f"Dataset {dataset} contains very large input data and it's recommended to have a "
-                    "data_dir to be specified to avoid accidentally uploading large data on cluster with every job. "
-                    "Please provide --data_dir argument or set --skip_data_dir_check to bypass this safety check."
-                )
-
     if data_dir and cluster is None:
         raise ValueError(
             "Please use 'cluster' parameter when specifying data_dir. "
             "You can set it to 'local' if preparing data locally assuming "
             "you have a corresponding 'local.yaml' cluster config."
         )
-
-    if data_dir:
-        command += f" && mkdir -p {data_dir} && cp -r /nemo_run/code/nemo_skills/dataset/* {data_dir}"
 
     cluster_config = get_cluster_config(cluster, config_dir=config_dir)
     if cluster_config["executor"] == "local" and not data_dir:
@@ -135,6 +192,27 @@ def prepare_data(
         raise ValueError(
             "Data directory is required to be specified when using slurm executor. Please provide --data_dir argument."
         )
+
+    requested_datasets, prepare_unknown_args = _parse_prepare_cli_arguments(ctx.args)
+
+    extra_benchmark_map = get_extra_benchmark_map(extra_benchmark_map)
+    command = "python -m nemo_skills.dataset.prepare "
+    command = _build_command(
+        command,
+        requested_datasets,
+        data_dir,
+        extra_benchmark_map,
+        cluster_config,
+        skip_data_dir_check,
+        prepare_unknown_args,
+    )
+
+    if data_dir:
+        command += f" && mkdir -p {data_dir}"
+        for dataset in requested_datasets:
+            name = get_dataset_name(dataset)
+            container_dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
+            command += f" && cp -r {container_dataset_path} {data_dir}/{name}"
 
     log_dir = log_dir or data_dir
 
@@ -157,7 +235,6 @@ def prepare_data(
                 f"You might want to set it as NEMO_SKILLS_DATA_DIR={data_dir} "
                 f"to avoid always specifying it as a parameter to `ns eval`."
             )
-        # TODO: automatically add it to cluster config based on user prompt?
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 

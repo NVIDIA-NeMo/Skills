@@ -21,7 +21,6 @@ NO JUDGE REQUIRED - Metrics computed automatically from model outputs.
 """
 
 # Dataset configuration - CRITICAL: needed for audio to work
-DATASET_GROUP = "speechlm"
 METRICS_TYPE = "audio"
 
 # Evaluation settings

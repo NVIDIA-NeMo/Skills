@@ -85,6 +85,7 @@ jobs:
           .
     - name: Run all tests
       env:
+        NV_INFERENCE_API_KEY: ${{ secrets.NV_INFERENCE_API_KEY }}
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |

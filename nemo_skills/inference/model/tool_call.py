@@ -145,6 +145,7 @@ class ToolCallingWrapper:
                 endpoint_type=endpoint_type,
                 **generation_kwargs,
             )
+
             if isinstance(tokens_to_generate, int):
                 tokens_to_generate -= generation["num_generated_tokens"]
 

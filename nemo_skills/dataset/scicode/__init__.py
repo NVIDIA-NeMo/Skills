@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "code"
 METRICS_TYPE = "scicode"
 GENERATION_ARGS = "++prompt_config=eval/scicode/default ++eval_type=scicode"
 GENERATION_MODULE = "nemo_skills.inference.eval.scicode"
