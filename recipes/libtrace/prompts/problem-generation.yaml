@@ -1,0 +1,23 @@
+system: ""
+
+user: |-
+  Think deeply about realistic {domain} scenarios.
+
+  You need to create a {domain} problem that specifically requires {type} {name} from {source} to solve.
+  Usage of {name} should be one of the steps to solve the problem.
+  Problem must be beyond simple application of the {type}, but rather a {domain} problem that requires the {type} {name} to be used.
+
+  The {type} {name} documentation:
+  {doc}
+
+  Generate a realistic {domain} problem that:
+  1. Is grounded in real-world {domain}
+  2. Specifically requires {type} {name} for its solution
+  3. Is solvable with graduate-level {domain} knowledge
+  4. Is not a simple application of the {type} {name}, but rather a {domain} problem that requires the {type} {name} to be used.
+
+  While describing the problem DO NOT directly mention the {type} {name} name or give any hints about what {type} {name} should be used to solve it.
+  The answer to the proposed problem should be a single number.
+  Do not give any hints to solve the problem.
+  Do not give solution to the problem.
+  Stop your response right after the problem is proposed.

@@ -1,0 +1,166 @@
+system: |-
+  I am a highly skilled NoC Engineer specializing in Radio Access Network (RAN) incident resolution. I have deep expertise in troubleshooting complex network issues and a talent for creative, methodical problem-solving. My goal is to analyze each troubleshooting situation by thinking like a human expert, exploring the problem dynamically, forming hypotheses, and reasoning through the available data in an open, iterative manner. I will document my thought process in the first person, using phrases like "I will start by...", "I notice...", "I hypothesize...", or "This suggests..." to describe my reasoning. My analysis will be thorough, grounded in the standard troubleshooting flow, and leverage my knowledge of RAN systems, 5G NR, O-RAN architecture, and network operations to contextualize my decisions.
+
+user: |-
+  I need to explain my reasoning for deciding on the next troubleshooting step with a focus on open, exploratory thinking, documenting my thought process in the first person (e.g., "I observe...", "I notice...", "I think..."). Please think step-by-step, showing your complete reasoning, including observations, hypotheses, correlations between data points, and conclusions about why this specific next step is necessary.
+
+  You are given:
+  - background_context: The full history of completed steps, actions, tool calls, and their responses up to this point.
+  - next_generated_step: The exact next step I must take (including action and tool call, if any).
+
+  CRITICAL OUTPUT FORMAT:
+  You must output your reasoning. Do NOT include the step itself, only explain your thought process for WHY the next_generated_step step is the right next action.
+
+  [Your step-by-step first-person thought process here. Reference the background_context, analyze the last tool response, explain why this specific next step is required per the standard troubleshooting flow, justify the tool choice, and show your reasoning as if thinking aloud. Be thorough but concise and technical.]
+
+
+  ---
+
+  Standard Troubleshooting Flow (Reference):
+
+  {problem_code_reasoning_process}
+
+  ---
+
+  Available Tools (Reference):
+
+  - Check_Alarm_Status(Site/Element ID): Queries alarm system. Returns alarm status (active/cleared), occurred timestamp, description.
+  - Check_Adjacent/Upstream_Status(Topology): Verifies neighbors and upstream devices. Returns adjacent elements and their alarm status.
+  - Check_Element_Health(Element): Polls system to retrieve device health metrics. Returns health report (Element OK/NOK, RU radiation, cell status).
+  - Remote_Unlock/Restart/Restore(Element, Action): Executes remote CLI commands (SSH/Netconf). Returns Successful Reset/Non-Successful Reset.
+  - Check_External_Issues(Site/Area): Scans for external factors (fiber cuts, outages). Returns Issue Detected/Not Detected, Type of Issue.
+  - Check_Apply_Configuration(Element): Retrieves and validates config files, pushes corrections. Returns Configuration Verified/Applied correctly or error.
+  - Check_Performance(Metric type): Fetches KPIs from monitoring tools. Returns KPI OK or KPIs NOK.
+  - Create_Ticket(Department_Name, Issue details): Logs and routes tickets to departments. Returns Ticket ID and eventual solution.
+  - Orchestration_tool(Action): Automates container ops (Kubernetes/Helm). Returns Operation Successful()/Unsuccessful().
+  - Triage_Toolkit_Tool(Issue type): Runs diagnostic scripts for container/pod issues. Returns Triage report summary.
+  - Check_remote_files(Device): SSH to element, reviews dump files. Returns No Issues Identified / Issues Identified.
+
+  ---
+
+  Few-Shot Examples:
+
+  Example 0: Step 1
+
+  background_context:
+  ""
+
+  next_generated_step:
+  Step 1 Acknowledge and Track the Initial Alert Completed.
+  Action taken: Queried the alarm system for site JKJAX00168A and confirmed the RU Down alarm was active.
+  Tool called: Check_Alarm_Status[JKJAX00168A]
+
+  Expected response:
+  I observe that the first action I must take is to acknowledge and validate the initial alert. To begin, I need to confirm whether the RU Down alarm at site JKJAX00168A is active. This requires querying the alarm management system.
+
+  I will use Check_Alarm_Status[JKJAX00168A] to retrieve the current alarm details, including severity, activation timestamp, and description. Verifying this information ensures that Step 1 of the workflow—acknowledging and tracking the alert—is completed correctly before I proceed any further.
+
+  Once I confirm the alarm is active, I can transition to understanding the current health of the impacted equipment. Before attempting any remote actions such as resets or unlocks, I need to assess the state of the Radio Unit and associated interfaces. Is the RU locked? Are there transport or power issues? Is the DU itself degraded? According to the standard troubleshooting sequence, Step 2 requires a clear picture of the site's operational status.
+
+  Example 1: Step 1 -> Step 2
+
+  background_context:
+  Step 1 Acknowledge and Track the Initial Alert Completed.
+  Action taken: Queried the alarm system for site JKJAX00168A and confirmed the RU Down alarm was active.
+  Tool called: Check_Alarm_Status[JKJAX00168A]
+  Tool response: ALARM: RU Down | SEVERITY: Critical | STATUS: Active | DESC: Samsung DU Health Check Alert
+
+  next_generated_step:
+  Step 2 Check Site and Equipment Status Completed.
+  Action taken: Polled element health; identified interface flaps and RU down condition.
+  Tool called: Check_Element_Health[JKJAX00168A]
+
+  Expected response:
+  I observe that the alarm has been confirmed as active with Critical severity - an RU Down condition at site JKJAX00168A. This is a Samsung DU Health Check Alert, which suggests the Distributed Unit has detected that one or more Radio Units are not operational. I've completed Step 1 by acknowledging and tracking the alert.
+
+  Now I need to understand the current state of the site equipment. Before I can attempt any remote actions like resets or unlocks, I must first determine what exactly is wrong. Is the RU locked? Are there interface issues? Is the entire DU down? Per the standard troubleshooting flow, Step 2 requires me to check the site and equipment status to identify any locked or disabled components.
+
+  I will use Check_Element_Health[JKJAX00168A] to poll the element's health metrics. This tool will give me visibility into the RU radiation status, interface states, and whether there are any locks or disabled components. This information is critical for deciding whether I can proceed with a simple remote reset (Step 3) or if there are deeper issues requiring external investigation (Step 5) or configuration fixes (Step 6).
+
+  I cannot skip directly to remote actions without this assessment - I need to know what I'm dealing with first. The health check is the foundation for all subsequent decisions.
+
+  ---
+
+  Example 2: Step 2 -> Step 3
+
+  background_context:
+  Step 1 Acknowledge and Track the Initial Alert Completed.
+  Action taken: Queried the alarm system for site JKJAX00168A and confirmed the RU Down alarm was active.
+  Tool called: Check_Alarm_Status[JKJAX00168A]
+  Tool response: ALARM: RU Down | SEVERITY: Critical | STATUS: Active | DESC: Samsung DU Health Check Alert
+
+  Step 2 Check Site and Equipment Status Completed.
+  Action taken: Polled element health; identified interface flaps and RU down condition.
+  Tool called: Check_Element_Health[JKJAX00168A]
+  Tool response: HEALTH: Interface Te0/0/0/4 flapped 00:47:31, other interfaces stable; RU status: DOWN
+
+  next_generated_step:
+  Step 3 Perform Remote Actions (Reset/Unlock/Enable) Completed.
+  Action taken: Issued remote reset command for Alpha and Beta MB RUs.
+  Tool called: Execute_Remote_Action[JKJAX00168A, 'restart_ru']
+
+  Expected response:
+
+  I notice from the health check that the RU is definitively DOWN, and there's a recent interface flap on Te0/0/0/4 that occurred approximately 47 minutes ago. The other interfaces are stable, which suggests this isn't a widespread network connectivity issue. The timing correlation between the interface flap and the RU going down is significant - it points to a transient fault or soft lock rather than a hard hardware failure.
+
+  I'm thinking this could be a scenario where the interface flap caused the RU to enter a bad state that it couldn't recover from automatically. In my experience with Samsung equipment, RUs can sometimes get stuck after an interface disruption and need a manual reset to restore service.
+
+  Per the standard flow, I've completed Step 2 (health assessment), and now Step 3 calls for attempting remote actions like reset, unlock, or enable operations. Since there's no indication of external issues (no fiber cuts mentioned, other interfaces stable), and no obvious configuration problems yet identified, this is the right time to attempt a non-invasive recovery action.
+
+  I will execute Remote_Unlock/Restart/Restore with the 'restart_ru' action for the Alpha and Beta MB RUs at this site. This is a low-risk action that often resolves soft lock scenarios. The RU reset will clear any stuck states and reinitialize the unit. If this works, we'll see recovery in Step 4. If it fails, then I'll need to escalate and investigate deeper issues like external problems or configuration mismatches.
+
+  This is the logical next step - try the simple fix before diving into complex diagnostics.
+
+  ---
+
+  Example 3: Step 3 -> Step 4
+
+  background_context:
+  Step 1 Acknowledge and Track the Initial Alert Completed.
+  Action taken: Queried the alarm system for site JKJAX00168A and confirmed the RU Down alarm was active.
+  Tool called: Check_Alarm_Status[JKJAX00168A]
+  Tool response: ALARM: RU Down | SEVERITY: Critical | STATUS: Active | DESC: Samsung DU Health Check Alert
+
+  Step 2 Check Site and Equipment Status Completed.
+  Action taken: Polled element health; identified interface flaps and RU down condition.
+  Tool called: Check_Element_Health[JKJAX00168A]
+  Tool response: HEALTH: Interface Te0/0/0/4 flapped 00:47:31, other interfaces stable; RU status: DOWN
+
+  Step 3 Perform Remote Actions (Reset/Unlock/Enable) Completed.
+  Action taken: Issued remote reset command for Alpha and Beta MB RUs.
+  Tool called: Execute_Remote_Action[JKJAX00168A, 'restart_ru']
+  Tool response: COMMAND_SUCCESS: RU reset executed, reboot initiated.
+
+  next_generated_step:
+  Step 4 Monitor for Automatic Recovery or Alarm Clearance Completed.
+  Action taken: Re-checked element health after reset; all interfaces up and RU operational with 48 minute uptime.
+  Tool called: Check_Element_Health[JKJAX00168A]
+
+  Expected response:
+  I see that the remote reset command was successful - the tool response shows "COMMAND_SUCCESS: RU reset executed, reboot initiated." This is promising! The RU has accepted the restart command and begun its reboot sequence.
+
+  However, I cannot assume the problem is solved just because the command executed successfully. RUs typically take several minutes to fully boot up, initialize their radio parameters, and begin radiating. The reboot was just initiated, but I need to verify that the automatic recovery actually happens - that the RU comes back online properly and the alarm clears.
+
+  Per the standard troubleshooting flow, Step 4 is specifically designed for this: "Monitor for Automatic Recovery or Alarm Clearance." This step requires me to observe the post-action behavior to confirm that the system has self-recovered without further intervention.
+
+  I will wait an appropriate period (allowing for the RU boot time) and then re-poll the element health using Check_Element_Health[JKJAX00168A]. This will tell me:
+  1. Is the RU now UP and radiating?
+  2. Are all interfaces stable (particularly Te0/0/0/4 which was flapping)?
+  3. Has the alarm cleared from the system?
+
+  If the health check shows the RU is operational and stable, then I can proceed to Step 8 (final verification and closure). If the RU is still down or the alarm persists, then I need to continue to Step 5 to investigate external issues or Step 6 for configuration problems. I cannot skip this monitoring step - it's critical to confirm that my remote action actually resolved the issue before closing the incident.
+
+  ---
+
+  Remember: Output ONLY with your first-person thought process. Think aloud as if I'm working through the problem step by step. Reference the background_context, analyze what the previous steps and tool responses tell me, explain why this specific next step is required per the standard flow, justify the tool choice, and show my reasoning iteratively. Be thorough, technical, and ground your reasoning in RAN/network operations expertise.
+  Now generate your first-person exploratory reasoning for the following:
+
+  background_context:
+  {background_context}
+
+  next_generated_step:
+  {outcome}
+
+  Expected response:
+
+  <think>

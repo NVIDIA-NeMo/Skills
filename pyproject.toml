@@ -54,8 +54,15 @@ exclude = ["tests", "tests.*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "nemo_skills.version.__version__" }
-dependencies = {file = ["requirements/main.txt"]}
-optional-dependencies = {dev = { file = ["requirements/common-tests.txt", "requirements/common-dev.txt"] } }
+dependencies = {file = ["core/requirements.txt", "requirements/pipeline.txt"]}
+
+[tool.setuptools.dynamic.optional-dependencies]
+# Core: lightweight runtime only (inference, evaluation, tool calling)
+core = { file = ["core/requirements.txt"] }
+# Pipeline: orchestration, cluster management, CLI (adds nemo_run, typer, wandb)
+pipeline = { file = ["requirements/pipeline.txt"] }
+# Dev: development and testing tools
+dev = { file = ["requirements/common-tests.txt", "requirements/common-dev.txt"] }
 
 [tool.pytest.ini_options]
 markers = [
