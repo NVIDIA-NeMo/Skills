@@ -194,6 +194,7 @@ An: The reason why you do not choose this answer.
         if all_tokens + answer_to_add_tokens > num_tokens:
             break
         answers_to_add_stop = i
+        all_tokens += answer_to_add_tokens
     answers_to_add = (
         answers[: answers_to_add_stop + 1]
         if answers_to_add_stop >= correct_answer_i
