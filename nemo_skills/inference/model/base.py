@@ -448,7 +448,7 @@ class BaseModel:
             reasoning_delta = None
 
         finish_reason = getattr(chunk.choices[0], "finish_reason", None)
-        result = {"generation": cur_delta}
+        result = {"generation": cur_delta or ""}
 
         # Add reasoning_content to result if available
         if reasoning_delta:

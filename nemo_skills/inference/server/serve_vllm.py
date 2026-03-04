@@ -14,6 +14,7 @@
 
 import argparse
 import subprocess
+from shlex import join
 
 
 def main():
@@ -25,7 +26,7 @@ def main():
     parser.add_argument("--no_verbose", action="store_true", help="Print verbose logs")
     args, unknown = parser.parse_known_args()
 
-    extra_arguments = f"{' '.join(unknown)}"
+    extra_arguments = join(unknown)
 
     print(f"Deploying model {args.model}")
     print("Starting OpenAI Server")

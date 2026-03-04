@@ -89,6 +89,7 @@ nav:
     - evaluation/vlm.md
     - evaluation/other-benchmarks.md
     - evaluation/robustness.md
+    - evaluation/speculative-decoding.md
     - External benchmarks: evaluation/external-benchmarks.md
   - Agentic Inference:
     - agentic_inference/parallel_thinking.md
