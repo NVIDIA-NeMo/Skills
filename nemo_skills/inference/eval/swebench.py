@@ -869,7 +869,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
                     f"    --raw_sample_path {self.cfg.input_file} "
                     f"    --patch_path {pred_mounted_path} "
-                    f"    --output_dir eval-outputs/{self.cfg.server.model}/{data_point['instance_id']} "
+                    f"    --output_dir eval-outputs "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
                     f"cp -r eval-outputs /trajectories_mount/"
                 )
