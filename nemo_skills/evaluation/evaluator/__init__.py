@@ -41,6 +41,7 @@ _EVALUATOR_MAP_PATHS = {
     "bigcodebench": "nemo_skills.evaluation.evaluator.code:eval_bigcodebench",
     "human_eval_infilling": "nemo_skills.evaluation.evaluator.code:eval_human_eval_infilling",
     "mmau-pro": "nemo_skills.evaluation.evaluator.mmau_pro:eval_mmau_pro",
+    "specdec": "nemo_skills.evaluation.evaluator.specdec:eval_specdec",
 }
 
 # Class-based evaluators: eval_type -> "module_path:ClassName"
