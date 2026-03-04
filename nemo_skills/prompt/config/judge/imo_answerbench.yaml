@@ -8,7 +8,7 @@ user: |-
   Equivalence is mandatory for a correct grade. You must rigorously verify if the answers represent the exact same mathematical value or expression, even if the format differs.
   * **Algebraic Equivalence:** e.g., `n(n+1)/2` is equivalent to `n^2/2 + n/2`. You must verify the algebra.
   * **Numerical Equivalence:** e.g., `1/2` is equivalent to `0.5`; `sqrt(2)/2` is equivalent to `1/sqrt(2)`.
-  * **Set/List Equivalence:** Unless specified as an ordered tuple/vector, the order of elements does not matter (e.g., {1, 2} is equivalent to {2, 1}).
+  * **Set/List Equivalence:** Unless specified as an ordered tuple/vector, the order of elements does not matter (e.g., {{1, 2}} is equivalent to {{2, 1}}).
   * **Partial Credit:** No partial credit is allowed. If the answer is incomplete or partially incorrect, it is incorrect.
   * **No Answers:** If no clear, unambiguous final answer can be extracted, the solution must be graded as incorrect.
 

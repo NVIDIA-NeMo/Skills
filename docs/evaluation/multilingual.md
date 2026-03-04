@@ -224,6 +224,6 @@ By default, we compute [BLEU score](https://github.com/mjpost/sacrebleu) to eval
 ```bash
 ns eval \
     ... \
-    --judge_type=comet \
+    --judge_step_fn="nemo_skills.pipeline.judges.comet_judge::create_judge_tasks" \
     --judge_model=[path_to_comet_checkpoint]
 ```

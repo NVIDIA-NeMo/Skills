@@ -22,7 +22,6 @@ from typing import List, Optional
 import typer
 
 import nemo_skills.pipeline.utils as pipeline_utils
-from nemo_skills.dataset.utils import ExtraDatasetType
 from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.generate import generate as _generate
@@ -42,177 +41,6 @@ class SingleNodeMode(str, enum.Enum):
     parallel = "parallel"
 
 
-def _create_comet_judge_tasks(
-    exp,
-    expname,
-    benchmark,
-    judge_pipeline_args,
-    rerun_done,
-    log_dir,
-    server_parameters,
-    cluster_config,
-    judge_server_gpus,
-    judge_server_nodes,
-    partition,
-    run_after,
-    reuse_code_exp,
-    reuse_code,
-    dependent_tasks,
-    all_tasks,
-    _task_dependencies,
-    installation_command,
-    skip_hf_home_check,
-    sbatch_kwargs,
-):
-    """Create tasks for Comet judge evaluation."""
-    from nemo_skills.pipeline.utils.generation import get_remaining_jobs
-
-    output_dir_path = judge_pipeline_args.get("output_dir")
-    input_file = judge_pipeline_args.get("input_file")
-    comet_model_path = judge_pipeline_args.get("judge_model")
-
-    # Determine seeds to check
-    if input_file is None:
-        num_seeds = judge_pipeline_args.get("num_random_seeds", 1)
-        random_seeds = list(range(num_seeds))
-    else:
-        random_seeds = [None]
-
-    remaining_jobs = get_remaining_jobs(
-        cluster_config=cluster_config,
-        output_dir=output_dir_path,
-        random_seeds=random_seeds,
-        chunk_ids=[None],  # No chunking for judge task
-        rerun_done=rerun_done,
-    )
-
-    if not remaining_jobs or all(not chunks for chunks in remaining_jobs.values()):
-        LOG.info(f"Skipping Comet judge for {benchmark} - all output files and .done markers exist")
-        return []
-
-    # Build command to run xCOMET-XXL judge script
-    script_args = [f"--output-dir {output_dir_path} --comet-model-path {comet_model_path}"]
-
-    if input_file is None:
-        input_dir = judge_pipeline_args.get("input_dir")
-        script_args.append(f"--input-dir {input_dir}")
-        script_args.append(f"--num-seeds {num_seeds}")
-    else:
-        script_args.append(f"--input-file {input_file}")
-
-    run_cmd = f"pip install unbabel-comet && python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
-
-    # Create task with GPU support for Comet
-    judge_task = pipeline_utils.add_task(
-        exp,
-        cmd=run_cmd,
-        task_name=f"{expname}-{benchmark}-comet-judge",
-        log_dir=log_dir + "/judge",
-        container=cluster_config["containers"]["vllm"],
-        cluster_config=cluster_config,
-        num_gpus=judge_server_gpus or 1,
-        num_nodes=judge_server_nodes or 1,
-        partition=partition,
-        run_after=run_after,
-        reuse_code_exp=reuse_code_exp,
-        reuse_code=reuse_code,
-        task_dependencies=(
-            dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
-        ),
-        installation_command=installation_command,
-        skip_hf_home_check=skip_hf_home_check,
-        sbatch_kwargs=sbatch_kwargs,
-    )
-    return [judge_task]
-
-
-def _create_nvembed_judge_tasks(
-    exp,
-    expname,
-    benchmark,
-    judge_pipeline_args,
-    rerun_done,
-    log_dir,
-    server_parameters,
-    cluster_config,
-    judge_server_gpus,
-    judge_server_nodes,
-    partition,
-    run_after,
-    reuse_code_exp,
-    reuse_code,
-    dependent_tasks,
-    all_tasks,
-    _task_dependencies,
-    installation_command,
-    skip_hf_home_check,
-    sbatch_kwargs,
-):
-    """Create tasks for NVEmbed judge evaluation."""
-    from nemo_skills.pipeline.utils.generation import get_remaining_jobs
-
-    output_dir_path = judge_pipeline_args.get("output_dir")
-    input_file = judge_pipeline_args.get("input_file")
-
-    # Determine seeds to check
-    if input_file is None:
-        num_seeds = judge_pipeline_args.get("num_random_seeds", 1)
-        random_seeds = list(range(num_seeds))
-    else:
-        random_seeds = [None]
-
-    remaining_jobs = get_remaining_jobs(
-        cluster_config=cluster_config,
-        output_dir=output_dir_path,
-        random_seeds=random_seeds,
-        chunk_ids=[None],  # No chunking for judge task
-        rerun_done=rerun_done,
-    )
-
-    if not remaining_jobs or all(not chunks for chunks in remaining_jobs.values()):
-        LOG.info(f"Skipping NVEmbed judge for {benchmark} - all output files and .done markers exist")
-        return []
-
-    # Build command to run NVEmbed judge script
-    script_args = [f"--output-dir {output_dir_path}"]
-
-    if input_file is None:
-        input_dir = judge_pipeline_args.get("input_dir")
-        script_args.append(f"--input-dir {input_dir}")
-        script_args.append(f"--num-seeds {num_seeds}")
-    else:
-        script_args.append(f"--input-file {input_file}")
-
-    # Add skip-existing flag unless rerun_done is set
-    if not rerun_done:
-        script_args.append("--skip-existing")
-
-    run_cmd = f"python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/nvembed_judge.py {' '.join(script_args)}"
-
-    # Create task with GPU support for NVEmbed
-    judge_task = pipeline_utils.add_task(
-        exp,
-        cmd=run_cmd,
-        task_name=f"{expname}-{benchmark}-nvembed-judge",
-        log_dir=log_dir + "/judge",
-        container=cluster_config["containers"]["vllm"],
-        cluster_config=cluster_config,
-        num_gpus=judge_server_gpus or 1,
-        num_nodes=judge_server_nodes or 1,
-        partition=partition,
-        run_after=run_after,
-        reuse_code_exp=reuse_code_exp,
-        reuse_code=reuse_code,
-        task_dependencies=(
-            dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
-        ),
-        installation_command=installation_command,
-        skip_hf_home_check=skip_hf_home_check,
-        sbatch_kwargs=sbatch_kwargs,
-    )
-    return [judge_task]
-
-
 def _create_llm_judge_tasks(
     ctx,
     expname,
@@ -227,6 +55,9 @@ def _create_llm_judge_tasks(
     cluster,
     config_dir,
     partition,
+    account,
+    main_container,
+    sandbox_container,
     with_sandbox,
     keep_mounts_for_sandbox,
     run_after,
@@ -267,6 +98,9 @@ def _create_llm_judge_tasks(
         cluster=cluster,
         config_dir=config_dir,
         partition=partition,
+        account=account,
+        main_container=main_container,
+        sandbox_container=sandbox_container,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
         run_after=run_after,
@@ -326,7 +160,11 @@ def eval(
         help="Path to the entrypoint of the server. "
         "If not specified, will use the default entrypoint for the server type.",
     ),
-    judge_type: str = typer.Option("llm", help="Type of judge to use: 'llm' (default) or 'nvembed'"),
+    judge_step_fn: str = typer.Option(
+        None,
+        help="Path to the judge step creator function to use for the judge (locate() convention). "
+        "Eg: nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks. Can also accept callable directly.",
+    ),
     judge_model: str = typer.Option(None, help="Path to the model to be used as a judge (if applicable)"),
     judge_server_address: str = typer.Option(None, help="Address of the server hosting the judge model"),
     judge_server_type: pipeline_utils.SupportedServers = typer.Option(
@@ -351,6 +189,12 @@ def eval(
     ),
     server_container: str = typer.Option(
         None, help="Override container image for the hosted server (if server_gpus is set)"
+    ),
+    main_container: str = typer.Option(None, help="Override container image for the main evaluation client"),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
+    judge_container: str = typer.Option(None, help="Override container image for GPU-based judges (comet, nvembed)"),
+    judge_server_container: str = typer.Option(
+        None, help="Override container image for the hosted judge server (if judge_server_gpus is set)"
     ),
     extra_judge_args: str = typer.Option(
         "", help="Additional arguments for judge (passed to generate script, so should start with ++)"
@@ -378,6 +222,7 @@ def eval(
         "Can provide a list directly when using through Python",
     ),
     partition: str = typer.Option(None, help="Cluster partition to use"),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
@@ -407,17 +252,6 @@ def eval(
     ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(None, help="Can specify a custom location for slurm logs."),
-    extra_datasets: str = typer.Option(
-        None,
-        help="Path to a custom dataset folder that will be searched in addition to the main one. "
-        "Can also specify through NEMO_SKILLS_EXTRA_DATASETS.",
-    ),
-    extra_datasets_type: ExtraDatasetType = typer.Option(
-        "local",
-        envvar="NEMO_SKILLS_EXTRA_DATASETS_TYPE",
-        help="If you have extra datasets locally, set to 'local', if on cluster, set to 'cluster'."
-        "Can also specify through NEMO_SKILLS_EXTRA_DATASETS_TYPE environment variable.",
-    ),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     rerun_done: bool = typer.Option(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
@@ -458,6 +292,12 @@ def eval(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
+    extra_benchmark_map: str = typer.Option(
+        None,
+        help="Path to a JSON file mapping benchmark short names to directory paths. "
+        "Can also specify through NEMO_SKILLS_EXTRA_BENCHMARK_MAP environment variable. "
+        "When calling from Python, can also pass a dict directly.",
+    ),
     metric_type: Optional[str] = typer.Option(
         None,
         help="Specify metric type to use a specific metric calculator.",
@@ -483,10 +323,6 @@ def eval(
 
     try:
         server_type = server_type.value
-    except AttributeError:
-        pass
-    try:
-        extra_datasets_type = extra_datasets_type.value
     except AttributeError:
         pass
     try:
@@ -526,10 +362,11 @@ def eval(
         "server_nodes": judge_server_nodes,
         "server_args": judge_server_args,
         "server_entrypoint": judge_server_entrypoint,
+        "server_container": judge_server_container,
         "generation_type": judge_generation_type,
         "generation_module": judge_generation_module,
     }
-    eval_requires_judge = any(param_value for param_value in cli_judge_pipeline_args.values()) or judge_type != "llm"
+    eval_requires_judge = any(param_value for param_value in cli_judge_pipeline_args.values()) or judge_step_fn
 
     # Prepare cluster config and mount paths
     cluster_config = pipeline_utils.get_cluster_config(cluster, config_dir)
@@ -539,12 +376,6 @@ def eval(
 
     env_vars = pipeline_utils.get_env_variables(cluster_config)
     data_dir = data_dir or env_vars.get("NEMO_SKILLS_DATA_DIR") or os.environ.get("NEMO_SKILLS_DATA_DIR")
-
-    if extra_datasets_type == ExtraDatasetType.cluster and cluster_config["executor"] != "slurm":
-        raise ValueError(
-            "Extra datasets type is set to 'cluster', but the executor is not 'slurm'. "
-            "Please use 'local' or change the cluster config."
-        )
 
     if log_dir is None:
         log_dir = f"{output_dir}/eval-logs"
@@ -563,7 +394,6 @@ def eval(
         cluster_config,
         benchmarks,
         split,
-        extra_datasets,
         num_jobs,
         starting_seed,
         output_dir,
@@ -573,7 +403,6 @@ def eval(
         server_parameters,
         extra_arguments,
         data_dir,
-        extra_datasets_type,
         exclusive,
         with_sandbox,
         keep_mounts_for_sandbox,
@@ -581,12 +410,12 @@ def eval(
         eval_requires_judge=eval_requires_judge,
         generation_type=generation_type,
         generation_module=generation_module,
+        extra_benchmark_map=extra_benchmark_map,
     )
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
     get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
-    should_package_extra_datasets = extra_datasets and extra_datasets_type == ExtraDatasetType.local
     has_tasks = False
     job_id_to_tasks = {}
     benchmark_to_judge_tasks = {}
@@ -615,14 +444,16 @@ def eval(
                     cmd=pipeline_utils.wrap_python_path(cmd=combine_cmds(cmds, single_node_mode)),
                     task_name=f"{expname}-{'-'.join(job_benchmarks)}",
                     log_dir=log_dir,
-                    container=cluster_config["containers"]["nemo-skills"],
+                    container=main_container or cluster_config["containers"]["nemo-skills"],
                     cluster_config=cluster_config,
                     partition=partition,
+                    account=account,
                     server_config=job_server_config,
                     with_sandbox=job_needs_sandbox or with_sandbox,
                     keep_mounts_for_sandbox=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
                     sandbox_port=None if get_random_port else 6000,
                     sandbox_env_overrides=job_sandbox_env_overrides,
+                    sandbox_container=sandbox_container,
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
@@ -630,7 +461,6 @@ def eval(
                         prev_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
                     ),
                     get_server_command=job_server_command,
-                    extra_package_dirs=[extra_datasets] if should_package_extra_datasets else None,
                     sbatch_kwargs=sbatch_kwargs,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
@@ -662,47 +492,40 @@ def eval(
             benchmark_args.eval_subfolder = benchmark_args.eval_subfolder[4:]
             judge_pipeline_args["output_dir"] = str(Path(output_dir) / benchmark_args.eval_subfolder)
 
-            # Check for per-benchmark judge_type, fall back to global judge_type
-            benchmark_judge_type = judge_pipeline_args.pop("judge_type", judge_type)
+            # judge_step_fn is a :: path to the judge creator function (locate() convention).
+            # Could be set directly in JUDGE_PIPELINE_ARGS; falls back to None for LLM judge.
+            judge_step_fn = judge_pipeline_args.pop("judge_step_fn", judge_step_fn)
 
-            # Create judge tasks based on judge type
-            if benchmark_judge_type == "nvembed":
-                judge_tasks = _create_nvembed_judge_tasks(
+            # TODO: we should rework the interface here to have consistent parameters between main llm and custom
+            # judge creation steps. E.g. things like judge_model assignment below shouldn't be necessary
+
+            if judge_step_fn:
+                has_tasks = True
+                if not callable(judge_step_fn):
+                    # Use locate() to dynamically load judge creator function
+                    from nemo_skills.dataset.utils import locate
+
+                    judge_step_fn = locate(judge_step_fn)
+
+                # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
+                if judge_model:
+                    judge_pipeline_args.setdefault("judge_model", judge_model)
+
+                # Call with standardized parameters
+                judge_tasks = judge_step_fn(
                     exp=exp,
                     expname=expname,
                     benchmark=benchmark,
                     judge_pipeline_args=judge_pipeline_args,
                     rerun_done=rerun_done,
                     log_dir=log_dir,
-                    server_parameters=server_parameters,
+                    output_dir=output_dir,
                     cluster_config=cluster_config,
                     judge_server_gpus=judge_server_gpus,
                     judge_server_nodes=judge_server_nodes,
                     partition=partition,
-                    run_after=run_after,
-                    reuse_code_exp=reuse_code_exp,
-                    reuse_code=reuse_code,
-                    dependent_tasks=dependent_tasks,
-                    all_tasks=all_tasks,
-                    _task_dependencies=_task_dependencies,
-                    installation_command=installation_command,
-                    skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
-                )
-            elif benchmark_judge_type == "comet":
-                judge_pipeline_args["judge_model"] = judge_model
-                judge_tasks = _create_comet_judge_tasks(
-                    exp=exp,
-                    expname=expname,
-                    benchmark=benchmark,
-                    judge_pipeline_args=judge_pipeline_args,
-                    rerun_done=rerun_done,
-                    log_dir=log_dir,
-                    server_parameters=server_parameters,
-                    cluster_config=cluster_config,
-                    judge_server_gpus=judge_server_gpus,
-                    judge_server_nodes=judge_server_nodes,
-                    partition=partition,
+                    account=account,
+                    judge_container=judge_container,
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
@@ -730,6 +553,9 @@ def eval(
                     cluster=cluster,
                     config_dir=config_dir,
                     partition=partition,
+                    account=account,
+                    main_container=main_container,
+                    sandbox_container=sandbox_container,
                     with_sandbox=with_sandbox,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
                     run_after=run_after,
@@ -764,21 +590,25 @@ def eval(
                 #       also maybe we should remove it from pipeline as it's not
                 #       really ever needed to be run directly anymore?
                 results_folder = f"{output_dir}/{Path(benchmark_args.eval_subfolder).parent}"
+                effective_metric_type = metric_type or benchmark_args.metrics_type
+                if not effective_metric_type:
+                    raise ValueError(
+                        f"metric_type is not defined for benchmark {benchmark}. "
+                        f"Please specify it via --metric_type or in the benchmark config."
+                    )
                 command = (
                     f"python -m nemo_skills.pipeline.summarize_results {results_folder} "
                     f"    --benchmarks {benchmark} "
                     f"    --save_metrics_path {metric_file} "
+                    f"    --metric_type={effective_metric_type} "
                 )
+
                 if wandb_name:
                     command += f" --wandb_name={wandb_name} "
                 if wandb_group:
                     command += f" --wandb_group={wandb_group} "
                 if wandb_project:
                     command += f" --wandb_project={wandb_project} "
-                if data_dir:
-                    command += f" --data_dir={data_dir} "
-                if metric_type:
-                    command += f" --metric_type={metric_type} "
                 if metrics_kwargs:
                     command += f" --metrics_kwargs='{kwargs_to_string(metrics_kwargs)}' "
 

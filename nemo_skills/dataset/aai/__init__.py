@@ -14,8 +14,6 @@
 
 # Benchmarks
 # https://artificialanalysis.ai/methodology/intelligence-benchmarking
-
-
 IS_BENCHMARK_GROUP = True
 
 SCORE_MODULE = "nemo_skills.dataset.aai.aai_score"

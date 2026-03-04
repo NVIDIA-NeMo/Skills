@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DATASET_GROUP = "long-context"
+REQUIRES_DATA_DIR = True

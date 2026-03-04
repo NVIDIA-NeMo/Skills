@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
-
 # tuple of dataset name, available splits and prepared sft files
 DATASETS = [
     ("aime25", ["test"]),
@@ -62,18 +60,3 @@ DATASETS = [
     ("musan", ["test"]),
     ("compute-eval", ["eval"]),
 ]
-
-
-def test_dataset_init_defaults():
-    for dataset, _ in DATASETS:
-        dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset}")
-        assert hasattr(dataset_module, "DATASET_GROUP"), f"{dataset} is missing DATASET_GROUP attribute"
-        assert dataset_module.DATASET_GROUP in [
-            "math",
-            "code",
-            "chat",
-            "multichoice",
-            "long-context",
-            "tool",
-            "speechlm",
-        ], f"{dataset} has invalid DATASET_GROUP"

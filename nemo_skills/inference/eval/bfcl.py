@@ -54,7 +54,7 @@ BFCL_REQUIREMENTS = [
     "tqdm",
     "numpy==1.26.4",
     "pandas",
-    "huggingface_hub<1",  # pin to <1 to satisfy a requirement from another package
+    "huggingface_hub",
     "pydantic>=2.8.2",
     "python-dotenv>=1.0.1",
     "tree_sitter==0.21.3",
@@ -608,7 +608,7 @@ class BFCLGenerationTask(GenerationTask):
             # If the thinking didn't finish, we can keep it empty
             return ""
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         """Process a single data point and return the result."""
         if data_point["single_turn"]:
             return await self._generate_single_data_point_single_turn(data_point)

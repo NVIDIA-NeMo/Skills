@@ -29,8 +29,13 @@ class PromptConstants:
 
 
 def parse_data(release_version="release_latest"):
+    # we download dataset from PR: https://huggingface.co/datasets/livecodebench/code_generation_lite/tree/refs%2Fpr%2F7
+    # to avoid the restriction on datasets version (<4.0)
     data = load_dataset(
-        "livecodebench/code_generation_lite", split="test", version_tag=release_version, trust_remote_code=True
+        "livecodebench/code_generation_lite",
+        release_version,
+        split="test",
+        revision="refs/pr/7",
     )
     # data has the following fields
     # question_title: str
