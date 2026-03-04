@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
@@ -34,8 +35,10 @@ from nemo_skills.pipeline.utils import (
     parse_kwargs,
     resolve_mount_paths,
     run_exp,
+    should_get_random_port,
     temporary_env_update,
 )
+from nemo_skills.pipeline.utils.server import SupportedServers, get_free_port
 from nemo_skills.utils import (
     get_logger_name,
     setup_logging,
@@ -280,6 +283,17 @@ def grpo_nemo_rl(
         "Format: START:STOP (1-indexed, STOP exclusive, same as slice syntax arr[start:stop]). "
         "Example: '3:5' profiles steps 3 and 4 only. NOTE: START must be ≥ 1, so '0:10' is invalid.",
     ),
+    server_model: str = typer.Option(None, help="Path to the model or model name in API for judge server"),
+    server_address: str = typer.Option(
+        None, help="Use ip:port for self-hosted models or the API url if using model providers"
+    ),
+    server_type: SupportedServers = typer.Option(None, help="Type of server to use for judge"),
+    server_gpus: int = typer.Option(None, help="Number of GPUs to use if hosting the judge model"),
+    server_nodes: int = typer.Option(1, help="Number of nodes required for hosting judge LLM server"),
+    n_servers: int = typer.Option(
+        1, help="Number of independent judge servers to launch (each with server_nodes nodes)"
+    ),
+    server_args: str = typer.Option("", help="Any extra arguments to pass to the judge server"),
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
@@ -388,6 +402,41 @@ def grpo_nemo_rl(
         if validation_data is not None:
             validation_data = get_mounted_path(cluster_config, validation_data)
 
+    # Server configuration for LLM-as-a-judge
+    server_config = None
+    if server_type is not None:
+        get_random_port = should_get_random_port(server_gpus, exclusive)
+        if server_address is None:  # we need to host the model
+            assert server_gpus is not None, "Need to specify server_gpus if hosting the model"
+            server_port = get_free_port(strategy="random") if get_random_port else 5000
+
+            server_config = {
+                "model_path": server_model,
+                "server_type": server_type,
+                "num_gpus": server_gpus,
+                "num_nodes": server_nodes,
+                "server_args": server_args,
+                "server_port": server_port,
+            }
+
+            client_server_args = {
+                "server_type": server_type.value,
+                "port": server_port,
+                "model": server_model,
+                "n_servers": n_servers,
+            }
+        else:  # model is hosted elsewhere
+            assert n_servers == 1, "Only one server is supported when model is hosted elsewhere"
+            client_server_args = {
+                "server_type": server_type.value,
+                "host": server_address,
+                "model": server_model,
+                "n_servers": 1,
+            }
+        cluster_config["required_env_vars"] = cluster_config.get("required_env_vars", []) + [
+            f"JUDGE_SERVER_ARGS='{json.dumps(client_server_args)}'"
+        ]
+
     train_cmd = get_training_cmd(
         cluster_config=cluster_config,
         partition=partition,
@@ -408,7 +457,6 @@ def grpo_nemo_rl(
         profile_step_range=profile_step_range,
     )
 
-    server_config = None
     env_update = {"RAY_LOG_SYNC_FREQUENCY": 20} if profile_step_range else {}
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
@@ -426,6 +474,7 @@ def grpo_nemo_rl(
                     num_nodes=num_nodes,
                     cluster_config=cluster_config,
                     server_config=server_config,
+                    n_servers=n_servers,
                     partition=partition,
                     run_after=run_after,
                     reuse_code=reuse_code,
