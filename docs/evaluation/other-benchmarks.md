@@ -127,6 +127,91 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
 }
 ```
 
+### HotpotQA
+
+[HotpotQA](https://hotpotqa.github.io/) is a multi-hop question-answering benchmark that requires reasoning over multiple Wikipedia paragraphs. Two variants are supported:
+
+| Variant | Slug | Description |
+|:---|:---|:---|
+| **Distractor** | `hotpotqa` | Model receives the question plus 10 context paragraphs (2 gold + 8 distractors) and must return the answer **and** identify supporting-fact sentences. |
+| **Closed-book** | `hotpotqa_closedbook` | Same questions, no context provided — tests the model's parametric knowledge. |
+
+- Benchmark definitions: [`nemo_skills/dataset/hotpotqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa/__init__.py) and [`nemo_skills/dataset/hotpotqa_closedbook/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa_closedbook/__init__.py)
+- Original benchmark source is the [HotpotQA repository](https://github.com/hotpotqa/hotpot).
+- Uses 7,405 distractor-setting validation examples.
+- Metrics follow the [official evaluation script](https://github.com/hotpotqa/hotpot/blob/master/hotpot_evaluate_v1.py): Answer EM/F1, Supporting-facts EM/F1, Joint EM/F1, plus alternative-aware substring matching.
+- Both unfiltered and filtered (excluding unreliable questions) metrics are reported automatically.
+
+#### Data Preparation
+
+```bash
+ns prepare_data hotpotqa
+ns prepare_data hotpotqa_closedbook
+```
+
+#### Running the Evaluation
+
+Distractor evaluation (with context and supporting-fact scoring):
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --server_type=vllm \
+    --server_gpus=8 \
+    --benchmarks=hotpotqa \
+    --output_dir=<OUTPUT_DIR> \
+    --server_args="--max-model-len 32768" \
+    ++inference.temperature=1.0 \
+    ++inference.top_p=1.0 \
+    ++inference.tokens_to_generate=16384
+```
+
+Closed-book evaluation (no context):
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --server_type=vllm \
+    --server_gpus=8 \
+    --benchmarks=hotpotqa_closedbook \
+    --output_dir=<OUTPUT_DIR> \
+    --server_args="--max-model-len 32768" \
+    ++inference.temperature=1.0 \
+    ++inference.top_p=1.0 \
+    ++inference.tokens_to_generate=16384
+```
+
+#### Verifying Results
+
+After all jobs are complete, check the results in `<OUTPUT_DIR>/eval-results/hotpotqa/metrics.json`.
+The results table is printed to stdout and captured in the summarize-results srun log.
+
+Example distractor results (Nemotron-3-Nano, `hotpotqa:4`):
+
+```text
+----------------------------------------------------------------------------- hotpotqa -----------------------------------------------------------------------------
+evaluation_mode           | num_entries | answer_em    | answer_f1    | sp_em        | sp_f1        | joint_em     | joint_f1     | is_correct   | is_correct_strict
+pass@1[avg-of-4]          | 7405        | 62.96 ± 0.00 | 78.12 ± 0.00 | 21.19 ± 0.00 | 60.82 ± 0.00 | 15.22 ± 0.00 | 49.64 ± 0.00 | 73.29 ± 0.00 | 71.67 ± 0.00
+pass@4                    | 7405        | 70.43        | 83.93        | 35.11        | 74.58        | 25.64        | 62.90        | 79.34        | 78.01
+filtered_pass@1[avg-of-4] | 6057        | 67.69        | 79.23        | 21.70        | 60.99        | 16.76        | 50.64        | 78.77        | 77.12
+filtered_pass@4           | 6057        | 75.17        | 85.25        | 35.56        | 74.76        | 27.70        | 64.14        | 84.38        | 83.34
+```
+
+Example closed-book results (Nemotron-3-Nano, `hotpotqa_closedbook:4`):
+
+```text
+----------------------------------------- hotpotqa_closedbook ------------------------------------------
+evaluation_mode           | num_entries | answer_em    | answer_f1    | is_correct   | is_correct_strict
+pass@1[avg-of-4]          | 7405        | 28.99 ± 0.00 | 39.37 ± 0.00 | 33.11 ± 0.00 | 32.26 ± 0.00
+pass@4                    | 7405        | 37.41        | 49.99        | 42.38        | 40.77
+filtered_pass@1[avg-of-4] | 6057        | 31.76        | 39.55        | 36.47        | 35.49
+filtered_pass@4           | 6057        | 41.08        | 50.56        | 46.74        | 44.94
+```
+
+The closed-book variant reports answer-level metrics only (no supporting-fact or joint metrics).
+
 ### AA-Omniscience
 
 This is a benchmark developed by AA to measure hallucinations in LLMs and penalize confidently-false answers.
