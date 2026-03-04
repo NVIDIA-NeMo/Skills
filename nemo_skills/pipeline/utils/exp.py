@@ -179,6 +179,7 @@ def get_executor(
     overlap: bool = False,
     with_ray: bool = False,
     ray_template: str | None = None,
+    extra_srun_args: list[str] | None = None,
 ):
     """Create and configure a nemo-run executor for the target environment.
 
@@ -327,6 +328,8 @@ def get_executor(
         srun_args.append("--overlap")
     if not cluster_config.get("disable_gpus_per_node", False) and gpus_per_node is not None:
         srun_args.append(f"--gpus-per-node={gpus_per_node}")
+    if extra_srun_args:
+        srun_args.extend(extra_srun_args)
 
     dependency_type = cluster_config.get("dependency_type", "afterany")
     job_details_class = CustomJobDetailsRay if with_ray else CustomJobDetails
@@ -652,6 +655,18 @@ def add_task(
                 overlap=True,
                 with_ray=with_ray,
                 ray_template=ray_template,
+                # Allow the sandbox to survive individual worker crashes (e.g. SIGILL
+                # from libraries compiled for a different CPU).  nemo-run hardcodes
+                # --kill-on-bad-exit=1 on every srun; appending =0 overrides it so
+                # that start-with-nginx.sh can restart crashed workers instead of
+                # srun killing the entire step.
+                # Also disable PMI/PMIx for the sandbox step. The sandbox runs a
+                # single SLURM task but spawns many child processes (uwsgi workers,
+                # IPython shells). On some clusters, PMIx can treat child crashes
+                # (e.g., SIGILL from native libraries) as fatal and cancel the
+                # entire step. Overriding --mpi=none avoids PMIx involvement for
+                # this sidecar step.
+                extra_srun_args=["--kill-on-bad-exit=0", "--mpi=none"],
             )
             executors.append(sandbox_executor)
             het_group_indices.append(het_group)

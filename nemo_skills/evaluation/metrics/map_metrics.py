@@ -43,6 +43,7 @@ from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.physics_metrics import PhysicsMetrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
+from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 
 METRICS_MAP = {
@@ -86,6 +87,7 @@ METRICS_MAP = {
     "compute-eval": ComputeEvalMetrics,
     "gradingbench": GradingBenchMetrics,
     "critpt": CritPtMetrics,
+    "specdec": SpecdecMetrics,
 }
 
 
