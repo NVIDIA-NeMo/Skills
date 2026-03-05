@@ -328,7 +328,7 @@ class SweBenchGenerationTask(GenerationTask):
                 # we no longer use 'make build' because it installs lots of unnecessary dependencies, e.g. frontend
                 "make install-python-dependencies && "
                 # install datasets; downgrade cryptography to fix missing glibc 2.33 in some containers
-                "poetry run python -m pip install datasets cryptography==43.0.3"
+                "poetry run python -m pip install datasets cryptography==43.0.3 libtmux==0.53.1"
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
