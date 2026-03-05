@@ -33,7 +33,6 @@ from pathlib import Path
 import hydra
 from omegaconf import MISSING
 from tqdm import tqdm
-from transformers import AutoTokenizer
 
 from nemo_skills.prompt.utils import get_prompt
 from nemo_skills.utils import chunk_data, get_logger_name, nested_dataclass
@@ -145,13 +144,13 @@ class MegatronMCoreGenerationTask:
         """Shell env setup prepended before the main command (Megatron/VLMEvalKit needs)."""
         return (
             'export LMUData="${LMUData:-${LMUDATA:-}}" && '
-            'export LD_LIBRARY_PATH=/opt/hpcx/ucx/lib:${LD_LIBRARY_PATH:-} && '
-            'export MKL_THREADING_LAYER=GNU && '
-            'export OMP_NUM_THREADS=1 && '
-            'export MKL_NUM_THREADS=1 && '
-            'ldconfig && '
+            "export LD_LIBRARY_PATH=/opt/hpcx/ucx/lib:${LD_LIBRARY_PATH:-} && "
+            "export MKL_THREADING_LAYER=GNU && "
+            "export OMP_NUM_THREADS=1 && "
+            "export MKL_NUM_THREADS=1 && "
+            "ldconfig && "
             # Create empty .env so VLMEvalKit's load_env() doesn't emit ERROR logs.
-            'touch /nemo_run/code/.env 2>/dev/null; '
+            "touch /nemo_run/code/.env 2>/dev/null; "
         )
 
     @classmethod
@@ -195,9 +194,7 @@ class MegatronMCoreGenerationTask:
             for line in fin:
                 data.append(json.loads(line))
         if self.cfg.num_chunks is not None and self.cfg.chunk_id is not None:
-            data, self.cfg.output_file = chunk_data(
-                data, self.cfg.output_file, self.cfg.chunk_id, self.cfg.num_chunks
-            )
+            data, self.cfg.output_file = chunk_data(data, self.cfg.output_file, self.cfg.chunk_id, self.cfg.num_chunks)
             LOG.info(
                 "Chunking: %d chunks, processing chunk %d; samples in chunk: %d",
                 self.cfg.num_chunks,
@@ -343,7 +340,7 @@ class MegatronMCoreGenerationTask:
     @staticmethod
     def _strip_thinking_tags(text: str) -> str:
         """Strip <think>...</think> tags (including empty ones) from model output."""
-        return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     def _generate_for_sample(self, data_point: dict, data: list) -> str:
         """Run model inference for a single data point. Returns generated text."""
@@ -395,7 +392,9 @@ class MegatronMCoreGenerationTask:
         if dp_rank == 0:
             LOG.info(
                 "Data parallelism: dp_size=%d, total=%d, this rank=%d samples",
-                dp_size, len(data), len(my_data),
+                dp_size,
+                len(data),
+                len(my_data),
             )
 
         # Per-rank output file — visible during the run so progress can be
@@ -451,7 +450,9 @@ class MegatronMCoreGenerationTask:
                 fout.writelines(merged_lines)
             LOG.info(
                 "Merged %d results from %d DP ranks into %s",
-                len(all_results), dp_size, self.cfg.output_file,
+                len(all_results),
+                dp_size,
+                self.cfg.output_file,
             )
 
             # Clean up per-rank files after successful merge.
@@ -492,10 +493,12 @@ class MegatronMCoreGenerationTask:
                     if cleaned != gen:
                         entry["generation"] = cleaned
                     entries.append(entry)
-                    results.append({
-                        "gt": entry.get("expected_answer", ""),
-                        "pred": entry["generation"],
-                    })
+                    results.append(
+                        {
+                            "gt": entry.get("expected_answer", ""),
+                            "pred": entry["generation"],
+                        }
+                    )
 
             # Re-write output.jsonl with cleaned generations
             with open(output_file, "w", encoding="utf-8") as fout:

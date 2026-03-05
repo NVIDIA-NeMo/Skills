@@ -45,15 +45,13 @@ def _apply_task_overrides(combined_cmd, task_classes, job_num_gpus, cluster_conf
     for tc in task_classes:
         prefix = tc.get_env_prefix() if hasattr(tc, "get_env_prefix") else ""
         if prefix:
-            combined_cmd = f'{prefix}{combined_cmd}'
+            combined_cmd = f"{prefix}{combined_cmd}"
             break
 
     # Torchrun for multi-GPU data-parallel inference
     if any(getattr(tc, "USE_TORCHRUN", False) for tc in task_classes):
         if job_num_gpus and int(job_num_gpus) > 1:
-            combined_cmd = combined_cmd.replace(
-                'python -m ', f'torchrun --nproc_per_node {job_num_gpus} -m ', 1
-            )
+            combined_cmd = combined_cmd.replace("python -m ", f"torchrun --nproc_per_node {job_num_gpus} -m ", 1)
 
     # Container selection (task class CONTAINER_KEY, falling back to nemo-skills default)
     container = cluster_config["containers"]["nemo-skills"]
@@ -459,7 +457,6 @@ def eval(
                     extra_pkg_dirs.append(pkg_dir)
                     LOG.info("Packaging extra dir from %s: %s", task_cls.__name__, pkg_dir)
     extra_pkg_dirs = extra_pkg_dirs or None
-
 
     has_tasks = False
     job_id_to_tasks = {}

@@ -139,13 +139,13 @@ class EvalKitGenerationTask(GenerationTask):
         """Shell env setup prepended before the main command (Megatron/VLMEvalKit needs)."""
         return (
             'export LMUData="${LMUData:-${LMUDATA:-}}" && '
-            'export LD_LIBRARY_PATH=/opt/hpcx/ucx/lib:${LD_LIBRARY_PATH:-} && '
-            'export MKL_THREADING_LAYER=GNU && '
-            'export OMP_NUM_THREADS=1 && '
-            'export MKL_NUM_THREADS=1 && '
-            'ldconfig && '
+            "export LD_LIBRARY_PATH=/opt/hpcx/ucx/lib:${LD_LIBRARY_PATH:-} && "
+            "export MKL_THREADING_LAYER=GNU && "
+            "export OMP_NUM_THREADS=1 && "
+            "export MKL_NUM_THREADS=1 && "
+            "ldconfig && "
             # Create empty .env so VLMEvalKit's load_env() doesn't emit ERROR logs.
-            'touch /nemo_run/code/.env 2>/dev/null; '
+            "touch /nemo_run/code/.env 2>/dev/null; "
         )
 
     @classmethod
@@ -289,18 +289,21 @@ class EvalKitGenerationTask(GenerationTask):
                 if idx not in self._async_written_indices:
                     self._async_written_indices.add(idx)
                     meta = index_meta.get(idx, {})
-                    new_entries.append({
-                        "generation": self._pkl_to_prediction(value),
-                        "expected_answer": meta.get("expected_answer", ""),
-                        "question": meta.get("question", ""),
-                    })
+                    new_entries.append(
+                        {
+                            "generation": self._pkl_to_prediction(value),
+                            "expected_answer": meta.get("expected_answer", ""),
+                            "question": meta.get("question", ""),
+                        }
+                    )
 
         if new_entries:
             with open(output_path, "a", encoding="utf-8") as f:
                 for entry in new_entries:
                     f.write(json.dumps(entry) + "\n")
-            LOG.info("Async JSONL: flushed %d new entries (total %d)",
-                     len(new_entries), len(self._async_written_indices))
+            LOG.info(
+                "Async JSONL: flushed %d new entries (total %d)", len(new_entries), len(self._async_written_indices)
+            )
 
     def _start_async_writer(self):
         """Start the background JSONL writer if output_file is configured."""
@@ -350,22 +353,57 @@ class EvalKitGenerationTask(GenerationTask):
         kwargs = {}
         ds = self.cfg.vlm_dataset
 
-        if ds in ['MMLongBench_DOC', 'DUDE', 'DUDE_MINI', 'SLIDEVQA', 'SLIDEVQA_MINI']:
-            kwargs['model'] = self.cfg.model_name or self.cfg.model_config or ""
+        if ds in ["MMLongBench_DOC", "DUDE", "DUDE_MINI", "SLIDEVQA", "SLIDEVQA_MINI"]:
+            kwargs["model"] = self.cfg.model_name or self.cfg.model_config or ""
 
-        if ds in ('Video-MME', 'Video-MME-With-Audio', 'WorldSense-AVLM', 'MetropolisVideoDataset', 'WorldSense', 'avqa_val'):
-            kwargs['use_subtitle'] = self.cfg.use_subtitle
-        if ds in ('Video-MME', 'MetropolisVideoDataset', 'MLVU', 'LongVideoBench', 'MMBench-Video', 'MVBench', 'MLVU_MCQ', 'PAI-Bench-U'):
-            kwargs['nframe'] = self.cfg.nframe
-        if ds in ['Video-MME', 'MLVU', 'LongVideoBench', 'WorldSense', 'avqa_val', 'MMBench-Video', 'MVBench', 'MLVU_MCQ', 'PAI-Bench-U']:
-            kwargs['fps'] = self.cfg.fps
-        if ds in ['Video-MME', 'MLVU', 'LongVideoBench', 'WorldSense', 'avqa_val', 'MLVU_MCQ', 'MMBench-Video', 'PAI-Bench-U']:
-            kwargs['nframe_max'] = self.cfg.nframe_max
-        if ds in ['ANet-RTL', 'Charades-STA']:
-            kwargs['nframe'] = self.cfg.nframe
+        if ds in (
+            "Video-MME",
+            "Video-MME-With-Audio",
+            "WorldSense-AVLM",
+            "MetropolisVideoDataset",
+            "WorldSense",
+            "avqa_val",
+        ):
+            kwargs["use_subtitle"] = self.cfg.use_subtitle
+        if ds in (
+            "Video-MME",
+            "MetropolisVideoDataset",
+            "MLVU",
+            "LongVideoBench",
+            "MMBench-Video",
+            "MVBench",
+            "MLVU_MCQ",
+            "PAI-Bench-U",
+        ):
+            kwargs["nframe"] = self.cfg.nframe
+        if ds in [
+            "Video-MME",
+            "MLVU",
+            "LongVideoBench",
+            "WorldSense",
+            "avqa_val",
+            "MMBench-Video",
+            "MVBench",
+            "MLVU_MCQ",
+            "PAI-Bench-U",
+        ]:
+            kwargs["fps"] = self.cfg.fps
+        if ds in [
+            "Video-MME",
+            "MLVU",
+            "LongVideoBench",
+            "WorldSense",
+            "avqa_val",
+            "MLVU_MCQ",
+            "MMBench-Video",
+            "PAI-Bench-U",
+        ]:
+            kwargs["nframe_max"] = self.cfg.nframe_max
+        if ds in ["ANet-RTL", "Charades-STA"]:
+            kwargs["nframe"] = self.cfg.nframe
 
-        if listinstr(['Video-MME-With-Audio', 'DailyOmni', 'WorldSense-AVLM', 'JensenKeyNote'], ds):
-            kwargs['media_dir'] = self.cfg.media_dir
+        if listinstr(["Video-MME-With-Audio", "DailyOmni", "WorldSense-AVLM", "JensenKeyNote"], ds):
+            kwargs["media_dir"] = self.cfg.media_dir
 
         return kwargs
 
@@ -389,7 +427,7 @@ class EvalKitGenerationTask(GenerationTask):
         # Dispatch to correct inference function (mirrors run.py:453-488)
         try:
             if self.cfg.eval_mode != "eval":
-                if dataset.MODALITY == 'VIDEO':
+                if dataset.MODALITY == "VIDEO":
                     self.model = infer_data_job_video(
                         model=self.model,
                         work_dir=self.work_dir,
@@ -399,7 +437,7 @@ class EvalKitGenerationTask(GenerationTask):
                         strip_think=not self.cfg.reasoning,
                         reasoning_flag=self.cfg.reasoning,
                     )
-                elif dataset.TYPE == 'MT':
+                elif dataset.TYPE == "MT":
                     self.model = infer_data_job_mt(
                         model=self.model,
                         work_dir=self.work_dir,
@@ -423,22 +461,20 @@ class EvalKitGenerationTask(GenerationTask):
         if self.cfg.eval_mode != "infer" and rank == 0:
             from vlmeval.smp import get_pred_file_path
 
-            result_file = get_pred_file_path(
-                self.work_dir, self.model_name, ds_name, use_env_format=True
-            )
+            result_file = get_pred_file_path(self.work_dir, self.model_name, ds_name, use_env_format=True)
             judge_kwargs = {
-                'nproc': self.cfg.judge_nproc,
-                'verbose': False,
-                'retry': self.cfg.judge_retry,
+                "nproc": self.cfg.judge_nproc,
+                "verbose": False,
+                "retry": self.cfg.judge_retry,
             }
             if self.cfg.judge:
-                judge_kwargs['model'] = self.cfg.judge
+                judge_kwargs["model"] = self.cfg.judge
 
             if os.path.exists(result_file):
                 try:
                     eval_result = dataset.evaluate(result_file, **judge_kwargs)
                 except KeyError as e:
-                    if e.args and e.args[0] == 'model':
+                    if e.args and e.args[0] == "model":
                         LOG.warning(
                             "Dataset %s requires a judge model for evaluation (e.g. MathVista). "
                             "Skipping evaluation. Set ++judge=<model> (e.g. gpt-4o) to enable. "
@@ -484,7 +520,7 @@ class EvalKitGenerationTask(GenerationTask):
         )
         if os.path.exists(result_file):
             df = vlm_load(result_file)
-            with open(self.cfg.output_file, 'w', encoding='utf-8') as f:
+            with open(self.cfg.output_file, "w", encoding="utf-8") as f:
                 for _, row in df.iterrows():
                     entry = {
                         "generation": str(row["prediction"]) if "prediction" in row.index else "",
@@ -501,7 +537,7 @@ class EvalKitGenerationTask(GenerationTask):
         if eval_result is not None:
             metrics_data = eval_result if isinstance(eval_result, dict) else {"result": str(eval_result)}
             metrics_path = output_dir / "eval_kit_metrics.json"
-            with open(metrics_path, 'w', encoding='utf-8') as f:
+            with open(metrics_path, "w", encoding="utf-8") as f:
                 json.dump(metrics_data, f, indent=2, default=str)
             LOG.info("Wrote eval_kit metrics to %s", metrics_path)
 

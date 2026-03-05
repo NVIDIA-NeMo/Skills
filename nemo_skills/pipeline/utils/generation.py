@@ -136,7 +136,7 @@ def build_requirements_venv_cmd(requirements: list[str]) -> str:
         'mkdir -p "$VENV_ROOT" && '
         'if [ ! -f "$READY_FILE" ]; then '
         '  if mkdir "$LOCK_DIR" 2>/dev/null; then '
-        '    if command -v uv >/dev/null 2>&1; then '
+        "    if command -v uv >/dev/null 2>&1; then "
         '      if ! uv venv --system-site-packages "$VENV_DIR"; then rmdir "$LOCK_DIR"; exit 1; fi; '
         '      . "$VENV_DIR/bin/activate"; '
         '      if ! uv pip install -r "$REQS_FILE"; then rmdir "$LOCK_DIR"; exit 1; fi; '

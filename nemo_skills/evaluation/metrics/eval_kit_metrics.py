@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import json
-from collections import defaultdict
 from pathlib import Path
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics

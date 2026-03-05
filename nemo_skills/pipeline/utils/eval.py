@@ -123,7 +123,9 @@ def get_benchmark_args_from_module(
                     unmounted_path = f"{local_data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
                 else:
                     unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
-                    unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))
+                    unmounted_path = str(
+                        Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", "")
+                    )
             else:
                 # will be copied over in this case as it must come from extra datasets
                 input_file = f"/nemo_run/code/{Path(data_path).name}/{benchmark.replace('.', '/')}/{split}.jsonl"
@@ -526,7 +528,10 @@ def prepare_eval_commands(
                     model = server_parameters.get("model", "")
                     server_type = server_parameters.get("server_type", "")
                     task_overrides = generation_task.configure_client_overrides(
-                        host=host, port=int(port), model=model, server_type=server_type,
+                        host=host,
+                        port=int(port),
+                        model=model,
+                        server_type=server_type,
                     )
                     effective_extra_args = f"{task_overrides} {extra_arguments}"
                 else:

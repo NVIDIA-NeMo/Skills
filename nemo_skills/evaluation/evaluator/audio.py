@@ -531,7 +531,6 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         # ASR / ASR-PC / ASR-ZH
         return {**base, "wer": 1.0}
 
-
     if task_type == "ASR-PC":
         mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr_pc(
