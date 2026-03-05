@@ -320,8 +320,6 @@ class SweBenchGenerationTask(GenerationTask):
                 f"git clone {self.cfg.agent_framework_repo} /root/OpenHands && "
                 "cd /root/OpenHands && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
-                # install only main openhands dependencies
-                "export POETRY_GROUP=main && "
                 # skip installing playwright, it is only needed for browsing features
                 "export INSTALL_PLAYWRIGHT=0 && "
                 # tell poetry to store venvs inside of the project folder (/root/OpenHands)
@@ -329,8 +327,7 @@ class SweBenchGenerationTask(GenerationTask):
                 # this will make a venv using poetry & install openhands dependencies
                 # we no longer use 'make build' because it installs lots of unnecessary dependencies, e.g. frontend
                 "make install-python-dependencies && "
-                # install datasets; downgrade cryptography to fix missing glibc 2.33 in some containers
-                "poetry run python -m pip install datasets cryptography==43.0.3"
+                "poetry run python -m pip install datasets"
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
