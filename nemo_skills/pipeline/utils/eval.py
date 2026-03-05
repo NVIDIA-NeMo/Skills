@@ -39,7 +39,8 @@ def _resolve_generation_task_class(module_name: str):
         else:
             mod = importlib.import_module(module_name)
         return getattr(mod, "GENERATION_TASK_CLASS", None)
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+        LOG.debug("Could not resolve GENERATION_TASK_CLASS from %s", module_name)
         return None
 
 
