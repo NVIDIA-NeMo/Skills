@@ -47,6 +47,7 @@ class SupportedAgentFrameworks(str, Enum):
     swe_agent = "swe_agent"
     openhands = "openhands"
     mini_swe_agent = "mini_swe_agent"
+    gold_patch = "gold_patch"
 
 
 class SupportedDatasetTypes(str, Enum):
@@ -329,6 +330,9 @@ class SweBenchGenerationTask(GenerationTask):
                 # install datasets; downgrade cryptography to fix missing glibc 2.33 in some containers
                 "poetry run python -m pip install datasets cryptography==43.0.3"
             )
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            pass  # no installation needed for gold patches
 
         else:
             raise ValueError(
@@ -810,6 +814,25 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return pred_file
 
+    async def _get_gold_patch(self, data_point):
+        """
+        Saves the gold patch (ground truth solution) as a .jsonl file in the SWE-bench evaluation format.
+        Returns the path to that file.
+        """
+        (self.output_dir / "gold_patches").mkdir(parents=True, exist_ok=True)
+        out_file = self.output_dir / "gold_patches" / f"{data_point['instance_id']}.jsonl"
+        with open(out_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": "gold_patch",
+                        "instance_id": data_point["instance_id"],
+                        "model_patch": data_point["patch"],
+                    }
+                )
+            )
+        return str(out_file)
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
         async with self.semaphore:
@@ -832,6 +855,8 @@ class SweBenchGenerationTask(GenerationTask):
             pred_file = await self._run_mini_swe_agent(data_point, api_base)
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             pred_file = await self._run_openhands(data_point, api_base)
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            pred_file = await self._get_gold_patch(data_point)
         else:
             raise ValueError(
                 f"Unsupported agent framework: {self.cfg.agent_framework}. "
