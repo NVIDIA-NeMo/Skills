@@ -59,7 +59,6 @@ class BenchmarkArgs:
     metrics_type: str | None = None
     benchmark_group: str | None = None
     score_module: str | None = None
-    metric_type: str | None = None
     self_contained_task: bool = False
     num_gpus: int | None = None  # For self-contained tasks that need GPU allocation on the main task
     job_ids: list[int] = field(default_factory=list)
@@ -196,8 +195,6 @@ def get_benchmark_args_from_module(
     if num_chunks == 0:
         num_chunks = None
 
-    metric_type = getattr(benchmark_module, "METRICS_TYPE", None)
-
     if judge_args or judge_pipeline_args or eval_requires_judge:
         # setting to a tmp folder for judge and then the judged outputs will be in main eval-results folder
         eval_subfolder = "tmp-eval-results/"
@@ -232,7 +229,6 @@ def get_benchmark_args_from_module(
         benchmark_group=benchmark_group,
         metrics_type=metrics_type,
         sandbox_env_overrides=sandbox_env_overrides,
-        metric_type=metric_type,
         self_contained_task=self_contained_task,
     )
 
@@ -409,10 +405,10 @@ def prepare_eval_commands(
                 ba.self_contained_task = True
                 if server_parameters["server_gpus"]:
                     ba.num_gpus = server_parameters["server_gpus"]
-        # Allow task class to override metric_type (e.g. mcore_skills uses
+        # Allow task class to override metrics_type (e.g. mcore_skills uses
         # VLMEvalKit evaluation and writes eval_kit_metrics.json).
         if task_cls is not None and hasattr(task_cls, "METRICS_TYPE_OVERRIDE"):
-            ba.metric_type = task_cls.METRICS_TYPE_OVERRIDE
+            ba.metrics_type = task_cls.METRICS_TYPE_OVERRIDE
 
     has_self_contained = any(ba.self_contained_task for ba in benchmarks_dict.values())
 
@@ -580,7 +576,7 @@ def prepare_eval_commands(
                     job_batches.append(
                         (
                             job_cmds,
-                            job_benchmarks,
+                            sorted(job_benchmarks),
                             job_needs_sandbox,
                             job_needs_sandbox_to_keep_mounts,
                             effective_server_config,
