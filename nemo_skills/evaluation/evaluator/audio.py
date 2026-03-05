@@ -505,7 +505,8 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     """Evaluate single sample based on task_type. Returns dict of updates to merge."""
     updates = {}
     task_type = sample.get("task_type", "unknown")
-    generation = sample["generation"].strip()
+    generation_raw = sample.get("generation")
+    generation = generation_raw.strip() if isinstance(generation_raw, str) else ""
     expected_answer = sample.get("expected_answer", "").strip()
 
     # Strip helpful prefixes for ASR tasks (e.g., "The audio says: ...")
@@ -528,7 +529,9 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             return {**base, "bleu": 0.0}
         if task_type == "CER":
             return {**base, "cer": 1.0}
-        # ASR / ASR-PC / ASR-ZH
+        if task_type == "ASR-PC":
+            return {**base, "wer": 1.0, "wer_c": 1.0, "wer_pc": 1.0, "per": 1.0}
+        # ASR / ASR-ZH / ASR_LEADERBOARD
         return {**base, "wer": 1.0}
 
     if task_type == "ASR-PC":

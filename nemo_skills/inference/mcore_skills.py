@@ -460,10 +460,11 @@ class MegatronMCoreGenerationTask:
                 rf = output_dir / f"output_rank{r}.jsonl"
                 rf.unlink(missing_ok=True)
 
-            Path(f"{self.cfg.output_file}.done").touch()
-
             # Evaluate using VLMEvalKit (same as eval_kit.py does).
+            # Done BEFORE marking .done so failed metrics prevent false completion.
             self._evaluate_results()
+
+            Path(f"{self.cfg.output_file}.done").touch()
 
     def _evaluate_results(self):
         """Compute metrics using VLMEvalKit's evaluation functions.
@@ -488,15 +489,16 @@ class MegatronMCoreGenerationTask:
                 for line in fin:
                     entry = json.loads(line)
                     # Strip leftover <think> tags (older runs may have them)
-                    gen = entry.get("generation", "")
+                    gen_key = self.cfg.generation_key
+                    gen = entry.get(gen_key, "")
                     cleaned = self._strip_thinking_tags(gen)
                     if cleaned != gen:
-                        entry["generation"] = cleaned
+                        entry[gen_key] = cleaned
                     entries.append(entry)
                     results.append(
                         {
                             "gt": entry.get("expected_answer", ""),
-                            "pred": entry["generation"],
+                            "pred": entry[gen_key],
                         }
                     )
 

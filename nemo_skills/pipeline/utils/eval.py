@@ -525,7 +525,8 @@ def prepare_eval_commands(
                 if benchmark_args.self_contained_task:
                     effective_extra_args = extra_arguments
                 elif hasattr(generation_task, "configure_client_overrides"):
-                    host, port = (job_server_address or "localhost:5000").split(":")
+                    # rsplit to handle URLs like http://host:port (takes last colon)
+                    host, port = (job_server_address or "localhost:5000").rsplit(":", 1)
                     model = server_parameters["model"]
                     server_type = server_parameters["server_type"]
                     task_overrides = generation_task.configure_client_overrides(
