@@ -515,8 +515,22 @@ def prepare_eval_commands(
                     )
 
                 # Self-contained tasks don't use NeMo Skills server, so skip
-                # server-related args that configure_client adds to job_extra_arguments
-                effective_extra_args = extra_arguments if benchmark_args.self_contained_task else job_extra_arguments
+                # server-related args that configure_client adds to job_extra_arguments.
+                # Tasks with configure_client_overrides translate server params into
+                # their own config format (e.g. eval_kit uses flat ++server_url instead
+                # of nested ++server.* overrides).
+                if benchmark_args.self_contained_task:
+                    effective_extra_args = extra_arguments
+                elif hasattr(generation_task, "configure_client_overrides"):
+                    host, port = (job_server_address or "localhost:5000").split(":")
+                    model = server_parameters.get("model", "")
+                    server_type = server_parameters.get("server_type", "")
+                    task_overrides = generation_task.configure_client_overrides(
+                        host=host, port=int(port), model=model, server_type=server_type,
+                    )
+                    effective_extra_args = f"{task_overrides} {extra_arguments}"
+                else:
+                    effective_extra_args = job_extra_arguments
                 full_extra_arguments = (
                     f"{generation_task.get_generation_default_args()} "
                     f"{benchmark_args.generation_args} "

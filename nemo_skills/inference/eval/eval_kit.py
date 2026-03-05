@@ -108,12 +108,12 @@ class EvalKitGenerationTask(GenerationTask):
     """Generation task using VLMEvalKit.
 
     Supports two modes:
-    - mcore: Self-contained, no NeMo Skills server. Pipeline sets self_contained_task=True.
-    - vllm: NeMo Skills starts a vLLM server, VLMEvalKit connects as client.
-
-    Inherits get_server_command_fn from GenerationTask (returns the default
-    get_server_command). For mcore mode, the pipeline sets server_config=None
-    so no server is started. For vllm mode, the standard vLLM server command is used.
+    - mcore: Self-contained, no external server. Pipeline sets
+      self_contained_task=True so no server is started.
+    - vllm: Pipeline starts a vLLM server normally. This task overrides
+      ``configure_client_overrides`` to translate the server address into
+      eval_kit's flat config fields (``++server_url``, ``++model_name``)
+      instead of the standard nested ``++server.*`` overrides.
     """
 
     # --- Declarative pipeline attributes (read generically by pipeline/eval.py) ---
@@ -124,6 +124,15 @@ class EvalKitGenerationTask(GenerationTask):
     def is_self_contained(cls, extra_arguments: str = "") -> bool:
         """Self-contained only in mcore mode (Megatron in-process)."""
         return "++model_type=mcore" in extra_arguments
+
+    @classmethod
+    def configure_client_overrides(cls, *, host: str, port: int, model: str, server_type: str) -> str:
+        """Return Hydra overrides for connecting to an already-running server.
+
+        EvalKitConfig uses flat fields (server_url, model_name) rather than
+        the standard nested ``server.*`` group, so we translate here.
+        """
+        return f"++server_url=http://{host}:{port} ++model_name={model} ++model_type=vllm "
 
     @classmethod
     def get_env_prefix(cls) -> str:
