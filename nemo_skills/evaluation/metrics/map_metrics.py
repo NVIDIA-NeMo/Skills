@@ -45,11 +45,13 @@ from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
+from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
 
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
     "physics": PhysicsMetrics,
+    "ugphysics": UGPhysicsMetrics,
     "hle-aa": functools.partial(HLEAAMetrics, compute_no_answer=False, answer_key="generation"),
     "frontierscience-olympiad": functools.partial(
         MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
