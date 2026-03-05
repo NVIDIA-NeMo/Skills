@@ -526,8 +526,8 @@ def prepare_eval_commands(
                     effective_extra_args = extra_arguments
                 elif hasattr(generation_task, "configure_client_overrides"):
                     host, port = (job_server_address or "localhost:5000").split(":")
-                    model = server_parameters.get("model", "")
-                    server_type = server_parameters.get("server_type", "")
+                    model = server_parameters["model"]
+                    server_type = server_parameters["server_type"]
                     task_overrides = generation_task.configure_client_overrides(
                         host=host,
                         port=int(port),

@@ -51,6 +51,9 @@ class EvalKitMetrics(BaseMetrics):
             if candidate.exists():
                 self.eval_kit_metrics_file = candidate
                 EvalKitMetrics._shared_metrics_file = candidate
+            else:
+                # Reset stale shared path so a previous run's file isn't reused.
+                EvalKitMetrics._shared_metrics_file = None
 
     def update(self, predictions):
         """Count entries but don't compute per-sample metrics."""

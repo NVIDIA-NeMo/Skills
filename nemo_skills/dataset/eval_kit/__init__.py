@@ -36,7 +36,10 @@ def get_extra_generation_args(benchmark):
     Extracts the VLMEvalKit dataset name from the dotted benchmark name
     (e.g. eval_kit.MMBench_DEV_EN -> ++vlm_dataset=MMBench_DEV_EN).
     """
-    if "." in benchmark:
-        sub = benchmark.split(".", 1)[1]
-        return f" ++vlm_dataset={sub} "
-    return ""
+    if "." not in benchmark:
+        raise ValueError(
+            f"eval_kit benchmark must be in 'eval_kit.<dataset_name>' format, got '{benchmark}'. "
+            f"Example: eval_kit.MMBench_DEV_EN, eval_kit.LibriSpeech_test_clean"
+        )
+    sub = benchmark.split(".", 1)[1]
+    return f" ++vlm_dataset={sub} "

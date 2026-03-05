@@ -122,7 +122,12 @@ class EvalKitGenerationTask(GenerationTask):
 
     @classmethod
     def is_self_contained(cls, extra_arguments: str = "") -> bool:
-        """Self-contained only in mcore mode (Megatron in-process)."""
+        """Self-contained only when user explicitly requests mcore mode.
+
+        Note: EvalKitConfig.model_type defaults to "mcore" at runtime, but
+        at submission time we check explicit user intent.  Without the flag
+        the pipeline assumes vllm (server-based) mode.
+        """
         return "++model_type=mcore" in extra_arguments
 
     @classmethod
