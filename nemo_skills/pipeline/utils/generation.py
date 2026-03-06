@@ -136,9 +136,15 @@ def build_requirements_venv_cmd(requirements: list[str]) -> str:
         'mkdir -p "$VENV_ROOT" && '
         'if [ ! -f "$READY_FILE" ]; then '
         '  if mkdir "$LOCK_DIR" 2>/dev/null; then '
-        '    if ! uv venv --system-site-packages "$VENV_DIR"; then rmdir "$LOCK_DIR"; exit 1; fi; '
-        '    . "$VENV_DIR/bin/activate"; '
-        '    if ! uv pip install -r "$REQS_FILE"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        "    if command -v uv >/dev/null 2>&1; then "
+        '      if ! uv venv --system-site-packages "$VENV_DIR"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        '      . "$VENV_DIR/bin/activate"; '
+        '      if ! uv pip install -r "$REQS_FILE"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        "    else "
+        '      if ! python3 -m venv --system-site-packages "$VENV_DIR"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        '      . "$VENV_DIR/bin/activate"; '
+        '      if ! python3 -m pip install -r "$REQS_FILE"; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        "    fi; "
         '    touch "$READY_FILE"; '
         '    rmdir "$LOCK_DIR"; '
         "  else "
@@ -434,8 +440,6 @@ def get_generation_cmd(
     If requirements are provided, a per-requirements uv venv is prepared
     and activated before running the generation command.
     """
-    if input_file is None and input_dir is None:
-        raise ValueError("Either input_file or input_dir must be provided.")
     if input_file is not None and input_dir is not None:
         raise ValueError("Please provide either input_file or input_dir, not both.")
 
@@ -458,7 +462,9 @@ def get_generation_cmd(
     hydra_config_args, override_args = separate_hydra_args(extra_arguments)
 
     # Handle file paths vs module names
-    common_args = f"++skip_filled=True ++input_file={input_file} ++output_file={output_file}"
+    common_args = f"++skip_filled=True ++output_file={output_file}"
+    if input_file is not None:
+        common_args += f" ++input_file={input_file}"
     if script.endswith(".py") or os.sep in script:
         # It's a file path, run it directly with .py extension
         script_path = script if script.endswith(".py") else f"{script}.py"

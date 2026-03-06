@@ -30,10 +30,24 @@ from nemo_skills.utils import compute_chunk_ids, get_logger_name
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def _resolve_generation_task_class(module_name: str):
+    """Import a generation module and return its GENERATION_TASK_CLASS, or None."""
+    try:
+        if module_name.endswith(".py") or os.sep in module_name:
+            path_suffix = ".py" if not module_name.endswith(".py") else ""
+            mod = import_from_path(module_name + path_suffix)
+        else:
+            mod = importlib.import_module(module_name)
+        return getattr(mod, "GENERATION_TASK_CLASS", None)
+    except (ImportError, ModuleNotFoundError):
+        LOG.debug("Could not resolve GENERATION_TASK_CLASS from %s", module_name)
+        return None
+
+
 @dataclass
 class BenchmarkArgs:
     name: str
-    input_file: str
+    input_file: str | None
     generation_args: str
     judge_args: str
     judge_pipeline_args: dict
@@ -46,10 +60,14 @@ class BenchmarkArgs:
     metrics_type: str | None = None
     benchmark_group: str | None = None
     score_module: str | None = None
+    self_contained_task: bool = False
+    num_gpus: int | None = None  # For self-contained tasks that need GPU allocation on the main task
     job_ids: list[int] = field(default_factory=list)
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
     sandbox_env_overrides: list[str] = field(default_factory=list)
+    # Resolved GENERATION_TASK_CLASS (populated by prepare_eval_commands)
+    generation_task_class: type | None = None
 
     @property
     def requires_judge(self):
@@ -91,50 +109,57 @@ def get_benchmark_args_from_module(
     local_data_path=None,
     data_dir=None,
 ):
+    skip_input_file = getattr(benchmark_module, "SKIP_INPUT_FILE", False)
+    self_contained_task = getattr(benchmark_module, "SELF_CONTAINED_TASK", False)
+
     if split is None:
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
 
-    if not is_on_cluster:
-        if pipeline_utils.is_mounted_filepath(cluster_config, data_path) or cluster_config["executor"] == "none":
-            input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
-            if local_data_path is not None:
-                unmounted_path = f"{local_data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
+    input_file = None
+    if not skip_input_file:
+        if not is_on_cluster:
+            if pipeline_utils.is_mounted_filepath(cluster_config, data_path) or cluster_config["executor"] == "none":
+                input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
+                if local_data_path is not None:
+                    unmounted_path = f"{local_data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
+                else:
+                    unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
+                    unmounted_path = str(
+                        Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", "")
+                    )
             else:
-                unmounted_input_file = pipeline_utils.get_unmounted_path(cluster_config, input_file)
-                unmounted_path = str(Path(__file__).parents[3] / unmounted_input_file.replace("/nemo_run/code/", ""))
+                # will be copied over in this case as it must come from extra datasets
+                input_file = f"/nemo_run/code/{Path(data_path).name}/{benchmark.replace('.', '/')}/{split}.jsonl"
+                unmounted_path = Path(data_path) / benchmark.replace(".", "/") / f"{split}.jsonl"
         else:
-            # will be copied over in this case as it must come from extra datasets
-            input_file = f"/nemo_run/code/{Path(data_path).name}/{benchmark.replace('.', '/')}/{split}.jsonl"
-            unmounted_path = Path(data_path) / benchmark.replace(".", "/") / f"{split}.jsonl"
-    else:
-        # on cluster we will always use the mounted path
-        input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
-        unmounted_path = pipeline_utils.get_unmounted_path(cluster_config, input_file)
+            # on cluster we will always use the mounted path
+            input_file = f"{data_path}/{benchmark.replace('.', '/')}/{split}.jsonl"
+            unmounted_path = pipeline_utils.get_unmounted_path(cluster_config, input_file)
 
-    unmounted_path = str(unmounted_path)
-    # When data_dir is specified, use it for both input_file and the existence check
-    # data_dir is always assumed to be a mounted path
-    if data_dir:
-        data_dir_unmounted = pipeline_utils.get_unmounted_path(cluster_config, data_dir)
-        input_file = f"{data_dir}/{benchmark.replace('.', '/')}/{split}.jsonl"
-        check_path = f"{data_dir_unmounted}/{benchmark.replace('.', '/')}/{split}.jsonl"
-    else:
-        check_path = unmounted_path
-    # checking if data file exists (can check locally as well)
-    if is_on_cluster:
-        if not pipeline_utils.cluster_path_exists(cluster_config, check_path):
-            raise ValueError(
-                f"Data file {check_path} does not exist on cluster. "
-                "Please check the benchmark and split parameters. "
-                "Did you forget to run prepare data commands or add data_dir argument?"
-            )
-    else:
-        if not Path(check_path).exists():
-            raise ValueError(
-                f"Data file {check_path} does not exist locally. "
-                "Please check the benchmark and split parameters. "
-                "Did you forget to run prepare data commands or add data_dir argument?"
-            )
+        unmounted_path = str(unmounted_path)
+        # When data_dir is specified, use it for both input_file and the existence check
+        # data_dir is always assumed to be a mounted path
+        if data_dir:
+            data_dir_unmounted = pipeline_utils.get_unmounted_path(cluster_config, data_dir)
+            input_file = f"{data_dir}/{benchmark.replace('.', '/')}/{split}.jsonl"
+            check_path = f"{data_dir_unmounted}/{benchmark.replace('.', '/')}/{split}.jsonl"
+        else:
+            check_path = unmounted_path
+        # checking if data file exists (can check locally as well)
+        if is_on_cluster:
+            if not pipeline_utils.cluster_path_exists(cluster_config, check_path):
+                raise ValueError(
+                    f"Data file {check_path} does not exist on cluster. "
+                    "Please check the benchmark and split parameters. "
+                    "Did you forget to run prepare data commands or add data_dir argument?"
+                )
+        else:
+            if not Path(check_path).exists():
+                raise ValueError(
+                    f"Data file {check_path} does not exist locally. "
+                    "Please check the benchmark and split parameters. "
+                    "Did you forget to run prepare data commands or add data_dir argument?"
+                )
 
     # this is deprecated, should remove in the future
     prompt_config = get_arg_from_module_or_dict(benchmark_module, "PROMPT_CONFIG", "", override_dict=override_dict)
@@ -146,6 +171,11 @@ def get_benchmark_args_from_module(
     if eval_args:
         generation_args = f"{eval_args} {generation_args}"
     generation_args += f" ++eval_config.split={split} "
+
+    # Let the dataset module inject extra generation args (e.g. ++vlm_dataset=)
+    if hasattr(benchmark_module, "get_extra_generation_args"):
+        generation_args += benchmark_module.get_extra_generation_args(benchmark)
+
     requires_sandbox = get_arg_from_module_or_dict(benchmark_module, "REQUIRES_SANDBOX", False, override_dict)
     keep_mounts_for_sandbox = get_arg_from_module_or_dict(
         benchmark_module, "KEEP_MOUNTS_FOR_SANDBOX", False, override_dict
@@ -202,6 +232,7 @@ def get_benchmark_args_from_module(
         benchmark_group=benchmark_group,
         metrics_type=metrics_type,
         sandbox_env_overrides=sandbox_env_overrides,
+        self_contained_task=self_contained_task,
     )
 
 
@@ -366,6 +397,24 @@ def prepare_eval_commands(
             ):
                 LOG.warning("Found benchmark (%s) which requires sandbox to keep mounts, enabling it.", benchmark)
 
+    # Resolve GENERATION_TASK_CLASS for each benchmark and query declarative attributes.
+    # Each task class declares its own is_self_contained(), get_env_prefix(), etc.
+    for ba in benchmarks_dict.values():
+        effective_module = generation_module or ba.generation_module
+        task_cls = _resolve_generation_task_class(effective_module)
+        ba.generation_task_class = task_cls
+        if task_cls is not None and hasattr(task_cls, "is_self_contained"):
+            if task_cls.is_self_contained(extra_arguments):
+                ba.self_contained_task = True
+                if server_parameters["server_gpus"]:
+                    ba.num_gpus = server_parameters["server_gpus"]
+        # Allow task class to override metrics_type (e.g. mcore_skills uses
+        # VLMEvalKit evaluation and writes eval_kit_metrics.json).
+        if task_cls is not None and hasattr(task_cls, "METRICS_TYPE_OVERRIDE"):
+            ba.metrics_type = task_cls.METRICS_TYPE_OVERRIDE
+
+    has_self_contained = any(ba.self_contained_task for ba in benchmarks_dict.values())
+
     total_evals = 0
     for benchmark, benchmark_args in benchmarks_dict.items():
         if benchmark_args.num_samples == 0:
@@ -396,6 +445,12 @@ def prepare_eval_commands(
         # if num_jobs is -1, we run all benchmarks in parallel
         num_jobs = total_evals
 
+    # Self-contained tasks (e.g., eval_kit mcore mode) bypass the server/client split
+    # and manage their own GPU allocation, so each benchmark must get its own job (no grouping).
+    if has_self_contained and num_jobs != total_evals:
+        LOG.info("Self-contained tasks detected, forcing num_jobs = total_evals (no job grouping).")
+        num_jobs = total_evals
+
     if num_jobs == 0:
         return benchmarks_dict, []
 
@@ -408,6 +463,7 @@ def prepare_eval_commands(
 
     cur_job_idx = 0
     get_random_port = pipeline_utils.should_get_random_port(server_parameters["server_gpus"], exclusive)
+
     job_server_config, job_server_address, job_extra_arguments = pipeline_utils.configure_client(
         **server_parameters,
         extra_arguments=extra_arguments,
@@ -461,10 +517,31 @@ def prepare_eval_commands(
                         "which is not supported for evaluation when grouping jobs."
                     )
 
+                # Self-contained tasks don't use NeMo Skills server, so skip
+                # server-related args that configure_client adds to job_extra_arguments.
+                # Tasks with configure_client_overrides translate server params into
+                # their own config format (e.g. eval_kit uses flat ++server_url instead
+                # of nested ++server.* overrides).
+                if benchmark_args.self_contained_task:
+                    effective_extra_args = extra_arguments
+                elif hasattr(generation_task, "configure_client_overrides"):
+                    # rsplit to handle URLs like http://host:port (takes last colon)
+                    host, port = (job_server_address or "localhost:5000").rsplit(":", 1)
+                    model = server_parameters["model"]
+                    server_type = server_parameters["server_type"]
+                    task_overrides = generation_task.configure_client_overrides(
+                        host=host,
+                        port=int(port),
+                        model=model,
+                        server_type=server_type,
+                    )
+                    effective_extra_args = f"{task_overrides} {extra_arguments}"
+                else:
+                    effective_extra_args = job_extra_arguments
                 full_extra_arguments = (
                     f"{generation_task.get_generation_default_args()} "
                     f"{benchmark_args.generation_args} "
-                    f"{job_extra_arguments} "
+                    f"{effective_extra_args} "
                 )
 
                 cmd = pipeline_utils.get_generation_cmd(
@@ -504,30 +581,43 @@ def prepare_eval_commands(
                             env_source[key] = b
                     job_sandbox_env_overrides = [f"{k}={v}" for k, v in env_map.items()]
 
+                    # For self-contained tasks, override server config and get num_gpus
+                    job_num_gpus = None
+                    is_self_contained_job = any(benchmarks_dict[b].self_contained_task for b in job_benchmarks)
+                    if is_self_contained_job:
+                        effective_server_config = None
+                        for b in job_benchmarks:
+                            if benchmarks_dict[b].num_gpus is not None:
+                                job_num_gpus = benchmarks_dict[b].num_gpus
+                                break
+                    else:
+                        effective_server_config = job_server_config
+
                     # TODO: move to a dataclass
                     job_batches.append(
                         (
                             job_cmds,
-                            job_benchmarks,
+                            sorted(job_benchmarks),
                             job_needs_sandbox,
                             job_needs_sandbox_to_keep_mounts,
-                            job_server_config,
+                            effective_server_config,
                             job_server_address,
                             # a check above guarantees that this is the same for all tasks in a job
                             generation_task.get_server_command_fn(),
                             job_sandbox_env_overrides,
+                            job_num_gpus,
                         )
-                    )
-                    job_server_config, job_server_address, job_extra_arguments = pipeline_utils.configure_client(
-                        **server_parameters,
-                        extra_arguments=extra_arguments,
-                        get_random_port=get_random_port,
                     )
                     for job_benchmark in job_benchmarks:
                         benchmarks_dict[job_benchmark].job_ids.append(cur_job_idx)
                     cur_job_idx += 1
                     job_cmds = []
                     job_benchmarks = set()
+                    job_server_config, job_server_address, job_extra_arguments = pipeline_utils.configure_client(
+                        **server_parameters,
+                        extra_arguments=extra_arguments,
+                        get_random_port=get_random_port,
+                    )
 
                 cur_eval += 1
 

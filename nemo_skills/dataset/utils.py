@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import contextlib
+import hashlib
 import importlib
 import json
 import os
@@ -160,6 +161,13 @@ def _load_external_dataset(dataset_path):
 
 def get_default_dataset_module(dataset):
     data_path = "/nemo_run/code/nemo_skills/dataset"
+
+    # For dotted names like eval_kit.MMBench_DEV_EN, import the parent package.
+    # The sub-benchmark part is handled by the module's get_extra_generation_args().
+    if dataset.startswith("eval_kit."):
+        dataset_module = importlib.import_module("nemo_skills.dataset.eval_kit")
+        return dataset_module, data_path
+
     dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset}")
 
     return dataset_module, data_path
@@ -300,3 +308,41 @@ def get_mcq_fields(question, choices):
         "options": options_text,
         **options_dict,
     }
+
+
+def get_question_hash(question, options=None):
+    """Normalize question text and options and hash it.
+    MMLU-Pro has duplicate questions with different options."""
+    normalized = {
+        "question": " ".join(question.strip().lower().split()),
+        "options": [" ".join(opt.strip().lower().split()) for opt in options] if options is not None else None,
+    }
+    payload = json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def load_subset_ids(ids_file):
+    """Load subset IDs."""
+    with open(ids_file, "rt", encoding="utf-8") as fin:
+        return [json.loads(line)["id"] for line in fin if line.strip()]
+
+
+def filter_by_subset(dataset, subset_ids, question_key="question", options_key=None):
+    """Filter dataset entries by subset IDs."""
+    hash_to_entry = {}
+    duplicate_hashes = set()
+    for entry in dataset:
+        options = entry[options_key] if options_key else None
+        h = get_question_hash(entry[question_key], options)
+        if h in hash_to_entry:
+            duplicate_hashes.add(h)
+            continue
+        hash_to_entry[h] = entry
+
+    if duplicate_hashes:
+        raise ValueError(f"Found {len(duplicate_hashes)} duplicate source IDs; subset mapping is ambiguous.")
+
+    no_match_ids = set(subset_ids) - hash_to_entry.keys()
+    if no_match_ids:
+        raise ValueError(f"{len(no_match_ids)}/{len(subset_ids)} subset IDs not found in source split.")
+    return [hash_to_entry[h] for h in subset_ids]
