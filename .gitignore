@@ -42,6 +42,7 @@ cluster_configs/*
 nemo_skills/dataset/ruler/*/
 nemo_skills/dataset/ruler2/*/
 nemo_skills/dataset/aalcr/lcr/
+nemo_skills/dataset/browsecomp-lc/_cache/
 .idea/
 .idea/*
 CLAUDE.md

@@ -15,6 +15,7 @@ import functools
 
 from nemo_skills.dataset.utils import locate
 from nemo_skills.evaluation.metrics.aalcr_metrics import AALCRMetrics
+from nemo_skills.evaluation.metrics.browsecomp_metrics import BrowseCompMetrics
 from nemo_skills.evaluation.metrics.answer_judgement_metrics import AnswerJudgementMetrics
 from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
@@ -105,6 +106,7 @@ METRICS_MAP = {
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
     "graphwalks": GraphWalksMetrics,
     "weighted-math": WeightedMathMetrics,
+    "browsecomp": BrowseCompMetrics,
 }
 
 
