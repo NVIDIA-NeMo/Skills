@@ -12,6 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DATASET_GROUP = "multichoice"
 METRICS_TYPE = "multichoice"
 GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=multichoice"
