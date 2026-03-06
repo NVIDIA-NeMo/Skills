@@ -197,10 +197,10 @@ Example distractor results (Nemotron-3-Nano, `hotpotqa:4`):
 ```text
 ----------------------------------------------------------------------------- hotpotqa -----------------------------------------------------------------------------
 evaluation_mode           | num_entries | answer_em    | answer_f1    | sp_em        | sp_f1        | joint_em     | joint_f1     | is_correct   | is_correct_strict
-pass@1[avg-of-4]          | 7405        | 62.96 ± 0.00 | 78.12 ± 0.00 | 21.19 ± 0.00 | 60.82 ± 0.00 | 15.22 ± 0.00 | 49.64 ± 0.00 | 73.29 ± 0.00 | 71.67 ± 0.00
-pass@4                    | 7405        | 70.43        | 83.93        | 35.11        | 74.58        | 25.64        | 62.90        | 79.34        | 78.01
-filtered_pass@1[avg-of-4] | 6057        | 67.69        | 79.23        | 21.70        | 60.99        | 16.76        | 50.64        | 78.77        | 77.12
-filtered_pass@4           | 6057        | 75.17        | 85.25        | 35.56        | 74.76        | 27.70        | 64.14        | 84.38        | 83.34
+pass@1[avg-of-4]          | 7405        | 62.92 ± 0.25 | 78.15 ± 0.16 | 21.52 ± 0.12 | 60.75 ± 0.21 | 15.45 ± 0.14 | 49.52 ± 0.15 | 73.35 ± 0.22 | 71.68 ± 0.26
+pass@4                    | 7405        | 70.28        | 83.86        | 35.29        | 74.41        | 25.75        | 62.69        | 79.23        | 77.92
+filtered_pass@1[avg-of-4] | 6057        | 67.71        | 79.30        | 22.09        | 60.95        | 17.01        | 50.56        | 78.79        | 77.12
+filtered_pass@4           | 6057        | 74.95        | 85.10        | 35.86        | 74.55        | 27.92        | 63.88        | 84.27        | 83.11
 ```
 
 Example closed-book results (Nemotron-3-Nano, `hotpotqa_closedbook:4`):
@@ -208,10 +208,10 @@ Example closed-book results (Nemotron-3-Nano, `hotpotqa_closedbook:4`):
 ```text
 ----------------------------------------- hotpotqa_closedbook ------------------------------------------
 evaluation_mode           | num_entries | answer_em    | answer_f1    | is_correct   | is_correct_strict
-pass@1[avg-of-4]          | 7405        | 28.99 ± 0.00 | 39.37 ± 0.00 | 33.11 ± 0.00 | 32.26 ± 0.00
-pass@4                    | 7405        | 37.41        | 49.99        | 42.38        | 40.77
-filtered_pass@1[avg-of-4] | 6057        | 31.76        | 39.55        | 36.47        | 35.49
-filtered_pass@4           | 6057        | 41.08        | 50.56        | 46.74        | 44.94
+pass@1[avg-of-4]          | 7405        | 29.05 ± 0.15 | 39.35 ± 0.18 | 33.14 ± 0.32 | 32.36 ± 0.28
+pass@4                    | 7405        | 37.91        | 50.40        | 42.50        | 41.30
+filtered_pass@1[avg-of-4] | 6057        | 31.85        | 39.57        | 36.48        | 35.60
+filtered_pass@4           | 6057        | 41.59        | 51.01        | 46.77        | 45.44
 ```
 
 The closed-book variant reports answer-level metrics only (no supporting-fact or joint metrics).
