@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import json
 from pathlib import Path
 
@@ -20,13 +21,13 @@ from tqdm import tqdm
 
 # From https://github.com/YangLabHKUST/UGPhysics/blob/main/codes/utils.py#L126
 OB_ANS_TYPE_ID2EN = {
-    "IN": "a range inteval",
+    "IN": "a range interval",
     "TF": "either True or False",
     "EX": "an expression",
     "EQ": "an equation",
     "MC": "one option of a multiple choice question",
     "NV": "a numerical value without units",
-    "TUP": "multiple numbers, seperated by comma, such as (x, y, z)",
+    "TUP": "multiple numbers, separated by comma, such as (x, y, z)",
 }
 
 SUBSETS = [
@@ -84,7 +85,7 @@ def format_entry(entry):
     }
 
 
-def load_all_data(lang_split):
+def load_data(lang_split):
     data = []
     for subset in tqdm(SUBSETS, desc=f"Loading {lang_split} subsets"):
         subset_data = load_dataset("UGPhysics/ugphysics", subset, split=lang_split)
@@ -92,21 +93,34 @@ def load_all_data(lang_split):
     return data
 
 
-def save_data(data, split_name):
-    data_dir = Path(__file__).absolute().parent
-    data_dir.mkdir(exist_ok=True)
-    output_file = data_dir / f"{split_name}.jsonl"
-
-    with open(output_file, "wt", encoding="utf-8") as fout:
-        for entry in tqdm(data, desc=f"Writing {output_file.name}"):
+def save_data(data, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "wt", encoding="utf-8") as fout:
+        for entry in tqdm(data, desc=f"Writing {output_path.name}"):
             json.dump(format_entry(entry), fout)
             fout.write("\n")
 
 
 if __name__ == "__main__":
-    eng_data = load_all_data("en")
-    zh_data = load_all_data("zh")
-    full_data = eng_data + zh_data
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--split", default="all", choices=("all", "en", "zh", "en_zh"))
+    args = parser.parse_args()
 
-    for data, split_name in zip([eng_data, zh_data, full_data], ["test", "zh", "en_zh"]):
-        save_data(data, split_name)
+    data_dir = Path(__file__).absolute().parent
+    data_dir.mkdir(exist_ok=True)
+
+    if args.split == "all":
+        en_data = load_data("en")
+        save_data(en_data, data_dir / "en.jsonl")
+        zh_data = load_data("zh")
+        save_data(zh_data, data_dir / "zh.jsonl")
+        save_data(en_data + zh_data, data_dir / "en_zh.jsonl")
+    else:
+        if args.split == "en_zh":
+            en_data = load_data("en")
+            zh_data = load_data("zh")
+            data = en_data + zh_data
+        else:
+            data = load_data(args.split)
+        save_data(data, data_dir / f"{args.split}.jsonl")

@@ -15,7 +15,7 @@
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 METRICS_TYPE = "hle"
 GENERATION_ARGS = "++prompt_config=generic/hle ++eval_type=math"
-EVAL_SPLIT = "text"
+EVAL_SPLIT = "text"  # text subset of gold + revised subset of HLE-Verified (https://arxiv.org/pdf/2602.13964v3)
 
 # Some answers are not possible to compare symbolically, so have to use a judge model
 # Setting openai judge by default, but can be overriden from command line for a locally hosted model

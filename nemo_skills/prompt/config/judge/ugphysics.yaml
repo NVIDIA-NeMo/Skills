@@ -10,7 +10,7 @@ user: |-
 
   Your tasks include:
   A. Identify Mathematical or Notational Equivalence: Pay special attention to any LaTeX expressions in both answers. Confirm that the mathematical relationships, variables, and operations conveyed are equivalent.
-  B. Consider Physiccal Equivalence: Pay special attention to transferring the units of both answers and equivalent variables given in the problem description. Feel free to ignore some physical constants appropriately.
+  B. Consider Physical Equivalence: Pay special attention to transferring the units of both answers and equivalent variables given in the problem description. Feel free to ignore some physical constants appropriately.
   C. Provide a Justification: Conclude with a brief explanation as to why you believe the student's output is correct or incorrect, highlighting any key differences in meaning or content.
 
   # STYLE #
@@ -24,7 +24,7 @@ user: |-
 
   # RESPONSE: MARKDOWN REPORT #
   ## Equivalence Judgement
-  [Whether the student's answer share the same meaning with the reference answer. (TRUE or FALSE)]
+  [Whether the student's answer shares the same meaning with the reference answer. (TRUE or FALSE)]
   ## Justification
   [Conclude with a brief explanation as to why you believe the student's answer is correct or incorrect.]
 
