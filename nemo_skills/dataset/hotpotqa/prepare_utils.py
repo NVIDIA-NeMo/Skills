@@ -37,7 +37,7 @@ def format_context(context: dict) -> str:
     Paragraphs are separated by blank lines.
     """
     paragraphs = []
-    for title, sentences in zip(context["title"], context["sentences"]):
+    for title, sentences in zip(context["title"], context["sentences"], strict=True):
         lines = [f"Title: {title}"]
         for idx, sent in enumerate(sentences):
             lines.append(f"[{idx}] {sent.strip()}")
@@ -47,7 +47,7 @@ def format_context(context: dict) -> str:
 
 def format_entry(entry: dict) -> dict:
     """Format a HotpotQA entry to match NeMo-Skills format."""
-    supporting_facts = list(zip(entry["supporting_facts"]["title"], entry["supporting_facts"]["sent_id"]))
+    supporting_facts = list(zip(entry["supporting_facts"]["title"], entry["supporting_facts"]["sent_id"], strict=True))
 
     return {
         "id": entry["id"],
@@ -70,11 +70,13 @@ def prepare_validation(output_path: Path) -> int:
 
     ds = load_dataset("hotpotqa/hotpot_qa", "distractor", split="validation")
 
-    with open(output_path, "wt", encoding="utf-8") as fout:
-        for entry in tqdm(ds, desc=f"Writing {output_path.name}"):
-            formatted = format_entry(entry)
+    formatted_entries = [format_entry(entry) for entry in tqdm(ds, desc=f"Formatting {output_path.name}")]
+    tmp_output_path = output_path.with_suffix(".jsonl.tmp")
+    with open(tmp_output_path, "wt", encoding="utf-8") as fout:
+        for formatted in formatted_entries:
             json.dump(formatted, fout)
             fout.write("\n")
+    tmp_output_path.replace(output_path)
 
     print(f"Wrote {len(ds)} examples to {output_path}")
     return len(ds)

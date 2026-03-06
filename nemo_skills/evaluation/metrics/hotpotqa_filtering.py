@@ -277,7 +277,7 @@ def is_correct_strict(alternatives: list[str], model_answer: str) -> bool:
         if alt_norm not in ans:
             continue
         if len(alt_norm) <= 4:
-            if not re.search(r"(?<![a-z])" + re.escape(alt_norm) + r"(?![a-z])", ans):
+            if not re.search(r"(?<!\w)" + re.escape(alt_norm) + r"(?!\w)", ans):
                 continue
         if ans_len > 80:
             pos = ans.find(alt_norm)

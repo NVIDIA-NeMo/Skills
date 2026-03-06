@@ -116,7 +116,7 @@ def _try_parse_answer_json(text: str) -> tuple[str, list] | None:
         parsed = json.loads(text)
         if not isinstance(parsed, dict) or "answer" not in parsed:
             return None
-        answer = str(parsed.get("answer", ""))
+        answer = str(parsed["answer"])
         sp = parsed.get("supporting_facts", [])
         if isinstance(sp, list):
             valid_sp = []
@@ -169,7 +169,8 @@ def parse_generation(generation: str) -> tuple[str, list]:
 
     text = generation.strip()
 
-    for md_match in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL):
+    md_matches = list(re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL))
+    for md_match in reversed(md_matches):
         result = _try_parse_answer_json(md_match.group(1))
         if result is not None:
             return result
@@ -212,8 +213,8 @@ class HotpotQAMetrics(BaseMetrics):
 
     def _get_score_dict(self, prediction: dict) -> dict[str, float]:
         """Compute answer, SP, joint, and alternative-match scores for one prediction."""
-        generation = prediction.get("generation", "")
-        expected_answer = prediction.get("expected_answer", "")
+        generation = prediction["generation"]
+        expected_answer = prediction["expected_answer"]
 
         pred_answer, pred_sp = parse_generation(generation)
 
@@ -233,7 +234,7 @@ class HotpotQAMetrics(BaseMetrics):
         }
 
         if not self.closed_book:
-            gold_sp = prediction.get("supporting_facts", [])
+            gold_sp = prediction["supporting_facts"]
             sp_em, sp_f1, sp_prec, sp_recall = sp_scores(pred_sp, gold_sp)
 
             joint_prec = ans_prec * sp_prec
@@ -270,7 +271,7 @@ class HotpotQAMetrics(BaseMetrics):
 
     def update(self, predictions):
         """Update metrics with a batch of predictions for one question."""
-        expected_answer = predictions[0].get("expected_answer", "")
+        expected_answer = predictions[0]["expected_answer"]
         gt_info = normalize_gt(expected_answer)
         self._current_should_remove = gt_info["should_remove"]
 
