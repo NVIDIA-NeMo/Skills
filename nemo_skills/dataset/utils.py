@@ -161,6 +161,13 @@ def _load_external_dataset(dataset_path):
 
 def get_default_dataset_module(dataset):
     data_path = "/nemo_run/code/nemo_skills/dataset"
+
+    # For dotted names like eval_kit.MMBench_DEV_EN, import the parent package.
+    # The sub-benchmark part is handled by the module's get_extra_generation_args().
+    if dataset.startswith("eval_kit."):
+        dataset_module = importlib.import_module("nemo_skills.dataset.eval_kit")
+        return dataset_module, data_path
+
     dataset_module = importlib.import_module(f"nemo_skills.dataset.{dataset}")
 
     return dataset_module, data_path

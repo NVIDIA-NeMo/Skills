@@ -505,12 +505,34 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     """Evaluate single sample based on task_type. Returns dict of updates to merge."""
     updates = {}
     task_type = sample.get("task_type", "unknown")
-    generation = sample["generation"].strip()
+    generation_raw = sample.get("generation")
+    generation = generation_raw.strip() if isinstance(generation_raw, str) else ""
     expected_answer = sample.get("expected_answer", "").strip()
 
     # Strip helpful prefixes for ASR tasks (e.g., "The audio says: ...")
     if config.strip_helpful_prefixes:
         generation = strip_helpful_prefixes(generation)
+
+    # Normalise AudioBench speech-translation task types (ST-EN-ZH -> Translation)
+    _ASR_TYPES = {"ASR", "ASR-ZH", "ASR-PC", "ASR_LEADERBOARD"}
+    _TRANSLATION_TYPES = {"AST", "Translation"}
+    # AudioBench speech translation types: ST-{src}-{tgt}
+    if task_type.startswith("ST-"):
+        _TRANSLATION_TYPES.add(task_type)
+
+    if task_type in (_ASR_TYPES | _TRANSLATION_TYPES | {"CER"}) and not generation:
+        base = {
+            "is_correct": False,
+            "error": "missing_generation",
+        }
+        if task_type in _TRANSLATION_TYPES:
+            return {**base, "bleu": 0.0}
+        if task_type == "CER":
+            return {**base, "cer": 1.0}
+        if task_type == "ASR-PC":
+            return {**base, "wer": 1.0, "wer_c": 1.0, "wer_pc": 1.0, "per": 1.0}
+        # ASR / ASR-ZH / ASR_LEADERBOARD
+        return {**base, "wer": 1.0}
 
     if task_type == "ASR-PC":
         mode = resolve_asr_normalization_mode(config)
@@ -522,7 +544,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         )
         updates.update(metrics)
 
-    elif task_type == "ASR":
+    elif task_type in {"ASR", "ASR-ZH"}:
         mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
         updates.update(metrics)
@@ -544,7 +566,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 updates[f"wer_{metric_suffix}"] = ref_metrics["wer"]
                 updates[f"is_correct_{metric_suffix}"] = ref_metrics["is_correct"]
 
-    elif task_type in ["AST", "Translation"]:
+    elif task_type in _TRANSLATION_TYPES:
         metrics = evaluate_translation(expected_answer, generation)
         updates.update(metrics)
 
@@ -560,6 +582,13 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     elif task_type == "PC-Rate":
         metrics = evaluate_pc_rate(expected_answer, generation)
         updates.update(metrics)
+
+    elif task_type == "MathQA":
+        # AudioBench MathQA: exact string match after normalization
+        gen_norm = generation.strip().lower()
+        ref_norm = expected_answer.strip().lower()
+        updates["is_correct"] = gen_norm == ref_norm
+        updates["predicted_answer"] = generation
 
     else:
         if "requires_judge" not in sample:
