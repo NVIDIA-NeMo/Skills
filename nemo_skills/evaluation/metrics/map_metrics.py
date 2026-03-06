@@ -30,7 +30,6 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     SweBenchMetrics,
 )
 from nemo_skills.evaluation.metrics.critpt_metrics import CritPtMetrics
-from nemo_skills.evaluation.metrics.eval_kit_metrics import EvalKitMetrics
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
@@ -88,7 +87,6 @@ METRICS_MAP = {
     "compute-eval": ComputeEvalMetrics,
     "gradingbench": GradingBenchMetrics,
     "critpt": CritPtMetrics,
-    "eval_kit": EvalKitMetrics,
     "specdec": SpecdecMetrics,
 }
 

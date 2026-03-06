@@ -16,6 +16,7 @@ import subprocess
 from collections import defaultdict
 
 import numpy as np
+from sacrebleu import corpus_bleu
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float
 
@@ -34,8 +35,6 @@ class TranslationMetrics(BaseMetrics):
     # TODO: add support for other translation metrics, such as MetricX
 
     def get_metrics(self):
-        from sacrebleu import corpus_bleu
-
         metrics_dict = {}
         for key in self.translation_dict:
             src_lang, tgt_lang = key.split("->")
