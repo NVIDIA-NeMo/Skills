@@ -15,9 +15,16 @@ EVAL_SPLIT = "test"
 METRICS_TYPE = "browsecomp"
 GENERATION_ARGS = "++prompt_format=openai"
 
+# JUDGE_PIPELINE_ARGS = {
+#     "model": "gpt-4o-mini",
+#     "server_type": "openai",
+#     "server_address": "https://api.openai.com/v1",
+# }
+
 JUDGE_PIPELINE_ARGS = {
-    "model": "gpt-4o-mini",
-    "server_type": "openai",
-    "server_address": "https://api.openai.com/v1",
+    "model": "/hf_models/Qwen3-235B-A22B-Instruct-2507",
+    "server_type": "sglang",
+    "server_gpus": 8,
 }
+
 JUDGE_ARGS = "++prompt_config=judge/browsecomp ++generation_key=judgement ++add_generation_stats=False"
