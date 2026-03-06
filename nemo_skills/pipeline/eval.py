@@ -36,6 +36,34 @@ from nemo_skills.utils import (
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def _apply_task_overrides(combined_cmd, task_classes, job_num_gpus, cluster_config):
+    """Apply env/torchrun/container overrides declared by generation task classes.
+
+    Returns (modified_cmd, container).
+    """
+    # Environment prefix (first non-empty wins; jobs are not mixed across task types)
+    for tc in task_classes:
+        prefix = tc.get_env_prefix() if hasattr(tc, "get_env_prefix") else ""
+        if prefix:
+            combined_cmd = f"{prefix}{combined_cmd}"
+            break
+
+    # Torchrun for multi-GPU data-parallel inference
+    if any(getattr(tc, "USE_TORCHRUN", False) for tc in task_classes):
+        if job_num_gpus and int(job_num_gpus) > 1:
+            combined_cmd = combined_cmd.replace("python -m ", f"torchrun --nproc_per_node {job_num_gpus} -m ", 1)
+
+    # Container selection (task class CONTAINER_KEY, falling back to nemo-skills default)
+    container = cluster_config["containers"]["nemo-skills"]
+    for tc in task_classes:
+        key = getattr(tc, "CONTAINER_KEY", None)
+        if key and key in cluster_config.get("containers", {}):
+            container = cluster_config["containers"][key]
+            break
+
+    return combined_cmd, container
+
+
 class SingleNodeMode(str, enum.Enum):
     sequential = "sequential"
     parallel = "parallel"
@@ -416,6 +444,20 @@ def eval(
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
     get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
+
+    # Build extra_package_dirs: include any dirs declared by generation task classes
+    extra_pkg_dirs = []
+    seen_pkg_dirs = set()
+    for ba in benchmarks_dict.values():
+        task_cls = ba.generation_task_class
+        if task_cls is not None and hasattr(task_cls, "get_extra_package_dirs"):
+            for pkg_dir in task_cls.get_extra_package_dirs():
+                if pkg_dir not in seen_pkg_dirs:
+                    seen_pkg_dirs.add(pkg_dir)
+                    extra_pkg_dirs.append(pkg_dir)
+                    LOG.info("Packaging extra dir from %s: %s", task_cls.__name__, pkg_dir)
+    extra_pkg_dirs = extra_pkg_dirs or None
+
     has_tasks = False
     job_id_to_tasks = {}
     benchmark_to_judge_tasks = {}
@@ -434,20 +476,34 @@ def eval(
                 job_server_address,
                 job_server_command,
                 job_sandbox_env_overrides,
+                job_num_gpus,
             ) = job_args
             prev_tasks = _task_dependencies
 
             for _ in range(dependent_jobs + 1):
                 has_tasks = True
+                combined_cmd = pipeline_utils.wrap_python_path(cmd=combine_cmds(cmds, single_node_mode))
+
+                # Apply env/torchrun/container overrides from generation task classes
+                job_task_classes = [
+                    benchmarks_dict[b].generation_task_class
+                    for b in job_benchmarks
+                    if benchmarks_dict[b].generation_task_class is not None
+                ]
+                combined_cmd, job_container = _apply_task_overrides(
+                    combined_cmd, job_task_classes, job_num_gpus, cluster_config
+                )
+
                 new_task = pipeline_utils.add_task(
                     exp,
-                    cmd=pipeline_utils.wrap_python_path(cmd=combine_cmds(cmds, single_node_mode)),
+                    cmd=combined_cmd,
                     task_name=f"{expname}-{'-'.join(job_benchmarks)}",
                     log_dir=log_dir,
-                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    container=main_container or job_container,
                     cluster_config=cluster_config,
                     partition=partition,
                     account=account,
+                    num_gpus=job_num_gpus,
                     server_config=job_server_config,
                     with_sandbox=job_needs_sandbox or with_sandbox,
                     keep_mounts_for_sandbox=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
@@ -461,6 +517,7 @@ def eval(
                         prev_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
                     ),
                     get_server_command=job_server_command,
+                    extra_package_dirs=extra_pkg_dirs,
                     sbatch_kwargs=sbatch_kwargs,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
@@ -609,6 +666,8 @@ def eval(
                     command += f" --wandb_group={wandb_group} "
                 if wandb_project:
                     command += f" --wandb_project={wandb_project} "
+                if data_dir:
+                    command += f" --data_dir={data_dir} "
                 if metrics_kwargs:
                     command += f" --metrics_kwargs='{kwargs_to_string(metrics_kwargs)}' "
 

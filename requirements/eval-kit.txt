@@ -1,0 +1,3 @@
+# VLMEvalKit (vlmeval) is installed at job start via --installation_command
+# in run_eval_kit.sh (pip install from mounted cluster source).
+# This file is kept as a placeholder; no venv-based requirements are needed.
