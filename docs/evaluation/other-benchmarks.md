@@ -138,16 +138,20 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
 
 - Benchmark definitions: [`nemo_skills/dataset/hotpotqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa/__init__.py) and [`nemo_skills/dataset/hotpotqa_closedbook/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa_closedbook/__init__.py)
 - Original benchmark source is the [HotpotQA repository](https://github.com/hotpotqa/hotpot).
-- Uses 7,405 distractor-setting validation examples.
+- Uses 7,405 distractor-setting validation examples. Both variants share the same data; preparation is unified in [`nemo_skills/dataset/hotpotqa/prepare_utils.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa/prepare_utils.py). The closed-book variant copies the prepared file from the distractor dataset (no separate download).
 - Metrics follow the [official evaluation script](https://github.com/hotpotqa/hotpot/blob/master/hotpot_evaluate_v1.py): Answer EM/F1, Supporting-facts EM/F1, Joint EM/F1, plus alternative-aware substring matching.
 - Both unfiltered and filtered (excluding unreliable questions) metrics are reported automatically.
 
 #### Data Preparation
 
+Prepare the distractor validation set (single source of truth), then the closed-book variant (copies from it):
+
 ```bash
 ns prepare_data hotpotqa
 ns prepare_data hotpotqa_closedbook
 ```
+
+You can also run `ns prepare_data hotpotqa_closedbook` alone; it will run the shared preparation for `hotpotqa` first if that data is not yet present, then copy it.
 
 #### Running the Evaluation
 

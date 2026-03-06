@@ -1,7 +1,7 @@
 # Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
+# you may not use it except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -12,42 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Reuses the same validation data as hotpotqa (distractor setting).
-# Copies from the sibling hotpotqa directory if already prepared,
-# otherwise pulls directly from HuggingFace.
+# Closed-book variant uses the same validation data as hotpotqa (distractor setting).
+# We reuse that file so there is only one real data preparation (in hotpotqa).
 
-import json
 import shutil
+import sys
 from pathlib import Path
 
-from datasets import load_dataset
-from tqdm import tqdm
-
-
-def format_context(context: dict) -> str:
-    """Format context paragraphs with titles and indexed sentences."""
-    paragraphs = []
-    for title, sentences in zip(context["title"], context["sentences"]):
-        lines = [f"Title: {title}"]
-        for idx, sent in enumerate(sentences):
-            lines.append(f"[{idx}] {sent.strip()}")
-        paragraphs.append("\n".join(lines))
-    return "\n\n".join(paragraphs)
-
-
-def format_entry(entry: dict) -> dict:
-    """Format a HotpotQA entry to match NeMo-Skills format."""
-    supporting_facts = list(zip(entry["supporting_facts"]["title"], entry["supporting_facts"]["sent_id"]))
-    return {
-        "id": entry["id"],
-        "question": entry["question"],
-        "expected_answer": entry["answer"],
-        "context": format_context(entry["context"]),
-        "supporting_facts": supporting_facts,
-        "type": entry["type"],
-        "level": entry["level"],
-    }
-
+# Reuse the shared preparation so we don't require hotpotqa to be prepared first.
+from nemo_skills.dataset.hotpotqa.prepare_utils import prepare_validation
 
 if __name__ == "__main__":
     data_dir = Path(__file__).absolute().parent
@@ -60,10 +33,10 @@ if __name__ == "__main__":
         shutil.copy2(hotpotqa_source, output_file)
         print(f"Copied {hotpotqa_source} -> {output_file}")
     else:
-        ds = load_dataset("hotpotqa/hotpot_qa", "distractor", split="validation")
-        with open(output_file, "wt", encoding="utf-8") as fout:
-            for entry in tqdm(ds, desc=f"Writing {output_file.name}"):
-                formatted = format_entry(entry)
-                json.dump(formatted, fout)
-                fout.write("\n")
-        print(f"Wrote {len(ds)} examples to {output_file}")
+        # Same data; run shared preparation for hotpotqa then copy here.
+        prepare_validation(hotpotqa_source)
+        if not hotpotqa_source.exists():
+            print("Preparation did not create the expected file.", file=sys.stderr)
+            sys.exit(1)
+        shutil.copy2(hotpotqa_source, output_file)
+        print(f"Copied {hotpotqa_source} -> {output_file}")
