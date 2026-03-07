@@ -316,9 +316,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare BrowseCompLongContext dataset.")
     parser.add_argument(
         "--token_budget",
-        type=int,
+        type=str,
         default=None,
-        help="Maximum tokens per prompt. If unset, all pages are included without limit.",
+        help="Maximum tokens per prompt, e.g. 128k, 256k, 1m. If unset, all pages are included.",
     )
     parser.add_argument(
         "--max_examples",
@@ -354,9 +354,23 @@ def main() -> None:
     data_dir = Path(__file__).absolute().parent
     cache_dir = data_dir / "_cache"
     cache_dir.mkdir(exist_ok=True)
-    output_file = data_dir / "test.jsonl"
 
-    enc = tiktoken.get_encoding("o200k_base") if args.token_budget is not None else None
+    if args.token_budget is not None:
+        _s = args.token_budget.strip().lower()
+        if _s.endswith("m"):
+            token_budget = int(float(_s[:-1]) * 1024 * 1024)
+        elif _s.endswith("k"):
+            token_budget = int(float(_s[:-1]) * 1024)
+        else:
+            token_budget = int(_s)
+        # Normalise label: e.g. 131072 → "128k", 262144 → "256k"
+        _label = args.token_budget.strip().lower().rstrip("0")
+        output_file = data_dir / f"{_label}.jsonl"
+    else:
+        token_budget = None
+        output_file = data_dir / "test.jsonl"
+
+    enc = tiktoken.get_encoding("o200k_base") if token_budget is not None else None
 
     dataset = load_dataset("openai/BrowseCompLongContext")["train"]
     if args.max_examples is not None:
@@ -507,11 +521,11 @@ def main() -> None:
                 additional_pages = [p for p in additional_pages_raw if p is not None]
 
                 prompt = _build_prompt(
-                    ex["problem"], required_pages, additional_pages, args.token_budget, enc
+                    ex["problem"], required_pages, additional_pages, token_budget, enc
                 )
                 if prompt is None:
                     tqdm.write(
-                        f"[skip] required pages exceed token_budget={args.token_budget}: {ex['problem'][:80]!r}"
+                        f"[skip] required pages exceed token_budget={token_budget}: {ex['problem'][:80]!r}"
                     )
                     skipped += 1
                     _update_bar()
