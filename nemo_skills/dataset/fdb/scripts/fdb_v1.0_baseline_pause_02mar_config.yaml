@@ -1,12 +1,11 @@
-# Full-Duplex-Bench v1.0 evaluation - (ii) MATCHED_DEMO_V1 setup
+# Full-Duplex-Bench v1.0 evaluation - (i) BASELINE setup
 # S2S incremental V2 backend, all subtests.
-# Baseline + force_turn_taking + inference_user_pad_boost=0.8
-# Requires nemotron_h.py vLLM patch for boost params to take effect.
+# No inference boosting, no force turn taking.
 # Checkpoint: Mar 2 2026 (Feb 26 STT + Mar 3 TTS, Megan speaker)
 #
 # Run:
 #   python nemo_skills/dataset/fdb/scripts/run_eval.py \
-#     --config nemo_skills/dataset/fdb/scripts/fdb_v1.0_matched_demo_v1_02mar_config.yaml
+#     --config nemo_skills/dataset/fdb/scripts/fdb_v1.0_baseline_02mar_config.yaml
 
 cluster: s2s_eval_oci_iad
 partition: batch_block1,batch_block3,batch_block4
@@ -36,9 +35,8 @@ server_args: >-
   --vllm_max_model_len 8192
   --ignore_system_prompt
   --merge_user_channel_v2
-  --force_turn_taking
-  --inference_user_pad_boost 0.8
-  --output_dir /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/MAR_02_FIXED/matched_demo_v1/fdb_v1.0_artifacts
+  --silence_padding_sec 0.0
+  --output_dir /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/MAR_02_FIXED/baseline/fdb_v1.0_artifacts
   --code_path /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/NeMo
   --pip_install "hf-xet==1.1.9 huggingface-hub==0.34.4 nvidia-modelopt==0.33.1 nvidia-modelopt-core==0.33.1 tokenizers==0.22.0 transformers==4.56.0 lhotse==1.32.2 nv-one-logger-core==2.1.0 nv-one-logger-pytorch-lightning-integration==2.1.0 nv-one-logger-training-telemetry==2.1.0 kaldialign==0.9.1"
 
@@ -50,21 +48,21 @@ server_server_type: vllm_multimodal
 fdb_version: v1.0
 
 data_dir: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/Skills/nemo_skills/dataset/fdb
-output_dir: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/MAR_02_FIXED/matched_demo_v1/fdb_v1.0
+output_dir: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/MAR_02_FIXED/baseline/fdb_v1.0
 fdb_repo_path: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/Full-Duplex-Bench
 fdb_data_path: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/Full-Duplex-Bench-data
 
 subtests:
-  - backchannel
-  # - pause_candor
-  # - pause_synthetic
-  - turn_taking
-  - interruption
+  # - backchannel
+  - pause_candor
+  - pause_synthetic
+  # - turn_taking
+  # - interruption
 
-installation_command: "mkdir -p /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models && cp /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/nemotron_h.py /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/nemotron_h.py"
+installation_command: ""
 scoring_installation_command: "pip install numpy scipy scikit-learn silero-vad soundfile"
 
-expname: fdb_v1.0_matched_demo_v1_02mar
+expname: fdb_v1.0_baseline_02mar
 
 generation_only: false
 scoring_only: false

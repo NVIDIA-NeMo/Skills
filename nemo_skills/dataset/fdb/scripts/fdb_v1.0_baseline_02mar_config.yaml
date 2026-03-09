@@ -53,8 +53,8 @@ fdb_data_path: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/
 
 subtests:
   - backchannel
-  - pause_candor
-  - pause_synthetic
+  # - pause_candor
+  # - pause_synthetic
   - turn_taking
   - interruption
 

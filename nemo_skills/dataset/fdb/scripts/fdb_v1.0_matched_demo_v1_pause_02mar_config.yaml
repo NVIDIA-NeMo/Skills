@@ -36,6 +36,7 @@ server_args: >-
   --vllm_max_model_len 8192
   --ignore_system_prompt
   --merge_user_channel_v2
+  --silence_padding_sec 0.0
   --force_turn_taking
   --inference_user_pad_boost 0.8
   --output_dir /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/MAR_02_FIXED/matched_demo_v1/fdb_v1.0_artifacts
@@ -55,11 +56,11 @@ fdb_repo_path: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/
 fdb_data_path: /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/Full-Duplex-Bench-data
 
 subtests:
-  - backchannel
-  # - pause_candor
-  # - pause_synthetic
-  - turn_taking
-  - interruption
+  # - backchannel
+  - pause_candor
+  - pause_synthetic
+  # - turn_taking
+  # - interruption
 
 installation_command: "mkdir -p /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models && cp /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/nemotron_h.py /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/nemotron_h.py"
 scoring_installation_command: "pip install numpy scipy scikit-learn silero-vad soundfile"

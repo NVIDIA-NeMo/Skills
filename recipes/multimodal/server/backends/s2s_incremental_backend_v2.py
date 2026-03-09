@@ -327,7 +327,7 @@ class S2SIncrementalBackendV2(InferenceBackend):
         """Resolve the effective ``pad_audio_to_sec`` value for the wrapper."""
         if self.v2_config.pad_to_duration_secs is not None:
             return float(self.v2_config.pad_to_duration_secs)
-        if self.v2_config.silence_padding_sec > 0:
+        if self.v2_config.silence_padding_sec >= 0:
             import librosa
 
             duration = librosa.get_duration(filename=audio_path)
