@@ -640,6 +640,10 @@ def create_app(
                     "transcript": result.text or "",  # Text transcript of the audio
                 }
 
+            # Inject effective_system_prompt into debug_info before embedding
+            if result.debug_info:
+                result.debug_info["effective_system_prompt"] = system_prompt
+
             # Embed debug_info in content as JSON (OpenAI-compatible)
             final_content = message_content
             if result.debug_info and INCLUDE_DEBUG_INFO:
