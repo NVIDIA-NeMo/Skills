@@ -13,10 +13,9 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-DATASET_GROUP = "math"
 METRICS_TYPE = "ugphysics"
 GENERATION_ARGS = "++prompt_config=generic/ugphysics ++eval_type=math"
-EVAL_SPLIT = "test"
+EVAL_SPLIT = "en"
 
 # Setting openai judge by default, but can be overriden from command line for a locally hosted model
 # Currently using o4-mini-2025-04-16
