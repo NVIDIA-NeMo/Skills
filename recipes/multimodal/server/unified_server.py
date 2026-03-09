@@ -280,6 +280,7 @@ def create_app(
 
     # Extract server-level config from extra_config
     ignore_system_prompt = extra_config.pop("ignore_system_prompt", False) if extra_config else False
+    override_system_prompt = extra_config.get("system_prompt", None) if extra_config else None
     session_ttl = extra_config.pop("session_ttl", 300.0) if extra_config else 300.0
     max_sessions = extra_config.pop("max_sessions", 100) if extra_config else 100
 
@@ -299,6 +300,7 @@ def create_app(
         "device": device,
         "dtype": dtype,
         "ignore_system_prompt": ignore_system_prompt,
+        "override_system_prompt": override_system_prompt,
         "session_ttl": session_ttl,
         "max_sessions": max_sessions,
     }
@@ -355,7 +357,9 @@ def create_app(
         print(f"  Model: {model_path}")
         print(f"  Batch size: {batch_size}")
         print(f"  Batch timeout: {batch_timeout}s")
-        if ignore_system_prompt:
+        if override_system_prompt:
+            print(f"  System prompt: OVERRIDE with '{override_system_prompt[:80]}...'")
+        elif ignore_system_prompt:
             print("  System prompts: IGNORED")
 
     @app.get("/")
@@ -484,8 +488,11 @@ def create_app(
             text = extract_text_from_messages(messages)
             system_prompt = extract_system_prompt(messages)
 
-            # Honor ignore_system_prompt setting
-            if server_config.get("ignore_system_prompt", False):
+            # CLI --system_prompt overrides per-request prompt from messages
+            if server_config.get("override_system_prompt"):
+                system_prompt = server_config["override_system_prompt"]
+            # CLI --ignore_system_prompt nullifies it entirely
+            elif server_config.get("ignore_system_prompt", False):
                 system_prompt = None
 
             # Get generation parameters
