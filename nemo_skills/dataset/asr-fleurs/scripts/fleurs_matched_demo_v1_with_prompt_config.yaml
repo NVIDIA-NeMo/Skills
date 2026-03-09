@@ -1,0 +1,67 @@
+# FLEURS ASR evaluation - BASELINE setup
+# S2S incremental V2 backend, TEXT output only.
+# Evaluates WER on filtered FLEURS en_us test set.
+# No inference boosting, no force turn taking.
+# Checkpoint: Mar 2 2026 (Feb 26 STT + Mar 3 TTS, Megan speaker)
+#
+# Prepare data first:
+#   python nemo_skills/dataset/asr-fleurs/prepare.py \
+#     --manifest_path /lustre/fsw/portfolios/llmservice/users/apasad/data/asr/filtered_manifest.json \
+#     --audio_root /lustre/fsw/portfolios/llmservice/users/apasad/data/asr/filtered_fleurs_data
+#
+# Run:
+#   python nemo_skills/dataset/asr-leaderboard/scripts/run_eval.py \
+#     --config nemo_skills/dataset/asr-fleurs/scripts/fleurs_matched_demo_v1_02mar_config.yaml
+
+# Cluster settings
+cluster: s2s_eval_oci_iad_ap
+partition: batch_block1,batch_block3,batch_block4
+cpu_partition: cpu
+
+model: /lustre/fsw/portfolios/convai/users/ecasanova/Checkpoints/Nemotron-VoiceChat-november/duplex-eartts-10min_sw_et_eos_dp_eos_dup_fp32_1delay_02_March_exp_17_afg_long_FT_Megan_msr_34k_steps-stt-AS9.1_11002_new_branch_load_fixed
+
+server_type: vllm
+server_gpus: 1
+num_chunks: 5
+
+server_entrypoint: "-m nemo_skills.inference.server.serve_unified"
+server_args: >-
+  --backend s2s_incremental_v2
+  --no_decode_audio
+  --use_asr_as_response
+  --system_prompt "You are an AI assistant developed by NVIDIA. Your name is NVIDIA VoiceChat. Your job is to be helpful and have engaging conversations in English. Maintain a warm tone. Keep the dialogue open and ongoing. You must provide diverse responses, rephrase answers if user asks the same questions. Wait for the user to finish speaking before responding."
+  --speaker_reference /lustre/fsw/portfolios/convai/users/ecasanova/Checkpoints/Mg_a_00759.wav
+  --num_frames_per_inference 3
+  --engine_type vllm_llm_vllm_eartts
+  --use_perception_cache
+  --use_perception_cudagraph
+  --buffer_size_frames 21
+  --codec_token_history_size 60
+  --repetition_penalty 1.0
+  --matmul_precision medium
+  --vllm_gpu_memory_utilization 0.35
+  --vllm_max_model_len 8192
+  --force_turn_taking
+  --inference_user_pad_boost 0.8
+  --output_dir /lustre/fsw/portfolios/convai/users/apasad/projects/speechLM/s2s/MAR_02_FIXED/matched_demo_v1/fleurs_with_prompt_artifacts
+  --batch_size 1
+  --code_path /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/NeMo
+  --pip_install "hf-xet==1.1.9 huggingface-hub==0.34.4 nvidia-modelopt==0.33.1 nvidia-modelopt-core==0.33.1 tokenizers==0.22.0 transformers==4.56.0 lhotse==1.32.2 nv-one-logger-core==2.1.0 nv-one-logger-pytorch-lightning-integration==2.1.0 nv-one-logger-training-telemetry==2.1.0 kaldialign==0.9.1 jiwer whisper-normalizer sacrebleu"
+
+server_container: /lustre/fsw/portfolios/llmservice/users/erastorgueva/code/containers/triton25.05_s2svllm26.02.12.sqsh
+server_server_type: vllm_multimodal
+
+# Benchmark name used by nemo-skills eval pipeline
+benchmark: asr-fleurs
+
+# Paths
+data_dir: /dataset
+output_dir: /lustre/fsw/portfolios/convai/users/apasad/projects/speechLM/s2s/MAR_02_FIXED/matched_demo_v1/fleurs_with_prompt
+
+installation_command: "mkdir -p /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models && cp /lustre/fsw/portfolios/convai/users/mmkrtchyan/projects/speechLM/s2s/nemotron_h.py /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/nemotron_h.py && pip install jiwer whisper-normalizer sacrebleu"
+
+expname: fleurs_matched_demo_v1_02mar_with_prompt
+generation_only: false
+scoring_only: false
+dry_run: false
+
