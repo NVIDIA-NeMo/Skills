@@ -292,19 +292,17 @@ def summarize_results(
         input_files = sorted(
             [
                 jsonl_file
-                for jsonl_file in glob.glob(f"{benchmark_path}/output-rs*.jsonl")
-                if Path(jsonl_file).name != "output.jsonl"
-                and "_chunk_" not in Path(jsonl_file).name
-                and "_submissions" not in Path(jsonl_file).name  # introduced because of critpt
+                for jsonl_file in glob.glob(f"{benchmark_path}/output-rs[0-9]*.jsonl")
+                if Path(jsonl_file).name != "output.jsonl" and "_chunk_" not in Path(jsonl_file).name
             ]
         )
         has_sampling = len(input_files) > 0
 
         if has_greedy and has_sampling:
             raise ValueError(
-                f"Both output.jsonl and output-rs*.jsonl found for benchmark {benchmark}. "
+                f"Both output.jsonl and output-rs[0-9]*.jsonl found for benchmark {benchmark}. "
                 "This indicates that the evaluation was done multiple times with different sampling parameters. "
-                "It's not clear how to process this! Please remove output.jsonl or output-rs*.jsonl files and rerun."
+                "It's not clear how to process this! Please remove output.jsonl or output-rs[0-9]*.jsonl files and rerun."
             )
 
         if not has_greedy and not has_sampling:
