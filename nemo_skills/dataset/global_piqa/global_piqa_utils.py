@@ -55,13 +55,15 @@ ANSWER_REGEX1 = r"(?i)[Tt]he (?:[Bb]est [Aa]nswer|[Ff]inal [Aa]nswer|[Aa]nswer)[
 ANSWER_REGEX2 = r"(?i)[Aa]nswer\s*:[^A-B]*([A-B])"
 ANSWER_REGEX3 = r"(?i)\\boxed\{([A-B])\}"
 
+# Fallback: greedily match everything, then capture the last A/B in the response.
+# This is not in lm-evaluation-harness and is where we diverge from the original benchmark.
 LETTER_REGEX = r"\b\(?\s*([A-B])\s*\)?\.?\b"
 GREEDY_REGEX = r"[\s\S]*" + LETTER_REGEX
 EXTRACT_REGEX = [
     ANSWER_REGEX1,
     ANSWER_REGEX2,
     ANSWER_REGEX3,
-    GREEDY_REGEX,  # fallback regex; Matches the last A/B letter in the response
+    GREEDY_REGEX
 ]
 
 
