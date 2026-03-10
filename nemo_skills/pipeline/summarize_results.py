@@ -292,7 +292,7 @@ def summarize_results(
         input_files = sorted(
             [
                 jsonl_file
-                for jsonl_file in glob.glob(f"{benchmark_path}/*.jsonl")
+                for jsonl_file in glob.glob(f"{benchmark_path}/output-rs*.jsonl")
                 if Path(jsonl_file).name != "output.jsonl" and "_chunk_" not in Path(jsonl_file).name
             ]
         )
