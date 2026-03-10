@@ -16,7 +16,8 @@ METRICS_TYPE = "browsecomp"
 GENERATION_ARGS = "++prompt_format=openai"
 
 JUDGE_PIPELINE_ARGS = {
-    "model": "gpt-4o-mini",
+    # "model": "gpt-4o-mini",
+    "model": "openai/openai/gpt-4o-mini",
     "server_type": "openai",
     "server_address": "https://inference-api.nvidia.com/v1",
 }
