@@ -59,12 +59,7 @@ ANSWER_REGEX3 = r"(?i)\\boxed\{([A-B])\}"
 # This is not in lm-evaluation-harness and is where we diverge from the original benchmark.
 LETTER_REGEX = r"\b\(?\s*([A-B])\s*\)?\.?\b"
 GREEDY_REGEX = r"[\s\S]*" + LETTER_REGEX
-EXTRACT_REGEX = [
-    ANSWER_REGEX1,
-    ANSWER_REGEX2,
-    ANSWER_REGEX3,
-    GREEDY_REGEX
-]
+EXTRACT_REGEX = [ANSWER_REGEX1, ANSWER_REGEX2, ANSWER_REGEX3, GREEDY_REGEX]
 
 
 def get_mcq_fields(entry: dict) -> dict:
