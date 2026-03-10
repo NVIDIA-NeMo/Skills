@@ -33,11 +33,10 @@ class UGPhysicsMetrics(MathMetrics):
             equiv_match = re.search(r"##\s*Equivalence\s*Judgement\s*\n\s*(TRUE|FALSE)", judgement, re.IGNORECASE)
             if equiv_match:
                 return equiv_match.group(1).upper() == "TRUE"
-            # Fallback: look for standalone TRUE/FALSE
-            if re.search(r"\bTRUE\b", judgement):
-                return True
-            elif re.search(r"\bFALSE\b", judgement):
-                return False
+            # Fallback: look for standalone TRUE/FALSE (case-insensitive), use last match
+            true_false_matches = list(re.finditer(r"\b(TRUE|FALSE)\b", judgement, re.IGNORECASE))
+            if true_false_matches:
+                return true_false_matches[-1].group(1).upper() == "TRUE"
 
         # improper judgement format, so have to judge as false
         return None if return_none else False
