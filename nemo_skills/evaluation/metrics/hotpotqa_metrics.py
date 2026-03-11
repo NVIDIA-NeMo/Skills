@@ -25,7 +25,7 @@ import re
 import string
 from collections import Counter, defaultdict
 
-from nemo_skills.evaluation.metrics.base import BaseMetrics, as_float
+from nemo_skills.evaluation.metrics.base import BaseMetrics, as_percentage
 from nemo_skills.evaluation.metrics.hotpotqa_filtering import (
     is_correct,
     is_correct_strict,
@@ -307,14 +307,14 @@ class HotpotQAMetrics(BaseMetrics):
         """Return the ordered metric columns for the results table."""
         m = {
             "num_entries": lambda key, val, metrics: str(val),
-            "answer_em": as_float,
-            "answer_f1": as_float,
+            "answer_em": as_percentage,
+            "answer_f1": as_percentage,
         }
         if not self.closed_book:
-            m["sp_em"] = as_float
-            m["sp_f1"] = as_float
-            m["joint_em"] = as_float
-            m["joint_f1"] = as_float
-        m["is_correct"] = as_float
-        m["is_correct_strict"] = as_float
+            m["sp_em"] = as_percentage
+            m["sp_f1"] = as_percentage
+            m["joint_em"] = as_percentage
+            m["joint_f1"] = as_percentage
+        m["is_correct"] = as_percentage
+        m["is_correct_strict"] = as_percentage
         return m

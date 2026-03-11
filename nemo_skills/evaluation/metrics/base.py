@@ -447,10 +447,7 @@ def as_int(metric_key: str, metric_value: float, all_metrics: dict):
 
 
 def as_float(metric_key: str, metric_value: float, all_metrics: dict):
-    """Format float for display. When _statistics exist, metric_value is in percentage and std is in [0,1]; scale ± to percentage."""
-    if (metric_std := all_metrics.get(f"{metric_key}_statistics", {}).get("std_dev_across_runs")) is not None:
-        # std_dev_across_runs is in fraction [0,1] (std of run averages); metric_value is already % — scale std to % for consistent display
-        return f"{float(metric_value):.2f} ± {(100.0 * metric_std):.2f}"
+    """Format float for display (for real floats that are not scaled as percentages)."""
     return f"{float(metric_value):.2f}"
 
 
