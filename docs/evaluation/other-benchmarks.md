@@ -155,7 +155,7 @@ You can also run `ns prepare_data hotpotqa_closedbook` alone; it will run the sh
 
 #### Running the Evaluation
 
-Distractor evaluation (with context and supporting-fact scoring):
+Distractor evaluation (with context and supporting-fact scoring). Use `hotpotqa:4` for 4 seeds (produces the example results below):
 
 ```bash
 ns eval \
@@ -163,7 +163,7 @@ ns eval \
     --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
     --server_type=vllm \
     --server_gpus=8 \
-    --benchmarks=hotpotqa \
+    --benchmarks=hotpotqa:4 \
     --output_dir=<OUTPUT_DIR> \
     --server_args="--max-model-len 32768" \
     ++inference.temperature=1.0 \
@@ -171,7 +171,7 @@ ns eval \
     ++inference.tokens_to_generate=16384
 ```
 
-Closed-book evaluation (no context):
+Closed-book evaluation (no context). Use `hotpotqa_closedbook:4` for 4 seeds (produces the example results below):
 
 ```bash
 ns eval \
@@ -179,7 +179,7 @@ ns eval \
     --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
     --server_type=vllm \
     --server_gpus=8 \
-    --benchmarks=hotpotqa_closedbook \
+    --benchmarks=hotpotqa_closedbook:4 \
     --output_dir=<OUTPUT_DIR> \
     --server_args="--max-model-len 32768" \
     ++inference.temperature=1.0 \
