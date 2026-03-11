@@ -26,8 +26,10 @@ jobs:
         docker builder prune --all --filter "until=168h" --force
     - name: Cleanup old HF cache
       run: |
-        find /mnt/datadrive/nemo-skills-test-data/hf-cache/datasets -maxdepth 2 -mindepth 2 -type d -mtime +7 -exec rm -rf {} + || true
-        find /mnt/datadrive/nemo-skills-test-data/hf-cache/hub -maxdepth 1 -mindepth 1 -type d -mtime +7 -exec rm -rf {} + || true
+        docker run --rm -v /mnt/datadrive:/mnt/datadrive alpine \
+          sh -c 'find /mnt/datadrive/nemo-skills-test-data/hf-cache/datasets -maxdepth 2 -mindepth 2 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
+                 find /mnt/datadrive/nemo-skills-test-data/hf-cache/hub -maxdepth 1 -mindepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
+                 true'
     - uses: actions/checkout@v5
       with:
         path: ${{ github.run_id }}
