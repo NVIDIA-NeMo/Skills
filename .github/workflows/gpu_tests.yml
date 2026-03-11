@@ -20,9 +20,16 @@ jobs:
     runs-on: self-hosted-nemo-gpus-1
     if: ${{ github.event.label.name == 'run GPU tests' }}
     steps:
-    - name: Cleanup old containers
+    - name: Cleanup old Docker images and build cache
       run: |
-        docker system prune --all --filter "until=360h" --force
+        docker system prune --all --filter "until=168h" --force
+        docker builder prune --all --filter "until=168h" --force
+    - name: Cleanup old HF cache
+      run: |
+        docker run --rm -v /mnt/datadrive:/mnt/datadrive alpine \
+          sh -c 'find /mnt/datadrive/nemo-skills-test-data/hf-cache/datasets -maxdepth 2 -mindepth 2 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
+                 find /mnt/datadrive/nemo-skills-test-data/hf-cache/hub -maxdepth 1 -mindepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
+                 true'
     - uses: actions/checkout@v5
       with:
         path: ${{ github.run_id }}
