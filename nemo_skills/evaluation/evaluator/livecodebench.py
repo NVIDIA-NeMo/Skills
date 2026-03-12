@@ -91,6 +91,21 @@ async def execute_in_sandbox_with_retries(
 
 
 async def is_sandbox_available(sandbox_config: dict) -> bool:
+    """
+    Checks if the sandbox service is running, accessible, and can execute commands.
+
+    This function verifies sandbox availability by:
+    1. Establishing a connection to the sandbox service
+    2. Executing a test command ("true") to ensure the sandbox can process requests
+    3. Verifying the command completes successfully
+
+    Args:
+        sandbox_config: The configuration dictionary for the sandbox service.
+
+    Returns:
+        True if the sandbox is accessible and can successfully execute commands,
+        False if connection fails, command execution fails, or any error occurs.
+    """
     LOG.info(f"Attempting to connect to sandbox with config: {sandbox_config}")
     try:
         async with sandbox_context(sandbox_config) as sandbox:
