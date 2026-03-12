@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ---- Fast JSON (prefer orjson) ----
+# ---- Fast JSON (prefer orjson for reading) ----
 import argparse
 import json as _json_std
 import logging
@@ -30,17 +30,17 @@ try:  # pragma: no cover - best effort
     def _json_loads(s: str):
         return _orjson.loads(s)
 
-    def _json_dumps(obj) -> str:
-        return _orjson.dumps(obj).decode("utf-8")
-
 except Exception:  # pragma: no cover
     _orjson = None
 
     def _json_loads(s: str):
         return _json_std.loads(s)
 
-    def _json_dumps(obj) -> str:  # type: ignore
-        return _json_std.dumps(obj, ensure_ascii=False)
+# Always use stdlib json for writing to avoid compact formatting from orjson
+# (orjson omits spaces after colons/commas which produces non-standard
+# tokenization when tool-call arguments are embedded via chat templates).
+def _json_dumps(obj) -> str:
+    return _json_std.dumps(obj, ensure_ascii=False)
 
 
 # ------------------------------------------------------------
@@ -97,7 +97,6 @@ def messages_to_string(
         formatted_msg = {k: v for k, v in msg.items() if v is not None}
         formatted_messages.append(formatted_msg)
 
-                
     if chat_template_kwargs is None:
         chat_template_kwargs = {}
     elif not isinstance(chat_template_kwargs, dict):
