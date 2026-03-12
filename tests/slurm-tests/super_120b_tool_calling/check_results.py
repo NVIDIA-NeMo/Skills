@@ -16,7 +16,7 @@
 
 Validates:
   1. Tool calls were actually made (num_tool_calls > 0)
-  2. Accuracy is within expected range for AIME24 and AIME25
+  2. Accuracy is within expected range
   3. Code execution timeouts are within acceptable limits
 """
 
@@ -30,12 +30,12 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
 from utils import assert_all, load_json, soft_assert  # noqa: E402
 
-# Accuracy ranges for tool calling (16 seeds, max_tool_calls=100)
-# Baseline (2026-03-11, stdio transport, aime24): pass@1=93.54%, majority@16=93.33%, pass@16=100.00%
+MATH_BENCHMARKS = ["aime24", "aime25"]
+
 # Baseline (2026-03-11, stdio transport, max_tool_calls=100):
 #   aime24: pass@1=93.33%, majority@16=95.00%, pass@16=100.00%
 #   aime25: pass@1=97.29%, majority@16=100.00%, pass@16=100.00%
-RANGE_CONSTRAINTS = {
+MATH_METRIC_RANGES = {
     "aime24": {
         "pass@1[avg-of-16]": (90.0, 100.0),
         "majority@16": (90.0, 100.0),
@@ -48,12 +48,11 @@ RANGE_CONSTRAINTS = {
     },
 }
 
-BENCHMARKS = ["aime24", "aime25"]
-
 # At least this fraction of samples should have made tool calls
 MIN_TOOL_CALL_FRACTION = 0.3
 
 # Maximum total timeouts allowed across all files and benchmarks
+# Baseline: 54 total (aime24=16, aime25=38)
 MAX_TOTAL_TIMEOUTS = 100
 
 # Strings in tool response content that indicate a sandbox timeout
@@ -65,15 +64,15 @@ TIMEOUT_INDICATORS = [
 ]
 
 
-def check_tool_usage(workspace: str):
+def check_tool_usage(eval_dir: str):
     """Verify that tool calls were actually made during generation."""
     total_samples = 0
     samples_with_tools = 0
 
-    for benchmark in BENCHMARKS:
-        gen_dir = Path(workspace) / "eval-results" / benchmark
-        output_files = sorted(gen_dir.glob("output-rs*.jsonl"))
-        soft_assert(len(output_files) > 0, f"No output files found in {gen_dir}")
+    for benchmark in MATH_BENCHMARKS:
+        bench_dir = Path(eval_dir) / "eval-results" / benchmark
+        output_files = sorted(bench_dir.glob("output-rs*.jsonl"))
+        soft_assert(len(output_files) > 0, f"No output files found in {bench_dir}")
 
         for output_path in output_files:
             with output_path.open("rt", encoding="utf-8") as fin:
@@ -97,7 +96,7 @@ def check_tool_usage(workspace: str):
         soft_assert(False, "No samples found in output files")
 
 
-def check_timeouts(workspace: str):
+def check_timeouts(eval_dir: str):
     """Check that total code execution timeouts are within acceptable limits.
 
     Since the tool_calling path doesn't have a dedicated num_code_timeouts field
@@ -107,9 +106,9 @@ def check_timeouts(workspace: str):
     timeout_pattern = re.compile("|".join(TIMEOUT_INDICATORS), re.IGNORECASE)
     total_timeouts = 0
 
-    for benchmark in BENCHMARKS:
-        eval_dir = Path(workspace) / "eval-results" / benchmark
-        output_files = sorted(eval_dir.glob("output-rs*.jsonl"))
+    for benchmark in MATH_BENCHMARKS:
+        bench_dir = Path(eval_dir) / "eval-results" / benchmark
+        output_files = sorted(bench_dir.glob("output-rs*.jsonl"))
 
         for output_path in output_files:
             file_timeouts = 0
@@ -134,19 +133,16 @@ def check_timeouts(workspace: str):
     )
 
 
-def check_accuracy(workspace: str):
-    """Check accuracy metrics are within expected range."""
-    for benchmark, expected_metrics in RANGE_CONSTRAINTS.items():
-        metrics_path = os.path.join(workspace, "eval-results", benchmark, "metrics.json")
-        eval_results = load_json(metrics_path)
+def check_math_tool_calling(eval_dir: str):
+    """Check accuracy metrics for math benchmarks with tool calling."""
+    for benchmark in MATH_BENCHMARKS:
+        f = os.path.join(eval_dir, "eval-results", benchmark, "metrics.json")
+        data = load_json(f)
 
-        for metric, (lo, hi) in expected_metrics.items():
-            accuracy = eval_results[benchmark][metric]["symbolic_correct"]
-            print(f"{benchmark}/{metric}: {accuracy}%")
-            soft_assert(
-                lo <= accuracy <= hi,
-                f"{benchmark}: {metric} {accuracy}% out of range [{lo}%, {hi}%]",
-            )
+        for metric, (lo, hi) in MATH_METRIC_RANGES[benchmark].items():
+            val = float(data[benchmark][metric]["symbolic_correct"])
+            print(f"{benchmark}/{metric}: {val}%")
+            soft_assert(lo <= val <= hi, f"{benchmark}: {metric} {val}% out of range [{lo}%, {hi}%]")
 
 
 def main():
@@ -154,9 +150,11 @@ def main():
     ap.add_argument("--workspace", required=True, help="Workspace directory containing results")
     args = ap.parse_args()
 
-    check_tool_usage(args.workspace)
-    check_timeouts(args.workspace)
-    check_accuracy(args.workspace)
+    eval_root = Path(args.workspace)
+
+    check_tool_usage(eval_root / "math_tool_calling")
+    check_timeouts(eval_root / "math_tool_calling")
+    check_math_tool_calling(eval_root / "math_tool_calling")
 
     assert_all()
 

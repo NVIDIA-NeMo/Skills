@@ -28,35 +28,39 @@ import argparse
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 
+MODEL = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
+SERVER_ARGS = "--enable-auto-tool-choice --tool-call-parser qwen3_coder --trust-remote-code --dtype auto --mamba-ssm-cache-dtype float16"
 
-def eval_with_tools(workspace, cluster, expname_prefix, wandb_project):
-    model = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
+COMMON_PARAMS = (
+    "++prompt_config=generic/math "
+    "++inference.tokens_to_generate=65536 "
+    "++inference.temperature=1 "
+    "++inference.top_p=0.95 "
+    "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
+    "++max_tool_calls=100 "
+)
 
+
+def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project):
+    """Run AIME24 and AIME25 with MCP tool calling."""
     eval(
-        ctx=wrap_arguments(
-            "++prompt_config=generic/math "
-            "++inference.tokens_to_generate=65536 "
-            "++inference.temperature=1 "
-            "++inference.top_p=0.95 "
-            "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
-            "++max_tool_calls=100 "
-        ),
+        ctx=wrap_arguments(COMMON_PARAMS),
         cluster=cluster,
-        model=model,
+        model=MODEL,
         server_type="vllm",
         server_gpus=8,
-        server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder --trust-remote-code --dtype auto --mamba-ssm-cache-dtype float16",
-        output_dir=workspace,
+        server_args=SERVER_ARGS,
+        output_dir=f"{workspace}/math_tool_calling",
         benchmarks="aime24:16,aime25:16",
         with_sandbox=True,
         num_jobs=1,
         partition="interactive",
-        expname=expname_prefix,
+        expname=f"{expname_prefix}-math-tool-calling",
         wandb_project=wandb_project,
-        wandb_name=expname_prefix,
+        wandb_name=f"{expname_prefix}-math-tool-calling",
     )
 
-    return expname_prefix
+    return [f"{expname_prefix}-math-tool-calling"]
 
 
 def main():
@@ -70,7 +74,7 @@ def main():
 
     prepare_data(ctx=wrap_arguments("aime24 aime25"))
 
-    eval_expname = eval_with_tools(
+    math_expnames = eval_math_tool_calling(
         workspace=args.workspace,
         cluster=args.cluster,
         expname_prefix=args.expname_prefix,
@@ -78,14 +82,14 @@ def main():
     )
 
     # schedule a dependent check job on the cluster
-    checker_cmd = f"python tests/slurm-tests/super_120b_tool_calling/check_results.py --workspace {args.workspace} "
+    checker_cmd = f"python tests/slurm-tests/super_120b_tool_calling/check_results.py --workspace {args.workspace}"
 
     run_cmd(
         ctx=wrap_arguments(checker_cmd),
         cluster=args.cluster,
         expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
-        run_after=eval_expname,
+        run_after=math_expnames,
     )
 
 
