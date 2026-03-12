@@ -91,26 +91,18 @@ async def execute_in_sandbox_with_retries(
 
 
 async def is_sandbox_available(sandbox_config: dict) -> bool:
-    """
-    Checks if the sandbox service is running and accessible by sending a test request.
-
-    Args:
-        sandbox_config: The configuration dictionary for the sandbox.
-
-    Returns:
-        True if a connection can be established, False otherwise.
-    """
     LOG.info(f"Attempting to connect to sandbox with config: {sandbox_config}")
     try:
         async with sandbox_context(sandbox_config) as sandbox:
-            await execute_in_sandbox_with_retries(sandbox, 1, "true", language="shell", timeout=5)
-        LOG.info("Sandbox connection successful. Sandbox is available.")
-        return True
-    except httpx.NetworkError as e:
-        LOG.warning(f"Sandbox is unavailable due to a network error: {type(e).__name__} - {e}")
-        return False
-    except Exception as e:
-        LOG.warning(f"An unexpected error occurred while checking sandbox availability: {e}")
+            result, _ = await execute_in_sandbox_with_retries(sandbox, 1, "true", language="shell", timeout=5)
+            if result.get("process_status") != "completed":
+                LOG.warning(f"Sandbox responded but command failed: {result.get('stderr')}")
+                return False
+
+            LOG.info("Sandbox connection successful. Sandbox is available.")
+            return True
+    except (httpx.NetworkError, Exception) as e:
+        LOG.warning(f"Sandbox is unavailable or errored: {e}")
         return False
 
 
