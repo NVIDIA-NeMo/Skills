@@ -69,7 +69,7 @@ def main():
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
     parser.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
     parser.add_argument("--partition", default=None, help="Cluster partition to use")
-    parser.add_argument("--num_jobs", type=int, default=2, help="Number of parallel jobs")
+    parser.add_argument("--num_jobs", type=int, default=1, help="Number of parallel jobs")
 
     args = parser.parse_args()
 
