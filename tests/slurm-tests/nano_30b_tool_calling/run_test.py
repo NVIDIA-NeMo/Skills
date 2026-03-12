@@ -41,7 +41,7 @@ COMMON_PARAMS = (
 )
 
 
-def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, partition):
+def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, partition, num_jobs):
     eval(
         ctx=wrap_arguments(COMMON_PARAMS),
         cluster=cluster,
@@ -52,7 +52,7 @@ def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, pa
         output_dir=workspace,
         benchmarks="aime24:16,aime25:16",
         with_sandbox=True,
-        num_jobs=1,
+        num_jobs=num_jobs,
         partition=partition,
         expname=expname_prefix,
         wandb_project=wandb_project,
@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
     parser.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
     parser.add_argument("--partition", default=None, help="Cluster partition to use")
+    parser.add_argument("--num_jobs", type=int, default=2, help="Number of parallel jobs")
 
     args = parser.parse_args()
 
@@ -80,6 +81,7 @@ def main():
         expname_prefix=args.expname_prefix,
         wandb_project=args.wandb_project,
         partition=args.partition,
+        num_jobs=args.num_jobs,
     )
 
     # schedule a dependent check job on the cluster
