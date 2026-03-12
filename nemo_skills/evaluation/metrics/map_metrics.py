@@ -32,6 +32,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
 from nemo_skills.evaluation.metrics.critpt_metrics import CritPtMetrics
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
+from nemo_skills.evaluation.metrics.hotpotqa_metrics import HotpotQAMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
@@ -90,6 +91,8 @@ METRICS_MAP = {
     "gradingbench": GradingBenchMetrics,
     "critpt": CritPtMetrics,
     "specdec": SpecdecMetrics,
+    "hotpotqa": HotpotQAMetrics,
+    "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
 }
 
 
