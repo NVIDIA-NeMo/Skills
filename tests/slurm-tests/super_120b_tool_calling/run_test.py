@@ -41,7 +41,7 @@ COMMON_PARAMS = (
 )
 
 
-def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project):
+def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, partition):
     """Run AIME24 and AIME25 with MCP tool calling."""
     eval(
         ctx=wrap_arguments(COMMON_PARAMS),
@@ -54,7 +54,7 @@ def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project):
         benchmarks="aime24:16,aime25:16",
         with_sandbox=True,
         num_jobs=1,
-        partition="interactive",
+        partition=partition,
         expname=f"{expname_prefix}-math-tool-calling",
         wandb_project=wandb_project,
         wandb_name=f"{expname_prefix}-math-tool-calling",
@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--cluster", required=True, help="Cluster name")
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
     parser.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
+    parser.add_argument("--partition", default=None, help="Cluster partition to use")
 
     args = parser.parse_args()
 
@@ -79,6 +80,7 @@ def main():
         cluster=args.cluster,
         expname_prefix=args.expname_prefix,
         wandb_project=args.wandb_project,
+        partition=args.partition,
     )
 
     # schedule a dependent check job on the cluster
