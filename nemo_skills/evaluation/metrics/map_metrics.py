@@ -32,6 +32,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
 from nemo_skills.evaluation.metrics.critpt_metrics import CritPtMetrics
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
+from nemo_skills.evaluation.metrics.hotpotqa_metrics import HotpotQAMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
@@ -45,11 +46,13 @@ from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
+from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
 
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
     "physics": PhysicsMetrics,
+    "ugphysics": UGPhysicsMetrics,
     "hle-aa": functools.partial(HLEAAMetrics, compute_no_answer=False, answer_key="generation"),
     "frontierscience-olympiad": functools.partial(
         MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
@@ -88,6 +91,8 @@ METRICS_MAP = {
     "gradingbench": GradingBenchMetrics,
     "critpt": CritPtMetrics,
     "specdec": SpecdecMetrics,
+    "hotpotqa": HotpotQAMetrics,
+    "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
 }
 
 
