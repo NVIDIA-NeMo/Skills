@@ -16,52 +16,74 @@
 
 Validates:
   1. Tool calls were actually made (num_tool_calls > 0)
-  2. Accuracy is within expected range for AIME24
+  2. Accuracy is within expected range for AIME24 and AIME25
+  3. Code execution timeouts are within acceptable limits
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
 from utils import assert_all, load_json, soft_assert  # noqa: E402
 
-# Accuracy ranges for AIME24 with tool calling (16 seeds)
-# Baseline (2026-03-11, stdio transport): pass@1=88.33%, majority@16=95.00%, pass@16=100.00%
+# Accuracy ranges for tool calling (16 seeds, max_tool_calls=100)
+# Baseline (2026-03-11, stdio transport, aime24): pass@1=93.54%, majority@16=93.33%, pass@16=100.00%
+# Baseline (2026-03-11, stdio transport, max_tool_calls=100):
+#   aime24: pass@1=93.33%, majority@16=95.00%, pass@16=100.00%
+#   aime25: pass@1=97.29%, majority@16=100.00%, pass@16=100.00%
 RANGE_CONSTRAINTS = {
     "aime24": {
-        "pass@1[avg-of-16]": (80.0, 100.0),
-        "majority@16": (86.67, 100.0),
-        "pass@16": (93.33, 100.0),
+        "pass@1[avg-of-16]": (90.0, 100.0),
+        "majority@16": (90.0, 100.0),
+        "pass@16": (96.67, 100.0),
+    },
+    "aime25": {
+        "pass@1[avg-of-16]": (93.33, 100.0),
+        "majority@16": (96.67, 100.0),
+        "pass@16": (96.67, 100.0),
     },
 }
+
+BENCHMARKS = ["aime24", "aime25"]
 
 # At least this fraction of samples should have made tool calls
 MIN_TOOL_CALL_FRACTION = 0.3
 
+# Maximum total timeouts allowed across all files and benchmarks
+MAX_TOTAL_TIMEOUTS = 100
+
+# Strings in tool response content that indicate a sandbox timeout
+TIMEOUT_INDICATORS = [
+    "execution timed out",
+    "timed out",
+    "process_status.*timeout",
+    "TimeoutError",
+]
+
 
 def check_tool_usage(workspace: str):
     """Verify that tool calls were actually made during generation."""
-    gen_dir = Path(workspace) / "eval-results" / "aime24"
-
-    output_files = sorted(gen_dir.glob("output-rs*.jsonl"))
-    soft_assert(len(output_files) > 0, f"No output files found in {gen_dir}")
-
     total_samples = 0
     samples_with_tools = 0
 
-    for output_path in output_files:
-        with output_path.open("rt", encoding="utf-8") as fin:
-            for line in fin:
-                if not line.strip():
-                    continue
-                row = json.loads(line)
-                total_samples += 1
-                num_tool_calls = row.get("num_tool_calls", 0)
-                if num_tool_calls > 0:
-                    samples_with_tools += 1
+    for benchmark in BENCHMARKS:
+        gen_dir = Path(workspace) / "eval-results" / benchmark
+        output_files = sorted(gen_dir.glob("output-rs*.jsonl"))
+        soft_assert(len(output_files) > 0, f"No output files found in {gen_dir}")
+
+        for output_path in output_files:
+            with output_path.open("rt", encoding="utf-8") as fin:
+                for line in fin:
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    total_samples += 1
+                    if row.get("num_tool_calls", 0) > 0:
+                        samples_with_tools += 1
 
     if total_samples > 0:
         fraction = samples_with_tools / total_samples
@@ -75,12 +97,49 @@ def check_tool_usage(workspace: str):
         soft_assert(False, "No samples found in output files")
 
 
+def check_timeouts(workspace: str):
+    """Check that total code execution timeouts are within acceptable limits.
+
+    Since the tool_calling path doesn't have a dedicated num_code_timeouts field
+    (unlike CodeExecutionWrapper), we scan tool response messages in the conversation
+    for timeout indicators from the sandbox.
+    """
+    timeout_pattern = re.compile("|".join(TIMEOUT_INDICATORS), re.IGNORECASE)
+    total_timeouts = 0
+
+    for benchmark in BENCHMARKS:
+        eval_dir = Path(workspace) / "eval-results" / benchmark
+        output_files = sorted(eval_dir.glob("output-rs*.jsonl"))
+
+        for output_path in output_files:
+            file_timeouts = 0
+            with output_path.open("rt", encoding="utf-8") as fin:
+                for line in fin:
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    for msg in row.get("conversation", []):
+                        if msg.get("role") == "tool":
+                            content = str(msg.get("content", ""))
+                            if timeout_pattern.search(content):
+                                file_timeouts += 1
+            total_timeouts += file_timeouts
+            if file_timeouts > 0:
+                print(f"{benchmark}/{output_path.name}: num_code_timeouts={file_timeouts}")
+
+    print(f"Total code_timeouts: {total_timeouts} (allowed: {MAX_TOTAL_TIMEOUTS})")
+    soft_assert(
+        total_timeouts <= MAX_TOTAL_TIMEOUTS,
+        f"Code execution timeouts regressed: observed {total_timeouts}, allowed <= {MAX_TOTAL_TIMEOUTS}",
+    )
+
+
 def check_accuracy(workspace: str):
     """Check accuracy metrics are within expected range."""
-    metrics_path = os.path.join(workspace, "eval-results", "aime24", "metrics.json")
-    eval_results = load_json(metrics_path)
-
     for benchmark, expected_metrics in RANGE_CONSTRAINTS.items():
+        metrics_path = os.path.join(workspace, "eval-results", benchmark, "metrics.json")
+        eval_results = load_json(metrics_path)
+
         for metric, (lo, hi) in expected_metrics.items():
             accuracy = eval_results[benchmark][metric]["symbolic_correct"]
             print(f"{benchmark}/{metric}: {accuracy}%")
@@ -96,6 +155,7 @@ def main():
     args = ap.parse_args()
 
     check_tool_usage(args.workspace)
+    check_timeouts(args.workspace)
     check_accuracy(args.workspace)
 
     assert_all()

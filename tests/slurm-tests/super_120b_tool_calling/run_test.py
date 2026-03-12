@@ -39,7 +39,7 @@ def eval_with_tools(workspace, cluster, expname_prefix, wandb_project):
             "++inference.temperature=1 "
             "++inference.top_p=0.95 "
             "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
-            "++max_tool_calls=10 "
+            "++max_tool_calls=100 "
         ),
         cluster=cluster,
         model=model,
@@ -47,7 +47,7 @@ def eval_with_tools(workspace, cluster, expname_prefix, wandb_project):
         server_gpus=8,
         server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder --trust-remote-code --dtype auto --mamba-ssm-cache-dtype float16",
         output_dir=workspace,
-        benchmarks="aime24:16",
+        benchmarks="aime24:16,aime25:16",
         with_sandbox=True,
         num_jobs=1,
         partition="interactive",
@@ -68,7 +68,7 @@ def main():
 
     args = parser.parse_args()
 
-    prepare_data(ctx=wrap_arguments("aime24"))
+    prepare_data(ctx=wrap_arguments("aime24 aime25"))
 
     eval_expname = eval_with_tools(
         workspace=args.workspace,
