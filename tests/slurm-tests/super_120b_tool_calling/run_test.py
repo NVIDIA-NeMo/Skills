@@ -42,7 +42,6 @@ COMMON_PARAMS = (
 
 
 def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, partition):
-    """Run AIME24 and AIME25 with MCP tool calling."""
     eval(
         ctx=wrap_arguments(COMMON_PARAMS),
         cluster=cluster,
@@ -50,17 +49,17 @@ def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, pa
         server_type="vllm",
         server_gpus=8,
         server_args=SERVER_ARGS,
-        output_dir=f"{workspace}/math_tool_calling",
+        output_dir=workspace,
         benchmarks="aime24:16,aime25:16",
         with_sandbox=True,
         num_jobs=1,
         partition=partition,
-        expname=f"{expname_prefix}-math-tool-calling",
+        expname=expname_prefix,
         wandb_project=wandb_project,
-        wandb_name=f"{expname_prefix}-math-tool-calling",
+        wandb_name=expname_prefix,
     )
 
-    return [f"{expname_prefix}-math-tool-calling"]
+    return expname_prefix
 
 
 def main():
@@ -75,7 +74,7 @@ def main():
 
     prepare_data(ctx=wrap_arguments("aime24 aime25"))
 
-    math_expnames = eval_math_tool_calling(
+    eval_expname = eval_math_tool_calling(
         workspace=args.workspace,
         cluster=args.cluster,
         expname_prefix=args.expname_prefix,
@@ -91,7 +90,7 @@ def main():
         cluster=args.cluster,
         expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
-        run_after=math_expnames,
+        run_after=eval_expname,
     )
 
 

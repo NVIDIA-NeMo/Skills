@@ -152,9 +152,9 @@ def main():
 
     eval_root = Path(args.workspace)
 
-    check_tool_usage(eval_root / "math_tool_calling")
-    check_timeouts(eval_root / "math_tool_calling")
-    check_math_tool_calling(eval_root / "math_tool_calling")
+    check_tool_usage(eval_root)
+    check_timeouts(eval_root)
+    check_math_tool_calling(eval_root)
 
     assert_all()
 
