@@ -57,6 +57,7 @@ EXCLUDED_DATASETS = {
     "critpt",
     # SPEED-Bench downloads dozens of large external HF datasets, exhausting CI runner disk space
     "speed-bench",
+    "mmmlu",  # too large
 }
 
 
