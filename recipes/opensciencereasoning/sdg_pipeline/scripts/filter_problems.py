@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# --- Fast JSON ---
+# --- Fast JSON (prefer orjson for reading) ---
 import json as _json_std
 import logging
 import re
@@ -26,17 +26,17 @@ try:
 
     def _json_loads(s: str):
         return _orjson.loads(s)
-
-    def _json_dumps(obj) -> str:
-        return _orjson.dumps(obj).decode("utf-8")
 except Exception:
     _orjson = None
 
     def _json_loads(s: str):
         return _json_std.loads(s)
 
-    def _json_dumps(obj) -> str:
-        return _json_std.dumps(obj, ensure_ascii=False)
+# Always use stdlib json for writing to avoid compact formatting from orjson
+# (orjson omits spaces after colons/commas which produces non-standard
+# tokenization when tool-call arguments are embedded via chat templates).
+def _json_dumps(obj) -> str:
+    return _json_std.dumps(obj, ensure_ascii=False)
 
 
 logging.basicConfig(
