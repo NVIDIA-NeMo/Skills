@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Check results for super_120b_tool_calling SLURM test.
+"""Check results for nano_30b_tool_calling SLURM test.
 
 Validates:
   1. Tool calls were actually made (num_tool_calls > 0)
@@ -32,13 +32,13 @@ from utils import assert_all, load_json, soft_assert  # noqa: E402
 
 MATH_BENCHMARKS = ["aime24", "aime25"]
 
-# Baseline (2026-03-11, stdio transport, max_tool_calls=100):
-#   aime24: pass@1=93.33%, majority@16=95.00%, pass@16=100.00%
-#   aime25: pass@1=97.29%, majority@16=100.00%, pass@16=100.00%
+# Baseline (2026-03-12, Nano-30B, stdio transport, max_tool_calls=100):
+#   aime24: pass@1=95.00%, majority@16=100.00%, pass@16=100.00%, timeouts=12
+#   aime25: pass@1=96.67%, majority@16=100.00%, pass@16=100.00%, timeouts=82
 MATH_METRIC_RANGES = {
     "aime24": {
         "pass@1[avg-of-16]": (90.0, 100.0),
-        "majority@16": (90.0, 100.0),
+        "majority@16": (96.67, 100.0),
         "pass@16": (96.67, 100.0),
     },
     "aime25": {
@@ -51,9 +51,12 @@ MATH_METRIC_RANGES = {
 # At least this fraction of samples should have made tool calls
 MIN_TOOL_CALL_FRACTION = 0.3
 
-# Maximum total timeouts allowed across all files and benchmarks
-# Baseline: 54 total (aime24=16, aime25=38)
-MAX_TOTAL_TIMEOUTS = 100
+# Maximum timeouts allowed per benchmark
+# Baseline (aime24=12, aime25=82)
+MAX_TIMEOUTS = {
+    "aime24": 30,
+    "aime25": 100,
+}
 
 # Strings in tool response content that indicate a sandbox timeout
 TIMEOUT_INDICATORS = [
@@ -104,11 +107,11 @@ def check_timeouts(eval_dir: str):
     for timeout indicators from the sandbox.
     """
     timeout_pattern = re.compile("|".join(TIMEOUT_INDICATORS), re.IGNORECASE)
-    total_timeouts = 0
 
     for benchmark in MATH_BENCHMARKS:
         bench_dir = Path(eval_dir) / "eval-results" / benchmark
         output_files = sorted(bench_dir.glob("output-rs*.jsonl"))
+        bench_timeouts = 0
 
         for output_path in output_files:
             file_timeouts = 0
@@ -122,15 +125,16 @@ def check_timeouts(eval_dir: str):
                             content = str(msg.get("content", ""))
                             if timeout_pattern.search(content):
                                 file_timeouts += 1
-            total_timeouts += file_timeouts
+            bench_timeouts += file_timeouts
             if file_timeouts > 0:
                 print(f"{benchmark}/{output_path.name}: num_code_timeouts={file_timeouts}")
 
-    print(f"Total code_timeouts: {total_timeouts} (allowed: {MAX_TOTAL_TIMEOUTS})")
-    soft_assert(
-        total_timeouts <= MAX_TOTAL_TIMEOUTS,
-        f"Code execution timeouts regressed: observed {total_timeouts}, allowed <= {MAX_TOTAL_TIMEOUTS}",
-    )
+        allowed = MAX_TIMEOUTS[benchmark]
+        print(f"{benchmark} total code_timeouts: {bench_timeouts} (allowed: {allowed})")
+        soft_assert(
+            bench_timeouts <= allowed,
+            f"{benchmark}: code execution timeouts regressed: observed {bench_timeouts}, allowed <= {allowed}",
+        )
 
 
 def check_math_tool_calling(eval_dir: str):

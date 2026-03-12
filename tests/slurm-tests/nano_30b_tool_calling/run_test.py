@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SLURM test for PythonTool (MCP tool calling) with nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16.
+"""SLURM test for PythonTool (MCP tool calling) with nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.
 
 Validates the MCP-based tool calling pipeline on a real cluster:
   - PythonTool spawns python_tool server (stdio or HTTP depending on branch)
@@ -28,8 +28,8 @@ import argparse
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 
-MODEL = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
-SERVER_ARGS = "--enable-auto-tool-choice --tool-call-parser qwen3_coder --trust-remote-code --dtype auto --mamba-ssm-cache-dtype float16"
+MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+SERVER_ARGS = "--enable-auto-tool-choice --tool-call-parser qwen3_coder --trust-remote-code --dtype auto --mamba-ssm-cache-dtype float32"
 
 COMMON_PARAMS = (
     "++prompt_config=generic/math "
@@ -83,7 +83,7 @@ def main():
     )
 
     # schedule a dependent check job on the cluster
-    checker_cmd = f"python tests/slurm-tests/super_120b_tool_calling/check_results.py --workspace {args.workspace}"
+    checker_cmd = f"python tests/slurm-tests/nano_30b_tool_calling/check_results.py --workspace {args.workspace}"
 
     run_cmd(
         ctx=wrap_arguments(checker_cmd),
