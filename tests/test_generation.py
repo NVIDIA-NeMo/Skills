@@ -282,3 +282,20 @@ def test_process_chat_chunk_never_yields_none_generation():
         for r in p(c):
             full += r["generation"]
     assert full == "Hello world"
+
+
+def test_parse_response_token_counts():
+    model = BaseModel.__new__(BaseModel)
+
+    def make_completion(prompt_tokens=None, input_tokens=None):
+        usage = SimpleNamespace(completion_tokens=10)
+        if prompt_tokens is not None:
+            usage.prompt_tokens = prompt_tokens
+        if input_tokens is not None:
+            usage.input_tokens = input_tokens
+        return SimpleNamespace(usage=usage, choices=[SimpleNamespace(text="hi", finish_reason="stop", logprobs=None)])
+
+    assert model._parse_completion_response(make_completion(prompt_tokens=5))[0]["num_input_tokens"] == 5
+    assert model._parse_completion_response(make_completion(input_tokens=7))[0]["num_input_tokens"] == 7
+    assert "num_input_tokens" not in model._parse_completion_response(make_completion())[0]
+    assert model._parse_completion_response(make_completion())[0]["num_generated_tokens"] == 10
