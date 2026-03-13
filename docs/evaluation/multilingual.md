@@ -303,7 +303,7 @@ ns prepare_data global_piqa --languages <lang1> <lang2> ...
 Some reference numbers for reference and commands for reproduction:
 
 |              Model              | Avg (116 langs) |
-| :-----------------------------: | :-------------: | 
+| :-----------------------------: | :-------------: |
 |           gpt-oss-120b          |    **84.61**    |
 |        Qwen3.5-122B-A10B        |    **88.72**    |
 | Nemotron-3-Super-120B-A12B-BF16 |    **82.28**    |
