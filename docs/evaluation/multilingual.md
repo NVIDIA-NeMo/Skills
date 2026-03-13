@@ -314,7 +314,7 @@ Some reference numbers for reference and commands for reproduction:
     ns eval \
         --cluster=[cluster] \
         --model=openai/gpt-oss-120b \
-        --benchmarks mmmlu \
+        --benchmarks global_piqa \
         --output_dir=[output dir] \
         --server_type=vllm \
         --server_gpus=8 \
