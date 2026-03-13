@@ -18,6 +18,7 @@ from pathlib import Path
 
 from datasets import load_dataset
 from tqdm import tqdm
+import tiktoken
 
 """
 Prepare the LongBench-v2 dataset for evaluation.
@@ -49,8 +50,23 @@ or via ns prepare_data:
     ns prepare_data --data_dir=/workspace/ns-data --cluster=local longbenchv2
 """
 
+_tokenizer_cache = {}
 
-def write_data_to_file(output_file: Path, data, difficulty, length):
+
+def count_n_tokens(prompt: str, tokenizer_name: str) -> int:
+    """Count tokens using tiktoken (e.g. cl100k_base) or HuggingFace AutoTokenizer (e.g. meta-llama/Llama-3.1-8B)."""
+    if tokenizer_name not in _tokenizer_cache:
+        try:
+            _tokenizer_cache[tokenizer_name] = tiktoken.get_encoding(tokenizer_name)
+        except ValueError:
+            from transformers import AutoTokenizer
+            _tokenizer_cache[tokenizer_name] = AutoTokenizer.from_pretrained(tokenizer_name)
+    enc = _tokenizer_cache[tokenizer_name]
+    if isinstance(enc, tiktoken.Encoding):
+        return len(enc.encode(prompt))
+    return len(enc.encode(prompt, add_special_tokens=False))
+
+def write_data_to_file(output_file: Path, data, difficulty, length, tokenizer_name):
     skipped = 0
     with open(output_file, "wt", encoding="utf-8") as fout:
         for entry in tqdm(data, desc=f"Writing {output_file.name}"):
@@ -77,6 +93,7 @@ def write_data_to_file(output_file: Path, data, difficulty, length):
                 "sub_domain": entry["sub_domain"],
                 "difficulty": entry["difficulty"],
                 "length": entry["length"],
+                "context_tokens": count_n_tokens(entry["context"], tokenizer_name),
             }
             fout.write(json.dumps(record) + "\n")
 
@@ -84,7 +101,7 @@ def write_data_to_file(output_file: Path, data, difficulty, length):
         print(f"Skipped {skipped} entries.")
 
 
-def prepare_longbenchv2_data(setup: str, difficulty, length):
+def prepare_longbenchv2_data(setup: str, difficulty, length, tokenizer_name):
     # HuggingFace dataset uses a single "train" split that contains all 503 evaluation questions
     dataset = load_dataset("THUDM/LongBench-v2", split="train")
 
@@ -92,7 +109,7 @@ def prepare_longbenchv2_data(setup: str, difficulty, length):
     data_dir.mkdir(exist_ok=True)
 
     output_file = data_dir / f"{setup}.jsonl"
-    write_data_to_file(output_file, dataset, difficulty, length)
+    write_data_to_file(output_file, dataset, difficulty, length, tokenizer_name)
 
 
 if __name__ == "__main__":
@@ -117,9 +134,14 @@ if __name__ == "__main__":
         default=None,
         help="Keep only questions in this context-length category.",
     )
-
+    parser.add_argument(
+        "--tokenizer_name",
+        type=str,
+        default="cl100k_base",
+        help="tokenizer name",
+    )
     args = parser.parse_args()
 
     print(f"Preparing LongBench-v2 dataset with args: {args}")
-    prepare_longbenchv2_data(args.setup, args.difficulty, args.length)
+    prepare_longbenchv2_data(args.setup, args.difficulty, args.length, args.tokenizer_name)
     print(f"LongBench-v2 preparation complete. Use --split={args.setup} to evaluate!")
