@@ -96,7 +96,7 @@ Some reference numbers for devtest split (xx corresponds to average over 5 langu
         --server_type=vllm \
         --server_gpus=8 \
         --split=devtest \
-        ++inference.tokens_to_generate=512
+        ++inference.tokens_to_generate=512 \
         ++system_message='/no_think'
     ```
 
@@ -111,7 +111,7 @@ Some reference numbers for devtest split (xx corresponds to average over 5 langu
         --server_type=vllm \
         --server_gpus=8 \
         --split=devtest \
-        ++inference.tokens_to_generate=512
+        ++inference.tokens_to_generate=512 \
         ++prompt_suffix='/no_think'
     ```
 
@@ -126,7 +126,7 @@ Some reference numbers for devtest split (xx corresponds to average over 5 langu
         --server_type=vllm \
         --server_gpus=8 \
         --split=devtest \
-        ++inference.tokens_to_generate=512
+        ++inference.tokens_to_generate=512 \
         ++prompt_suffix='/no_think'
     ```
 
@@ -169,7 +169,7 @@ Some reference numbers for test split (xx corresponds to average over 5 language
         --server_type=vllm \
         --server_gpus=8 \
         --split=test \
-        ++inference.tokens_to_generate=512
+        ++inference.tokens_to_generate=512 \
         ++system_message='/no_think'
     ```
 
@@ -184,7 +184,7 @@ Some reference numbers for test split (xx corresponds to average over 5 language
         --server_type=vllm \
         --server_gpus=8 \
         --split=test \
-        ++inference.tokens_to_generate=512
+        ++inference.tokens_to_generate=512 \
         ++prompt_suffix='/no_think'
     ```
 
@@ -199,7 +199,7 @@ Some reference numbers for test split (xx corresponds to average over 5 language
         --server_type=vllm \
         --server_gpus=8 \
         --split=test \
-        ++inference.tokens_to_generate=512
+        ++inference.tokens_to_generate=512 \
         ++prompt_suffix='/no_think'
     ```
 
@@ -237,7 +237,7 @@ Some reference numbers for reference and commands for reproduction:
 | Nemotron-3-Super-120B-A12B-BF16 |    **81.51**   | 86.68 | 84.59 | 88.59 | 88.04 | 86.21 | 88.06 | 86.83 | 86.23 | 88.35 | 87.12 | 80.88 | 86.84 | 71.31 | 31.43 |
 
 === "gpt-oss-120b"
-    
+
     ```bash
     ns eval \
         --cluster=[cluster] \
@@ -309,7 +309,7 @@ Some reference numbers for reference and commands for reproduction:
 | Nemotron-3-Super-120B-A12B-BF16 |    **82.28**    |
 
 === "gpt-oss-120b"
-    
+
     ```bash
     ns eval \
         --cluster=[cluster] \
