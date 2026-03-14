@@ -80,6 +80,13 @@ def main():
         help="Use symlinks instead of copying audio files (default: True)",
     )
     parser.add_argument(
+        "--output_dir",
+        default=None,
+        help="Output directory for test.jsonl and data/. "
+        "Default: /dataset/serviceduplexbench if it exists (container mount), "
+        "otherwise next to this script.",
+    )
+    parser.add_argument(
         "--copy",
         action="store_true",
         help="Copy audio files instead of symlinking",
@@ -92,7 +99,12 @@ def main():
     if not data_source.exists():
         raise FileNotFoundError(f"Data source not found: {data_source}")
 
-    output_dir = Path(__file__).parent
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        default = Path("/dataset/serviceduplexbench")
+        output_dir = default if default.exists() else data_source
+    output_dir.mkdir(parents=True, exist_ok=True)
     audio_dir = output_dir / "data"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
