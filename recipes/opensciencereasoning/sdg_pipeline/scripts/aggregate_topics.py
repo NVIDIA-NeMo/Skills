@@ -15,6 +15,8 @@
 import argparse
 import json
 import logging
+import os
+from pathlib import Path
 
 from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
 
@@ -51,7 +53,9 @@ def check_topic_structure(sample: dict, topics_structure: dict, names: list):
         set_undefined_from(1)
         return
     if first_value not in first_allowed:
-        logger.warning(f"Invalid first level value '{first_value}' for '{first_name}', expected one of {first_allowed}")
+        logger.warning(
+            f"Invalid first level value '{first_value}' for '{first_name}', expected one of {first_allowed}"
+        )
         sample[first_name] = "undefined"
         set_undefined_from(1)
         return
@@ -93,10 +97,13 @@ def aggregate_topics(input_files: dict, output_file: str, topics_structure: dict
     """
     logger.info(f"Starting topic aggregation for {len(input_files)} topic levels: {list(input_files.keys())}")
     logger.info(f"Hierarchy order: {names}")
-    
+
     data = {}
     for topic_key, file in input_files.items():
         logger.info(f"Reading {topic_key} labels from: {file}")
+        if not os.path.exists(file):
+            logger.warning(f"File not found for {topic_key}: {file}, samples will get 'undefined'")
+            continue
         line_count = 0
         with open(file, "r") as f:
             for line in f:
@@ -106,25 +113,26 @@ def aggregate_topics(input_files: dict, output_file: str, topics_structure: dict
                 data[sample["problem"]][topic_key] = sample[topic_key]
                 line_count += 1
         logger.info(f"Read {line_count} samples for {topic_key}")
-    
+
     logger.info(f"Total unique problems: {len(data)}")
     logger.info(f"Validating topic structure and writing to: {output_file}")
-    
+
     validation_stats = {"valid": 0, "modified": 0}
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "w") as f:
         for sample in data.values():
             original_values = {name: sample.get(name) for name in names}
             check_topic_structure(sample, topics_structure, names)
             modified_values = {name: sample.get(name) for name in names}
-            
+
             if original_values != modified_values:
                 validation_stats["modified"] += 1
             else:
                 validation_stats["valid"] += 1
-                
+
             sample = {key: value for key, value in sample.items() if key in BASE_FIELDS + names}
             f.write(json.dumps(sample) + "\n")
-    
+
     logger.info(f"Aggregation complete: {validation_stats['valid']} valid, {validation_stats['modified']} modified")
     logger.info(f"Output written to: {output_file}")
 
@@ -155,14 +163,14 @@ def main():
         help="JSON: ordered list of hierarchy keys (e.g., ['topics','subtopics'])",
     )
     args = parser.parse_args()
-    
+
     logger.info("Starting topic aggregation script")
     logger.info(f"Input files: {args.input_files}")
     logger.info(f"Output file: {args.output_file}")
     logger.info(f"Names: {args.names}")
-    
+
     aggregate_topics(args.input_files, args.output_file, args.topics_structure, args.names)
-    
+
     logger.info("Topic aggregation script completed successfully")
 
 

@@ -86,21 +86,21 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
     an MCQ option count and optional regex pattern, and moves all remaining fields
     into a `metadata` mapping. The resulting filtered dataset is written to
     `final_result.jsonl` inside `output_dir` for downstream stages.
-    
+
     If diversity_prompts_path is provided, it first maps random prompts and answer_regex
     patterns to each sample before running the main filter_problems process.
     """
     input_file = stage_config.get("input_file")
     output_dir = stage_config["output_dir"]
     diversity_prompts_path = stage_config.get("diversity_prompts_path", None)
-    
+
     # Handle diversity prompts mapping if configured
     if diversity_prompts_path:
         print(f"Mapping diversity prompts from: {diversity_prompts_path}")
-        
+
         # Create temporary file with mapped prompts
         mapped_input_file = f"{output_dir}/tmp/input_with_diversity_prompts.jsonl"
-        
+
         # Run diversity prompts mapping
         map_prompts_cmd = (
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/map_diversity_prompts.py "
@@ -111,7 +111,7 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
             f"--answer_regex_key {stage_config.get('diversity_prompts_answer_regex_key', 'answer_regex')} "
             f"--seed {stage_config.get('diversity_prompts_seed', 42)} "
         )
-        
+
         run_cmd(
             cluster=cluster,
             container="nemo-skills",
@@ -120,14 +120,14 @@ def filter_problems(cluster: str, expname: str, run_after: str, stage_config: di
             ctx=wrap_arguments(map_prompts_cmd),
             run_after=run_after,
         )
-        
+
         # Use the mapped file as input for filter_problems
         actual_input_file = mapped_input_file
         filter_run_after = f"{expname}_map_diversity_prompts"
     else:
         actual_input_file = input_file
         filter_run_after = run_after
-    
+
     # Prepare filter_problems arguments
     option_format_regex = stage_config.get("option_format_regex", None)
     option_format_regex = f" --option_format_regex '{option_format_regex}' " if option_format_regex else ""
@@ -231,7 +231,6 @@ def decontaminate(cluster: str, expname: str, run_after: str, stage_config: dict
                 f"    --input_path '{input_file}' "
                 f"    --dec_path '{output_dir}/decontaminate/output.jsonl' "
                 f"    --save_path {output_dir}/{OUTPUT_FILE} "
-                f"    --with_duplicates False "
             )
         ),
         log_dir=f"{output_dir}/logs",
@@ -291,8 +290,7 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
             ctx=wrap_arguments(
                 f"++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/topics_labeling.yaml "
                 f"++generation_key={name} "
-                f"++parse_reasoning=True "
-                f"{shlex.quote(end_marker)}"
+                f"++parse_reasoning=True " + (shlex.quote(end_marker) if end_marker else "")
             ),
             cluster=cluster,
             input_file=f"{output_dir}/tmp/prepared_for_{name}_labeling.jsonl",
@@ -634,7 +632,7 @@ def prepare_for_sft(cluster, expname, run_after, stage_config, **kwargs):
 
 def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwargs):
     """Process messages into input/output, calculate token lengths, and bucket by token size.
-    
+
     This unified stage:
       1. Reads messages format from input file
       2. Extracts and formats input (system + user prompts) and output (assistant, reasoning, etc.)
@@ -655,7 +653,7 @@ def process_messages_and_bucket(cluster, expname, run_after, stage_config, **kwa
             "stages.process_messages_and_bucket.chat_template_kwargs must be a mapping/dict "
             f"(received {type(chat_template_kwargs).__name__})."
         )
-    
+
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/process_messages_and_bucket.py "

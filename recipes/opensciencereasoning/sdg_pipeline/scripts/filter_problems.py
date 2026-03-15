@@ -19,6 +19,7 @@ import logging
 import re
 import sys
 from pathlib import Path
+
 from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import KEY_FIELDS
 
 try:
@@ -31,6 +32,7 @@ except Exception:
 
     def _json_loads(s: str):
         return _json_std.loads(s)
+
 
 # Always use stdlib json for writing to avoid compact formatting from orjson
 # (orjson omits spaces after colons/commas which produces non-standard
@@ -123,6 +125,7 @@ def process_file(
     kept = 0
     dropped = 0
 
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(input_file, "r", encoding="utf-8") as fin, open(output_file, "w", encoding="utf-8") as fout:
         for index, line in enumerate(fin):
             line = line.strip()

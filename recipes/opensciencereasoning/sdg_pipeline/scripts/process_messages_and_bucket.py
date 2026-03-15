@@ -23,7 +23,6 @@ from typing import Any, Dict, List
 
 from transformers import AutoTokenizer
 
-
 try:  # pragma: no cover - best effort
     import orjson as _orjson  # type: ignore
 
@@ -35,6 +34,7 @@ except Exception:  # pragma: no cover
 
     def _json_loads(s: str):
         return _json_std.loads(s)
+
 
 # Always use stdlib json for writing to avoid compact formatting from orjson
 # (orjson omits spaces after colons/commas which produces non-standard
@@ -63,18 +63,18 @@ def messages_to_string(
 ) -> str:
     """
     Convert a list of messages to a formatted string using tokenizer's chat template.
-    
+
     Args:
         messages: List of message dictionaries with fields like role, content, etc.
         tokenizer: Tokenizer object with apply_chat_template method.
         chat_template_kwargs: Optional kwargs to pass to apply_chat_template.
-        
+
     Returns:
         Formatted string with tokenizer's chat template applied.
     """
     if tokenizer is None:
         raise ValueError("tokenizer is required")
-    
+
     # check for "harmony" style (GPT-OSS) templates and convert to "role"/"content" format if needed
 
     if "gpt-oss" in tokenizer.name_or_path.lower():
@@ -82,7 +82,7 @@ def messages_to_string(
     else:
         is_gpt_oss = False
 
-    if is_gpt_oss: # replace the "reasoning_content" with a "thinking" key
+    if is_gpt_oss:  # replace the "reasoning_content" with a "thinking" key
         converted_messages = []
         for msg in messages:
             if msg.get("role") == "assistant" and "reasoning_content" in msg:
@@ -100,9 +100,7 @@ def messages_to_string(
     if chat_template_kwargs is None:
         chat_template_kwargs = {}
     elif not isinstance(chat_template_kwargs, dict):
-        raise TypeError(
-            f"chat_template_kwargs must be a mapping/dict, got {type(chat_template_kwargs).__name__}"
-        )
+        raise TypeError(f"chat_template_kwargs must be a mapping/dict, got {type(chat_template_kwargs).__name__}")
 
     return tokenizer.apply_chat_template(
         formatted_messages,
@@ -132,66 +130,58 @@ def _parse_chat_template_kwargs_json(raw: str) -> Dict[str, Any]:
         parsed = _json_std.loads(raw)
     except Exception as exc:
         raise argparse.ArgumentTypeError(
-            f"--chat_template_kwargs must be a JSON object string (e.g. '{{\"reasoning_effort\": \"high\"}}'). Parse error: {exc}"
+            f'--chat_template_kwargs must be a JSON object string (e.g. \'{{"reasoning_effort": "high"}}\'). Parse error: {exc}'
         ) from exc
     if not isinstance(parsed, dict):
-        raise argparse.ArgumentTypeError(
-            f"--chat_template_kwargs must be a JSON object, got {type(parsed).__name__}"
-        )
+        raise argparse.ArgumentTypeError(f"--chat_template_kwargs must be a JSON object, got {type(parsed).__name__}")
     return parsed
 
 
-def extract_input_output_from_messages(obj: Dict[str, Any], tokenizer: AutoTokenizer, chat_template_kwargs: Dict[str, Any]) -> tuple:
+def extract_input_output_from_messages(
+    obj: Dict[str, Any], tokenizer: AutoTokenizer, chat_template_kwargs: Dict[str, Any]
+) -> tuple:
     """
     Extract input (system + user prompts) and output (reasoning, tool calls, etc.) from message object.
-    
+
     Args:
         obj: Dictionary containing messages list or role/content fields
         tokenizer: Tokenizer to format messages
         chat_template_kwargs: Additional keyword arguments for chat template formatting
-        
+
     Returns:
         Tuple of (input_string, output_string, input_token_length, output_token_length)
     """
     messages = list(obj.get("messages", []))
-    
+
     if not messages:
         return "", "", 0, 0
-    
+
     # Separate system/user messages from the rest
 
     input_messages = []
 
-    
     for msg in messages:
         role = msg.get("role", "").lower()
         if role in ["system", "user"]:
             input_messages.append(msg)
 
-        
-    
     if input_messages:
         input_string = messages_to_string(
-                input_messages,
-                tokenizer,
-                add_generation_prompt=True,
-                chat_template_kwargs=chat_template_kwargs)
+            input_messages, tokenizer, add_generation_prompt=True, chat_template_kwargs=chat_template_kwargs
+        )
     else:
         input_string = ""
-    
 
-    output_string =  messages_to_string(
-            messages,
-            tokenizer,
-            add_generation_prompt=False,
-            chat_template_kwargs=chat_template_kwargs)
+    output_string = messages_to_string(
+        messages, tokenizer, add_generation_prompt=False, chat_template_kwargs=chat_template_kwargs
+    )
 
-    output_string = output_string.replace(input_string, "").strip() if input_string else output_string.strip()
-    
+    output_string = output_string.removeprefix(input_string).strip() if input_string else output_string.strip()
+
     # Calculate token lengths
     input_token_length = compute_token_length(input_string, tokenizer)
     output_token_length = compute_token_length(output_string, tokenizer)
-    
+
     return input_string, output_string, input_token_length, output_token_length
 
 
@@ -238,10 +228,17 @@ def process_jsonl(
                 continue
             try:
                 obj = _json_loads(line)
-                
+
                 # Extract input/output and calculate token lengths
-                if "input" not in obj or "output" not in obj or "input_token_length" not in obj or "output_token_length" not in obj:
-                    input_str, output_str, input_len, output_len = extract_input_output_from_messages(obj, tokenizer, chat_template_kwargs)
+                if (
+                    "input" not in obj
+                    or "output" not in obj
+                    or "input_token_length" not in obj
+                    or "output_token_length" not in obj
+                ):
+                    input_str, output_str, input_len, output_len = extract_input_output_from_messages(
+                        obj, tokenizer, chat_template_kwargs
+                    )
                     obj["input"] = input_str
                     obj["output"] = output_str
                     obj["input_token_length"] = input_len
@@ -249,10 +246,10 @@ def process_jsonl(
                     dumped = _json_dumps(obj)
                 else:
                     dumped = line  # already processed
-                
+
                 # Determine bucket field and length
                 length = obj.get(bucket_field, 0)
-                
+
                 if bucket_sizes:
                     b = bucket_index(length, bucket_sizes)
                     if b != -1:

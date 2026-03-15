@@ -233,7 +233,7 @@ def main():
             actual = artifacts[stage]["count"]
             soft_assert(actual == expected, f"Stage {stage} expected {expected} rows, found {actual}")
 
-    if "filter_problems" in artifacts:
+    if "filter_problems" in artifacts and "decontaminate" in artifacts:
         soft_assert(
             artifacts["decontaminate"]["count"] <= artifacts["filter_problems"]["count"],
             "decontaminate should not have more rows than filter_problems",
