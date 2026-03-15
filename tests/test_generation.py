@@ -16,14 +16,17 @@ import json
 
 # running most things through subprocess since that's how it's usually used
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 from nemo_skills.evaluation.metrics import ComputeMetrics
+from nemo_skills.inference.model.base import BaseModel
 from nemo_skills.pipeline.generate import _create_job_unified
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
+@pytest.mark.timeout(300)
 def test_eval_gsm8k_api(tmp_path):
     cmd = (
         f"ns eval "
@@ -33,6 +36,9 @@ def test_eval_gsm8k_api(tmp_path):
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -51,6 +57,7 @@ def test_eval_gsm8k_api(tmp_path):
     assert metrics["symbolic_correct"] >= 80
 
 
+@pytest.mark.timeout(300)
 def test_eval_judge_api(tmp_path):
     cmd = (
         f"ns eval "
@@ -63,7 +70,11 @@ def test_eval_judge_api(tmp_path):
         f"    --judge_server_address=https://integrate.api.nvidia.com/v1 "
         f"    --judge_server_type=openai "
         f"    --judge_generation_type=math_judge "
+        f"    --extra_judge_args='++max_concurrent_requests=1 ++inference.timeout=120 ++server.max_retries=1' "
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -102,6 +113,7 @@ def test_fail_on_api_key_env_var(tmp_path):
     ), result.stdout.decode()
 
 
+@pytest.mark.timeout(300)
 def test_succeed_on_api_key_env_var(tmp_path):
     cmd = (
         f"export MY_CUSTOM_KEY=$NVIDIA_API_KEY && "
@@ -113,6 +125,9 @@ def test_succeed_on_api_key_env_var(tmp_path):
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
         f"    ++server.api_key_env_var=MY_CUSTOM_KEY "
     )
     subprocess.run(cmd, shell=True, check=True)
@@ -132,6 +147,7 @@ def test_succeed_on_api_key_env_var(tmp_path):
     assert metrics["symbolic_correct"] >= 80
 
 
+@pytest.mark.timeout(300)
 @pytest.mark.parametrize("format", ["list", "dict"])
 def test_generate_openai_format(tmp_path, format):
     cmd = (
@@ -142,6 +158,9 @@ def test_generate_openai_format(tmp_path, format):
         f"    --input_file=/nemo_run/code/tests/data/openai-input-{format}.test "
         f"    --output_dir={tmp_path} "
         f"    ++prompt_format=openai "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -181,6 +200,7 @@ def test_server_metadata_from_num_tasks(tmp_path):
         installation_command=None,
         with_sandbox=False,
         partition=None,
+        account=None,
         keep_mounts_for_sandbox=False,
         task_name="test-task",
         log_dir="/tmp/logs",
@@ -194,6 +214,7 @@ def test_server_metadata_from_num_tasks(tmp_path):
     assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
 
 
+@pytest.mark.timeout(300)
 def test_judge_generations_with_structured_output(tmp_path):
     cmd = (
         f"ns eval "
@@ -206,8 +227,11 @@ def test_judge_generations_with_structured_output(tmp_path):
         f"    --judge_server_address=https://integrate.api.nvidia.com/v1 "
         f"    --judge_server_type=openai "
         f"    --metric_type=hle-aa "
-        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA" '
+        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA ++max_concurrent_requests=1 ++inference.timeout=120 ++server.max_retries=1" '
         f"    ++max_samples=2 "
+        f"    ++max_concurrent_requests=1 "
+        f"    ++inference.timeout=120 "
+        f"    ++server.max_retries=1 "
         f"    ++inference.tokens_to_generate=1024 "  # to make test go fast
     )
     subprocess.run(cmd, shell=True, check=True)
@@ -221,3 +245,40 @@ def test_judge_generations_with_structured_output(tmp_path):
     assert set(judgements[1].keys()) == expected_keys
     assert judgements[0]["correct"] in {"yes", "no"}
     assert judgements[1]["correct"] in {"yes", "no"}
+
+
+def test_process_chat_chunk_never_yields_none_generation():
+    """Regression test for https://github.com/NVIDIA-NeMo/Skills/issues/1267
+
+    OpenAI-compatible streaming APIs can emit chunks where delta.content is None.
+    _process_chat_chunk must never return {"generation": None}.
+    """
+    model = BaseModel.__new__(BaseModel)
+    p = model._process_chat_chunk
+
+    def _chunk(content, finish_reason=None, *, use_delta=True):
+        if use_delta:
+            return SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content=content), finish_reason=finish_reason)]
+            )
+        return SimpleNamespace(choices=[SimpleNamespace(text=content, finish_reason=finish_reason)])
+
+    # Normal text
+    assert p(_chunk("Hello"))[0]["generation"] == "Hello"
+
+    # None delta (intermediate chunk) — was the bug
+    assert p(_chunk(None))[0]["generation"] == ""
+
+    # None on finish
+    r = p(_chunk(None, finish_reason="stop"))[0]
+    assert r["generation"] == "" and r["finish_reason"] == "stop"
+
+    # Non-delta (completion-style) with text=None
+    assert p(_chunk(None, use_delta=False))[0]["generation"] == ""
+
+    # Full consumer loop — must not raise TypeError
+    full = ""
+    for c in [_chunk("Hello "), _chunk(None), _chunk("world"), _chunk(None, finish_reason="stop")]:
+        for r in p(c):
+            full += r["generation"]
+    assert full == "Hello world"

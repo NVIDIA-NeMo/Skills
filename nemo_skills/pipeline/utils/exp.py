@@ -169,6 +169,7 @@ def get_executor(
     log_prefix: str = "main",
     mounts=None,
     partition=None,
+    account=None,
     dependencies=None,
     extra_package_dirs: tuple[str] | None = None,
     heterogeneous=False,
@@ -178,6 +179,7 @@ def get_executor(
     overlap: bool = False,
     with_ray: bool = False,
     ray_template: str | None = None,
+    extra_srun_args: list[str] | None = None,
 ):
     """Create and configure a nemo-run executor for the target environment.
 
@@ -211,6 +213,7 @@ def get_executor(
             taken from `cluster_config`.
         partition: SLURM partition override. If omitted, inferred from `gpus_per_node`
             and `cluster_config`.
+        account: SLURM account override. If omitted, uses `cluster_config["account"]`.
         dependencies: SLURM job handles to depend on. The dependency type is taken from
             `cluster_config['dependency_type']` (default: "afterany").
         extra_package_dirs: Additional directories to package with the code for remote
@@ -325,13 +328,18 @@ def get_executor(
         srun_args.append("--overlap")
     if not cluster_config.get("disable_gpus_per_node", False) and gpus_per_node is not None:
         srun_args.append(f"--gpus-per-node={gpus_per_node}")
+    if extra_srun_args:
+        srun_args.extend(extra_srun_args)
 
     dependency_type = cluster_config.get("dependency_type", "afterany")
     job_details_class = CustomJobDetailsRay if with_ray else CustomJobDetails
 
+    # Resolve account with fallback to cluster_config
+    account = account or cluster_config["account"]
+
     # Build executor parameters as a dictionary to avoid duplicate parameters
     executor_params = {
-        "account": cluster_config["account"],
+        "account": account,
         "partition": partition,
         "nodes": num_nodes,
         "ntasks_per_node": tasks_per_node,
@@ -430,10 +438,13 @@ def add_task(
     num_nodes=1,
     log_dir=None,
     partition=None,
+    account=None,
     with_sandbox=False,
+    sandbox_container=None,
     keep_mounts_for_sandbox=False,
     sandbox_port: int | None = None,
     server_config=None,
+    n_servers: int = 1,
     reuse_code_exp: str | run.Experiment | None = None,
     reuse_code: bool = True,
     task_dependencies: list[str] = None,
@@ -518,50 +529,68 @@ def add_task(
 
     het_group = 0
     het_group_indices = []
-    total_het_groups = (server_config is not None) + bool(cmd) + with_sandbox
+    total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + with_sandbox
 
     LOG.info("Adding a task with commands:")
 
     commands = []
     executors = []
-    # assuming server always has the largest resources request, so it needs to go first
-    if server_config is not None and int(server_config["num_gpus"]) > 0:
+
+    # Check if we need to add server first to ensure SLURM allocates GPU partition
+    # This happens when the client doesn't need GPUs but the server does
+    server_needs_gpus = server_config is not None and int(server_config.get("num_gpus", 0)) > 0
+    client_num_gpus = num_gpus or 0
+    # For ray heterogenous jobs, nemo-run assumes the first het group is the main task
+    # So we send the server last if the job needs gpus
+    server_goes_first = server_needs_gpus and not client_num_gpus
+
+    def add_server_tasks():
+        nonlocal het_group
         # avoid mutating server_config, as it may be used again later in dependent jobs
-        server_config = copy.deepcopy(server_config)
+        _server_config = copy.deepcopy(server_config)
         # do not pass container into the command builder
         # NOTE: avoid evaluating default (which would index cluster_config) unless needed
-        server_container = server_config.pop("container", None)
+        server_container = _server_config.pop("container", None)
         if server_container is None:
-            server_container = cluster_config["containers"][server_config["server_type"]]
-        server_cmd, num_server_tasks = get_server_command(**server_config, cluster_config=cluster_config)
-        server_executor = get_executor(
-            cluster_config=cluster_config,
-            container=server_container,
-            num_nodes=server_config["num_nodes"],
-            tasks_per_node=num_server_tasks,
-            gpus_per_node=server_config["num_gpus"],
-            partition=partition,
-            dependencies=dependencies,
-            job_name=task_name,
-            log_dir=log_dir,
-            log_prefix="server",
-            extra_package_dirs=extra_package_dirs,
-            sbatch_kwargs=sbatch_kwargs,
-            heterogeneous=heterogeneous,
-            het_group=het_group,
-            total_het_groups=total_het_groups,
-            with_ray=with_ray,
-            ray_template=ray_template,
-        )
-        if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
-            server_cmd = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
-        commands.append(server_cmd)
-        executors.append(server_executor)
-        het_group_indices.append(het_group)
-        het_group += 1
-        LOG.info("Server command: %s", server_cmd)
+            server_container = cluster_config["containers"][_server_config["server_type"]]
 
-    # then goes the main task(s) unless it's empty
+        for server_idx in range(n_servers):
+            server_cmd, num_server_tasks = get_server_command(**_server_config, cluster_config=cluster_config)
+            server_executor = get_executor(
+                cluster_config=cluster_config,
+                container=server_container,
+                num_nodes=_server_config["num_nodes"],
+                tasks_per_node=num_server_tasks,
+                gpus_per_node=_server_config["num_gpus"],
+                partition=partition,
+                account=account,
+                dependencies=dependencies,
+                job_name=task_name,
+                log_dir=log_dir,
+                log_prefix=f"server_{server_idx}" if n_servers > 1 else "server",
+                extra_package_dirs=extra_package_dirs,
+                sbatch_kwargs=sbatch_kwargs,
+                heterogeneous=heterogeneous,
+                het_group=het_group,
+                total_het_groups=total_het_groups,
+                overlap=(not client_num_gpus),  # Only overlap when the main task does not have gpus
+                with_ray=False,
+                ray_template=ray_template,
+            )
+            cmd_to_add = server_cmd
+            if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
+                cmd_to_add = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
+            commands.append(cmd_to_add)
+            executors.append(server_executor)
+            het_group_indices.append(het_group)
+            het_group += 1
+            LOG.info("Server %d command: %s", server_idx, server_cmd)
+
+    # If client doesn't need GPUs but server does, add server first so SLURM allocates GPU partition
+    if server_goes_first:
+        add_server_tasks()
+
+    # Then goes the main task(s) unless it's empty
     if cmd:
         if isinstance(cmd, str):
             cmd = [cmd]
@@ -577,14 +606,16 @@ def add_task(
             with temporary_env_update(cluster_config, {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
                 commands.append(cur_cmd)
+                client_num_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
                 executors.append(
                     get_executor(
                         cluster_config=cluster_config,
                         container=cur_container,
                         num_nodes=num_nodes,
                         tasks_per_node=cur_tasks,
-                        gpus_per_node=num_gpus if server_config is None else 0,
+                        gpus_per_node=client_num_gpus,
                         partition=partition,
+                        account=account,
                         dependencies=dependencies,
                         job_name=task_name,
                         log_dir=log_dir,
@@ -594,7 +625,7 @@ def add_task(
                         heterogeneous=heterogeneous,
                         het_group=het_group,
                         total_het_groups=total_het_groups,
-                        overlap=(server_config is not None) or with_sandbox,
+                        overlap=(not client_num_gpus),  # Only when the main task does not have gpus
                         with_ray=with_ray,
                         ray_template=ray_template,
                     )
@@ -603,7 +634,7 @@ def add_task(
         het_group += 1
         LOG.info("Main command(s): %s", ", ".join(cmd))
 
-    # finally a sandbox if needed
+    # Then a sandbox if needed
     if with_sandbox:
         sandbox_env_updates = {
             "LISTEN_PORT": sandbox_port,
@@ -624,11 +655,12 @@ def add_task(
             commands.append(get_sandbox_command(cluster_config))
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
-                container=cluster_config["containers"]["sandbox"],
+                container=sandbox_container or cluster_config["containers"]["sandbox"],
                 num_nodes=executors[0].nodes if cluster_config["executor"] == "slurm" else 1,
                 tasks_per_node=1,
                 gpus_per_node=0,
                 partition=partition,
+                account=account,
                 mounts=None if keep_mounts_for_sandbox else [],
                 dependencies=dependencies,
                 job_name=task_name,
@@ -640,13 +672,29 @@ def add_task(
                 het_group=het_group,
                 total_het_groups=total_het_groups,
                 overlap=True,
-                with_ray=with_ray,
+                with_ray=False,
                 ray_template=ray_template,
+                # Allow the sandbox to survive individual worker crashes (e.g. SIGILL
+                # from libraries compiled for a different CPU).  nemo-run hardcodes
+                # --kill-on-bad-exit=1 on every srun; appending =0 overrides it so
+                # that start-with-nginx.sh can restart crashed workers instead of
+                # srun killing the entire step.
+                # Also disable PMI/PMIx for the sandbox step. The sandbox runs a
+                # single SLURM task but spawns many child processes (uwsgi workers,
+                # IPython shells). On some clusters, PMIx can treat child crashes
+                # (e.g., SIGILL from native libraries) as fatal and cancel the
+                # entire step. Overriding --mpi=none avoids PMIx involvement for
+                # this sidecar step.
+                extra_srun_args=["--kill-on-bad-exit=0", "--mpi=none"],
             )
             executors.append(sandbox_executor)
             het_group_indices.append(het_group)
         het_group += 1
         LOG.info("Sandbox command: %s", commands[-1])
+
+    # If server wasn't added first (because client needs GPUs or server doesn't need GPUs), add it now
+    if server_config is not None and not server_goes_first:
+        add_server_tasks()
 
     if cluster_config["executor"] != "none":
         tunnel = get_tunnel(cluster_config)

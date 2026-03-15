@@ -634,3 +634,204 @@ if __name__ == "__main__":
     assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
     assert len(result) == 3
     assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+
+
+# ==============================
+# Comparison tests: MCP PythonTool vs DirectPythonTool
+# ==============================
+
+
+async def _run_tool_sequence(tool_impl, tool_calls):
+    """Run a sequence of tool calls against a Tool implementation and return results.
+
+    Each tool_call is a dict with 'code' and 'request_id' keys.
+    Returns list of result strings.
+    """
+    results = []
+    for call in tool_calls:
+        result = await tool_impl.execute(
+            "stateful_python_code_exec",
+            {"code": call["code"]},
+            extra_args={"request_id": call["request_id"]},
+        )
+        results.append(result)
+    return results
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_basic_execution():
+    """DirectPythonTool can execute code and return output."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    tools = await tool.list_tools()
+    assert len(tools) == 1
+    assert tools[0]["name"] == "stateful_python_code_exec"
+    assert "code" in tools[0]["input_schema"]["properties"]
+    # session_id and timeout should NOT be exposed
+    assert "session_id" not in tools[0]["input_schema"]["properties"]
+    assert "timeout" not in tools[0]["input_schema"]["properties"]
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(2 + 2)"},
+        extra_args={"request_id": "test-basic"},
+    )
+    assert result == "4"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_session_persistence():
+    """DirectPythonTool maintains session state across calls with the same request_id."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    results = await _run_tool_sequence(
+        tool,
+        [
+            {"code": "x = 42", "request_id": "session-test"},
+            {"code": "y = x * 2", "request_id": "session-test"},
+            {"code": "print(y)", "request_id": "session-test"},
+        ],
+    )
+    assert results[0] == ""  # assignment, no output
+    assert results[1] == ""  # assignment, no output
+    assert results[2] == "84"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_sanitizes_hidden_args():
+    """Model-supplied session_id/timeout in arguments are stripped and cannot override internal values."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    # First call establishes a session
+    await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "x = 99"},
+        extra_args={"request_id": "sanitize-test"},
+    )
+
+    # Second call: model tries to inject a bogus session_id to hijack/reset the session
+    # If sanitization fails, this would either error or lose the variable 'x'
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(x)", "session_id": "bogus-session-id", "timeout": 0.001},
+        extra_args={"request_id": "sanitize-test"},
+    )
+    # x should still be accessible (session_id was not overridden)
+    # and the call should not have timed out (timeout was not overridden)
+    assert result == "99"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_separate_sessions():
+    """Different request_ids get independent sessions."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    # Set variable in session A
+    await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "secret = 'session_a'"},
+        extra_args={"request_id": "A"},
+    )
+
+    # Session B should not see it
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(secret)"},
+        extra_args={"request_id": "B"},
+    )
+    assert "NameError" in result
+
+    # Session A should still see it
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(secret)"},
+        extra_args={"request_id": "A"},
+    )
+    assert result == "session_a"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_mcp_vs_direct_python_tool_parity():
+    """MCP-based PythonTool and DirectPythonTool produce identical results for the same tool calls."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    sandbox_context = {"sandbox": {"sandbox_type": "local"}}
+
+    # Set up DirectPythonTool
+    direct = DirectPythonTool()
+    direct.configure(context=sandbox_context)
+
+    # Set up MCP PythonTool
+    mcp_tool = PythonTool()
+    mcp_tool.configure(context=sandbox_context)
+
+    # Verify both expose the same tool name
+    direct_tools = await direct.list_tools()
+    mcp_tools = await mcp_tool.list_tools()
+    assert direct_tools[0]["name"] == mcp_tools[0]["name"] == "stateful_python_code_exec"
+
+    # Define a sequence of tool calls that exercises session persistence
+    tool_calls = [
+        {"code": "import math", "request_id": "parity"},
+        {"code": "result = math.factorial(10)", "request_id": "parity"},
+        {"code": "print(result)", "request_id": "parity"},
+        {"code": "x = [i**2 for i in range(5)]", "request_id": "parity"},
+        {"code": "print(sum(x))", "request_id": "parity"},
+    ]
+
+    direct_results = await _run_tool_sequence(direct, tool_calls)
+    mcp_results = await _run_tool_sequence(mcp_tool, tool_calls)
+
+    for i, (d, m) in enumerate(zip(direct_results, mcp_results)):
+        assert d == m, f"Mismatch at step {i}: direct={d!r}, mcp={m!r}"
+
+    # Verify the actual computed values are correct
+    assert direct_results[2] == "3628800"  # 10!
+    assert direct_results[4] == "30"  # 0 + 1 + 4 + 9 + 16
+
+    await direct.shutdown()
+    await mcp_tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_mcp_vs_direct_error_parity():
+    """Both implementations handle errors the same way."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    sandbox_context = {"sandbox": {"sandbox_type": "local"}}
+
+    direct = DirectPythonTool()
+    direct.configure(context=sandbox_context)
+
+    mcp_tool = PythonTool()
+    mcp_tool.configure(context=sandbox_context)
+
+    tool_calls = [
+        {"code": "1 / 0", "request_id": "err"},
+    ]
+
+    direct_results = await _run_tool_sequence(direct, tool_calls)
+    mcp_results = await _run_tool_sequence(mcp_tool, tool_calls)
+
+    # Both should contain ZeroDivisionError
+    assert "ZeroDivisionError" in direct_results[0]
+    assert "ZeroDivisionError" in mcp_results[0]
+
+    await direct.shutdown()
+    await mcp_tool.shutdown()

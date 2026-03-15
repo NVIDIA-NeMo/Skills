@@ -55,6 +55,9 @@ EXCLUDED_DATASETS = {
     "compute-eval",
     # CritPt requires exactly 70 submissions and external API key (ARTIFICIAL_ANALYSIS_API_KEY)
     "critpt",
+    # SPEED-Bench downloads dozens of large external HF datasets, exhausting CI runner disk space
+    "speed-bench",
+    "mmmlu",  # too large
 }
 
 
