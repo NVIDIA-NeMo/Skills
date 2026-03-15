@@ -17,6 +17,7 @@ import argparse
 import glob
 import json
 from collections import defaultdict
+from pathlib import Path
 
 from nemo_skills.evaluation.metrics.utils import is_correct_judgement
 from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.constants import BASE_FIELDS
@@ -54,6 +55,7 @@ def main():
                 )
 
     # Write updated records with required keys
+    Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_file, "w") as fout:
         for sample in samples:
             stats = judgements_by_problem[sample["problem"]]

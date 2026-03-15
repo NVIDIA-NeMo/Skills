@@ -15,6 +15,7 @@
 import argparse
 import json
 import logging
+from pathlib import Path
 
 
 def main():
@@ -50,9 +51,8 @@ def main():
         help="Path to write filtered JSONL (non-contaminated problems)",
     )
     parser.add_argument(
-        "-f",
         "--with_duplicates",
-        default=False,
+        action="store_true",
         help="If set, allow duplicate problems in output; otherwise emit each once",
     )
     args = parser.parse_args()
@@ -69,6 +69,7 @@ def main():
             if not sample["contaminated"]:
                 dec.add(sample["problem"])
 
+    Path(args.save_path).parent.mkdir(parents=True, exist_ok=True)
     with open(args.input_path) as fin, open(args.save_path, "w") as fout:
         for line in fin:
             sample = json.loads(line)

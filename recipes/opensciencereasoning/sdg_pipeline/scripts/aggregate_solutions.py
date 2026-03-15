@@ -31,17 +31,19 @@ LOG = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_PATTERN = "output*.jsonl"
 
+
 def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
     logging.info("Judgement string: %s", judgement)
-    
-    if "Judgement:" in judgement:
+
+    match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
+    if match:
         logging.info("Found 'Judgement:' in string, extracting verdict.")
-        verdict = judgement.split("Judgement:")[-1].strip()
+        verdict = judgement[match.end() :].strip().lstrip("*").strip()
         if verdict.lower().startswith("yes"):
             return True
         elif verdict.lower().startswith("no"):
             return False
-    
+
     judgement = judgement.lower().strip()
     logging.info("Normalized judgement string: %s", judgement)
     if judgement == "yes":
@@ -52,7 +54,6 @@ def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
         return None
     else:
         return False  # improper judgement format, so have to judge as false
-
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,7 +72,7 @@ def parse_args() -> argparse.Namespace:
 
 def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterable[Path] = None) -> List[Dict]:
     """Read generation/judgement files and enrich them with correctness metrics.
-    
+
     If judgement_files is provided, this function will:
     1. Load all generation data indexed by generation_id
     2. Load judgement files and map judgements to generation data by generation_id
@@ -79,7 +80,7 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
     """
     per_problem_stats: Dict[str, Dict[str, int]] = defaultdict(lambda: {"total": 0, "correct": 0})
     all_samples: List[Dict] = []
-    
+
     source_files = judgement_files if judgement_files else generation_files
 
     # If judgement_files are provided, load generation data first
@@ -106,18 +107,18 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                 if not sample:
                     logging.warning("Skipping empty line in %s", file_path)
                     continue
-                
+
                 # If we have generation data, map judgement to it
                 if judgement_files:
                     gen_id = sample.get("generation_id")
                     if not gen_id:
                         # Try to reconstruct generation_id from file and sample
-                        seed_match = re.search(r'output-rs(\d+)', file_path.stem)
+                        seed_match = re.search(r"output-rs(\d+)", file_path.stem)
                         random_seed = seed_match.group(1) if seed_match else "unknown"
                         file_hash = hashlib.md5(file_path.name.encode()).hexdigest()[:8]
                         problem_id = sample.get("id", "unknown")
                         gen_id = f"{problem_id}__rs{random_seed}__{file_hash}"
-                    
+
                     if gen_id in generation_data_map:
                         # Use generation data as base and only take judgement from judged file
                         base_sample = generation_data_map[gen_id].copy()
@@ -126,7 +127,6 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                         sample = base_sample
                     else:
                         LOG.warning("Generation data not found for generation_id: %s", gen_id)
-
 
                 sample = {
                     key: value
@@ -144,7 +144,7 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                         "conversation",
                         "num_tool_calls",
                         "serialized_output",
-                        "_full_generation"
+                        "_full_generation",
                     ]
                 }
 
@@ -189,6 +189,7 @@ def main() -> None:
 
         if not judgement_files:
             LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, judgement_dir)
+            Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
             open(args.output_file, "w").close()
             return
         if not generation_files:
@@ -197,10 +198,12 @@ def main() -> None:
     else:
         if not generation_files:
             LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_dir)
+            Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
             open(args.output_file, "w").close()
             return
         samples = aggregate_samples(generation_files)
 
+    Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_file, "w") as fout:
         for sample in samples:
             sample["generation_model"] = args.generation_model

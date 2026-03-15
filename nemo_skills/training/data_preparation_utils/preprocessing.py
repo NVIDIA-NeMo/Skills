@@ -413,8 +413,8 @@ class WriteFinalSftManifest(BaseProcessor):
 
         LOG.info("Prepared dataset size: %d", samples_count)
 
-class WriteFinalConversationManifest(WriteFinalSftManifest):
 
+class WriteFinalConversationManifest(WriteFinalSftManifest):
     def process(self):
         samples_count = 0
         seen_predictions = defaultdict(set)
@@ -440,17 +440,16 @@ class WriteFinalConversationManifest(WriteFinalSftManifest):
                     output_sample["expected_answer"] = elem["expected_answer"]
 
                 if self.prompt:
+                    elem.pop(self.output_key, None)
+                    output_sample.pop(self.output_key, None)
                     input_messages = self.prompt.fill(input_dict=elem)
-                    if "generation" in output_sample:
-                        del output_sample["generation"]
-                    output_sample["messages"] = input_messages + output_sample.pop("serialized_output", [])                    
+                    output_sample["messages"] = input_messages + output_sample.pop("serialized_output")
 
                 output_sample.update(self.metadata)
                 fout.write(json.dumps(output_sample) + "\n")
                 samples_count += 1
 
         LOG.info("Prepared dataset size: %d", samples_count)
-
 
 
 class WriteFinalRLManifest(BaseProcessor):
