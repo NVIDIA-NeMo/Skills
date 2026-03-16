@@ -26,9 +26,9 @@ JUDGE_PIPELINE_ARGS = {
 
 JUDGE_ARGS = "++prompt_config=judge/aalcr ++generation_key=judgement ++add_generation_stats=False"
 
-# # AA-LCR official judge model.
+# AA-LCR official judge model.
 # JUDGE_PIPELINE_ARGS = {
 #     "model": "/hf_models/Qwen3-235B-A22B-Instruct-2507",
 #     "server_type": "sglang",
-#     "server_gpus": 4,
+#     "server_gpus": 8,
 # }
