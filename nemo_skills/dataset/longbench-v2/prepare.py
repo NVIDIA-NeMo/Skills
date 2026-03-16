@@ -16,9 +16,9 @@ import argparse
 import json
 from pathlib import Path
 
+import tiktoken
 from datasets import load_dataset
 from tqdm import tqdm
-import tiktoken
 
 """
 Prepare the LongBench-v2 dataset for evaluation.
@@ -60,11 +60,13 @@ def count_n_tokens(prompt: str, tokenizer_name: str) -> int:
             _tokenizer_cache[tokenizer_name] = tiktoken.get_encoding(tokenizer_name)
         except ValueError:
             from transformers import AutoTokenizer
+
             _tokenizer_cache[tokenizer_name] = AutoTokenizer.from_pretrained(tokenizer_name)
     enc = _tokenizer_cache[tokenizer_name]
     if isinstance(enc, tiktoken.Encoding):
         return len(enc.encode(prompt))
     return len(enc.encode(prompt, add_special_tokens=False))
+
 
 def write_data_to_file(output_file: Path, data, difficulty, length, tokenizer_name):
     skipped = 0
