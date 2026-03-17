@@ -115,9 +115,17 @@ class ToolCallingWrapper:
         Tool response content (code execution output) is appended to the
         conversation and consumes context, so it must be subtracted from the
         tokens_to_generate budget alongside model-generated tokens.
-        Returns 0 if no tokenizer is available (non-streaming path).
+
+        Returns 0 and logs a warning if no tokenizer is available. To get
+        accurate budget tracking with tool calling, initialize the model with
+        require_tokenizer=True.
         """
         if self.model.tokenizer is None:
+            LOG.warning(
+                "Cannot count tool response tokens: no tokenizer available. "
+                "tokens_to_generate budget will not account for tool output. "
+                "Use require_tokenizer=True to enable accurate budget tracking."
+            )
             return 0
         total = 0
         for msg in tool_response_messages:
