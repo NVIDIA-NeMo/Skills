@@ -109,8 +109,7 @@ def test_fail_on_api_key_env_var(tmp_path):
 
     # nemo-run always finishes with 0 error code, so just checking that expected exception is in the output
     assert (
-        "ValueError: You defined api_key_env_var=MY_CUSTOM_KEY but the value is not set"
-        in result.stdout.decode()
+        "ValueError: You defined api_key_env_var=MY_CUSTOM_KEY but the value is not set" in result.stdout.decode()
     ), result.stdout.decode()
 
 
@@ -267,9 +266,7 @@ def test_process_chat_chunk_never_yields_none_generation():
                     )
                 ]
             )
-        return SimpleNamespace(
-            choices=[SimpleNamespace(text=content, finish_reason=finish_reason)]
-        )
+        return SimpleNamespace(choices=[SimpleNamespace(text=content, finish_reason=finish_reason)])
 
     # Normal text
     assert p(_chunk("Hello"))[0]["generation"] == "Hello"
