@@ -245,11 +245,16 @@ class Command:
             # Update script.inline with evaluated command
             self.script.set_inline(evaluated_command)
 
-        # Build execution config from Script fields
+        # Build execution config from Script fields.
+        # For SandboxScript, keep_mounts=False (the safe default) maps to mounts=[]
+        # so the sandbox container has no access to cluster filesystems.
+        # keep_mounts=True maps to mounts=None, which inherits cluster mounts.
+        # Other scripts default to mounts=None (inherit cluster mounts).
+        keep_mounts = getattr(self.script, "keep_mounts", True)
         execution_config = {
             "log_prefix": getattr(self.script, "log_prefix", "main"),
             "environment": runtime_metadata.get("environment", {}),
-            "mounts": None,  # Mounts not currently exposed by Scripts
+            "mounts": None if keep_mounts else [],
             "container": self.container,
         }
 
