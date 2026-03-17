@@ -109,6 +109,17 @@ alpine_instance_ids = [
     "instance_protonmail__webclients-fc9d535e9beb3ae30a52a7146398cadfd6e30606",
 ]
 
+
+def create_problem_statement(row):
+    return f"""{row["problem_statement"]}
+
+Requirements:
+{row["requirements"]}
+
+New interfaces introduced:
+{row["interface"]}"""
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -141,7 +152,10 @@ if __name__ == "__main__":
     output_file_alpine = Path(__file__).parent / f"{args.setup}.alpine.jsonl"
     output_file_ubuntu = Path(__file__).parent / f"{args.setup}.ubuntu.jsonl"
 
-    dataset = dataset.rename_column("repo_language", "language")
+    dataset = dataset.rename_column("repo_language", "language").map(
+        create_problem_statement, remove_columns=["interface", "requirements"]
+    )
+
     dataset = dataset.add_column(
         "container_formatter",
         [
