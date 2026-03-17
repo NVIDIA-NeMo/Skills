@@ -348,6 +348,14 @@ class ToolCallingWrapper:
                 raise NotImplementedError("Streaming tool calling is only supported for chat completions.")
 
             if tool_calls:
+                if self.max_tool_calls >= 0 and total_tool_calls + len(tool_calls) > self.max_tool_calls:
+                    LOG.info(
+                        "Tool call limit reached (max_tool_calls=%s); stopping generation.",
+                        self.max_tool_calls,
+                    )
+                    last_finish_reason = "tool_call_limit_reached"
+                    break
+
                 yield {"type": "tool_calls", "tool_calls": tool_calls}
 
                 tool_calls_output_messages = await self._execute_tool_calls(
