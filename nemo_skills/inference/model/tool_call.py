@@ -109,6 +109,22 @@ class ToolCallingWrapper:
             for tool_call, tool_result in zip(tool_calls, tool_results)
         ]
 
+    def _count_tool_response_tokens(self, tool_response_messages: list) -> int:
+        """Count tokens in tool response content using the model tokenizer.
+
+        Tool response content (code execution output) is appended to the
+        conversation and consumes context, so it must be subtracted from the
+        tokens_to_generate budget alongside model-generated tokens.
+        Returns 0 if no tokenizer is available (non-streaming path).
+        """
+        if self.model.tokenizer is None:
+            return 0
+        total = 0
+        for msg in tool_response_messages:
+            text = msg.get("content") or msg.get("output") or ""
+            total += len(self.model.tokenizer.encode(str(text)))
+        return total
+
     def _coerce_tool_call_dict(self, tool_call: object) -> dict:
         if isinstance(tool_call, dict):
             return tool_call
@@ -235,6 +251,9 @@ class ToolCallingWrapper:
                 )
                 LOG.info("Sending tool calls: %s", tool_calls_output_messages)
                 conversation.extend(tool_calls_output_messages)
+
+                if isinstance(tokens_to_generate, int):
+                    tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
 
                 result_steps["num_tool_calls"].append(len(tool_calls))
                 tool_calls_executed += len(tool_calls)
@@ -366,6 +385,8 @@ class ToolCallingWrapper:
                 yield {"type": "tool_results", "results": tool_calls_output_messages}
 
                 conversation.extend(tool_calls_output_messages)
+                if isinstance(tokens_to_generate, int):
+                    tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
                 total_tool_calls += len(tool_calls)
                 continue
 
