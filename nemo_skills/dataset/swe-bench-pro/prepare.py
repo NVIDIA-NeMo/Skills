@@ -17,7 +17,8 @@ from pathlib import Path
 
 import datasets
 
-# convert language codes to the same format as swe-bench-multilingual
+# Convert language codes to the same format as swe-bench-multilingual.
+# This enables correct language-specific prompting and ignoring compilation files in git patches.
 LANGUAGE_MAP = {
     "js": "javascript",
     "ts": "typescript",
@@ -25,7 +26,8 @@ LANGUAGE_MAP = {
     "python": "python",
 }
 
-# the following instances' dockerfiles are based on Alpine Linux (uses musl, not glibc)
+# The following instances' dockerfiles are based on Alpine Linux (uses musl, not glibc).
+# They have to be run in a separate eval job where the host Nemo-Skills container is also based on Alpine.
 ALPINE_INSTANCE_IDS = [
     "instance_flipt-io__flipt-86906cbfc3a5d3629a583f98e6301142f5f14bdb-v6bea0cc3a6fc532d7da914314f2944fc1cd04dee",
     "instance_future-architect__vuls-bff6b7552370b55ff76d474860eead4ab5de785a-v1151a6325649aaf997cd541ebe533b53fddf1b07",
