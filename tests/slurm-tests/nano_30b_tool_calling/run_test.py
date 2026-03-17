@@ -69,7 +69,7 @@ def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, pa
 
 def eval_math_tool_calling_streaming(workspace, cluster, expname_prefix, wandb_project, partition, num_jobs):
     """Quick streaming smoke test — verifies streaming token counting works."""
-    streaming_params = COMMON_PARAMS + "++inference.stream=true ++server.require_tokenizer=true "
+    streaming_params = COMMON_PARAMS + "++inference.stream=true "
     expname = f"{expname_prefix}-streaming"
     eval(
         ctx=wrap_arguments(streaming_params),

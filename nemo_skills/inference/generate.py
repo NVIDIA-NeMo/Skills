@@ -81,7 +81,7 @@ class InferenceConfig:
     top_logprobs: int | None = None
     timeout: int | None = 14400  # Timeout for each individual LLM call in seconds
     reasoning_effort: str | None = None
-    stream: bool = False  # Use streaming for tool-calling (requires require_tokenizer=True on the server)
+    stream: bool = False  # Use streaming for tool-calling
 
     extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
 
@@ -344,6 +344,7 @@ class GenerationTask:
             self.cfg.inference.endpoint_type == EndpointType.text
             or self.cfg.server.get("enable_soft_fail", False)
             or self.cfg.count_prompt_tokens
+            or (self.cfg.tool_modules is not None and self.cfg.inference.tokens_to_generate is not None)
         ):
             # These are the only cases where we need a tokenizer
             self.tokenizer = self.cfg.tokenizer or self.cfg.server["model"]
@@ -479,6 +480,7 @@ class GenerationTask:
                 schema_overrides=self.cfg.schema_overrides,
                 max_tool_calls=self.cfg.max_tool_calls,
                 tokenizer=self.tokenizer,
+                require_tokenizer=self.cfg.inference.tokens_to_generate is not None,
                 additional_config={"sandbox": self.cfg.sandbox},
                 data_dir=self.data_dir or "",
                 output_dir=output_dir,

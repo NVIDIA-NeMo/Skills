@@ -121,12 +121,10 @@ class ToolCallingWrapper:
         require_tokenizer=True.
         """
         if self.model.tokenizer is None:
-            LOG.warning(
+            raise RuntimeError(
                 "Cannot count tool response tokens: no tokenizer available. "
-                "tokens_to_generate budget will not account for tool output. "
-                "Use require_tokenizer=True to enable accurate budget tracking."
+                "Initialize the model with require_tokenizer=True."
             )
-            return 0
         total = 0
         for msg in tool_response_messages:
             text = msg.get("content") or msg.get("output") or ""
