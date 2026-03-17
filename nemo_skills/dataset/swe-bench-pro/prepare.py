@@ -110,16 +110,6 @@ alpine_instance_ids = [
 ]
 
 
-def create_problem_statement(row):
-    return f"""{row["problem_statement"]}
-
-Requirements:
-{row["requirements"]}
-
-New interfaces introduced:
-{row["interface"]}"""
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
