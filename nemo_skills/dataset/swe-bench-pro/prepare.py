@@ -17,8 +17,16 @@ from pathlib import Path
 
 import datasets
 
+# convert language codes to the same format as swe-bench-multilingual
+LANGUAGE_MAP = {
+    "js": "javascript",
+    "ts": "typescript",
+    "go": "go",
+    "python": "python",
+}
+
 # the following instances' dockerfiles are based on Alpine Linux (uses musl, not glibc)
-alpine_instance_ids = [
+ALPINE_INSTANCE_IDS = [
     "instance_flipt-io__flipt-86906cbfc3a5d3629a583f98e6301142f5f14bdb-v6bea0cc3a6fc532d7da914314f2944fc1cd04dee",
     "instance_future-architect__vuls-bff6b7552370b55ff76d474860eead4ab5de785a-v1151a6325649aaf997cd541ebe533b53fddf1b07",
     "instance_future-architect__vuls-e049df50fa1eecdccc5348e27845b5c783ed7c76-v73dc95f6b90883d8a87e01e5e9bb6d3cc32add6d",
@@ -142,16 +150,16 @@ if __name__ == "__main__":
     output_file_alpine = Path(__file__).parent / f"{args.setup}.alpine.jsonl"
     output_file_ubuntu = Path(__file__).parent / f"{args.setup}.ubuntu.jsonl"
 
-    dataset = dataset.rename_column("repo_language", "language")
     dataset = dataset.map(
         lambda x: {
+            "language": LANGUAGE_MAP[x["repo_language"]],
             "problem_statement": (
                 f"{x['problem_statement']}\n\n"
                 f"Requirements:\n{x['requirements']}\n\n"
                 f"New interfaces introduced:\n{x['interface']}"
-            )
+            ),
         },
-        remove_columns=["interface", "requirements"],
+        remove_columns=["repo_language", "interface", "requirements"],
     )
 
     dataset = dataset.add_column(
@@ -167,7 +175,7 @@ if __name__ == "__main__":
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))
 
-    alpine_dataset = dataset.filter(lambda x: x["instance_id"] in alpine_instance_ids)
+    alpine_dataset = dataset.filter(lambda x: x["instance_id"] in ALPINE_INSTANCE_IDS)
     alpine_dataset.to_json(output_file_alpine, orient="records", lines=True)
-    ubuntu_dataset = dataset.filter(lambda x: x["instance_id"] not in alpine_instance_ids)
+    ubuntu_dataset = dataset.filter(lambda x: x["instance_id"] not in ALPINE_INSTANCE_IDS)
     ubuntu_dataset.to_json(output_file_ubuntu, orient="records", lines=True)
