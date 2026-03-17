@@ -55,7 +55,7 @@ def _collect(agen):
     async def _inner():
         return [item async for item in agen]
 
-    return asyncio.get_event_loop().run_until_complete(_inner())
+    return asyncio.run(_inner())
 
 
 _PATCH_TOOLS = patch(
