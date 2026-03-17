@@ -152,8 +152,16 @@ if __name__ == "__main__":
     output_file_alpine = Path(__file__).parent / f"{args.setup}.alpine.jsonl"
     output_file_ubuntu = Path(__file__).parent / f"{args.setup}.ubuntu.jsonl"
 
-    dataset = dataset.rename_column("repo_language", "language").map(
-        create_problem_statement, remove_columns=["interface", "requirements"]
+    dataset = dataset.rename_column("repo_language", "language")
+    dataset = dataset.map(
+        lambda x: {
+            "problem_statement": (
+                f"{x['problem_statement']}\n\n"
+                f"Requirements:\n{x['requirements']}\n\n"
+                f"New interfaces introduced:\n{x['interface']}"
+            )
+        },
+        remove_columns=["interface", "requirements"],
     )
 
     dataset = dataset.add_column(
