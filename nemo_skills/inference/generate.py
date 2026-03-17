@@ -81,6 +81,7 @@ class InferenceConfig:
     top_logprobs: int | None = None
     timeout: int | None = 14400  # Timeout for each individual LLM call in seconds
     reasoning_effort: str | None = None
+    stream: bool = False  # Use streaming for tool-calling (requires require_tokenizer=True on the server)
 
     extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
 
@@ -805,7 +806,18 @@ class GenerationTask:
         as long as those requests also use this function.
         """
         async with self.semaphore:
-            return await self.llm.generate_async(**generation_params)
+            result = await self.llm.generate_async(**generation_params)
+            # When streaming, generate_async returns an async generator.
+            # Drain it and return only the final result dict.
+            if hasattr(result, "__aiter__"):
+                final = None
+                async for chunk in result:
+                    if isinstance(chunk, dict) and chunk.get("type") == "final":
+                        final = chunk
+                if final is None:
+                    raise RuntimeError("Streaming generation did not produce a final result")
+                return final
+            return result
 
     async def evaluate_single_datapoint(self, data_point):
         eval_start_time = time.time()

@@ -109,17 +109,81 @@ class ToolCallingWrapper:
             for tool_call, tool_result in zip(tool_calls, tool_results)
         ]
 
+    def _coerce_tool_call_dict(self, tool_call: object) -> dict:
+        if isinstance(tool_call, dict):
+            return tool_call
+        if hasattr(tool_call, "model_dump"):
+            return tool_call.model_dump()
+        if hasattr(tool_call, "__dict__"):
+            return dict(tool_call.__dict__)
+        return {}
+
+    def _merge_tool_call_delta(self, tool_call_delta: object, tool_call_accumulator: dict) -> None:
+        tool_call_delta = self._coerce_tool_call_dict(tool_call_delta)
+        if not tool_call_delta:
+            return
+
+        index = tool_call_delta.get("index", 0)
+        entry = tool_call_accumulator.setdefault(
+            index,
+            {"id": None, "type": "function", "function": {"name": None, "arguments": ""}},
+        )
+
+        if tool_call_delta.get("id"):
+            entry["id"] = tool_call_delta["id"]
+        if tool_call_delta.get("type"):
+            entry["type"] = tool_call_delta["type"]
+
+        function_delta = self._coerce_tool_call_dict(tool_call_delta.get("function"))
+        if function_delta:
+            if function_delta.get("name"):
+                entry["function"]["name"] = function_delta["name"]
+            if function_delta.get("arguments") is not None:
+                entry["function"]["arguments"] += function_delta["arguments"]
+        else:
+            if tool_call_delta.get("name"):
+                entry["function"]["name"] = tool_call_delta["name"]
+            if tool_call_delta.get("arguments") is not None:
+                entry["function"]["arguments"] += tool_call_delta["arguments"]
+
+    def _finalize_tool_calls(self, tool_call_accumulator: dict) -> list[dict]:
+        if not tool_call_accumulator:
+            return []
+
+        tool_calls = []
+        for index in sorted(tool_call_accumulator.keys()):
+            entry = tool_call_accumulator[index]
+            if not entry.get("id"):
+                entry["id"] = str(uuid.uuid4())
+            if not entry.get("type"):
+                entry["type"] = "function"
+            if not entry.get("function"):
+                entry["function"] = {"name": None, "arguments": ""}
+            if entry["function"].get("arguments") is None:
+                entry["function"]["arguments"] = ""
+            tool_calls.append(entry)
+        return tool_calls
+
     async def generate_async(
         self,
         prompt: List,
         endpoint_type: EndpointType,
         tools: List[dict] = None,
         tokens_to_generate: int = None,
+        stream: bool = False,
         **generation_kwargs,
     ) -> Dict:
         assert isinstance(prompt, list), "Only use ChatCompletion API for now."
 
         assert tools is None, "Do not pass 'tools'; they are derived from tool_modules."
+
+        if stream:
+            return self._stream_single(
+                prompt=prompt,
+                endpoint_type=endpoint_type,
+                tokens_to_generate=tokens_to_generate,
+                **generation_kwargs,
+            )
 
         # This assumes that the available tools do not change during the generation.
         raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
@@ -189,3 +253,125 @@ class ToolCallingWrapper:
         result_steps["tools"] = tools  # Schema sent to model (with overrides applied)
 
         return result_steps
+
+    async def _stream_single(
+        self,
+        prompt: List,
+        endpoint_type: EndpointType,
+        tokens_to_generate: int = None,
+        **generation_kwargs,
+    ):
+        if self.model.tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is required for ToolCallingWrapper streaming to correctly count tokens. "
+                "Please initialize the model with require_tokenizer=True or provide a valid tokenizer."
+            )
+
+        raw_tools = await self.tool_manager.list_all_tools(use_cache=True)
+        tools, self.schema_mappings = format_tool_list_by_endpoint_type(
+            raw_tools, endpoint_type, schema_overrides=self.schema_overrides
+        )
+        LOG.info("Available Tools: %s", tools)
+
+        conversation = copy.deepcopy(prompt)
+        request_id = str(uuid.uuid4())
+
+        total_generated_tokens = 0
+        total_tool_calls = 0
+        all_generations = []
+        all_reasoning = []
+        last_finish_reason = None
+
+        while True:
+            if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
+                break
+
+            model_token_iterator = await self.model.generate_async(
+                prompt=conversation,
+                tools=tools,
+                tokens_to_generate=tokens_to_generate,
+                endpoint_type=endpoint_type,
+                stream=True,
+                **generation_kwargs,
+            )
+
+            current_output_segment = ""
+            reasoning_segment = ""
+            tool_call_accumulator = {}
+
+            async for chunk in model_token_iterator:
+                yield chunk
+
+                chunk_text = chunk.get("generation", "")
+                if chunk_text:
+                    current_output_segment += chunk_text
+
+                reasoning_delta = chunk.get("reasoning_content")
+                if reasoning_delta:
+                    reasoning_segment += reasoning_delta
+
+                if chunk.get("finish_reason"):
+                    last_finish_reason = chunk["finish_reason"]
+
+                tool_calls_delta = chunk.get("tool_calls")
+                if tool_calls_delta:
+                    if isinstance(tool_calls_delta, dict):
+                        tool_calls_delta = [tool_calls_delta]
+                    elif not isinstance(tool_calls_delta, list):
+                        tool_calls_delta = [tool_calls_delta]
+                    for tool_call_delta in tool_calls_delta:
+                        self._merge_tool_call_delta(tool_call_delta, tool_call_accumulator)
+
+            num_generated_tokens = len(self.model.tokenizer.encode(current_output_segment))
+
+            if isinstance(tokens_to_generate, int):
+                tokens_to_generate -= num_generated_tokens
+
+            total_generated_tokens += num_generated_tokens
+            all_generations.append(current_output_segment)
+            if reasoning_segment:
+                all_reasoning.append(reasoning_segment)
+
+            tool_calls = self._finalize_tool_calls(tool_call_accumulator)
+
+            if endpoint_type == EndpointType.chat:
+                content = current_output_segment
+                if not content and tool_calls:
+                    content = None
+                assistant_message = {"role": "assistant", "content": content}
+                if reasoning_segment:
+                    assistant_message["reasoning_content"] = reasoning_segment
+                if tool_calls:
+                    assistant_message["tool_calls"] = tool_calls
+                conversation.append(assistant_message)
+            else:
+                raise NotImplementedError("Streaming tool calling is only supported for chat completions.")
+
+            if tool_calls:
+                yield {"type": "tool_calls", "tool_calls": tool_calls}
+
+                tool_calls_output_messages = await self._execute_tool_calls(
+                    tool_calls, request_id=request_id, endpoint_type=endpoint_type
+                )
+                LOG.info("Sending tool calls: %s", tool_calls_output_messages)
+
+                yield {"type": "tool_results", "results": tool_calls_output_messages}
+
+                conversation.extend(tool_calls_output_messages)
+                total_tool_calls += len(tool_calls)
+                continue
+
+            break
+
+        final_result = {
+            "type": "final",
+            "generation": "".join(all_generations),
+            "num_generated_tokens": total_generated_tokens,
+            "num_tool_calls": total_tool_calls,
+            "conversation": conversation,
+            "tools": tools,
+            "finish_reason": last_finish_reason,
+        }
+        if all_reasoning:
+            final_result["reasoning_content"] = "".join(all_reasoning)
+        yield final_result
