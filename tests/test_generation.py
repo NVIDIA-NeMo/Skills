@@ -109,7 +109,8 @@ def test_fail_on_api_key_env_var(tmp_path):
 
     # nemo-run always finishes with 0 error code, so just checking that expected exception is in the output
     assert (
-        "ValueError: You defined api_key_env_var=MY_CUSTOM_KEY but the value is not set" in result.stdout.decode()
+        "ValueError: You defined api_key_env_var=MY_CUSTOM_KEY but the value is not set"
+        in result.stdout.decode()
     ), result.stdout.decode()
 
 
@@ -259,9 +260,16 @@ def test_process_chat_chunk_never_yields_none_generation():
     def _chunk(content, finish_reason=None, *, use_delta=True):
         if use_delta:
             return SimpleNamespace(
-                choices=[SimpleNamespace(delta=SimpleNamespace(content=content), finish_reason=finish_reason)]
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content=content),
+                        finish_reason=finish_reason,
+                    )
+                ]
             )
-        return SimpleNamespace(choices=[SimpleNamespace(text=content, finish_reason=finish_reason)])
+        return SimpleNamespace(
+            choices=[SimpleNamespace(text=content, finish_reason=finish_reason)]
+        )
 
     # Normal text
     assert p(_chunk("Hello"))[0]["generation"] == "Hello"
@@ -278,7 +286,12 @@ def test_process_chat_chunk_never_yields_none_generation():
 
     # Full consumer loop — must not raise TypeError
     full = ""
-    for c in [_chunk("Hello "), _chunk(None), _chunk("world"), _chunk(None, finish_reason="stop")]:
+    for c in [
+        _chunk("Hello "),
+        _chunk(None),
+        _chunk("world"),
+        _chunk(None, finish_reason="stop"),
+    ]:
         for r in p(c):
             full += r["generation"]
     assert full == "Hello world"
@@ -295,7 +308,10 @@ def test_process_chat_chunk_never_yields_none_generation():
 def test_parse_completion_response_token_counts(usage_kwargs, expected_input):
     model = BaseModel.__new__(BaseModel)
     usage = SimpleNamespace(completion_tokens=10, **usage_kwargs)
-    response = SimpleNamespace(usage=usage, choices=[SimpleNamespace(text="hi", finish_reason="stop", logprobs=None)])
-    result = model._parse_completion_response(response)[0]
+    response = SimpleNamespace(
+        usage=usage,
+        choices=[SimpleNamespace(text="hi", finish_reason="stop", logprobs=None)],
+    )
+    result = model._parse_completion_response(response)
     assert result["num_generated_tokens"] == 10
     assert result.get("num_input_tokens") == expected_input
