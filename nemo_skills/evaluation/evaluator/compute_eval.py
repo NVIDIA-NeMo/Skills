@@ -29,9 +29,6 @@ _SOLUTION_ADAPTER = TypeAdapter(Annotated[FileSolution | PatchSolution, Field(di
 
 
 class ComputeEvalEvaluator(BaseEvaluator):
-    _installed_ctk_major: int
-    _installed_ctk_minor: int
-
     def __init__(self, config: dict, num_parallel_requests=10):
         super().__init__(config, num_parallel_requests)
         nvcc_version = get_nvcc_version()
