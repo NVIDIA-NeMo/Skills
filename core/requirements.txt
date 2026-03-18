@@ -4,7 +4,7 @@
 # Once JIT install is ready, benchmark deps can be moved to per-benchmark extras.
 
 bs4
-compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@2d14770
+compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@e01a5d2
 datasets
 editdistance
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f

@@ -16,8 +16,8 @@ import logging
 from typing import Annotated, Any
 
 from compute_eval.data.data_model import CudaCppProblem, CudaPythonProblem, FileSolution, PatchSolution
-from compute_eval.execution import evaluate_solution
-from compute_eval.utils.eval_utils import get_nvcc_version, parse_semver
+from compute_eval.execution import evaluate_solutions
+from compute_eval.utils.eval_utils import get_nvcc_version
 from pydantic import Field, TypeAdapter
 
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator
@@ -40,8 +40,6 @@ class ComputeEvalEvaluator(BaseEvaluator):
                 "NVCC not found. Please ensure that the CUDA Toolkit is installed and nvcc is in your PATH."
             )
 
-        self._installed_ctk_major, self._installed_ctk_minor, _ = parse_semver(nvcc_version)
-
     async def eval_single(self, data_point: dict[str, Any]) -> dict[str, Any]:
         # noinspection PyBroadException
         try:
@@ -49,11 +47,11 @@ class ComputeEvalEvaluator(BaseEvaluator):
             solution = _SOLUTION_ADAPTER.validate_python(data_point["solution"])
 
             graded = await asyncio.to_thread(
-                evaluate_solution,
-                installed_ctk_major=self._installed_ctk_major,
-                installed_ctk_minor=self._installed_ctk_minor,
+                evaluate_solutions,
                 problem=problem,
-                solution=solution,
+                solutions=[solution],
+                eval_mode="local",
+                profile_mode=None,
             )
 
             return {
