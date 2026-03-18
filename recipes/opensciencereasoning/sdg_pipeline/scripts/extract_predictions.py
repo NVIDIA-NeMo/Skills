@@ -70,12 +70,12 @@ def collect_predictions(
 
     for file_path in input_dir.glob("*.jsonl"):
         # Extract random seed from filename (e.g., output-rs42.jsonl -> 42)
-        seed_match = re.search(r'output-rs(\d+)', file_path.stem)
+        seed_match = re.search(r"output-rs(\d+)", file_path.stem)
         random_seed = seed_match.group(1) if seed_match else "unknown"
-        
+
         # Compute hash of the input file
         file_hash = hashlib.md5(file_path.name.encode()).hexdigest()[:8]
-        
+
         samples: List[dict] = []
         with open(file_path) as fin:
             for line in fin:
@@ -83,9 +83,7 @@ def collect_predictions(
                 extract_from_boxed = True
                 if predicted_answer_regex_field:
                     extract_from_boxed = sample["metadata"].get("extract_from_boxed", False)
-                    predicted_answer_regex = (
-                        "" if extract_from_boxed else sample[predicted_answer_regex_field]
-                    )
+                    predicted_answer_regex = "" if extract_from_boxed else sample[predicted_answer_regex_field]
                 elif predicted_answer_regex:
                     extract_from_boxed = False
                 try:
@@ -98,11 +96,11 @@ def collect_predictions(
                     LOG.warning("Failed to extract answer for sample %s: %s", sample, e)
                     predicted_answer = None
                 sample["predicted_answer"] = predicted_answer
-                
+
                 # Add generation_id combining problem id, random seed, and file hash
                 problem_id = sample.get("id", "unknown")
                 sample["generation_id"] = f"{problem_id}__rs{random_seed}__{file_hash}"
-                
+
                 samples.append(sample)
 
                 if predicted_answer:

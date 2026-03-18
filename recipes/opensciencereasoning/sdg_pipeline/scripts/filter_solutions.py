@@ -20,7 +20,9 @@ import json
 import logging
 import os
 from typing import Dict, List, Optional, Sequence
+
 from recipes.opensciencereasoning.sdg_pipeline.scripts.utils.regex_constants import COMPILED_INTERNET_PATTERNS
+
 
 def extract_python_calls(serialized_output):
     calls = []
@@ -56,6 +58,7 @@ def uses_internet(serialized_output):
 
     return False
 
+
 LOG = logging.getLogger(__name__)
 
 
@@ -73,31 +76,40 @@ def record_passes_filters(
     metadata_filters = metadata_filters or {}
     if only_correct and not record.get("is_correct"):
         return False, "is_correct"
-    
+
     gen_pass_rate = record.get("generation_model_pass_rate")
-    if gen_pass_rate is not None and gen_pass_rate_bounds and (
-        gen_pass_rate_bounds[0] >= gen_pass_rate or gen_pass_rate_bounds[1] < gen_pass_rate
+    if (
+        gen_pass_rate is not None
+        and gen_pass_rate_bounds
+        and (gen_pass_rate_bounds[0] >= gen_pass_rate or gen_pass_rate_bounds[1] < gen_pass_rate)
     ):
         return False, "generation_model_pass_rate"
-    
+
     diff_pass_rate = record.get("difficulty_model_pass_rate")
-    if diff_pass_rate is not None and difficulty_pass_rate_bounds and (
-        difficulty_pass_rate_bounds[0] >= diff_pass_rate or difficulty_pass_rate_bounds[1] < diff_pass_rate
+    if (
+        diff_pass_rate is not None
+        and difficulty_pass_rate_bounds
+        and (difficulty_pass_rate_bounds[0] >= diff_pass_rate or difficulty_pass_rate_bounds[1] < diff_pass_rate)
     ):
         return False, "difficulty_model_pass_rate"
-    
+
     mv_agreement_rate = record.get("majority_voting_agreement_rate")
-    if mv_agreement_rate is not None and majority_voting_agreement_rate_bounds and (
-        majority_voting_agreement_rate_bounds[0] >= mv_agreement_rate or majority_voting_agreement_rate_bounds[1] < mv_agreement_rate
+    if (
+        mv_agreement_rate is not None
+        and majority_voting_agreement_rate_bounds
+        and (
+            majority_voting_agreement_rate_bounds[0] >= mv_agreement_rate
+            or majority_voting_agreement_rate_bounds[1] < mv_agreement_rate
+        )
     ):
         return False, "majority_voting_agreement_rate"
-    
+
     if only_samples_with_ground_truth_answer and not record.get("expected_answer"):
         return False, "expected_answer"
 
     if filter_internet and uses_internet(record.get("serialized_output", [])):
         return False, "uses_internet"
-    
+
     for field, allowed in metadata_filters.items():
         candidate = record.get(field)
         if candidate not in allowed:
@@ -203,7 +215,7 @@ def main() -> None:
         (written_records / total_records * 100) if total_records else 0.0,
         args.output_file,
     )
-    
+
     if filter_stats:
         LOG.info("Filter statistics:")
         for filter_name, count in sorted(filter_stats.items(), key=lambda x: x[1], reverse=True):

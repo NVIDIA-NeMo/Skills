@@ -189,9 +189,12 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
             include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
         else:
             # picking up local dataset files if we are in the right repo
-            include_patterns.append(str(nemo_skills_dir / "dataset/**/*.jsonl"))
-            
-            # Include recipe-specific JSONL files
+            dataset_dir = nemo_skills_dir / "dataset"
+            for f in dataset_dir.rglob("*.jsonl"):
+                include_patterns.append(str(f))
+                include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
+
+            # picking up jsonl files in recipes directory if it exists
             recipes_dir = Path(repo_path) / "recipes"
             if recipes_dir.exists():
                 include_patterns.append(str(recipes_dir / "**/*.jsonl"))

@@ -14,8 +14,8 @@
 
 import argparse
 import json
-import os
 import logging
+import os
 from typing import List, Optional, Union
 
 
@@ -56,7 +56,9 @@ def prepare_topics(
       - prompt_examples: rendered few-shot examples (empty if none)
     """
     logger = logging.getLogger(__name__)
-    logger.info(f"Preparing topics: input={input_file}, output={output_file}, topic_key={topic_key}, generation_key={generation_key}")
+    logger.info(
+        f"Preparing topics: input={input_file}, output={output_file}, topic_key={topic_key}, generation_key={generation_key}"
+    )
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     total = 0
     written = 0
@@ -84,6 +86,7 @@ def prepare_topics(
             fout.write(json.dumps(sample) + "\n")
             written += 1
     logger.info(f"Finished preparing topics. Total: {total}, Written: {written}, Skipped: {skipped}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -121,7 +124,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger = logging.getLogger(__name__)
     logger.info("Starting prepare_topics script")
-    logger.info(f"Args: input_file={args.input_file}, output_file={args.output_file}, topic_key={args.topic_key}, generation_key={args.generation_key}")
+    logger.info(
+        f"Args: input_file={args.input_file}, output_file={args.output_file}, topic_key={args.topic_key}, generation_key={args.generation_key}"
+    )
     prepare_topics(
         args.input_file,
         args.output_file,
