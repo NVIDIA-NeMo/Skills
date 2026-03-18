@@ -364,6 +364,10 @@ class BaseModel:
                 output += choice.matched_stop
 
         result = {"generation": output, "num_generated_tokens": response.usage.completion_tokens}
+        if getattr(response.usage, "prompt_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.prompt_tokens
+        elif getattr(response.usage, "input_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.input_tokens
         if getattr(choice, "logprobs", None):
             result["logprobs"] = choice.logprobs.token_logprobs
             result["tokens"] = choice.logprobs.tokens
@@ -382,6 +386,10 @@ class BaseModel:
         if output is None:
             output = ""
         result = {"generation": output, "num_generated_tokens": response.usage.completion_tokens}
+        if getattr(response.usage, "prompt_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.prompt_tokens
+        elif getattr(response.usage, "input_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.input_tokens
 
         # Add reasoning_content if available
         if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
