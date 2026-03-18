@@ -22,86 +22,91 @@ from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 
 
 class WeightedMathMetrics(MathMetrics):
-    """MathMetrics with difficulty-weighted accuracy.
+    """MathMetrics with difficulty-weighted accuracy."""
 
-    Reads the 'weight' field written by prepare.py.
-    Weighted accuracy = sum(weight_i * correct_i) / sum(weight_i).
-    Falls back to weight=1 if field is missing.
-
-    Computes weighted_<signal> for all signals present in score_dicts
-    (symbolic_correct, judge_correct, both_correct, any_correct) across
-    all eval modes: pass@1[avg-of-k], pass@k, majority@k (k >= 2).
-    Computes weighted_<signal>_statistics for pass@1[avg-of-k].
-    """
-
-    def reset(self):
+    def reset(self) -> None:
         super().reset()
         self.total_weight = 0.0
-        # weighted_eval_dict[agg_mode][signal] -> weighted sum
-        self.weighted_eval_dict = defaultdict(lambda: defaultdict(float))
-        # all_weighted_scores[signal] -> list of (weight, scores_list)
-        self.all_weighted_scores: dict[str, list[tuple[float, list[bool]]]] = defaultdict(list)
+        self.weighted_sums = defaultdict(lambda: defaultdict(float))
+        self.per_sample_scores = defaultdict(list)
 
-    def update(self, predictions: list[dict]):
-        # Parent handles pass@k, majority@k, reward@k for symbolic_correct
+    def _get_sample_weight(self, prediction: dict) -> float:
+        """Return the sample weight, defaulting to 1.0 if the field is absent."""
+        return float(prediction.get("weight", 1.0))
+
+    def _update_pass1_avg_of_k(self, score_method: str, attempt_scores: list[bool], sample_weight: float) -> None:
+        """Accumulate weighted average correctness across first k attempts for all k."""
+        num_attempts = len(attempt_scores)
+        for k in range(1, num_attempts + 1):
+            self.weighted_sums[f"pass@1[avg-of-{k}]"][score_method] += sample_weight * sum(attempt_scores[:k]) / k
+
+    def _update_pass_at_k(self, score_method: str, attempt_scores: list[bool], sample_weight: float) -> None:
+        """Accumulate weighted combinatorial pass-at-k probability for all k."""
+        num_attempts = len(attempt_scores)
+        num_incorrect = attempt_scores.count(False)
+        for k in range(1, num_attempts + 1):
+            if num_incorrect < k:
+                pass_k_score = 1.0
+            else:
+                pass_k_score = 1.0 - math.comb(num_incorrect, k) / math.comb(num_attempts, k)
+            self.weighted_sums[f"pass@{k}"][score_method] += sample_weight * pass_k_score
+
+    def _update_majority_at_k(
+        self, score_method: str, attempt_scores: list[bool], predicted_answers: list, sample_weight: float
+    ) -> None:
+        """Accumulate weighted majority-vote accuracy for all k >= 2."""
+        num_attempts = len(attempt_scores)
+        for k in range(2, num_attempts + 1):
+            valid_pairs = [(ans, sc) for ans, sc in zip(predicted_answers[:k], attempt_scores[:k]) if ans is not None]
+            if not valid_pairs:
+                majority_score = 0.0
+            else:
+                answer_counts = Counter(valid_pairs)
+                top_count = answer_counts.most_common(1)[0][1]
+                top_pairs = [(ans, sc) for (ans, sc), cnt in answer_counts.items() if cnt == top_count]
+                majority_score = sum(sc for _, sc in top_pairs) / len(top_pairs)
+            self.weighted_sums[f"majority@{k}"][score_method] += sample_weight * majority_score
+
+    def update(self, predictions: list[dict]) -> None:
         super().update(predictions)
 
-        weight = float(predictions[0].get("weight", 1.0))
-        self.total_weight += weight
+        sample_weight = self._get_sample_weight(predictions[0])
+        self.total_weight += sample_weight
 
         score_dicts = [self._get_score_dict(p) for p in predictions]
         predicted_answers = [p[self.answer_key] for p in predictions]
 
-        all_signal_names = set().union(*[sd.keys() for sd in score_dicts])
+        all_score_methods = set().union(*[sd.keys() for sd in score_dicts])
 
-        for signal in all_signal_names:
-            scores = [bool(sd.get(signal, False)) for sd in score_dicts]
-            self.all_weighted_scores[signal].append((weight, scores))
+        for score_method in all_score_methods:
+            attempt_scores = [bool(sd.get(score_method, False)) for sd in score_dicts]
+            self.per_sample_scores[score_method].append((sample_weight, attempt_scores))
 
-            total = len(scores)
-            total_incorrect = scores.count(False)
+            self._update_pass1_avg_of_k(score_method, attempt_scores, sample_weight)
+            self._update_pass_at_k(score_method, attempt_scores, sample_weight)
+            self._update_majority_at_k(score_method, attempt_scores, predicted_answers, sample_weight)
 
-            for k in range(1, total + 1):
-                # pass@1[avg-of-k]: average correctness across first k attempts
-                self.weighted_eval_dict[f"pass@1[avg-of-{k}]"][signal] += weight * sum(scores[:k]) / k
-
-                # pass@k (binary combinatorial formula)
-                if total_incorrect < k:
-                    pass_k_score = 1.0
-                else:
-                    pass_k_score = 1.0 - math.comb(total_incorrect, k) / math.comb(total, k)
-                self.weighted_eval_dict[f"pass@{k}"][signal] += weight * pass_k_score
-
-            # majority@k (k >= 2)
-            for k in range(2, total + 1):
-                valid = [(ans, sc) for ans, sc in zip(predicted_answers[:k], scores[:k]) if ans is not None]
-                if not valid:
-                    majority_score = 0.0
-                else:
-                    counter = Counter(valid)
-                    majority_count = counter.most_common(1)[0][1]
-                    majority_answer_list = [(a, s) for (a, s), cnt in counter.items() if cnt == majority_count]
-                    majority_score = sum(s for _, s in majority_answer_list) / len(majority_answer_list)
-                self.weighted_eval_dict[f"majority@{k}"][signal] += weight * majority_score
-
-    def _add_weighted_std_metrics(self, metrics_dict):
-        if self.max_k < 2 or not self.all_weighted_scores:
+    def _add_weighted_std_metrics(self, metrics_dict: dict) -> None:
+        """Populate weighted_<scoring_method>_statistics for pass@1[avg-of-k] with k >= 2."""
+        if self.max_k < 2 or not self.per_sample_scores:
             return
-        for signal, weighted_scores_list in self.all_weighted_scores.items():
+        for score_method, sample_entries in self.per_sample_scores.items():
             for k in range(2, self.max_k + 1):
-                key = f"pass@1[avg-of-{k}]"
-                if key not in metrics_dict:
+                agg_key = f"pass@1[avg-of-{k}]"
+                if agg_key not in metrics_dict:
                     continue
-                run_means = [
-                    sum(w * scores[j] for w, scores in weighted_scores_list) / self.total_weight for j in range(k)
+                # Weighted average correctness at each attempt position (across all samples)
+                weighted_avg_per_attempt = [
+                    sum(weight * scores[attempt_idx] for weight, scores in sample_entries) / self.total_weight
+                    for attempt_idx in range(k)
                 ]
-                std_dev = np.std(run_means, ddof=1)
+                std_dev = np.std(weighted_avg_per_attempt, ddof=1)
                 std_err = std_dev / math.sqrt(k)
                 avg_sample_std = float(
-                    sum(w * np.std(scores[:k], ddof=1) for w, scores in weighted_scores_list) / self.total_weight
+                    sum(weight * np.std(scores[:k], ddof=1) for weight, scores in sample_entries) / self.total_weight
                 )
-                avg = float(np.mean(run_means))
-                metrics_dict[key][f"weighted_{signal}_statistics"] = {
+                avg = float(np.mean(weighted_avg_per_attempt))
+                metrics_dict[agg_key][f"weighted_{score_method}_statistics"] = {
                     "avg": avg,
                     "std_dev_across_runs": float(std_dev),
                     "std_err_across_runs": float(std_err),
@@ -111,15 +116,15 @@ class WeightedMathMetrics(MathMetrics):
     def get_metrics(self) -> dict:
         metrics = super().get_metrics()
         if self.total_weight > 0:
-            for agg_mode, signal_sums in self.weighted_eval_dict.items():
-                for signal, weighted_sum in signal_sums.items():
+            for agg_mode, score_method_sums in self.weighted_sums.items():
+                for score_method, weighted_sum in score_method_sums.items():
                     weighted_acc = 100.0 * weighted_sum / self.total_weight
                     if agg_mode in metrics:
-                        metrics[agg_mode][f"weighted_{signal}"] = weighted_acc
+                        metrics[agg_mode][f"weighted_{score_method}"] = weighted_acc
         self._add_weighted_std_metrics(metrics)
         return metrics
 
-    def metrics_to_print(self):
+    def metrics_to_print(self) -> dict:
         result = super().metrics_to_print()
         result["weighted_symbolic_correct"] = as_percentage
         result["weighted_judge_correct"] = as_percentage
