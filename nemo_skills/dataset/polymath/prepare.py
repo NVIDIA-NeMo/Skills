@@ -17,28 +17,26 @@ import json
 from pathlib import Path
 
 import datasets
+
 from nemo_skills.dataset.polymath.instructions import (
+    QUESTION_TEMPLATE,
     difficulty_level_dic,
+    language_control,
     language_dic,
     query_dic,
-    language_control,
-    QUESTION_TEMPLATE,
 )
 
 SUPPORTED_LANGUAGES = list(language_dic.keys())
+
 
 def format_entry(entry: dict, language: str, difficulty: str, language_control_mode: str = None) -> dict:
     problem = entry["question"]
     instruction = query_dic[language]
     lang_control = language_control[language_control_mode][language] if language_control_mode else ""
-    question = QUESTION_TEMPLATE.format(
-        question=problem, 
-        instruction=instruction, 
-        lang_control=lang_control
-    ).strip()
+    question = QUESTION_TEMPLATE.format(question=problem, instruction=instruction, lang_control=lang_control).strip()
     return {
         "question": question,
-        "problem": problem, # keep the original problem text for the judge
+        "problem": problem,  # keep the original problem text for the judge
         "expected_answer": entry["answer"],
         "subset_for_metrics": language,
         "difficulty": difficulty,

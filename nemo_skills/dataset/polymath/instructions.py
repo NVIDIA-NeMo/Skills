@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-difficulty_level_dic = {
-    "low": 1, 
-    "medium": 2,
-    "high": 4,
-    "top": 8
-}
+difficulty_level_dic = {"low": 1, "medium": 2, "high": 4, "top": 8}
 
 QUESTION_TEMPLATE = """
 {question}
@@ -135,5 +130,5 @@ language_control = {
         "te": "మీరు అత్యంత స్థిరంగా ఉన్న భాషను స్వీకరించి ఆలోచించిตอบ。",
         "th": "เลือกภาษาที่คุณมีความสามารถมากที่สุดในการคิดและตอบคำถาม.",
         "vi": "Chọn ngôn ngữ mà bạn thành thạo nhất để suy nghĩ và trả lời.",
-    }
+    },
 }

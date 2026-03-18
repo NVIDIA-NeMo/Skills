@@ -93,8 +93,7 @@ class WeightedMathMetrics(MathMetrics):
                 if key not in metrics_dict:
                     continue
                 run_means = [
-                    sum(w * scores[j] for w, scores in weighted_scores_list) / self.total_weight
-                    for j in range(k)
+                    sum(w * scores[j] for w, scores in weighted_scores_list) / self.total_weight for j in range(k)
                 ]
                 std_dev = np.std(run_means, ddof=1)
                 std_err = std_dev / math.sqrt(k)
