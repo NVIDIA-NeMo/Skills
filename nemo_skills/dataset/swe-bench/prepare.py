@@ -49,4 +49,9 @@ if __name__ == "__main__":
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))
+
+    if dataset_name == "princeton-nlp/SWE-bench_Verified":
+        # Add language column for more convenient use with multilingual pipelines
+        dataset = dataset.add_column("language", ["python"] * len(dataset))
+
     dataset.to_json(output_file, orient="records", lines=True)
