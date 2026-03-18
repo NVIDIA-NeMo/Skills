@@ -23,7 +23,6 @@ import sys
 from dataclasses import field
 from enum import Enum
 from pathlib import Path
-from urllib.parse import urlparse
 
 import hydra
 import tomlkit
@@ -878,12 +877,8 @@ class SweBenchGenerationTask(GenerationTask):
                 }
             }
         else:
-            repo_name = urlparse(self.cfg.eval_harness_repo).path.strip("/")
-            if repo_name.endswith(".git"):
-                repo_name = repo_name[:-4]
-
             # Run full evaluation with streaming output
-            if repo_name == "wasiahmad/SWE-bench_Pro-os":
+            if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
                 swe_bench_cmd = (
                     # copy installed repo & uv dir from /root_mount
                     "cp -r /root_mount/SWE-bench /root && "
