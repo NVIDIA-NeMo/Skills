@@ -27,6 +27,7 @@ from tests.conftest import docker_rm
 # These don't support max_samples, require explicit parameters, or are very heavy to prepare
 EXCLUDED_DATASETS = {
     "__pycache__",
+    "longbench-v2",
     "ruler",
     "ruler2",
     "bigcodebench",
@@ -57,6 +58,7 @@ EXCLUDED_DATASETS = {
     "critpt",
     # SPEED-Bench downloads dozens of large external HF datasets, exhausting CI runner disk space
     "speed-bench",
+    "mmmlu",  # too large
 }
 
 

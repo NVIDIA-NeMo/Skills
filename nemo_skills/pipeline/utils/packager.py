@@ -194,6 +194,12 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
                 include_patterns.append(str(f))
                 include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
 
+            # picking up jsonl files in recipes directory if it exists
+            recipes_dir = Path(repo_path) / "recipes"
+            if recipes_dir.exists():
+                include_patterns.append(str(recipes_dir / "**/*.jsonl"))
+                include_pattern_relative_paths.append(str(repo_path))
+
         root_package = run.GitArchivePackager(
             include_pattern=include_patterns,
             include_pattern_relative_path=include_pattern_relative_paths,
