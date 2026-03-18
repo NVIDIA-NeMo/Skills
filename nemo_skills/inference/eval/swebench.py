@@ -51,7 +51,6 @@ class SupportedAgentFrameworks(str, Enum):
 
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
-    multi_swe_bench = "multi_swe_bench"
     swe_bench_pro = "swe_bench_pro"
 
 
