@@ -7,11 +7,11 @@ stages:
     diversity_prompts_prompt_key: user_prompt
     diversity_prompts_answer_regex_key: output_regex
   generate_solutions:
-    prompt_config: ++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/default_problem.yaml 
+    prompt_config: ++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/default_problem.yaml
     generation_kwargs:
       args:
         input_file: ${base_output_dir}/solution-sdg/step-0-filter-problems/final_result.jsonl
-    dependencies: 
+    dependencies:
       - filter_problems
   decontaminate:
     enabled: False
