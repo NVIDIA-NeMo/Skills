@@ -47,6 +47,7 @@ from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
+from nemo_skills.evaluation.metrics.weighted_math_metrics import WeightedMathMetrics
 
 METRICS_MAP = {
     "math": MathMetrics,
@@ -93,6 +94,7 @@ METRICS_MAP = {
     "specdec": SpecdecMetrics,
     "hotpotqa": HotpotQAMetrics,
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
+    "weighted-math": WeightedMathMetrics,
 }
 
 
