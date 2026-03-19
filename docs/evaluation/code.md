@@ -304,7 +304,7 @@ Here's how to run a sample evaluation of [Qwen3-Coder-Next](https://huggingface.
 
     replacing <...> with your desired parameters.
 
-After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/swe-bench-pro/alpine/metrics.json` and `<OUTPUT_DIR>/eval-results/swe-bench-pro/ubuntu/metrics.json`. The combined score on both subsets should be around 40%.
+After all jobs are complete, you can check the results in `<OUTPUT_DIR_ALPINE>/eval-results/swe-bench-pro/metrics.json` and `<OUTPUT_DIR_UBUNTU>/eval-results/swe-bench-pro/metrics.json`. The combined score on both subsets should be around 40%.
 
 Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate. To do that automatically, you can set `--benchmarks=swe-bench-pro:N`, where N is your desired number of repeats.
 
