@@ -127,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--container_formatter",
         type=str,
-        default="docker://{docker_tag}",
+        default="docker://{docker_image}",
         help="Container formatter string. You can download .sif containers and store them in a mounted "
         "directory which you can reference here to avoid redownloading all the time. "
         "See nemo_skills/dataset/swe-bench/dump_images.py",
@@ -150,8 +150,7 @@ if __name__ == "__main__":
     dataset_name = args.dataset_name
     split = args.split
     container_formatter = args.container_formatter
-    assert "{docker_tag}" in container_formatter, "container_formatter must have {docker_tag}"
-    # TODO: should this be docker_image to match rebench?
+    assert "{docker_image}" in container_formatter, "container_formatter must have {docker_image}"
 
     dataset = datasets.load_dataset(path=dataset_name, split=split)
     output_file_alpine = Path(__file__).parent / f"{args.setup}.alpine.jsonl"
@@ -172,9 +171,9 @@ if __name__ == "__main__":
     dataset = dataset.add_column(
         "container_formatter",
         [
-            container_formatter.format(docker_tag=f"jefzda/sweap-images:{row['dockerhub_tag']}")
+            container_formatter.format(docker_image=f"jefzda/sweap-images:{row['dockerhub_tag']}")
             if container_formatter.startswith("docker://")
-            else container_formatter.format(docker_tag=f"jefzda_sweap-images_{row['dockerhub_tag']}")
+            else container_formatter.format(docker_image=f"jefzda_sweap-images_{row['dockerhub_tag']}")
             for row in dataset
         ],
     )
