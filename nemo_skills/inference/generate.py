@@ -341,7 +341,10 @@ class GenerationTask:
         # Setup tokenizer
         if (
             self.cfg.inference.endpoint_type == EndpointType.text
-            or self.cfg.server.get("enable_soft_fail", False)
+            or (
+                self.cfg.server.get("enable_soft_fail", False)
+                and self.cfg.server.get("context_limit_retry_strategy", None) is not None
+            )
             or self.cfg.count_prompt_tokens
         ):
             # These are the only cases where we need a tokenizer
