@@ -16,7 +16,7 @@ import argparse
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, List
 
 from httpx import RemoteProtocolError
 from mcp.server.fastmcp import FastMCP
@@ -24,6 +24,7 @@ from omegaconf import OmegaConf
 from pydantic import Field
 
 from nemo_skills.code_execution.sandbox import get_sandbox
+from nemo_skills.mcp.tool_manager import Tool
 from nemo_skills.mcp.tool_providers import MCPClientTool
 from nemo_skills.mcp.utils import add_config_args, load_mcp_config
 
@@ -140,6 +141,102 @@ class PythonTool(MCPClientTool):
 
     async def shutdown(self) -> None:
         return None
+
+
+class DirectPythonTool(Tool):
+    """Python code execution tool that calls the sandbox directly, bypassing MCP.
+
+    This is a drop-in replacement for PythonTool that eliminates the MCP protocol
+    overhead (subprocess spawning, MCP session initialization, JSON-RPC serialization)
+    by calling sandbox.execute_code() directly via HTTP.
+
+    Shared config keys with PythonTool (so switching is just changing the module spec):
+        - hide_args: controls which args are stripped from schemas and sanitized at runtime
+        - exec_timeout_s: default execution timeout
+
+    Usage:
+        tool_modules=["nemo_skills.mcp.servers.python_tool::DirectPythonTool"]
+    """
+
+    def __init__(self) -> None:
+        self._config: Dict[str, Any] = {
+            # Same keys/defaults as PythonTool (minus MCP-specific: client, client_params, init_hook)
+            "hide_args": {"stateful_python_code_exec": ["session_id", "timeout"]},
+            "exec_timeout_s": 10,
+            "sandbox": {},
+        }
+        self._sandbox = None
+        self._sanitize_keys: Dict[str, set] = {}
+        self.requests_to_sessions: Dict[str, Any] = defaultdict(lambda: None)
+
+    def default_config(self) -> Dict[str, Any]:
+        return dict(self._config)
+
+    def configure(self, overrides: Dict[str, Any] | None = None, context: Dict[str, Any] | None = None) -> None:
+        if overrides:
+            self._config.update(overrides)
+
+        # Build sanitize sets from hide_args (same source of truth as MCP path)
+        hide_args = self._config.get("hide_args", {})
+        self._sanitize_keys = {tool: set(keys) for tool, keys in hide_args.items()}
+
+        # Build sandbox config from context (same source as the MCP server's main())
+        sandbox_cfg = dict((context or {}).get("sandbox", {}))
+        sandbox_cfg.update(self._config.get("sandbox", {}))
+        sandbox_cfg.pop("sandbox_type", None)
+        sandbox_type = (context or {}).get("sandbox", {}).get("sandbox_type", "local")
+        sandbox_type = self._config.get("sandbox", {}).get("sandbox_type", sandbox_type)
+        self._sandbox = get_sandbox(sandbox_type=sandbox_type, **sandbox_cfg)
+
+    async def list_tools(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "name": "stateful_python_code_exec",
+                "description": description,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string", "description": "Code to execute"},
+                    },
+                    "required": ["code"],
+                },
+            }
+        ]
+
+    async def execute(
+        self, tool_name: str, arguments: Dict[str, Any], extra_args: Dict[str, Any] | None = None
+    ) -> str:
+        # Strip model-supplied hidden args using hide_args config (same source as MCP sanitize())
+        hidden = self._sanitize_keys.get(tool_name, set())
+        arguments = {k: v for k, v in arguments.items() if k not in hidden}
+
+        extra_args = dict(extra_args or {})
+        request_id = extra_args.pop("request_id", None)
+        timeout = extra_args.get("timeout", self._config.get("exec_timeout_s", 10))
+        session_id = self.requests_to_sessions[request_id] if request_id is not None else None
+
+        try:
+            output_dict, session_id = await self._sandbox.execute_code(
+                arguments["code"],
+                language="ipython",
+                timeout=timeout,
+                session_id=session_id,
+            )
+        except RemoteProtocolError:
+            output_dict = {"process_status": "fail", "stdout": "", "stderr": "Error connecting to sandbox"}
+            session_id = None
+
+        if request_id is not None:
+            self.requests_to_sessions[request_id] = session_id
+
+        output = f"{output_dict['stdout']}{output_dict['stderr']}"
+        if output.endswith("\n"):
+            output = output[:-1]
+        return output
+
+    async def shutdown(self) -> None:
+        if self._sandbox is not None:
+            await self._sandbox.close()
 
 
 if __name__ == "__main__":

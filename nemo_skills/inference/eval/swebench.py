@@ -423,9 +423,10 @@ class SweBenchGenerationTask(GenerationTask):
         # Fix localhost URLs not working sometimes
         container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
 
-        # Copy repo to /testbed before running the agent
-        if mode == "agent" and self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
-            container_commands.append("cp -r /app /testbed")
+        # If the repo is not in /testbed, copy it before running the agent
+        container_repo_dir = data_point.get("container_repo_dir", "/testbed")
+        if mode == "agent" and container_repo_dir != "/testbed":
+            container_commands.append(f"cp -r {container_repo_dir} /testbed")
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)

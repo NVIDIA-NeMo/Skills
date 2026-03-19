@@ -16,6 +16,7 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+from nemo_skills.pipeline.utils.declarative import Command
 from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_expected_done_files,
@@ -355,3 +356,51 @@ def test_separate_hydra_args_with_quoted_special_chars():
     hydra_args, override_args = separate_hydra_args(extra_args)
     assert hydra_args == " --config-path /configs"
     assert override_args == " ++end_reasoning_string=END_TAG ++prompt=Question: {question}"
+
+
+# --- SandboxScript.keep_mounts wiring tests ---
+
+
+@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+def test_sandbox_keep_mounts_false_produces_empty_mounts(mock_port, mock_cmd):
+    """Default keep_mounts=False must produce mounts=[] so the sandbox is filesystem-isolated.
+
+    This test revealed a pre-fix bug: Command.prepare_for_execution always emitted
+    mounts=None regardless of SandboxScript.keep_mounts, silently granting the sandbox
+    full cluster filesystem access even when the user explicitly left keep_mounts=False.
+    """
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {"executor": "slurm", "containers": {"sandbox": "sandbox:latest"}}
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=False)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+    assert exec_config["mounts"] == [], (
+        "keep_mounts=False must yield mounts=[] to isolate the sandbox from cluster filesystems"
+    )
+
+
+@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+def test_sandbox_keep_mounts_true_produces_none_mounts(mock_port, mock_cmd):
+    """keep_mounts=True must produce mounts=None so the sandbox inherits cluster mounts."""
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {"executor": "slurm", "containers": {"sandbox": "sandbox:latest"}}
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=True)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+    assert exec_config["mounts"] is None, (
+        "keep_mounts=True must yield mounts=None so get_executor inherits cluster config mounts"
+    )
+
+
+def test_non_sandbox_command_mounts_unchanged():
+    """Non-SandboxScript commands must still produce mounts=None (inherit cluster mounts)."""
+    import nemo_run as run
+
+    script = run.Script(inline="echo hello")
+    cmd = Command(script=script, container="nemo-skills:latest", name="client")
+    _, exec_config = cmd.prepare_for_execution({"executor": "slurm"})
+    assert exec_config["mounts"] is None, "Non-sandbox commands should inherit cluster mounts (mounts=None)"

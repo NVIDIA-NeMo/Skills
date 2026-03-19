@@ -20,6 +20,9 @@ from typing import Union
 
 import httpx
 import litellm
+import litellm.constants
+import litellm.llms.custom_httpx.http_handler
+import litellm.llms.openai.common_utils
 import openai
 
 from nemo_skills.inference.patch_litellm_logging import patch_litellm_logging_worker
@@ -27,6 +30,17 @@ from nemo_skills.utils import get_logger_name
 
 from .context_retry import ContextLimitRetryConfig, with_context_retry
 from .utils import ServerTokenizer, WrapperAutoTokenizer, trim_after_stop_phrases
+
+# litellm caches OpenAI/httpx clients with a 3600s (1hr) TTL. When the cached
+# client expires it is garbage-collected, closing its httpx.AsyncClient and
+# killing every in-flight request with "Cannot send a request, as the client
+# has been closed". This is fine for short API calls but fatal for long-running
+# generation jobs with high concurrency. The constant is copied into submodules
+# via `from litellm.constants import ...`, so all three locations must be patched.
+_EXTENDED_CLIENT_TTL = 14400
+litellm.constants._DEFAULT_TTL_FOR_HTTPX_CLIENTS = _EXTENDED_CLIENT_TTL
+litellm.llms.custom_httpx.http_handler._DEFAULT_TTL_FOR_HTTPX_CLIENTS = _EXTENDED_CLIENT_TTL
+litellm.llms.openai.common_utils._DEFAULT_TTL_FOR_HTTPX_CLIENTS = _EXTENDED_CLIENT_TTL
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -350,6 +364,10 @@ class BaseModel:
                 output += choice.matched_stop
 
         result = {"generation": output, "num_generated_tokens": response.usage.completion_tokens}
+        if getattr(response.usage, "prompt_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.prompt_tokens
+        elif getattr(response.usage, "input_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.input_tokens
         if getattr(choice, "logprobs", None):
             result["logprobs"] = choice.logprobs.token_logprobs
             result["tokens"] = choice.logprobs.tokens
@@ -368,6 +386,10 @@ class BaseModel:
         if output is None:
             output = ""
         result = {"generation": output, "num_generated_tokens": response.usage.completion_tokens}
+        if getattr(response.usage, "prompt_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.prompt_tokens
+        elif getattr(response.usage, "input_tokens", None) is not None:
+            result["num_input_tokens"] = response.usage.input_tokens
 
         # Add reasoning_content if available
         if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
@@ -448,7 +470,7 @@ class BaseModel:
             reasoning_delta = None
 
         finish_reason = getattr(chunk.choices[0], "finish_reason", None)
-        result = {"generation": cur_delta}
+        result = {"generation": cur_delta or ""}
 
         # Add reasoning_content to result if available
         if reasoning_delta:
