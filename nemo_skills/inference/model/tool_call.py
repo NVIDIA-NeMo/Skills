@@ -146,17 +146,17 @@ class ToolCallingWrapper:
                 **generation_kwargs,
             )
 
-            if "error" in generation:
-                result_steps["error"] = generation["error"]
-                result_steps["detailed_error"] = generation.get("detailed_error", "")
-                break
-
             if isinstance(tokens_to_generate, int):
                 tokens_to_generate -= generation["num_generated_tokens"]
 
             for k in ["generation", "num_generated_tokens", "reasoning_content", "finish_reason"]:
                 if k in generation:
                     result_steps[k].append(generation[k])
+            
+            if "error" in generation:
+                result_steps["error"] = generation["error"]
+                result_steps["detailed_error"] = generation.get("detailed_error", "")
+                break
 
             conversation.extend(generation["serialized_output"])
 
