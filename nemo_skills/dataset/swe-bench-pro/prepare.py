@@ -28,6 +28,7 @@ LANGUAGE_MAP = {
 
 # The following instances' dockerfiles are based on Alpine Linux (uses musl, not glibc).
 # They have to be run in a separate eval job where the host Nemo-Skills container is also based on Alpine.
+# This script creates separate dataset files for Alpine and Ubuntu instances.
 ALPINE_INSTANCE_IDS = [
     "instance_flipt-io__flipt-86906cbfc3a5d3629a583f98e6301142f5f14bdb-v6bea0cc3a6fc532d7da914314f2944fc1cd04dee",
     "instance_future-architect__vuls-bff6b7552370b55ff76d474860eead4ab5de785a-v1151a6325649aaf997cd541ebe533b53fddf1b07",
@@ -130,15 +131,18 @@ if __name__ == "__main__":
         "directory which you can reference here to avoid redownloading all the time. "
         "See nemo_skills/dataset/swe-bench/dump_images.py",
     )
-    parser.add_argument("--split", type=str, default="test", help="Swe-Bench dataset split to use")
-    parser.add_argument(
-        "--setup", type=str, default="default", help="Setup name (used as nemo-skills split parameter)."
-    )
     parser.add_argument(
         "--dataset_name",
         type=str,
         default="ScaleAI/SWE-bench_Pro",
         help="Dataset name to load",
+    )
+    parser.add_argument("--split", type=str, default="test", help="Swe-Bench dataset split to use")
+    parser.add_argument(
+        "--setup",
+        type=str,
+        default="default",
+        help="Setup name. Creates two dataset files: <setup>.alpine.jsonl and <setup>.ubuntu.jsonl",
     )
     args = parser.parse_args()
 
