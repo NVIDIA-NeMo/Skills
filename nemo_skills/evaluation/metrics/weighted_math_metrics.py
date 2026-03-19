@@ -102,7 +102,9 @@ class WeightedMathMetrics(MathMetrics):
                 ]
                 std_dev = np.std(weighted_avg_per_attempt, ddof=1)
                 std_err = std_dev / math.sqrt(k)
-                avg_sample_std = sum(weight * np.std(scores[:k], ddof=1) for weight, scores in sample_entries) / self.total_weight
+                avg_sample_std = (
+                    sum(weight * np.std(scores[:k], ddof=1) for weight, scores in sample_entries) / self.total_weight
+                )
                 avg = np.mean(weighted_avg_per_attempt)
                 metrics_dict[agg_key][f"weighted_{score_method}_statistics"] = {
                     "avg": float(avg),
