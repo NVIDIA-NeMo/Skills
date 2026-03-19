@@ -110,8 +110,6 @@ class OpenAIModel(BaseModel):
             raise ValueError("`min_p` is not supported by OpenAI API, please set it to 0.0.")
         if stream and top_logprobs is not None:
             raise ValueError("`top_logprobs` is not supported with stream=True.")
-        if extra_body:
-            raise ValueError("`extra_body` is not supported by OpenAI API")
         if repetition_penalty != 1.0:
             raise ValueError(
                 "`repetition_penalty` is not supported by OpenAI API, please set it to default value `1.0`."
@@ -126,6 +124,11 @@ class OpenAIModel(BaseModel):
             "tools": tools,
             "response_format": response_format,
         }
+        # Pass extra_body through to litellm so self-hosted OpenAI-compatible servers
+        # (e.g. TensorRT-LLM, vLLM) can receive server-specific request fields such as
+        # chat_template_kwargs, guided_decoding, etc.
+        if extra_body:
+            params["extra_body"] = extra_body
 
         if self._is_reasoning_model(self.model):
             # Reasoning model specific validations and parameters
