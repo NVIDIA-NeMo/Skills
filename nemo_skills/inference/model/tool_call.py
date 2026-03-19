@@ -154,6 +154,8 @@ class ToolCallingWrapper:
                     result_steps[k].append(generation[k])
             
             if "error" in generation:
+                # Soft-fail returned an empty generation (e.g. enable_soft_fail caught an API error).
+                # Propagate the error fields and stop the tool loop for this data point.               
                 result_steps["error"] = generation["error"]
                 result_steps["detailed_error"] = generation.get("detailed_error", "")
                 break
