@@ -41,6 +41,7 @@ EXCLUDED_DATASETS = {
     "swe-bench",
     "swe-bench-multilingual",
     "swe-rebench",
+    "swe-bench-pro",
     "aai",
     "human-eval",
     "human-eval-infilling",
