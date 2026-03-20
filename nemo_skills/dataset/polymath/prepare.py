@@ -14,17 +14,31 @@
 
 import argparse
 import json
+import urllib.request
 from pathlib import Path
 
 import datasets
 
-from nemo_skills.dataset.polymath.instructions import (
-    QUESTION_TEMPLATE,
-    difficulty_level_dic,
-    language_control,
-    language_dic,
-    query_dic,
-)
+INSTRUCTIONS_URL = "https://raw.githubusercontent.com/QwenLM/PolyMath/main/instruction.py"
+
+
+def _load_instructions(url: str) -> tuple[dict, dict, dict]:
+    with urllib.request.urlopen(url) as response:
+        ns = {}
+        exec(compile(response.read().decode("utf-8"), url, "exec"), ns)
+        return ns["language_dic"], ns["query_dic"], ns["language_control"]
+
+
+language_dic, query_dic, language_control = _load_instructions(INSTRUCTIONS_URL)
+
+difficulty_level_dic = {"low": 1, "medium": 2, "high": 4, "top": 8}
+
+QUESTION_TEMPLATE = """
+{question}
+
+{instruction} {lang_control}
+""".strip()
+
 
 SUPPORTED_LANGUAGES = list(language_dic.keys())
 
@@ -53,20 +67,24 @@ def main(args):
     data_dir = Path(__file__).absolute().parent
     output_file = data_dir / "test.jsonl"
 
+    all_entries = []
+    for language in args.languages:
+        for difficulty in difficulty_level_dic:
+            print(f"Processing {language}/{difficulty}...")
+            ds = datasets.load_dataset("Qwen/PolyMath", name=language, split=difficulty)
+            for entry in ds:
+                formatted = format_entry(
+                    entry,
+                    language=language,
+                    difficulty=difficulty,
+                    language_control_mode=args.language_control,
+                )
+                all_entries.append(formatted)
+
     with open(output_file, "wt", encoding="utf-8") as fout:
-        for language in args.languages:
-            for difficulty in difficulty_level_dic:
-                print(f"Processing {language}/{difficulty}...")
-                ds = datasets.load_dataset("Qwen/PolyMath", name=language, split=difficulty)
-                for entry in ds:
-                    formatted = format_entry(
-                        entry,
-                        language=language,
-                        difficulty=difficulty,
-                        language_control_mode=args.language_control,
-                    )
-                    json.dump(formatted, fout, ensure_ascii=False)
-                    fout.write("\n")
+        for entry in all_entries:
+            json.dump(entry, fout, ensure_ascii=False)
+            fout.write("\n")
 
     print(f"Saved to {output_file}")
 
