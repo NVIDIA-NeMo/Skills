@@ -465,9 +465,11 @@ class BaseModel:
                 if hasattr(chunk.choices[0].delta, "reasoning_content")
                 else None
             )
+            tool_calls_delta = getattr(chunk.choices[0].delta, "tool_calls", None)
         else:
             cur_delta = chunk.choices[0].text
             reasoning_delta = None
+            tool_calls_delta = None
 
         finish_reason = getattr(chunk.choices[0], "finish_reason", None)
         result = {"generation": cur_delta or ""}
@@ -475,6 +477,9 @@ class BaseModel:
         # Add reasoning_content to result if available
         if reasoning_delta:
             result["reasoning_content"] = reasoning_delta
+
+        if tool_calls_delta:
+            result["tool_calls"] = tool_calls_delta
 
         if finish_reason:
             result["finish_reason"] = finish_reason

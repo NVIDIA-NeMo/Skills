@@ -369,6 +369,10 @@ def get_executor(
     if ray_template is not None:
         executor_params["ray_template"] = ray_template
 
+    # Disable polling estimated start time if it is implemented in this version of NeMo-Run
+    if hasattr(run.SlurmExecutor, "poll_estimated_start_time"):
+        executor_params["poll_estimated_start_time"] = False
+
     # Update with explicit_kwargs to allow overriding default values
     if explicit_kwargs:
         # Check which parameters are being overridden

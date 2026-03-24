@@ -42,11 +42,13 @@ from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
 from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.physics_metrics import PhysicsMetrics
+from nemo_skills.evaluation.metrics.ruler2_metrics import Ruler2Metrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
+from nemo_skills.evaluation.metrics.weighted_math_metrics import WeightedMathMetrics
 
 METRICS_MAP = {
     "math": MathMetrics,
@@ -72,7 +74,7 @@ METRICS_MAP = {
     "icpc": ICPCMetrics,
     "multichoice": MathMetrics,
     "ruler": RulerMetrics,
-    "ruler2": RulerMetrics,
+    "ruler2": Ruler2Metrics,
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
@@ -93,6 +95,7 @@ METRICS_MAP = {
     "specdec": SpecdecMetrics,
     "hotpotqa": HotpotQAMetrics,
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
+    "weighted-math": WeightedMathMetrics,
 }
 
 
