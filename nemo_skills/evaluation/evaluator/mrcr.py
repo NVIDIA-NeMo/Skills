@@ -45,7 +45,7 @@ def eval_mrcr(cfg):
         for sample in tqdm(data):
             sample["seq_match_ratio"] = grade(
                 sample["generation"].strip(),
-                sample["expected_answer"].strip(),
-                sample["random_string_to_prepend"].strip(),
+                sample["expected_answer"],
+                sample["random_string_to_prepend"],
             )
             fout.write(json.dumps(sample) + "\n")
