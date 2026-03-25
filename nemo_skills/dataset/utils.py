@@ -13,11 +13,11 @@
 # limitations under the License.
 
 import contextlib
+import hashlib
 import importlib
 import json
 import os
 import sys
-import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -25,7 +25,6 @@ from typing import Dict
 from urllib.error import URLError
 
 from nemo_skills.evaluation.math_grader import extract_answer
-from nemo_skills.pipeline.utils import cluster_download_file, get_unmounted_path
 
 
 def locate(path):
@@ -90,20 +89,6 @@ def add_to_path(p):
         yield
     finally:
         sys.path = old_path
-
-
-def _get_dataset_module_from_cluster(cluster_config, mounted_path):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = str(Path(tmpdir) / "init.py")
-        cluster_dataset_path = get_unmounted_path(cluster_config, mounted_path)
-        try:
-            cluster_download_file(cluster_config, cluster_dataset_path, tmp_path)
-        except FileNotFoundError:
-            raise RuntimeError(
-                f"Init file {mounted_path} not found on the cluster. "
-                f"Please check the dataset name you're using. Did you forget to run prepare data commands?"
-            )
-        return import_from_path(tmp_path)
 
 
 def get_dataset_name(dataset):
@@ -181,7 +166,7 @@ def get_default_dataset_module(dataset):
     return dataset_module, data_path
 
 
-def get_dataset_module(dataset, data_dir=None, cluster_config=None, extra_benchmark_map=None):
+def get_dataset_module(dataset, data_dir=None, extra_benchmark_map=None):
     """Get dataset module from nemo_skills.dataset, extra benchmark map, or a directory path.
 
     Resolution order:
@@ -191,7 +176,10 @@ def get_dataset_module(dataset, data_dir=None, cluster_config=None, extra_benchm
        - If found in exactly one, use it.
        - If found in neither, fall back to data_dir if provided.
     3. If data_dir is provided and previous resolution failed, try to load the module
-       from data_dir (locally or by downloading from cluster).
+       from data_dir locally.
+
+    For cluster-aware loading (SSH downloads, mount resolution), use
+    nemo_skills.pipeline.dataset.get_dataset_module instead.
 
     Args:
         extra_benchmark_map: Either a dict mapping short names to directory paths,
@@ -224,19 +212,10 @@ def get_dataset_module(dataset, data_dir=None, cluster_config=None, extra_benchm
     if found_builtin:
         return dataset_module, data_path
 
-    # Fall back to data_dir if provided
+    # Fall back to data_dir if provided (local only)
     if data_dir:
-        dataset_as_path = dataset.replace(".", "/")
-        if cluster_config is None or cluster_config["executor"] == "none":
-            with add_to_path(data_dir):
-                dataset_module = importlib.import_module(dataset)
-        elif cluster_config["executor"] == "local":
-            with add_to_path(get_unmounted_path(cluster_config, data_dir)):
-                dataset_module = importlib.import_module(dataset)
-        else:
-            dataset_module = _get_dataset_module_from_cluster(
-                cluster_config, f"{data_dir}/{dataset_as_path}/__init__.py"
-            )
+        with add_to_path(data_dir):
+            dataset_module = importlib.import_module(dataset)
         return dataset_module, data_dir
 
     map_path = (
@@ -322,3 +301,41 @@ def get_mcq_fields(question, choices):
         "options": options_text,
         **options_dict,
     }
+
+
+def get_question_hash(question, options=None):
+    """Normalize question text and options and hash it.
+    MMLU-Pro has duplicate questions with different options."""
+    normalized = {
+        "question": " ".join(question.strip().lower().split()),
+        "options": [" ".join(opt.strip().lower().split()) for opt in options] if options is not None else None,
+    }
+    payload = json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def load_subset_ids(ids_file):
+    """Load subset IDs."""
+    with open(ids_file, "rt", encoding="utf-8") as fin:
+        return [json.loads(line)["id"] for line in fin if line.strip()]
+
+
+def filter_by_subset(dataset, subset_ids, question_key="question", options_key=None):
+    """Filter dataset entries by subset IDs."""
+    hash_to_entry = {}
+    duplicate_hashes = set()
+    for entry in dataset:
+        options = entry[options_key] if options_key else None
+        h = get_question_hash(entry[question_key], options)
+        if h in hash_to_entry:
+            duplicate_hashes.add(h)
+            continue
+        hash_to_entry[h] = entry
+
+    if duplicate_hashes:
+        raise ValueError(f"Found {len(duplicate_hashes)} duplicate source IDs; subset mapping is ambiguous.")
+
+    no_match_ids = set(subset_ids) - hash_to_entry.keys()
+    if no_match_ids:
+        raise ValueError(f"{len(no_match_ids)}/{len(subset_ids)} subset IDs not found in source split.")
+    return [hash_to_entry[h] for h in subset_ids]

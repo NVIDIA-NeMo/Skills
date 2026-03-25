@@ -50,6 +50,7 @@ AGENTS.md
 .claude
 .cursor
 .idea
+site/
 
 #scripts at root level
 /*.sh

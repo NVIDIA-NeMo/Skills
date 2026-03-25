@@ -166,66 +166,6 @@ all you need to do is replace `openhands` with `swe_agent` or `mini_swe_agent` i
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
-### compute-eval
-
-- Benchmark is defined in [`nemo_skills/dataset/compute-eval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/compute-eval/__init__.py)
-- Original benchmark source is [here](https://github.com/NVIDIA/compute-eval).
-
-ComputeEval is a benchmark for evaluating Large Language Models on CUDA code generation tasks. It features handcrafted CUDA programming challenges that test an LLM's capability at writing reliable CUDA code. The benchmark includes functional correctness evaluation through compilation and execution against held-out test suites.
-
-**Prerequisites:** NVIDIA GPU with CUDA Toolkit 12 or greater must be installed, and `nvcc` must be available in your PATH.
-
-#### Data Preparation
-
-First, prepare the dataset by running the `ns prepare_data` command. You can optionally specify a release version:
-
-```bash
-ns prepare_data compute-eval --release 2025-1
-```
-
-If no release is specified, the default release will be downloaded. This will generate an `eval.jsonl` file in the `nemo_skills/dataset/compute-eval/` directory.
-
-**Note:** You need to set the `HF_TOKEN` environment variable because the dataset requires authentication.
-
-#### Running the Evaluation
-
-Once the data is prepared, you can run the evaluation. Replace `<...>` placeholders with your cluster and directory paths.
-
-This command runs an evaluation of [OpenReasoning-Nemotron-32B](https://huggingface.co/nvidia/OpenReasoning-Nemotron-32B) on a Slurm cluster:
-
-```bash
-ns eval \
-    --cluster=<CLUSTER_NAME> \
-    --model=nvidia/OpenReasoning-Nemotron-32B \
-    --server_type=vllm \
-    --server_args="--async-scheduling" \
-    --server_nodes=1 \
-    --server_gpus=8 \
-    --benchmarks=compute-eval \
-    --data_dir=<DATA_DIR> \
-    --output_dir=<OUTPUT_DIR> \
-    ++inference.temperature=0.6 \
-    ++inference.top_p=0.95 \
-    ++inference.tokens_to_generate=16384
-```
-
-**Security Note:** ComputeEval executes machine-generated CUDA code. While the benchmark is designed for evaluation purposes, we strongly recommend running evaluations in a sandboxed environment (e.g., a Docker container or virtual machine) to minimize security risks.
-
-#### Verifying Results
-
-After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/compute-eval/metrics.json`. You can also review `<OUTPUT_DIR>/eval-results/compute-eval/summarized-results/main_*`. They should look something like this:
-
-```
----------------------------- compute-eval -----------------------------
-evaluation_mode | num_entries | avg_tokens | gen_seconds | accuracy
-pass@1          | 50          | 8432       | 1245        | 64.00%
-```
-
-The benchmark reports:
-- **accuracy**: Percentage of problems where generated code compiled and passed all tests
-- **pass@1**: Same as accuracy for single-solution generation
-- **pass@k**: Success rate when generating k solutions per problem (if configured)
-
 ### swe-bench-multilingual
 
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench-multilingual/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-multilingual/__init__.py)
@@ -286,6 +226,160 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### swe-bench-pro
+
+- Benchmark is defined in [`nemo_skills/dataset/swe-bench-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-pro/__init__.py)
+- Original benchmark source is [here](https://labs.scale.com/leaderboard/swe_bench_pro_public).
+
+SWE-bench Pro uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well. The differences are as follows:
+
+1. Since it is a multilingual benchmark, we use the multilingual inference logic for it, same as for [SWE-bench Multilingual](#swe-bench-multilingual).
+2. 88 of 731 instances have to be run in a separate evaluation job with a different Nemo-Skills container based on Alpine Linux. The dockerfile for this container is provided [here](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine). You can use the `--main_container` option of Nemo-Skills to change the container for this subset of instances, and run the rest as usual. See below for an example.
+3. Due to technical issues, OpenHands is not supported for this benchmark. Only SWE-agent and mini-SWE-agent are supported.
+
+#### Sample run
+
+Here's how to run a sample evaluation of [Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next) with SWE-agent on a Slurm cluster.
+
+1. Prepare the data following similar [instructions](#data-preparation) as for SWE-bench. The container formatter format is slightly different, using `{docker_image}` instead of `{instance_id}`. To prepare the data with Dockerhub container URLs, you can simply run
+
+    ```
+    ns prepare_data swe-bench-pro
+    ```
+
+    If you have local containers downloaded, you can use
+
+    ```
+    ns prepare_data swe-bench-pro --container_formatter '/swe-bench-images/{docker_image}.sif'
+    ```
+
+    For downloading images, you can use the same `dump_images.py` script as for SWE-bench.
+
+    The data preparation command will create 2 dataset files: `default.alpine.jsonl` for the Alpine-based instances and `default.ubuntu.jsonl` for the Ubuntu-based instances.
+
+2. Run 2 jobs:
+
+    Alpine subset:
+
+    ```
+    ns eval \
+        --cluster=<CLUSTER_NAME> \
+        --main_container=<PATH_TO_ALPINE_NS_CONTAINER> \
+        --model=Qwen/Qwen3-Coder-Next \
+        --server_type=vllm \
+        --server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder" \
+        --server_nodes=1 \
+        --server_gpus=8 \
+        --benchmarks=swe-bench-pro \
+        --output_dir=<OUTPUT_DIR_ALPINE> \
+        --split=default.alpine \
+        --num_chunks=13 \
+        ++agent_framework=swe_agent \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=40 \
+        ++agent_max_turns=300
+    ```
+
+    Ubuntu subset:
+
+    ```
+    ns eval \
+        --cluster=<CLUSTER_NAME> \
+        --model=Qwen/Qwen3-Coder-Next \
+        --server_type=vllm \
+        --server_args="--enable-auto-tool-choice --tool-call-parser qwen3_coder" \
+        --server_nodes=1 \
+        --server_gpus=8 \
+        --benchmarks=swe-bench-pro \
+        --output_dir=<OUTPUT_DIR_UBUNTU> \
+        --split=default.ubuntu \
+        --num_chunks=2 \
+        ++agent_framework=swe_agent \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=40 \
+        ++agent_max_turns=300
+    ```
+
+    replacing <...> with your desired parameters.
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR_ALPINE>/eval-results/swe-bench-pro/metrics.json` and `<OUTPUT_DIR_UBUNTU>/eval-results/swe-bench-pro/metrics.json`. The combined score on both subsets should be around 40%.
+
+Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate. To do that automatically, you can set `--benchmarks=swe-bench-pro:N`, where N is your desired number of repeats.
+
+To evaluate the same model with mini-SWE-agent,
+all you need to do is replace `swe_agent` with `mini_swe_agent` in the command above. OpenHands is not supported for this benchmark.
+
+!!! note
+    There are some instances where the gold (ground truth) patches do not pass the evaluation tests. Therefore, it's likely that on those instances even patches that resolve the issue will be incorrectly evaluated as "unresolved". We have observed 18 such instances in SWE-bench Pro:
+    ```
+    instance_ansible__ansible-811093f0225caa4dd33890933150a81c6a6d5226-v1055803c3a812189a1133297f7f5468579283f86, instance_ansible__ansible-942424e10b2095a173dbd78e7128f52f7995849b-v30a923fb5c164d6cd18280c02422f75e611e8fb2, instance_ansible__ansible-de5858f48dc9e1ce9117034e0d7e76806f420ca8-v1055803c3a812189a1133297f7f5468579283f86, instance_ansible__ansible-deb54e4c5b32a346f1f0b0a14f1c713d2cc2e961-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5, instance_ansible__ansible-e9e6001263f51103e96e58ad382660df0f3d0e39-v30a923fb5c164d6cd18280c02422f75e611e8fb2, instance_future-architect__vuls-bff6b7552370b55ff76d474860eead4ab5de785a-v1151a6325649aaf997cd541ebe533b53fddf1b07, instance_NodeBB__NodeBB-00c70ce7b0541cfc94afe567921d7668cdc8f4ac-vnan, instance_NodeBB__NodeBB-087e6020e490b4a1759f38c1ad03869511928263-vf2cf3cbd463b7ad942381f1c6d077626485a1e9e, instance_NodeBB__NodeBB-18c45b44613aecd53e9f60457b9812049ab2998d-v0495b863a912fbff5749c67e860612b91825407c, instance_NodeBB__NodeBB-1ea9481af6125ffd6da0592ed439aa62af0bca11-vd59a5728dfc977f44533186ace531248c2917516, instance_NodeBB__NodeBB-3c85b944e30a0ba8b3ec9e1f441c74f383625a15-v4fbcfae8b15e4ce5d132c408bca69ebb9cf146ed, instance_NodeBB__NodeBB-51d8f3b195bddb13a13ddc0de110722774d9bb1b-vf2cf3cbd463b7ad942381f1c6d077626485a1e9e, instance_NodeBB__NodeBB-76c6e30282906ac664f2c9278fc90999b27b1f48-vd59a5728dfc977f44533186ace531248c2917516, instance_NodeBB__NodeBB-a5afad27e52fd336163063ba40dcadc80233ae10-vd59a5728dfc977f44533186ace531248c2917516, instance_NodeBB__NodeBB-bad15643013ca15affe408b75eba9e47cc604bb2-vd59a5728dfc977f44533186ace531248c2917516, instance_NodeBB__NodeBB-bd80d36e0dcf78cd4360791a82966078b3a07712-v4fbcfae8b15e4ce5d132c408bca69ebb9cf146ed, instance_NodeBB__NodeBB-cfc237c2b79d8c731bbfc6cadf977ed530bfd57a-v0495b863a912fbff5749c67e860612b91825407c, instance_qutebrowser__qutebrowser-305e7c96d5e2fdb3b248b27dfb21042fb2b7e0b8-v2ef375ac784985212b1805e1d0431dc8f1b3c171
+    ```
+    Depending on your setup, this set of instances may be different.
+
+!!! note
+    For evaluation, we use a [custom fork](https://github.com/wasiahmad/SWE-bench_Pro-os) of the SWE-bench Pro repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
+
+### compute-eval
+
+- Benchmark is defined in [`nemo_skills/dataset/compute-eval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/compute-eval/__init__.py)
+- Original benchmark source is [here](https://github.com/NVIDIA/compute-eval).
+
+ComputeEval is a benchmark for evaluating Large Language Models on CUDA code generation tasks. It features handcrafted CUDA programming challenges that test an LLM's capability at writing reliable CUDA code. The benchmark includes functional correctness evaluation through compilation and execution against held-out test suites.
+
+**Prerequisites:** NVIDIA GPU with CUDA Toolkit 12 or greater must be installed, and `nvcc` must be available in your PATH.
+
+#### Data Preparation
+
+First, prepare the dataset by running the `ns prepare_data` command. You can optionally specify a release version:
+
+```bash
+ns prepare_data compute-eval --release 2025-1
+```
+
+If no release is specified, the default release will be downloaded. This will generate an `eval.jsonl` file in the `nemo_skills/dataset/compute-eval/` directory.
+
+**Note:** You need to set the `HF_TOKEN` environment variable because the dataset requires authentication.
+
+#### Running the Evaluation
+
+Once the data is prepared, you can run the evaluation. Replace `<...>` placeholders with your cluster and directory paths.
+
+This command runs an evaluation of [OpenReasoning-Nemotron-32B](https://huggingface.co/nvidia/OpenReasoning-Nemotron-32B) on a Slurm cluster:
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/OpenReasoning-Nemotron-32B \
+    --server_type=vllm \
+    --server_args="--async-scheduling" \
+    --server_nodes=1 \
+    --server_gpus=8 \
+    --benchmarks=compute-eval \
+    --data_dir=<DATA_DIR> \
+    --output_dir=<OUTPUT_DIR> \
+    ++inference.temperature=0.6 \
+    ++inference.top_p=0.95 \
+    ++inference.tokens_to_generate=16384
+```
+
+**Security Note:** ComputeEval executes machine-generated CUDA code. While the benchmark is designed for evaluation purposes, we strongly recommend running evaluations in a sandboxed environment (e.g., a Docker container or virtual machine) to minimize security risks.
+
+#### Verifying Results
+
+After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-results/compute-eval/metrics.json`. You can also review `<OUTPUT_DIR>/eval-results/compute-eval/summarized-results/main_*`. They should look something like this:
+
+```
+---------------------------- compute-eval -----------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | accuracy
+pass@1          | 50          | 8432       | 1245        | 64.00%
+```
+
+The benchmark reports:
+- **accuracy**: Percentage of problems where generated code compiled and passed all tests
+- **pass@1**: Same as accuracy for single-solution generation
+- **pass@k**: Success rate when generating k solutions per problem (if configured)
 
 ### IOI
 

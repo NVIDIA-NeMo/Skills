@@ -13,8 +13,12 @@
 # limitations under the License.
 
 
+from unittest.mock import MagicMock
+
 from transformers import AutoTokenizer
 
+from nemo_skills.inference.generate import GenerationTask
+from nemo_skills.inference.model.base import EndpointType
 from nemo_skills.prompt.utils import get_prompt, get_token_count
 
 
@@ -1010,3 +1014,326 @@ Confidence: The extracted confidence score between 0|\\%| and 100|\\%| from [res
         )
         == expected_prompt
     )
+
+
+def test_prompt_config_with_openai_format():
+    """Test that prompt_config works with openai format -- template is applied and audio is merged."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = None
+    task.cfg.start_assistant_response_key = None
+    task.cfg.chat_template_kwargs = {}
+    task.cfg.inference = MagicMock()
+    task.cfg.inference.endpoint_type = EndpointType.chat
+
+    # Prompt object is set (prompt_config was provided for openai)
+    task.prompt = MagicMock()
+    task.prompt.fill.return_value = [
+        {"role": "system", "content": "You are an expert transcriptionist."},
+        {"role": "user", "content": "Transcribe the audio file into English text."},
+    ]
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+    task._merge_audio_from_data = GenerationTask._merge_audio_from_data.__get__(task, GenerationTask)
+
+    # Data point has messages with audio metadata
+    data_point = {
+        "messages": [
+            {"role": "system", "content": "original system msg"},
+            {
+                "role": "user",
+                "content": "original user msg",
+                "audio": {"path": "/data/audio.wav", "duration": 1.39},
+            },
+        ],
+        "expected_answer": "some text",
+    }
+
+    result = task.fill_prompt(data_point, [])
+
+    task.prompt.fill.assert_called_once()
+    assert len(result) == 2
+    assert result[0]["content"] == "You are an expert transcriptionist."
+    assert result[1]["content"] == "Transcribe the audio file into English text."
+    assert result[1]["audios"] == [{"path": "/data/audio.wav", "duration": 1.39}]
+
+
+def test_user_message_override_openai_no_prompt_config():
+    """Test user_message override on the openai path without prompt_config (pure data messages)."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = "Transcribe this audio"
+    task.prompt = None  # No prompt_config
+
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {
+        "messages": [
+            {"role": "user", "content": "Original transcription prompt"},
+        ],
+    }
+
+    result = task.fill_prompt(data_point, [])
+
+    assert len(result) == 1
+    assert result[0]["content"] == "Transcribe this audio"
+
+
+def test_user_message_override_ns_path():
+    """Test that user_message is wired through on the NS path (via prompt template)."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "ns"
+    task.cfg.user_message = "Custom user message"
+    task.cfg.total_code_executions_in_prompt = None
+    task.cfg.start_assistant_response_key = None
+    task.cfg.chat_template_kwargs = {}
+    task.cfg.inference = MagicMock()
+    task.cfg.inference.endpoint_type = EndpointType.chat
+    # prompt object is always set on NS path; user_message was baked in at setup_prompt time
+    task.prompt = MagicMock()
+    task.prompt.fill.return_value = [{"role": "user", "content": "Custom user message for problem 2+2"}]
+
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {"problem": "2 + 2"}
+    result = task.fill_prompt(data_point, [])
+
+    task.prompt.fill.assert_called_once()
+    assert result == [{"role": "user", "content": "Custom user message for problem 2+2"}]
+
+
+def test_openai_prompt_suffix():
+    """Test that prompt_suffix is applied on the openai path."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = " /no_think"
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = None
+    task.prompt = None
+
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {
+        "messages": [{"role": "user", "content": "Hello"}],
+    }
+
+    result = task.fill_prompt(data_point, [])
+
+    assert result[-1]["content"] == "Hello /no_think"
+
+
+def test_openai_system_message_override():
+    """Test that system_message override works on the openai path (data messages)."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = "New system message"
+    task.cfg.user_message = None
+    task.prompt = None
+
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    # Data already has a system message
+    data_point = {
+        "messages": [
+            {"role": "system", "content": "Old system message"},
+            {"role": "user", "content": "Hello"},
+        ],
+    }
+    result = task.fill_prompt(data_point, [])
+    assert result[0]["content"] == "New system message"
+
+    # Data without system message -- should be inserted
+    data_point = {
+        "messages": [{"role": "user", "content": "Hello"}],
+    }
+    result = task.fill_prompt(data_point, [])
+    assert len(result) == 2
+    assert result[0]["role"] == "system"
+    assert result[0]["content"] == "New system message"
+
+
+def test_ns_path_template_fill():
+    """Test that normal template-based prompt generation works on the NS path."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "ns"
+    task.cfg.total_code_executions_in_prompt = None
+    task.cfg.start_assistant_response_key = None
+    task.cfg.chat_template_kwargs = {}
+    task.cfg.inference = MagicMock()
+    task.cfg.inference.endpoint_type = EndpointType.chat
+    task.prompt = MagicMock()
+    task.prompt.fill.return_value = [{"role": "user", "content": "Solve: 2 + 2"}]
+
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {"problem": "2 + 2"}
+    result = task.fill_prompt(data_point, [])
+
+    task.prompt.fill.assert_called_once()
+    assert result == [{"role": "user", "content": "Solve: 2 + 2"}]
+
+
+def test_merge_audio_from_data_role_based():
+    """Test _merge_audio_from_data copies audio to matching-role messages."""
+
+    task = MagicMock(spec=GenerationTask)
+    task._merge_audio_from_data = GenerationTask._merge_audio_from_data.__get__(task, GenerationTask)
+
+    template_filled_messages = [
+        {"role": "system", "content": "system msg"},
+        {"role": "user", "content": "user msg"},
+    ]
+    data_point = {
+        "messages": [
+            {"role": "user", "content": "orig user", "audio": {"path": "test.wav", "duration": 2.0}},
+        ],
+    }
+
+    task._merge_audio_from_data(template_filled_messages, data_point)
+
+    assert "audio" not in template_filled_messages[0]
+    assert "audios" not in template_filled_messages[0]
+    assert template_filled_messages[1]["audios"] == [{"path": "test.wav", "duration": 2.0}]
+
+
+def test_prompt_config_with_openai_and_suffix():
+    """Test prompt_config on openai path with prompt_suffix applied."""
+
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = " /no_think"
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = None
+    task.cfg.start_assistant_response_key = None
+    task.cfg.chat_template_kwargs = {}
+    task.cfg.inference = MagicMock()
+    task.cfg.inference.endpoint_type = EndpointType.chat
+    task.prompt = MagicMock()
+    task.prompt.fill.return_value = [{"role": "user", "content": "Transcribe"}]
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+    task._merge_audio_from_data = GenerationTask._merge_audio_from_data.__get__(task, GenerationTask)
+
+    data_point = {}
+    result = task.fill_prompt(data_point, [])
+    assert result[-1]["content"] == "Transcribe /no_think"
+
+
+def test_user_message_override_openai_multimodal_content():
+    """User message override should replace only text portion for multimodal content."""
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = ""
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = "Transcribe this"
+    task.prompt = None
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "audio_url", "audio_url": {"url": "data:audio/wav;base64,AAA"}},
+                    {"type": "text", "text": "Original text"},
+                ],
+            }
+        ]
+    }
+
+    result = task.fill_prompt(data_point, [])
+    assert isinstance(result[0]["content"], list)
+    assert result[0]["content"][0]["type"] == "audio_url"
+    assert result[0]["content"][1]["text"] == "Transcribe this"
+
+
+def test_prompt_suffix_openai_multimodal_content():
+    """Prompt suffix should update text portion for multimodal content."""
+    task = MagicMock(spec=GenerationTask)
+    task.cfg = MagicMock()
+    task.cfg.prompt_suffix = " /no_think"
+    task.cfg.prompt_format = "openai"
+    task.cfg.system_message = None
+    task.cfg.user_message = None
+    task.prompt = None
+    task.fill_prompt = GenerationTask.fill_prompt.__get__(task, GenerationTask)
+
+    data_point = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "audio_url", "audio_url": {"url": "data:audio/wav;base64,AAA"}},
+                    {"type": "text", "text": "Transcribe"},
+                ],
+            }
+        ]
+    }
+
+    result = task.fill_prompt(data_point, [])
+    assert result[0]["content"][1]["text"] == "Transcribe /no_think"
+
+
+def test_audio_field_in_prompt_config():
+    """Test that audio_field in PromptConfig attaches audio metadata as audios list to user message."""
+    prompt = get_prompt({"user": "Transcribe: {question}", "audio_field": "audio"})
+
+    result = prompt.fill({"question": "What is being said?", "audio": {"path": "test.wav", "duration": 1.0}})
+
+    assert len(result) == 1
+    assert result[0]["role"] == "user"
+    assert result[0]["content"] == "Transcribe: What is being said?"
+    assert "audio" not in result[0]
+    assert result[0]["audios"] == [{"path": "test.wav", "duration": 1.0}]
+
+
+def test_audio_list_field_in_prompt_config():
+    """Test that audio_field with a list value attaches multiple audios to user message."""
+    prompt = get_prompt({"user": "Transcribe all: {question}", "audio_field": "audios"})
+
+    audios = [{"path": "a.wav"}, {"path": "b.wav"}]
+    result = prompt.fill({"question": "What is being said?", "audios": audios})
+
+    assert len(result) == 1
+    assert result[0]["audios"] == audios
+
+
+def test_prompt_config_inline_dict():
+    """Test that prompt_config accepts a dict directly (inline Hydra dict)."""
+    prompt = get_prompt({"user": "Hello {name}", "system": "Be helpful"})
+
+    result = prompt.fill({"name": "World"})
+
+    assert len(result) == 2
+    assert result[0]["role"] == "system"
+    assert result[0]["content"] == "Be helpful"
+    assert result[1]["role"] == "user"
+    assert result[1]["content"] == "Hello World"
+
+
+def test_user_message_override_in_get_prompt():
+    """Test that user_message parameter in get_prompt overrides the user template."""
+    prompt = get_prompt({"user": "Original: {problem}", "system": "Be helpful"}, user_message="Custom: {problem}")
+
+    result = prompt.fill({"problem": "2+2"})
+
+    assert result[1]["content"] == "Custom: 2+2"
