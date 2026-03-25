@@ -20,7 +20,7 @@ ipython
 iso639-lang
 langcodes
 language-data
-litellm[caching]<1.80.12
+litellm[caching]==1.82.6 --hash=sha256:164a3ef3e19f309e3cabc199bef3d2045212712fefdfa25fc7f75884a5b5b205
 math-verify[antlr4_9_3]
 mcp
 numpy
