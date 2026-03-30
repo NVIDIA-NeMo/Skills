@@ -21,7 +21,7 @@ import re
 import sys
 import tokenize
 import typing
-import unicodedata
+
 from dataclasses import MISSING, dataclass, fields, is_dataclass
 from math import lcm
 from pathlib import Path
