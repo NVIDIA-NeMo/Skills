@@ -30,11 +30,11 @@ jobs:
           sh -c 'find /mnt/datadrive/nemo-skills-test-data/hf-cache/datasets -maxdepth 2 -mindepth 2 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
                  find /mnt/datadrive/nemo-skills-test-data/hf-cache/hub -maxdepth 1 -mindepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
                  true'
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         path: ${{ github.run_id }}
     - name: Set up Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.10"
     - name: Install dependencies

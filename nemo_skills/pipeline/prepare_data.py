@@ -212,7 +212,7 @@ def prepare_data(
         for dataset in requested_datasets:
             name = get_dataset_name(dataset)
             container_dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
-            command += f" && cp -r {container_dataset_path} {data_dir}/{name}"
+            command += f" && mkdir -p {data_dir}/{name} && cp -r {container_dataset_path}/. {data_dir}/{name}/"
 
     log_dir = log_dir or data_dir
 

@@ -46,6 +46,12 @@ class SupportedAgentFrameworks(str, Enum):
     swe_agent = "swe_agent"
     openhands = "openhands"
     mini_swe_agent = "mini_swe_agent"
+    gold_patch = "gold_patch"
+
+
+class SupportedDatasetTypes(str, Enum):
+    swe_bench = "swe_bench"
+    swe_bench_pro = "swe_bench_pro"
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
@@ -118,6 +124,9 @@ class SweBenchGenerationConfig:
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
     # For SWE-agent, this changes the default config to multilingual.yaml, which uses language-specific prompting.
     multilingual: bool = False
+
+    # Which dataset type we're running on. This determines which evaluation harness is used.
+    dataset_type: SupportedDatasetTypes = SupportedDatasetTypes.swe_bench
 
     # URL of the evaluation harness repo to pass to git clone. Defaults to our fork of SWE-bench with local evaluation
     eval_harness_repo: str = "https://github.com/Kipok/SWE-bench.git"
@@ -318,6 +327,9 @@ class SweBenchGenerationTask(GenerationTask):
                 "make install-python-dependencies && "
                 "poetry run python -m pip install datasets"
             )
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            pass  # no installation needed for gold patches
 
         else:
             raise ValueError(
@@ -800,6 +812,25 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return pred_file
 
+    async def _get_gold_patch(self, data_point):
+        """
+        Saves the gold patch (ground truth solution) as a .jsonl file in the SWE-bench evaluation format.
+        Returns the path to that file.
+        """
+        (self.output_dir / "gold_patches").mkdir(parents=True, exist_ok=True)
+        out_file = self.output_dir / "gold_patches" / f"{data_point['instance_id']}.jsonl"
+        with open(out_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": "gold_patch",
+                        "instance_id": data_point["instance_id"],
+                        "model_patch": data_point["patch"],
+                    }
+                )
+            )
+        return str(out_file)
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
         async with self.semaphore:
@@ -822,6 +853,8 @@ class SweBenchGenerationTask(GenerationTask):
             pred_file = await self._run_mini_swe_agent(data_point, api_base)
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             pred_file = await self._run_openhands(data_point, api_base)
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            pred_file = await self._get_gold_patch(data_point)
         else:
             raise ValueError(
                 f"Unsupported agent framework: {self.cfg.agent_framework}. "
@@ -845,20 +878,35 @@ class SweBenchGenerationTask(GenerationTask):
             }
         else:
             # Run full evaluation with streaming output
-            swe_bench_cmd = (
-                # copy installed repo & uv dir from /root_mount
-                "cp -r /root_mount/SWE-bench /root && "
-                "cp -r /root_mount/uv /root && "
-                "cd /root/SWE-bench && "
-                # run the evaluation with streaming output
-                f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
-                f"    --predictions_path {pred_mounted_path} "
-                f"    --instance_ids {data_point['instance_id']} "
-                f"    --run_id eval-outputs "
-                f"    --timeout {self.cfg.swebench_tests_timeout} "
-                f"    --dataset_name {self.cfg.input_file} && "
-                f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
-            )
+            if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
+                    f"    --raw_sample_path {self.cfg.input_file} "
+                    f"    --patch_path {pred_mounted_path} "
+                    f"    --output_dir eval-outputs "
+                    f"    --scripts_dir /root/SWE-bench/run_scripts && "
+                    f"cp -r eval-outputs /trajectories_mount/"
+                )
+            else:
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
+                    f"    --predictions_path {pred_mounted_path} "
+                    f"    --instance_ids {data_point['instance_id']} "
+                    f"    --run_id eval-outputs "
+                    f"    --timeout {self.cfg.swebench_tests_timeout} "
+                    f"    --dataset_name {self.cfg.input_file} && "
+                    f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
+                )
 
             # Execute SWE-bench evaluation command
             search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
