@@ -60,7 +60,6 @@ class ArenaJudgeConfig(GenerationTaskConfig):
     # creative_writing uses a prompt that doesn't ask the judge to generate its own answer first
     prompt_config_creative: str = "judge/arena_creative"
 
-    # Whether to sanitize generations (Unicode NFC normalization + surrogate replacement)
     # Enable for multilingual benchmarks where generations may contain problematic Unicode
     sanitize_generations: bool = False
 
