@@ -507,6 +507,11 @@ def eval(
 
                     judge_step_fn = locate(judge_step_fn)
 
+                # Merge any extra judge kwargs from the CLI into judge_pipeline_args.
+                # _create_llm_judge_tasks handles this for the LLM path so it is only needed here.
+                if judge_pipeline_kwargs:
+                    judge_pipeline_args.update(parse_kwargs(judge_pipeline_kwargs))
+
                 # Pass judge_model through so judge implementations can access it if needed (e.g. comet)
                 if judge_model:
                     judge_pipeline_args.setdefault("judge_model", judge_model)

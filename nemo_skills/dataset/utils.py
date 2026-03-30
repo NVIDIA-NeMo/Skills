@@ -24,8 +24,6 @@ from pathlib import Path
 from typing import Dict
 from urllib.error import URLError
 
-from nemo_skills.evaluation.math_grader import extract_answer
-
 
 def locate(path):
     """Import an object by path using ``::`` or dotted notation.
@@ -278,6 +276,8 @@ def save_data_from_qwen(dataset, split="test"):
                 entry["expected_answer"] = entry.pop("final_answer")[0].strip("$")
 
             if dataset == "minerva_math":
+                from nemo_skills.evaluation.math_grader import extract_answer
+
                 entry["expected_answer"] = extract_answer(entry["solution"])
 
             data.append(entry)

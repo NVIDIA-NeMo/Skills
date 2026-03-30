@@ -217,6 +217,73 @@ Some reference numbers for test split (xx corresponds to average over 5 language
         ++inference.tokens_to_generate=2048
     ```
 
+### wmt24pp.doc
+
+- Benchmark is defined in [`nemo_skills/dataset/wmt24pp/doc/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/wmt24pp/doc/__init__.py)
+- Same source data as wmt24pp, but evaluates **document-level** translation (one document per generation request).
+- Uses the [SEGALE](https://github.com/nvlabs/SEGALE) judge for span-level alignment and scoring.
+- Covers 55 languages from google/wmt24pp.
+
+In this mode, the model receives an entire document as input and produces a single translation. SEGALE segments the output, aligns it to the source, and scores each aligned span with QE metrics (COMET-QE, MetricX-QE). A language fidelity score detects when the model's output deviates from the expected target language.
+
+```bash
+ns eval \
+    --cluster=[cluster] \
+    --model=[model] \
+    --benchmarks wmt24pp.doc \
+    --output_dir=[output dir] \
+    --server_type=vllm \
+    --server_gpus=8 \
+    ++chat_template_kwargs.enable_thinking=False \
+    ++parse_reasoning=False \
+    ++inference.tokens_to_generate=4096 \
+    ++skip_filled=True
+```
+
+- Evaluated on (de_DE, es_MX, fr_CA, fr_FR, it_IT, ja_JP), the following are results for document-level translation.
+
+| Model | Doc COMET-QE | Doc MetricX-QE |
+|---|---|---|
+| Nemotron3 Nano 30B | 0.8117 | 2.76 |
+| Qwen3 30B | 0.8223 | 2.50 |
+| Nemotron3 Super 120B | 0.8271 | 2.41 |
+| GPT-OSS 120B | 0.8267 | 2.35 |
+| Qwen3.5 122B | 0.8280 | 2.29 |
+
+### wmt24pp.long
+
+- Benchmark is defined in [`nemo_skills/dataset/wmt24pp/long/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/wmt24pp/long/__init__.py)
+- Same source data as wmt24pp, but all documents for a language are concatenated into a single input (~32K words).
+- Tests long-input / long-output translation capability.
+- Uses the same SEGALE judge as wmt24pp.doc.
+
+```bash
+ns eval \
+    --cluster=[cluster] \
+    --model=[model] \
+    --benchmarks wmt24pp.long \
+    --output_dir=[output dir] \
+    --server_type=vllm \
+    --server_gpus=8 \
+    ++chat_template_kwargs.enable_thinking=False \
+    ++parse_reasoning=False \
+    ++inference.tokens_to_generate=65536 \
+    ++skip_filled=True
+```
+
+!!! note "SEGALE container required"
+    The SEGALE judge runs in a separate container (`segale` in your cluster config) that includes COMET, MetricX-24, LASER2, ersatz, and vecalign. See [`dockerfiles/Dockerfile.segale`](https://github.com/NVIDIA-NeMo/Skills/blob/main/dockerfiles/Dockerfile.segale) for build instructions.
+
+- Evaluated on (de_DE, es_MX, fr_CA, fr_FR, it_IT, ja_JP), the following are results for long-document translation.
+
+| Model | Long COMET-QE | Long MetricX-QE |
+|---|---|---|
+| Nemotron3 Nano 30B | 0.0806 | 22.79 |
+| Qwen3 30B | 0.2205 | 20.62 |
+| Nemotron3 Super 120B | 0.5603 | 11.16 |
+| GPT-OSS 120B | 0.0625 | 24.11 |
+| Qwen3.5 122B | 0.7312 | 5.17 |
+
 ### mmmlu
 
 - Benchmark is defined in [`nemo_skills/dataset/mmmlu/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmmlu/__init__.py)
@@ -372,3 +439,13 @@ ns eval \
     --judge_step_fn="nemo_skills.pipeline.judges.comet_judge::create_judge_tasks" \
     --judge_model=[path_to_comet_checkpoint]
 ```
+
+### SEGALE (document-level)
+
+The `wmt24pp.doc` and `wmt24pp.long` benchmarks use [SEGALE](https://github.com/nvlabs/SEGALE) for document-level translation evaluation. SEGALE works by:
+
+1. Segmenting both the source text and the model's generation into sentences using [ersatz](https://github.com/rewicks/ersatz).
+2. Aligning source and MT sentences using [LASER2](https://github.com/facebookresearch/LASER) embeddings and [vecalign](https://github.com/thompsonb/vecalign).
+3. Scoring each aligned span with QE metrics ([COMET-QE](https://huggingface.co/Unbabel/wmt22-cometkiwi-da), [MetricX-QE](https://github.com/google-research/metricx)).
+
+The SEGALE judge is configured automatically for `wmt24pp.doc` and `wmt24pp.long` — no extra flags are needed. It runs in a separate container defined by the `segale` entry in your cluster config.

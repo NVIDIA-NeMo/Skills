@@ -140,6 +140,9 @@ class GenerationTaskConfig:
 
     async_position_key: str = "_async_position"  # key to use for preserving position in async loop in data dict
 
+    # optional list of target_language codes to run for language tasks; if empty/None, all languages are run
+    target_languages: list = field(default_factory=list)
+
     # can add this flag to just print the first prompt instead of running generation
     # useful to double check that your data can be loaded and prompt has what you expect
     dry_run: bool = False
