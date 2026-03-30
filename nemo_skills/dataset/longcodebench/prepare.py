@@ -48,7 +48,7 @@ def write_data_to_file(output_file, data, tokenizer_name):
                 "repo": entry["repo"],
                 "prompt_goal": entry["prompt_goal"],
                 "is_hard": entry["is_hard"],
-                f"n_tokens_{tokenizer_name}": count_n_tokens(entry["prompt"], tokenizer_name),
+                f"n_tokens_{tokenizer_name}": count_n_tokens(entry["prompt"].strip() + postfix, tokenizer_name),
             }
             json.dump(out, fout)
             fout.write("\n")
