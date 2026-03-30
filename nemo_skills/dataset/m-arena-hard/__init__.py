@@ -22,4 +22,5 @@ JUDGE_PIPELINE_ARGS = {
     "model": "openai/openai/gpt-5.2",
     "server_type": "openai",
     "server_address": "https://inference-api.nvidia.com/v1",
+    "extra_judge_args": "++inference.tokens_to_generate=16000"
 }
