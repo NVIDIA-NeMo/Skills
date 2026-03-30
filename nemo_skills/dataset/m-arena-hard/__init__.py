@@ -15,12 +15,11 @@ METRICS_TYPE = "arena"
 # using judgement directly in metrics, no need for special evaluation
 GENERATION_ARGS = "++prompt_config=generic/default"
 
-JUDGE_ARGS = "++sanitize_generations=true"
+JUDGE_ARGS = "++sanitize_generations=true ++inference.tokens_to_generate=16000"
 
 JUDGE_PIPELINE_ARGS = {
     "generation_module": "nemo_skills.inference.eval.arena_judge",
     "model": "openai/openai/gpt-5.2",
     "server_type": "openai",
-    "server_address": "https://inference-api.nvidia.com/v1",
-    "extra_judge_args": "++inference.tokens_to_generate=16000"
+    "server_address": "https://inference-api.nvidia.com/v1"
 }
