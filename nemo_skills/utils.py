@@ -14,7 +14,6 @@
 
 import inspect
 import io
-import json
 import logging
 import os
 import re
@@ -639,5 +638,3 @@ def setup_make_sequence_length_divisible_by(tensor_model_parallel_size: int, con
         make_sequence_length_divisible_by = 1
 
     return make_sequence_length_divisible_by
-
-
