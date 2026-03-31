@@ -410,17 +410,17 @@ class BaseMetrics(abc.ABC):
                     predicted_answers=predicted_answers,
                 )
 
-                if predicted_answers is not None and self.compute_no_answer:
-                    no_answer_list = [pred_answer is None for pred_answer in predicted_answers[:k]]
-                    eval_dict[f"pass@{k}"]["no_answer"] += all(no_answer_list)
-                    eval_dict[f"pass@1[avg-of-{k}]"]["no_answer"] += sum(no_answer_list) / k
-
-                self._update_metrics_for_pass(
-                    eval_dict=eval_dict,
-                    k=k,
-                    predictions=predictions,
-                    predicted_answers=predicted_answers,
-                )
+        for k in range(1, len(predictions) + 1):
+            if predicted_answers is not None and self.compute_no_answer:
+                no_answer_list = [pred_answer is None for pred_answer in predicted_answers[:k]]
+                eval_dict[f"pass@{k}"]["no_answer"] += all(no_answer_list)
+                eval_dict[f"pass@1[avg-of-{k}]"]["no_answer"] += sum(no_answer_list) / k
+            self._update_metrics_for_pass(
+                eval_dict=eval_dict,
+                k=k,
+                predictions=predictions,
+                predicted_answers=predicted_answers,
+            )
 
     def setup(self, input_files):
         pass
@@ -447,8 +447,7 @@ def as_int(metric_key: str, metric_value: float, all_metrics: dict):
 
 
 def as_float(metric_key: str, metric_value: float, all_metrics: dict):
-    if (metric_std := all_metrics.get(f"{metric_key}_statistics", {}).get("std_dev_across_runs")) is not None:
-        return f"{float(metric_value):.2f} ± {metric_std:.2f}"
+    """Format float for display (for real floats that are not scaled as percentages)."""
     return f"{float(metric_value):.2f}"
 
 

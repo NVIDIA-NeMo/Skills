@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # Default evaluation and generation settings for Lean4 proof benchmarks
-DATASET_GROUP = "lean4"
 METRICS_TYPE = "lean4-proof"
 GENERATION_ARGS = "++prompt_config=lean4/formal-proof-deepseek-prover-v2 ++eval_type=lean4-proof"
 REQUIRES_SANDBOX = True

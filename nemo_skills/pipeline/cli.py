@@ -48,8 +48,9 @@ def wrap_arguments(arguments: str):
             self.args = args
             self.obj = None
 
-    # first one is the cli name
-    return MockContext(args=arguments.split(" "))
+    # Keep simple whitespace splitting semantics, but drop empty tokens
+    # so wrap_arguments("") does not produce a spurious empty argument.
+    return MockContext(args=[arg for arg in arguments.split(" ") if arg])
 
 
 if __name__ == "__main__":

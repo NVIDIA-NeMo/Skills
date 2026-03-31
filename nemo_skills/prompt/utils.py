@@ -106,6 +106,9 @@ class PromptConfig:
     image_field: str | None = None
     # Whether to put image before or after the text in multimodal content
     image_position: str = "before"  # "before" or "after"
+    # Audio support: field name from input_dict containing audio metadata (dict or list of dicts)
+    # When set, audio metadata is attached to the user message as "audios" list for model processing
+    audio_field: str | None = None
 
 
 class Prompt:
@@ -292,7 +295,16 @@ class Prompt:
         else:
             user_content = user_text
 
-        messages.append({"role": "user", "content": user_content})
+        user_message_dict = {"role": "user", "content": user_content}
+
+        # For audio: attach audio metadata to user message as audios list (model layer handles base64 conversion)
+        if self.config.audio_field and self.config.audio_field in input_dict:
+            audio_data = input_dict[self.config.audio_field]
+            if isinstance(audio_data, dict):
+                audio_data = [audio_data]
+            user_message_dict["audios"] = audio_data
+
+        messages.append(user_message_dict)
 
         if not format_as_string:
             if start_assistant_response_key:
@@ -395,9 +407,15 @@ def get_token_count(
             message if isinstance(message, dict) else message_to_dict(copy.deepcopy(message)) for message in messages
         ]
         try:
-            return len(tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools))
+            result = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, tools=tools)
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(result, list):
+                result = result["input_ids"]
+            return len(result)
+
         except Exception as e:
             raise ValueError(f"Invalid chat message format: {e}")
+
     else:
         raise ValueError("messages must be a string or a list of dictionaries")
 
@@ -408,8 +426,10 @@ def get_config_path(config: str, config_dir: str | None = None, config_extension
 
     if config.endswith(f".{config_extension}"):
         config_path = Path(config).absolute()
-    elif config.startswith("nemo_skills"):
-        config_path = Path(__file__).parents[2].absolute() / f"{config}.{config_extension}"
+        # If not found, try relative to repo root (works for external packages
+        # whose code lives next to nemo_skills, e.g. in /nemo_run/code/)
+        if not config_path.is_file():
+            config_path = Path(__file__).parents[2].absolute() / config
     else:
         config_path = Path(config_dir) / f"{config}.{config_extension}"
 
@@ -422,9 +442,8 @@ def load_config(config: str, config_dir: str | None = None) -> dict:
 
     Args:
         config (str): The location of the prompt config file.
-            Can be the full path to a yaml file (if ends with .yaml) or one of the available configs.
-            If configs starts with nemo_skills we will look relative to the repo root.
-            If not, we will look relative to the config_dir parameter
+            If it ends with .yaml, it is treated as a path (absolute or relative to repo root).
+            Otherwise, it is looked up relative to config_dir.
         config_dir (str): The dir to look for the config file.
 
     Returns:
@@ -442,6 +461,7 @@ def get_prompt(
     code_tags: str | dict | None = None,
     examples_type: str | None = None,
     system_message: str | None = None,
+    user_message: str | None = None,
     config_dir: str | None = None,
     code_tags_dir: str | None = None,
 ) -> Prompt:
@@ -455,6 +475,9 @@ def get_prompt(
 
     if system_message is not None:
         config["system"] = system_message
+
+    if user_message is not None:
+        config["user"] = user_message
 
     code_tags_obj = None
     if code_tags is not None:

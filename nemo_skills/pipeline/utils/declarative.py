@@ -37,6 +37,7 @@ from nemo_skills.pipeline.utils.exp import (
     tunnel_hash,
 )
 from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
+from nemo_skills.pipeline.utils.scripts import SandboxScript
 from nemo_skills.pipeline.utils.server import wrap_python_path
 from nemo_skills.utils import get_logger_name
 
@@ -244,11 +245,16 @@ class Command:
             # Update script.inline with evaluated command
             self.script.set_inline(evaluated_command)
 
-        # Build execution config from Script fields
+        # Build execution config from Script fields.
+        # For SandboxScript, keep_mounts=False (the safe default) maps to mounts=[]
+        # so the sandbox container has no access to cluster filesystems.
+        # keep_mounts=True maps to mounts=None, which inherits cluster mounts.
+        # Other scripts default to mounts=None (inherit cluster mounts).
+        keep_mounts = getattr(self.script, "keep_mounts", True)
         execution_config = {
             "log_prefix": getattr(self.script, "log_prefix", "main"),
             "environment": runtime_metadata.get("environment", {}),
-            "mounts": None,  # Mounts not currently exposed by Scripts
+            "mounts": None if keep_mounts else [],
             "container": self.container,
         }
 
@@ -264,6 +270,7 @@ class HardwareConfig:
     """Hardware configuration for a group of tasks."""
 
     partition: Optional[str] = None
+    account: Optional[str] = None
     num_gpus: Optional[int] = None
     num_nodes: Optional[int] = None
     num_tasks: Optional[int] = 1
@@ -574,6 +581,21 @@ class Pipeline:
         if span_group_nodes and hardware and hardware.num_nodes is not None:
             num_nodes = hardware.num_nodes
 
+        # Sandbox-specific srun overrides: allow the sandbox to survive individual
+        # worker crashes (e.g. SIGILL from libraries compiled for a different CPU).
+        # nemo-run hardcodes --kill-on-bad-exit=1 on every srun; appending =0
+        # overrides it so that start-with-nginx.sh can restart crashed workers
+        # instead of srun killing the entire step.
+        extra_srun_args = None
+        if isinstance(command.script, SandboxScript):
+            # Also disable PMI/PMIx for the sandbox step. The sandbox runs a
+            # single SLURM task but spawns many child processes (uwsgi workers,
+            # IPython shells). On some clusters, PMIx can treat child crashes
+            # (e.g., SIGILL from native libraries) as fatal and cancel the
+            # entire step. Overriding --mpi=none avoids PMIx involvement for
+            # this sidecar step.
+            extra_srun_args = ["--kill-on-bad-exit=0", "--mpi=none"]
+
         with env_context:
             return get_executor(
                 cluster_config=cluster_config,
@@ -585,6 +607,7 @@ class Pipeline:
                 log_dir=log_dir,
                 log_prefix=exec_config["log_prefix"],
                 partition=hardware.partition if hardware else None,
+                account=hardware.account if hardware else None,
                 heterogeneous=heterogeneous,
                 het_group=het_group,
                 total_het_groups=total_het_groups,
@@ -593,6 +616,7 @@ class Pipeline:
                 with_ray=self.with_ray,
                 sbatch_kwargs=hardware.sbatch_kwargs,
                 dependencies=dependencies,
+                extra_srun_args=extra_srun_args,
             )
 
     def _plan_and_add_job(

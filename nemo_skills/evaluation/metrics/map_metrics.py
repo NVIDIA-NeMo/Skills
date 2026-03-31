@@ -12,10 +12,8 @@
 # See the License for the specific lang
 
 import functools
-import importlib
-from pathlib import Path
 
-from nemo_skills.dataset.utils import import_from_path
+from nemo_skills.dataset.utils import locate
 from nemo_skills.evaluation.metrics.aalcr_metrics import AALCRMetrics
 from nemo_skills.evaluation.metrics.answer_judgement_metrics import AnswerJudgementMetrics
 from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
@@ -31,8 +29,10 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     SciCodeMetrics,
     SweBenchMetrics,
 )
+from nemo_skills.evaluation.metrics.critpt_metrics import CritPtMetrics
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
+from nemo_skills.evaluation.metrics.hotpotqa_metrics import HotpotQAMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
@@ -43,14 +43,19 @@ from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
 from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.physics_metrics import PhysicsMetrics
+from nemo_skills.evaluation.metrics.ruler2_metrics import Ruler2Metrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
+from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
+from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
+from nemo_skills.evaluation.metrics.weighted_math_metrics import WeightedMathMetrics
 
 METRICS_MAP = {
     "math": MathMetrics,
     "hle": functools.partial(MathMetrics, compute_no_answer=False, answer_key="generation"),
     "physics": PhysicsMetrics,
+    "ugphysics": UGPhysicsMetrics,
     "hle-aa": functools.partial(HLEAAMetrics, compute_no_answer=False, answer_key="generation"),
     "frontierscience-olympiad": functools.partial(
         MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
@@ -72,7 +77,7 @@ METRICS_MAP = {
     "multichoice_multilingual": MCQMultilingualMetrics,
     "math_multilingual": MCQMultilingualMetrics,
     "ruler": RulerMetrics,
-    "ruler2": RulerMetrics,
+    "ruler2": Ruler2Metrics,
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
@@ -89,6 +94,11 @@ METRICS_MAP = {
     "omniscience": OmniMetrics,
     "compute-eval": ComputeEvalMetrics,
     "gradingbench": GradingBenchMetrics,
+    "critpt": CritPtMetrics,
+    "specdec": SpecdecMetrics,
+    "hotpotqa": HotpotQAMetrics,
+    "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
+    "weighted-math": WeightedMathMetrics,
 }
 
 
@@ -108,13 +118,7 @@ def get_metrics(metric_type: str, **kwargs):
     if metric_type in METRICS_MAP:
         metrics_cls = METRICS_MAP[metric_type]
     elif "::" in metric_type:
-        module_str, class_str = metric_type.split("::", 1)
-        if Path(module_str).is_file():
-            module = import_from_path(module_str)
-        else:
-            module = importlib.import_module(module_str)
-
-        metrics_cls = getattr(module, class_str)
+        metrics_cls = locate(metric_type)
 
     if metrics_cls is None:
         raise ValueError(

@@ -40,7 +40,7 @@ Reference:
     arXiv:1510.08484, 2015
 """
 
-DATASET_GROUP = "speechlm"
+REQUIRES_DATA_DIR = True
 IS_BENCHMARK_GROUP = True
 SCORE_MODULE = "nemo_skills.evaluation.metrics.audio_metrics"
 METRICS_TYPE = "audio"

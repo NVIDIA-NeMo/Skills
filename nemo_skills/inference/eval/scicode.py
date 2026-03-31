@@ -65,7 +65,7 @@ class SciCodeGenerationTask(GenerationTask):
         """Scicode is multi-call benchmark, so we can't print a single prompt."""
         return
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
         problem_id = data_point["problem_id"]
         total_steps = len(data_point["sub_steps"])
@@ -98,7 +98,7 @@ class SciCodeGenerationTask(GenerationTask):
                 "dependencies": dependencies,
             }
             try:
-                llm_output = await super().process_single_datapoint(prepared_data_point, all_data)
+                llm_output = await super().process_single_datapoint(prepared_data_point, all_data, prompt_format)
             # TODO: this is a hack (as not all servers return that),
             # but eventually we should support handling errors like this globally for all generations
             except Exception as error:

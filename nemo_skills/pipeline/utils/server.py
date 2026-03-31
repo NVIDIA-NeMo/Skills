@@ -24,6 +24,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class SupportedServersSelfHosted(str, Enum):
     trtllm = "trtllm"
     vllm = "vllm"
+    vllm_multimodal = "vllm_multimodal"
     sglang = "sglang"
     megatron = "megatron"
     generic = "generic"
@@ -32,6 +33,7 @@ class SupportedServersSelfHosted(str, Enum):
 class SupportedServers(str, Enum):
     trtllm = "trtllm"
     vllm = "vllm"
+    vllm_multimodal = "vllm_multimodal"
     sglang = "sglang"
     megatron = "megatron"
     openai = "openai"
@@ -125,7 +127,7 @@ def get_server_command(
 
     # check if the model path is mounted if not vllm, sglang, or trtllm;
     # vllm, sglang, trtllm can also pass model name as "model_path" so we need special processing
-    if server_type not in ["vllm", "sglang", "trtllm", "generic"]:
+    if server_type not in ["vllm", "vllm_multimodal", "sglang", "trtllm", "generic"]:
         check_if_mounted(cluster_config, model_path)
 
     # the model path will be mounted, so generally it will start with /
@@ -158,7 +160,8 @@ def get_server_command(
             f"    --micro-batch-size 1 "  # that's a training argument, ignored here, but required to specify..
             f"    {server_args} "
         )
-    elif server_type == "vllm":
+    elif server_type in ["vllm", "vllm_multimodal"]:
+        # vllm_multimodal uses the same vLLM server; multimodal handling is on the client side
         server_entrypoint = server_entrypoint or "-m nemo_skills.inference.server.serve_vllm"
         start_vllm_cmd = (
             f"python3 {server_entrypoint} "

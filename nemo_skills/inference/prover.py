@@ -283,6 +283,9 @@ class ProverTask(GenerationTask):
             prefix_tokens = self.hf_tokenizer.apply_chat_template(
                 prepared_conversation, tokenize=True, add_generation_prompt=True
             )
+            # Handle newer HF tokenizer versions that return a BatchEncoding instead of a list
+            if not isinstance(prefix_tokens, list):
+                prefix_tokens = prefix_tokens["input_ids"]
             num_tokens_prefix = len(prefix_tokens)
             prefix = self.hf_tokenizer.apply_chat_template(
                 prepared_conversation, tokenize=False, add_generation_prompt=True
@@ -313,22 +316,23 @@ class ProverTask(GenerationTask):
             last_proof_attempt = generation["generation"]  # Track for nemotron refinement
             code_list.append(full_code)
             results_dict["code"] = code  # We keep track of the uncleaned code.
-            if self.cfg.remove_cot and not (
-                code == "None" or "**Error**" in full_code
-            ):  # check if successfully parse the code. We do not want to delete the turn if there is a parsing error.
+            parse_failure = code == "None" or "**Error**" in full_code
+            assistant_msg = self._make_assistant_message(generation["generation"], reasoning_content)
+            if self.cfg.remove_cot and not parse_failure:
+                # check if successfully parse the code. We do not want to delete the turn if there is a parsing error.
                 if self.cfg.delete_wrong_turns:
                     prompt_turn_list = deepcopy(base_prompt_turn_list) + [
                         self._make_assistant_message(f"```lean4\n{full_code.strip()}\n```")
                     ]  # only keep the latest turn
                 else:
                     prompt_turn_list.append(self._make_assistant_message(f"```lean4\n{full_code.strip()}\n```"))
-                full_prompt_turn_list.append(self._make_assistant_message(generation["generation"], reasoning_content))
-            else:
-                assistant_msg = self._make_assistant_message(generation["generation"], reasoning_content)
-                prompt_turn_list.append(assistant_msg)
                 full_prompt_turn_list.append(assistant_msg)
+            else:
+                full_prompt_turn_list.append(assistant_msg)
+                if not parse_failure:
+                    prompt_turn_list.append(assistant_msg)
 
-            if code == "None" or "**Error**" in full_code:
+            if parse_failure:
                 if code == "None":
                     execution_result = {
                         "process_status": "failed",
@@ -350,8 +354,6 @@ class ProverTask(GenerationTask):
                 results_dict["execution_result"] = execution_result
                 results_dict["success"] = False
                 last_error_message = execution_result["stdout"]  # Track for nemotron refinement
-                feedback = self.refine_prompt.fill({"error_message": last_error_message})
-                results_dict["feedback"] = feedback[0]["content"]
             else:
                 if self.sandbox is None:
                     raise RuntimeError(
@@ -405,6 +407,15 @@ class ProverTask(GenerationTask):
                 # This is the case when the code execution is successful. The theorem is proved.
                 break
             else:
+                if parse_failure:
+                    # Parse/extraction errors do a clean retry from base prompt with no feedback/history.
+                    if self.cfg.refinement and turn_idx < self.cfg.refinement_max_turns - 1:
+                        prompt_turn_list = deepcopy(base_prompt_turn_list)
+                        # Avoid nemotron transforming the next request; use exact base prompt retry.
+                        last_proof_attempt = None
+                        last_error_message = None
+                        continue
+                    break
                 if self.cfg.refinement and turn_idx < self.cfg.refinement_max_turns - 1:
                     prompt_turn_list += feedback
                     full_prompt_turn_list += feedback
@@ -443,7 +454,7 @@ class ProverTask(GenerationTask):
 
         return new_results_dict
 
-    async def process_single_datapoint(self, data_point, all_data):
+    async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         result = await self.pass_at_N(data_point, all_data)
         result_dict = {"generation": result}
 
