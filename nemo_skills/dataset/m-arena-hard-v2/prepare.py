@@ -18,7 +18,6 @@ from pathlib import Path
 
 import datasets
 
-
 HF_DATASET = "CohereLabs/m-ArenaHard-v2.0"
 SUPPORTED_LANGUAGES = datasets.get_dataset_config_names(HF_DATASET)
 

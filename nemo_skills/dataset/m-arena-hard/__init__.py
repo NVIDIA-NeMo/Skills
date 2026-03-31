@@ -21,5 +21,5 @@ JUDGE_PIPELINE_ARGS = {
     "generation_module": "nemo_skills.inference.eval.arena_judge",
     "model": "openai/openai/gpt-5.2",
     "server_type": "openai",
-    "server_address": "https://inference-api.nvidia.com/v1"
+    "server_address": "https://inference-api.nvidia.com/v1",
 }
