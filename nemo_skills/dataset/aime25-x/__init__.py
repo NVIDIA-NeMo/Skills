@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Benchmark group: run all multilingual AIME25 variants (same pattern as bfcl_v3 / mmau-pro).
-DATASET_GROUP = "math"
-
-VARIANTS = [
-    "aime25-de-prompt-de",
-    "aime25-de-prompt-en",
-    "aime25-es-prompt-en",
-    "aime25-es-prompt-es",
-    "aime25-fr-prompt-en",
-    "aime25-fr-prompt-fr",
-    "aime25-ja-prompt-en",
-    "aime25-ja-prompt-ja",
-]
-
-IS_BENCHMARK_GROUP = True
-
-SCORE_MODULE = "nemo_skills.dataset.aime25-X.aime25_x_group_score"
-
-BENCHMARKS = {f"aime25-X.{name}": {} for name in VARIANTS}
+METRICS_TYPE = "math_multilingual"
+GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=math"

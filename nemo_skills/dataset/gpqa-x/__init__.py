@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Benchmark group: run all multilingual GPQA variants.
-DATASET_GROUP = "multichoice"
-
-VARIANTS = [
-    "gpqa-de-prompt-de",
-    "gpqa-de-prompt-en",
-    "gpqa-es-prompt-en",
-    "gpqa-es-prompt-es",
-    "gpqa-fr-prompt-en",
-    "gpqa-fr-prompt-fr",
-    "gpqa-ja-prompt-en",
-    "gpqa-ja-prompt-ja",
-]
-
-IS_BENCHMARK_GROUP = True
-
-SCORE_MODULE = "nemo_skills.dataset.gpqa-X.gpqa_x_group_score"
-
-BENCHMARKS = {f"gpqa-X.{name}": {} for name in VARIANTS}
+METRICS_TYPE = "multichoice_multilingual"
+GENERATION_ARGS = "++prompt_config=generic/default ++eval_type=multichoice"
+EVAL_SPLIT = "diamond"
