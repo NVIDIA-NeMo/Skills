@@ -16,7 +16,7 @@ import logging
 from collections import defaultdict
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics, as_int, as_percentage
-from nemo_skills.evaluation.metrics.utils import is_correct_judgement
+from nemo_skills.evaluation.metrics.utils import is_correct_judgment
 from nemo_skills.utils import get_logger_name
 from langdetect import detect, DetectorFactory, LangDetectException
 
@@ -76,8 +76,8 @@ class MCQMultilingualMetrics(BaseMetrics):
         if "symbolic_correct" in prediction:
             correctness_dict["symbolic_correct"] = prediction["symbolic_correct"]
             correctness_dict["symbolic_and_language_correct"] = language_correct and prediction["symbolic_correct"]
-        if "judgement" in prediction:
-            correctness_dict["judge_correct"] = is_correct_judgement(prediction["judgement"])
+        if "judgment" in prediction:
+            correctness_dict["judge_correct"] = is_correct_judgment(prediction["judgment"])
             correctness_dict["judge_and_language_correct"] = language_correct and prediction["judge_correct"]
         if "judge_correct" in correctness_dict and "symbolic_correct" in correctness_dict:
             correctness_dict["both_correct"] = (
@@ -94,8 +94,8 @@ class MCQMultilingualMetrics(BaseMetrics):
         prediction = prediction.copy()
         if "symbolic_correct" in prediction:
             prediction["symbolic_correct"] = False
-        if "judgement" in prediction:
-            prediction["judgement"] = "Judgement: No"
+        if "judgment" in prediction:
+            prediction["judgment"] = "judgment: No"
         prediction[self.answer_key] = None
         return prediction
 
@@ -114,7 +114,7 @@ class MCQMultilingualMetrics(BaseMetrics):
         if "reward_model_score" in predictions[0]:
             self._compute_reward_at_k(predictions=predictions)
 
-        # Log discrepancies between the two judgements
+        # Log discrepancies between the two judgments
         for prediction in predictions:
             correctness_dict = self._get_score_dict(prediction)
             if "symbolic_correct" not in correctness_dict or "judge_correct" not in correctness_dict:
@@ -128,7 +128,7 @@ class MCQMultilingualMetrics(BaseMetrics):
                     prediction["problem"],
                     prediction[self.answer_key],
                     prediction["expected_answer"],
-                    prediction["judgement"],
+                    prediction["judgment"],
                 )
 
     def evaluations_to_print(self):
