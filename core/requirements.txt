@@ -19,6 +19,7 @@ hydra-core
 ipython
 iso639-lang
 langcodes
+langdetect
 language-data
 litellm[caching]==1.82.6
 math-verify[antlr4_9_3]
