@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import argparse
+import json
 from pathlib import Path
 
 from nemo_skills.dataset.mmmlu.mmmlu_utils import (
@@ -24,7 +25,6 @@ from nemo_skills.dataset.mmmlu.mmmlu_utils import (
     get_mcq_fields,
     subject2category,
 )
-from nemo_skills.dataset.utils import save_jsonl
 
 
 def format_entry(entry: dict, language: str) -> dict:
@@ -56,20 +56,17 @@ def main(args):
 
     invalid = set(languages) - valid_languages
     if invalid:
-        raise ValueError(f"Unsupported languages: {invalid}. Supported: {SUPPORTED_LANGUAGES}")
+        raise ValueError(f"Unsupported languages: {invalid}")
     datasets = download_mmmlu_datasets(languages)
 
     data_dir = Path(__file__).absolute().parent
     output_file = data_dir / "test.jsonl"
-
-    all_entries = []
-    for language, examples in datasets.items():
-        print(f"Processing {language}...")
-        for entry in examples:
-            all_entries.append(format_entry(entry=entry, language=language))
-
-    save_jsonl(all_entries, output_file)
-    print(f"Saved {len(all_entries)} entries to {output_file}")
+    with open(output_file, "wt", encoding="utf-8") as fout:
+        for language, examples in datasets.items():
+            for entry in examples:
+                entry = format_entry(entry=entry, language=language)
+                json.dump(entry, fout, ensure_ascii=False)
+                fout.write("\n")
 
 
 if __name__ == "__main__":

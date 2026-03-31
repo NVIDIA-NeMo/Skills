@@ -15,7 +15,7 @@ METRICS_TYPE = "arena"
 # using judgement directly in metrics, no need for special evaluation
 GENERATION_ARGS = "++prompt_config=generic/default"
 
-JUDGE_ARGS = "++sanitize_generations=true ++inference.tokens_to_generate=24000"
+JUDGE_ARGS = "++sanitize_generations=true"
 
 JUDGE_PIPELINE_ARGS = {
     "generation_module": "nemo_skills.inference.eval.arena_judge",

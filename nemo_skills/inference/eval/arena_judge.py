@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import json
 import logging
 import sys
 from copy import deepcopy
@@ -32,11 +33,18 @@ from nemo_skills.utils import (
     get_help_message,
     get_logger_name,
     nested_dataclass,
-    sanitize_generation,
     setup_logging,
 )
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+
+def sanitize_generation(generation: str) -> str:
+    """Sanitize a string for OpenAI API compatibility by handling invalid surrogates and null chars."""
+    s = json.dumps(generation, ensure_ascii=False)
+    s = s.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+    s = s.replace("\x00", "")
+    return json.loads(s)
 
 
 @nested_dataclass(kw_only=True)

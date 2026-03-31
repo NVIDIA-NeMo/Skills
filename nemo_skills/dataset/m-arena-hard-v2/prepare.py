@@ -18,7 +18,6 @@ from pathlib import Path
 
 import datasets
 
-from nemo_skills.dataset.utils import save_jsonl
 
 HF_DATASET = "CohereLabs/m-ArenaHard-v2.0"
 SUPPORTED_LANGUAGES = datasets.get_dataset_config_names(HF_DATASET)
@@ -65,7 +64,10 @@ def main(args):
                 raise ValueError(f"question_id '{qid}' not found in baseline file")
             entry["baseline_answer"] = baseline_lookup[qid]
 
-    save_jsonl(all_entries, output_file)
+    with open(output_file, "wt", encoding="utf-8") as fout:
+        for entry in all_entries:
+            json.dump(entry, fout, ensure_ascii=False)
+            fout.write("\n")
     print(f"Saved {len(all_entries)} entries to {output_file}")
 
 

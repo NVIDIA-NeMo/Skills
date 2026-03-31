@@ -231,13 +231,6 @@ def get_dataset_module(dataset, data_dir=None, extra_benchmark_map=None):
     )
 
 
-def save_jsonl(entries, output_file):
-    """Save a list of dicts to a JSONL file."""
-    with open(output_file, "wt", encoding="utf-8") as fout:
-        for entry in entries:
-            json.dump(entry, fout, ensure_ascii=False)
-            fout.write("\n")
-
 
 def get_lean4_header():
     LEAN4_HEADER = "import Mathlib\n\nimport Aesop\n\nset_option maxHeartbeats 0\n\nopen Topology Filter Real Complex TopologicalSpace Finset Function Metric Nat Rat\nopen scoped BigOperators Matrix\n\n"
