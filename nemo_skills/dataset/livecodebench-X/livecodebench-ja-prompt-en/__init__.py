@@ -20,6 +20,6 @@ METRICS_TYPE = 'livecodebench'
 # EVAL_SPLIT = 'test_v5_2407_2412'
 EVAL_SPLIT = 'test_v5_2407_2503'
 
-# EVAL_ARGS = "++eval_type=livecodebench ++eval_config.dataset=livecodebench
+# EVAL_ARGS = "++eval_type=livecodebench ++eval_config.dataset=livecodebench"
 EVAL_ARGS = "++eval_type=livecodebench"
 GENERATION_ARGS = ""

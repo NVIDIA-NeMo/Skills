@@ -19,7 +19,6 @@ from nemo_skills.evaluation.metrics.base import BaseMetrics, as_int, as_percenta
 from nemo_skills.evaluation.metrics.utils import is_correct_judgement
 from nemo_skills.utils import get_logger_name
 from langdetect import detect, DetectorFactory, LangDetectException
-import sys
 
 # Set seed for consistent results
 DetectorFactory.seed = 42
@@ -28,9 +27,7 @@ DetectorFactory.seed = 42
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
-class MathMultilingualMetrics(BaseMetrics):
-    # TODO: how can we ensure that user-defined aggregations have all the same metrics as in base?
-
+class MCQMultilingualMetrics(BaseMetrics):
     def __init__(self, compute_no_answer: bool = True, answer_key: str = "predicted_answer"):
         super().__init__(compute_no_answer=compute_no_answer)
         self.answer_key = answer_key
