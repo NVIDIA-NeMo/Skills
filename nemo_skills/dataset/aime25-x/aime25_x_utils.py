@@ -24,3 +24,34 @@ MATH_INSTRUCTIONS = {
     "fr": r"Résolvez le problème mathématique suivant. Assurez-vous de mettre la réponse (et seulement la réponse) dans \boxed{}.",
     "ja": r"以下の数学問題を解いてください。答え（答えのみ）を\boxed{}の中に入れてください。",
 }
+
+# English few-shot template (from generic/math.yaml)
+EN_FEW_SHOT_CONFIG = {
+    "prefix": "Here are some examples of problems and solutions you can refer to.\n\n",
+    "template": "Problem:\n{problem}\n\nSolution:\n{solution}\n\n\n\n\n\n",
+    "suffix": "Here is the problem you need to solve:\n",
+}
+
+# Language-specific few-shot templates (from multilingual/math_{lang}.yaml)
+FEW_SHOT_CONFIGS = {
+    "de": {
+        "prefix": "Hier sind einige Beispiele für Probleme und Lösungen, auf die Sie sich beziehen können.\n\n",
+        "template": "Problem:\n{problem}\n\nLösung:\n{solution}\n\n\n\n\n\n",
+        "suffix": "Hier ist das Problem, das Sie lösen müssen:\n",
+    },
+    "es": {
+        "prefix": "Aquí tienes algunos ejemplos de problemas y soluciones que puedes consultar.\n\n",
+        "template": "Problema:\n{problem}\n\nSolución:\n{solution}\n\n\n\n\n\n",
+        "suffix": "Aquí tienes el problema que necesitas resolver:\n",
+    },
+    "fr": {
+        "prefix": "Voici quelques exemples de problèmes et de solutions auxquels vous pouvez vous référer.\n\n",
+        "template": "Problème:\n{problem}\n\nSolution:\n{solution}\n\n\n\n\n\n",
+        "suffix": "Voici le problème que vous devez résoudre:\n",
+    },
+    "ja": {
+        "prefix": "参考にできる問題と解答の例を以下に示します。\n\n",
+        "template": "問題：\n{problem}\n\n解答：\n{solution}\n\n\n\n\n\n",
+        "suffix": "解決すべき問題は以下の通りです：\n",
+    },
+}
