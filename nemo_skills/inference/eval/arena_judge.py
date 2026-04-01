@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import json
 import logging
 import sys
 from copy import deepcopy
@@ -38,6 +39,14 @@ from nemo_skills.utils import (
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def sanitize_generation(generation: str) -> str:
+    """Sanitize a string for OpenAI API compatibility by handling invalid surrogates and null chars."""
+    s = json.dumps(generation, ensure_ascii=False)
+    s = s.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+    s = s.replace("\x00", "")
+    return json.loads(s)
+
+
 @nested_dataclass(kw_only=True)
 class ArenaJudgeConfig(GenerationTaskConfig):
     """Arena judge parameters.
@@ -58,6 +67,9 @@ class ArenaJudgeConfig(GenerationTaskConfig):
     # Set to None to use the default prompt_config for that category
     # creative_writing uses a prompt that doesn't ask the judge to generate its own answer first
     prompt_config_creative: str = "judge/arena_creative"
+
+    # Enable for multilingual benchmarks where generations may contain problematic Unicode
+    sanitize_generations: bool = False
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
@@ -134,20 +146,34 @@ class ArenaJudgeTask(GenerationTask):
             LOG.info("Example prompt in OpenAI format: \nData dictionary: %s", data_point)
             return
 
-        data_point["answer_1"] = data_point["generation"]
-        data_point["answer_2"] = data_point["baseline_answer"]
+        if self.cfg.sanitize_generations:
+            data_point["answer_1"] = sanitize_generation(data_point["generation"])
+            data_point["answer_2"] = sanitize_generation(data_point["baseline_answer"])
+        else:
+            data_point["answer_1"] = data_point["generation"]
+            data_point["answer_2"] = data_point["baseline_answer"]
         LOG.info(
             "Example prompt:\nData dictionary: %s\nPrompt: %s", data_point, self.fill_prompt(data_point, all_data)
         )
 
     async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         gen_base_data = data_point.copy()
-        gen_base_data["answer_1"] = data_point["generation"]
-        gen_base_data["answer_2"] = data_point["baseline_answer"]
+        answer_gen = (
+            sanitize_generation(data_point["generation"])
+            if self.cfg.sanitize_generations
+            else data_point["generation"]
+        )
+        answer_base = (
+            sanitize_generation(data_point["baseline_answer"])
+            if self.cfg.sanitize_generations
+            else data_point["baseline_answer"]
+        )
+        gen_base_data["answer_1"] = answer_gen
+        gen_base_data["answer_2"] = answer_base
         # reversing the answers
         base_gen_data = data_point.copy()
-        base_gen_data["answer_2"] = data_point["generation"]
-        base_gen_data["answer_1"] = data_point["baseline_answer"]
+        base_gen_data["answer_2"] = answer_gen
+        base_gen_data["answer_1"] = answer_base
 
         # Make two async calls instead of one batch call
         llm_output_1, llm_output_2 = await asyncio.gather(
