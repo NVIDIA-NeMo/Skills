@@ -329,6 +329,25 @@ def preprocess_asr_text(text: str, mode: str = "standard") -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _wer_with_counts(ref: str, hyp: str) -> dict[str, Any]:
+    """Compute WER and return both the score and raw error/reference counts for corpus-level aggregation."""
+    import jiwer
+
+    wer_score = jiwer.wer(ref, hyp)
+    measures = jiwer.process_words(ref, hyp)
+    wer_errors = measures.substitutions + measures.deletions + measures.insertions
+    wer_ref_words = measures.substitutions + measures.deletions + measures.hits
+
+    return {
+        "wer": wer_score,
+        "wer_errors": wer_errors,
+        "wer_ref_words": wer_ref_words,
+        "wer_substitutions": measures.substitutions,
+        "wer_insertions": measures.insertions,
+        "wer_deletions": measures.deletions,
+    }
+
+
 def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "standard") -> dict[str, Any]:
     """Evaluate ASR: computes WER with normalization.
 
@@ -337,8 +356,6 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
         hypothesis: Model output transcription.
         normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
     """
-    import jiwer
-
     ref = preprocess_asr_text(reference, mode=normalization_mode)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode)
 
@@ -347,14 +364,11 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     if not hyp:
         hyp = "empty"
 
-    wer_score = jiwer.wer(ref, hyp)
-
-    return {
-        "wer": wer_score,
-        "is_correct": wer_score < 0.5,
-        "text": ref,
-        "pred_text": hyp,
-    }
+    result = _wer_with_counts(ref, hyp)
+    result["is_correct"] = result["wer"] < 0.5
+    result["text"] = ref
+    result["pred_text"] = hyp
+    return result
 
 
 def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:
