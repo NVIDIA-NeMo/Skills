@@ -82,6 +82,8 @@ class OpenAIModel(BaseModel):
             kwargs["seed"] = kwargs.pop("random_seed")
         if "stop_phrases" in kwargs:
             kwargs["stop"] = kwargs.pop("stop_phrases")
+        if "top_p" in kwargs and kwargs["top_p"] is None:
+            kwargs.pop("top_p")
         return dict(kwargs)
 
     def _build_chat_request_params(
