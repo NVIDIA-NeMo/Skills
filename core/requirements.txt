@@ -20,7 +20,7 @@ ipython
 iso639-lang
 langcodes
 language-data
-litellm[caching]==1.82.6
+litellm[caching]<=1.81.13
 math-verify[antlr4_9_3]
 mcp
 numpy
