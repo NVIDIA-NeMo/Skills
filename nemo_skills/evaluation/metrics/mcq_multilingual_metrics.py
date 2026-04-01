@@ -14,7 +14,7 @@
 
 import logging
 
-from langdetect import detect, DetectorFactory, LangDetectException
+from langdetect import DetectorFactory, LangDetectException, detect
 
 from nemo_skills.evaluation.metrics.base import as_percentage
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
@@ -45,7 +45,9 @@ class MCQMultilingualMetrics(MathMetrics):
             language_correct = False
 
         if "symbolic_correct" in correctness_dict:
-            correctness_dict["symbolic_and_language_correct"] = language_correct and correctness_dict["symbolic_correct"]
+            correctness_dict["symbolic_and_language_correct"] = (
+                language_correct and correctness_dict["symbolic_correct"]
+            )
         if "judge_correct" in correctness_dict:
             correctness_dict["judge_and_language_correct"] = language_correct and correctness_dict["judge_correct"]
         if "judge_correct" in correctness_dict and "symbolic_correct" in correctness_dict:
@@ -65,23 +67,23 @@ class MCQMultilingualMetrics(MathMetrics):
     def _detect_language(self, text):
         """
         Detect the language of a given text.
-        
+
         Args:
             text (str): The text to analyze
-            
+
         Returns:
             str: The detected language code (e.g., 'en', 'es', 'fr') or 'unknown'
         """
         if not text or not text.strip():
-            return 'unknown'
+            return "unknown"
 
         try:
             # Clean the text by removing excessive whitespace
-            cleaned_text = ' '.join(text.split())
+            cleaned_text = " ".join(text.split())
             if len(cleaned_text) < 3:
-                return 'unknown'
+                return "unknown"
 
             detected_lang = detect(cleaned_text)
             return detected_lang
         except LangDetectException:
-            return 'unknown'
+            return "unknown"
