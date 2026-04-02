@@ -43,10 +43,10 @@ LOG = logging.getLogger(get_logger_name(__file__))
 def sanitize_generation(generation: str) -> str:
     """Sanitize a string for OpenAI API compatibility by handling invalid surrogates and null chars."""
     s = generation
-    s = unicodedata.normalize("NFKD", s)
-    s = json.dumps(s, ensure_ascii=False)
-    s = s.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
-    s = s.replace("\x00", "")
+    s = unicodedata.normalize("NFC", s)
+    s = ''.join(ch for ch in s if ch.isprintable() or ch in '\n\t')
+    s = s.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    s = json.dumps(s, ensure_ascii=False)[1:-1]
     return s
 
 
