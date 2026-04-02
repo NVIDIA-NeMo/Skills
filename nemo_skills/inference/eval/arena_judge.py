@@ -13,13 +13,13 @@
 # limitations under the License.
 
 import asyncio
+import json
 import logging
 import sys
 from copy import deepcopy
 from dataclasses import field
 
 import hydra
-import unicodedata
 
 from nemo_skills.inference.generate import (
     GenerationTask,
@@ -40,25 +40,11 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def sanitize_generation(generation: str) -> str:
-    """Sanitize a string for OpenAI API compatibility.
-
-    Removes:
-    - Lone surrogates (via UTF-16 round-trip)
-    - U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR (JS JSON parser issues)
-    - U+0000 NULL BYTE
-    - Non-printable control chars U+0001–U+001F (preserving \\t, \\n, \\r)
-    """
-    def is_ok(ch: str) -> bool:
-        # U+2028/U+2029 are "printable" in Python but cause issues in JS JSON parsers;
-        # U+0000 is a null byte that must also be excluded.
-        # Non-printable control chars U+0001–U+001F (preserving \\t, \\n, \\r)
-        SANITIZE_BAD_CHARS = frozenset('\u2028\u2029\u0000')
-        return ch not in SANITIZE_BAD_CHARS and (ch.isprintable() or ch in '\t\n\r')
-    
-    s = unicodedata.normalize("NFC", generation)
-    s = ''.join(ch for ch in s if is_ok(ch))
-    s = s.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
-    return s
+    """Sanitize a string for OpenAI API compatibility by handling invalid surrogates and null chars."""
+    s = json.dumps(generation, ensure_ascii=False)
+    s = s.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+    s = s.replace("\x00", "")
+    return json.loads(s)
 
 
 @nested_dataclass(kw_only=True)
@@ -171,13 +157,6 @@ class ArenaJudgeTask(GenerationTask):
         )
 
     async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
-        
-        data_point["question"] = (
-            sanitize_generation(data_point["question"])
-            if self.cfg.sanitize_generations
-            else data_point["question"]
-        )
-              
         gen_base_data = data_point.copy()
         answer_gen = (
             sanitize_generation(data_point["generation"])
