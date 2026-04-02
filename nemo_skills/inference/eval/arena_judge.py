@@ -20,6 +20,7 @@ from copy import deepcopy
 from dataclasses import field
 
 import hydra
+import unicodedata
 
 from nemo_skills.inference.generate import (
     GenerationTask,
@@ -41,6 +42,8 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 def sanitize_generation(generation: str) -> str:
     """Sanitize a string for OpenAI API compatibility by handling invalid surrogates and null chars."""
+    s = generation
+    s = unicodedata.normalize("NFKD", s)
     s = json.dumps(generation, ensure_ascii=False)
     s = s.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
     s = s.replace("\x00", "")
