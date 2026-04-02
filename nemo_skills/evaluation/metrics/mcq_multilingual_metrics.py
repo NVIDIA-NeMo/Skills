@@ -18,7 +18,7 @@ from langdetect import DetectorFactory, LangDetectException, detect
 
 from nemo_skills.evaluation.metrics.base import as_percentage
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
-from nemo_skills.utils import get_logger_name
+from nemo_skills.utils import get_logger_name, parse_reasoning
 
 # Set seed for consistent results
 DetectorFactory.seed = 42
@@ -40,7 +40,20 @@ class MCQMultilingualMetrics(MathMetrics):
         correctness_dict = super()._get_score_dict(prediction)
 
         if "target_language" in prediction:
-            language_correct = self._detect_language(prediction["generation"]) == prediction["target_language"]
+            if "_full_generation" in prediction:
+                # parse_reasoning=True was used upstream; "generation" is already answer-only
+                text_for_lang_detection = prediction["generation"]
+            else:
+                # parse_reasoning was not used upstream; apply it to a temporary copy
+                # so we don't mutate the original prediction dict
+                temp = {"generation": prediction["generation"]}
+                parse_reasoning(temp)
+                # _generation_finished_thinking=False means no </think> tag was found,
+                # in which case parse_reasoning sets generation="" — fall back to original
+                text_for_lang_detection = (
+                    temp["generation"] if temp.get("_generation_finished_thinking") else prediction["generation"]
+                )
+            language_correct = self._detect_language(text_for_lang_detection) == prediction["target_language"]
         else:
             language_correct = False
 
