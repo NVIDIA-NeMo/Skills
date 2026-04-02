@@ -171,6 +171,13 @@ class ArenaJudgeTask(GenerationTask):
         )
 
     async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
+        
+        data_point["question"] = (
+            sanitize_generation(data_point["question"])
+            if self.cfg.sanitize_generations
+            else data_point["question"]
+        )
+              
         gen_base_data = data_point.copy()
         answer_gen = (
             sanitize_generation(data_point["generation"])
