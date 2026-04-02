@@ -44,7 +44,7 @@ def sanitize_generation(generation: str) -> str:
     """Sanitize a string for OpenAI API compatibility by handling invalid surrogates and null chars."""
     s = generation
     s = unicodedata.normalize("NFKD", s)
-    s = json.dumps(generation, ensure_ascii=False)
+    s = json.dumps(s, ensure_ascii=False)
     s = s.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
     s = s.replace("\x00", "")
     return json.loads(s)
