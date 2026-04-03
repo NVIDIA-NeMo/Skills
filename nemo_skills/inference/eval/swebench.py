@@ -296,7 +296,9 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
                 if self.cfg.agent_framework_commit is None:
-                    self.cfg.agent_framework_commit = "HEAD"
+                    # Latest version before the swe-bench eval code was moved into a separate repo.
+                    # Future versions are not supported for now and will require significant changes.
+                    self.cfg.agent_framework_commit = "1.2.1"
 
             setup_commands.append(
                 # install python 3.12 with uv
