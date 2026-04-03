@@ -767,6 +767,56 @@ async def test_direct_python_tool_separate_sessions():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tool_cls_name", ["DirectPythonTool", "PythonTool"])
+async def test_python_tool_cleanup_request_deletes_session(tool_cls_name):
+    """cleanup_request deletes the remote sandbox session for a finished request."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    tool_cls = {"DirectPythonTool": DirectPythonTool, "PythonTool": PythonTool}[tool_cls_name]
+    tool = tool_cls()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    request_id = f"cleanup-{tool_cls_name}"
+    try:
+        await tool.execute(
+            "stateful_python_code_exec",
+            {"code": "x = 123"},
+            extra_args={"request_id": request_id},
+        )
+
+        session_id = tool.requests_to_sessions[request_id]
+        assert session_id is not None
+
+        response = await tool._sandbox.http_session.get(
+            url=f"http://{tool._sandbox.host}:{tool._sandbox.port}/sessions",
+            timeout=10.0,
+            headers={"X-Session-ID": str(session_id)},
+        )
+        assert response.status_code == 200
+        assert str(session_id) in response.json()["sessions"]
+
+        await tool.cleanup_request(request_id)
+        assert request_id not in tool.requests_to_sessions
+
+        response = await tool._sandbox.http_session.get(
+            url=f"http://{tool._sandbox.host}:{tool._sandbox.port}/sessions",
+            timeout=10.0,
+            headers={"X-Session-ID": str(session_id)},
+        )
+        assert response.status_code == 200
+        assert str(session_id) not in response.json()["sessions"]
+
+        result = await tool.execute(
+            "stateful_python_code_exec",
+            {"code": "print(x)"},
+            extra_args={"request_id": request_id},
+        )
+        assert "NameError" in result
+    finally:
+        await tool.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_mcp_vs_direct_python_tool_parity():
     """MCP-based PythonTool and DirectPythonTool produce identical results for the same tool calls."""
     from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool

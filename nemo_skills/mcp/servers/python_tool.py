@@ -120,9 +120,21 @@ class PythonTool(MCPClientTool):
                 "init_hook": "hydra",
                 # execution-specific default
                 "exec_timeout_s": 10,
+                "sandbox": {},
             }
         )
         self.requests_to_sessions = defaultdict(lambda: None)
+        self._sandbox = None
+
+    def configure(self, overrides: Dict[str, Any] | None = None, context: Dict[str, Any] | None = None) -> None:
+        super().configure(overrides=overrides, context=context)
+
+        sandbox_cfg = dict((context or {}).get("sandbox", {}))
+        sandbox_cfg.update(self._config.get("sandbox", {}))
+        sandbox_cfg.pop("sandbox_type", None)
+        sandbox_type = (context or {}).get("sandbox", {}).get("sandbox_type", "local")
+        sandbox_type = self._config.get("sandbox", {}).get("sandbox_type", sandbox_type)
+        self._sandbox = get_sandbox(sandbox_type=sandbox_type, **sandbox_cfg)
 
     async def execute(self, tool_name: str, arguments: Dict[str, Any], extra_args: Dict[str, Any] | None = None):
         # Ensure timeout is sent via extra_args (post-sanitize), not in main arguments
@@ -140,7 +152,17 @@ class PythonTool(MCPClientTool):
         return output
 
     async def shutdown(self) -> None:
-        return None
+        session_ids = {str(session_id) for session_id in self.requests_to_sessions.values() if session_id is not None}
+        self.requests_to_sessions.clear()
+        if self._sandbox is not None:
+            for session_id in session_ids:
+                await self._sandbox.delete_session(session_id)
+            await self._sandbox.close()
+
+    async def cleanup_request(self, request_id: str) -> None:
+        session_id = self.requests_to_sessions.pop(request_id, None)
+        if session_id is not None and self._sandbox is not None:
+            await self._sandbox.delete_session(str(session_id))
 
 
 class DirectPythonTool(Tool):
@@ -236,7 +258,18 @@ class DirectPythonTool(Tool):
 
     async def shutdown(self) -> None:
         if self._sandbox is not None:
+            session_ids = {
+                str(session_id) for session_id in self.requests_to_sessions.values() if session_id is not None
+            }
+            self.requests_to_sessions.clear()
+            for session_id in session_ids:
+                await self._sandbox.delete_session(session_id)
             await self._sandbox.close()
+
+    async def cleanup_request(self, request_id: str) -> None:
+        session_id = self.requests_to_sessions.pop(request_id, None)
+        if session_id is not None and self._sandbox is not None:
+            await self._sandbox.delete_session(str(session_id))
 
 
 if __name__ == "__main__":
