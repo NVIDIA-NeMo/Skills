@@ -56,12 +56,12 @@ def save_audio_and_format_entry(
     entry, dataset_name, audio_dir, sample_idx, text_field="text", id_field="id", with_audio=True
 ):
     """Format a dataset entry and optionally save audio file."""
-    text = entry.get(text_field, "").strip()
+    text = entry[text_field].strip()
 
     system_message = {"role": "system", "content": SYSTEM_MESSAGE}
     user_message = {"role": "user", "content": "Transcribe the following audio."}
 
-    sample_id = str(entry.get(id_field, sample_idx)).replace("/", "_")
+    sample_id = str(entry[id_field]).replace("/", "_")
     audio_filename = f"{Path(sample_id).stem}.flac"
 
     audio_info = entry.get("audio", {})
@@ -89,8 +89,7 @@ def save_audio_and_format_entry(
         "subset_for_metrics": dataset_name,
     }
 
-    if id_field in entry:
-        formatted_entry["id"] = entry[id_field]
+    formatted_entry["id"] = entry[id_field]
     if "speaker_id" in entry:
         formatted_entry["speaker_id"] = entry["speaker_id"]
 
@@ -105,11 +104,7 @@ def prepare_dataset(dataset_name, output_dir, with_audio=True):
     hf_repo, hf_config, hf_split, text_field, id_field = DATASET_CONFIGS[dataset_name]
 
     print(f"Loading {dataset_name} from {hf_repo} (config={hf_config}, split={hf_split})...")
-    try:
-        dataset = load_dataset(hf_repo, hf_config, split=hf_split, trust_remote_code=True)
-    except Exception as e:
-        print(f"Warning: Failed to load {dataset_name}: {e}")
-        return 0
+    dataset = load_dataset(hf_repo, hf_config, split=hf_split, trust_remote_code=True)
 
     output_file = output_dir / f"{dataset_name}.jsonl"
     audio_dir = output_dir / "data" / dataset_name

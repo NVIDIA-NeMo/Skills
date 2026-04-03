@@ -359,8 +359,11 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     ref = preprocess_asr_text(reference, mode=normalization_mode)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode)
 
+    # Match the HF Open ASR Leaderboard: drop samples whose normalized
+    # reference is empty rather than scoring them against a placeholder.
     if not ref:
-        ref = "empty"
+        return {"wer": None, "is_correct": None, "text": "", "pred_text": hyp or ""}
+
     if not hyp:
         hyp = "empty"
 

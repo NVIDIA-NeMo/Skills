@@ -149,7 +149,7 @@ class AudioMetrics(BaseMetrics):
 
         if category == "open" and "judge_correct" in score_dict:
             score_dict["correct"] = score_dict["judge_correct"]
-        elif "is_correct" in prediction:
+        elif "is_correct" in prediction and prediction["is_correct"] is not None:
             score_dict["correct"] = prediction["is_correct"]
         else:
             score_dict["correct"] = False
@@ -211,9 +211,9 @@ class AudioMetrics(BaseMetrics):
                 if "wer_errors" in pred and "wer_ref_words" in pred:
                     self.wer_total_errors += pred["wer_errors"]
                     self.wer_total_ref_words += pred["wer_ref_words"]
-                    self.wer_total_substitutions += pred.get("wer_substitutions", 0)
-                    self.wer_total_insertions += pred.get("wer_insertions", 0)
-                    self.wer_total_deletions += pred.get("wer_deletions", 0)
+                    self.wer_total_substitutions += pred["wer_substitutions"]
+                    self.wer_total_insertions += pred["wer_insertions"]
+                    self.wer_total_deletions += pred["wer_deletions"]
             if "wer_c" in pred and pred["wer_c"] is not None:
                 self.wer_c_scores.append(pred["wer_c"])
             if "wer_pc" in pred and pred["wer_pc"] is not None:
