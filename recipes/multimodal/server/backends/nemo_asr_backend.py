@@ -217,7 +217,11 @@ class NeMoASRBackend(InferenceBackend):
             return hyp, []
 
         if isinstance(hyp, dict):
-            text = hyp.get("text") or hyp.get("pred_text") or hyp.get("transcript") or ""
+            text = hyp.get("text")
+            if text is None:
+                text = hyp.get("pred_text")
+            if text is None:
+                text = hyp.get("transcript", "")
             words = hyp.get("words")
             if words is None:
                 ts = hyp.get("timestamp")
@@ -229,7 +233,11 @@ class NeMoASRBackend(InferenceBackend):
                     words = ts["word"]
             return text, self._normalize_words(words)
 
-        text = getattr(hyp, "text", None) or getattr(hyp, "pred_text", None) or str(hyp)
+        text = getattr(hyp, "text", None)
+        if text is None:
+            text = getattr(hyp, "pred_text", None)
+        if text is None:
+            text = ""
         words = getattr(hyp, "words", None)
         if words is None:
             ts = getattr(hyp, "timestamp", None)
