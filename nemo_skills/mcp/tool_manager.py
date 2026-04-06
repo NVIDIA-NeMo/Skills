@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from abc import ABC, abstractmethod
+from builtins import ExceptionGroup
 from typing import Any, Dict, Iterable, List
 
 from nemo_skills.mcp.utils import locate
@@ -126,12 +127,14 @@ class ToolManager:
                 pass
 
     async def cleanup_request(self, request_id: str) -> None:
+        cleanup_errors = []
         for tool in self._tools.values():
             try:
                 await tool.cleanup_request(request_id)
-            except Exception:
-                # Best effort; do not propagate cleanup issues
-                pass
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        if cleanup_errors:
+            raise ExceptionGroup(f"Failed to clean up tool state for request {request_id}", cleanup_errors)
 
     async def list_all_tools(self, use_cache: bool = True) -> List[Dict[str, Any]]:
         async with self._list_lock:
