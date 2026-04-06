@@ -160,9 +160,12 @@ class PythonTool(MCPClientTool):
             await self._sandbox.close()
 
     async def cleanup_request(self, request_id: str) -> None:
-        session_id = self.requests_to_sessions.pop(request_id, None)
-        if session_id is not None and self._sandbox is not None:
+        session_id = self.requests_to_sessions.get(request_id)
+        if session_id is None:
+            return
+        if self._sandbox is not None:
             await self._sandbox.delete_session(str(session_id))
+        self.requests_to_sessions.pop(request_id, None)
 
 
 class DirectPythonTool(Tool):
@@ -267,9 +270,12 @@ class DirectPythonTool(Tool):
             await self._sandbox.close()
 
     async def cleanup_request(self, request_id: str) -> None:
-        session_id = self.requests_to_sessions.pop(request_id, None)
-        if session_id is not None and self._sandbox is not None:
+        session_id = self.requests_to_sessions.get(request_id)
+        if session_id is None:
+            return
+        if self._sandbox is not None:
             await self._sandbox.delete_session(str(session_id))
+        self.requests_to_sessions.pop(request_id, None)
 
 
 if __name__ == "__main__":
