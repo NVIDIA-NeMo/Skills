@@ -63,6 +63,14 @@ class AudioMetrics(BaseMetrics):
         self.wer_scores = []
         self.wer_references = []
         self.wer_predictions = []
+
+        # Corpus-level WER accumulators (total errors / total ref words)
+        self.wer_total_errors = 0
+        self.wer_total_ref_words = 0
+        self.wer_total_substitutions = 0
+        self.wer_total_insertions = 0
+        self.wer_total_deletions = 0
+
         self.wer_c_scores = []
         self.wer_pc_scores = []
         self.per_scores = []
@@ -141,7 +149,7 @@ class AudioMetrics(BaseMetrics):
 
         if category == "open" and "judge_correct" in score_dict:
             score_dict["correct"] = score_dict["judge_correct"]
-        elif "is_correct" in prediction:
+        elif "is_correct" in prediction and prediction["is_correct"] is not None:
             score_dict["correct"] = prediction["is_correct"]
         else:
             score_dict["correct"] = False
@@ -196,12 +204,16 @@ class AudioMetrics(BaseMetrics):
         for pred in predictions:
             if "wer" in pred and pred["wer"] is not None:
                 if "text" in pred and "pred_text" in pred:
-                    # Corpus-level WER requires full normalized reference/prediction strings.
                     self.wer_references.append(pred["text"])
                     self.wer_predictions.append(pred["pred_text"])
                 else:
-                    # Fallback for legacy records that only contain scalar WER.
                     self.wer_scores.append(pred["wer"])
+                if "wer_errors" in pred and "wer_ref_words" in pred:
+                    self.wer_total_errors += pred["wer_errors"]
+                    self.wer_total_ref_words += pred["wer_ref_words"]
+                    self.wer_total_substitutions += pred["wer_substitutions"]
+                    self.wer_total_insertions += pred["wer_insertions"]
+                    self.wer_total_deletions += pred["wer_deletions"]
             if "wer_c" in pred and pred["wer_c"] is not None:
                 self.wer_c_scores.append(pred["wer_c"])
             if "wer_pc" in pred and pred["wer_pc"] is not None:
@@ -236,10 +248,19 @@ class AudioMetrics(BaseMetrics):
                 self.judge_ratings.append(score_dict["judge_rating"])
 
             # Collect dataset-specific WER variants from any configured reference fields.
+            _wer_count_fields = {
+                "wer_c",
+                "wer_pc",
+                "wer_errors",
+                "wer_ref_words",
+                "wer_substitutions",
+                "wer_insertions",
+                "wer_deletions",
+            }
             for metric_name, metric_value in pred.items():
                 if (
                     metric_name.startswith("wer_")
-                    and metric_name not in {"wer_c", "wer_pc"}
+                    and metric_name not in _wer_count_fields
                     and metric_value is not None
                 ):
                     self.reference_wer_scores.setdefault(metric_name, []).append(metric_value)
@@ -282,6 +303,11 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["wer"] = round(100.0 * jiwer.wer(self.wer_references, self.wer_predictions), 2)
             elif self.wer_scores:
                 agg_metrics["wer"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
+            if self.wer_total_ref_words > 0:
+                agg_metrics["substitutions"] = self.wer_total_substitutions
+                agg_metrics["insertions"] = self.wer_total_insertions
+                agg_metrics["deletions"] = self.wer_total_deletions
+                agg_metrics["ref_words"] = self.wer_total_ref_words
             if self.wer_c_scores:
                 agg_metrics["wer_c"] = round(100.0 * sum(self.wer_c_scores) / len(self.wer_c_scores), 2)
             if self.wer_pc_scores:
@@ -353,6 +379,11 @@ class AudioMetrics(BaseMetrics):
         # Add existing metrics if they were computed
         if self.wer_references or self.wer_scores:
             base_metrics["wer"] = as_percentage
+        if self.wer_total_ref_words > 0:
+            base_metrics["substitutions"] = as_int
+            base_metrics["insertions"] = as_int
+            base_metrics["deletions"] = as_int
+            base_metrics["ref_words"] = as_int
         if self.wer_c_scores:
             base_metrics["wer_c"] = as_percentage
         if self.wer_pc_scores:

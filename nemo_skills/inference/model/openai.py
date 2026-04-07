@@ -82,6 +82,8 @@ class OpenAIModel(BaseModel):
             kwargs["seed"] = kwargs.pop("random_seed")
         if "stop_phrases" in kwargs:
             kwargs["stop"] = kwargs.pop("stop_phrases")
+        if "top_p" in kwargs and kwargs["top_p"] is None:
+            kwargs.pop("top_p")
         return dict(kwargs)
 
     def _build_chat_request_params(
@@ -89,7 +91,7 @@ class OpenAIModel(BaseModel):
         messages: list[dict],
         tokens_to_generate: int,
         temperature: float,
-        top_p: float,
+        top_p: float | None,
         top_k: int,
         min_p: float,
         repetition_penalty: float,
@@ -133,9 +135,9 @@ class OpenAIModel(BaseModel):
                 raise ValueError(
                     "`temperature` is not supported by reasoning models, please set it to default value `0.0`."
                 )
-            if top_p != 0.95:
+            if top_p is not None and top_p != 0.95:
                 raise ValueError(
-                    "`top_p` is not supported by reasoning models, please set it to default value `0.95`."
+                    "`top_p` is not supported by reasoning models, please set it to default value `0.95` or `None`."
                 )
             if top_logprobs is not None:
                 raise ValueError("`top_logprobs` is not supported by reasoning models, please set it to `None`.")
@@ -155,7 +157,8 @@ class OpenAIModel(BaseModel):
             params["top_logprobs"] = top_logprobs
             params["max_completion_tokens"] = tokens_to_generate
             params["temperature"] = temperature
-            params["top_p"] = top_p
+            if top_p is not None:
+                params["top_p"] = top_p
 
         return params
 
