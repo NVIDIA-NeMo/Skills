@@ -20,6 +20,7 @@ from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
 from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
 from nemo_skills.evaluation.metrics.bird_metrics import BirdMetrics
+from nemo_skills.evaluation.metrics.ccc_metrics import CCCMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
     ComputeEvalMetrics,
@@ -72,6 +73,7 @@ METRICS_MAP = {
     "if": IFMetrics,
     "ioi": IOIMetrics,
     "icpc": ICPCMetrics,
+    "ccc": CCCMetrics,
     "multichoice": MathMetrics,
     "ruler": RulerMetrics,
     "ruler2": Ruler2Metrics,
