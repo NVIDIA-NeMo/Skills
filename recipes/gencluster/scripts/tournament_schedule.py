@@ -114,6 +114,8 @@ def load_problem_metadata(problem_number: int, meta_path: str) -> Dict[str, Any]
     # Read from a single JSONL file with many lines and find the one with matching id
     if problem_number < 0:
         return {}
+    if not meta_path:
+        return {}
     if not os.path.isfile(meta_path):
         return {}
     try:
@@ -306,6 +308,8 @@ def main():
     )
     parser.add_argument("--dataset_path", type=str, default=None, help="Path to the dataset jsonl file")
     args = parser.parse_args()
+    if args.out is None and args.output_dir is None:
+        parser.error("One of --out or --output-dir must be set.")
 
     rng = random.Random(args.seed)
     clusters = load_clusters(args.cluster_file)
@@ -432,8 +436,8 @@ def main():
         with open(out_path, "w") as f:
             f.write("\n".join(json_lines))
     else:
-        # Fallback to stdout
-        print("\n".join(json_lines))
+        # Should be unreachable due to argparse validation above.
+        raise RuntimeError("One of --out or --output-dir must be set.")
 
 
 if __name__ == "__main__":
