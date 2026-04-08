@@ -347,10 +347,10 @@ class CCCEvaluator(BaseEvaluator):
             "test_case_results": test_case_results,
         }
 
-    async def eval_full(self, input_files):  # type: ignore[override]
+    async def eval_full(self):  # type: ignore[override]
         await self._initialize_runtime()
 
-        for jsonl_file in unroll_files(input_files):
+        for jsonl_file in unroll_files(self.eval_cfg.input_file):
             with open(jsonl_file, "r", encoding="utf-8") as f:
                 all_samples = [json.loads(line) for line in f]
 
