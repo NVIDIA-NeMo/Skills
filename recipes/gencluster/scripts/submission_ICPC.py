@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Compute submission counts per problem from cluster files with scores.
 
@@ -70,7 +84,7 @@ def any_solution_true(clusters_payload: Dict[str, Any]) -> bool:
         if not isinstance(codes, list):
             continue
         for code in codes:
-            if isinstance(code, dict) and to_bool(code.get("score", False)):
+            if isinstance(code, dict) and to_bool(code["score"]):
                 return True
     return False
 
@@ -209,7 +223,7 @@ def compute_submission_count_for_problem(
             progressed = True
             attempts += 1
             code = codes[idx]
-            if to_bool(code.get("score", False)):
+            if to_bool(code["score"]):
                 return attempts
             next_idx[i] += 1
         if not progressed:
@@ -222,7 +236,7 @@ def cluster_has_any_true(cluster_val: Dict[str, Any]) -> bool:
     if not isinstance(codes, list):
         return False
     for code in codes:
-        if isinstance(code, dict) and to_bool(code.get("score", False)):
+        if isinstance(code, dict) and to_bool(code["score"]):
             return True
     return False
 
