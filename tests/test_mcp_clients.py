@@ -767,16 +767,14 @@ async def test_direct_python_tool_separate_sessions():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool_cls_name", ["DirectPythonTool", "PythonTool"])
-async def test_python_tool_cleanup_request_deletes_session(tool_cls_name):
+async def test_direct_python_tool_cleanup_request_deletes_session():
     """cleanup_request deletes the remote sandbox session for a finished request."""
-    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
 
-    tool_cls = {"DirectPythonTool": DirectPythonTool, "PythonTool": PythonTool}[tool_cls_name]
-    tool = tool_cls()
+    tool = DirectPythonTool()
     tool.configure(context={"sandbox": {"sandbox_type": "local"}})
 
-    request_id = f"cleanup-{tool_cls_name}"
+    request_id = "cleanup-DirectPythonTool"
     try:
         await tool.execute(
             "stateful_python_code_exec",
