@@ -87,6 +87,7 @@ def main():
         "--stage",
         type=str,
         default="schedule",
+        choices=["schedule", "play_tournament", "submission"],
         help="Stage to run (default: schedule)",
     )
     parser.add_argument(
@@ -98,6 +99,7 @@ def main():
         "--benchmark",
         type=str,
         default="ioi",
+        choices=["ioi", "icpc"],
         help="Benchmark to use for the tournament (default: ioi)",
     )
     parser.add_argument(
