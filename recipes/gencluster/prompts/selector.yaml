@@ -1,0 +1,21 @@
+system: ""
+
+user: |-
+
+  You are an expert competitive programmer. You will be given a problem statement, its constraints, and two solutions.  Your task is to evaluate each solution's correctness based on the problem statement and its constraints and select the best solution.
+
+  First, **reason step by step** about each solution.
+
+  ### Question
+  {problem}
+
+  ### Solution A
+  {code_A}
+
+  ### Solution B
+  {code_B}
+
+  Finish your reasoning with exactly three lines, nothing else:
+  Score A: <0-10>
+  Score B: <0-10>
+  Judgment: [A]  or  Judgment: [B]
