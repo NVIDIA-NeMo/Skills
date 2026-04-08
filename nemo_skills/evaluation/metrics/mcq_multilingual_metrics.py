@@ -32,8 +32,9 @@ from nemo_skills.utils import parse_reasoning
 # Set seed for consistent results
 DetectorFactory.seed = 42
 
-# langdetect returns 'zh-cn'/'zh-tw' for Chinese; normalize both to the
-# ISO 639-1 code 'zh'. Build the supported set accordingly.
+# langdetect returns 'zh-cn' (Simplified) and 'zh-tw' (Traditional) for Chinese.
+# We normalize both to the ISO 639-1 code 'zh', meaning Traditional Chinese (zh-tw)
+# is not separately supported — consistent with most benchmarks.
 _LANGDETECT_SUPPORTED = {"zh" if lang.startswith("zh") else lang for lang in os.listdir(PROFILES_DIRECTORY)}
 
 
@@ -119,8 +120,9 @@ class MCQMultilingualMetrics(MathMetrics):
                 return "unknown"
 
             detected_lang = detect(cleaned_text)
-            # langdetect returns 'zh-cn' or 'zh-tw' for Chinese; normalize to
-            # the ISO 639-1 code 'zh' to match dataset target_language values.
+            # langdetect returns 'zh-cn' (Simplified) or 'zh-tw' (Traditional) for
+            # Chinese. Normalize both to 'zh'; Traditional Chinese (zh-tw) is not
+            # separately supported, consistent with most benchmarks.
             if detected_lang.startswith("zh"):
                 detected_lang = "zh"
             return detected_lang
