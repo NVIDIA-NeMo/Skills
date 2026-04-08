@@ -221,7 +221,9 @@ class NeMoASRBackend(InferenceBackend):
             if text is None:
                 text = hyp.get("pred_text")
             if text is None:
-                text = hyp.get("transcript", "")
+                text = hyp.get("transcript")
+            if text is None:
+                text = ""
             words = hyp.get("words")
             if words is None:
                 ts = hyp.get("timestamp")

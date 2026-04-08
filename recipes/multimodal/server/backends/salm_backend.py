@@ -33,7 +33,6 @@ class SALMConfig(BackendConfig):
     """Configuration for SALM backend."""
 
     model_name: Optional[str] = None
-    batch_size: int = 16
     warmup: bool = True
     user_prompt: str = DEFAULT_ASR_PROMPT
 
@@ -50,7 +49,6 @@ class SALMConfig(BackendConfig):
             "temperature",
             "top_p",
             "top_k",
-            "batch_size",
             "warmup",
             "user_prompt",
         }
@@ -144,6 +142,8 @@ class SALMBackend(InferenceBackend):
         )
         if not has_audio:
             return "SALM backend requires audio input"
+        if request.audio_bytes_list is not None and len(request.audio_bytes_list) > 1:
+            return "SALM backend currently supports one audio input per request"
         return None
 
     def generate(self, requests: List[GenerationRequest]) -> List[GenerationResult]:
@@ -170,9 +170,10 @@ class SALMBackend(InferenceBackend):
                     results[idx] = GenerationResult(error=str(e), request_id=req.request_id)
 
             if temp_paths:
-                first_extra = requests[valid_indices[0]].extra_params or {}
+                first_req = requests[valid_indices[0]]
+                first_extra = first_req.extra_params or {}
                 user_prompt = first_extra.get("user_prompt", self.salm_config.user_prompt)
-                max_new_tokens = int(first_extra.get("max_new_tokens", self.config.max_new_tokens))
+                max_new_tokens = first_req.max_new_tokens or self.config.max_new_tokens
                 audio_tag = self._model.audio_locator_tag
 
                 prompts = []

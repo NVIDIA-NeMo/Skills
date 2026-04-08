@@ -38,7 +38,8 @@ Example usage::
 
 import argparse
 
-from nemo_skills.pipeline.cli import eval, wrap_arguments
+from nemo_skills.pipeline.cli import eval as run_eval
+from nemo_skills.pipeline.cli import wrap_arguments
 
 DEFAULT_SERVER_CONTAINER = "nvcr.io/nvidia/nemo:25.11"
 DEFAULT_INSTALLATION_COMMAND = "pip install -r requirements/audio.txt"
@@ -69,7 +70,7 @@ def main():
 
     args = parser.parse_args()
 
-    eval(
+    run_eval(
         ctx=wrap_arguments(
             "++prompt_format=openai "
             "++prompt_config=null "
