@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Tuple
 
 
 def to_bool(value: Any) -> bool:
+    """Convert common truthy/falsey values to bool."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -47,6 +48,7 @@ def to_bool(value: Any) -> bool:
 
 
 def to_int(value: Any, default: int = 0) -> int:
+    """Convert value to int, returning default on failure."""
     try:
         return int(value)
     except Exception:
@@ -54,6 +56,7 @@ def to_int(value: Any, default: int = 0) -> int:
 
 
 def to_float(value: Any, default: float = 0.0) -> float:
+    """Convert value to float, returning default on failure."""
     try:
         return float(value)
     except Exception:
@@ -61,6 +64,7 @@ def to_float(value: Any, default: float = 0.0) -> float:
 
 
 def load_clusters(path: Path) -> Dict[str, Any]:
+    """Load a cluster JSON payload and return empty dict on failure."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -70,6 +74,7 @@ def load_clusters(path: Path) -> Dict[str, Any]:
 
 
 def extract_problem_number(filename: str) -> int:
+    """Extract numeric problem id from '<id>_cluster.jsonl' filename."""
     try:
         return int(os.path.basename(filename).split("_", 1)[0])
     except Exception:
@@ -77,6 +82,7 @@ def extract_problem_number(filename: str) -> int:
 
 
 def any_solution_true(clusters_payload: Dict[str, Any]) -> bool:
+    """Check whether any solution in the payload has a true score."""
     for val in clusters_payload.values():
         if not isinstance(val, dict):
             continue
@@ -150,6 +156,7 @@ def build_sorted_clusters(
 
     # Helper: compute SRank per cluster based on outputs overlap and codes size
     def compute_srank_scores(items_list: List[Tuple[str, Dict[str, Any]]]) -> Dict[str, int]:
+        """Compute SRank-style overlap scores between clusters."""
         outputs_map: Dict[str, List[str]] = {}
         size_map: Dict[str, int] = {}
         for cid, cdict in items_list:
@@ -182,6 +189,7 @@ def build_sorted_clusters(
     elif inter_strategy == "size":
 
         def codes_len_safe(cluster_dict: Dict[str, Any]) -> int:
+            """Safely count cluster code entries."""
             codes = cluster_dict.get("codes", [])
             return len(codes) if isinstance(codes, list) else 0
 
@@ -232,6 +240,7 @@ def compute_submission_count_for_problem(
 
 
 def cluster_has_any_true(cluster_val: Dict[str, Any]) -> bool:
+    """Check whether a single cluster contains at least one true-scoring solution."""
     codes = cluster_val.get("codes", [])
     if not isinstance(codes, list):
         return False
@@ -261,6 +270,7 @@ def compute_oracle_inside_cluster_submission_count(
 
 
 def main() -> int:
+    """CLI entrypoint to compute submission count statistics over cluster files."""
     parser = argparse.ArgumentParser(
         description="Compute submission counts per problem using tournament_wins ordering and largest-token preference."
     )

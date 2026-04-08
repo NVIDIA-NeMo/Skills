@@ -22,11 +22,13 @@ from typing import Any, Dict, List, Set, Tuple
 
 
 def load_clusters(cluster_file: str) -> Dict[str, Any]:
+    """Load and parse the cluster JSON file."""
     with open(cluster_file, "r") as f:
         return json.load(f)
 
 
 def remove_empty_output_clusters(clusters: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop clusters that contain the known empty-output signature."""
     empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     filtered: Dict[str, Any] = {}
     for cid, cdata in clusters.items():
@@ -42,6 +44,7 @@ def remove_empty_output_clusters(clusters: Dict[str, Any]) -> Dict[str, Any]:
 def compute_cluster_representatives(
     clusters: Dict[str, Any], rng: random.Random, selection_strategy: str = "longest"
 ) -> Dict[str, Dict[str, Any]]:
+    """Select one representative solution per cluster and compute cluster score."""
     reps: Dict[str, Dict[str, Any]] = {}
     for cid, cdata in clusters.items():
         codes = cdata.get("codes", [])
@@ -58,6 +61,7 @@ def compute_cluster_representatives(
             elif selection_strategy == "wins":
                 # Choose solution with largest tournament_wins; tie-break by tokens
                 def wins_tokens_tuple(s: Dict[str, Any]) -> Tuple[int, int]:
+                    """Return sortable (wins, tokens) tuple with safe numeric parsing."""
                     try:
                         w = int(float(s.get("tournament_wins", 0)))
                     except Exception:
@@ -100,6 +104,7 @@ def compute_cluster_representatives(
 
 
 def extract_problem_number_from_cluster_path(cluster_path: str) -> int:
+    """Extract numeric problem id from a `<id>_cluster.jsonl` file path."""
     base = os.path.basename(cluster_path)
     m = re.match(r"^(\d+)_cluster\.jsonl$", base)
     if not m:
@@ -111,6 +116,7 @@ def extract_problem_number_from_cluster_path(cluster_path: str) -> int:
 
 
 def load_problem_metadata(problem_number: int, meta_path: str) -> Dict[str, Any]:
+    """Fetch problem metadata for a specific id from a JSONL metadata file."""
     # Read from a single JSONL file with many lines and find the one with matching id
     if problem_number < 0:
         return {}
@@ -141,6 +147,7 @@ def load_problem_metadata(problem_number: int, meta_path: str) -> Dict[str, Any]
 
 
 def generate_k_regular_simple_graph(num_nodes: int, k: int, rng: random.Random) -> List[Tuple[int, int]]:
+    """Generate a simple k-regular graph with rejection sampling and greedy fallback."""
     if k >= num_nodes:
         k = num_nodes - 1
     if k < 0:
@@ -271,6 +278,7 @@ def generate_k_regular_fast(num_nodes: int, k: int, rng: random.Random) -> List[
 
 
 def main():
+    """Build tournament matches and write schedule JSONL to file."""
     parser = argparse.ArgumentParser(
         description="Generate a balanced random tournament schedule (K-regular) for clusters in a file."
     )

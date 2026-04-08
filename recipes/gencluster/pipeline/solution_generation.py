@@ -21,6 +21,7 @@ from nemo_skills.pipeline.eval import eval
 
 
 def parse_generation_benchmark(benchmark: str, split: str | None = None) -> tuple[str, str, str]:
+    """Normalize benchmark input into (benchmark_type, split, dataset) tuple."""
     benchmark_str = benchmark.strip().lower()
     if benchmark_str.startswith("icpc"):
         match = re.search(r"(\d+)", benchmark_str)

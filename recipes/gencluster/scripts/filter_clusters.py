@@ -113,6 +113,7 @@ def filter_file(input_file, output_file):
 
 
 def main():
+    """CLI entrypoint for filtering cluster files by sample_score."""
     parser = argparse.ArgumentParser(description="Filter clusters by removing candidates with sample_score=False.")
     parser.add_argument(
         "--input-dir",

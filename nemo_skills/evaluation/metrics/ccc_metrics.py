@@ -9,18 +9,23 @@ from nemo_skills.evaluation.metrics.base import BaseMetrics
 
 
 class CCCMetrics(BaseMetrics):
+    """Metrics aggregator for CCC submissions and pass@k-style reports."""
+
     def __init__(self, **kwargs):
+        """Initialize CCC metrics state and base metric options."""
         super().__init__(**kwargs)
         self.eval_results_dir = None
         self.random_seeds_by_index = []
         self.reset()
 
     def reset(self):
+        """Reset counters and per-problem accumulation state."""
         super().reset()
         self.predictions_by_problem = defaultdict(list)
         self._solutions_written = False
 
     def setup(self, input_files):
+        """Capture run metadata and random-seed indices from input filenames."""
         sorted_files = sorted(str(path) for path in input_files)
         if sorted_files:
             self.eval_results_dir = str(Path(sorted_files[0]).resolve().parent)
@@ -31,6 +36,7 @@ class CCCMetrics(BaseMetrics):
             self.random_seeds_by_index.append(int(match.group(1)) if match else None)
 
     def update(self, predictions):
+        """Update aggregate metrics and index predictions by problem."""
         super().update(predictions)
         self._compute_pass_at_k(predictions)
         if not predictions:
@@ -47,6 +53,7 @@ class CCCMetrics(BaseMetrics):
         self.predictions_by_problem[problem_id].extend(annotated_predictions)
 
     def _get_score_dict(self, submission):
+        """Compute normalized score/correctness for a labeled subtask submission."""
         subtask = submission.get("subtask")
         subtask_result = submission.get("test_case_results", {}).get(subtask, {})
         score = float(subtask_result.get("score", 0.0))
@@ -55,6 +62,7 @@ class CCCMetrics(BaseMetrics):
         return {"correct": 1 if max_score > 0 and score >= max_score else 0, "score": normalized}
 
     def _aggregate_row_group(self, submissions, mode: str, subtask_name: str, declared_max_score: float | None = None):
+        """Aggregate repeated row submissions for one subtask under avg/best mode."""
         scores = []
         sample_passed = []
         sample_total = []
@@ -155,6 +163,7 @@ class CCCMetrics(BaseMetrics):
         }
 
     def _build_problem_reports(self, mode: str):
+        """Build detailed per-problem and global metric reports for a mode."""
         total_score = 0.0
         total_max_score = 0.0
         per_problem_report = []
@@ -327,6 +336,7 @@ class CCCMetrics(BaseMetrics):
         }
 
     def _select_minimal_solutions(self, problem_id: str, problem_name: str, submissions: list[dict], subtasks: dict):
+        """Select a minimal solution set that covers maximum achieved subtask scores."""
         ordered_subtasks = list(subtasks.keys())
         max_achieved_by_subtask = {subtask: float(report["score"]) for subtask, report in subtasks.items()}
         active_subtasks = [subtask for subtask, score in max_achieved_by_subtask.items() if score > 0.0]
@@ -417,17 +427,20 @@ class CCCMetrics(BaseMetrics):
 
     @staticmethod
     def _sanitize_filename_component(value):
+        """Normalize path component text for safe filesystem use."""
         sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value))
         return sanitized.strip("._") or "unknown"
 
     @staticmethod
     def _extract_solution_code(solution_text: str) -> str:
+        """Extract final code block from solution text for writing to disk."""
         matches = re.findall(r"```(?:cpp|c\+\+|cc)?\s*\n(.*?)```", solution_text or "", re.DOTALL | re.IGNORECASE)
         if matches:
             return matches[-1].strip() + "\n"
         return (solution_text or "").rstrip() + "\n"
 
     def _write_selected_solutions(self, report: dict):
+        """Write selected representative solutions and score metadata artifacts."""
         if self._solutions_written or not self.eval_results_dir:
             return
 
@@ -484,6 +497,7 @@ class CCCMetrics(BaseMetrics):
         self._solutions_written = True
 
     def get_metrics(self):
+        """Return filtered metrics enriched with CCC-specific summary/report fields."""
         metrics_dict = super().get_metrics()
         keep_keys = [f"pass@1[avg-of-{self.max_k}]", f"pass@{self.max_k}"]
         metrics_dict = {k: v for k, v in metrics_dict.items() if k in keep_keys}
@@ -578,4 +592,5 @@ class CCCMetrics(BaseMetrics):
         return metrics_dict
 
     def evaluations_to_print(self):
+        """Return metric keys to print in evaluation summaries."""
         return [f"pass@1[avg-of-{self.max_k}]", f"pass@{self.max_k}"]

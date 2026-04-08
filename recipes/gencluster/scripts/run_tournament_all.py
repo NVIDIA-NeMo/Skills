@@ -24,6 +24,7 @@ import tournament_schedule as ts
 
 
 def derive_output_path(input_file: str, output_dir: str) -> str:
+    """Derive schedule output path from an input cluster filename."""
     base = os.path.basename(input_file)
     derived = re.sub(r"_cluster\.jsonl$", "_schedule.jsonl", base)
     if derived == base:
@@ -32,6 +33,7 @@ def derive_output_path(input_file: str, output_dir: str) -> str:
 
 
 def build_directed_edges(n: int, edges: List[Tuple[int, int]], k: int, rng: random.Random) -> List[Tuple[int, int]]:
+    """Assign edge directions while balancing first-player appearances."""
     per_first = [0] * n
     target_first = k // 2
     directed = []
@@ -125,6 +127,7 @@ def write_schedule_jsonl(
     problem_meta: dict,
     progress: bool,
 ) -> int:
+    """Write inter-cluster schedule JSONL and return written line count."""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     count = 0
     total = len(directed)
@@ -198,6 +201,7 @@ def write_intracluster_schedule_jsonl(
 
 
 def main():
+    """Run tournament scheduling for all cluster files in an input directory."""
     parser = argparse.ArgumentParser(description="Run tournament schedules across problems and report line counts.")
     parser.add_argument("input_dir", type=str, help="Directory containing <problem>_cluster.jsonl files")
     parser.add_argument("games_per_cluster", type=int, help="Number of games per cluster")
@@ -246,6 +250,7 @@ def main():
         return
 
     def problem_num_from_path(path: str) -> int:
+        """Extract numeric problem id from '<id>_cluster.jsonl' path."""
         try:
             return int(os.path.basename(path).split("_", 1)[0])
         except Exception:

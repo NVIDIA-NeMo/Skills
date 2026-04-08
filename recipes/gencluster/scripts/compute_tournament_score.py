@@ -30,6 +30,7 @@ JUDGMENT_RE = re.compile(r"(?i)judg(?:e)?ment\s*:\s*(?:\[\s*)?([ab])(?:\s*\])?")
 
 
 def parse_tail_scores_and_winner(generation_text: str) -> Tuple[float, float, str]:
+    """Parse scoreA, scoreB, and winner label from a model judgment string."""
     # Normalize unicode spaces and remove markdown bold markers to make parsing robust.
     unicode_spaces = "\u00a0\u202f\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b"
     text = str(generation_text)
@@ -59,6 +60,7 @@ def parse_tail_scores_and_winner(generation_text: str) -> Tuple[float, float, st
 
 
 def try_get_numeric(value) -> Optional[float]:
+    """Convert a value to float when possible; otherwise return None."""
     if value is None:
         return None
     if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
@@ -73,6 +75,7 @@ def try_get_numeric(value) -> Optional[float]:
 
 
 def extract_cluster_base_score(obj: dict, side: str, explicit_key: Optional[str]) -> Optional[float]:
+    """Resolve cluster base score from explicit key or known side-specific aliases."""
     if explicit_key:
         return try_get_numeric(obj.get(explicit_key))
 
@@ -104,6 +107,7 @@ def extract_cluster_base_score(obj: dict, side: str, explicit_key: Optional[str]
 
 
 def extract_cluster_grade(obj: dict, side: str, explicit_key: Optional[str]) -> Optional[str]:
+    """Resolve cluster grade from explicit key or known side-specific aliases."""
     if explicit_key:
         val = obj.get(explicit_key)
         return None if val is None else str(val)
@@ -129,6 +133,7 @@ def extract_cluster_grade(obj: dict, side: str, explicit_key: Optional[str]) -> 
 
 
 def main():
+    """Aggregate per-cluster tournament stats from match JSONL into a CSV."""
     parser = argparse.ArgumentParser(
         description="Aggregate tournament scores and wins per cluster from JSONL matches."
     )

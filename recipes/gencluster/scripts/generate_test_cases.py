@@ -33,6 +33,7 @@ _thread_local = threading.local()
 
 
 def _get_thread_context():
+    """Return a worker-local event loop and sandbox, creating them on first use."""
     loop = getattr(_thread_local, "loop", None)
     sb = getattr(_thread_local, "sandbox", None)
     if loop is None or sb is None:
@@ -45,6 +46,7 @@ def _get_thread_context():
 
 
 def wait_for_sandbox(sandbox, loop, timeout: int = 240, poll: float = 1.0):
+    """Wait until sandbox command execution succeeds or timeout is reached."""
     deadline = loop.time() + timeout
     while loop.time() < deadline:
         try:
@@ -270,6 +272,7 @@ def generate_datasets_for_problem(
         return saved_count, generated_datasets
 
     def attempt_generation(gen_path):
+        """Generate, validate, and persist one dataset candidate for a problem."""
         nonlocal attempts, saved_count, next_index, active_gens
         loop, sandbox = _get_thread_context()
         # Early stop check
@@ -450,6 +453,7 @@ def generate_datasets_for_problem(
 
 
 def main():
+    """Generate validated datasets for all discovered problems under a base directory."""
     parser = argparse.ArgumentParser(description="Generate N validated datasets per problem")
     parser.add_argument("n_datasets", type=int, help="Number of datasets to generate per problem")
     parser.add_argument(

@@ -22,11 +22,13 @@ from typing import Dict, Tuple
 
 
 def load_clusters(path: str) -> Dict[str, dict]:
+    """Load a cluster JSON payload from disk."""
     with open(path, "r") as f:
         return json.load(f)
 
 
 def write_clusters(path: str, clusters: Dict[str, dict]) -> None:
+    """Write cluster payload to disk, creating parent directories when needed."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(clusters, f)
@@ -71,6 +73,7 @@ def read_scores_by_problem(csv_path: str, include_solution: bool = False):
 
             # Identify column indices
             def find_idx(candidates):
+                """Return the first matching header index from candidate names."""
                 for k in candidates:
                     if k in headers_l:
                         return headers_l.index(k)
@@ -155,6 +158,7 @@ def read_scores_by_problem(csv_path: str, include_solution: bool = False):
 
 
 def main():
+    """Merge tournament CSV metrics back into per-problem cluster files."""
     parser = argparse.ArgumentParser(
         description="Merge a single tournament CSV (first column is problem id) into per-problem cluster files."
     )

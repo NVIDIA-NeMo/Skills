@@ -168,15 +168,19 @@ def get_solution_iterator(clusters):
     cluster_cycle = cycle(cluster_names)
 
     def next_solution():
+        """Return the next solution tuple from the round-robin cluster cycle."""
         current_cluster = next(cluster_cycle)
         solution_index, solution = next(cluster_iterators[current_cluster])
         return current_cluster, solution_index, solution
 
     class SolutionIterator:
+        """Iterator wrapper that yields round-robin solutions across clusters."""
         def __iter__(self):
+            """Return this iterator instance."""
             return self
 
         def __next__(self):
+            """Return the next solution produced by `next_solution`."""
             return next_solution()
 
     return SolutionIterator()
@@ -286,6 +290,7 @@ def run_submission(
                     if "REMOVE_EMPTY" in globals() and globals().get("REMOVE_EMPTY"):
 
                         def _remove_empty_output_clusters(clusters_dict):
+                            """Drop clusters that contain the empty-output hash marker."""
                             empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                             filtered = {}
                             for cname, cdata in clusters_dict.items():
@@ -325,6 +330,7 @@ def run_submission(
                     elif strategy == "size":
                         # Sort by cluster size (more codes first)
                         def _codes_len_safe(cdict):
+                            """Safely return cluster code list length."""
                             codes = cdict.get("codes", [])
                             return len(codes) if isinstance(codes, list) else 0
 
@@ -359,12 +365,14 @@ def run_submission(
                     # Supported (aligned with ICPC script): longest, score, wins,
                     # shortest, first, random.
                     def _safe_int(v, default=0):
+                        """Convert value to int with fallback default."""
                         try:
                             return int(v)
                         except Exception:
                             return default
 
                     def _safe_float(v, default=0.0):
+                        """Convert value to float with fallback default."""
                         try:
                             return float(v)
                         except Exception:

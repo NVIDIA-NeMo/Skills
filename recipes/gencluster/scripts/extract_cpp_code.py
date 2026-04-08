@@ -34,6 +34,7 @@ def extract_final_cpp_block(text):
 
 
 def wait_for_sandbox(sandbox, loop, timeout: int = 240, poll: float = 1.0):
+    """Block until the sandbox responds to a simple shell command."""
     deadline = loop.time() + timeout
     while loop.time() < deadline:
         try:
@@ -160,6 +161,7 @@ def process_jsonl_file(jsonl_path, output_dir, binary_dir, folder_name, source_i
 
 
 def main():
+    """Extract C++ blocks from generation outputs and compile them in parallel."""
     # Parse arguments
     parser = argparse.ArgumentParser(
         description="Extract and compile C++ code from JSONL under generators/ and validators/"
@@ -238,6 +240,7 @@ def main():
 
     # Define per-file worker that owns its own loop and sandbox
     def _process_file(folder_name, fpath: Path):
+        """Process one JSONL file using a worker-local sandbox instance."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         sb = LocalSandbox()

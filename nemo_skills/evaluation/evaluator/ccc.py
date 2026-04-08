@@ -17,6 +17,8 @@ from nemo_skills.utils import nested_dataclass, unroll_files
 
 @nested_dataclass(kw_only=True)
 class CCCEvaluatorConfig(BaseEvaluatorConfig):
+    """Configuration for CCC code-evaluation execution and batching."""
+
     test_file: str = "test_metadata.json"
     num_workers: int = 16
     test_batch_size: int = 16
@@ -31,6 +33,7 @@ worker_sandbox = None  # type: ignore
 
 
 def _sandbox_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shell", timeout: int = 120):
+    """Execute a sandbox command synchronously on a thread-local event loop."""
     loop = getattr(_precompile_loop_tls, "loop", None)
     if loop is None or loop.is_closed():
         loop = asyncio.new_event_loop()
@@ -39,6 +42,7 @@ def _sandbox_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shel
 
 
 def _test_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shell", timeout: int = 120):
+    """Execute a test command synchronously on a thread-local test loop."""
     loop = getattr(_test_loop_tls, "loop", None)
     if loop is None or loop.is_closed():
         loop = asyncio.new_event_loop()
@@ -47,6 +51,7 @@ def _test_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shell",
 
 
 def _get_thread_test_sandbox() -> LocalSandbox:
+    """Get or create the worker-local sandbox instance used for test execution."""
     sandbox = getattr(_test_sandbox_tls, "sandbox", None)
     if sandbox is None:
         sandbox = LocalSandbox()
@@ -55,6 +60,7 @@ def _get_thread_test_sandbox() -> LocalSandbox:
 
 
 def wait_for_sandbox(sandbox, timeout: int = 240, poll: float = 1.0):
+    """Wait until sandbox responds to a trivial shell command."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -68,6 +74,7 @@ def wait_for_sandbox(sandbox, timeout: int = 240, poll: float = 1.0):
 
 
 def _precompile_problem(problem_id: str, grader_files, compile_code: str, run_code: str, sandbox: LocalSandbox) -> str:
+    """Materialize grader assets and precompile a problem once for reuse."""
     if getattr(sandbox, "_owner_tid", None) != threading.get_ident():
         sandbox = LocalSandbox()
         wait_for_sandbox(sandbox)
@@ -95,6 +102,7 @@ def _precompile_problem(problem_id: str, grader_files, compile_code: str, run_co
 
 
 def run_test_case(task_args: dict, worker_id: int) -> dict:
+    """Compile and run one generated solution against one CCC test case."""
     unique_dir = f"/nemo_run/ccc_run_{worker_id}_{os.getpid()}_{time.time_ns()}"
     try:
         precompiled_dir = task_args.get("precompiled_dir")
@@ -154,18 +162,21 @@ def run_test_case(task_args: dict, worker_id: int) -> dict:
 
 
 def extract_final_cpp_block(text):
+    """Extract the last fenced C++ block from model output text."""
     pattern = r"```(?:cpp|Cpp)\s*\n(.*?)```"
     matches = re.findall(pattern, text, re.DOTALL)
     return matches[-1] if matches else (text or "")
 
 
 def extract_final_text_block(text):
+    """Extract the last fenced plain-text block from model output text."""
     pattern = r"```(?:txt|text|plain)\s*\n(.*?)```"
     matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
     return matches[-1] if matches else (text or "")
 
 
 def extract_task_config(problem_metadata: dict) -> dict:
+    """Read optional grader config JSON embedded in problem metadata files."""
     for relpath, content in problem_metadata.get("grader_files", []):
         if relpath == "graders/grader_config.json":
             try:
@@ -176,6 +187,7 @@ def extract_task_config(problem_metadata: dict) -> dict:
 
 
 def add_includes(code: str, problem_header_include: str | None = None, problem_id: str | None = None) -> str:
+    """Inject standard includes/namespace and problem-specific compatibility shims."""
     if not code:
         return code
     code_header = "#include <bits/stdc++.h>\n"
@@ -197,7 +209,10 @@ def add_includes(code: str, problem_header_include: str | None = None, problem_i
 
 
 class CCCEvaluator(BaseEvaluator):
+    """Evaluator that compiles and executes CCC submissions against grader tests."""
+
     def __init__(self, config: dict, num_parallel_requests: int = 10):
+        """Initialize evaluator state and deferred runtime resources."""
         super().__init__(config, num_parallel_requests)
         self.eval_cfg = CCCEvaluatorConfig(_init_nested=True, **config)
         self.sandbox = None
@@ -206,10 +221,12 @@ class CCCEvaluator(BaseEvaluator):
         self.pool = None
 
     async def _initialize_runtime(self):
+        """Lazily initialize sandbox, metadata, and worker pool."""
         if self.sandbox is not None:
             return
 
         def _setup():
+            """Create runtime dependencies on a worker thread."""
             sbox = LocalSandbox()
             wait_for_sandbox(sbox)
             sbox._owner_tid = threading.get_ident()
@@ -223,6 +240,7 @@ class CCCEvaluator(BaseEvaluator):
         self.sandbox, self.metadata, self.pool = await asyncio.to_thread(_setup)
 
     def _get_precompiled_dir(self, problem_id: str, problem_metadata: dict):
+        """Return cached precompiled grader dir for a problem, compiling if needed."""
         if problem_id in self.precompiled_cache:
             cached = self.precompiled_cache[problem_id]
             return cached["grader"] if isinstance(cached, dict) else cached
@@ -240,6 +258,7 @@ class CCCEvaluator(BaseEvaluator):
     def _build_test_task(
         self, problem_id: str, pre_dir: str, completion: str, test_data: dict, task_type: str = "Batch"
     ):
+        """Build a run_test_case task payload for one test input/output pair."""
         return {
             "generated_code": completion,
             "task_type": task_type,
@@ -251,6 +270,7 @@ class CCCEvaluator(BaseEvaluator):
         }
 
     def _aggregate_subtask_score(self, subtask_meta: dict, outputs: list[dict], failed: bool = False) -> float:
+        """Aggregate per-test results into a subtask score using configured policy."""
         aggregation = subtask_meta["aggregation"]
         if aggregation == "min":
             if failed:
@@ -266,6 +286,7 @@ class CCCEvaluator(BaseEvaluator):
         raise ValueError(f"Unsupported aggregation: {aggregation}")
 
     async def _evaluate_entry(self, entry: dict) -> dict:
+        """Evaluate one generation entry and return computed test-case results."""
         await self._initialize_runtime()
 
         problem_id = entry["problem_id"]
@@ -348,6 +369,7 @@ class CCCEvaluator(BaseEvaluator):
         }
 
     async def eval_full(self):  # type: ignore[override]
+        """Evaluate all configured input files and write results in place."""
         await self._initialize_runtime()
 
         for jsonl_file in unroll_files(self.eval_cfg.input_file):
@@ -376,4 +398,5 @@ class CCCEvaluator(BaseEvaluator):
             self.pool.shutdown(wait=True)
 
     async def eval_single(self, data_point: dict):
+        """Evaluate a single data point entry."""
         return await self._evaluate_entry(data_point)

@@ -20,6 +20,7 @@ from typing import Dict, List
 
 
 def collect_datasets(root_dir: Path):
+    """Collect text datasets from numeric subfolders and remap folder ids sequentially."""
     if not root_dir.exists() or not root_dir.is_dir():
         raise FileNotFoundError(f"Root directory not found or not a directory: {root_dir}")
 
@@ -28,6 +29,7 @@ def collect_datasets(root_dir: Path):
 
     # Sort subdirectories numerically when possible, fallback to lexicographic
     def sort_key(p: Path):
+        """Sort numeric directory names before non-numeric names."""
         name = p.name
         return (0, int(name)) if name.isdigit() else (1, name)
 
@@ -65,6 +67,7 @@ def collect_datasets(root_dir: Path):
 
 
 def main() -> None:
+    """CLI entrypoint for building grouped dataset JSON from text files."""
     parser = argparse.ArgumentParser(
         description="Build a JSON file from text files grouped by id subdirectories inside ioi25."
     )
