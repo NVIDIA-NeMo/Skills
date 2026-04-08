@@ -39,6 +39,7 @@ def format_entry(entry, lang, prompt_language):
     instruction = MATH_INSTRUCTIONS[lang] if prompt_language == "target" else EN_INSTRUCTION
     return {
         "question": f"{instruction}\n\n{entry['problem']}",
+        "problem": entry["problem"],
         "expected_answer": entry["expected_answer"],
         "subset_for_metrics": lang,
         "target_language": lang,
@@ -50,13 +51,17 @@ def main(args):
     data_dir.mkdir(exist_ok=True)
     output_file = data_dir / "test.jsonl"
 
+    all_entries = []
+    for lang in args.languages:
+        print(f"Loading language: {lang}")
+        ds = load_dataset("nvidia/Nemotron-Multilinugual-Eval-AIME24", split=lang)
+        for entry in tqdm(ds, desc=f"Collecting {lang}"):
+            all_entries.append(format_entry(entry, lang, args.prompt_language))
+
     with open(output_file, "wt", encoding="utf-8") as fout:
-        for lang in args.languages:
-            print(f"Loading language: {lang}")
-            ds = load_dataset("nvidia/Nemotron-Multilinugual-Eval-AIME24", split=lang)
-            for entry in tqdm(ds, desc=f"Writing {lang}"):
-                json.dump(format_entry(entry, lang, args.prompt_language), fout, ensure_ascii=False)
-                fout.write("\n")
+        for entry in all_entries:
+            json.dump(entry, fout, ensure_ascii=False)
+            fout.write("\n")
 
     print(f"Saved to {output_file}")
 

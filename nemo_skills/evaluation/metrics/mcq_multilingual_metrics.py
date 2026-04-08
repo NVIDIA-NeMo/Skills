@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 from langdetect import DetectorFactory, LangDetectException, detect
 
 from nemo_skills.evaluation.metrics.base import as_percentage
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
-from nemo_skills.utils import get_logger_name, parse_reasoning
+from nemo_skills.utils import parse_reasoning
 
 # Set seed for consistent results
 DetectorFactory.seed = 42
-
-
-LOG = logging.getLogger(get_logger_name(__file__))
 
 
 class MCQMultilingualMetrics(MathMetrics):
