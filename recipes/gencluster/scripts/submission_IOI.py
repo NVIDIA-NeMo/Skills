@@ -175,6 +175,7 @@ def get_solution_iterator(clusters):
 
     class SolutionIterator:
         """Iterator wrapper that yields round-robin solutions across clusters."""
+
         def __iter__(self):
             """Return this iterator instance."""
             return self
