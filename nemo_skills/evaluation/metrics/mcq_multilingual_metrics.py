@@ -12,7 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Language code invariants enforced by this module:
+#   - target_language in dataset entries must be a valid ISO 639-1 2-letter code
+#     that is also supported by langdetect (validated in _get_score_dict).
+#   - _detect_language always returns a 2-letter ISO 639-1 code or 'unknown';
+#     langdetect's 'zh-cn'/'zh-tw' are normalized to 'zh'.
+
+import os
+
+from iso639.exceptions import InvalidLanguageValue
+from iso639.iso639 import Lang
 from langdetect import DetectorFactory, LangDetectException, detect
+from langdetect.detector_factory import PROFILES_DIRECTORY
 
 from nemo_skills.evaluation.metrics.base import as_percentage
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
@@ -20,6 +31,10 @@ from nemo_skills.utils import parse_reasoning
 
 # Set seed for consistent results
 DetectorFactory.seed = 42
+
+# langdetect returns 'zh-cn'/'zh-tw' for Chinese; normalize both to the
+# ISO 639-1 code 'zh'. Build the supported set accordingly.
+_LANGDETECT_SUPPORTED = {"zh" if lang.startswith("zh") else lang for lang in os.listdir(PROFILES_DIRECTORY)}
 
 
 class MCQMultilingualMetrics(MathMetrics):
@@ -35,6 +50,19 @@ class MCQMultilingualMetrics(MathMetrics):
         correctness_dict = super()._get_score_dict(prediction)
 
         if "target_language" in prediction:
+            lang = prediction["target_language"]
+            # Validate ISO 639-1 compliance using iso639-lang (already a dependency).
+            try:
+                Lang(pt1=lang)
+            except InvalidLanguageValue:
+                raise ValueError(f"target_language must be a valid ISO 639-1 2-letter code, got: {lang!r}")
+            # Validate that langdetect can actually detect this language.
+            if lang not in _LANGDETECT_SUPPORTED:
+                raise ValueError(
+                    f"target_language {lang!r} is a valid ISO 639-1 code but is not supported "
+                    f"by langdetect. Supported languages: {sorted(_LANGDETECT_SUPPORTED)}"
+                )
+
             if "_full_generation" in prediction:
                 # parse_reasoning=True was used upstream; "generation" is already answer-only
                 text_for_lang_detection = prediction["generation"]
@@ -48,7 +76,7 @@ class MCQMultilingualMetrics(MathMetrics):
                 text_for_lang_detection = (
                     temp["generation"] if temp.get("_generation_finished_thinking") else prediction["generation"]
                 )
-            language_correct = self._detect_language(text_for_lang_detection) == prediction["target_language"]
+            language_correct = self._detect_language(text_for_lang_detection) == lang
         else:
             language_correct = False
 
@@ -73,14 +101,13 @@ class MCQMultilingualMetrics(MathMetrics):
         return metrics
 
     def _detect_language(self, text):
-        """
-        Detect the language of a given text.
+        """Detect the language of a given text.
+
+        Returns an ISO 639-1 2-letter code, or 'unknown' if detection fails.
+        langdetect's 'zh-cn' and 'zh-tw' outputs are both normalized to 'zh'.
 
         Args:
-            text (str): The text to analyze
-
-        Returns:
-            str: The detected language code (e.g., 'en', 'es', 'fr') or 'unknown'
+            text (str): The text to analyze.
         """
         if not text or not text.strip():
             return "unknown"
@@ -92,6 +119,10 @@ class MCQMultilingualMetrics(MathMetrics):
                 return "unknown"
 
             detected_lang = detect(cleaned_text)
+            # langdetect returns 'zh-cn' or 'zh-tw' for Chinese; normalize to
+            # the ISO 639-1 code 'zh' to match dataset target_language values.
+            if detected_lang.startswith("zh"):
+                detected_lang = "zh"
             return detected_lang
         except LangDetectException:
             return "unknown"
