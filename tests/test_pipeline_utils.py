@@ -404,3 +404,243 @@ def test_non_sandbox_command_mounts_unchanged():
     cmd = Command(script=script, container="nemo-skills:latest", name="client")
     _, exec_config = cmd.prepare_for_execution({"executor": "slurm"})
     assert exec_config["mounts"] is None, "Non-sandbox commands should inherit cluster mounts (mounts=None)"
+
+
+# --- sandbox_mounts resolution: full 2x2 matrix (keep_mounts_for_sandbox x sandbox_mounts) ---
+#
+# Priority order: sandbox_mounts (if non-empty) > keep_mounts_for_sandbox > safe default ([])
+#
+# sandbox_mounts present  (any keep_mounts)      -> sandbox_mounts exactly  (cases 2 & 4)
+# sandbox_mounts absent + keep_mounts=False      -> []     safe default     (case 1, existing test)
+# sandbox_mounts absent + keep_mounts=True       -> None   inherit cluster  (case 3, existing test)
+
+
+@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+def test_sandbox_mounts_used_when_keep_mounts_false(mock_port, mock_cmd):
+    """Case 2: keep_mounts_for_sandbox=False + sandbox_mounts defined -> sandbox gets exactly those mounts.
+
+    This is the primary new code path: sandbox_mounts in cluster config replaces the default
+    empty-list fallback, giving the sandbox access to specific paths without granting full
+    cluster filesystem access (which keep_mounts_for_sandbox=True would do).
+    """
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {
+        "executor": "slurm",
+        "containers": {"sandbox": "sandbox:latest"},
+        "sandbox_mounts": ["/data/sandbox:/sandbox-data", "/models/readonly:/models:ro"],
+    }
+    # keep_mounts_for_sandbox=False is the default; mirrors how generate.py constructs SandboxScript
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=False)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+
+    assert exec_config["mounts"] == ["/data/sandbox:/sandbox-data", "/models/readonly:/models:ro"], (
+        "sandbox_mounts must be passed through exactly when keep_mounts_for_sandbox=False"
+    )
+
+
+@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+def test_sandbox_mounts_takes_precedence_over_keep_mounts_true(mock_port, mock_cmd):
+    """Case 4: keep_mounts_for_sandbox=True + sandbox_mounts defined -> sandbox_mounts wins.
+
+    sandbox_mounts in config takes precedence over keep_mounts_for_sandbox=True, making the
+    risky 'inherit all cluster mounts' behaviour opt-out rather than opt-in when sandbox_mounts
+    is explicitly configured.
+    """
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {
+        "executor": "slurm",
+        "containers": {"sandbox": "sandbox:latest"},
+        "sandbox_mounts": ["/data/sandbox:/sandbox-data"],
+    }
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=True)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+
+    assert exec_config["mounts"] == ["/data/sandbox:/sandbox-data"], (
+        "sandbox_mounts must take precedence over keep_mounts_for_sandbox=True"
+    )
+
+
+@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+def test_sandbox_mounts_env_var_expansion(mock_port, mock_cmd, monkeypatch):
+    """sandbox_mounts entries with ${VAR} placeholders are resolved before being passed to executor."""
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    monkeypatch.setenv("SANDBOX_DATA", "/cluster/storage/sandbox")
+    cluster_config = {
+        "executor": "slurm",
+        "containers": {"sandbox": "sandbox:latest"},
+        "sandbox_mounts": ["${SANDBOX_DATA}:/sandbox-data:ro"],
+    }
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=False)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+
+    assert exec_config["mounts"] == ["/cluster/storage/sandbox:/sandbox-data:ro"]
+
+
+@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+def test_sandbox_mounts_absent_falls_back_to_empty(mock_port, mock_cmd):
+    """sandbox_mounts absent with keep_mounts=False falls back to [] (no filesystem access).
+
+    Explicit counterpart to test_sandbox_mounts_used_when_keep_mounts_false: confirms the
+    fallback path is taken when sandbox_mounts is not in the cluster config at all, even when
+    a regular mounts section is present.
+    """
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {
+        "executor": "slurm",
+        "containers": {"sandbox": "sandbox:latest"},
+        "mounts": ["/models:/models"],  # regular mounts present but no sandbox_mounts
+    }
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=False)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+
+    assert exec_config["mounts"] == [], (
+        "without sandbox_mounts, keep_mounts=False must fall back to [] not the regular cluster mounts"
+    )
+
+
+# --- get_executor: mounts parameter overrides cluster config mounts ---
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_packager")
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="nemo:latest")
+def test_get_executor_mounts_none_falls_back_to_config(mock_resolve, mock_packager):
+    """get_executor with mounts=None should use cluster config mounts."""
+    from nemo_skills.pipeline.utils.exp import get_executor
+
+    cluster_config = {"executor": "local", "mounts": ["/host/models:/models"]}
+    executor = get_executor(cluster_config=cluster_config, container="nemo:latest", mounts=None)
+    assert executor.volumes == ["/host/models:/models"]
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_packager")
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="nemo:latest")
+def test_get_executor_empty_mounts_overrides_config(mock_resolve, mock_packager):
+    """get_executor with mounts=[] should use empty list, not cluster config mounts."""
+    from nemo_skills.pipeline.utils.exp import get_executor
+
+    cluster_config = {"executor": "local", "mounts": ["/host/models:/models"]}
+    executor = get_executor(cluster_config=cluster_config, container="nemo:latest", mounts=[])
+    assert executor.volumes == []
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_packager")
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="nemo:latest")
+def test_get_executor_explicit_mounts_overrides_config(mock_resolve, mock_packager):
+    """get_executor with explicit mounts should use those, not cluster config mounts."""
+    from nemo_skills.pipeline.utils.exp import get_executor
+
+    cluster_config = {"executor": "local", "mounts": ["/host/models:/models"]}
+    executor = get_executor(cluster_config=cluster_config, container="nemo:latest", mounts=["/sandbox/data:/data:ro"])
+    assert executor.volumes == ["/sandbox/data:/data:ro"]
+
+
+# --- add_task: sandbox mount resolution ---
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_sandbox_mounts_used_when_configured(mock_port, mock_get_executor):
+    """add_task: sandbox_mounts in config takes precedence over keep_mounts_for_sandbox."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="task_handle"))
+    cluster_config = {
+        "executor": "local",
+        "containers": {"sandbox": "sandbox:latest"},
+        "sandbox_mounts": ["/host/data:/sandbox/data:ro"],
+    }
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_sandbox=True,
+        keep_mounts_for_sandbox=False,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    sandbox_mounts = mock_get_executor.call_args_list[-1].kwargs["mounts"]
+    assert sandbox_mounts == ["/host/data:/sandbox/data:ro"]
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_keep_mounts_for_sandbox_true_no_sandbox_mounts(mock_port, mock_get_executor):
+    """add_task: keep_mounts_for_sandbox=True with no sandbox_mounts → None (inherit cluster mounts)."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="task_handle"))
+    cluster_config = {
+        "executor": "local",
+        "containers": {"sandbox": "sandbox:latest"},
+    }
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_sandbox=True,
+        keep_mounts_for_sandbox=True,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    sandbox_mounts = mock_get_executor.call_args_list[-1].kwargs["mounts"]
+    assert sandbox_mounts is None
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_no_sandbox_mounts_falls_back_to_empty(mock_port, mock_get_executor):
+    """add_task: no sandbox_mounts + keep_mounts_for_sandbox=False → [] (safe default)."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="task_handle"))
+    cluster_config = {
+        "executor": "local",
+        "containers": {"sandbox": "sandbox:latest"},
+    }
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_sandbox=True,
+        keep_mounts_for_sandbox=False,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    sandbox_mounts = mock_get_executor.call_args_list[-1].kwargs["mounts"]
+    assert sandbox_mounts == []

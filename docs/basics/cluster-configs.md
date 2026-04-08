@@ -53,6 +53,44 @@ export AZURE_OPENAI_API_KEY=...
 export NVIDIA_API_KEY=...
 ```
 
+## Mounts
+
+Cluster configs support two separate mount lists:
+
+```yaml
+mounts:
+  - <host path>:/container/path
+
+sandbox_mounts:
+  - <host path>:/container/path:ro
+  - <host scratch>:/scratch:rw
+```
+
+### `mounts`
+
+Use `mounts` for the main job containers: generation clients, eval jobs, servers, training jobs, and any other
+non-sandbox workload. This is the existing mount mechanism and nothing changes about its behavior.
+
+### `sandbox_mounts`
+
+Use `sandbox_mounts` only for the code-execution sandbox sidecar. It is processed in parallel to `mounts`, but applies
+only to sandbox containers.
+
+- If `sandbox_mounts` is present and non-empty, the sandbox uses exactly that list — this takes precedence over `--keep-mounts-for-sandbox`.
+- `sandbox_mounts` supports `src:dst:mode`, where `mode` can be `ro` or `rw`.
+- If `sandbox_mounts` is absent, behavior falls back to the existing `keep_mounts_for_sandbox` logic:
+  - default: sandbox gets no filesystem mounts
+  - with `--keep_mounts_for_sandbox`: sandbox inherits the main `mounts`
+
+This makes `sandbox_mounts` the safer option when a benchmark or workflow needs the sandbox to see only a small subset
+of files, instead of all cluster mounts.
+
+### When To Use Which
+
+- Use `mounts` when the main job needs access to models, datasets, caches, or patched libraries.
+- Use `sandbox_mounts` when only the sandbox needs filesystem access — it overrides `--keep_mounts_for_sandbox` when present.
+- Use `--keep_mounts_for_sandbox` only when `sandbox_mounts` is absent and you intentionally want the sandbox to inherit the full main mount set.
+
 
 ## Useful tips
 

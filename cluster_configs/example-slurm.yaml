@@ -46,6 +46,15 @@ job_name_prefix: "nemo_skills:"
 #   you can also override container libraries by directly mounting over them. E.g. to override NeMo-Aligner do
 #   - <path on slurm>/NeMo-Aligner:/opt/NeMo-Aligner
 
+# optional: sandbox-specific mounts (independent of mounts above).
+# when defined, the sandbox container receives exactly these mounts instead of either all cluster
+# mounts (keep_mounts_for_sandbox=True) or no mounts (keep_mounts_for_sandbox=False, the default).
+# supports src:dst or src:dst:mode format, where mode must be ro or rw (e.g. src:dst:ro for read-only).
+# if absent, the existing keep_mounts_for_sandbox behaviour is used as fallback.
+# sandbox_mounts:
+#   - <path on slurm>/sandbox-data:/sandbox-data
+#   - <path on slurm>/readonly-data:/readonly-data:ro
+
 # can use this section to set timeouts for different partitions
 # this will be used as a slurm parameter + to signal SFT job to finish
 # before the timeout to have time to save the last checkpoint

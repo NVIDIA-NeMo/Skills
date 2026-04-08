@@ -36,7 +36,7 @@ from nemo_skills.pipeline.utils.exp import (
     get_packaging_job_key,
     tunnel_hash,
 )
-from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
+from nemo_skills.pipeline.utils.mounts import get_sandbox_mounts_from_config, is_mounted_filepath
 from nemo_skills.pipeline.utils.scripts import SandboxScript
 from nemo_skills.pipeline.utils.server import wrap_python_path
 from nemo_skills.utils import get_logger_name
@@ -246,15 +246,24 @@ class Command:
             self.script.set_inline(evaluated_command)
 
         # Build execution config from Script fields.
-        # For SandboxScript, keep_mounts=False (the safe default) maps to mounts=[]
-        # so the sandbox container has no access to cluster filesystems.
-        # keep_mounts=True maps to mounts=None, which inherits cluster mounts.
-        # Other scripts default to mounts=None (inherit cluster mounts).
+        # Non-sandbox scripts dont define keep_mounts attribute and default to mounts=None (inherit cluster mounts).
+        # For SandboxScript, keep_mounts=False (the safe default) is set unless overridden by --keep_mounts_for_sandbox
+        # sandbox mounts resolve in three ways (in priority order):
+        #   sandbox_mounts in config (non-empty) -> use sandbox_mounts exactly  (takes precedence over keep_mounts)
+        #   keep_mounts=True + no sandbox_mounts -> mounts=None  (inherit all cluster mounts, risky)
+        #   keep_mounts=False + no sandbox_mounts -> mounts=[] (no filesystem access, safe default)
         keep_mounts = getattr(self.script, "keep_mounts", True)
+        sandbox_mounts = get_sandbox_mounts_from_config(cluster_config)
+        if sandbox_mounts:
+            exec_mounts = sandbox_mounts
+        elif keep_mounts:
+            exec_mounts = None
+        else:
+            exec_mounts = []
         execution_config = {
             "log_prefix": getattr(self.script, "log_prefix", "main"),
             "environment": runtime_metadata.get("environment", {}),
-            "mounts": None if keep_mounts else [],
+            "mounts": exec_mounts,
             "container": self.container,
         }
 

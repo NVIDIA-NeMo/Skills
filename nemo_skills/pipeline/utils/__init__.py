@@ -61,6 +61,7 @@ from nemo_skills.pipeline.utils.mounts import (
     create_remote_directory,
     get_mounted_path,
     get_mounts_from_config,
+    get_sandbox_mounts_from_config,
     get_unmounted_path,
     is_mounted_filepath,
     resolve_mount_paths,

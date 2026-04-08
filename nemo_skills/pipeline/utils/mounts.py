@@ -68,6 +68,86 @@ def _resolve_path_placeholders(path: str) -> str:
     return path
 
 
+def _resolve_mount_path_with_env_variables(mount: str, allow_rw_mode: bool = True) -> str:
+    """Resolve environment variable placeholders in a single mount string and return the resolved mount.
+
+    Handles two environment variable styles in the source and target fields:
+      - `${VAR}` style: allows partial path substitution, e.g. `/path/${USER}/subdir:/dst`
+      - `{VAR}` style: legacy full-field replacement, e.g. `{SRC_VAR}:{DST_VAR}`
+
+    Supports both two-field (`src:dst`) and, when `allow_rw_mode=True`, three-field
+    (`src:dst:mode`) mount formats. The mode field (e.g. `ro` for read-only) is
+    passed through unchanged.
+
+    Args:
+        mount (str): raw mount string from cluster config, e.g. `src:dst` or `src:dst:mode`
+        allow_rw_mode (bool): whether to allow an optional third mode field
+
+    Returns:
+        str: resolved mount string with environment variables substituted
+
+    Raises:
+        ValueError: if the mount string has an invalid number of fields, or if a required
+            environment variable is not set
+    """
+    if ":" not in mount:
+        raise ValueError(f"Invalid mount format: {mount}. The mount path must be separated by a colon.")
+
+    # First, expand any ${VAR} style environment variables in the entire mount string
+    # This allows partial path substitution like /path/${USER}/subdir
+    if "$" in mount:
+        mount = os.path.expandvars(mount)
+        if "${" in mount and "}" in mount:
+            raise ValueError(
+                f"Mount `{mount}` contains env variable placeholders, but the required env var is "
+                f"not provided in the environment to resolve."
+            )
+
+    parts = mount.split(":")
+    if len(parts) not in (2, 3):
+        raise ValueError(
+            f"Invalid mount format: {mount}. The mount path must be in the format `src:dst`"
+            f"{' or `src:dst:mode`' if allow_rw_mode else ''}."
+        )
+    if not allow_rw_mode and len(parts) == 3:
+        raise ValueError(f"Invalid mount format: {mount}. The mount path must be in the format `src:dst`.")
+
+    mount_source = parts[0]
+    mount_target = parts[1]
+    mount_mode = parts[2] if len(parts) > 2 else None
+    if mount_mode is not None and mount_mode not in {"ro", "rw"}:
+        raise ValueError(f"Invalid mount mode: {mount_mode} in `{mount}`. Supported mount modes are `ro` and `rw`.")
+
+    # Then handle {VAR} style for full path replacement (legacy support)
+    if mount_source[0] == "{" and mount_source[-1] == "}":
+        # Resolve the environment variable for the mount source
+        mount_source = mount_source[1:-1]
+
+        if mount_source not in os.environ:
+            raise ValueError(
+                f"Required environment variable {mount_source} not found in env variables passed in cluster configs."
+            )
+
+        mount_source = os.environ[mount_source]
+
+    if mount_target[0] == "{" and mount_target[-1] == "}":
+        # Resolve the environment variable for the mount target
+        mount_target = mount_target[1:-1]
+
+        if mount_target not in os.environ:
+            raise ValueError(
+                f"Required environment variable {mount_target} not found in env variables passed in cluster configs."
+            )
+
+        mount_target = os.environ[mount_target]
+
+    # reconstruct the mount string, preserving the optional mode field
+    resolved_mount = f"{mount_source}:{mount_target}"
+    if mount_mode is not None:
+        resolved_mount = f"{resolved_mount}:{mount_mode}"
+    return resolved_mount
+
+
 def check_mounts(
     cluster_config,
     log_dir: str,
@@ -413,43 +493,31 @@ def get_mounts_from_config(cluster_config: dict):
 
     # if there are env_mounts, we will add the mounts from the env_mounts
     for mount_id in range(len(mounts)):
-        mount = mounts[mount_id]
+        mounts[mount_id] = _resolve_mount_path_with_env_variables(mounts[mount_id], allow_rw_mode=False)
 
-        if ":" not in mount:
-            raise ValueError(f"Invalid mount format: {mount}. The mount path must be separated by a colon.")
+    return mounts
 
-        # First, expand any ${VAR} style environment variables in the entire mount string
-        # This allows partial path substitution like /path/${USER}/subdir
-        if "$" in mount:
-            mount = os.path.expandvars(mount)
 
-        mount_source, mount_target = mount.split(":")
+def get_sandbox_mounts_from_config(cluster_config: dict):
+    """
+    Like get_mounts_from_config but reads the `sandbox_mounts` key instead of `mounts`.
+    Returns None if `sandbox_mounts` is not defined (signals callers to fall back to the
+    keep_mounts_for_sandbox behaviour). Supports an optional mode field: `src:dst:mode`
+    (e.g. `src:dst:ro` for read-only) in addition to the standard `src:dst` format.
 
-        # Then handle {VAR} style for full path replacement (legacy support)
-        if mount_source[0] == "{" and mount_source[-1] == "}":
-            # Resolve the environment variable for the mount source
-            mount_source = mount_source[1:-1]
+    Args:
+        cluster_config (dict): cluster config dictionary
 
-            if mount_source not in os.environ:
-                raise ValueError(
-                    f"Required environment variable {mount_source} not found in env variables passed in cluster configs."
-                )
+    Returns:
+        list or None: resolved list of sandbox mounts, or None if `sandbox_mounts`
+            is not defined in the cluster config
+    """
+    if "sandbox_mounts" not in cluster_config:
+        return None
 
-            mount_source = os.environ[mount_source]
+    mounts = cluster_config.get("sandbox_mounts", [])
 
-        if mount_target[0] == "{" and mount_target[-1] == "}":
-            # Resolve the environment variable for the mount target
-            mount_target = mount_target[1:-1]
-
-            if mount_target not in os.environ:
-                raise ValueError(
-                    f"Required environment variable {mount_target} not found in env variables passed in cluster configs."
-                )
-
-            mount_target = os.environ[mount_target]
-
-        # add the mount to the list of mounts
-        resolved_mount = f"{mount_source}:{mount_target}"
-        mounts[mount_id] = resolved_mount
+    for mount_id in range(len(mounts)):
+        mounts[mount_id] = _resolve_mount_path_with_env_variables(mounts[mount_id], allow_rw_mode=True)
 
     return mounts
