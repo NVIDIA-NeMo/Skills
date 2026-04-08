@@ -75,7 +75,7 @@ def main():
         "--model_path",
         type=str,
         default="/hf_models/",
-        help="Path to the model (default: /hf_models/",
+        help="Path to the model (default: /hf_models/)",
     )
     parser.add_argument(
         "--cluster",
@@ -104,13 +104,13 @@ def main():
         "--inter-strategy",
         type=str,
         default="size",
-        help="Inter-cluster strategy passed to submission_ICPC.py (default: wins)",
+        help="Inter-cluster strategy passed to submission_ICPC.py (default: size)",
     )
     parser.add_argument(
         "--intra-strategy",
         type=str,
         default="wins",
-        help="Intra-cluster strategy passed to submission_ICPC.py (default: longest)",
+        help="Intra-cluster strategy passed to submission_ICPC.py (default: wins)",
     )
     args = parser.parse_args()
     cluster_folder = args.cluster_folder
@@ -191,7 +191,7 @@ def main():
             num_random_seeds=1,
             dependent_jobs=0,
             time_min="04:00:00",
-            run_after=[f"play_tournament_schedule_{model}"],
+            run_after=[f"play_intra_tournament_schedule_{model}"],
             with_sandbox=True,
         )
         stage = "submission"

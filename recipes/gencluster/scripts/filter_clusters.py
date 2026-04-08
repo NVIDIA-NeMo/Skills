@@ -21,6 +21,7 @@ Output is written to clusters_filtered directory.
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 
@@ -132,7 +133,7 @@ def main():
     # Check if input directory exists
     if not input_dir.exists():
         print(f"Error: Directory '{input_dir}' not found!")
-        return
+        sys.exit(1)
 
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -143,7 +144,7 @@ def main():
 
     if not cluster_files:
         print(f"Error: No *_cluster.jsonl files found in '{input_dir}'!")
-        return
+        sys.exit(1)
 
     # Process each file
     print("Filtering clusters...\n")

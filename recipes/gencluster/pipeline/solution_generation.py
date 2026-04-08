@@ -81,7 +81,7 @@ def main():
         "--model_path",
         type=str,
         default="/hf_models/",
-        help="Path to the model (default: /hf_models/",
+        help="Path to the model (default: /hf_models/)",
     )
     parser.add_argument(
         "--model_path_is_full",

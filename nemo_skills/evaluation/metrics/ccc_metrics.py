@@ -10,7 +10,7 @@ from nemo_skills.evaluation.metrics.base import BaseMetrics
 
 class CCCMetrics(BaseMetrics):
     def __init__(self, **kwargs):
-        super().__init__()
+        super().__init__(**kwargs)
         self.eval_results_dir = None
         self.random_seeds_by_index = []
         self.reset()
