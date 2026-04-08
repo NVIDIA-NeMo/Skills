@@ -520,7 +520,16 @@ def test_get_executor_mounts_none_falls_back_to_config(mock_resolve, mock_packag
     from nemo_skills.pipeline.utils.exp import get_executor
 
     cluster_config = {"executor": "local", "mounts": ["/host/models:/models"]}
-    executor = get_executor(cluster_config=cluster_config, container="nemo:latest", mounts=None)
+    executor = get_executor(
+        cluster_config=cluster_config,
+        container="nemo:latest",
+        num_nodes=1,
+        tasks_per_node=1,
+        gpus_per_node=0,
+        job_name="test",
+        log_dir="/tmp",
+        mounts=None,
+    )
     assert executor.volumes == ["/host/models:/models"]
 
 
@@ -531,7 +540,16 @@ def test_get_executor_empty_mounts_overrides_config(mock_resolve, mock_packager)
     from nemo_skills.pipeline.utils.exp import get_executor
 
     cluster_config = {"executor": "local", "mounts": ["/host/models:/models"]}
-    executor = get_executor(cluster_config=cluster_config, container="nemo:latest", mounts=[])
+    executor = get_executor(
+        cluster_config=cluster_config,
+        container="nemo:latest",
+        num_nodes=1,
+        tasks_per_node=1,
+        gpus_per_node=0,
+        job_name="test",
+        log_dir="/tmp",
+        mounts=[],
+    )
     assert executor.volumes == []
 
 
@@ -542,7 +560,16 @@ def test_get_executor_explicit_mounts_overrides_config(mock_resolve, mock_packag
     from nemo_skills.pipeline.utils.exp import get_executor
 
     cluster_config = {"executor": "local", "mounts": ["/host/models:/models"]}
-    executor = get_executor(cluster_config=cluster_config, container="nemo:latest", mounts=["/sandbox/data:/data:ro"])
+    executor = get_executor(
+        cluster_config=cluster_config,
+        container="nemo:latest",
+        num_nodes=1,
+        tasks_per_node=1,
+        gpus_per_node=0,
+        job_name="test",
+        log_dir="/tmp",
+        mounts=["/sandbox/data:/data:ro"],
+    )
     assert executor.volumes == ["/sandbox/data:/data:ro"]
 
 

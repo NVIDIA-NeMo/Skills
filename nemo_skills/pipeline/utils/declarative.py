@@ -248,18 +248,22 @@ class Command:
         # Build execution config from Script fields.
         # Non-sandbox scripts dont define keep_mounts attribute and default to mounts=None (inherit cluster mounts).
         # For SandboxScript, keep_mounts=False (the safe default) is set unless overridden by --keep_mounts_for_sandbox
-        # sandbox mounts resolve in three ways (in priority order):
+        # sandbox mounts resolve in three ways (in priority order), but only for scripts that declare keep_mounts:
         #   sandbox_mounts in config (non-empty) -> use sandbox_mounts exactly  (takes precedence over keep_mounts)
         #   keep_mounts=True + no sandbox_mounts -> mounts=None  (inherit all cluster mounts, risky)
         #   keep_mounts=False + no sandbox_mounts -> mounts=[] (no filesystem access, safe default)
         keep_mounts = getattr(self.script, "keep_mounts", True)
-        sandbox_mounts = get_sandbox_mounts_from_config(cluster_config)
-        if sandbox_mounts:
-            exec_mounts = sandbox_mounts
-        elif keep_mounts:
+        if not hasattr(self.script, "keep_mounts"):
+            # Non-sandbox script: always inherit cluster mounts
             exec_mounts = None
         else:
-            exec_mounts = []
+            sandbox_mounts = get_sandbox_mounts_from_config(cluster_config)
+            if sandbox_mounts:
+                exec_mounts = sandbox_mounts
+            elif keep_mounts:
+                exec_mounts = None
+            else:
+                exec_mounts = []
         execution_config = {
             "log_prefix": getattr(self.script, "log_prefix", "main"),
             "environment": runtime_metadata.get("environment", {}),

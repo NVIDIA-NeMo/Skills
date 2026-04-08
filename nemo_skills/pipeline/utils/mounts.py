@@ -115,6 +115,10 @@ def _resolve_mount_path_with_env_variables(mount: str, allow_rw_mode: bool = Tru
     mount_source = parts[0]
     mount_target = parts[1]
     mount_mode = parts[2] if len(parts) > 2 else None
+
+    if not mount_source or not mount_target:
+        raise ValueError(f"Invalid mount format: {mount}. Source and target paths must not be empty.")
+
     if mount_mode is not None and mount_mode not in {"ro", "rw"}:
         raise ValueError(f"Invalid mount mode: {mount_mode} in `{mount}`. Supported mount modes are `ro` and `rw`.")
 
@@ -515,7 +519,7 @@ def get_sandbox_mounts_from_config(cluster_config: dict):
     if "sandbox_mounts" not in cluster_config:
         return None
 
-    mounts = cluster_config.get("sandbox_mounts", [])
+    mounts = cluster_config["sandbox_mounts"]
 
     for mount_id in range(len(mounts)):
         mounts[mount_id] = _resolve_mount_path_with_env_variables(mounts[mount_id], allow_rw_mode=True)
