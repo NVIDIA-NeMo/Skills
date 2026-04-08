@@ -671,3 +671,36 @@ def test_add_task_no_sandbox_mounts_falls_back_to_empty(mock_port, mock_get_exec
 
     sandbox_mounts = mock_get_executor.call_args_list[-1].kwargs["mounts"]
     assert sandbox_mounts == []
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_sandbox_mounts_takes_precedence_over_keep_mounts_for_sandbox_true(mock_port, mock_get_executor):
+    """add_task: sandbox_mounts wins even when keep_mounts_for_sandbox=True."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="task_handle"))
+    cluster_config = {
+        "executor": "local",
+        "containers": {"sandbox": "sandbox:latest"},
+        "sandbox_mounts": ["/host/data:/sandbox/data:ro"],
+    }
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_sandbox=True,
+        keep_mounts_for_sandbox=True,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    sandbox_mounts = mock_get_executor.call_args_list[-1].kwargs["mounts"]
+    assert sandbox_mounts == ["/host/data:/sandbox/data:ro"]
