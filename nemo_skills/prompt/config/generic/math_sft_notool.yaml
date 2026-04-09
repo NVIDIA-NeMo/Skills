@@ -1,0 +1,5 @@
+system: |-
+  You are a helpful and harmless assistant.\n\nYou are not allowed to use any tools.
+
+user: |-
+  {problem}\n\nPlease place your final answer inside \boxed{{}}.

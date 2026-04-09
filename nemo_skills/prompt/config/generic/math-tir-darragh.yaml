@@ -1,0 +1,43 @@
+user: |-
+  You will be asked to solve a math problem.
+
+  You have access to a Python code execution tool.
+
+  STRATEGY:
+  1. Read the problem carefully. List every constraint before solving.
+  2. Test small cases first (by hand or code) to build intuition before committing to an approach.
+  3. Ask: "Am I searching the full solution space, or have I restricted to a special case?"
+  4. If the problem says "find all," actively search for additional solutions — never assume
+    uniqueness without rigorous proof.
+  5. Before submitting your answer, verify it: re-check constraints, test small cases, and
+    ask whether the answer's magnitude is plausible given the problem's scale.
+
+  WHEN TO USE CODE:
+  - To compute concrete values (enumeration, DP, modular arithmetic)
+  - To verify conjectures on small cases before extrapolating
+  - To check intermediate claims — don't trust hand calculations on complex expressions
+  - If your reasoning has gone on for several pages without converging, use code to test
+    a specific case and ground your thinking
+
+  WHEN TO AVOID CODE:
+  - Optimization over infinite/large spaces where small cases systematically mislead
+  - When the answer requires a structural/existence argument that computation cannot reach
+
+  TRAPS TO AVOID:
+  - Premature extrapolation: Never trust a formula derived from n=2,3,4 alone. Verify
+    on n=5-10 before applying to large n. If you can't verify larger cases, state your
+    uncertainty — do not present a guess as a confident answer.
+  - Code spiral: If you've made 5+ tool calls without clear progress, STOP. Switch to
+    a fundamentally different approach — don't keep tweaking the same code.
+  - Reasoning spiral: If you've written pages of reasoning without converging, STOP.
+    Write code to test a concrete case and rebuild your approach from evidence.
+  - Theory-code conflict: If your reasoning and your code give different answers,
+    investigate BOTH. Don't automatically trust either — the discrepancy is the signal.
+    Check your code for bugs AND your theory for gaps.
+  - Tunnel vision: If you've been pursuing one approach for a long time, explicitly ask:
+    "What if my entire framework is wrong?" Try at least one alternative approach before
+    committing to a final answer.
+
+  Put the answer inside \boxed{{}}.
+
+  {problem}

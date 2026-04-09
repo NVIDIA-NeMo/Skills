@@ -1,0 +1,41 @@
+user: |-
+  You will be asked to judge a quality of math dataset entry. Each entry has a **problem** and an **expected_answer**. Your job is to decide whether this (problem, answer) pair is suitable for training a math reasoning model with automatic answer verification.
+
+  The model solving these problems will put its final answer in \boxed{{}}, and a judge will compare it to the expected_answer. Therefore we need BOTH the problem and the answer to be unambiguous, self-contained, and automatically verifiable.
+
+  Reject the entry (respond REJECT) if ANY of the following apply:
+
+  ## Problem issues
+  1. **Incomplete or truncated problem**: The problem statement is cut off, references missing context, or is otherwise not self-contained.
+  2. **Requires an image, diagram, table, or external resource**: The problem cannot be solved from the text alone (e.g., "as shown in the figure", references a specific diagram). Note: problems that ask you to *construct* a geometric figure from given data are fine — only reject if the problem *requires looking at* an image to understand what is being asked.
+  3. **Asks for a proof, explanation, or construction procedure**: The problem asks to "prove that", "show that", "explain why", "describe how to construct", or similar — anything where the answer is an argument or sequence of steps rather than a definitive mathematical object.
+  4. **Ambiguous or subjective**: The problem has no single well-defined answer, or reasonable solvers could legitimately disagree on what counts as a correct answer.
+
+  ## Answer issues
+  6. **Self-referential or incomplete answer**: The answer says things like "as above", "as listed above", "as described above", "the three families above", or otherwise references context not present in the answer field itself.
+  7. **Answer is a proof, construction, or explanation**: The answer is a multi-step procedure, proof sketch, or prose explanation rather than a concrete mathematical value/expression. Short clarifying notes after a concrete answer are fine (e.g., "24 (since 3×8=24)"), but the core answer must be a definitive mathematical object.
+  8. **Purely approximate answer with no exact form**: The answer is only given as a decimal approximation (e.g., "approximately 1.879") with no exact closed-form. Answers that give both exact and approximate forms are fine.
+  9. **Answer contains undefined variables**: The answer uses variables (like a, b, t) that are not defined in either the problem statement or the answer itself.
+  10. **Multiple valid answers exist but only one is given**: The problem asks "find all" or clearly has multiple solutions, but the expected answer lists only a subset. If the problem asks for a specific value (like "the smallest" or "how many") and the answer is a single number, that's fine.
+  11. **Answer is "no solution" / "does not exist" / "impossible" / "unbounded"**: These are inherently hard to verify automatically. Reject these.
+  12. **Answer is not practically verifiable**: The answer is so complex, long, or unusual that comparing a model's \boxed{{}} output to it would be unreliable. Examples: answers longer than 200 characters, answers that are entire matrices or tables, answers that require checking symbolic equivalence of very complex expressions.
+
+  ## When in doubt
+  - If the problem and answer are borderline, REJECT. We want only high-confidence entries.
+  - A clean numeric answer, a simple closed-form expression, a set of specific solutions, or a well-defined mathematical object (like a specific function or polynomial) are all ACCEPT-worthy answers.
+  - Parametric family answers like "all (n, n²) for positive integers n" are acceptable IF the problem asks "find all" and this is genuinely the complete answer.
+
+  ## Response format
+
+  Respond with EXACTLY this format (no extra text):
+
+  ```
+  Verdict: ACCEPT or REJECT
+  Reason: [one-line reason — "clean" if accepting, otherwise the specific issue number and brief explanation]
+  ```
+
+  ## Entry to evaluate
+
+  **Problem:** {problem}
+
+  **Expected answer:** {expected_answer}

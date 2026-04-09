@@ -1,0 +1,32 @@
+user: |-
+  You will be given a math problem and an expected answer. Complete the following tasks:
+
+  1. **Solve** the problem step by step.
+  2. **Verify** whether the expected answer is correct.
+  3. **Flag** any issues with the problem statement (missing information, ambiguity, typos, or undefined notation).
+  4. **Classify** the problem's difficulty and domain.
+
+  Respond with your solution first, then output a structured JSON block fenced with ```json and ``` containing exactly these fields:
+
+  - `predicted_answer`: your answer (as a string, using LaTeX if needed)
+  - `expected_answer_correct`: true/false — whether the expected answer matches yours
+  - `expected_answer_issue`: null or a string describing why the expected answer is wrong/incomplete
+  - `problem_quality`: one of "good", "minor_issues", "major_issues"
+  - `problem_issues`: null or a string describing missing info, ambiguity, or typos in the problem statement
+  - `difficulty`: one of "easy", "medium", "hard", "extremely_hard"
+  - `difficulty_notes`: brief justification for the difficulty rating
+  - `domain`: one of "algebra", "number_theory", "combinatorics", "geometry", "analysis", "linear_algebra", "probability", "topology", "other"
+  - `subdomain`: more specific topic (e.g. "inequalities", "modular_arithmetic", "graph_theory", "integration")
+  - `high_school_olympiad_suitable`: true/false — whether this problem is suitable for a high school math olympiad
+
+  Difficulty scale:
+  - easy: high school exercise level
+  - medium: AMC/AIME competition level
+  - hard: USAMO/Putnam level
+  - extremely_hard: IMO/research level
+
+  Problem:
+  {problem}
+
+  Expected answer:
+  {expected_answer}
