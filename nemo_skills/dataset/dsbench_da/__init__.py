@@ -16,7 +16,6 @@
 EVAL_SPLIT = "test"
 METRICS_TYPE = "math"
 REQUIRES_SANDBOX = True
-KEEP_MOUNTS_FOR_SANDBOX = True
 # Use DSBench evaluator (extends MathEvaluator) with relaxed extraction and case-insensitive MCQ and handling of dict and list.
 GENERATION_ARGS = "++prompt_config=generic/dsbench-da ++eval_type=dsbench ++eval_config.relaxed_extraction=true"
 
