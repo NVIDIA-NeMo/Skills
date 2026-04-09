@@ -259,6 +259,11 @@ class ToolCallingWrapper:
                 result_steps["detailed_error"] = generation.get("detailed_error", "")
                 break
 
+            # latest vllm requires "reasoning" key instead of "reasoning_content", so we are duplicating both
+            # to support new and old versions. Litellm remaps reasoning_content to reasoning when it returns results
+            # back, but it's still necessary to send correct keys to vllm as it has hardcoded logic based on "reasoning"
+            # key name
+
             conversation.extend(self._duplicate_reasoning_content_keys(generation["serialized_output"]))
 
             tool_calls = generation.get("tool_calls", [])
