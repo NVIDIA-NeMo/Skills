@@ -56,12 +56,13 @@ def main(args):
         with open(args.baseline_file, "rt", encoding="utf-8") as f:
             for line in f:
                 data = json.loads(line)
-                baseline_lookup[data["question_id"]] = data["generation"]
+                lang, qid = data["language"], data["question_id"]
+                baseline_lookup[(lang, qid)] = data["generation"]
         for entry in all_entries:
-            qid = entry["question_id"]
-            if qid not in baseline_lookup:
-                raise ValueError(f"question_id '{qid}' not found in baseline file")
-            entry["baseline_answer"] = baseline_lookup[qid]
+            lang, qid = entry["language"], entry["question_id"]
+            if (lang, qid) not in baseline_lookup:
+                raise ValueError(f"({lang}, {qid}) not found in baseline file")
+            entry["baseline_answer"] = baseline_lookup[(lang, qid)]
 
     with open(output_file, "wt", encoding="utf-8") as fout:
         for entry in all_entries:
