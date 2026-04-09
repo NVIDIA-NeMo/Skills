@@ -219,7 +219,7 @@ def main():
         print("Generating submission results...")
         genrate_submission_command = f"if [ -f {play_dir}/output-rs0.jsonl ]; then python /nemo_run/code/gencluster/scripts/compute_tournament_score.py {play_dir}/output-rs0.jsonl; python /nemo_run/code/gencluster/scripts/merge_tournament_scores.py {cluster_folder} {play_dir}/output-rs0.results.csv {initial_cluster_folder}/cluster_with_scores_{selection_strategy}_reps;"
         if benchmark == "ioi":
-            genrate_submission_command += f" python /nemo_run/code/gencluster/scripts/submission_IOI.py --ioi25     --intra-strategy={intra_strategy} --inter-strategy={inter_strategy} --data-subdir={cluster_folder}/cluster_with_scores_{selection_strategy}_reps     --all    --remove-empty &> {initial_cluster_folder}/submission_report.txt;"
+            genrate_submission_command += f" python /nemo_run/code/gencluster/scripts/submission_IOI.py --ioi25     --intra-strategy={intra_strategy} --inter-strategy={inter_strategy} --data-subdir={initial_cluster_folder}/cluster_with_scores_{selection_strategy}_reps     --all    --remove-empty &> {initial_cluster_folder}/submission_report.txt;"
         elif benchmark == "icpc":
             genrate_submission_command += f" python /nemo_run/code/gencluster/scripts/submission_ICPC.py --intra-strategy={intra_strategy} --inter-strategy={inter_strategy} --input-dir {initial_cluster_folder}/cluster_with_scores_{selection_strategy}_reps &> {initial_cluster_folder}/submission_selection_{selection_strategy}_intra_{intra_strategy}_inter_{inter_strategy}_report.txt;"
         else:
