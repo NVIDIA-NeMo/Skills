@@ -13,8 +13,10 @@
 # limitations under the License.
 import copy
 import hashlib
+import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 from collections import defaultdict
@@ -180,23 +182,22 @@ def get_expected_done_files(output_dir, random_seeds, chunk_ids):
     return file_map
 
 
-def get_remaining_jobs(cluster_config, output_dir, random_seeds, chunk_ids, rerun_done):
+def get_remaining_jobs(cluster_config, output_dir, random_seeds, chunk_ids, rerun_done, rerun_ratelimit_errors=False):
     """
     Determines which jobs still need to be run based on missing .done files.
     Returns a mapping from random_seed to list of chunk_ids that need processing.
     """
-    if rerun_done:
+    if rerun_done or rerun_ratelimit_errors:
         return {seed: copy.deepcopy(chunk_ids) for seed in random_seeds}
 
     status_dir = get_unmounted_path(cluster_config, output_dir)
-    expected_files = get_expected_done_files(output_dir, random_seeds, chunk_ids)
+    expected_files = get_expected_done_files(status_dir, random_seeds, chunk_ids)
     check_commands = []
     for (seed, chunk_id), filepath in expected_files.items():
-        unmounted_path = filepath.replace(output_dir, status_dir)
         # Create identifiers that can be parsed from output
         seed_str = "NONE" if seed is None else str(seed)
         chunk_str = "NONE" if chunk_id is None else str(chunk_id)
-        check_commands.append(f'if [ ! -f "{unmounted_path}" ]; then echo "MISSING:{seed_str}:{chunk_str}"; fi')
+        check_commands.append(f'if [ ! -f "{filepath}" ]; then echo "MISSING:{seed_str}:{chunk_str}"; fi')
 
     # Process commands in batches to avoid "Argument list too long" error
     # Use a conservative batch size that works well even with long paths
@@ -255,7 +256,7 @@ def get_remaining_jobs(cluster_config, output_dir, random_seeds, chunk_ids, reru
 
     done_jobs = defaultdict(list)
     for seed, chunk_id in expected_files.keys():
-        if chunk_id not in missing_jobs[seed]:
+        if chunk_id not in missing_jobs.get(seed, []):
             done_jobs[seed].append(chunk_id)
 
     done_jobs_str = ", ".join(
@@ -296,6 +297,104 @@ def get_remaining_jobs(cluster_config, output_dir, random_seeds, chunk_ids, reru
         LOG.warning("All jobs are completed. No jobs will be launched (to override set --rerun_done).")
 
     return missing_jobs
+
+
+def _is_rerunnable_ratelimit_error(output_row: dict) -> bool:
+    values_to_check = [output_row.get("detailed_error"), output_row.get("error")]
+
+    while values_to_check:
+        value = values_to_check.pop()
+        if isinstance(value, str) and "ratelimit" in re.sub(r"[\s_-]+", "", value.lower()):
+            return True
+        if isinstance(value, list):
+            values_to_check.extend(value)
+
+    return False
+
+
+def _prepare_rerun_ratelimit_resume_if_needed(
+    output_file: str,
+    merged_output_file: str | None = None,
+    num_chunks: int | None = None,
+    async_position_key: str = "_async_position",
+) -> bool:
+    if (
+        merged_output_file is not None
+        and num_chunks is not None
+        and num_chunks > 1
+        and Path(merged_output_file).exists()
+    ):
+        raise ValueError(
+            "Cannot use --rerun-rate-limit-error for completed chunked outputs because "
+            f"`{merged_output_file}` has already been merged. Use --rerun-done to fully rerun the seed."
+        )
+
+    if not _rewrite_async_resume_file_if_needed(output_file, async_position_key=async_position_key):
+        return False
+
+    done_file = Path(f"{output_file}.done")
+    if done_file.exists():
+        done_file.unlink()
+    return True
+
+
+def _rewrite_async_resume_file_if_needed(output_file: str, async_position_key: str = "_async_position") -> bool:
+    output_path = Path(output_file)
+    async_output_path = Path(f"{output_file}-async")
+    if output_path.exists():
+        source_path = output_path
+        rewriting_existing_async = False
+    elif async_output_path.exists():
+        source_path = async_output_path
+        rewriting_existing_async = True
+    else:
+        return False
+
+    preserved_rows = []
+    rerunnable_found = False
+    with open(source_path, "rt", encoding="utf-8") as fin:
+        for idx, line in enumerate(fin):
+            row = json.loads(line)
+            if _is_rerunnable_ratelimit_error(row):
+                rerunnable_found = True
+                continue
+            if not rewriting_existing_async or async_position_key not in row:
+                row[async_position_key] = idx
+            preserved_rows.append(row)
+
+    if not rerunnable_found:
+        return False
+
+    temp_output_path = async_output_path.with_name(f"{async_output_path.name}.{os.getpid()}.tmp")
+    with open(temp_output_path, "wt", encoding="utf-8") as fout:
+        for row in preserved_rows:
+            fout.write(json.dumps(row) + "\n")
+        fout.flush()
+        os.fsync(fout.fileno())
+    temp_output_path.replace(async_output_path)
+    if not rewriting_existing_async:
+        output_path.unlink()
+    LOG.info(
+        "Prepared `%s` for resume by preserving %d completed rows and removing rate-limit failures",
+        source_path,
+        len(preserved_rows),
+    )
+    return True
+
+
+def _get_rerun_ratelimit_preprocess_cmd(
+    output_file: str,
+    merged_output_file: str | None = None,
+    num_chunks: int | None = None,
+    async_position_key: str = "_async_position",
+) -> str:
+    script = (
+        "from nemo_skills.pipeline.utils.generation import _prepare_rerun_ratelimit_resume_if_needed; "
+        f"_prepare_rerun_ratelimit_resume_if_needed(output_file={output_file!r}, "
+        f"merged_output_file={merged_output_file!r}, num_chunks={num_chunks!r}, "
+        f"async_position_key={async_position_key!r})"
+    )
+    return f"python -c {shlex.quote(script)}"
 
 
 def separate_hydra_args(extra_arguments: str) -> tuple[str, str]:
@@ -416,6 +515,7 @@ def get_generation_cmd(
     postprocess_cmd=None,
     wandb_parameters=None,
     with_sandbox: bool = False,
+    rerun_ratelimit_errors: bool = False,
     script: str = "nemo_skills.inference.generate",
     requirements: Optional[list[str]] = None,
     # Optional: for multi-model generation
@@ -451,6 +551,8 @@ def get_generation_cmd(
         output_dir=output_dir,
         random_seed=random_seed,
     )
+    chunk_output_file = output_file
+    merged_output_file = None
     # Preamble for generation commands: added at executor/declarative level
     cmd = "export HYDRA_FULL_ERROR=1 && "
 
@@ -496,7 +598,7 @@ def get_generation_cmd(
 
     if chunk_id is not None:
         cmd += f" ++num_chunks={num_chunks} ++chunk_id={chunk_id} "
-        output_file = get_chunked_rs_filename(output_dir, random_seed=random_seed, chunk_id=chunk_id)
+        chunk_output_file = get_chunked_rs_filename(output_dir, random_seed=random_seed, chunk_id=chunk_id)
         donefiles = []
         # we are always waiting for all chunks in num_chunks, no matter chunk_ids in
         # the current run (as we don't want to merge partial jobs)
@@ -511,7 +613,7 @@ def get_generation_cmd(
             job_end_cmd = f"touch {donefiles[chunk_id]} "
 
         # getting file name as if there is no chunking since that's where we want to merge
-        merged_output_file = get_chunked_rs_filename(output_dir=output_dir, random_seed=random_seed)
+        merged_output_file = output_file
         merge_cmd = (
             f"python -m nemo_skills.inference.merge_chunks {merged_output_file} "
             f"{' '.join([f[:-5] for f in donefiles])}"
@@ -523,9 +625,9 @@ def get_generation_cmd(
 
     else:  # only writing a single status file
         if job_end_cmd:
-            job_end_cmd += f" && touch {output_file}.done "
+            job_end_cmd += f" && touch {chunk_output_file}.done "
         else:
-            job_end_cmd = f"touch {output_file}.done "
+            job_end_cmd = f"touch {chunk_output_file}.done "
 
         if postprocess_cmd:
             postprocess_cmd = f"{job_end_cmd} && {postprocess_cmd}"
@@ -534,6 +636,14 @@ def get_generation_cmd(
 
     if override_args:
         cmd += f" {override_args} "
+
+    if rerun_ratelimit_errors:
+        rerun_preprocess_cmd = _get_rerun_ratelimit_preprocess_cmd(
+            output_file=chunk_output_file,
+            merged_output_file=merged_output_file,
+            num_chunks=num_chunks,
+        )
+        preprocess_cmd = f"{rerun_preprocess_cmd} && {preprocess_cmd}" if preprocess_cmd else rerun_preprocess_cmd
 
     if requirements:
         requirements_cmd = build_requirements_venv_cmd(requirements)

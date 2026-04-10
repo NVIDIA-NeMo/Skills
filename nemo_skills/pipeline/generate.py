@@ -168,6 +168,7 @@ def _create_job_unified(
                 postprocess_cmd=generation_params.get("postprocess_cmd"),
                 wandb_parameters=generation_params.get("wandb_parameters"),
                 with_sandbox=with_sandbox,
+                rerun_ratelimit_errors=generation_params.get("rerun_ratelimit_errors", False),
                 script=generation_params.get("script", "nemo_skills.inference.generate"),
                 requirements=generation_params.get("requirements"),
                 # Multi-server support (works for single and multi-model)
@@ -326,6 +327,12 @@ def generate(
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     rerun_done: bool = typer.Option(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
+    ),
+    rerun_ratelimit_errors: bool = typer.Option(
+        False,
+        "--rerun-rate-limit-error",
+        "--rerun-ratelimit-errors",
+        help="If True, rerun rows whose stored soft-failure error indicates rate limiting, even when '.done' exists.",
     ),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
     sandbox_env_overrides: List[str] = typer.Option(
@@ -503,6 +510,7 @@ def generate(
         random_seeds=random_seeds,
         chunk_ids=chunk_ids,
         rerun_done=rerun_done,
+        rerun_ratelimit_errors=rerun_ratelimit_errors,
     )
 
     if _task_dependencies is None:
@@ -577,6 +585,7 @@ def generate(
                     "preprocess_cmd": preprocess_cmd,
                     "postprocess_cmd": postprocess_cmd,
                     "wandb_parameters": wandb_parameters if seed_idx == 0 else None,
+                    "rerun_ratelimit_errors": rerun_ratelimit_errors,
                     "script": generation_module,
                     "requirements": generation_requirements,
                     # Multi-model specific fields

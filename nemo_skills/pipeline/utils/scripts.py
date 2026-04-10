@@ -361,6 +361,7 @@ class GenerationClientScript(BaseJobScript):
     postprocess_cmd: Optional[str] = None
     wandb_parameters: Optional[Dict] = None
     with_sandbox: bool = False
+    rerun_ratelimit_errors: bool = False
     script: str = "nemo_skills.inference.generate"
     requirements: Optional[list[str]] = None
 
@@ -418,6 +419,7 @@ class GenerationClientScript(BaseJobScript):
                 postprocess_cmd=self.postprocess_cmd,
                 wandb_parameters=self.wandb_parameters,
                 with_sandbox=self.with_sandbox,
+                rerun_ratelimit_errors=self.rerun_ratelimit_errors,
                 script=self.script,
                 requirements=self.requirements,
                 # Multi-model parameters (None for single-model)

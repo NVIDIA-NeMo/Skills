@@ -367,6 +367,7 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
         num_chunks=None,
         chunk_ids=None,
         rerun_done=False,
+        rerun_ratelimit_errors=False,
         server_parameters={
             "model": "test-model",
             "server_type": "openai",

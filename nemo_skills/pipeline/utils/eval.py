@@ -295,6 +295,7 @@ def prepare_eval_commands(
     num_chunks,
     chunk_ids,
     rerun_done,
+    rerun_ratelimit_errors,
     server_parameters,
     extra_arguments,
     data_dir,
@@ -388,6 +389,7 @@ def prepare_eval_commands(
             random_seeds=random_seeds,
             chunk_ids=benchmark_chunk_ids,
             rerun_done=rerun_done,
+            rerun_ratelimit_errors=rerun_ratelimit_errors,
         )
         for seed_idx, (seed, benchmark_chunk_ids) in enumerate(benchmark_args.remaining_jobs.items()):
             total_evals += len(benchmark_chunk_ids)
@@ -479,6 +481,7 @@ def prepare_eval_commands(
                     # only logging for the first seed
                     wandb_parameters=wandb_parameters if seed_idx == 0 else None,
                     with_sandbox=benchmark_args.requires_sandbox or with_sandbox,
+                    rerun_ratelimit_errors=rerun_ratelimit_errors,
                 )
                 job_cmds.append(cmd)
 
