@@ -20,10 +20,8 @@ class CCCEvaluatorConfig(BaseEvaluatorConfig):
     """Configuration for CCC code-evaluation execution and batching."""
 
     test_file: str = "test_metadata.json"
-    num_workers: int = 16
     test_batch_size: int = 16
     time_scale: float = 1.0
-    overwrite: bool = False
 
 
 _precompile_loop_tls = threading.local()
