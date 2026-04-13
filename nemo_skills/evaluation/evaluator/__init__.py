@@ -56,6 +56,7 @@ _EVALUATOR_CLASS_MAP_PATHS = {
     "compute-eval": "nemo_skills.evaluation.evaluator.compute_eval:ComputeEvalEvaluator",
     "critpt": "nemo_skills.evaluation.evaluator.critpt:CritPtEvaluator",
     "dsbench": "nemo_skills.evaluation.evaluator.dsbench:DSBenchEvaluator",
+    "contextasr": "nemo_skills.evaluation.evaluator.contextasr:ContextASREvaluator",
 }
 
 # Validation: Ensure no overlap between class and function maps
