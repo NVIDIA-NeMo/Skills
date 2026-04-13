@@ -435,9 +435,6 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
-        # List of commands to execute in the container in order
-        container_commands = []
-
         # Commands to be executed in the Apptainer container, in order
         container_commands = []
 
