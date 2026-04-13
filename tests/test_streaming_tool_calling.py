@@ -89,6 +89,61 @@ def test_stream_no_tool_calls():
     assert final["num_tool_calls"] == 0
 
 
+def test_generate_async_duplicates_reasoning_key_in_conversation():
+    """Non-streaming tool wrapper mirrors reasoning_content to reasoning."""
+    wrapper = _make_wrapper()
+    wrapper.model.generate_async = AsyncMock(
+        return_value={
+            "generation": "Hello world",
+            "num_generated_tokens": 2,
+            "finish_reason": "stop",
+            "serialized_output": [
+                {
+                    "role": "assistant",
+                    "content": "Hello world",
+                    "reasoning_content": "internal trace",
+                }
+            ],
+        }
+    )
+
+    with _PATCH_TOOLS:
+        result = asyncio.run(
+            wrapper.generate_async(
+                prompt=[{"role": "user", "content": "hi"}],
+                endpoint_type=EndpointType.chat,
+            )
+        )
+
+    assistant_message = result["conversation"][-1]
+    assert assistant_message["reasoning_content"] == "internal trace"
+    assert assistant_message["reasoning"] == "internal trace"
+
+
+def test_stream_final_conversation_duplicates_reasoning_key():
+    """Streaming conversation entries mirror reasoning_content to reasoning."""
+    wrapper = _make_wrapper()
+
+    async def mock_stream(*args, **kwargs):
+        yield {"generation": "Hello ", "reasoning_content": "step 1 ", "finish_reason": None}
+        yield {"generation": "world", "reasoning_content": "step 2", "finish_reason": "stop"}
+
+    wrapper.model.generate_async = AsyncMock(return_value=mock_stream())
+
+    with _PATCH_TOOLS:
+        results = _collect(
+            wrapper._stream_single(
+                prompt=[{"role": "user", "content": "hi"}],
+                endpoint_type=EndpointType.chat,
+            )
+        )
+
+    final = results[-1]
+    assistant_message = final["conversation"][-1]
+    assert assistant_message["reasoning_content"] == "step 1 step 2"
+    assert assistant_message["reasoning"] == "step 1 step 2"
+
+
 def test_stream_with_tool_call():
     """Streaming with tool calls yields tool_calls/tool_results events and counts tokens correctly."""
     wrapper = _make_wrapper()

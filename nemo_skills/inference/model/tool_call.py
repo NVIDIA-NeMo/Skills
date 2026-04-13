@@ -140,6 +140,19 @@ class ToolCallingWrapper:
             return dict(tool_call.__dict__)
         return {}
 
+    def _duplicate_reasoning_content_keys(self, value):
+        """Copy reasoning_content fields to reasoning for serialized conversation entries."""
+        if isinstance(value, dict):
+            duplicated = {}
+            for key, item in value.items():
+                duplicated[key] = self._duplicate_reasoning_content_keys(item)
+                if key == "reasoning_content" and "reasoning" not in value:
+                    duplicated["reasoning"] = duplicated[key]
+            return duplicated
+        if isinstance(value, list):
+            return [self._duplicate_reasoning_content_keys(item) for item in value]
+        return value
+
     def _merge_tool_call_delta(self, tool_call_delta: object, tool_call_accumulator: dict) -> None:
         tool_call_delta = self._coerce_tool_call_dict(tool_call_delta)
         if not tool_call_delta:
@@ -246,7 +259,12 @@ class ToolCallingWrapper:
                 result_steps["detailed_error"] = generation.get("detailed_error", "")
                 break
 
-            conversation.extend(generation["serialized_output"])
+            # latest vllm requires "reasoning" key instead of "reasoning_content", so we are duplicating both
+            # to support new and old versions. Litellm remaps reasoning_content to reasoning when it returns results
+            # back, but it's still necessary to send correct keys to vllm as it has hardcoded logic based on "reasoning"
+            # key name
+
+            conversation.extend(self._duplicate_reasoning_content_keys(generation["serialized_output"]))
 
             tool_calls = generation.get("tool_calls", [])
             if tool_calls:
@@ -375,7 +393,7 @@ class ToolCallingWrapper:
                     assistant_message["reasoning_content"] = reasoning_segment
                 if tool_calls:
                     assistant_message["tool_calls"] = tool_calls
-                conversation.append(assistant_message)
+                conversation.append(self._duplicate_reasoning_content_keys(assistant_message))
             else:
                 raise NotImplementedError("Streaming tool calling is only supported for chat completions.")
 
