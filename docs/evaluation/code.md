@@ -70,7 +70,7 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands.
 
-- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/mini-SWE-agent/OpenHands to a specific version. Defaults to `HEAD` for SWE-agent & OpenHands and `v2.0` for mini-SWE-agent.
+- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/mini-SWE-agent/OpenHands to a specific version. Defaults to `HEAD` for SWE-agent, `1.2.1` for OpenHands and `v2.0` for mini-SWE-agent.
 
 - **++agent_config:** The config file to use for the agent framework.
     - For SWE-agent and mini-SWE-agent, this is a YAML file. See the docs: [SWE-agent](https://swe-agent.com/latest/config/config/), [mini-SWE-agent](https://mini-swe-agent.com/latest/advanced/yaml_configuration/).
