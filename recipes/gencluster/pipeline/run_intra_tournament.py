@@ -80,8 +80,8 @@ def main():
     parser.add_argument(
         "--cluster",
         type=str,
-        default="iad",
-        help="Cluster to use for solution generation (default: iad)",
+        default="local",
+        help="Cluster to use for solution generation (default: local)",
     )
     parser.add_argument(
         "--stage",

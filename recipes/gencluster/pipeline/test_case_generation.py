@@ -31,8 +31,8 @@ def main() -> None:
     parser.add_argument(
         "--cluster",
         type=str,
-        default="iad",
-        help="Cluster to use for generation (default: iad)",
+        default="local",
+        help="Cluster to use for generation (default: local)",
     )
     parser.add_argument(
         "--input_file",
@@ -98,7 +98,7 @@ def main() -> None:
     dependent_jobs = []
     if not args.skip_generations:
         server_type = "vllm"
-        server_gpus = 4 if cluster == "hsg" else 8
+        server_gpus = 8
         server_nodes = 1
         server_args = "--async-scheduling --max-num-seqs=1024"
         extra_args_str = ""
@@ -109,7 +109,7 @@ def main() -> None:
             extra_args_str += (
                 "++inference.endpoint_type=chat ++chat_template_kwargs.thinking=true ++inference.top_p=0.95 "
             )
-            server_nodes = 2 if cluster in ["iad", "hsg", "dfw"] else 1
+            server_nodes = 2  # 2 nodes are required for DeepSeek-V3.2-Speciale
             server_args = f"--ep-size {server_gpus * server_nodes} --dp {server_gpus * server_nodes} --enable-dp-attention --mem-fraction-static=0.8 --tool-call-parser deepseekv32 --reasoning-parser deepseek-v3 "
             dependent_jobs = 2
 

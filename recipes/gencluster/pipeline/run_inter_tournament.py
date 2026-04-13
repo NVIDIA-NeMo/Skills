@@ -80,8 +80,8 @@ def main():
     parser.add_argument(
         "--cluster",
         type=str,
-        default="iad",
-        help="Cluster to use for solution generation (default: iad)",
+        default="local",
+        help="Cluster to use for solution generation (default: local)",
     )
     parser.add_argument(
         "--stage",
@@ -146,7 +146,7 @@ def main():
         "++max_concurrent_requests=1024 "
     )
     server_type = "vllm"
-    server_gpus = 4 if cluster == "hsg" else 8
+    server_gpus = 8
     server_nodes = 1
     server_args = "--async-scheduling --max-num-seqs=1024"
     dependent_jobs = 0
@@ -155,7 +155,7 @@ def main():
     elif model == "DeepSeek-V3.2-Speciale":
         server_type = "sglang"
         args_str += "++inference.endpoint_type=chat ++chat_template_kwargs.thinking=true "
-        server_nodes = 2 if cluster in ["oci-hsg", "hsg", "cw-dfw", "dfw"] else 1
+        server_nodes = 2  # 2 nodes are required for DeepSeek-V3.2-Speciale
         server_args = f"--ep-size {server_gpus * server_nodes} --dp {server_gpus * server_nodes} --enable-dp-attention --mem-fraction-static=0.8"
         dependent_jobs = 2
 
