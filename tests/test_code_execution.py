@@ -480,8 +480,8 @@ async def test_ccc_eval_execution():
     from nemo_skills.evaluation.evaluator.ccc import CCCEvaluator
 
     base = os.path.dirname(__file__)
-    data_path = os.path.join(base, "data", "ioi", "test.jsonl")
-    meta_path = os.path.join(base, "data", "ioi", "test_metadata.json")
+    data_path = os.path.join(base, "data", "ccc", "test.jsonl")
+    meta_path = os.path.join(base, "data", "ccc", "test_metadata.json")
     with open(data_path, "r", encoding="utf-8") as f:
         dp = json.loads(next(f))
     evaluator = CCCEvaluator(config={"test_file": meta_path})
