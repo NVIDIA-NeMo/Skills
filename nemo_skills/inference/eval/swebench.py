@@ -296,7 +296,9 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
                 if self.cfg.agent_framework_commit is None:
-                    self.cfg.agent_framework_commit = "HEAD"
+                    # Latest version before the swe-bench eval code was moved into a separate repo.
+                    # Future versions are not supported for now and will require significant changes.
+                    self.cfg.agent_framework_commit = "1.2.1"
 
             setup_commands.append(
                 # install python 3.12 with uv
@@ -305,13 +307,22 @@ class SweBenchGenerationTask(GenerationTask):
                 "uv tool install poetry && "
                 # add dir with poetry executable to PATH
                 "export PATH=/root/uv/tool-bin:$PATH && "
-                # download tmux as appimage
+                # set download links for jq and tmux depending on architecture
+                "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
+                "    export TMUX_LINK=https://github.com/tmux/tmux-builds/releases/download/v3.6a/tmux-3.6a-linux-arm64.tar.gz && "
+                "    export JQ_LINK=https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-arm64; "
+                "else "
+                "    export TMUX_LINK=https://github.com/tmux/tmux-builds/releases/download/v3.6a/tmux-3.6a-linux-x86_64.tar.gz && "
+                "    export JQ_LINK=https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64; "
+                "fi && "
+                # download tmux
                 "mkdir -p /root/tmux && "
-                "curl -Lf https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
+                "curl -Lf $TMUX_LINK -o /root/tmux/tmux.tar.gz && "
+                "tar -xzf /root/tmux/tmux.tar.gz -C /root/tmux && "
                 "chmod 777 /root/tmux/tmux && "
                 # download jq
                 "mkdir -p /root/jq && "
-                "curl -Lf https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64 -o /root/jq/jq && "
+                "curl -Lf $JQ_LINK -o /root/jq/jq && "
                 "chmod 777 /root/jq/jq && "
                 # clone the openhands repo
                 "rm -rf /root/OpenHands && "
@@ -755,10 +766,6 @@ class SweBenchGenerationTask(GenerationTask):
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
             "ln -sf /root/jq/jq /usr/local/bin/jq && "
-            # enable tmux appimage to run without fusermount
-            # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
-            "export APPIMAGE_EXTRACT_AND_RUN=1 && "
-            "export NO_CLEANUP=1 && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
