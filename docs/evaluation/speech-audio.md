@@ -509,13 +509,27 @@ ContextASR-Bench evaluates contextual ASR performance by measuring how well mode
 
 ### Preparing ContextASR-Bench Data
 
-ContextASR-Bench requires audio files. Download the dataset first, then point `--data_dir` at its root:
+ContextASR-Bench requires audio files for meaningful evaluation. **Audio files are downloaded
+automatically by default** from HuggingFace (~22 GB, may take 30-60 minutes).
+
+```bash
+ns prepare_data contextasr-bench
+```
+
+!!! warning "Large download"
+
+    The automatic download fetches ~22 GB of audio data (JSONL + 8 tar files) from HuggingFace.
+    This can take 30-60 minutes depending on network speed. If you already have the data
+    downloaded, use `--data_dir` to skip the download.
+
+To use pre-downloaded data instead:
 
 ```bash
 ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench
 ```
 
-The `--data_dir` should contain `ContextASR-Speech_English.jsonl` and the `audio/` directory.
+The `--data_dir` must contain `ContextASR-Speech_English.jsonl` and the `audio/` directory
+with extracted WAV files.
 
 To use a custom audio path prefix (e.g., for container mount points):
 
