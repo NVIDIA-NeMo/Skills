@@ -349,18 +349,19 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        # Install the SWE-bench evaluation harness.
+        # Install the evaluation harness.
         setup_commands.append(
-            # clone the swe-bench repo
+            # clone the repo
             "rm -rf /root/SWE-bench && "
             f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
             "cd /root/SWE-bench && "
             f"git checkout {self.cfg.eval_harness_commit} && "
-            # make venv & install swe-bench dependencies
-            "uv venv --python 3.12 --managed-python venv && "
-            "source venv/bin/activate && "
-            "uv pip install -e ."
+            # make venv
+            "uv venv --python 3.12 --managed-python venv"
         )
+        if self.cfg.dataset_type != SupportedDatasetTypes.swe_rebench_v2:
+            # install dependencies (not needed for swe-rebench-v2)
+            setup_commands.append("source venv/bin/activate && uv pip install -e .")
 
         # Run all commands with retries and timeout
         combined_setup_command = " && ".join(setup_commands)
@@ -911,7 +912,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --json {self.cfg.input_file} "
                     f"    --patches {pred_mounted_path} "
                     f"    --instance-ids {data_point['instance_id']} "
-                    f"    --report-json /trajectories_mount/eval-outputs/results/{data_point['instance_id']}/report.json "
+                    f"    --report-json /trajectories_mount/eval-outputs/results/{data_point['instance_id']}/report.json"
                 )
             else:
                 swe_bench_cmd = (
