@@ -52,6 +52,7 @@ class SupportedAgentFrameworks(str, Enum):
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
+    swe_rebench_v2 = "swe_rebench_v2"
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
@@ -898,6 +899,19 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --output_dir eval-outputs "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
                     f"cp -r eval-outputs /trajectories_mount/"
+                )
+            elif self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2:
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python scripts/local_eval.py "
+                    f"    --json {self.cfg.input_file} "
+                    f"    --patches {pred_mounted_path} "
+                    f"    --instance-ids {data_point['instance_id']} "
+                    f"    --report-json /trajectories_mount/eval-outputs/results/{data_point['instance_id']}/report.json "
                 )
             else:
                 swe_bench_cmd = (
