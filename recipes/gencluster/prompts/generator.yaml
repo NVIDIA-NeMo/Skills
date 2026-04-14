@@ -1,0 +1,15 @@
+system: ""
+
+user: |-
+
+  You are an expert competitive programmer. You will be given a problem statement, its constraints, and example test cases.  Your task is to write a **test case generator** in C++17 that produces valid inputs for the problem, following the constraints and reflecting the variety suggested by the examples.
+
+  First, **reason step by step** about how to design the generator.
+  Then, provide the **final complete implementation** inside a single code block: ```cpp\n<your code here>```
+
+
+  ### Question
+  {problem}
+
+  {input_interactive_instruction}
+  ### Answer: (use the provided format with backticks)
