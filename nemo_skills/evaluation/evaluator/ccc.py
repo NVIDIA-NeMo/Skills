@@ -357,6 +357,7 @@ class CCCEvaluator(BaseEvaluator):
             state = subtask_state[subtask_name]
             test_case_results[subtask_name] = {
                 "score": self._aggregate_subtask_score(subtask_meta, state["outputs"], failed=state["failed"]),
+                "max_score": float(subtask_meta.get("score", 0.0)),
                 "outputs": state["outputs"],
             }
 

@@ -193,13 +193,22 @@ class CCCMetrics(BaseMetrics):
                 declared = float(submission.get("subtask_score", 0.0))
                 declared_max_by_subtask[st] = max(declared_max_by_subtask.get(st, 0.0), declared)
             all_subtasks = set()
+            inferred_max_by_subtask = {}
             for submission in submissions:
-                all_subtasks.update(submission.get("test_case_results", {}).keys())
+                test_case_results = submission.get("test_case_results", {})
+                all_subtasks.update(test_case_results.keys())
+                for st, subtask_result in test_case_results.items():
+                    if "max_score" in subtask_result:
+                        inferred = float(subtask_result.get("max_score", 0.0))
+                        inferred_max_by_subtask[st] = max(inferred_max_by_subtask.get(st, 0.0), inferred)
+            for st, inferred in inferred_max_by_subtask.items():
+                if st not in declared_max_by_subtask and inferred > 0.0:
+                    declared_max_by_subtask[st] = inferred
             missing_max_subtasks = sorted(st for st in all_subtasks if st not in declared_max_by_subtask)
             if missing_max_subtasks:
                 raise ValueError(
                     f"Problem '{problem_id}' has subtasks without defined max score: {missing_max_subtasks}. "
-                    "Each subtask must have a declared subtask_score."
+                    "Each subtask must have a declared subtask_score or test_case_results[*].max_score."
                 )
             subtasks = {}
             labeled_row_reports = []
