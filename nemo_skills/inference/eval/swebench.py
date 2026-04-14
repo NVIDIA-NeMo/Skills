@@ -912,7 +912,9 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --json {self.cfg.input_file} "
                     f"    --patches {pred_mounted_path} "
                     f"    --instance-ids {data_point['instance_id']} "
-                    f"    --report-json /trajectories_mount/eval-outputs/results/{data_point['instance_id']}/report.json"
+                    f"    --report-json logs/report.json && "
+                    f"mkdir -p /trajectories_mount/eval-outputs/results/{data_point['instance_id']} && "
+                    f"cp logs/* /trajectories_mount/eval-outputs/results/{data_point['instance_id']}"
                 )
             else:
                 swe_bench_cmd = (
