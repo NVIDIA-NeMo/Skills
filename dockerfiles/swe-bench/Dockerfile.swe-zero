@@ -1,4 +1,4 @@
-# Docker image for SWE-Zero.
+# Docker image for SWE-Zero (v2).
 # In the SWE-Zero setup, any instance can be run inside this image.
 # The only requirement is that the repo must be cloned at runtime before running the agent.
 #
