@@ -117,7 +117,11 @@ def extract_answer(
 def search_regex(string: str, regex: str):
     match = re.findall(regex, string)
     if match:
-        return match[-1]
+        retval = match[-1]
+        if isinstance(retval, tuple):
+            retval = next((group for group in retval if group), "")
+        retval = retval.strip()
+        return retval or None
     return None
 
 

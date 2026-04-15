@@ -14,7 +14,13 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 METRICS_TYPE = "hle"  # This uses the MathMetrics class, but with compute_no_answer=False
-GENERATION_ARGS = "++prompt_config=generic/hle ++eval_type=math"
+HLE_ANSWER_EXTRACT_REGEX = r"(?is)(?:^|\n)\s*\**Answer\**\s*:\s*(.+?)(?=\n\s*\**Confidence\**\s*:|\Z)"
+HLE_EVAL_EXTRACTION_ARGS = (
+    "++eval_config.extract_from_boxed=False "
+    "++eval_config.relaxed_extraction=True "
+    f"++eval_config.extract_regex='{HLE_ANSWER_EXTRACT_REGEX}' "
+)
+GENERATION_ARGS = f"++prompt_config=generic/hle ++eval_type=math {HLE_EVAL_EXTRACTION_ARGS}"
 EVAL_SPLIT = "text"
 
 # Some answers are not possible to compare symbolically, so have to use a judge model
