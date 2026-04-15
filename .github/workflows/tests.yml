@@ -18,7 +18,6 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     env:
-      GHCR_PAT: ${{ secrets.GHCR_PAT }}
       HAS_GHCR_PAT: ${{ secrets.GHCR_PAT != '' }}
     steps:
     - name: Checkout
@@ -32,7 +31,7 @@ jobs:
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ env.GHCR_PAT }}
+        password: ${{ secrets.GHCR_PAT }}
 
     - name: Free up disk space on Ubuntu
       run: |
