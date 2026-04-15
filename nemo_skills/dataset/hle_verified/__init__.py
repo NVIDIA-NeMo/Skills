@@ -15,7 +15,6 @@
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 from nemo_skills.dataset.hle import HLE_EVAL_EXTRACTION_ARGS
 
-
 METRICS_TYPE = "hle"
 GENERATION_ARGS = f"++prompt_config=generic/hle ++eval_type=math {HLE_EVAL_EXTRACTION_ARGS}"
 EVAL_SPLIT = "text"  # text subset of gold + revised subset of HLE-Verified (https://arxiv.org/pdf/2602.13964v3)

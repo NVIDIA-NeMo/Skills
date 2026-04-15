@@ -17,6 +17,7 @@ from nemo_skills.evaluation.math_grader import extract_answer, math_equal
 
 
 def extract_hle_answer(generation: str) -> str | None:
+    """Extract an HLE answer using the dataset-specific regex with boxed fallback."""
     return extract_answer(
         generation,
         extract_from_boxed=False,
@@ -26,6 +27,7 @@ def extract_hle_answer(generation: str) -> str | None:
 
 
 def test_hle_extracts_plain_answer_line():
+    """Plain `Answer:` lines should be extracted verbatim."""
     generation = """Explanation: Arrhenius's theorem rules out this view.
 Answer: D
 Confidence: 100%"""
@@ -34,6 +36,7 @@ Confidence: 100%"""
 
 
 def test_hle_extracts_markdown_answer_line():
+    """Markdown styling in the answer line should still yield an equivalent answer."""
     generation = """
 Based on my historical analysis, I can now provide the answer.
 
@@ -53,12 +56,14 @@ Confidence: **90%**
 
 
 def test_hle_falls_back_to_boxed_answer():
+    """Boxed answers should still work for models that ignore the HLE prompt format."""
     generation = r"""Explanation: Using Chebotarev, the density is \boxed{\frac{2}{7}}."""
 
     assert extract_hle_answer(generation) == r"\frac{2}{7}"
 
 
 def test_hle_extracts_exact_match_answer():
+    """Exact-match free-form answers should be recovered from the HLE answer line."""
     generation = """Explanation: Putting the letters together gives the final string.
 Answer: yeyo
 Confidence: 100%"""
