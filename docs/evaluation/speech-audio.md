@@ -522,14 +522,14 @@ ns prepare_data contextasr-bench
     This can take 30-60 minutes depending on network speed. If you already have the data
     downloaded, use `--data_dir` to skip the download.
 
-To use pre-downloaded data instead:
+To download to a specific directory, or to use pre-downloaded data:
 
 ```bash
 ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench
 ```
 
-The `--data_dir` must contain `ContextASR-Speech_English.jsonl` and the `audio/` directory
-with extracted WAV files.
+If the directory already contains `ContextASR-Speech_English.jsonl`, the existing data is
+used directly. If the file is missing, data is downloaded there automatically.
 
 To use a custom audio path prefix (e.g., for container mount points):
 

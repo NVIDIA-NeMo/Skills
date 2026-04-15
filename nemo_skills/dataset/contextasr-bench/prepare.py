@@ -53,7 +53,7 @@ PROMPT_COARSE = (
     "Transcribe the English audio into text, ensuring all punctuation marks are included."
 )
 PROMPT_FINE = (
-    "This audio belongs to the {domain_label} field and may contains the following "
+    "This audio belongs to the {domain_label} field and may contain the following "
     "words or phrases: {entity_list}. "
     "Transcribe the English audio into text, ensuring all punctuation marks are included."
 )
@@ -178,9 +178,11 @@ def main():
         type=str,
         default=None,
         help=(
-            "Path to pre-downloaded ContextASR-Bench dataset root (must contain "
-            "ContextASR-Speech_English.jsonl and audio/ directory). "
-            "If not provided, data will be downloaded automatically from HuggingFace."
+            "Path to ContextASR-Bench dataset root. If the directory already contains "
+            "ContextASR-Speech_English.jsonl, that data is used directly. If the "
+            "directory is empty or the file is missing, data will be downloaded there "
+            "automatically from HuggingFace. "
+            "If not provided, downloads to a 'data/' subdirectory next to this script."
         ),
     )
     parser.add_argument(
@@ -202,26 +204,21 @@ def main():
 
     output_dir = Path(__file__).parent
 
-    if args.data_dir:
-        data_dir = Path(args.data_dir)
-        jsonl_path = data_dir / JSONL_FILENAME
-        if not jsonl_path.exists():
-            raise FileNotFoundError(
-                f"Dataset file not found: {jsonl_path}\n"
-                f"The --data_dir must point to the ContextASR-Bench root containing "
-                f"{JSONL_FILENAME} and the audio/ directory."
-            )
+    data_dir = Path(args.data_dir) if args.data_dir else output_dir / "data"
+    jsonl_path = data_dir / JSONL_FILENAME
+
+    if jsonl_path.exists():
         print(f"Using pre-downloaded data from {data_dir}")
+    elif args.no_audio:
+        raise FileNotFoundError(
+            f"Dataset file not found: {jsonl_path}\n"
+            f"Cannot use --no-audio when data has not been downloaded yet. "
+            f"Either run without --no-audio first to download, or point --data_dir "
+            f"to a directory that already contains {JSONL_FILENAME}."
+        )
     else:
-        if args.no_audio:
-            raise ValueError(
-                "Cannot use --no-audio without --data_dir. "
-                "Either provide --data_dir with pre-downloaded data, or let the script "
-                "download data automatically (which includes audio files)."
-            )
-        data_dir = output_dir / "data"
-        data_dir = download_dataset(data_dir)
-        print(f"\nUsing downloaded data from {data_dir}")
+        print(f"Data not found at {data_dir}. Downloading there...")
+        download_dataset(data_dir)
 
     audio_prefix = args.audio_prefix if args.audio_prefix else str(data_dir)
     audio_prefix = audio_prefix.rstrip("/")
