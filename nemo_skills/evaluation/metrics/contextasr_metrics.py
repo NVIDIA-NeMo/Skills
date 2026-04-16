@@ -27,36 +27,38 @@ class ContextASRMetrics(BaseMetrics):
     """Metrics class for ContextASR-Bench with corpus-level WER, NE-WER, NE-FNR."""
 
     def __init__(self, compute_no_answer: bool = True, max_k: int = 1):
+        """Initialize accumulators for corpus-level WER, NE-WER, and NE-FNR."""
         super().__init__(compute_no_answer=compute_no_answer)
         self.max_k = max_k
 
-        # Corpus-level WER accumulators
         self.wer_total_errors = 0
         self.wer_total_ref_words = 0
 
-        # Corpus-level NE-WER accumulators
         self.ne_wer_total_errors = 0
         self.ne_wer_total_ref_words = 0
 
-        # Corpus-level NE-FNR accumulators
         self.ne_fnr_total_hits = 0
         self.ne_fnr_total_entities = 0
 
     def _get_score_dict(self, prediction):
+        """Extract the binary correctness score from a prediction (WER < 0.5)."""
         return {"is_correct": prediction.get("is_correct", False)}
 
     def get_incorrect_sample(self, prediction):
+        """Return a copy of the prediction marked as incorrect (for no-answer handling)."""
         prediction = prediction.copy()
         prediction["is_correct"] = False
         return prediction
 
     def update_common_metrics(self, agg_dict):
+        """Populate num_entries, avg_tokens, and gen_seconds into the aggregation dict."""
         agg_dict["num_entries"] = self.total
         agg_dict["avg_tokens"] = int(self.avg_tokens / self.total) if self.total > 0 else 0
         if self.max_end_time > float("-inf") and self.min_start_time < float("inf"):
             agg_dict["gen_seconds"] = int(self.max_end_time - self.min_start_time)
 
     def update(self, predictions):
+        """Accumulate per-sample error counts for corpus-level metric computation."""
         super().update(predictions)
 
         predicted_answers = [pred.get("generation", "").strip() or None for pred in predictions]
@@ -73,6 +75,7 @@ class ContextASRMetrics(BaseMetrics):
         self._compute_majority_at_k(predictions=predictions, predicted_answers=predicted_answers)
 
     def get_metrics(self):
+        """Compute corpus-level WER, NE-WER, NE-FNR percentages from accumulated counts."""
         metrics_dict = super().get_metrics()
 
         for _agg_mode, agg_metrics in metrics_dict.items():
@@ -80,29 +83,25 @@ class ContextASRMetrics(BaseMetrics):
                 agg_metrics["success_rate"] = agg_metrics["correct"]
 
             if self.wer_total_ref_words > 0:
-                agg_metrics["wer"] = round(
-                    100.0 * self.wer_total_errors / self.wer_total_ref_words, 2
-                )
+                agg_metrics["wer"] = round(100.0 * self.wer_total_errors / self.wer_total_ref_words, 2)
 
             if self.ne_wer_total_ref_words > 0:
-                agg_metrics["ne_wer"] = round(
-                    100.0 * self.ne_wer_total_errors / self.ne_wer_total_ref_words, 2
-                )
+                agg_metrics["ne_wer"] = round(100.0 * self.ne_wer_total_errors / self.ne_wer_total_ref_words, 2)
 
             if self.ne_fnr_total_entities > 0:
-                agg_metrics["ne_fnr"] = round(
-                    100.0 * (1.0 - self.ne_fnr_total_hits / self.ne_fnr_total_entities), 2
-                )
+                agg_metrics["ne_fnr"] = round(100.0 * (1.0 - self.ne_fnr_total_hits / self.ne_fnr_total_entities), 2)
 
         return metrics_dict
 
     def evaluations_to_print(self):
+        """Return the list of evaluation mode names to display."""
         evals = [f"pass@{self.max_k}"]
         if self.max_k > 1:
             evals.extend([f"majority@{self.max_k}", f"pass@1[avg-of-{self.max_k}]"])
         return evals
 
     def metrics_to_print(self):
+        """Return ordered dict of metric names to formatters for display."""
         base_metrics = {
             "avg_tokens": as_int,
             "gen_seconds": as_int,

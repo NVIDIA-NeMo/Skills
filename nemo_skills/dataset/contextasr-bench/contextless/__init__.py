@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""ContextASR-Bench contextless mode: plain transcription without any context."""
+
 METRICS_TYPE = "contextasr"
 EVAL_ARGS = "++eval_type=contextasr"
 GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"

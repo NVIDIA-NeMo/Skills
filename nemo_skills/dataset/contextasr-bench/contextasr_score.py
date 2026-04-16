@@ -68,11 +68,15 @@ def compute_score(combined_metrics: dict) -> dict:
             "success_rate": weighted_success / total_entries,
             "num_entries": total_entries,
         }
-        if weighted_wer:
+        has_wer = any("wer" in benchmark_data.get(eval_mode, {}) for benchmark_data in benchmarks.values())
+        has_ne_wer = any("ne_wer" in benchmark_data.get(eval_mode, {}) for benchmark_data in benchmarks.values())
+        has_ne_fnr = any("ne_fnr" in benchmark_data.get(eval_mode, {}) for benchmark_data in benchmarks.values())
+
+        if has_wer:
             agg["wer"] = round(weighted_wer / total_entries, 2)
-        if weighted_ne_wer:
+        if has_ne_wer:
             agg["ne_wer"] = round(weighted_ne_wer / total_entries, 2)
-        if weighted_ne_fnr:
+        if has_ne_fnr:
             agg["ne_fnr"] = round(weighted_ne_fnr / total_entries, 2)
 
         aggregated[eval_mode] = agg

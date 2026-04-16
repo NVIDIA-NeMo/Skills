@@ -32,14 +32,18 @@ from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorCo
 from nemo_skills.utils import nested_dataclass
 
 EN_PUNCS_MID_STOP = re.escape(',;(){}[]"|:')
-EN_PUNCS_END_STOP = re.escape('!?.')
+EN_PUNCS_END_STOP = re.escape("!?.")
 EN_PUNCS_NON_STOP = re.escape('#$%&*+/<=>@\\^_`~"')
-CN_PUNCS_MID_STOP = re.escape('，；､、丶｟｠《》（）｢｣［］｛｝「｣『』【】〔〕〖〗〘〙〚〛〈〉｜：：')
-CN_PUNCS_END_STOP = re.escape('！？｡。')
-CN_PUNCS_NON_STOP = re.escape('＂＃＄％＆＇＊＋－／＜＝＞＠＼＾＿｀～〃〜〝〞〟〰〾〿''‛""„‟…‧﹏·•・′″–—―')
+CN_PUNCS_MID_STOP = re.escape("，；､、丶｟｠《》（）｢｣［］｛｝「｣『』【】〔〕〖〗〘〙〚〛〈〉｜：：")
+CN_PUNCS_END_STOP = re.escape("！？｡。")
+CN_PUNCS_NON_STOP = re.escape('＂＃＄％＆＇＊＋－／＜＝＞＠＼＾＿｀～〃〜〝〞〟〰〾〿‛""„‟…‧﹏·•・′″–—―')
 ALL_PUNCTUATIONS = (
-    EN_PUNCS_MID_STOP + EN_PUNCS_END_STOP + EN_PUNCS_NON_STOP
-    + CN_PUNCS_MID_STOP + CN_PUNCS_END_STOP + CN_PUNCS_NON_STOP
+    EN_PUNCS_MID_STOP
+    + EN_PUNCS_END_STOP
+    + EN_PUNCS_NON_STOP
+    + CN_PUNCS_MID_STOP
+    + CN_PUNCS_END_STOP
+    + CN_PUNCS_NON_STOP
 )
 
 
@@ -49,32 +53,26 @@ def _merge_single_letters(text):
     current = []
     result = []
     for word in words:
-        if not word:
-            if current:
-                result.append(''.join(current))
-                current = []
-            result.append(word)
-            continue
         first_char = word[0]
-        remaining = word[1:] if len(word) > 1 else ''
+        remaining = word[1:] if len(word) > 1 else ""
         if first_char.islower() or first_char.isupper():
-            if remaining == '' or remaining == 's' or remaining == "'s":
+            if remaining == "" or remaining == "s" or remaining == "'s":
                 current.append(first_char)
                 if remaining:
                     current.append(remaining)
             else:
                 if current:
-                    result.append(''.join(current))
+                    result.append("".join(current))
                     current = []
                 result.append(word)
         else:
             if current:
-                result.append(''.join(current))
+                result.append("".join(current))
                 current = []
             result.append(word)
     if current:
-        result.append(''.join(current))
-    return ' '.join(result)
+        result.append("".join(current))
+    return " ".join(result)
 
 
 def simple_tokenize(text):
@@ -86,18 +84,18 @@ def simple_tokenize(text):
 
     if text.isupper():
         text = text.lower()
-    text = re.sub(r"^(O')\s|\s(O')$|\s(O')\s", ' O ', text)
-    text = re.sub(r"^(o')\s|\s(o')$|\s(o')\s", ' o ', text)
+    text = re.sub(r"^(O')\s|\s(O')$|\s(O')\s", " O ", text)
+    text = re.sub(r"^(o')\s|\s(o')$|\s(o')\s", " o ", text)
     text = contractions.fix(text, leftovers=False, slang=False)
-    text = re.sub(rf"[{ALL_PUNCTUATIONS}]", ' ', text)
-    text = text.replace('-', ' ')
-    text = text.replace("'", ' ')
+    text = re.sub(rf"[{ALL_PUNCTUATIONS}]", " ", text)
+    text = text.replace("-", " ")
+    text = text.replace("'", " ")
     ckj = r"\p{Han}\p{Hangul}\p{Hiragana}\p{Katakana}"
     latin = r"\p{IsLatin}"
-    text = re.sub(rf'(?<=[{ckj}])(?=[{ckj}])', ' ', text)
-    text = re.sub(rf'(?<=[{ckj}])(?={latin})', ' ', text)
-    text = re.sub(rf'(?<={latin})(?=[{ckj}])', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(rf"(?<=[{ckj}])(?=[{ckj}])", " ", text)
+    text = re.sub(rf"(?<=[{ckj}])(?={latin})", " ", text)
+    text = re.sub(rf"(?<={latin})(?=[{ckj}])", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
     text = _merge_single_letters(text)
     return text.lower()
 
@@ -116,7 +114,7 @@ def extract_entities(text, entities_list, entity2count=None):
             length = len(e_tokens)
             if i + length > n:
                 continue
-            if text_tokens[i:i + length] == e_tokens:
+            if text_tokens[i : i + length] == e_tokens:
                 if entity2count and match_entity2count[e_str] >= entity2count[e_str]:
                     continue
                 match_entity2count[e_str] += 1
@@ -153,11 +151,11 @@ def extract_entities_fuzzy(text, entities_list):
                 distance = editdistance.eval(window, entity_tokens)
                 if distance <= max_dist:
                     next_start = end
-                    window_text = ' '.join(window)
+                    window_text = " ".join(window)
                     search = re.search(re.escape(entity), window_text)
                     if search:
                         matched_entity = entity
-                        next_start -= len(window_text[search.end():].strip().split())
+                        next_start -= len(window_text[search.end() :].strip().split())
                     else:
                         matched_entity = window_text
                     match_positions.append((start, matched_entity))
@@ -268,8 +266,8 @@ def evaluate_contextasr_sample(data_point):
         hyp_fuzzy_entities = extract_entities_fuzzy(norm_hyp, norm_entities)
 
         # NE-WER: WER on fuzzy entity token sequences
-        ref_entity_text = ' '.join(ref_entities)
-        hyp_fuzzy_text = ' '.join(hyp_fuzzy_entities)
+        ref_entity_text = " ".join(ref_entities)
+        hyp_fuzzy_text = " ".join(hyp_fuzzy_entities)
         ne_ref_tokens = ref_entity_text.split()
         ne_hyp_tokens = hyp_fuzzy_text.split()
 
@@ -287,23 +285,27 @@ def evaluate_contextasr_sample(data_point):
         ne_hits = len(hyp_exact_entities)
         ne_fnr = 1.0 - (ne_hits / ne_total) if ne_total > 0 else 0.0
 
-        updates.update({
-            "ne_wer": ne_wer,
-            "ne_wer_errors": ne_wer_errors,
-            "ne_wer_ref_words": ne_wer_ref_words,
-            "ne_fnr": ne_fnr,
-            "ne_fnr_hits": ne_hits,
-            "ne_fnr_total": ne_total,
-        })
+        updates.update(
+            {
+                "ne_wer": ne_wer,
+                "ne_wer_errors": ne_wer_errors,
+                "ne_wer_ref_words": ne_wer_ref_words,
+                "ne_fnr": ne_fnr,
+                "ne_fnr_hits": ne_hits,
+                "ne_fnr_total": ne_total,
+            }
+        )
     else:
-        updates.update({
-            "ne_wer": 0.0,
-            "ne_wer_errors": 0,
-            "ne_wer_ref_words": 0,
-            "ne_fnr": 0.0,
-            "ne_fnr_hits": 0,
-            "ne_fnr_total": 0,
-        })
+        updates.update(
+            {
+                "ne_wer": 0.0,
+                "ne_wer_errors": 0,
+                "ne_wer_ref_words": 0,
+                "ne_fnr": 0.0,
+                "ne_fnr_hits": 0,
+                "ne_fnr_total": 0,
+            }
+        )
 
     return updates
 
@@ -311,6 +313,7 @@ def evaluate_contextasr_sample(data_point):
 @nested_dataclass(kw_only=True)
 class ContextASREvaluatorConfig(BaseEvaluatorConfig):
     """Configuration for ContextASR-Bench evaluation."""
+
     pass
 
 
@@ -318,7 +321,9 @@ class ContextASREvaluator(BaseEvaluator):
     """Evaluator for ContextASR-Bench: WER, NE-WER, NE-FNR."""
 
     def __init__(self, config: dict, num_parallel_requests=10):
+        """Initialize with evaluator config and parallelism settings."""
         super().__init__(config, num_parallel_requests)
 
     async def eval_single(self, data_point: dict) -> dict:
+        """Evaluate a single sample, returning WER/NE-WER/NE-FNR metrics."""
         return evaluate_contextasr_sample(data_point)

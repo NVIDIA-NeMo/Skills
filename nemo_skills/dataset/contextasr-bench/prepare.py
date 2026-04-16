@@ -36,7 +36,6 @@ Usage:
 
 import argparse
 import json
-import subprocess
 import tarfile
 from pathlib import Path
 
@@ -45,9 +44,7 @@ JSONL_FILENAME = "ContextASR-Speech_English.jsonl"
 AUDIO_TAR_PREFIX = "audio/ContextASR-Speech/English/ContextASR-Speech_English"
 NUM_AUDIO_TARS = 8
 
-PROMPT_CONTEXTLESS = (
-    "Transcribe the English audio into text, ensuring all punctuation marks are included."
-)
+PROMPT_CONTEXTLESS = "Transcribe the English audio into text, ensuring all punctuation marks are included."
 PROMPT_COARSE = (
     "This audio belongs to the {domain_label} field. "
     "Transcribe the English audio into text, ensuring all punctuation marks are included."
@@ -85,7 +82,7 @@ def download_dataset(download_dir):
     print("DOWNLOADING ContextASR-Bench English Speech data from HuggingFace")
     print(f"Repository: {HF_REPO_ID}")
     print(f"Destination: {download_dir}")
-    print(f"Total download size: ~22 GB (JSONL + 8 audio tar files)")
+    print("Total download size: ~22 GB (JSONL + 8 audio tar files)")
     print("")
     print("WARNING: This download may take 30-60 minutes depending on your")
     print("network speed. You can skip this by pre-downloading the data and")
@@ -109,18 +106,20 @@ def download_dataset(download_dir):
         tar_filename = f"{AUDIO_TAR_PREFIX}_{i}.tar"
         print(f"\n[{i + 1}/{NUM_AUDIO_TARS + 1}] Downloading {tar_filename}...")
 
-        local_tar = Path(hf_hub_download(
-            repo_id=HF_REPO_ID,
-            filename=tar_filename,
-            repo_type="dataset",
-            local_dir=str(download_dir),
-        ))
+        local_tar = Path(
+            hf_hub_download(
+                repo_id=HF_REPO_ID,
+                filename=tar_filename,
+                repo_type="dataset",
+                local_dir=str(download_dir),
+            )
+        )
 
         print(f"  Extracting {local_tar.name} to {audio_dir}...")
         with tarfile.open(local_tar) as tf:
             tf.extractall(path=audio_dir, filter="data")
 
-        print(f"  Extracted. Removing tar file to save space...")
+        print("  Extracted. Removing tar file to save space...")
         local_tar.unlink()
 
     wav_count = len(list(audio_dir.glob("*.wav")))
@@ -172,6 +171,7 @@ def format_entry(sample, mode, audio_prefix):
 
 
 def main():
+    """Parse arguments, download data if needed, and write per-mode JSONL splits."""
     parser = argparse.ArgumentParser(description="Prepare ContextASR-Bench for NeMo Skills")
     parser.add_argument(
         "--data_dir",
@@ -251,7 +251,7 @@ def main():
         "fine": output_dir / "fine" / "test.jsonl",
     }
 
-    print(f"\nWriting JSONL splits...")
+    print("\nWriting JSONL splits...")
     for mode_name, output_path in modes.items():
         output_path.parent.mkdir(parents=True, exist_ok=True)
         count = 0
