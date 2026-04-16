@@ -1,0 +1,5 @@
+# FACTS Grounding generation prompt
+# The full_prompt field from the dataset contains the complete prompt
+# (system instruction + user request + context document) already formatted.
+
+user: "{full_prompt}"
