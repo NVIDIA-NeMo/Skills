@@ -528,4 +528,5 @@ def return_empty_generation_with_error(detailed_error: str, error_reason: str = 
         "num_generated_tokens": 0,
         "error": error_reason,
         "detailed_error": detailed_error,
+        "finish_reason": "error",
     }
