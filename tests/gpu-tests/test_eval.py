@@ -33,6 +33,7 @@ EXCLUDED_DATASETS = {
     "ruler2",
     "bigcodebench",
     "livecodebench",
+    "livecodebench-x",
     "livebench-coding",
     "livecodebench-pro",
     "livecodebench-cpp",
