@@ -236,7 +236,21 @@ class DirectPythonTool(Tool):
 
     async def shutdown(self) -> None:
         if self._sandbox is not None:
+            session_ids = {
+                str(session_id) for session_id in self.requests_to_sessions.values() if session_id is not None
+            }
+            for session_id in session_ids:
+                await self._sandbox.delete_session(session_id)
             await self._sandbox.close()
+        self.requests_to_sessions.clear()
+
+    async def cleanup_request(self, request_id: str) -> None:
+        session_id = self.requests_to_sessions.get(request_id)
+        if session_id is None:
+            return
+        if self._sandbox is not None:
+            await self._sandbox.delete_session(str(session_id))
+        self.requests_to_sessions.pop(request_id, None)
 
 
 if __name__ == "__main__":
