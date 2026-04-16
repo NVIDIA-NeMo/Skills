@@ -19,17 +19,25 @@
 METRICS_TYPE = "facts_grounding"
 GENERATION_ARGS = "++prompt_config=generic/facts_grounding ++inference.tokens_to_generate=8192"
 
-# LLM judge evaluation using NVIDIA Inference API with Gemini as default judge
+# LLM judge evaluation using NVIDIA Inference API.
+# ``model`` seeds server/client setup in the nemo-skills pipeline; the judge
+# task itself spins up one client per entry in ``judge_models`` (see
+# ``nemo_skills.inference.eval.facts_grounding_judge``). All three judges are
+# reachable via the same base URL, so only the ``model`` field varies per call.
 JUDGE_PIPELINE_ARGS = {
     "generation_module": "nemo_skills.inference.eval.facts_grounding_judge",
-    "model": "gcp/google/gemini-3-flash-preview",
+    "model": "gcp/google/gemini-3.1-pro-preview",
     "server_type": "openai",
     "server_address": "https://inference-api.nvidia.com/v1",
 }
+# Default 3-judge ensemble — closest available counterparts to the
+# google-facts reference's gemini-3-pro / gpt-5.2 / claude-opus-4-5.
+# Override via ``++judge_models=[...]`` on the CLI.
 JUDGE_ARGS = (
     "++prompt_config=judge/facts_grounding "
     "++generation_key=judgement "
     "++add_generation_stats=False "
     "++inference.temperature=0.5 "
-    "++inference.tokens_to_generate=8192"
+    "++inference.tokens_to_generate=8192 "
+    "++judge_models=[gcp/google/gemini-3.1-pro-preview,azure/openai/gpt-5.2,aws/anthropic/claude-opus-4-5]"
 )
