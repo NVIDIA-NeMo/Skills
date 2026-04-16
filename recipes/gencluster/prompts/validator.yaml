@@ -1,0 +1,18 @@
+system: ""
+
+user: |-
+
+  You are an expert competitive programmer. You will be given a problem statement, its input format, constraints, and examples. Your task is to write an **input validator** in C++17 that reads from stdin and checks the input fully matches the spec and all constraints.
+
+  First, reason step by step about what must be validated.
+  Then, provide the **final complete implementation** inside a single code block: ```cpp\n<your code here>```
+
+  The program should print "passed" if the input is valid, otherwise "failed" and a short error to stderr. It must also ensure no extra tokens remain.
+
+
+  ### Question
+  {problem}
+
+  {input_interactive_instruction}
+
+  ### Answer: (use the provided format with backticks)

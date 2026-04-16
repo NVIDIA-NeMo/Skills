@@ -234,75 +234,78 @@ class ToolCallingWrapper:
         request_id = str(uuid.uuid4())
         tool_calls_executed = 0
 
-        while True:
-            if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
-                break
-            generation = await self.model.generate_async(
-                prompt=conversation,
-                tools=tools,
-                tokens_to_generate=tokens_to_generate,
-                endpoint_type=endpoint_type,
-                **generation_kwargs,
-            )
-
-            if isinstance(tokens_to_generate, int):
-                tokens_to_generate -= generation["num_generated_tokens"]
-
-            for k in ["generation", "num_generated_tokens", "reasoning_content", "finish_reason"]:
-                if k in generation:
-                    result_steps[k].append(generation[k])
-
-            if "error" in generation:
-                # Soft-fail returned an empty generation (e.g. enable_soft_fail caught an API error).
-                # Propagate the error fields and stop the tool loop for this data point.
-                result_steps["error"] = generation["error"]
-                result_steps["detailed_error"] = generation.get("detailed_error", "")
-                break
-
-            # latest vllm requires "reasoning" key instead of "reasoning_content", so we are duplicating both
-            # to support new and old versions. Litellm remaps reasoning_content to reasoning when it returns results
-            # back, but it's still necessary to send correct keys to vllm as it has hardcoded logic based on "reasoning"
-            # key name
-
-            conversation.extend(self._duplicate_reasoning_content_keys(generation["serialized_output"]))
-
-            tool_calls = generation.get("tool_calls", [])
-            if tool_calls:
-                tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
-                if self.max_tool_calls >= 0 and tool_calls_executed + len(tool_calls) > self.max_tool_calls:
-                    LOG.info(
-                        "Tool call limit reached (max_tool_calls=%s); stopping generation.",
-                        self.max_tool_calls,
-                    )
-                    result_steps["finish_reason"].append("tool_call_limit_reached")
+        try:
+            while True:
+                if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
                     break
-
-                tool_calls_output_messages = await self._execute_tool_calls(
-                    tool_calls, request_id=request_id, endpoint_type=endpoint_type
+                generation = await self.model.generate_async(
+                    prompt=conversation,
+                    tools=tools,
+                    tokens_to_generate=tokens_to_generate,
+                    endpoint_type=endpoint_type,
+                    **generation_kwargs,
                 )
-                LOG.info("Sending tool calls: %s", tool_calls_output_messages)
-                conversation.extend(tool_calls_output_messages)
 
                 if isinstance(tokens_to_generate, int):
-                    tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
+                    tokens_to_generate -= generation["num_generated_tokens"]
 
-                result_steps["num_tool_calls"].append(len(tool_calls))
-                tool_calls_executed += len(tool_calls)
+                for k in ["generation", "num_generated_tokens", "reasoning_content", "finish_reason"]:
+                    if k in generation:
+                        result_steps[k].append(generation[k])
 
-                continue
+                if "error" in generation:
+                    # Soft-fail returned an empty generation (e.g. enable_soft_fail caught an API error).
+                    # Propagate the error fields and stop the tool loop for this data point.
+                    result_steps["error"] = generation["error"]
+                    result_steps["detailed_error"] = generation.get("detailed_error", "")
+                    break
 
-            break
+                # latest vllm requires "reasoning" key instead of "reasoning_content", so we are duplicating both
+                # to support new and old versions. Litellm remaps reasoning_content to reasoning when it returns results
+                # back, but it's still necessary to send correct keys to vllm as it has hardcoded logic based on "reasoning"
+                # key name
 
-        # TODO: currently if number of tool calls is reached, the final conversation
-        #       is "broken" (tool call, but not output). Not sure what's a better option, though
+                conversation.extend(self._duplicate_reasoning_content_keys(generation["serialized_output"]))
 
-        result_steps["generation"] = "".join(result_steps["generation"])
-        result_steps["num_generated_tokens"] = sum(result_steps["num_generated_tokens"])
-        result_steps["num_tool_calls"] = sum(result_steps["num_tool_calls"])
-        result_steps["conversation"] = conversation
-        result_steps["tools"] = tools  # Schema sent to model (with overrides applied)
+                tool_calls = generation.get("tool_calls", [])
+                if tool_calls:
+                    tool_calls = [tool_call.model_dump() for tool_call in tool_calls]
+                    if self.max_tool_calls >= 0 and tool_calls_executed + len(tool_calls) > self.max_tool_calls:
+                        LOG.info(
+                            "Tool call limit reached (max_tool_calls=%s); stopping generation.",
+                            self.max_tool_calls,
+                        )
+                        result_steps["finish_reason"].append("tool_call_limit_reached")
+                        break
 
-        return result_steps
+                    tool_calls_output_messages = await self._execute_tool_calls(
+                        tool_calls, request_id=request_id, endpoint_type=endpoint_type
+                    )
+                    LOG.info("Sending tool calls: %s", tool_calls_output_messages)
+                    conversation.extend(tool_calls_output_messages)
+
+                    if isinstance(tokens_to_generate, int):
+                        tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
+
+                    result_steps["num_tool_calls"].append(len(tool_calls))
+                    tool_calls_executed += len(tool_calls)
+
+                    continue
+
+                break
+
+            # TODO: currently if number of tool calls is reached, the final conversation
+            #       is "broken" (tool call, but not output). Not sure what's a better option, though
+
+            result_steps["generation"] = "".join(result_steps["generation"])
+            result_steps["num_generated_tokens"] = sum(result_steps["num_generated_tokens"])
+            result_steps["num_tool_calls"] = sum(result_steps["num_tool_calls"])
+            result_steps["conversation"] = conversation
+            result_steps["tools"] = tools  # Schema sent to model (with overrides applied)
+
+            return result_steps
+        finally:
+            await self.tool_manager.cleanup_request(request_id)
 
     async def _stream_single(
         self,
@@ -332,106 +335,109 @@ class ToolCallingWrapper:
         all_reasoning = []
         last_finish_reason = None
 
-        while True:
-            if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
-                break
-
-            model_token_iterator = await self.model.generate_async(
-                prompt=conversation,
-                tools=tools,
-                tokens_to_generate=tokens_to_generate,
-                endpoint_type=endpoint_type,
-                stream=True,
-                **generation_kwargs,
-            )
-
-            current_output_segment = ""
-            reasoning_segment = ""
-            tool_call_accumulator = {}
-
-            async for chunk in model_token_iterator:
-                yield chunk
-
-                chunk_text = chunk.get("generation", "")
-                if chunk_text:
-                    current_output_segment += chunk_text
-
-                reasoning_delta = chunk.get("reasoning_content")
-                if reasoning_delta:
-                    reasoning_segment += reasoning_delta
-
-                if chunk.get("finish_reason"):
-                    last_finish_reason = chunk["finish_reason"]
-
-                tool_calls_delta = chunk.get("tool_calls")
-                if tool_calls_delta:
-                    if isinstance(tool_calls_delta, dict):
-                        tool_calls_delta = [tool_calls_delta]
-                    elif not isinstance(tool_calls_delta, list):
-                        tool_calls_delta = [tool_calls_delta]
-                    for tool_call_delta in tool_calls_delta:
-                        self._merge_tool_call_delta(tool_call_delta, tool_call_accumulator)
-
-            num_generated_tokens = len(self.model.tokenizer.encode(current_output_segment))
-
-            if isinstance(tokens_to_generate, int):
-                tokens_to_generate -= num_generated_tokens
-
-            total_generated_tokens += num_generated_tokens
-            all_generations.append(current_output_segment)
-            if reasoning_segment:
-                all_reasoning.append(reasoning_segment)
-
-            tool_calls = self._finalize_tool_calls(tool_call_accumulator)
-
-            if endpoint_type == EndpointType.chat:
-                content = current_output_segment
-                if not content and tool_calls:
-                    content = None
-                assistant_message = {"role": "assistant", "content": content}
-                if reasoning_segment:
-                    assistant_message["reasoning_content"] = reasoning_segment
-                if tool_calls:
-                    assistant_message["tool_calls"] = tool_calls
-                conversation.append(self._duplicate_reasoning_content_keys(assistant_message))
-            else:
-                raise NotImplementedError("Streaming tool calling is only supported for chat completions.")
-
-            if tool_calls:
-                if self.max_tool_calls >= 0 and total_tool_calls + len(tool_calls) > self.max_tool_calls:
-                    LOG.info(
-                        "Tool call limit reached (max_tool_calls=%s); stopping generation.",
-                        self.max_tool_calls,
-                    )
-                    last_finish_reason = "tool_call_limit_reached"
+        try:
+            while True:
+                if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
                     break
 
-                yield {"type": "tool_calls", "tool_calls": tool_calls}
-
-                tool_calls_output_messages = await self._execute_tool_calls(
-                    tool_calls, request_id=request_id, endpoint_type=endpoint_type
+                model_token_iterator = await self.model.generate_async(
+                    prompt=conversation,
+                    tools=tools,
+                    tokens_to_generate=tokens_to_generate,
+                    endpoint_type=endpoint_type,
+                    stream=True,
+                    **generation_kwargs,
                 )
-                LOG.info("Sending tool calls: %s", tool_calls_output_messages)
 
-                yield {"type": "tool_results", "results": tool_calls_output_messages}
+                current_output_segment = ""
+                reasoning_segment = ""
+                tool_call_accumulator = {}
 
-                conversation.extend(tool_calls_output_messages)
+                async for chunk in model_token_iterator:
+                    yield chunk
+
+                    chunk_text = chunk.get("generation", "")
+                    if chunk_text:
+                        current_output_segment += chunk_text
+
+                    reasoning_delta = chunk.get("reasoning_content")
+                    if reasoning_delta:
+                        reasoning_segment += reasoning_delta
+
+                    if chunk.get("finish_reason"):
+                        last_finish_reason = chunk["finish_reason"]
+
+                    tool_calls_delta = chunk.get("tool_calls")
+                    if tool_calls_delta:
+                        if isinstance(tool_calls_delta, dict):
+                            tool_calls_delta = [tool_calls_delta]
+                        elif not isinstance(tool_calls_delta, list):
+                            tool_calls_delta = [tool_calls_delta]
+                        for tool_call_delta in tool_calls_delta:
+                            self._merge_tool_call_delta(tool_call_delta, tool_call_accumulator)
+
+                num_generated_tokens = len(self.model.tokenizer.encode(current_output_segment))
+
                 if isinstance(tokens_to_generate, int):
-                    tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
-                total_tool_calls += len(tool_calls)
-                continue
+                    tokens_to_generate -= num_generated_tokens
 
-            break
+                total_generated_tokens += num_generated_tokens
+                all_generations.append(current_output_segment)
+                if reasoning_segment:
+                    all_reasoning.append(reasoning_segment)
 
-        final_result = {
-            "type": "final",
-            "generation": "".join(all_generations),
-            "num_generated_tokens": total_generated_tokens,
-            "num_tool_calls": total_tool_calls,
-            "conversation": conversation,
-            "tools": tools,
-            "finish_reason": last_finish_reason,
-        }
-        if all_reasoning:
-            final_result["reasoning_content"] = "".join(all_reasoning)
-        yield final_result
+                tool_calls = self._finalize_tool_calls(tool_call_accumulator)
+
+                if endpoint_type == EndpointType.chat:
+                    content = current_output_segment
+                    if not content and tool_calls:
+                        content = None
+                    assistant_message = {"role": "assistant", "content": content}
+                    if reasoning_segment:
+                        assistant_message["reasoning_content"] = reasoning_segment
+                    if tool_calls:
+                        assistant_message["tool_calls"] = tool_calls
+                    conversation.append(self._duplicate_reasoning_content_keys(assistant_message))
+                else:
+                    raise NotImplementedError("Streaming tool calling is only supported for chat completions.")
+
+                if tool_calls:
+                    if self.max_tool_calls >= 0 and total_tool_calls + len(tool_calls) > self.max_tool_calls:
+                        LOG.info(
+                            "Tool call limit reached (max_tool_calls=%s); stopping generation.",
+                            self.max_tool_calls,
+                        )
+                        last_finish_reason = "tool_call_limit_reached"
+                        break
+
+                    yield {"type": "tool_calls", "tool_calls": tool_calls}
+
+                    tool_calls_output_messages = await self._execute_tool_calls(
+                        tool_calls, request_id=request_id, endpoint_type=endpoint_type
+                    )
+                    LOG.info("Sending tool calls: %s", tool_calls_output_messages)
+
+                    yield {"type": "tool_results", "results": tool_calls_output_messages}
+
+                    conversation.extend(tool_calls_output_messages)
+                    if isinstance(tokens_to_generate, int):
+                        tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
+                    total_tool_calls += len(tool_calls)
+                    continue
+
+                break
+
+            final_result = {
+                "type": "final",
+                "generation": "".join(all_generations),
+                "num_generated_tokens": total_generated_tokens,
+                "num_tool_calls": total_tool_calls,
+                "conversation": conversation,
+                "tools": tools,
+                "finish_reason": last_finish_reason,
+            }
+            if all_reasoning:
+                final_result["reasoning_content"] = "".join(all_reasoning)
+            yield final_result
+        finally:
+            await self.tool_manager.cleanup_request(request_id)
