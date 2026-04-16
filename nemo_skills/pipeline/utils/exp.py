@@ -289,8 +289,7 @@ def get_executor(
         if partition == cluster_config.get("cpu_partition"):
             # by default we use exclusive if no gpus are needed and use non-exclusive if gpus are required
             # as cpu jobs almost always need more resources than automatically allocated by slurm
-            if sbatch_kwargs is None:
-                sbatch_kwargs = {}
+            sbatch_kwargs = dict(sbatch_kwargs) if sbatch_kwargs else {}
             sbatch_kwargs["exclusive"] = True
 
     timeout = get_slurm_timeout_str(cluster_config, partition, with_save_delay=False)
