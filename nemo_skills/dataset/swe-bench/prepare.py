@@ -27,6 +27,15 @@ if __name__ == "__main__":
         "directory which you can reference here to avoid redownloading all the time. "
         "See nemo_skills/dataset/swe-bench/dump_images.py",
     )
+    parser.add_argument(
+        "--repo_formatter",
+        type=str,
+        default="https://github.com/{repo}",
+        help="Repo path formatter string. Defines where the repository is cloned from. Can be a URL or a mounted path. "
+        "This is only used when the ++swe_zero_container option is set and only during inference. "
+        "Similarly to containers, you can download repos and store them to avoid redownloading all the time. "
+        "See nemo_skills/dataset/swe-bench/dump_repos.py",
+    )
     parser.add_argument("--split", type=str, default="test", help="Swe-Bench dataset split to use")
     parser.add_argument(
         "--setup", type=str, default="default", help="Setup name (used as nemo-skills split parameter)."
@@ -42,10 +51,12 @@ if __name__ == "__main__":
     dataset_name = args.dataset_name
     split = args.split
     container_formatter = args.container_formatter
+    repo_formatter = args.repo_formatter
 
     dataset = datasets.load_dataset(path=dataset_name, split=split)
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
     dataset = dataset.map(lambda example: {**example, "container_formatter": container_formatter})
+    dataset = dataset.map(lambda example: {**example, "repo_formatter": repo_formatter})
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))

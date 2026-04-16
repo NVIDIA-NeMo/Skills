@@ -30,6 +30,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import psutil
 from flask import Flask, request
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
+from traitlets.config import Config
 
 app = Flask(__name__)
 
@@ -100,7 +101,10 @@ def shell_worker(conn):
         _socket_module.socket = BlockedSocket  # Blocks: import _socket; _socket.socket()
         socket_module.socket = BlockedSocket  # Blocks: import socket; socket.socket()
 
-    shell = TerminalInteractiveShell()
+    # Keep IPython history process-local so workers and sessions do not contend on a shared history.sqlite file.
+    shell_config = Config()
+    shell_config.HistoryManager.hist_file = ":memory:"
+    shell = TerminalInteractiveShell(config=shell_config)
     # TerminalInteractiveShell installs a SIGINT handler that calls sys.exit(0)
     # instead of raising KeyboardInterrupt when _executing is False (which is
     # the case when run_cell is called programmatically). Restore the default

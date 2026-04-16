@@ -57,6 +57,8 @@ version = { attr = "nemo_skills.version.__version__" }
 dependencies = {file = ["core/requirements.txt", "requirements/pipeline.txt"]}
 
 [tool.setuptools.dynamic.optional-dependencies]
+# Tools: MCP/tool runtime only (ToolManager, DirectPythonTool, built-in tools; no model clients)
+tools = { file = ["tools/requirements.txt"] }
 # Core: lightweight runtime only (inference, evaluation, tool calling)
 core = { file = ["core/requirements.txt"] }
 # Pipeline: orchestration, cluster management, CLI (adds nemo_run, typer, wandb)

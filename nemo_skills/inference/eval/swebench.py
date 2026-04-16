@@ -125,6 +125,15 @@ class SweBenchGenerationConfig:
     # For SWE-agent, this changes the default config to multilingual.yaml, which uses language-specific prompting.
     multilingual: bool = False
 
+    # If specified, enables SWE-Zero (execution-free) mode.
+    # This will override container_formatter during inference and run all instances in this container instead,
+    # cloning the repo to /testbed before running the agent.
+    # This does not affect evaluation, which still runs in the container_formatter containers.
+    swe_zero_container: str | None = None
+
+    # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
+    evaluate: bool = True
+
     # Which dataset type we're running on. This determines which evaluation harness is used.
     dataset_type: SupportedDatasetTypes = SupportedDatasetTypes.swe_bench
 
@@ -287,7 +296,12 @@ class SweBenchGenerationTask(GenerationTask):
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            if self.cfg.multilingual:
+            if self.cfg.swe_zero_container is not None:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/ludwig-n/OpenHands.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "noexec-prompting-multilingual"
+            elif self.cfg.multilingual:
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/ludwig-n/OpenHands.git"
                 if self.cfg.agent_framework_commit is None:
@@ -296,7 +310,9 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/OpenHands/OpenHands.git"
                 if self.cfg.agent_framework_commit is None:
-                    self.cfg.agent_framework_commit = "HEAD"
+                    # Latest version before the swe-bench eval code was moved into a separate repo.
+                    # Future versions are not supported for now and will require significant changes.
+                    self.cfg.agent_framework_commit = "1.2.1"
 
             setup_commands.append(
                 # install python 3.12 with uv
@@ -305,13 +321,22 @@ class SweBenchGenerationTask(GenerationTask):
                 "uv tool install poetry && "
                 # add dir with poetry executable to PATH
                 "export PATH=/root/uv/tool-bin:$PATH && "
-                # download tmux as appimage
+                # set download links for jq and tmux depending on architecture
+                "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
+                "    export TMUX_LINK=https://github.com/tmux/tmux-builds/releases/download/v3.6a/tmux-3.6a-linux-arm64.tar.gz && "
+                "    export JQ_LINK=https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-arm64; "
+                "else "
+                "    export TMUX_LINK=https://github.com/tmux/tmux-builds/releases/download/v3.6a/tmux-3.6a-linux-x86_64.tar.gz && "
+                "    export JQ_LINK=https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64; "
+                "fi && "
+                # download tmux
                 "mkdir -p /root/tmux && "
-                "curl -Lf https://github.com/nelsonenzo/tmux-appimage/releases/download/3.5a/tmux.appimage -o /root/tmux/tmux && "
+                "curl -Lf $TMUX_LINK -o /root/tmux/tmux.tar.gz && "
+                "tar -xzf /root/tmux/tmux.tar.gz -C /root/tmux && "
                 "chmod 777 /root/tmux/tmux && "
                 # download jq
                 "mkdir -p /root/jq && "
-                "curl -Lf https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64 -o /root/jq/jq && "
+                "curl -Lf $JQ_LINK -o /root/jq/jq && "
                 "chmod 777 /root/jq/jq && "
                 # clone the openhands repo
                 "rm -rf /root/OpenHands && "
@@ -337,18 +362,19 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        # Install the SWE-bench evaluation harness.
-        setup_commands.append(
-            # clone the swe-bench repo
-            "rm -rf /root/SWE-bench && "
-            f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
-            "cd /root/SWE-bench && "
-            f"git checkout {self.cfg.eval_harness_commit} && "
-            # make venv & install swe-bench dependencies
-            "uv venv --python 3.12 --managed-python venv && "
-            "source venv/bin/activate && "
-            "uv pip install -e ."
-        )
+        if self.cfg.evaluate:
+            # Install the SWE-bench evaluation harness.
+            setup_commands.append(
+                # clone the swe-bench repo
+                "rm -rf /root/SWE-bench && "
+                f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
+                "cd /root/SWE-bench && "
+                f"git checkout {self.cfg.eval_harness_commit} && "
+                # make venv & install swe-bench dependencies
+                "uv venv --python 3.12 --managed-python venv && "
+                "source venv/bin/activate && "
+                "uv pip install -e ."
+            )
 
         # Run all commands with retries and timeout
         combined_setup_command = " && ".join(setup_commands)
@@ -409,24 +435,72 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
-        container_name = data_point["container_formatter"].format(
-            instance_id=data_point["instance_id"].replace("__", "_1776_")
-        )
-
-        # Create logs directory if it doesn't exist
-        logs_dir = self.output_dir / "apptainer_logs"
-        logs_dir.mkdir(exist_ok=True)
-
         # Commands to be executed in the Apptainer container, in order
         container_commands = []
 
         # Fix localhost URLs not working sometimes
         container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
 
-        # If the repo is not in /testbed, copy it before running the agent
-        container_repo_dir = data_point.get("container_repo_dir", "/testbed")
-        if mode == "agent" and container_repo_dir != "/testbed":
-            container_commands.append(f"cp -r {container_repo_dir} /testbed")
+        extra_apptainer_args = ""
+
+        if self.cfg.swe_zero_container is not None and mode == "agent":
+            container_name = self.cfg.swe_zero_container
+
+            # In SWE-Zero mode, we have to clone the repo inside of the container before running the agent.
+
+            # repo_formatter tells us where to get the repo from: either from a URL or from a local mirror.
+            # If repo_formatter is not set, we try to fetch it from GitHub using the "repo" column of the dataset.
+            repo_formatter = data_point.get("repo_formatter", "https://github.com/{repo}")
+            repo_url_or_path = repo_formatter.format(repo=data_point["repo"])
+            if repo_url_or_path.startswith("/"):
+                # If the repo is local, we need to mount it inside of Apptainer
+                extra_apptainer_args += f" --mount type=bind,src={repo_url_or_path},dst=/instance_repo,ro "
+                repo_url_or_path = "/instance_repo"
+                # Prevent "dubious ownership" errors
+                container_commands.append("git config --global --add safe.directory /instance_repo")
+
+            # Clone the repo.
+            # This follows the procedure used for the official SWE-bench environments:
+            # https://github.com/SWE-bench/SWE-bench/blob/7a6b44e4a82eece60ac06afd3042a76d8a95eec3/swebench/harness/test_spec/python.py#L274
+            # with the following differences:
+            #     1. we clone all branches because we can't always know which branch the commit is on,
+            #     2. we compare commit times using Unix timestamps (%ct instead of %ci) to fix timezone issues.
+            container_commands.append(
+                # Remove existing repo if present
+                "rm -rf /testbed && "
+                # Clone the repo we need
+                f"git clone -o origin {repo_url_or_path} /testbed && "
+                "chmod -R 777 /testbed && "
+                "cd /testbed && "
+                f"git reset --hard {data_point['base_commit']} && "
+                # Remove the remote and tags so the agent won't see newer commits
+                "git remote remove origin && "
+                # Remove only tags pointing to commits after target timestamp
+                f"TARGET_TIMESTAMP=$(git show -s --format=%ct {data_point['base_commit']}) && "
+                'git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ct "$TAG_COMMIT"); if [[ "$TAG_TIME" -gt "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done && '
+                "git reflog expire --expire=now --all && "
+                "git gc --prune=now --aggressive && "
+                # Verify future logs aren't available
+                "AFTER_TIMESTAMP=$(($TARGET_TIMESTAMP + 1)) && "
+                'COMMIT_COUNT=$(git log --oneline --all --since="$AFTER_TIMESTAMP" | wc -l) && '
+                'if [ "$COMMIT_COUNT" -ne 0 ]; then '
+                "    echo 'Exiting because future logs are visible after resetting the repo to the base commit.' && "
+                "    echo 'This means something went wrong during the setup procedure.' && "
+                "    exit 1; "
+                "fi"
+            )
+        else:
+            # In the general case, we use per-instance containers and expect the repo to already be cloned inside.
+
+            # Get the container name from container_formatter
+            container_name = data_point["container_formatter"].format(
+                instance_id=data_point["instance_id"].replace("__", "_1776_")
+            )
+
+            # If the repo is not in /testbed, copy it before running the agent
+            container_repo_dir = data_point.get("container_repo_dir", "/testbed")
+            if mode == "agent" and container_repo_dir != "/testbed":
+                container_commands.append(f"cp -r {container_repo_dir} /testbed")
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
@@ -437,8 +511,13 @@ class SweBenchGenerationTask(GenerationTask):
             f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
             f"--mount type=bind,src=/root,dst=/root_mount,ro "
             f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
-            f" {container_name} bash -c {shlex.quote(combined_command)}"
+            f"{extra_apptainer_args} "
+            f"{container_name} bash -c {shlex.quote(combined_command)}"
         )
+
+        # Create logs directory if it doesn't exist
+        logs_dir = self.output_dir / "apptainer_logs"
+        logs_dir.mkdir(exist_ok=True)
 
         # Retry apptainer command up to max_retries times
         for attempt in range(self.cfg.max_retries):
@@ -723,7 +802,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         # The final 2 arguments are different between the swe_bench and multi_swe_bench scripts.
         # We handle that with extra_args.
-        if self.cfg.multilingual:
+        if self.cfg.multilingual and self.cfg.swe_zero_container is None:
             benchmark_name = "multi_swe_bench"
             extra_args = (
                 f" {data_dir}/dataset.jsonl "  # dataset file
@@ -755,10 +834,6 @@ class SweBenchGenerationTask(GenerationTask):
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
             "ln -sf /root/jq/jq /usr/local/bin/jq && "
-            # enable tmux appimage to run without fusermount
-            # https://docs.appimage.org/user-guide/troubleshooting/fuse.html#extract-and-run-type-2-appimages
-            "export APPIMAGE_EXTRACT_AND_RUN=1 && "
-            "export NO_CLEANUP=1 && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
@@ -874,6 +949,14 @@ class SweBenchGenerationTask(GenerationTask):
                     "resolved": False,
                     "patch_exists": False,
                     "patch_successfully_applied": False,
+                }
+            }
+        elif not self.cfg.evaluate:
+            report_json = {
+                data_point["instance_id"]: {
+                    "resolved": None,
+                    "patch_exists": True,
+                    "patch_successfully_applied": None,
                 }
             }
         else:

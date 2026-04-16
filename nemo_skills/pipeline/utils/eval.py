@@ -478,7 +478,7 @@ def prepare_eval_commands(
                     requirements=requirements,
                     # only logging for the first seed
                     wandb_parameters=wandb_parameters if seed_idx == 0 else None,
-                    with_sandbox=benchmark_args.requires_sandbox,
+                    with_sandbox=benchmark_args.requires_sandbox or with_sandbox,
                 )
                 job_cmds.append(cmd)
 
