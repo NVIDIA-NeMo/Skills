@@ -17,8 +17,6 @@ concurrency:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
-    env:
-      HAS_GHCR_PAT: ${{ secrets.GHCR_PAT != '' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v6
@@ -26,7 +24,6 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Login to GHCR
-      if: ${{ env.HAS_GHCR_PAT == 'true' }}
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
@@ -56,22 +53,6 @@ jobs:
         # Python generates: locally-built-{sanitized_path}:{sha256_hash[:12]}
         REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
-        # Fork PRs do not receive repository secrets, so skip remote cache usage
-        # when GHCR_PAT is unavailable.
-        if [ "$HAS_GHCR_PAT" = "true" ]; then
-          NEMO_SKILLS_CACHE_ARGS=(
-            --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache
-            --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=min
-          )
-          SANDBOX_CACHE_ARGS=(
-            --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache
-            --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache,mode=min
-          )
-        else
-          NEMO_SKILLS_CACHE_ARGS=()
-          SANDBOX_CACHE_ARGS=()
-        fi
-
         # Build nemo-skills-image with expected tag
         NEMO_SKILLS_HASH=$(sha256sum dockerfiles/Dockerfile.nemo-skills | cut -d' ' -f1 | cut -c1-12)
         NEMO_SKILLS_TAG="locally-built-dockerfiles-dockerfile-nemo-skills:${NEMO_SKILLS_HASH}"
@@ -79,7 +60,8 @@ jobs:
           --tag nemo-skills-image \
           --tag ${NEMO_SKILLS_TAG} \
           --file dockerfiles/Dockerfile.nemo-skills \
-          "${NEMO_SKILLS_CACHE_ARGS[@]}" \
+          --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-image:cache,mode=min \
           --load \
           .
 
@@ -97,7 +79,8 @@ jobs:
           --tag ${SANDBOX_TAG} \
           --file dockerfiles/Dockerfile.sandbox \
           --build-arg GITHUB_CI=1 \
-          "${SANDBOX_CACHE_ARGS[@]}" \
+          --cache-from type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache \
+          --cache-to type=registry,ref=ghcr.io/${REPO_LOWER}/nemo-skills-sandbox-image:cache,mode=min \
           --load \
           .
     - name: Run all tests
