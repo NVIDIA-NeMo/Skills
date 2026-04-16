@@ -72,3 +72,12 @@ Confidence: 100%"""
 
     assert extracted == "yeyo"
     assert math_equal("yeyo", extracted)
+
+
+def test_hle_empty_answer_returns_none():
+    """An empty Answer: line followed by Confidence: should yield None, not the Confidence text."""
+    generation = """Explanation: I could not determine the answer.
+Answer:
+Confidence: 10%"""
+
+    assert extract_hle_answer(generation) is None

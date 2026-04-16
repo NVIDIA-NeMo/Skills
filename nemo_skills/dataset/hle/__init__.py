@@ -14,7 +14,7 @@
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 METRICS_TYPE = "hle"  # This uses the MathMetrics class, but with compute_no_answer=False
-HLE_ANSWER_EXTRACT_REGEX = r"(?is)(?:^|\n)\s*\**Answer\**\s*:\s*(.+?)(?=\n\s*\**Confidence\**\s*:|\Z)"
+HLE_ANSWER_EXTRACT_REGEX = r"(?im)(?:^|\n)\s*\**Answer\**\s*:[^\S\n]*(.+?)(?=\n\s*\**Confidence\**\s*:|\Z)"
 HLE_EVAL_EXTRACTION_ARGS = (
     "++eval_config.extract_from_boxed=False "
     "++eval_config.relaxed_extraction=True "
