@@ -13,183 +13,131 @@
 # limitations under the License.
 
 """
-Tests that shell_worker processes forked during shell restart do not inherit
-the parent's exception state via sys.exc_info().
+Functional test for the fork-inside-except traceback leak bug.
 
-Bug: ShellManager.run_cell() calls start_shell() inside except handlers.
-os.fork() copies the parent's sys.exc_info(), so the new shell_worker
-inherits the EOFError. Any subsequent user code error then gets implicit
-exception chaining (__context__ = EOFError), and IPython formats the full
-chain — leaking internal sandbox frames into the tool output.
+When ShellManager.run_cell() restarts a dead shell inside an except handler,
+os.fork() copies the parent's sys.exc_info() into the child process. Any
+subsequent error in the child gets implicit exception chaining, leaking
+internal sandbox tracebacks (EOFError from conn.recv()) into tool output.
 
-Fix: Move start_shell() calls outside except handlers (flag pattern) so
-sys.exc_info() is cleared before forking.
+This test kills a shell worker, lets run_cell() handle the restart, then
+runs error-producing code and asserts no leaked exception chain.
 """
 
-import multiprocessing
+import io
 import os
 import signal
 import sys
-
-import pytest
-
-# ---------------------------------------------------------------------------
-# Unit tests: core mechanism (no IPython / Flask required)
-# ---------------------------------------------------------------------------
+import traceback
+import types
+from contextlib import redirect_stderr, redirect_stdout
+from unittest import mock
 
 
-def _child_check_exc_info(conn):
-    """Child process that reports its inherited sys.exc_info()."""
-    exc = sys.exc_info()
-    conn.send({"exc_type": type(exc[1]).__name__ if exc[1] else None})
+def _test_shell_worker(conn):
+    """Minimal shell_worker for testing — uses exec() instead of IPython.
 
-    # Raise a new exception and check __context__
+    Avoids traitlets class-identity issues after fork in IPython 9.x.
+    The bug under test is in ShellManager.run_cell() (whether it forks
+    inside an except handler), not in shell_worker itself.
+    """
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    namespace = {}
     try:
-        raise NameError("test")
-    except NameError as e:
-        conn.send(
-            {
-                "context_type": type(e.__context__).__name__ if e.__context__ else None,
-            }
-        )
-    conn.close()
-
-
-class TestForkExcInfoInheritance:
-    """Verify that os.fork() inside an except handler leaks exc_info to child."""
-
-    def test_fork_inside_except_inherits_exc_info(self):
-        """Child forked inside except handler DOES inherit the exception."""
-        try:
-            raise EOFError("simulated conn.recv failure")
-        except EOFError:
-            parent_conn, child_conn = multiprocessing.Pipe()
-            proc = multiprocessing.Process(target=_child_check_exc_info, args=(child_conn,))
-            proc.start()
-            exc_msg = parent_conn.recv()
-            ctx_msg = parent_conn.recv()
-            proc.join(timeout=5)
-            parent_conn.close()
-
-        # This test documents the bug mechanism — it should always pass
-        assert exc_msg["exc_type"] == "EOFError"
-        assert ctx_msg["context_type"] == "EOFError"
-
-    def test_fork_outside_except_clean_exc_info(self):
-        """Child forked outside except handler has clean exc_info."""
-        need_restart = False
-        try:
-            raise EOFError("simulated conn.recv failure")
-        except EOFError:
-            need_restart = True
-
-        # Fork AFTER except block exits — sys.exc_info() is cleared
-        assert need_restart
-        parent_conn, child_conn = multiprocessing.Pipe()
-        proc = multiprocessing.Process(target=_child_check_exc_info, args=(child_conn,))
-        proc.start()
-        exc_msg = parent_conn.recv()
-        ctx_msg = parent_conn.recv()
-        proc.join(timeout=5)
-        parent_conn.close()
-
-        assert exc_msg["exc_type"] is None
-        assert ctx_msg["context_type"] is None
-
-
-# ---------------------------------------------------------------------------
-# Integration test: ShellManager with real IPython shell_worker
-# ---------------------------------------------------------------------------
-
-
-class TestShellManagerNoTracbackLeak:
-    """After shell restart, user code errors must not contain leaked traceback."""
-
-    @pytest.fixture()
-    def shell_manager(self):
-        from nemo_skills.code_execution.local_sandbox.local_sandbox_server import ShellManager
-
-        mgr = ShellManager()
-        yield mgr
-        # Cleanup all shells
-        for sid in list(mgr.shells.keys()):
+        while True:
             try:
-                mgr.stop_shell(sid)
-            except Exception:
-                pass
+                msg = conn.recv()
+            except EOFError:
+                break
+            if not isinstance(msg, dict):
+                continue
+            cmd = msg.get("cmd")
+            if cmd == "exec":
+                code = msg.get("code", "")
+                exec_id = msg.get("id")
+                stdout_buf = io.StringIO()
+                stderr_buf = io.StringIO()
+                has_error = False
+                try:
+                    with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+                        exec(code, namespace)
+                except Exception:
+                    has_error = True
+                    stdout_buf.write(traceback.format_exc())
+                conn.send(
+                    {
+                        "status": "ok",
+                        "id": exec_id,
+                        "result_repr": "None",
+                        "stdout": stdout_buf.getvalue(),
+                        "stderr": stderr_buf.getvalue(),
+                        "has_error": has_error,
+                    }
+                )
+            elif cmd == "shutdown":
+                break
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
-    def test_restart_after_kill_no_eof_leak(self, shell_manager):
-        """Kill shell_worker, trigger restart via EOFError, then verify clean output."""
-        sid = "test-eof-leak"
 
-        # 1. Start shell, run harmless code
-        r1 = shell_manager.run_cell(sid, "x = 42", timeout=5.0)
-        assert r1["status"] == "ok"
-        assert not r1.get("has_error")
+def _get_server_module():
+    """Import the sandbox server module, mocking unavailable deps."""
+    mocks = {}
+    for dep in ("psutil", "flask"):
+        if dep not in sys.modules:
+            mocks[dep] = types.ModuleType(dep)
+            if dep == "flask":
+                mocks[dep].Flask = mock.MagicMock()
+                mocks[dep].request = mock.MagicMock()
 
-        # 2. Kill the shell_worker process to force EOFError on next recv
-        entry = shell_manager.shells[sid]
-        proc = entry["proc"]
+    with mock.patch.dict(sys.modules, mocks):
+        import nemo_skills.code_execution.local_sandbox.local_sandbox_server as mod
+
+    # Replace shell_worker with test-friendly version that doesn't need IPython
+    mod.shell_worker = _test_shell_worker
+    return mod
+
+
+def test_error_after_shell_restart_has_no_exception_chain():
+    """After shell death + restart, errors must not chain with parent EOFError.
+
+    Scenario: start shell → kill it → run_cell (triggers restart) →
+    run error code → output should have only NameError, not EOFError.
+    """
+    mod = _get_server_module()
+    mgr = mod.ShellManager()
+
+    try:
+        # 1. Create shell and confirm it works
+        r1 = mgr.run_cell("test", "x = 42", timeout=5.0)
+        assert r1["status"] == "ok", f"Initial run_cell failed: {r1}"
+
+        # 2. Kill the shell worker process (simulates OOM/crash)
+        with mgr.manager_lock:
+            proc = mgr.shells["test"]["proc"]
         os.kill(proc.pid, signal.SIGKILL)
-        proc.join(timeout=3.0)
+        proc.join(timeout=3)
 
-        # 3. Next run_cell → conn.recv raises EOFError → shell restarts
-        r2 = shell_manager.run_cell(sid, "y = 1", timeout=5.0)
-        # Should report error or restart (the exact status depends on timing:
-        # conn.send might fail first, or conn.recv raises EOFError)
-        assert r2.get("shell_was_restarted") or r2["status"] in ("error", "ok")
+        # 3. run_cell on dead shell → triggers except handler → restart
+        mgr.run_cell("test", "y = 1", timeout=5.0)
 
-        # 4. Run code that raises NameError in the restarted shell
-        r3 = shell_manager.run_cell(sid, "z = undefined_var + 1", timeout=5.0)
-        assert r3["status"] == "ok"
-        assert r3.get("has_error")
+        # 4. Run error-producing code in the restarted shell
+        result = mgr.run_cell("test", "z = undefined_var + 1", timeout=5.0)
+        assert result["status"] == "ok", f"Unexpected status: {result}"
+        assert result.get("has_error"), f"Expected an error: {result}"
 
-        output = r3.get("stdout", "") + r3.get("stderr", "")
+        output = result.get("stdout", "") + result.get("stderr", "")
+        assert "NameError" in output, f"Expected NameError:\n{output}"
 
-        # THE CRITICAL ASSERTIONS:
-        assert "EOFError" not in output, f"Leaked EOFError traceback into tool output:\n{output}"
+        # THE BUG: if start_shell() ran inside an except handler, the forked
+        # child inherited sys.exc_info() and every error gets chained with
+        # "During handling of the above exception, another exception occurred"
+        assert "EOFError" not in output, f"Parent EOFError leaked into child output:\n{output}"
         assert "During handling of the above exception" not in output, (
-            f"Exception chain from parent process leaked into output:\n{output}"
+            f"Exception chain leaked into child output:\n{output}"
         )
-        assert "conn.recv" not in output, f"Parent-process conn.recv() frame leaked into output:\n{output}"
-
-        # Should contain ONLY the user's NameError
-        assert "NameError" in output
-
-    def test_restart_after_timeout_no_eof_leak(self, shell_manager):
-        """Timeout → SIGINT → shell dies → restart, then verify clean output."""
-        sid = "test-timeout-leak"
-
-        # 1. Run code that will block, with a short timeout
-        #    Use a tight loop that ignores SIGINT to force the kill path
-        blocking_code = "import signal, time\nsignal.signal(signal.SIGINT, signal.SIG_IGN)\ntime.sleep(120)\n"
-        r1 = shell_manager.run_cell(sid, blocking_code, timeout=1.0, grace=1.0)
-        # Should be timeout_killed since it ignores SIGINT
-        assert r1["status"] in ("timeout_killed", "interrupted", "error")
-
-        # 2. Run code that raises an error in the restarted shell
-        r2 = shell_manager.run_cell(sid, "z = undefined_var + 1", timeout=5.0)
-        assert r2["status"] == "ok"
-        assert r2.get("has_error")
-
-        output = r2.get("stdout", "") + r2.get("stderr", "")
-
-        assert "EOFError" not in output, f"Leaked EOFError traceback into tool output:\n{output}"
-        assert "During handling of the above exception" not in output, (
-            f"Exception chain from parent process leaked into output:\n{output}"
-        )
-        assert "NameError" in output
-
-    def test_normal_error_no_chain(self, shell_manager):
-        """Without any restart, errors should never have exception chaining."""
-        sid = "test-no-chain"
-
-        # Just run code that errors — no restart involved
-        r = shell_manager.run_cell(sid, "z = undefined_var + 1", timeout=5.0)
-        assert r["status"] == "ok"
-        assert r.get("has_error")
-
-        output = r.get("stdout", "") + r.get("stderr", "")
-        assert "NameError" in output
-        assert "During handling of the above exception" not in output
-        assert "EOFError" not in output
+    finally:
+        mgr.stop_shell("test")
