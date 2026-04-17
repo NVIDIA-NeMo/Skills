@@ -96,9 +96,10 @@ class NemoRLTask:
         return cmd
 
     def format_data_args(self):
-        cmd = f"++data.train_jsonl_fpath={self.prompt_data} "
+        cmd = "++data.use_multiple_dataloader=False "
+        cmd += f"++data.train.data_path={self.prompt_data} "
         if self.eval_data is not None:
-            cmd += f"++data.validation_jsonl_fpath={self.eval_data} "
+            cmd += f"++data.validation.data_path={self.eval_data} "
         return cmd
 
     def format_wandb_args(self):
@@ -141,7 +142,7 @@ class NemoRLTask:
         self.logging_params = self.format_wandb_args()
         nsight_cmd = get_nsight_cmd(self.profile_step_range)
         cmd = (
-            f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:{UPSTREAM_NEMO_RL_ROOT} && "
+            f"export PYTHONPATH=$PYTHONPATH:{UPSTREAM_NEMO_RL_ROOT} && "
             f"export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && "
             f"{nsight_cmd}"
             f"echo 'Starting training' && "
@@ -335,6 +336,7 @@ def grpo_nemo_rl(
     config: str = typer.Option(None, help="Override training config YAML; defaults to the upstream container config"),
     container: str = typer.Option(None, help="Override container image for NeMo-RL training/conversion jobs"),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox sidecar"),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(
         None,
@@ -508,6 +510,7 @@ def grpo_nemo_rl(
                     sbatch_kwargs=sbatch_kwargs,
                     heterogeneous=True if server_config is not None else False,
                     with_sandbox=with_sandbox,
+                    sandbox_container=sandbox_container,
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
