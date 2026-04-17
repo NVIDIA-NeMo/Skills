@@ -57,9 +57,16 @@ async def _execute_single_test(args):
             code += line + "\n"
 
     sandbox = get_sandbox(**eval_config.sandbox)
-    output_dict, _ = await sandbox.execute_code(code, timeout=eval_config.timeout, max_output_characters=100000)
-
-    return elem_idx, output_dict
+    session_id = None
+    try:
+        output_dict, session_id = await sandbox.execute_code(
+            code, timeout=eval_config.timeout, max_output_characters=100000
+        )
+        return elem_idx, output_dict
+    finally:
+        if session_id is not None:
+            await sandbox.delete_session(str(session_id))
+        await sandbox.close()
 
 
 def test_code(eval_config, scicode_data):
