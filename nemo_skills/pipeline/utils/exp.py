@@ -542,8 +542,10 @@ def add_task(
     het_group = 0
     het_group_indices = []
     het_group_num_nodes = {}
-    if heterogeneous and with_sandbox:
-        # Sandbox overlaps each het group instead of occupying its own group.
+    sandbox_needs_executor = with_sandbox and not with_ray
+    if heterogeneous and sandbox_needs_executor:
+        # Non-Ray sandbox sidecars overlap each existing het group instead of
+        # occupying their own group.
         total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd)
         preview_het_group = 0
         if server_goes_first and server_config is not None:
@@ -558,7 +560,7 @@ def add_task(
                 het_group_num_nodes[preview_het_group] = server_config["num_nodes"]
                 preview_het_group += 1
     else:
-        total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + with_sandbox
+        total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + sandbox_needs_executor
 
     LOG.info("Adding a task with commands:")
 
