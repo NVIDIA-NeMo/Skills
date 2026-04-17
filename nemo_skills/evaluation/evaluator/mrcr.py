@@ -44,6 +44,8 @@ def eval_mrcr(cfg):
     with open(jsonl_file, "wt", encoding="utf-8") as fout:
         for sample in tqdm(data):
             sample["seq_match_ratio"] = grade(
-                sample["generation"], sample["expected_answer"], sample["random_string_to_prepend"]
+                sample["generation"].strip(),
+                sample["expected_answer"],
+                sample["random_string_to_prepend"],
             )
             fout.write(json.dumps(sample) + "\n")

@@ -289,11 +289,12 @@ def summarize_results(
         metrics = {}
 
         has_greedy = Path(f"{benchmark_path}/output.jsonl").exists()
+        output_rs_pattern = re.compile(r"^output-rs\d+\.jsonl$")
         input_files = sorted(
             [
                 jsonl_file
-                for jsonl_file in glob.glob(f"{benchmark_path}/*.jsonl")
-                if Path(jsonl_file).name != "output.jsonl" and "_chunk_" not in Path(jsonl_file).name
+                for jsonl_file in glob.glob(f"{benchmark_path}/output-rs*.jsonl")
+                if output_rs_pattern.match(Path(jsonl_file).name)
             ]
         )
         has_sampling = len(input_files) > 0

@@ -41,6 +41,7 @@ _EVALUATOR_MAP_PATHS = {
     "bigcodebench": "nemo_skills.evaluation.evaluator.code:eval_bigcodebench",
     "human_eval_infilling": "nemo_skills.evaluation.evaluator.code:eval_human_eval_infilling",
     "mmau-pro": "nemo_skills.evaluation.evaluator.mmau_pro:eval_mmau_pro",
+    "specdec": "nemo_skills.evaluation.evaluator.specdec:eval_specdec",
 }
 
 # Class-based evaluators: eval_type -> "module_path:ClassName"
@@ -50,6 +51,7 @@ _EVALUATOR_CLASS_MAP_PATHS = {
     "code_exec": "nemo_skills.evaluation.evaluator.code:CodeExecEvaluator",
     "ioi": "nemo_skills.evaluation.evaluator.ioi:IOIEvaluator",
     "icpc": "nemo_skills.evaluation.evaluator.icpc:ICPCEvaluator",
+    "ccc": "nemo_skills.evaluation.evaluator.ccc:CCCEvaluator",
     "audio": "nemo_skills.evaluation.evaluator.audio:AudioEvaluator",
     "bird": "nemo_skills.evaluation.evaluator.bird:BirdEvaluator",
     "compute-eval": "nemo_skills.evaluation.evaluator.compute_eval:ComputeEvalEvaluator",

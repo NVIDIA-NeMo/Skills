@@ -15,6 +15,8 @@ python tests/slurm-tests/omr_simple_recipe/run_test.py --cluster $CLUSTER --work
 # sleep 10
 python tests/slurm-tests/qwen3coder_30b_swebench/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/qwen3coder_30b_swebench --expname_prefix qwen3coder_30b_swebench_$RUN_NAME --container_formatter '/swe-bench-images/swebench_sweb.eval.x86_64.{instance_id}.sif'
 # sleep 10
+python tests/slurm-tests/stem_sdg_pipeline/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/sdg_pipeline --expname_prefix sdg_pipeline_$RUN_NAME
+# sleep 10
 python tests/slurm-tests/unified_asr/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/unified_asr --expname_prefix unified_asr_$RUN_NAME
 # sleep 10
 python tests/slurm-tests/unified_tts/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/unified_tts --expname_prefix unified_tts_$RUN_NAME

@@ -23,6 +23,7 @@ import pytest
 from nemo_skills.evaluation.metrics import ComputeMetrics
 from nemo_skills.inference.model.base import BaseModel
 from nemo_skills.pipeline.generate import _create_job_unified
+from nemo_skills.pipeline.utils import eval as eval_utils
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
@@ -259,7 +260,12 @@ def test_process_chat_chunk_never_yields_none_generation():
     def _chunk(content, finish_reason=None, *, use_delta=True):
         if use_delta:
             return SimpleNamespace(
-                choices=[SimpleNamespace(delta=SimpleNamespace(content=content), finish_reason=finish_reason)]
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content=content),
+                        finish_reason=finish_reason,
+                    )
+                ]
             )
         return SimpleNamespace(choices=[SimpleNamespace(text=content, finish_reason=finish_reason)])
 
@@ -278,7 +284,106 @@ def test_process_chat_chunk_never_yields_none_generation():
 
     # Full consumer loop — must not raise TypeError
     full = ""
-    for c in [_chunk("Hello "), _chunk(None), _chunk("world"), _chunk(None, finish_reason="stop")]:
+    for c in [
+        _chunk("Hello "),
+        _chunk(None),
+        _chunk("world"),
+        _chunk(None, finish_reason="stop"),
+    ]:
         for r in p(c):
             full += r["generation"]
     assert full == "Hello world"
+
+
+@pytest.mark.parametrize(
+    "usage_kwargs,expected_input",
+    [
+        ({"prompt_tokens": 5}, 5),
+        ({"input_tokens": 7}, 7),
+        ({}, None),
+    ],
+)
+def test_parse_completion_response_token_counts(usage_kwargs, expected_input):
+    model = BaseModel.__new__(BaseModel)
+    usage = SimpleNamespace(completion_tokens=10, **usage_kwargs)
+    response = SimpleNamespace(
+        usage=usage,
+        choices=[SimpleNamespace(text="hi", finish_reason="stop", logprobs=None)],
+    )
+    result = model._parse_completion_response(response)
+    assert result["num_generated_tokens"] == 10
+    assert result.get("num_input_tokens") == expected_input
+
+
+def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(monkeypatch):
+    """Ensure `--with-sandbox` is treated as an override when building eval commands.
+
+    Previously, if a benchmark had `REQUIRES_SANDBOX` unset and the user passed
+    `--with-sandbox`, the sandbox sidecar was still launched because `add_task()`
+    ORed the two flags together. But the generation command only used the
+    benchmark flag, so it would not wait for the sandbox to be ready.
+
+    This checks that eval command construction now applies the same OR logic
+    throughout and passes `with_sandbox=True` into the generation command.
+    """
+    benchmark_args = eval_utils.BenchmarkArgs(
+        name="aime25",
+        input_file="/tmp/aime25.jsonl",
+        generation_args="",
+        judge_args="",
+        judge_pipeline_args={},
+        requires_sandbox=False,
+        keep_mounts_for_sandbox=False,
+        generation_module="nemo_skills.inference.generate",
+        num_samples=0,
+        num_chunks=None,
+        eval_subfolder="eval-results/aime25",
+    )
+
+    monkeypatch.setattr(eval_utils, "add_default_args", lambda *args, **kwargs: [benchmark_args])
+    monkeypatch.setattr(eval_utils.pipeline_utils, "get_remaining_jobs", lambda **kwargs: {None: [None]})
+    monkeypatch.setattr(eval_utils.pipeline_utils, "should_get_random_port", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        eval_utils.pipeline_utils,
+        "configure_client",
+        lambda **kwargs: ({}, "http://localhost:8000", ""),
+    )
+
+    captured = {}
+
+    def fake_get_generation_cmd(*args, **kwargs):
+        captured["with_sandbox"] = kwargs["with_sandbox"]
+        return "echo generation"
+
+    monkeypatch.setattr(eval_utils.pipeline_utils, "get_generation_cmd", fake_get_generation_cmd)
+
+    eval_utils.prepare_eval_commands(
+        cluster_config={"executor": "none"},
+        benchmarks_or_groups="aime25",
+        split=None,
+        num_jobs=1,
+        starting_seed=0,
+        output_dir="/tmp/out",
+        num_chunks=None,
+        chunk_ids=None,
+        rerun_done=False,
+        server_parameters={
+            "model": "test-model",
+            "server_type": "openai",
+            "server_address": "http://localhost:8000",
+            "server_gpus": 0,
+            "server_nodes": 1,
+            "server_args": "",
+            "server_entrypoint": None,
+            "server_container": None,
+        },
+        extra_arguments="",
+        data_dir=None,
+        exclusive=False,
+        with_sandbox=True,
+        keep_mounts_for_sandbox=False,
+        wandb_parameters=None,
+        eval_requires_judge=False,
+    )
+
+    assert captured["with_sandbox"] is True

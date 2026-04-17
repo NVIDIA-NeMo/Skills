@@ -17,7 +17,6 @@
 import asyncio
 import logging
 import re
-from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -169,8 +168,8 @@ def evaluate_asr_pc(
     wer_c = jiwer.wer(ref_c, hyp_c)
 
     if normalize_standard_wer:
-        ref_std = preprocess_asr_text(reference)
-        hyp_std = preprocess_asr_text(hypothesis)
+        ref_std = preprocess_asr_text(reference, mode=normalization_mode)
+        hyp_std = preprocess_asr_text(hypothesis, mode=normalization_mode)
     else:
         ref_std = normalize_whitespace(re.sub(r"[^\w\s]", "", reference.lower()))
         hyp_std = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis.lower()))
@@ -277,17 +276,76 @@ def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
     return config.normalization_mode if config.apply_whisper_normalization else "none"
 
 
-@lru_cache(maxsize=1)
-def _get_english_normalizer():
-    """Lazily initialize and cache the English text normalizer."""
+def preprocess_asr_text(text: str, mode: str = "standard") -> str:
+    """Normalize ASR text for WER calculation.
+
+    Args:
+        text: Raw text.
+        mode: Normalization mode:
+            - "standard": Whisper normalization (default) - converts number words to digits
+            - "audiobench": Full AudioBench normalization (whisper + digits to words + more)
+            - "hf_leaderboard": HuggingFace leaderboard style (whisper normalization)
+            - "none": No normalization (whitespace only)
+            - "no_tn_itn": Lowercase + remove punctuation, no number word conversion (for TN/ITN eval)
+    """
+    if mode not in VALID_NORMALIZATION_MODES:
+        raise ValueError(
+            f"Invalid normalization_mode '{mode}'. Available options: {', '.join(VALID_NORMALIZATION_MODES)}"
+        )
+
+    if mode == "none":
+        return re.sub(r"\s+", " ", text).strip()
+
+    if mode == "no_tn_itn":
+        # Lowercase + remove punctuation + whitespace normalization
+        text = text.lower()
+        text = re.sub(r"[^\w\s]", "", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    # "standard", "audiobench", and "hf_leaderboard" all use whisper normalization
     from whisper_normalizer.english import EnglishTextNormalizer
 
-    return EnglishTextNormalizer()
+    text = text.lower()
+    text = EnglishTextNormalizer()(text)
+
+    if mode == "audiobench":
+        # Additional audiobench-specific normalization
+        import jiwer
+
+        text = _normalize_digits_to_words(text)
+        text = _expand_contractions(text)
+        text = re.sub(r"(\[|\(|\{|\<)[^\(\)\\n\[\]]*(\]|\)|\}|\>)", "", text)
+        jiwer_process = jiwer.Compose(
+            [
+                jiwer.RemoveMultipleSpaces(),
+                jiwer.ExpandCommonEnglishContractions(),
+                jiwer.RemoveKaldiNonWords(),
+                jiwer.RemovePunctuation(),
+            ]
+        )
+        text = jiwer_process(text)
+        text = _remove_non_speech_elements(text)
+
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def preprocess_asr_text(text: str) -> str:
-    """Apply Whisper-style normalization (lowercase, remove brackets, normalize whitespace)."""
-    return _get_english_normalizer()(text)
+def _wer_with_counts(ref: str, hyp: str) -> dict[str, Any]:
+    """Compute WER and return both the score and raw error/reference counts for corpus-level aggregation."""
+    import jiwer
+
+    wer_score = jiwer.wer(ref, hyp)
+    measures = jiwer.process_words(ref, hyp)
+    wer_errors = measures.substitutions + measures.deletions + measures.insertions
+    wer_ref_words = measures.substitutions + measures.deletions + measures.hits
+
+    return {
+        "wer": wer_score,
+        "wer_errors": wer_errors,
+        "wer_ref_words": wer_ref_words,
+        "wer_substitutions": measures.substitutions,
+        "wer_insertions": measures.insertions,
+        "wer_deletions": measures.deletions,
+    }
 
 
 def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "standard") -> dict[str, Any]:
@@ -298,28 +356,22 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
         hypothesis: Model output transcription.
         normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
     """
-    import jiwer
+    ref = preprocess_asr_text(reference, mode=normalization_mode)
+    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode)
 
-    ref = preprocess_asr_text(reference)
-    hyp = preprocess_asr_text(hypothesis)
-
-    # Store normalized texts before empty substitution
-    text = ref
-    pred_text = hyp
-
+    # Match the HF Open ASR Leaderboard: drop samples whose normalized
+    # reference is empty rather than scoring them against a placeholder.
     if not ref:
-        ref = "empty"
+        return {"wer": None, "is_correct": None, "text": "", "pred_text": hyp or ""}
+
     if not hyp:
         hyp = "empty"
 
-    wer_score = jiwer.wer(ref, hyp)
-
-    return {
-        "wer": wer_score,
-        "is_correct": wer_score < 0.5,
-        "text": text,
-        "pred_text": pred_text,
-    }
+    result = _wer_with_counts(ref, hyp)
+    result["is_correct"] = result["wer"] < 0.5
+    result["text"] = ref
+    result["pred_text"] = hyp
+    return result
 
 
 def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:

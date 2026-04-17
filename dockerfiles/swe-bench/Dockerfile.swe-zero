@@ -1,0 +1,80 @@
+# Docker image for SWE-Zero (v2).
+# In the SWE-Zero setup, any instance can be run inside this image.
+# The only requirement is that the repo must be cloned at runtime before running the agent.
+#
+# For easier compatibility with existing tools, this image is based on the SWE-bench Verified containers,
+# but all repo/instance-specific setup is removed.
+
+# ======
+# Base image
+#
+# This is the base setup performed for all SWE-bench Verified containers.
+# See https://github.com/SWE-bench/SWE-bench/blob/7a6b44e4a82eece60ac06afd3042a76d8a95eec3/swebench/harness/dockerfiles/python.py#L1
+# We install 4 additional apt packages to support the following commands: xxd, hexdump, file, sudo.
+# ======
+
+FROM --platform=linux/x86_64 ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+RUN apt update && apt install -y \
+wget \
+git \
+build-essential \
+libffi-dev \
+libtiff-dev \
+python3 \
+python3-pip \
+python-is-python3 \
+jq \
+curl \
+locales \
+locales-all \
+tzdata \
+xxd \
+bsdextrautils \
+file \
+sudo \
+&& rm -rf /var/lib/apt/lists/*
+
+# Download and install conda
+RUN wget 'https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh' -O miniconda.sh \
+    && bash miniconda.sh -b -p /opt/miniconda3
+# Add conda to PATH
+ENV PATH=/opt/miniconda3/bin:$PATH
+# Add conda to shell startup scripts like .bashrc
+RUN conda init --all
+RUN conda config --append channels conda-forge
+
+RUN adduser --disabled-password --gecos 'dog' nonroot
+
+# ======
+# Environment image
+#
+# SWE-bench Verified containers have a conda environment set up for the agent to use at /opt/miniconda3/envs/testbed.
+# We create an environment with the same name and path, but no dependencies except for Python itself.
+# This is done for compatibility with existing tools and harnesses like OpenHands,
+# but it is not required for the SWE-Zero approach to work.
+# ======
+
+SHELL ["/bin/bash", "-c"]
+RUN source ~/.bashrc && \
+    set -euxo pipefail && \
+    source /opt/miniconda3/bin/activate && \
+    echo -e "\
+        name: testbed \n\
+        prefix: /opt/miniconda3/envs/testbed \n\
+        channels: \n\
+            - defaults \n\
+            - conda-forge \n\
+        dependencies: \n\
+            - python=3.12 \
+    " > /root/environment.yml && \
+    conda env create -f /root/environment.yml && \
+    conda activate testbed
+
+WORKDIR /testbed/
+
+# Automatically activate the testbed environment
+RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
