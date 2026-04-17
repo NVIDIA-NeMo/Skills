@@ -66,7 +66,7 @@ def record_passes_filters(
     record: dict,
     only_correct: bool = False,
     gen_pass_rate_bounds: Optional[Sequence[Optional[float]]] = None,
-    difficulty_pass_rate_bounds: Optional[Sequence[Optional[float]]] = None,
+    profiling_pass_rate_ranges: Optional[Dict[str, Sequence[float]]] = None,
     majority_voting_agreement_rate_bounds: Optional[Sequence[Optional[float]]] = None,
     only_samples_with_ground_truth_answer: bool = False,
     filter_internet: bool = False,
@@ -85,13 +85,14 @@ def record_passes_filters(
     ):
         return False, "generation_model_pass_rate"
 
-    diff_pass_rate = record.get("difficulty_model_pass_rate")
-    if (
-        diff_pass_rate is not None
-        and difficulty_pass_rate_bounds
-        and (difficulty_pass_rate_bounds[0] >= diff_pass_rate or difficulty_pass_rate_bounds[1] < diff_pass_rate)
-    ):
-        return False, "difficulty_model_pass_rate"
+    profiling_pass_rate_ranges = profiling_pass_rate_ranges or {}
+    for entry in record.get("profiling", []):
+        model_name = entry.get("model")
+        if model_name in profiling_pass_rate_ranges:
+            bounds = profiling_pass_rate_ranges[model_name]
+            rate = entry.get("pass_rate")
+            if rate is not None and (bounds[0] >= rate or bounds[1] < rate):
+                return False, f"profiling:{model_name}"
 
     mv_agreement_rate = record.get("majority_voting_agreement_rate")
     if (
@@ -135,10 +136,10 @@ def parse_args() -> argparse.Namespace:
         help="JSON array [min, max] (min exclusive, max inclusive) for generation_model_pass_rate",
     )
     parser.add_argument(
-        "--difficulty_model_pass_rate_range",
+        "--profiling_pass_rate_range",
         type=json.loads,
         default=None,
-        help="JSON array [min, max] (min exclusive, max inclusive) for pass_rate",
+        help='JSON dict: {"ModelName": [min, max]} (min exclusive, max inclusive) for per-model profiling filtering',
     )
     parser.add_argument(
         "--majority_voting_agreement_rate_range",
@@ -195,7 +196,7 @@ def main() -> None:
                 record,
                 only_correct=args.only_correct_solutions,
                 gen_pass_rate_bounds=args.generation_model_pass_rate_range,
-                difficulty_pass_rate_bounds=args.difficulty_model_pass_rate_range,
+                profiling_pass_rate_ranges=args.profiling_pass_rate_range,
                 majority_voting_agreement_rate_bounds=args.majority_voting_agreement_rate_range,
                 only_samples_with_ground_truth_answer=args.only_samples_with_ground_truth_answer,
                 filter_internet=args.filter_internet,
