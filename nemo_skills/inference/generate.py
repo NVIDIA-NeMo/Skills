@@ -78,6 +78,8 @@ class InferenceConfig:
     random_seed: int = 0
     tokens_to_generate: int | None = None
     repetition_penalty: float = 1.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
     top_logprobs: int | None = None
     timeout: int | None = 14400  # Timeout for each individual LLM call in seconds
     reasoning_effort: str | None = None
