@@ -36,7 +36,7 @@ from nemo_skills.pipeline.utils.exp import (
     get_packaging_job_key,
     tunnel_hash,
 )
-from nemo_skills.pipeline.utils.mounts import is_mounted_filepath
+from nemo_skills.pipeline.utils.mounts import get_mounts_from_config, is_mounted_filepath
 from nemo_skills.pipeline.utils.scripts import SandboxScript
 from nemo_skills.pipeline.utils.server import wrap_python_path
 from nemo_skills.utils import get_logger_name
@@ -220,6 +220,22 @@ class Command:
     script: run.Script
     container: str = "nemo-skills"
     name: str = "command"
+    # Optional extra mounts for this Command (e.g., "/dev/shm:/dev/shm").
+    # These are merged with mounts from the cluster config when creating the executor.
+    mounts: Optional[List[str]] = None
+    # Optional per-command env var overrides (merged with Script-provided runtime env).
+    environment: Optional[Dict[str, str]] = None
+    # Runtime working directory to `cd` into before running the script body.
+    # This is useful because pyxis sets container-workdir=/nemo_run/code by default,
+    # which can cause imports from /nemo_run/code to shadow site-packages.
+    workdir: Optional[str] = None
+    # Control whether /nemo_run/code is used for Python imports for this command.
+    # - If avoid_nemo_run_code=True, we `cd` away from /nemo_run/code (default "/") and
+    #   remove /nemo_run/code from PYTHONPATH if present.
+    # - If force_nemo_run_code=True, we prepend /nemo_run/code to PYTHONPATH even if the
+    #   script later cd's elsewhere.
+    avoid_nemo_run_code: bool = False
+    force_nemo_run_code: bool = False
 
     def prepare_for_execution(self, cluster_config: Dict) -> Tuple[run.Script, Dict]:
         """Prepare script for execution.
@@ -245,16 +261,56 @@ class Command:
             # Update script.inline with evaluated command
             self.script.set_inline(evaluated_command)
 
+        # Optionally wrap the command to control cwd/PYTHONPATH behavior (see fields above).
+        # This is done at the very end so it applies to both eager and lazy inline builders.
+        prelude_lines: List[str] = []
+
+        # If requested, force /nemo_run/code on PYTHONPATH (so mounted code is importable even after cd).
+        if self.force_nemo_run_code and self.avoid_nemo_run_code:
+            raise ValueError("Command cannot set both avoid_nemo_run_code=True and force_nemo_run_code=True")
+        if self.force_nemo_run_code:
+            prelude_lines.append('export PYTHONPATH="/nemo_run/code${PYTHONPATH:+:$PYTHONPATH}"')
+
+        # If requested, avoid /nemo_run/code import shadowing (cd away + remove PYTHONPATH entry).
+        effective_workdir = self.workdir
+        if self.avoid_nemo_run_code and effective_workdir is None:
+            effective_workdir = "/"
+        if self.avoid_nemo_run_code:
+            prelude_lines.append('if [ -n "${PYTHONPATH:-}" ]; then')
+            prelude_lines.append(
+                "  export PYTHONPATH=\"$(echo \"$PYTHONPATH\" | tr ':' '\\n' | grep -v '^/nemo_run/code' | paste -sd: -)\""
+            )
+            prelude_lines.append("fi")
+
+        if effective_workdir:
+            prelude_lines.append(f'cd "{effective_workdir}"')
+
+        if prelude_lines:
+            prelude = "\n".join(prelude_lines) + "\n"
+            inline_cmd = self.script.inline
+            if isinstance(inline_cmd, str):
+                self.script.set_inline(prelude + inline_cmd)
+            # If inline_cmd is still callable here, we intentionally do not wrap it; it should
+            # have been evaluated above. This keeps behavior deterministic.
+
         # Build execution config from Script fields.
+        # Mounts priority: explicit Command.mounts > keep_mounts logic > default (inherit).
         # For SandboxScript, keep_mounts=False (the safe default) maps to mounts=[]
         # so the sandbox container has no access to cluster filesystems.
         # keep_mounts=True maps to mounts=None, which inherits cluster mounts.
-        # Other scripts default to mounts=None (inherit cluster mounts).
-        keep_mounts = getattr(self.script, "keep_mounts", True)
+        if self.mounts is not None:
+            resolved_mounts = self.mounts
+        else:
+            keep_mounts = getattr(self.script, "keep_mounts", True)
+            resolved_mounts = None if keep_mounts else []
+
+        merged_env = dict(runtime_metadata.get("environment", {}))
+        if self.environment:
+            merged_env.update(self.environment)
         execution_config = {
             "log_prefix": getattr(self.script, "log_prefix", "main"),
-            "environment": runtime_metadata.get("environment", {}),
-            "mounts": None if keep_mounts else [],
+            "environment": merged_env,
+            "mounts": resolved_mounts,
             "container": self.container,
         }
 
@@ -581,6 +637,24 @@ class Pipeline:
         if span_group_nodes and hardware and hardware.num_nodes is not None:
             num_nodes = hardware.num_nodes
 
+        # Check if the script has a per-script num_tasks override.
+        # This allows different scripts in the same CommandGroup to have different
+        # task configurations (e.g., vLLM servers with 2 tasks per node, Gym with 1).
+        script_num_tasks = getattr(command.script, "num_tasks_override", None)
+        tasks_per_node = (
+            script_num_tasks
+            if script_num_tasks is not None
+            else (hardware.num_tasks if hardware and hardware.num_tasks is not None else 1)
+        )
+
+        # Allow per-command extra mounts without requiring editing the cluster YAML.
+        # We treat exec_config["mounts"] as additive and merge it with mounts from cluster_config.
+        mounts = None
+        extra_mounts = exec_config["mounts"] or None
+        if extra_mounts:
+            base_mounts = get_mounts_from_config(cluster_config)
+            mounts = base_mounts + [m for m in extra_mounts if m not in base_mounts]
+
         # Sandbox-specific srun overrides: allow the sandbox to survive individual
         # worker crashes (e.g. SIGILL from libraries compiled for a different CPU).
         # nemo-run hardcodes --kill-on-bad-exit=1 on every srun; appending =0
@@ -601,7 +675,7 @@ class Pipeline:
                 cluster_config=cluster_config,
                 container=container_image,
                 num_nodes=num_nodes,
-                tasks_per_node=hardware.num_tasks if hardware and hardware.num_tasks is not None else 1,
+                tasks_per_node=tasks_per_node,
                 gpus_per_node=hardware.num_gpus if hardware and hardware.num_gpus is not None else 0,
                 job_name=job_name_override if job_name_override else command.name,
                 log_dir=log_dir,
@@ -612,7 +686,7 @@ class Pipeline:
                 het_group=het_group,
                 total_het_groups=total_het_groups,
                 overlap=overlap,
-                mounts=exec_config.get("mounts"),
+                mounts=mounts,
                 with_ray=self.with_ray,
                 sbatch_kwargs=hardware.sbatch_kwargs,
                 dependencies=dependencies,
@@ -688,11 +762,34 @@ class Pipeline:
                 if heterogeneous:
                     shared_env_vars.update(exec_config.get("environment", {}))
 
-        # Share packager across executors for efficiency (single-group only)
+        # IMPORTANT: For single-group jobs with multiple components (overlap),
+        # nemo-run effectively uses the FIRST executor to determine the SLURM allocation
+        # (sbatch nodes/gpus/ntasks-per-node). Components that only need to run on the
+        # master node (e.g., Gym client, sandbox) set span_group_nodes=False which would
+        # request 1 node if they appear first. That leads to allocating only 1 node even
+        # when a later component (e.g., multi-node vLLM servers) needs >1 nodes.
+        #
+        # To avoid this footgun, ensure that components which span the group's nodes are
+        # scheduled first so the allocation matches the maximal requirements.
+        if not heterogeneous:
+
+            def _allocation_sort_key(entry: Dict) -> Tuple[int, int]:
+                group_hw = entry["group"].hardware
+                span = getattr(entry["command"].script, "span_group_nodes", False)
+                # Prefer spanning components first; then prefer larger node counts.
+                nodes = (group_hw.num_nodes or 1) if span else 1
+                return (0 if span else 1, -nodes)
+
+            prepared_commands.sort(key=_allocation_sort_key)
+
+        # Share packager across executors for efficiency (single-group only).
+        # NOTE: We must NOT key this off of comp_idx/het_idx because we may reorder
+        # prepared_commands (e.g., to ensure spanning components drive the allocation).
+        # Otherwise we can end up assigning executor.packager=None for early entries.
         shared_packager = None
 
         # Build commands and executors using prepared data
-        for entry in prepared_commands:
+        for entry_idx, entry in enumerate(prepared_commands):
             het_idx = entry["het_idx"]
             comp_idx = entry["comp_idx"]
             group = entry["group"]
@@ -710,8 +807,10 @@ class Pipeline:
 
             # Resolve container and create executor
             container_image = self._resolve_container(exec_config, command, cluster_config)
-            # Pass external dependencies only to the first executor (SLURM doesn't support per-component dependencies in hetjobs)
-            exec_dependencies = external_deps if (het_idx == 0 and comp_idx == 0) else None
+            # Pass external dependencies only to the first executor in iteration order.
+            # We use entry_idx rather than het_idx/comp_idx because prepared_commands may
+            # have been reordered (e.g., to put spanning components first for allocation).
+            exec_dependencies = external_deps if entry_idx == 0 else None
 
             # Always use group.name for SLURM job name (consistent across all components)
             # The group name is set to task_name in generate.py, without component suffixes
@@ -733,9 +832,9 @@ class Pipeline:
                 job_name_override=job_name_for_slurm,
             )
 
-            # Share packager across executors for single-group jobs
+            # Share packager across executors for single-group jobs (robust to reordering)
             if not heterogeneous:
-                if comp_idx == 0 and het_idx == 0:
+                if shared_packager is None:
                     shared_packager = executor.packager
                 else:
                     executor.packager = shared_packager

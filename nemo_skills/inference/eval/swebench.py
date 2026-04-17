@@ -818,7 +818,7 @@ class SweBenchGenerationTask(GenerationTask):
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
-            "if [ -d /workspace ]; then "
+            "if awk '{print $2}' /proc/mounts | grep -qE '^/workspace(/|$)'; then "
             "    echo 'Exiting because /workspace is mounted.' && "
             "    echo 'Please make sure /workspace is not mounted inside of Apptainer before running OpenHands.' && "
             "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "

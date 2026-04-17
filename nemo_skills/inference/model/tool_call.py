@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import copy
 import json
 import logging
@@ -99,11 +98,11 @@ class ToolCallingWrapper:
         return result
 
     async def _execute_tool_calls(self, tool_calls: List, request_id: str, endpoint_type: EndpointType):
-        tasks = [
-            self._execute_tool_call(tool_call, request_id=request_id, endpoint_type=endpoint_type)
-            for tool_call in tool_calls
-        ]
-        tool_results = await asyncio.gather(*tasks)
+        # Preserve model emission order for tools like stateful_python_code_exec that rely on ordered state updates.
+        tool_results = []
+        for tool_call in tool_calls:
+            tool_result = await self._execute_tool_call(tool_call, request_id=request_id, endpoint_type=endpoint_type)
+            tool_results.append(tool_result)
         return [
             format_tool_response_by_endpoint_type(tool_call, tool_result, endpoint_type)
             for tool_call, tool_result in zip(tool_calls, tool_results)
