@@ -285,6 +285,9 @@ class ToolCallingWrapper:
 
                     if isinstance(tokens_to_generate, int):
                         tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
+                        if tokens_to_generate <= 0:
+                            result_steps["finish_reason"].append("length")
+                            break
 
                     result_steps["num_tool_calls"].append(len(tool_calls))
                     tool_calls_executed += len(tool_calls)
