@@ -220,6 +220,7 @@ def sft_preprocessor(
         add_bos_token=add_bos,
         add_eos_token=add_eos,
         add_generation_prompt=add_generation_prompt,
+        tools=datum_dict.get("tools", None),
     )
 
     # ==================== START: BLOCK FOR DEBUGGING ====================
