@@ -190,10 +190,12 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                 instruction = get_asr_instruction()
                 subset_for_metrics = src_locale
                 tag = src_locale
+                gt_key = "transcription" # For ASR, use normalized transcription
             else:
                 instruction = get_ast_instruction(tgt_locale)
                 subset_for_metrics = f"{src_locale}->{tgt_locale}"
                 tag = subset_for_metrics
+                gt_key = "raw_transcription" # For AST, use raw transcription
 
             locale_audio_dir = audio_dir / src_locale
             if not no_audio:
@@ -228,7 +230,7 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                     "src_lang_group": FLEURS_LANG_TO_GROUP[src_locale],
                 }
                 if task_type == "AST":
-                    expected_answer = target_row["raw_transcription"]
+                    expected_answer = target_row[gt_key]
                     extra_fields.update(
                         {
                             "tgt_text": target_row["transcription"],
@@ -243,7 +245,7 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                         }
                     )
                 else:
-                    expected_answer = source_row["raw_transcription"]
+                    expected_answer = source_row[gt_key]
 
                 record = _build_record(
                     expected_answer=expected_answer,
