@@ -154,7 +154,7 @@ def _build_record(
         "duration": duration,
         "path": str(wav_path),
         "messages": [
-            {"role": "system", "content": "You are a helpful assistant. /no_think"},
+            # {"role": "system", "content": "You are a helpful assistant. /no_think"},
             {"role": "user", "content": instruction, "audio": audio_metadata},
         ],
         "subset_for_metrics": subset_for_metrics,
