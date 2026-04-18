@@ -16,5 +16,5 @@
 
 REQUIRES_DATA_DIR = True
 METRICS_TYPE = "audio"
-EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=audiobench"
+EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=audiobench ++eval_config.strip_helpful_prefixes=true"
 GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"

@@ -51,6 +51,19 @@ _FAILURE_RESPONSES = [
 ]
 
 
+def extract_asr_text_tag(text: str) -> str:
+    """Extract transcript from Qwen3-ASR `<asr_text>...</asr_text>` output format.
+
+    Tolerates a missing closing tag (e.g. when the model is truncated at max_tokens):
+    takes everything after `<asr_text>` up to `</asr_text>` or end of string.
+    Returns the text unchanged if the opening tag is absent.
+    """
+    match = re.search(r"<asr_text>(.*?)(?:</asr_text>|$)", text, flags=re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text
+
+
 def strip_helpful_prefixes(text: str) -> str:
     """Strip ASR response prefixes like 'The audio says: ...' for accurate WER.
 
@@ -62,6 +75,8 @@ def strip_helpful_prefixes(text: str) -> str:
     for failure_pattern in _FAILURE_RESPONSES:
         if re.search(failure_pattern, result, flags=re.IGNORECASE):
             return ""
+
+    result = extract_asr_text_tag(result)
 
     # Remove SRT subtitle timestamps (vLLM chunked audio artifact)
     result = re.sub(r"\d+\s+\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}\s+", "", result)
