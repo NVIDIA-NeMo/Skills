@@ -144,9 +144,9 @@ def _build_record(
     duration: float,
     subset_for_metrics: str,
     task_type: str,
-    comet_text: str | None,
-    comet_translation: str | None,
     extra_fields: dict,
+    comet_text: str | None = None,
+    comet_translation: str | None = None,
 ) -> dict:
     audio_metadata = {"path": container_audio_path, "duration": duration}
     record = {
