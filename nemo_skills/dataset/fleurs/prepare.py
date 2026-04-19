@@ -144,8 +144,8 @@ def _build_record(
     duration: float,
     subset_for_metrics: str,
     task_type: str,
-    comet_text: str,
-    comet_translation: str,
+    comet_text: str | None,
+    comet_translation: str | None,
     extra_fields: dict,
 ) -> dict:
     audio_metadata = {"path": container_audio_path, "duration": duration}
@@ -159,9 +159,11 @@ def _build_record(
         ],
         "subset_for_metrics": subset_for_metrics,
         "task_type": task_type,
-        "text": comet_text, # Required to compute COMET metrics
-        "translation": comet_translation, # Required to compute COMET metrics
     }
+    if comet_text is not None and comet_translation is not None:
+        # Required to compute COMET metrics
+        record["text"] = comet_text
+        record["translation"] = comet_translation
     record["extra_fields"] = extra_fields
     return record
 
