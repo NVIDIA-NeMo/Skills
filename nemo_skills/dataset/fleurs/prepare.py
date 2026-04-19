@@ -141,10 +141,11 @@ def _build_record(
     expected_answer: str,
     instruction: str,
     container_audio_path: str,
-    wav_path: Path,
     duration: float,
     subset_for_metrics: str,
     task_type: str,
+    comet_text: str,
+    comet_translation: str,
     extra_fields: dict,
 ) -> dict:
     audio_metadata = {"path": container_audio_path, "duration": duration}
@@ -152,15 +153,16 @@ def _build_record(
         "expected_answer": expected_answer,
         "audio_path": container_audio_path,
         "duration": duration,
-        "path": str(wav_path),
         "messages": [
             {"role": "system", "content": "You are a helpful assistant. /no_think"},
             {"role": "user", "content": instruction, "audio": audio_metadata},
         ],
         "subset_for_metrics": subset_for_metrics,
         "task_type": task_type,
+        "text": comet_text, # Required to compute COMET metrics
+        "translation": comet_translation, # Required to compute COMET metrics
     }
-    record.update(extra_fields)
+    record["extra_fields"] = extra_fields
     return record
 
 
@@ -231,6 +233,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                 }
                 if task_type == "AST":
                     expected_answer = target_row[gt_key]
+                    comet_text = source_row["raw_transcription"]
+                    comet_translation = target_row["raw_transcription"]
                     extra_fields.update(
                         {
                             "tgt_text": target_row["transcription"],
@@ -238,23 +242,21 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                             "tgt_lang_name": FLEURS_LANG_TO_LONG[tgt_locale],
                             "tgt_lang": tgt_locale,
                             "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
-                            # Required by comet_judge (evaluator/comet.py reads sample["text"] / sample["translation"]).
-                            # Use raw (cased + punctuated) strings — COMET scores raw text better than normalized.
-                            "text": source_row["raw_transcription"],
-                            "translation": target_row["raw_transcription"],
                         }
                     )
                 else:
                     expected_answer = source_row[gt_key]
+                    comet_text, comet_translation = None, None
 
                 record = _build_record(
                     expected_answer=expected_answer,
                     instruction=instruction,
                     container_audio_path=cpath,
-                    wav_path=wav_path,
                     duration=duration,
                     subset_for_metrics=subset_for_metrics,
                     task_type=task_type,
+                    comet_text=comet_text,
+                    comet_translation=comet_translation,
                     extra_fields=extra_fields,
                 )
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
