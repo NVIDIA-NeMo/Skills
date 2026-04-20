@@ -72,6 +72,13 @@ from nemo_skills.pipeline.utils.packager import (
     register_external_repo,
     resolve_external_data_path,
 )
+from nemo_skills.pipeline.utils.scripts import (
+    BaseJobScript,
+    GenerationClientScript,
+    NemoGymRolloutsScript,
+    SandboxScript,
+    ServerScript,
+)
 from nemo_skills.pipeline.utils.server import (
     SupportedServers,
     SupportedServersSelfHosted,
