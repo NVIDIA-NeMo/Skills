@@ -386,15 +386,24 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     return result
 
 
-def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:
+def evaluate_translation(reference: str, hypothesis: str, tgt_lang: str | None = None) -> dict[str, Any]:
     """Evaluate translation: computes sentence-level BLEU score."""
     try:
         import sacrebleu
 
+        tokenize = "13a"
+        if isinstance(tgt_lang, str):
+            lang_code = tgt_lang[:2]
+            if lang_code == "ja":
+                tokenize = "ja-mecab"
+            elif lang_code == "zh":
+                tokenize = "zh"
+            elif lang_code == "ko":
+                tokenize = "ko-mecab"
+
         text = reference.strip()
         pred_text = hypothesis.strip()
-        ref = [text]
-        bleu = sacrebleu.sentence_bleu(pred_text, ref)
+        bleu = sacrebleu.sentence_bleu(pred_text, [text], tokenize=tokenize)
         bleu_score = bleu.score / 100.0
 
         return {
@@ -578,7 +587,9 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 updates[f"is_correct_{metric_suffix}"] = ref_metrics["is_correct"]
 
     elif task_type in ["AST", "Translation"]:
-        metrics = evaluate_translation(expected_answer, generation)
+        extra_fields = sample.get("extra_fields", {})
+        tgt_lang = extra_fields.get("tgt_lang", None)
+        metrics = evaluate_translation(expected_answer, generation, tgt_lang)
         updates.update(metrics)
 
     elif task_type == "CER":
