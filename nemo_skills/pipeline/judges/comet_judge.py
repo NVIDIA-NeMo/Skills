@@ -36,6 +36,7 @@ def create_judge_tasks(
     judge_server_nodes,
     partition,
     account,
+    judge_container,
     run_after,
     reuse_code_exp,
     reuse_code,
