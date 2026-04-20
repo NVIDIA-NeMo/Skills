@@ -440,7 +440,7 @@ def preprocess_asr_text(text: str, mode: str = "standard", lang: str | None = No
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            text = MultilingualTextNormalizer(remove_diacritics=False)(text, lang=lang)
+            text = MultilingualTextNormalizer(remove_diacritics=True)(text, lang=lang)
         return normalize_whitespace(text)
 
 
