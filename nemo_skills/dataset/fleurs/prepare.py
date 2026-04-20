@@ -179,9 +179,7 @@ def _build_record(
 ) -> dict:
 
     def get_effective_task_type(task_type: str) -> str:
-        if task_type == "ASR":
-            return "Multilingual-ASR"
-        return task_type
+        return f"Multilingual-{task_type.upper()}"
     
     audio_metadata = {"path": container_audio_path, "duration": duration}
     record = {
