@@ -61,6 +61,8 @@ def create_judge_tasks(
         judge_server_gpus: Number of GPUs for judge
         judge_server_nodes: Number of nodes for judge
         partition: SLURM partition
+        account: SLURM account (unused, kept for interface compatibility)
+        judge_container: Container to use for the judge (unused, kept for interface compatibility)
         run_after: Dependencies to run after
         reuse_code_exp: Experiment to reuse code from
         reuse_code: Whether to reuse code
