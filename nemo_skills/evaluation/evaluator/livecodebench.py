@@ -211,7 +211,7 @@ async def eval_livecodebench_async(eval_config: LiveCodeBenchEvaluatorConfig):
     """Evaluation running within a sandbox."""
     async with sandbox_context(eval_config.sandbox) as sandbox:
         if not await _install_packages_in_sandbox(sandbox, eval_config):
-            return
+            raise RuntimeError("Failed to install livecodebench packages in sandbox.")
 
         jsonl_file = eval_config.input_file
         LOG.info(f"Processing file: {jsonl_file} in sandbox")
@@ -299,6 +299,10 @@ def eval_livecodebench(cfg):
         raise RuntimeError("The 'pypy3' interpreter requires a running sandbox, but the service was unreachable.")
 
     if sandbox_is_ready:
-        asyncio.run(eval_livecodebench_async(eval_config))
+        try:
+            asyncio.run(eval_livecodebench_async(eval_config))
+        except Exception as e:
+            LOG.warning(f"Sandbox evaluation failed: {e}. Falling back to local evaluation.")
+            eval_livecodebench_without_sandbox(eval_config)
     else:
         eval_livecodebench_without_sandbox(eval_config)
