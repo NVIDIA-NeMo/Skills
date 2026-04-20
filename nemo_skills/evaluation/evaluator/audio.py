@@ -93,6 +93,36 @@ def remove_symbols(s: str):
     return "".join(" " if unicodedata.category(c)[0] in "MSP" else c for c in unicodedata.normalize("NFKC", s))
 
 
+def normalize_compound_pairs(ref_text: str, pred_text: str) -> tuple[str, str]:
+    """Normalize compound word boundaries between ref/pred pairs.
+
+    When a mismatch region has identical characters ignoring whitespace,
+    normalize both sides to the joined form.
+    """
+    from difflib import SequenceMatcher
+
+    ref_words = ref_text.split()
+    pred_words = pred_text.split()
+
+    sm = SequenceMatcher(None, ref_words, pred_words)
+    new_rw, new_pw = [], []
+
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            new_rw.extend(ref_words[i1:i2])
+            new_pw.extend(pred_words[j1:j2])
+        else:
+            rc = "".join(ref_words[i1:i2])
+            pc = "".join(pred_words[j1:j2])
+            if rc == pc:
+                new_rw.append(rc)
+                new_pw.append(pc)
+            else:
+                new_rw.extend(ref_words[i1:i2])
+                new_pw.extend(pred_words[j1:j2])
+    return " ".join(new_rw), " ".join(new_pw)
+
+
 class MultilingualTextNormalizer:
     """Multilingual text normalizer with optional number normalization.
 
@@ -100,7 +130,7 @@ class MultilingualTextNormalizer:
     Pass lang= to also convert digits to words via num2words.
     """
 
-    def __init__(self, remove_diacritics: bool = True, normalize_compound: bool = True):
+    def __init__(self, remove_diacritics: bool = True):
         self.clean = remove_symbols_and_diacritics if remove_diacritics else remove_symbols
 
     def _normalize_numbers(self, text, lang):
@@ -441,11 +471,8 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            normalize_compound = kwargs.get("normalize_compound", False)
-            remove_diacritics = kwargs.get("remove_diacritics", False)
             text = MultilingualTextNormalizer(
-                remove_diacritics=remove_diacritics,
-                normalize_compound=normalize_compound
+                remove_diacritics=kwargs.get("remove_diacritics", False)
             )(text, lang=lang)
         return normalize_whitespace(text)
 
@@ -495,6 +522,7 @@ def evaluate_asr(
     hypothesis: str, 
     normalization_mode: str = "standard",
     add_text_fields: bool = True,
+    normalize_compound: bool = False,
     **kwargs
     ) -> dict[str, Any]:
     """Evaluate ASR: computes WER with normalization.
@@ -504,9 +532,15 @@ def evaluate_asr(
         hypothesis: Model output transcription.
         normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
         add_text_fields: Whether to add text fields to the result.
+        normalize_compound: Whether to normalize compound pairs.
+        **kwargs: Additional keyword arguments.
     """
     ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
+
+    # Only normalize compound pairs for non-English languages
+    if normalize_compound:
+        ref, hyp = normalize_compound_pairs(ref, hyp)
 
     # Match the HF Open ASR Leaderboard: drop samples whose normalized
     # reference is empty rather than scoring them against a placeholder.
@@ -575,12 +609,17 @@ def evaluate_cer(
     normalization_mode: str = "none",
     key_prefix: str = "cer",
     add_text_fields: bool = True,
+    normalize_compound: bool = False,
     **kwargs
 ) -> dict[str, Any]:
     """Evaluate CER: character-level edit distance."""
 
     ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
+
+    # Only normalize compound pairs for non-English languages
+    if normalize_compound:
+        ref, hyp = normalize_compound_pairs(ref, hyp)
 
     result = _cer_with_counts(ref, hyp, key_prefix=key_prefix)
     result["is_correct"] = result[key_prefix] < 0.5
@@ -756,7 +795,6 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             src_lang = src_lang.split("_")[0]
         preprocess_kwargs = {
             "lang": src_lang,
-            "normalize_compound": True,
             "remove_diacritics": True,
         }
         if use_cer:
@@ -767,6 +805,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 normalization_mode=mode, 
                 key_prefix="wer", # use wer prefix for consistency with _wer_with_counts
                 add_text_fields=False,
+                normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
         else:
@@ -775,6 +814,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 generation, 
                 normalization_mode=mode,
                 add_text_fields=False,
+                normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
         updates.update(metrics)
