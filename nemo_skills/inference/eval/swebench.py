@@ -509,6 +509,7 @@ class SweBenchGenerationTask(GenerationTask):
         apptainer_cmd = (
             f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
             f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
+            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
             f"--mount type=bind,src=/root,dst=/root_mount,ro "
             f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
             f"{extra_apptainer_args} "
@@ -838,7 +839,7 @@ class SweBenchGenerationTask(GenerationTask):
             "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
             f"mkdir {data_dir} && "
-            f"cp {self.cfg.input_file} {data_dir}/dataset.jsonl && "
+            f"cp /input_mount/{Path(self.cfg.input_file).name} {data_dir}/dataset.jsonl && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
             f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
