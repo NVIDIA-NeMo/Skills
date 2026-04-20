@@ -751,8 +751,11 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         mode = resolve_asr_normalization_mode(config)
         extra_fields = sample.get("extra_fields", {})
         use_cer = extra_fields.get("use_cer", False)
+        src_lang = extra_fields.get("src_lang", None)
+        if src_lang is not None and "_" in src_lang:
+            src_lang = src_lang.split("_")[0]
         preprocess_kwargs = {
-            "lang": extra_fields.get("src_lang", None),
+            "lang": src_lang,
             "normalize_compound": True,
             "remove_diacritics": False,
         }
