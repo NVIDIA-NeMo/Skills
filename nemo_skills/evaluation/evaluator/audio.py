@@ -100,7 +100,7 @@ class MultilingualTextNormalizer:
     Pass lang= to also convert digits to words via num2words.
     """
 
-    def __init__(self, remove_diacritics: bool = True):
+    def __init__(self, remove_diacritics: bool = True, normalize_compound: bool = True):
         self.clean = remove_symbols_and_diacritics if remove_diacritics else remove_symbols
 
     def _normalize_numbers(self, text, lang):
