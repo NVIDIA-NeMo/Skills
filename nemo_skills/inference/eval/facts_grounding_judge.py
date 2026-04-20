@@ -69,14 +69,19 @@ def parse_grounding_json(response: str) -> tuple[bool, dict]:
         response = response.split("```json")[1].split("```")[0]
     response = response.strip()
     response = response.replace("}\n", "}\n@\n@\n")
-    parsed_answers = []
+    parsed_answers: list[dict] = []
     for chunk in response.split("\n@\n@\n"):
         try:
             chunk = chunk.replace("\n", " ").replace("\\'", "'")
             parsed = json.loads(chunk)
-            parsed_answers.append(parsed)
         except (json.JSONDecodeError, ValueError):
-            pass
+            continue
+        # Judges sometimes emit a single JSON array ``[{...}, {...}]`` instead
+        # of newline-delimited objects. Flatten either shape into a list of dicts.
+        if isinstance(parsed, list):
+            parsed_answers.extend(item for item in parsed if isinstance(item, dict))
+        elif isinstance(parsed, dict):
+            parsed_answers.append(parsed)
 
     stats = _empty_sentence_stats()
     if not parsed_answers:
