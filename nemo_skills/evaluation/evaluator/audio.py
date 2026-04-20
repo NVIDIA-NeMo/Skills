@@ -591,6 +591,19 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         tgt_lang = extra_fields.get("tgt_lang", None)
         metrics = evaluate_translation(expected_answer, generation, tgt_lang)
         updates.update(metrics)
+    
+    elif task_type == "Multilingual-ASR":
+        extra_fields = sample.get("extra_fields", {})
+        use_cer = extra_fields.get("use_cer", False)
+        if use_cer:
+            # Use CER instead of WER for languages such as Chinese, Japanese, and Korean
+            metrics = evaluate_cer(expected_answer, generation)
+            metrics["wer"] = metrics["cer"]
+            del metrics["cer"]
+        else:
+            mode = resolve_asr_normalization_mode(config)
+            metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
+        updates.update(metrics)
 
     elif task_type == "CER":
         metrics = evaluate_cer(expected_answer, generation)

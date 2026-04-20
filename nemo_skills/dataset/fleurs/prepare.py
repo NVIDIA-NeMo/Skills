@@ -46,6 +46,35 @@ def load_fleurs_module():
 FLEURS_LANGS, FLEURS_LANG_TO_LONG, FLEURS_LANG_TO_GROUP = load_fleurs_module()
 LOCALES = set(FLEURS_LANGS)
 
+CER_LOCALES = set([
+    # Strict CER-oriented (no reliable word boundaries)
+    "cmn_hans_cn",  # Mandarin Chinese (Simplified)
+    "yue_hant_hk",  # Cantonese Chinese (Traditional)
+    "ja_jp",        # Japanese
+    "th_th",        # Thai
+    "lo_la",        # Lao
+    "my_mm",        # Burmese
+    "km_kh",        # Khmer
+
+    # Optional / borderline (WER standard, but CER often useful)
+    "ko_kr",        # Korean
+    "vi_vn",        # Vietnamese
+    "am_et",        # Amharic
+    "hi_in",        # Hindi
+    "ta_in",        # Tamil
+    "te_in",        # Telugu
+    "bn_in",        # Bengali
+    "gu_in",        # Gujarati
+    "kn_in",        # Kannada
+    "ml_in",        # Malayalam
+    "mr_in",        # Marathi
+    "ne_np",        # Nepali
+    "ur_pk",        # Urdu
+    "fa_ir",        # Persian (Farsi)
+    "ar_eg",        # Arabic (dialects vary, CER sometimes used for robustness)
+    "ckb_iq",       # Central Kurdish
+])
+
 
 def parse_tsv(tsv_path: str) -> dict[str, dict]:
     """Parse FLEURS TSV metadata file. Returns dict keyed by audio filename."""
@@ -148,6 +177,12 @@ def _build_record(
     comet_text: str | None = None,
     comet_translation: str | None = None,
 ) -> dict:
+
+    def get_effective_task_type(task_type: str) -> str:
+        if task_type == "ASR":
+            return "Multilingual-ASR"
+        return task_type
+    
     audio_metadata = {"path": container_audio_path, "duration": duration}
     record = {
         "expected_answer": expected_answer,
@@ -158,7 +193,7 @@ def _build_record(
             {"role": "user", "content": instruction, "audio": audio_metadata},
         ],
         "subset_for_metrics": subset_for_metrics,
-        "task_type": task_type,
+        "task_type": get_effective_task_type(task_type),
     }
     if comet_text is not None and comet_translation is not None:
         # Required to compute COMET metrics
@@ -232,6 +267,7 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                     "src_lang_name": FLEURS_LANG_TO_LONG[src_locale],
                     "src_lang": src_locale,
                     "src_lang_group": FLEURS_LANG_TO_GROUP[src_locale],
+                    "use_cer": src_locale in CER_LOCALES,
                 }
                 if task_type == "AST":
                     expected_answer = target_row[gt_key]
