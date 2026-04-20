@@ -970,7 +970,7 @@ class SweBenchGenerationTask(GenerationTask):
                     "cd /root/SWE-bench && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
-                    f"    --raw_sample_path {self.cfg.input_file} "
+                    f"    --raw_sample_path /input_mount/{Path(self.cfg.input_file).name} "
                     f"    --patch_path {pred_mounted_path} "
                     f"    --output_dir eval-outputs "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
@@ -988,7 +988,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --instance_ids {data_point['instance_id']} "
                     f"    --run_id eval-outputs "
                     f"    --timeout {self.cfg.swebench_tests_timeout} "
-                    f"    --dataset_name {self.cfg.input_file} && "
+                    f"    --dataset_name /input_mount/{Path(self.cfg.input_file).name} && "
                     f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
                 )
 
