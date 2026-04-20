@@ -757,7 +757,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         preprocess_kwargs = {
             "lang": src_lang,
             "normalize_compound": True,
-            "remove_diacritics": False,
+            "remove_diacritics": True,
         }
         if use_cer:
             # Use CER instead of WER for languages such as Chinese, Japanese, and Korean
