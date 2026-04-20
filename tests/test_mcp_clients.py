@@ -883,3 +883,122 @@ async def test_mcp_vs_direct_error_parity():
 
     await direct.shutdown()
     await mcp_tool.shutdown()
+
+
+# ==============================
+# Hardening tests: DirectPythonTool should not raise on malformed calls or
+# transient sandbox/shutdown failures — RL runs must survive them.
+# ==============================
+
+
+class _StubSandbox:
+    """Stand-in sandbox whose behavior is controlled by the test."""
+
+    def __init__(self, execute_code=None, delete_session=None, close=None):
+        self._execute_code = execute_code
+        self._delete_session = delete_session
+        self._close = close
+        self.delete_calls = []
+        self.close_calls = 0
+
+    async def execute_code(self, code, language="ipython", timeout=10, session_id=None, **kwargs):
+        if self._execute_code is None:
+            raise AssertionError("execute_code called but not stubbed")
+        return await self._execute_code(code, language=language, timeout=timeout, session_id=session_id)
+
+    async def delete_session(self, session_id):
+        self.delete_calls.append(session_id)
+        if self._delete_session is not None:
+            await self._delete_session(session_id)
+
+    async def close(self):
+        self.close_calls += 1
+        if self._close is not None:
+            await self._close()
+
+
+def _direct_tool_with_stub(stub):
+    """Build a DirectPythonTool wired to a stub sandbox without needing a live server."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    # configure() builds sanitize keys from hide_args; we replace the sandbox afterwards
+    # so we don't depend on a running local sandbox server.
+    tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
+    tool._sandbox = stub
+    return tool
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_missing_code_returns_error_not_raise():
+    """A tool call without 'code' must return a sandbox-shaped error, not crash the run."""
+    tool = _direct_tool_with_stub(_StubSandbox())  # execute_code must NOT be called
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {},  # no 'code' key — mirrors the KeyError seen in production
+        extra_args={"request_id": "missing-code"},
+    )
+    assert isinstance(result, str)
+    assert "code" in result  # error mentions the missing argument
+    # Must not leak framework internals (Python exception names / tracebacks).
+    assert "KeyError" not in result
+    assert "Traceback" not in result
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_sandbox_exception_returns_generic_error():
+    """Unexpected sandbox exceptions must be contained and must not leak internals."""
+
+    async def exploding_execute(code, language, timeout, session_id):
+        raise RuntimeError("internal sandbox detail that must not reach the model")
+
+    tool = _direct_tool_with_stub(_StubSandbox(execute_code=exploding_execute))
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(1)"},
+        extra_args={"request_id": "boom"},
+    )
+    assert isinstance(result, str)
+    # Generic message only — no leaked exception detail, no stack.
+    assert "internal sandbox detail" not in result
+    assert "Traceback" not in result
+    assert "RuntimeError" not in result
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_shutdown_tolerates_delete_failure():
+    """A failing delete_session for one session must not abort shutdown of the rest."""
+
+    async def flaky_delete(session_id):
+        if session_id == "sess-a":
+            raise RuntimeError("transient delete failure")
+
+    stub = _StubSandbox(delete_session=flaky_delete)
+    tool = _direct_tool_with_stub(stub)
+    tool.requests_to_sessions["req-a"] = "sess-a"
+    tool.requests_to_sessions["req-b"] = "sess-b"
+
+    # Must not raise despite sess-a's delete blowing up.
+    await tool.shutdown()
+
+    assert set(stub.delete_calls) == {"sess-a", "sess-b"}
+    assert stub.close_calls == 1  # close() still called after delete failures
+    assert tool.requests_to_sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
+    """cleanup_request must not propagate delete_session errors into ToolManager."""
+
+    async def failing_delete(session_id):
+        raise RuntimeError("transient delete failure")
+
+    stub = _StubSandbox(delete_session=failing_delete)
+    tool = _direct_tool_with_stub(stub)
+    tool.requests_to_sessions["req-x"] = "sess-x"
+
+    # Must not raise; session must be removed from the mapping regardless.
+    await tool.cleanup_request("req-x")
+    assert "req-x" not in tool.requests_to_sessions
