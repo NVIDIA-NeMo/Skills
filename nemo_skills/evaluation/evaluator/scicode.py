@@ -64,9 +64,11 @@ async def _execute_single_test(args):
         )
         return elem_idx, output_dict
     finally:
-        if session_id is not None:
-            await sandbox.delete_session(str(session_id))
-        await sandbox.close()
+        try:
+            if session_id is not None:
+                await sandbox.delete_session(str(session_id))
+        finally:
+            await sandbox.close()
 
 
 def test_code(eval_config, scicode_data):
