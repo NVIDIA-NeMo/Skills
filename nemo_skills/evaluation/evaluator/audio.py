@@ -440,7 +440,7 @@ def preprocess_asr_text(text: str, mode: str = "standard", lang: str | None = No
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            text = MultilingualTextNormalizer(remove_diacritics=True)(text, lang=lang)
+            text = MultilingualTextNormalizer(remove_diacritics=False)(text, lang=lang)
         return normalize_whitespace(text)
 
 
@@ -745,6 +745,8 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         use_cer = extra_fields.get("use_cer", False)
         if use_cer:
             # Use CER instead of WER for languages such as Chinese, Japanese, and Korean
+            expected_answer = expected_answer.replace(" ", "")
+            generation = generation.replace(" ", "")
             metrics = evaluate_cer(
                 expected_answer, 
                 generation, 
