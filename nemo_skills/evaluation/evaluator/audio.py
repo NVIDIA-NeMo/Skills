@@ -616,6 +616,7 @@ def evaluate_cer(
     ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
+    # Only normalize compound pairs for non-English languages
     if normalize_compound:
         ref, hyp = normalize_compound_pairs(ref, hyp)
 
@@ -802,7 +803,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 generation, 
                 normalization_mode=mode, 
                 key_prefix="wer", # use wer prefix for consistency with _wer_with_counts
-                add_text_fields=True,
+                add_text_fields=False,
                 normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
@@ -811,7 +812,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 expected_answer, 
                 generation, 
                 normalization_mode=mode,
-                add_text_fields=True,
+                add_text_fields=False,
                 normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
