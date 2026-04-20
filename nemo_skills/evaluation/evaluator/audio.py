@@ -377,7 +377,7 @@ def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
     return config.normalization_mode if config.apply_whisper_normalization else "none"
 
 
-def preprocess_asr_text(text: str, mode: str = "standard", lang: str | None = None) -> str:
+def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
     """Normalize ASR text for WER calculation.
 
     Args:
@@ -389,7 +389,7 @@ def preprocess_asr_text(text: str, mode: str = "standard", lang: str | None = No
             - "none": No normalization (whitespace only)
             - "no_tn_itn": Lowercase + remove punctuation, no number word conversion (for TN/ITN eval)
             - "multilingual": Multilingual normalization
-        lang: Language code (e.g., "zh", "ja", "ko", "en")
+        **kwargs: Additional keyword arguments.
     """
     if mode not in VALID_NORMALIZATION_MODES:
         raise ValueError(
@@ -437,10 +437,16 @@ def preprocess_asr_text(text: str, mode: str = "standard", lang: str | None = No
     # and whisper normalization for English
     if mode == "multilingual":
         text = text.lower()
+        lang = kwargs.get("lang")
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            text = MultilingualTextNormalizer(remove_diacritics=False)(text, lang=lang)
+            normalize_compound = kwargs.get("normalize_compound", False)
+            remove_diacritics = kwargs.get("remove_diacritics", False)
+            text = MultilingualTextNormalizer(
+                remove_diacritics=remove_diacritics,
+                normalize_compound=normalize_compound
+            )(text, lang=lang)
         return normalize_whitespace(text)
 
 
@@ -488,7 +494,8 @@ def evaluate_asr(
     reference: str, 
     hypothesis: str, 
     normalization_mode: str = "standard",
-    add_text_fields: bool = True
+    add_text_fields: bool = True,
+    **kwargs
     ) -> dict[str, Any]:
     """Evaluate ASR: computes WER with normalization.
 
@@ -498,8 +505,8 @@ def evaluate_asr(
         normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
         add_text_fields: Whether to add text fields to the result.
     """
-    ref = preprocess_asr_text(reference, mode=normalization_mode)
-    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode)
+    ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
+    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
     # Match the HF Open ASR Leaderboard: drop samples whose normalized
     # reference is empty rather than scoring them against a placeholder.
@@ -567,12 +574,13 @@ def evaluate_cer(
     hypothesis: str, 
     normalization_mode: str = "none",
     key_prefix: str = "cer",
-    add_text_fields: bool = True
+    add_text_fields: bool = True,
+    **kwargs
 ) -> dict[str, Any]:
     """Evaluate CER: character-level edit distance."""
 
-    ref = preprocess_asr_text(reference, mode=normalization_mode)
-    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode)
+    ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
+    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
     result = _cer_with_counts(ref, hyp, key_prefix=key_prefix)
     result["is_correct"] = result[key_prefix] < 0.5
@@ -743,23 +751,28 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         mode = resolve_asr_normalization_mode(config)
         extra_fields = sample.get("extra_fields", {})
         use_cer = extra_fields.get("use_cer", False)
+        preprocess_kwargs = {
+            "lang": extra_fields.get("src_lang", None),
+            "normalize_compound": True,
+            "remove_diacritics": False,
+        }
         if use_cer:
             # Use CER instead of WER for languages such as Chinese, Japanese, and Korean
-            expected_answer = expected_answer.replace(" ", "")
-            generation = generation.replace(" ", "")
             metrics = evaluate_cer(
                 expected_answer, 
                 generation, 
                 normalization_mode=mode, 
                 key_prefix="wer", # use wer prefix for consistency with _wer_with_counts
-                add_text_fields=False
+                add_text_fields=False,
+                **preprocess_kwargs
             )
         else:
             metrics = evaluate_asr(
                 expected_answer, 
                 generation, 
                 normalization_mode=mode,
-                add_text_fields=False
+                add_text_fields=False,
+                **preprocess_kwargs
             )
         updates.update(metrics)
 
