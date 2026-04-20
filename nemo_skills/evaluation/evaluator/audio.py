@@ -363,7 +363,7 @@ def _remove_non_speech_elements(text: str) -> str:
     return re.sub(non_speech_patterns, "", text)
 
 
-VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn")
+VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual")
 
 
 def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
