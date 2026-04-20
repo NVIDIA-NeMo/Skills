@@ -477,7 +477,7 @@ def _cer_with_counts(ref: str, hyp: str, key_prefix: str = "cer") -> dict[str, A
     return {
         f"{key_prefix}": cer_score,
         f"{key_prefix}_errors": cer_errors,
-        f"{key_prefix}_ref_chars": cer_ref_chars,
+        f"{key_prefix}_ref_words": cer_ref_chars,
         f"{key_prefix}_substitutions": measures.substitutions,
         f"{key_prefix}_insertions": measures.insertions,
         f"{key_prefix}_deletions": measures.deletions,
