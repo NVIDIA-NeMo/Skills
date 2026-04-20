@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# FLEURS speech-to-text translation (google/fleurs). Prepare writes test.jsonl under <data_dir>/fleurs/.
-
 REQUIRES_DATA_DIR = True
 METRICS_TYPE = "audio"
 EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=multilingual"
