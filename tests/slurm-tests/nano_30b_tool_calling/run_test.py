@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SLURM test for PythonTool (MCP tool calling) with nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.
+"""SLURM test for DirectPythonTool with nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.
 
 Sub-tests:
   - Non-streaming: full eval (aime24:16, aime25:16) with metric ranges, timeouts, tool usage
   - Streaming: quick smoke test (aime24:1) to verify streaming token counting works
 
-Validates the MCP-based tool calling pipeline on a real cluster:
-  - PythonTool spawns python_tool server (stdio or HTTP depending on branch)
-  - Model generates tool calls, PythonTool executes them in sandbox
+Validates the DirectPythonTool path on a real cluster:
+  - DirectPythonTool calls sandbox.execute_code() directly (no MCP subprocess/JSON-RPC)
+  - Model generates tool calls, DirectPythonTool executes them in sandbox
   - Results are evaluated for correctness and tool usage
 
 This test exercises a different code path than gpt_oss_python_aime25
 (which uses code_execution=true / CodeExecutionWrapper). Here we use
-tool_modules / ToolCallingWrapper / PythonTool.
+tool_modules / ToolCallingWrapper / DirectPythonTool.
 """
 
 import argparse
@@ -40,7 +40,7 @@ COMMON_PARAMS = (
     "++inference.tokens_to_generate=65536 "
     "++inference.temperature=1 "
     "++inference.top_p=0.95 "
-    "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
+    "++tool_modules=[nemo_skills.mcp.servers.python_tool::DirectPythonTool] "
     "++max_tool_calls=100 "
 )
 

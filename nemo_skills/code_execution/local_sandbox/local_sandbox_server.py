@@ -212,6 +212,38 @@ class ShellManager:
         proc.terminate()
         proc.join(timeout=2.0)
 
+    def _finish_restart(self, shell_id):
+        """Start a fresh shell and mark it as needing session restore.
+
+        IMPORTANT: Must be called OUTSIDE except handlers. start_shell() uses
+        multiprocessing.Process.start() → os.fork(). A child forked inside an
+        except block inherits sys.exc_info() from the parent, causing Python's
+        implicit exception chaining to attach the parent's exception context to
+        every subsequent exception in the child process.
+        """
+        self.start_shell(shell_id)
+        with self.manager_lock:
+            if shell_id in self.shells:
+                self.shells[shell_id]["restart_pending"] = True
+
+    def _cleanup_shell_resources(self, proc, conn):
+        # Best-effort teardown for the current shell process and pipe.
+        try:
+            proc.terminate()
+        except Exception:
+            try:
+                os.kill(proc.pid, signal.SIGKILL)
+            except Exception:
+                pass
+        try:
+            proc.join(timeout=2.0)
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+
     def run_cell(self, shell_id, code, timeout=1.0, grace=2.0, traceback_verbosity="Plain"):
         """
         Execute `code` on shell `shell_id`.
@@ -252,18 +284,35 @@ class ShellManager:
 
         exec_id = time.time_ns()
         with lock:
+            _need_restart = False
             # send execution request
             try:
                 conn.send({"cmd": "exec", "id": exec_id, "code": code, "traceback_verbosity": traceback_verbosity})
             except Exception as exc:
-                return {
+                logging.warning(f"Shell process for {shell_id} failed before execution request was sent, restarting")
+                # clean up the shell process and connection - best-effort
+                self._cleanup_shell_resources(proc, conn)
+
+                # remove the old shell entry
+                with self.manager_lock:
+                    self.shells.pop(shell_id, None)
+
+                _need_restart = True
+                _exc_msg = str(exc)
+                _restart_result = {
                     "status": "error",
-                    "msg": f"send failed: {exc}",
+                    "msg": f"send failed: {_exc_msg}",
                     "shell_was_created": shell_was_created,
+                    "shell_was_restarted": True,
                     "shell_was_recently_restarted": shell_was_recently_restarted,
                 }
 
+            if _need_restart:
+                self._finish_restart(shell_id)
+                return _restart_result
+
             # wait for the result up to `timeout`
+            _need_restart = False
             if conn.poll(timeout):
                 try:
                     result = conn.recv()
@@ -273,22 +322,26 @@ class ShellManager:
                 except EOFError:
                     # Connection closed - shell process died, need to restart
                     logging.warning(f"Shell process for {shell_id} died during execution, restarting")
+
+                    # clean up the shell process and connection - best-effort
+                    self._cleanup_shell_resources(proc, conn)
+
+                    # remove the old shell entry
                     with self.manager_lock:
                         self.shells.pop(shell_id, None)
-                    self.start_shell(shell_id)
 
-                    # Mark the new shell as having a restart pending
-                    with self.manager_lock:
-                        if shell_id in self.shells:
-                            self.shells[shell_id]["restart_pending"] = True
-
-                    return {
+                    _need_restart = True
+                    _restart_result = {
                         "status": "error",
                         "msg": "connection closed",
                         "shell_was_created": shell_was_created,
                         "shell_was_restarted": True,
                         "shell_was_recently_restarted": shell_was_recently_restarted,
                     }
+
+            if _need_restart:
+                self._finish_restart(shell_id)
+                return _restart_result
 
             # no reply yet -> try gentle interrupt (SIGINT)
             try:
@@ -302,6 +355,7 @@ class ShellManager:
                 pass
 
             # wait short grace period for the shell to handle the interrupt
+            _need_restart = False
             if conn.poll(grace):
                 try:
                     result = conn.recv()
@@ -311,16 +365,15 @@ class ShellManager:
                 except EOFError:
                     # Connection closed - shell process died, need to restart
                     logging.warning(f"Shell process for {shell_id} died during interrupt, restarting")
+                    # clean up the shell process and connection - best-effort
+                    self._cleanup_shell_resources(proc, conn)
+
+                    # remove the old shell entry
                     with self.manager_lock:
                         self.shells.pop(shell_id, None)
-                    self.start_shell(shell_id)
 
-                    # Mark the new shell as having a restart pending
-                    with self.manager_lock:
-                        if shell_id in self.shells:
-                            self.shells[shell_id]["restart_pending"] = True
-
-                    return {
+                    _need_restart = True
+                    _restart_result = {
                         "status": "interrupted",
                         "msg": "connection closed after interrupt",
                         "shell_was_created": shell_was_created,
@@ -328,31 +381,18 @@ class ShellManager:
                         "shell_was_recently_restarted": shell_was_recently_restarted,
                     }
 
-            # still stuck -> terminate the shell and restart it (drop memory)
-            try:
-                proc.terminate()
-            except Exception:
-                try:
-                    os.kill(proc.pid, signal.SIGKILL)
-                except Exception:
-                    pass
-            proc.join(timeout=2.0)
+            if _need_restart:
+                self._finish_restart(shell_id)
+                return _restart_result
 
-            # close old connection (best-effort)
-            try:
-                conn.close()
-            except Exception:
-                pass
+            # still stuck -> terminate the shell and restart it (drop memory)
+            # clean up the shell process and connection - best-effort
+            self._cleanup_shell_resources(proc, conn)
 
             # remove and restart a fresh shell for this id
             with self.manager_lock:
                 self.shells.pop(shell_id, None)
-            self.start_shell(shell_id)
-
-            # Mark the new shell as having a restart pending
-            with self.manager_lock:
-                if shell_id in self.shells:
-                    self.shells[shell_id]["restart_pending"] = True
+            self._finish_restart(shell_id)
 
             return {
                 "status": "timeout_killed",
