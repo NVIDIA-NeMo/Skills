@@ -323,6 +323,7 @@ def eval_no_tools(
         output_dir=output_dir,
         benchmarks="mmlu-prox:1",
         num_jobs=1,
+        num_chunks=4,
         partition=partition,
         run_after=run_after,
         expname=expname,

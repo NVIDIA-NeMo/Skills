@@ -35,7 +35,7 @@ NO_TOOLS_METRICS = {
     "scicode": ("pass@1[avg-of-4]", "subtask_accuracy", (28.0, 38.0)),
     "hle": ("pass@1", "judge_correct", (8.0, 14.0)),
     "aalcr": ("pass@1[avg-of-3]", "judge_correct", (30.0, 42.0)),
-    # "mmlu-prox": ("pass@1", "symbolic_correct", (54.0, 65.0)),
+    "mmlu-prox": ("pass@1", "symbolic_correct", (54.0, 65.0)),
     "wmt24pp": ("en->xx", "bleu", (82.0, 90.0)),
 }
 
