@@ -608,10 +608,10 @@ def add_task(
         for cur_idx, (cur_cmd, cur_container, cur_tasks) in enumerate(zip(cmd, container, num_tasks)):
             if cluster_config["executor"] != "slurm" and cur_tasks > 1:
                 cur_cmd = f"mpirun --allow-run-as-root -np {cur_tasks} bash -c {shlex.quote(cur_cmd)}"
-            client_num_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
+            main_task_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
             main_env_updates = {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}
             if with_ray:
-                main_env_updates["GPUS_PER_NODE"] = str(client_num_gpus)
+                main_env_updates["GPUS_PER_NODE"] = str(main_task_gpus)
             if with_sandbox and with_ray:
                 main_env_updates.update(
                     {
@@ -629,7 +629,7 @@ def add_task(
                         container=cur_container,
                         num_nodes=num_nodes,
                         tasks_per_node=cur_tasks,
-                        gpus_per_node=client_num_gpus,
+                        gpus_per_node=main_task_gpus,
                         partition=partition,
                         account=account,
                         dependencies=dependencies,
@@ -641,7 +641,7 @@ def add_task(
                         heterogeneous=heterogeneous,
                         het_group=het_group,
                         total_het_groups=total_het_groups,
-                        overlap=(not client_num_gpus),  # Only when the main task does not have gpus
+                        overlap=(not main_task_gpus),  # Only when the main task does not have gpus
                         with_ray=with_ray,
                         ray_template=ray_template,
                     )
