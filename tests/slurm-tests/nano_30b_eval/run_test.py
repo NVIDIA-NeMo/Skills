@@ -40,7 +40,6 @@ WITH_TOOLS_COMMON_PARAMS = (
     "++inference.temperature=1.0 "
     "++inference.top_p=0.95 "
     "++chat_template_kwargs.enable_thinking=true "
-    "++parse_reasoning=True "
     "++tool_modules=[nemo_skills.mcp.servers.python_tool::DirectPythonTool] "
     "++max_tool_calls=100 "
 )
@@ -196,7 +195,7 @@ def eval_no_tools(
 
     expname = f"{expname_prefix}-no-tools-scicode"
     eval(
-        ctx=wrap_arguments(NO_TOOLS_PARAMS),
+        ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=eval/scicode/background ++eval_type=scicode "),
         cluster=cluster,
         model=get_local_model_path(workspace),
         server_type="vllm",
@@ -232,6 +231,71 @@ def eval_no_tools(
         judge_server_gpus=server_gpus,
         judge_server_container=server_container,
         extra_judge_args="++inference.tokens_to_generate=4096 ++server.enable_soft_fail=True",
+        run_after=run_after,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+    expnames.append(expname)
+
+    expname = f"{expname_prefix}-no-tools-aalcr"
+    eval(
+        ctx=wrap_arguments(NO_TOOLS_PARAMS),
+        cluster=cluster,
+        model=get_local_model_path(workspace),
+        server_type="vllm",
+        server_gpus=server_gpus,
+        server_args=server_args,
+        server_container=server_container,
+        output_dir=output_dir,
+        benchmarks="aalcr:3",
+        num_jobs=1,
+        partition=partition,
+        judge_model=get_local_judge_model_path(workspace),
+        judge_server_type="vllm",
+        judge_server_gpus=server_gpus,
+        judge_server_container=server_container,
+        extra_judge_args=("++prompt_config=judge/aalcr ++generation_key=judgement ++add_generation_stats=False "),
+        run_after=run_after,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+    expnames.append(expname)
+
+    expname = f"{expname_prefix}-no-tools-mmlu-prox"
+    eval(
+        ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=generic/default ++eval_type=multichoice "),
+        cluster=cluster,
+        model=get_local_model_path(workspace),
+        server_type="vllm",
+        server_gpus=server_gpus,
+        server_args=server_args,
+        server_container=server_container,
+        output_dir=output_dir,
+        benchmarks="mmlu-prox:1",
+        num_jobs=1,
+        partition=partition,
+        run_after=run_after,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+    expnames.append(expname)
+
+    expname = f"{expname_prefix}-no-tools-wmt24pp"
+    eval(
+        ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=multilingual/segment-translation "),
+        cluster=cluster,
+        model=get_local_model_path(workspace),
+        server_type="vllm",
+        server_gpus=server_gpus,
+        server_args=server_args,
+        server_container=server_container,
+        output_dir=output_dir,
+        benchmarks="wmt24pp:1",
+        num_jobs=1,
+        partition=partition,
         run_after=run_after,
         expname=expname,
         wandb_project=wandb_project,
@@ -384,7 +448,7 @@ def main():
 
     args = parser.parse_args()
 
-    prepare_data(ctx=wrap_arguments("mmlu-pro gpqa hle scicode aime25 minif2f"))
+    prepare_data(ctx=wrap_arguments("mmlu-pro gpqa hle scicode aime25 minif2f aalcr mmlu-prox wmt24pp"))
     prepare_data(ctx=wrap_arguments("livecodebench --release_version v6 --start_date 2024-08 --end_date 2025-05"))
 
     setup_expname = setup(workspace=args.workspace, cluster=args.cluster, expname_prefix=args.expname_prefix)
