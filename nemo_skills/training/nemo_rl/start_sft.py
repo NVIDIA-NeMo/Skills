@@ -15,6 +15,7 @@
 # copied from https://github.com/NVIDIA/NeMo-RL/blob/main/examples/run_sft.py
 
 import argparse
+import copy
 import json
 import os
 import pprint
@@ -201,6 +202,27 @@ def parse_args():
 # =======================================================
 # Data Processing
 # =======================================================
+
+
+def ensure_dict_args(messages):
+    """Recursively ensures all tool_call arguments are dicts before templating."""
+    messages = copy.deepcopy(messages)
+    for message in messages:
+        if "tool_calls" in message and message["tool_calls"]:
+            for tool_call in message["tool_calls"]:
+                func = tool_call.get("function", {})
+                args = func.get("arguments")
+
+                # If it's a JSON string, parse it into a dictionary
+                if isinstance(args, str):
+                    try:
+                        func["arguments"] = json.loads(args)
+                    except json.JSONDecodeError:
+                        # Fallback for malformed strings
+                        func["arguments"] = {}
+    return messages
+
+
 def sft_preprocessor(
     datum_dict: Dict[str, Any],
     task_data_spec: TaskDataSpec,
@@ -213,8 +235,9 @@ def sft_preprocessor(
 ) -> DatumSpec:
     """Process a datum dictionary for SFT training."""
 
+    messages = ensure_dict_args(datum_dict["messages"])
     message_log = get_formatted_message_log(
-        datum_dict["messages"],
+        messages,
         tokenizer,
         task_data_spec,
         add_bos_token=add_bos,
