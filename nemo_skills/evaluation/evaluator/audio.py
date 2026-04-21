@@ -571,7 +571,7 @@ def evaluate_translation(
             lang_code = tgt_lang.split("_")[0]
             if lang_code in ["cmn", "yue"]:
                 lang_code = "zh"
-            
+
             if lang_code == "ja":
                 tokenize = "ja-mecab"
             elif lang_code == "zh":
