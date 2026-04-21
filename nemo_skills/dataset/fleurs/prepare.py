@@ -178,10 +178,6 @@ def _build_record(
     comet_text_key: str | None = None,
     comet_translation_key: str | None = None,
 ) -> dict:
-
-    def get_effective_task_type(task_type: str) -> str:
-        return f"Multilingual-{task_type.upper()}"
-
     audio_metadata = {"path": container_audio_path, "duration": duration}
     record = {
         "expected_answer": expected_answer,
@@ -192,7 +188,7 @@ def _build_record(
             {"role": "user", "content": instruction, "audio": audio_metadata},
         ],
         "subset_for_metrics": subset_for_metrics,
-        "task_type": get_effective_task_type(task_type),
+        "task_type": f"Multilingual-{task_type.upper()}",
     }
     if comet_text_key is not None and comet_translation_key is not None:
         # Required to compute COMET metrics
