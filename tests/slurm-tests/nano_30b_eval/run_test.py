@@ -51,6 +51,8 @@ FORMAL_MATH_PARAMS = (
     "++eval_config.timeout=400 "
 )
 
+AGENTIC_PARAMS = "++agent_framework=openhands ++inference.temperature=0.7 ++inference.top_p=0.8 ++inference.top_k=20 "
+
 
 def build_server_args(parser_path: str, enable_tools: bool) -> str:
     parts = [
@@ -477,6 +479,47 @@ def eval_formal_math(
     return [expname]
 
 
+def eval_agentic(
+    workspace,
+    cluster,
+    expname_prefix,
+    wandb_project,
+    partition,
+    server_gpus,
+    server_container,
+    run_after,
+):
+    server_args = (
+        build_server_args(
+            parser_path=f"{workspace}/nano_v3_parser/{REASONING_PARSER_FILENAME}",
+            enable_tools=True,
+        )
+        + " --async-scheduling --enforce-eager"
+    )
+    expname = f"{expname_prefix}-agentic-openhands"
+    eval(
+        ctx=wrap_arguments(AGENTIC_PARAMS),
+        cluster=cluster,
+        model=get_local_model_path(workspace),
+        server_type="vllm",
+        server_gpus=server_gpus,
+        server_nodes=1,
+        server_args=server_args,
+        server_container=server_container,
+        output_dir=f"{workspace}/agentic",
+        benchmarks="swe-bench",
+        num_chunks=8,
+        dependent_jobs=2,
+        reuse_code=False,
+        partition=partition,
+        run_after=run_after,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+    return [expname]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True, help="Workspace directory containing all experiment data")
@@ -495,7 +538,9 @@ def main():
     args = parser.parse_args()
 
     prepare_data(
-        ctx=wrap_arguments("mmlu-pro gpqa hle scicode aime25 minif2f aalcr mmlu-prox wmt24pp ifbench arena-hard-v2")
+        ctx=wrap_arguments(
+            "mmlu-pro gpqa hle scicode aime25 minif2f aalcr mmlu-prox wmt24pp ifbench arena-hard-v2 swe-bench"
+        )
     )
     prepare_data(ctx=wrap_arguments("livecodebench --release_version v6 --start_date 2024-08 --end_date 2025-05"))
 
@@ -536,6 +581,17 @@ def main():
         run_after=setup_expname,
     )
 
+    agentic_expnames = eval_agentic(
+        workspace=args.workspace,
+        cluster=args.cluster,
+        expname_prefix=args.expname_prefix,
+        wandb_project=args.wandb_project,
+        partition=args.partition,
+        server_gpus=args.server_gpus,
+        server_container=args.server_container,
+        run_after=setup_expname,
+    )
+
     checker_cmd = f"python tests/slurm-tests/nano_30b_eval/check_results.py --workspace {args.workspace}"
 
     run_cmd(
@@ -543,7 +599,7 @@ def main():
         cluster=args.cluster,
         expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
-        run_after=no_tools_expnames + with_tools_expnames + formal_math_expnames,
+        run_after=no_tools_expnames + with_tools_expnames + formal_math_expnames + agentic_expnames,
     )
 
 

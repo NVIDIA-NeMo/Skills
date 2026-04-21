@@ -50,6 +50,10 @@ FORMAL_MATH_METRICS = {
     "minif2f_pass32": ("minif2f", "pass@32", "lean4_correct", (72.0, 88.0)),
 }
 
+AGENTIC_METRICS = {
+    "swe-bench": ("pass@1", "issues_resolved", (34.0, 44.0)),
+}
+
 TOOL_BENCHMARKS = ["aime25", "gpqa", "hle"]
 MIN_TOOL_CALL_FRACTION = 0.05
 MAX_TIMEOUTS = {
@@ -184,6 +188,10 @@ def check_formal_math(eval_dir: Path):
         soft_assert(lo <= value <= hi, f"{label}: {field}={value} out of range [{lo}, {hi}]")
 
 
+def check_agentic(eval_dir: Path):
+    check_metric_group(eval_dir, AGENTIC_METRICS)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", required=True, help="Workspace directory containing results")
@@ -201,6 +209,9 @@ def main():
 
     print("\n=== formal_math ===")
     check_formal_math(eval_root / "formal_math")
+
+    print("\n=== agentic ===")
+    check_agentic(eval_root / "agentic")
 
     assert_all()
 
