@@ -1032,11 +1032,12 @@ class TestArxivTool:
         assert "not found" not in result.lower()
         assert "Abstract" in result
 
+    @pytest.mark.live
     def test_arxiv_get_invalid_id(self):
         from nemo_skills.mcp.servers.arxiv_tool import arxiv_get
 
         result = arxiv_get("0000.00000")
-        assert "not found" in result.lower() or "failed" in result.lower()
+        assert "not found" in result.lower()
 
     @pytest.mark.asyncio
     async def test_arxiv_stdio_list_tools(self):
@@ -1045,13 +1046,13 @@ class TestArxivTool:
 
         tool = ArxivSearchTool()
         tool.configure()
-
-        tools = await tool.list_tools()
-        tool_names = {t["name"] for t in tools}
-        assert "arxiv-search" in tool_names
-        assert "arxiv-get" in tool_names
-
-        await tool.shutdown()
+        try:
+            tools = await tool.list_tools()
+            tool_names = {t["name"] for t in tools}
+            assert "arxiv-search" in tool_names
+            assert "arxiv-get" in tool_names
+        finally:
+            await tool.shutdown()
 
     @pytest.mark.asyncio
     async def test_arxiv_stdio_hide_args(self):
@@ -1060,14 +1061,14 @@ class TestArxivTool:
 
         tool = ArxivSearchTool()
         tool.configure()
+        try:
+            tools = await tool.list_tools()
+            search_tool = next(t for t in tools if t["name"] == "arxiv-search")
+            schema_props = search_tool["input_schema"]["properties"]
+            assert "query" in schema_props
+            assert "max_results" not in schema_props
 
-        tools = await tool.list_tools()
-        search_tool = next(t for t in tools if t["name"] == "arxiv-search")
-        schema_props = search_tool["input_schema"]["properties"]
-        assert "query" in schema_props
-        assert "max_results" not in schema_props
-
-        get_tool = next(t for t in tools if t["name"] == "arxiv-get")
-        assert "paper_id" in get_tool["input_schema"]["properties"]
-
-        await tool.shutdown()
+            get_tool = next(t for t in tools if t["name"] == "arxiv-get")
+            assert "paper_id" in get_tool["input_schema"]["properties"]
+        finally:
+            await tool.shutdown()

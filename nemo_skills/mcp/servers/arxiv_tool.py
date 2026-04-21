@@ -24,6 +24,7 @@ Usage:
     ++tool_modules=[nemo_skills.mcp.servers.arxiv_tool::ArxivSearchTool]
 """
 
+import collections
 import hashlib
 import json
 import logging
@@ -49,7 +50,7 @@ _CACHE_MAX_SIZE = 256
 
 _last_request_time = 0.0
 _rate_lock = Lock()
-_cache: dict[str, str] = {}
+_cache: collections.OrderedDict[str, str] = collections.OrderedDict()
 
 
 def _rate_limit():
@@ -65,6 +66,12 @@ def _rate_limit():
 
 def _cache_key(*args) -> str:
     return hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest()
+
+
+def _cache_put(key: str, value: str) -> None:
+    if len(_cache) >= _CACHE_MAX_SIZE:
+        _cache.popitem(last=False)
+    _cache[key] = value
 
 
 def _with_retry(fn):
@@ -98,11 +105,11 @@ def arxiv_search(
     """Search arXiv for scientific papers. Returns titles, abstracts, and URLs."""
     import arxiv
 
-    if max_results > MAX_RESULTS:
-        max_results = MAX_RESULTS
+    max_results = max(1, min(max_results, MAX_RESULTS))
 
     key = _cache_key("search", query, max_results)
     if key in _cache:
+        _cache.move_to_end(key)
         return _cache[key]
 
     def _fetch():
@@ -124,16 +131,12 @@ def arxiv_search(
             )
         return results
 
-    try:
-        results = _with_retry(_fetch)
-        if not results:
-            return "No papers found for this query."
-        result_str = "\n---\n".join(results)
-        if len(_cache) < _CACHE_MAX_SIZE:
-            _cache[key] = result_str
-        return result_str
-    except Exception as e:
-        return f"ArXiv search failed: {e}"
+    results = _with_retry(_fetch)
+    if not results:
+        return "No papers found for this query."
+    result_str = "\n---\n".join(results)
+    _cache_put(key, result_str)
+    return result_str
 
 
 @mcp.tool(name="arxiv-get")
@@ -145,6 +148,7 @@ def arxiv_get(
 
     key = _cache_key("get", paper_id)
     if key in _cache:
+        _cache.move_to_end(key)
         return _cache[key]
 
     def _fetch():
@@ -152,25 +156,21 @@ def arxiv_get(
         search = arxiv.Search(id_list=[paper_id])
         return next(client.results(search), None)
 
-    try:
-        paper = _with_retry(_fetch)
-        if paper is None:
-            return f"Paper {paper_id} not found on arXiv."
-        result_str = (
-            f"**{paper.title}**\n"
-            f"Authors: {', '.join(a.name for a in paper.authors)}\n"
-            f"Published: {paper.published.strftime('%Y-%m-%d')}\n"
-            f"Updated: {paper.updated.strftime('%Y-%m-%d')}\n"
-            f"Categories: {', '.join(paper.categories)}\n"
-            f"URL: {paper.entry_id}\n"
-            f"PDF: {paper.pdf_url}\n\n"
-            f"Abstract:\n{paper.summary}"
-        )
-        if len(_cache) < _CACHE_MAX_SIZE:
-            _cache[key] = result_str
-        return result_str
-    except Exception as e:
-        return f"ArXiv lookup failed: {e}"
+    paper = _with_retry(_fetch)
+    if paper is None:
+        return f"Paper {paper_id} not found on arXiv."
+    result_str = (
+        f"**{paper.title}**\n"
+        f"Authors: {', '.join(a.name for a in paper.authors)}\n"
+        f"Published: {paper.published.strftime('%Y-%m-%d')}\n"
+        f"Updated: {paper.updated.strftime('%Y-%m-%d')}\n"
+        f"Categories: {', '.join(paper.categories)}\n"
+        f"URL: {paper.entry_id}\n"
+        f"PDF: {paper.pdf_url}\n\n"
+        f"Abstract:\n{paper.summary}"
+    )
+    _cache_put(key, result_str)
+    return result_str
 
 
 class ArxivSearchTool(MCPClientTool):
