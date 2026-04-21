@@ -63,7 +63,16 @@ Confidence: **90%**
 
 def test_hle_falls_back_to_boxed_answer():
     """Boxed answers should still work for models that ignore the HLE prompt format."""
-    generation = r"""Explanation: Using Chebotarev, the density is \boxed{\frac{2}{7}}."""
+    generation = r"""
+Explanation: Using Chebotarev, the density is \boxed{\frac{2}{7}}.
+"""
+
+    assert extract_hle_answer(generation) == r"\frac{2}{7}"
+
+
+def test_hle_falls_back_to_boxed_equals_answer():
+    """Relaxed boxed-equals fallback should remain supported."""
+    generation = r"Explanation: The final answer is \boxed=\frac{2}{7}."
 
     assert extract_hle_answer(generation) == r"\frac{2}{7}"
 
@@ -81,7 +90,7 @@ Confidence: 100%"""
 
 
 def test_hle_empty_answer_returns_none():
-    """An empty Answer: line followed by Confidence: should yield None, not the Confidence text."""
+    """An empty Answer: line followed by Confidence: should yield None."""
     generation = """Explanation: I could not determine the answer.
 Answer:
 Confidence: 10%"""
@@ -92,13 +101,18 @@ Confidence: 10%"""
 def test_hle_regex_override_survives_pipeline_shell_roundtrip():
     """The HLE regex override should remain intact when eval builds a shell command."""
     regex_arg = next(
-        arg for arg in shlex.split(HLE_EVAL_EXTRACTION_ARGS) if arg.startswith("++eval_config.extract_regex=")
+        arg
+        for arg in shlex.split(HLE_EVAL_EXTRACTION_ARGS)
+        if arg.startswith("++eval_config.extract_regex=")
     )
 
-    assert regex_arg == f'++eval_config.extract_regex=\'"{HLE_ANSWER_EXTRACT_REGEX}"\''
+    assert regex_arg == f"++eval_config.extract_regex='\"{HLE_ANSWER_EXTRACT_REGEX}\"'"
 
     result = subprocess.run(
-        f'{shlex.quote(sys.executable)} -c "import sys; print(sys.argv[1])" {regex_arg}',
+        (
+            f'{shlex.quote(sys.executable)} -c "import sys; print(sys.argv[1])" '
+            f"{regex_arg}"
+        ),
         shell=True,
         check=True,
         capture_output=True,

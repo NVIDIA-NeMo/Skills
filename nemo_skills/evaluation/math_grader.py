@@ -129,6 +129,13 @@ def search_boxed(string: str):
     if "\\boxed" not in string:
         return None
 
+    boxed_equals = "\\boxed="
+    boxed_equals_idx = string.rfind(boxed_equals)
+    if boxed_equals_idx >= 0:
+        retval = string[boxed_equals_idx + len(boxed_equals) :].splitlines()[0].strip()
+        retval = _additional_normalization(retval)
+        return retval or None
+
     idx = string.rfind("\\boxed")
     if idx < 0:
         idx = string.rfind("\\fbox")
