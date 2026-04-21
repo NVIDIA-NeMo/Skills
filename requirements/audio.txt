@@ -1,6 +1,10 @@
 # Word/Character Error Rate computation
 jiwer>=3.1.0,<4.0.0
 
+# Number to words conversion
+# num2words is required for multilingual normalization
+num2words
+
 # BLEU score computation
 # sacrebleu[ja,ko] is required for Japanese and Korean BLEU score computation
 sacrebleu[ja,ko]
@@ -16,7 +20,3 @@ torchcodec
 
 # Lightweight text normalization (EnglishTextNormalizer)
 whisper-normalizer
-
-# Number to words conversion
-# num2words is required for multilingual normalization
-num2words
