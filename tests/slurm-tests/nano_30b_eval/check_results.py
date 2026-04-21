@@ -21,13 +21,17 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
-from utils import assert_all, load_json, soft_assert  # noqa: E402
+from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: E402
 
 NO_TOOLS_METRICS = {
     "aime25": ("pass@1[avg-of-4]", "symbolic_correct", (84.0, 94.0)),
     "gpqa": ("pass@1[avg-of-4]", "symbolic_correct", (69.0, 76.0)),
     "mmlu-pro": ("pass@1", "symbolic_correct", (74.0, 82.0)),
+    "ifbench": ("pass@1[avg-of-5]", "average_score", (66.0, 77.0)),
     "livecodebench": ("pass@1[avg-of-4]", "accuracy", (62.0, 72.0)),
+    "arena-hard-v2": ("pass@1", "score", (61.0, 74.0)),
+    "arena-hard-v2-hard_prompt": ("pass@1", ("category_hard_prompt", "score"), (66.0, 78.0)),
+    "arena-hard-v2-creative_writing": ("pass@1", ("category_creative_writing", "score"), (55.0, 72.0)),
     "scicode": ("pass@1[avg-of-4]", "subtask_accuracy", (28.0, 38.0)),
     "hle": ("pass@1", "judge_correct", (8.0, 14.0)),
     "aalcr": ("pass@1[avg-of-3]", "judge_correct", (30.0, 42.0)),
@@ -71,15 +75,32 @@ def normalize_percent(value: float) -> float:
     return value * 100.0 if 0.0 <= value <= 1.0 else value
 
 
-def check_metric_group(eval_dir: Path, metric_config: dict[str, tuple[str, str, tuple[float, float]]]):
+def resolve_metrics_entry(eval_dir: Path, benchmark_key: str):
+    if benchmark_key.startswith("arena-hard-v2-"):
+        metrics_path = eval_dir / "eval-results" / "arena-hard-v2" / "metrics.json"
+        metrics = load_metrics_block(metrics_path, "arena-hard-v2")
+        return metrics_path, metrics, "arena-hard-v2"
+    metrics_path = eval_dir / "eval-results" / benchmark_key / "metrics.json"
+    metrics = load_metrics_block(metrics_path, benchmark_key)
+    return metrics_path, metrics, benchmark_key
+
+
+def check_metric_group(
+    eval_dir: Path, metric_config: dict[str, tuple[str, str | tuple[str, ...], tuple[float, float]]]
+):
     for benchmark, (agg_key, field, (lo, hi)) in metric_config.items():
-        metrics_path = eval_dir / "eval-results" / benchmark / "metrics.json"
-        metrics = load_metrics_block(metrics_path, benchmark)
+        metrics_path, metrics, benchmark_label = resolve_metrics_entry(eval_dir, benchmark)
         soft_assert(agg_key in metrics, f"Missing aggregation key {agg_key} in {metrics_path}")
-        soft_assert(field in metrics[agg_key], f"Missing field {field} in {metrics_path}")
-        value = normalize_percent(float(metrics[agg_key][field]))
-        print(f"{eval_dir.name}/{benchmark}/{agg_key}/{field}: {value}")
-        soft_assert(lo <= value <= hi, f"{benchmark}: {field}={value} out of range [{lo}, {hi}]")
+        if isinstance(field, tuple):
+            value = get_nested_value(metrics[agg_key], field)
+            field_label = "/".join(field)
+        else:
+            value = metrics[agg_key].get(field)
+            field_label = field
+        soft_assert(value is not None, f"Missing field {field_label} in {metrics_path}")
+        value = normalize_percent(float(value))
+        print(f"{eval_dir.name}/{benchmark_label}/{agg_key}/{field_label}: {value}")
+        soft_assert(lo <= value <= hi, f"{benchmark}: {field_label}={value} out of range [{lo}, {hi}]")
 
 
 def iter_output_rows(bench_dir: Path):

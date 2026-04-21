@@ -172,6 +172,28 @@ def eval_no_tools(
     )
     expnames.append(expname)
 
+    expname = f"{expname_prefix}-no-tools-ifbench"
+    eval(
+        ctx=wrap_arguments(
+            NO_TOOLS_PARAMS + "++generation_key=response ++prompt_config=generic/default ++eval_type=ifbench "
+        ),
+        cluster=cluster,
+        model=get_local_model_path(workspace),
+        server_type="vllm",
+        server_gpus=server_gpus,
+        server_args=server_args,
+        server_container=server_container,
+        output_dir=output_dir,
+        benchmarks="ifbench:5",
+        num_jobs=1,
+        partition=partition,
+        run_after=run_after,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+    expnames.append(expname)
+
     expname = f"{expname_prefix}-no-tools-livecodebench"
     eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS),
@@ -186,6 +208,30 @@ def eval_no_tools(
         split="test_v6_2408_2505",
         num_jobs=1,
         partition=partition,
+        run_after=run_after,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+    expnames.append(expname)
+
+    expname = f"{expname_prefix}-no-tools-arena-hard-v2"
+    eval(
+        ctx=wrap_arguments(NO_TOOLS_PARAMS),
+        cluster=cluster,
+        model=get_local_model_path(workspace),
+        server_type="vllm",
+        server_gpus=server_gpus,
+        server_args=server_args,
+        server_container=server_container,
+        output_dir=output_dir,
+        benchmarks="arena-hard-v2:1",
+        num_jobs=1,
+        partition=partition,
+        judge_model=get_local_judge_model_path(workspace),
+        judge_server_type="vllm",
+        judge_server_gpus=server_gpus,
+        judge_server_container=server_container,
         run_after=run_after,
         expname=expname,
         wandb_project=wandb_project,
@@ -448,7 +494,9 @@ def main():
 
     args = parser.parse_args()
 
-    prepare_data(ctx=wrap_arguments("mmlu-pro gpqa hle scicode aime25 minif2f aalcr mmlu-prox wmt24pp"))
+    prepare_data(
+        ctx=wrap_arguments("mmlu-pro gpqa hle scicode aime25 minif2f aalcr mmlu-prox wmt24pp ifbench arena-hard-v2")
+    )
     prepare_data(ctx=wrap_arguments("livecodebench --release_version v6 --start_date 2024-08 --end_date 2025-05"))
 
     setup_expname = setup(workspace=args.workspace, cluster=args.cluster, expname_prefix=args.expname_prefix)
