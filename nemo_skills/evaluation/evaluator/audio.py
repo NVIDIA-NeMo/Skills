@@ -35,7 +35,7 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     prompt_config: str = "eval/speechlm/audio"
     normalize_asr_pc_standard_wer: bool = True
     strip_helpful_prefixes: bool = False
-    apply_whisper_normalization: bool = True
+    apply_normalization: bool = True
     normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual"
     
     # Optional list of reference fields to calculate WER against (e.g., ["text_tn", "text_itn"])
@@ -400,11 +400,11 @@ def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
     """Resolve effective normalization mode for ASR-family tasks.
 
     - no_tn_itn is explicit and does not use whisper normalization.
-    - Other modes respect apply_whisper_normalization toggle.
+    - Other modes respect apply_normalization toggle.
     """
     if config.normalization_mode == "no_tn_itn":
         return "no_tn_itn"
-    return config.normalization_mode if config.apply_whisper_normalization else "none"
+    return config.normalization_mode if config.apply_normalization else "none"
 
 
 def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
