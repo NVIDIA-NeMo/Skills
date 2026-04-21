@@ -14,10 +14,9 @@
 
 # Settings that define how evaluation should be done by default (all can be changed from cmdline)
 
-# Uses the audio evaluator which computes WER with Whisper-style text normalization
-# Data samples should have task_type="ASR" for proper WER calculation
+# Uses the audio evaluator which computes WER with HuggingFace leaderboard preprocessing
 
 REQUIRES_DATA_DIR = True
 METRICS_TYPE = "audio"
-EVAL_ARGS = "++eval_type=audio"
-GENERATION_ARGS = "++prompt_format=openai"
+EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=hf_leaderboard"
+GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
