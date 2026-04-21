@@ -56,11 +56,11 @@ def _get_nested(sample: dict, key: str):
 
 
 def resolve_comet_fields(sample: dict) -> tuple[str, str, str]:
-    comet_text_key = sample.get("comet_text_key", "text") # default to text field if not present
-    comet_trans_key = sample.get("comet_translation_key", "translation") # default to translation field if not present
+    comet_text_key = sample.get("comet_text_key", "text")  # default to text field if not present
+    comet_trans_key = sample.get("comet_translation_key", "translation")  # default to translation field if not present
     text = _get_nested(sample, comet_text_key)
     translation = _get_nested(sample, comet_trans_key)
-    generation = _get_nested(sample, "generation") # always present
+    generation = _get_nested(sample, "generation")  # always present
     return text, translation, generation
 
 

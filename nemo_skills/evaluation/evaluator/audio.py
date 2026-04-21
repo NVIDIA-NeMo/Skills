@@ -17,10 +17,10 @@
 import asyncio
 import logging
 import re
+import unicodedata
 from typing import Any
 
 import numpy as np
-import unicodedata
 
 from nemo_skills.evaluation.evaluator.base import BaseEvaluator, BaseEvaluatorConfig
 from nemo_skills.utils import get_logger_name, nested_dataclass
@@ -36,8 +36,10 @@ class AudioEvaluatorConfig(BaseEvaluatorConfig):
     normalize_asr_pc_standard_wer: bool = True
     strip_helpful_prefixes: bool = False
     apply_normalization: bool = True
-    normalization_mode: str = "standard"  # "standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual"
-    
+    normalization_mode: str = (
+        "standard"  # "standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual"
+    )
+
     # Optional list of reference fields to calculate WER against (e.g., ["text_tn", "text_itn"])
     # For each field, WER will be computed and stored with corresponding metric name
     reference_fields: list[str] | None = None
@@ -62,6 +64,7 @@ ADDITIONAL_DIACRITICS = {
     "ł": "l",
     "Ł": "L",
 }
+
 
 def remove_symbols_and_diacritics(s: str, keep: str = ""):
     """
@@ -135,14 +138,17 @@ class MultilingualTextNormalizer:
 
     def _normalize_numbers(self, text, lang):
         import num2words
+
         # Join space-separated thousand groups (e.g. "10 000" -> "10000")
         text = re.sub(r"(\d)\s+(\d{3})\b", r"\1\2", text)
+
         # Convert remaining digit sequences to words
         def _replace(m):
             try:
                 return num2words.num2words(int(m.group()), lang=lang)
             except Exception:
                 return m.group()
+
         return re.sub(r"\d+", _replace, text)
 
     def __call__(self, s: str, lang=None):
@@ -159,6 +165,7 @@ class MultilingualTextNormalizer:
             s = self._normalize_numbers(s, lang)
         return s
 
+
 # Known model failure responses that should be treated as empty transcriptions
 _FAILURE_RESPONSES = [
     r"the speech is in audio format and needs to be transcribed",
@@ -171,6 +178,7 @@ _FAILURE_RESPONSES = [
 
 def extract_asr_text(generation: str) -> str:
     """Extract ASR text from generation."""
+
     def parse_qwen_asr_output(generation: str) -> str:
         _ASR_TEXT_TAG = "<asr_text>"
         s = str(generation).strip()
@@ -178,6 +186,7 @@ def extract_asr_text(generation: str) -> str:
         if has_tag:
             s = s.split(_ASR_TEXT_TAG, 1)[1]
         return s.strip()
+
     result = parse_qwen_asr_output(generation)
     return result.strip()
 
@@ -434,9 +443,9 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         text = text.lower()
         text = re.sub(r"[^\w\s]", "", text)
         return normalize_whitespace(text)
-    
+
     from whisper_normalizer.english import EnglishTextNormalizer
-    
+
     if mode in ["standard", "hf_leaderboard"]:
         text = text.lower()
         text = EnglishTextNormalizer()(text)
@@ -462,7 +471,7 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         text = jiwer_process(text)
         text = _remove_non_speech_elements(text)
         return normalize_whitespace(text)
-    
+
     # "multilingual" uses multilingual normalization for non-English languages
     # and whisper normalization for English
     if mode == "multilingual":
@@ -471,9 +480,9 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            text = MultilingualTextNormalizer(
-                remove_diacritics=kwargs.get("remove_diacritics", False)
-            )(text, lang=lang)
+            text = MultilingualTextNormalizer(remove_diacritics=kwargs.get("remove_diacritics", False))(
+                text, lang=lang
+            )
         return normalize_whitespace(text)
 
 
@@ -506,7 +515,7 @@ def _cer_with_counts(ref: str, hyp: str, key_prefix: str = "cer") -> dict[str, A
     measures = jiwer.process_characters(ref, hyp)
     cer_errors = measures.substitutions + measures.deletions + measures.insertions
     cer_ref_chars = measures.substitutions + measures.deletions + measures.hits
- 
+
     return {
         f"{key_prefix}": cer_score,
         f"{key_prefix}_errors": cer_errors,
@@ -518,12 +527,8 @@ def _cer_with_counts(ref: str, hyp: str, key_prefix: str = "cer") -> dict[str, A
 
 
 def evaluate_asr(
-    reference: str, 
-    hypothesis: str, 
-    normalization_mode: str = "standard",
-    normalize_compound: bool = False,
-    **kwargs
-    ) -> dict[str, Any]:
+    reference: str, hypothesis: str, normalization_mode: str = "standard", normalize_compound: bool = False, **kwargs
+) -> dict[str, Any]:
     """Evaluate ASR: computes WER with normalization.
 
     Args:
@@ -556,8 +561,8 @@ def evaluate_asr(
 
 
 def evaluate_translation(
-    reference: str, 
-    hypothesis: str, 
+    reference: str,
+    hypothesis: str,
     tgt_lang: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate translation: computes sentence-level BLEU score."""
@@ -596,12 +601,12 @@ def evaluate_translation(
 
 
 def evaluate_cer(
-    reference: str, 
-    hypothesis: str, 
+    reference: str,
+    hypothesis: str,
     normalization_mode: str = "none",
     key_prefix: str = "cer",
     normalize_compound: bool = False,
-    **kwargs
+    **kwargs,
 ) -> dict[str, Any]:
     """Evaluate CER: character-level edit distance."""
 
@@ -774,7 +779,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         tgt_lang = extra_fields.get("tgt_lang", None)
         metrics = evaluate_translation(expected_answer, generation, tgt_lang)
         updates.update(metrics)
-    
+
     elif task_type == "Multilingual-ASR":
         mode = resolve_asr_normalization_mode(config)
         extra_fields = sample.get("extra_fields", {})
@@ -789,32 +794,27 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
         if use_cer:
             # Use CER instead of WER for languages such as Chinese, Japanese, and Korean
             metrics = evaluate_cer(
-                expected_answer, 
-                generation, 
-                normalization_mode=mode, 
-                key_prefix="wer", # use wer prefix for consistency with _wer_with_counts
+                expected_answer,
+                generation,
+                normalization_mode=mode,
+                key_prefix="wer",  # use wer prefix for consistency with _wer_with_counts
                 # Only normalize compound pairs for non-English languages
                 normalize_compound=src_lang not in [None, "en"],
-                **preprocess_kwargs
+                **preprocess_kwargs,
             )
         else:
             metrics = evaluate_asr(
-                expected_answer, 
-                generation, 
+                expected_answer,
+                generation,
                 normalization_mode=mode,
                 # Only normalize compound pairs for non-English languages
                 normalize_compound=src_lang not in [None, "en"],
-                **preprocess_kwargs
+                **preprocess_kwargs,
             )
         updates.update(metrics)
 
     elif task_type == "CER":
-        metrics = evaluate_cer(
-            expected_answer, 
-            generation, 
-            normalization_mode="none", 
-            key_prefix="cer"
-        )
+        metrics = evaluate_cer(expected_answer, generation, normalization_mode="none", key_prefix="cer")
         updates.update(metrics)
 
     elif task_type == "Hallucination":
