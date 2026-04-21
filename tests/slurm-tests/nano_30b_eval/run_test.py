@@ -29,13 +29,18 @@ DEFAULT_SERVER_CONTAINER = (
 )
 
 NO_TOOLS_PARAMS = (
-    "++inference.tokens_to_generate=65536 ++inference.temperature=1.0 ++inference.top_p=1.0 ++parse_reasoning=True "
+    "++inference.tokens_to_generate=65536 "
+    "++inference.temperature=1.0 "
+    "++inference.top_p=1.0 "
+    "++chat_template_kwargs.enable_thinking=true "
 )
 
 WITH_TOOLS_COMMON_PARAMS = (
     "++inference.tokens_to_generate=65536 "
     "++inference.temperature=1.0 "
     "++inference.top_p=0.95 "
+    "++chat_template_kwargs.enable_thinking=true "
+    "++parse_reasoning=True "
     "++tool_modules=[nemo_skills.mcp.servers.python_tool::DirectPythonTool] "
     "++max_tool_calls=100 "
 )
