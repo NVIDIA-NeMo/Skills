@@ -174,8 +174,8 @@ def _build_record(
     subset_for_metrics: str,
     task_type: str,
     extra_fields: dict,
-    comet_text: str | None = None,
-    comet_translation: str | None = None,
+    comet_text_key: str | None = None,
+    comet_translation_key: str | None = None,
 ) -> dict:
 
     def get_effective_task_type(task_type: str) -> str:
@@ -193,10 +193,10 @@ def _build_record(
         "subset_for_metrics": subset_for_metrics,
         "task_type": get_effective_task_type(task_type),
     }
-    if comet_text is not None and comet_translation is not None:
+    if comet_text_key is not None and comet_translation_key is not None:
         # Required to compute COMET metrics
-        record["text"] = comet_text
-        record["translation"] = comet_translation
+        record["comet_text_key"] = f"extra_fields.{comet_text_key}"
+        record["comet_translation_key"] = f"extra_fields.{comet_translation_key}"
     record["extra_fields"] = extra_fields
     return record
 
@@ -269,8 +269,6 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                 }
                 if task_type == "AST":
                     expected_answer = target_row[gt_key]
-                    comet_text = source_row["raw_transcription"]
-                    comet_translation = target_row["raw_transcription"]
                     extra_fields.update(
                         {
                             "tgt_text": target_row["transcription"],
@@ -280,9 +278,11 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                             "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
                         }
                     )
+                    comet_text_key = "src_raw_transcription"
+                    comet_translation_key = "tgt_raw_transcription"
                 else:
                     expected_answer = source_row[gt_key]
-                    comet_text, comet_translation = None, None
+                    comet_text_key, comet_translation_key = None, None
 
                 record = _build_record(
                     expected_answer=expected_answer,
@@ -291,8 +291,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                     duration=duration,
                     subset_for_metrics=subset_for_metrics,
                     task_type=task_type,
-                    comet_text=comet_text,
-                    comet_translation=comet_translation,
+                    comet_text_key=comet_text_key,
+                    comet_translation_key=comet_translation_key,
                     extra_fields=extra_fields,
                 )
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")

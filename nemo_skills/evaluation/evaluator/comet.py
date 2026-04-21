@@ -45,6 +45,23 @@ def load_comet_model(model_path: str):
     LOG.info(f"Successfully loaded {model_path} on {device}")
     return model
 
+def _get_nested(sample: dict, key: str):
+    if "." in key:
+        value = sample
+        for part in key.split("."):
+            value = value[part]
+        return value
+    return sample[key]
+
+
+def resolve_comet_fields(sample: dict) -> tuple[str, str, str]:
+    generation = sample["generation"]
+    comet_text_key = sample.get("comet_text_key", None)
+    comet_trans_key = sample.get("comet_translation_key", None)
+    text = sample["text"] if comet_text_key is None else _get_nested(sample, comet_text_key)
+    translation = sample["translation"] if comet_trans_key is None else _get_nested(sample, comet_trans_key)
+    return text, translation, generation
+
 
 def process_file(input_file: Path, output_file: Path, comet_model, batch_size: int = 16):
     """Copy input file to output location and run xCOMET-XXL evaluation."""
@@ -69,7 +86,8 @@ def process_file(input_file: Path, output_file: Path, comet_model, batch_size: i
     comet_list = []
     for sample in data:
         try:
-            comet_dict = {"src": sample["text"], "mt": sample["generation"], "gt": sample["translation"]}
+            text, translation, generation = resolve_comet_fields(sample)
+            comet_dict = {"src": text, "mt": generation, "gt": translation}
             comet_list.append(comet_dict)
         except KeyError as e:
             LOG.error(f"Sample missing required field {e}: {sample}")
