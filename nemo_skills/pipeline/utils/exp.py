@@ -541,26 +541,8 @@ def add_task(
 
     het_group = 0
     het_group_indices = []
-    het_group_num_nodes = {}
     sandbox_needs_executor = with_sandbox and not with_ray
-    if heterogeneous and sandbox_needs_executor:
-        # Non-Ray sandbox sidecars overlap each existing het group instead of
-        # occupying their own group.
-        total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd)
-        preview_het_group = 0
-        if server_goes_first and server_config is not None:
-            for _ in range(n_servers):
-                het_group_num_nodes[preview_het_group] = server_config["num_nodes"]
-                preview_het_group += 1
-        if cmd:
-            het_group_num_nodes[preview_het_group] = num_nodes
-            preview_het_group += 1
-        if not server_goes_first and server_config is not None:
-            for _ in range(n_servers):
-                het_group_num_nodes[preview_het_group] = server_config["num_nodes"]
-                preview_het_group += 1
-    else:
-        total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + sandbox_needs_executor
+    total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + sandbox_needs_executor
 
     LOG.info("Adding a task with commands:")
 
@@ -626,7 +608,10 @@ def add_task(
         for cur_idx, (cur_cmd, cur_container, cur_tasks) in enumerate(zip(cmd, container, num_tasks)):
             if cluster_config["executor"] != "slurm" and cur_tasks > 1:
                 cur_cmd = f"mpirun --allow-run-as-root -np {cur_tasks} bash -c {shlex.quote(cur_cmd)}"
+            client_num_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
             main_env_updates = {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}
+            if with_ray:
+                main_env_updates["GPUS_PER_NODE"] = str(client_num_gpus)
             if with_sandbox and with_ray:
                 main_env_updates.update(
                     {
@@ -638,7 +623,6 @@ def add_task(
             with temporary_env_update(cluster_config, main_env_updates):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
                 commands.append(cur_cmd)
-                client_num_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
                 executors.append(
                     get_executor(
                         cluster_config=cluster_config,
@@ -685,60 +669,46 @@ def add_task(
                     override = override[11:]
                 sandbox_env_updates["PYTHONPATH"] = override + ":/app"
 
-        def add_sandbox_for_group(target_het_group, log_suffix=""):
-            with temporary_env_update(cluster_config, sandbox_env_updates):
-                commands.append(get_sandbox_command(cluster_config))
-                sandbox_num_nodes = (
-                    het_group_num_nodes[target_het_group]
-                    if heterogeneous
-                    else executors[0].nodes
-                    if cluster_config["executor"] == "slurm"
-                    else 1
-                )
-                sandbox_executor = get_executor(
-                    cluster_config=cluster_config,
-                    container=sandbox_container or cluster_config["containers"]["sandbox"],
-                    num_nodes=sandbox_num_nodes,
-                    tasks_per_node=1,
-                    gpus_per_node=0,
-                    partition=partition,
-                    account=account,
-                    mounts=None if keep_mounts_for_sandbox else [],
-                    dependencies=dependencies,
-                    job_name=task_name,
-                    log_dir=log_dir,
-                    log_prefix=f"sandbox{log_suffix}",
-                    extra_package_dirs=extra_package_dirs,
-                    sbatch_kwargs=sbatch_kwargs,
-                    heterogeneous=heterogeneous,
-                    het_group=target_het_group,
-                    total_het_groups=total_het_groups,
-                    overlap=True,
-                    with_ray=with_ray,
-                    ray_template=ray_template,
-                    # Allow the sandbox to survive individual worker crashes (e.g. SIGILL
-                    # from libraries compiled for a different CPU). nemo-run hardcodes
-                    # --kill-on-bad-exit=1 on every srun; appending =0 overrides it so
-                    # that start-with-nginx.sh can restart crashed workers instead of
-                    # srun killing the entire step.
-                    # Also disable PMI/PMIx for the sandbox step. The sandbox runs a
-                    # single SLURM task but spawns many child processes (uwsgi workers,
-                    # IPython shells). On some clusters, PMIx can treat child crashes
-                    # (e.g., SIGILL from native libraries) as fatal and cancel the
-                    # entire step. Overriding --mpi=none avoids PMIx involvement for
-                    # this sidecar step.
-                    extra_srun_args=["--kill-on-bad-exit=0", "--mpi=none"],
-                )
-                executors.append(sandbox_executor)
-                het_group_indices.append(target_het_group)
-            LOG.info("Sandbox command (het_group=%s): %s", target_het_group, commands[-1])
-
-        if heterogeneous:
-            for target_het_group in sorted(het_group_num_nodes):
-                add_sandbox_for_group(target_het_group, log_suffix=f"_hg{target_het_group}")
-        else:
-            add_sandbox_for_group(het_group)
-            het_group += 1
+        with temporary_env_update(cluster_config, sandbox_env_updates):
+            commands.append(get_sandbox_command(cluster_config))
+            sandbox_executor = get_executor(
+                cluster_config=cluster_config,
+                container=sandbox_container or cluster_config["containers"]["sandbox"],
+                num_nodes=executors[0].nodes if cluster_config["executor"] == "slurm" else 1,
+                tasks_per_node=1,
+                gpus_per_node=0,
+                partition=partition,
+                account=account,
+                mounts=None if keep_mounts_for_sandbox else [],
+                dependencies=dependencies,
+                job_name=task_name,
+                log_dir=log_dir,
+                log_prefix="sandbox",
+                extra_package_dirs=extra_package_dirs,
+                sbatch_kwargs=sbatch_kwargs,
+                heterogeneous=heterogeneous,
+                het_group=het_group,
+                total_het_groups=total_het_groups,
+                overlap=True,
+                with_ray=False,
+                ray_template=ray_template,
+                # Allow the sandbox to survive individual worker crashes (e.g. SIGILL
+                # from libraries compiled for a different CPU). nemo-run hardcodes
+                # --kill-on-bad-exit=1 on every srun; appending =0 overrides it so
+                # that start-with-nginx.sh can restart crashed workers instead of
+                # srun killing the entire step.
+                # Also disable PMI/PMIx for the sandbox step. The sandbox runs a
+                # single SLURM task but spawns many child processes (uwsgi workers,
+                # IPython shells). On some clusters, PMIx can treat child crashes
+                # (e.g., SIGILL from native libraries) as fatal and cancel the
+                # entire step. Overriding --mpi=none avoids PMIx involvement for
+                # this sidecar step.
+                extra_srun_args=["--kill-on-bad-exit=0", "--mpi=none"],
+            )
+            executors.append(sandbox_executor)
+            het_group_indices.append(het_group)
+        het_group += 1
+        LOG.info("Sandbox command: %s", commands[-1])
 
     # If server wasn't added first (because client needs GPUs or server doesn't need GPUs), add it now
     if server_config is not None and not server_goes_first:

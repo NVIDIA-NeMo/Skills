@@ -339,7 +339,7 @@ def grpo_nemo_rl(
     sandbox_container: str = typer.Option(None, help="Override container image for the sandbox sidecar"),
     ray_template: str = typer.Option(
         None,
-        help="Override the Ray template for training tasks. Can be a template name or a local .j2 path. Only applies to Ray-backed jobs; local executor ignores it.",
+        help="Override the Ray template for training tasks. Can be a template name or a local .j2 path. Only applies to slurm-based jobs; local executor ignores it.",
     ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(
@@ -423,7 +423,7 @@ def grpo_nemo_rl(
             validation_data = get_mounted_path(cluster_config, validation_data)
     if run_conversion_only:
         dependent_jobs = -1
-    if dependent_jobs > 0:
+    if dependent_jobs >= 0:
         if training_data is None:
             raise ValueError("training_data is required when dependent_jobs >= 0")
     training_config = config or UPSTREAM_GRPO_CONFIG

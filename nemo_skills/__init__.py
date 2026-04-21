@@ -23,5 +23,5 @@ _containers = {
     "sandbox": "dockerfile:dockerfiles/Dockerfile.sandbox",
     "nemo-skills": "dockerfile:dockerfiles/Dockerfile.nemo-skills",
     "verl": "dockerfile:dockerfiles/Dockerfile.verl",
-    "nemo-rl": "dockerfile:dockerfiles/Dockerfile.nemo-rl",
+    "nemo-rl": "nvcr.io/nvidian/nemo-rl:733c7d6-48669320",
 }

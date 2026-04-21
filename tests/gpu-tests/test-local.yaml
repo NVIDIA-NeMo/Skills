@@ -22,7 +22,7 @@ containers:
   nemo-skills: dockerfile:dockerfiles/Dockerfile.nemo-skills
   megatron: dockerfile:dockerfiles/Dockerfile.megatron
   verl: dockerfile:dockerfiles/Dockerfile.verl
-  nemo-rl: dockerfile:dockerfiles/Dockerfile.nemo-rl
+  nemo-rl: nvcr.io/nvidian/nemo-rl:733c7d6-48669320
 
 mounts:
   - /tmp:/tmp
