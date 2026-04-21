@@ -314,18 +314,15 @@ def evaluate_asr_pc(
         ref_std = normalize_whitespace(re.sub(r"[^\w\s]", "", reference.lower()))
         hyp_std = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis.lower()))
 
-    wer_std = jiwer.wer(ref_std, hyp_std)
+    result = _wer_with_counts(ref_std, hyp_std)
     per = calculate_per(reference, hypothesis)
-
-    return {
-        "wer": wer_std,
-        "wer_c": wer_c,
-        "wer_pc": wer_pc,
-        "per": per,
-        "is_correct": wer_pc < 0.5,
-        "text": ref_std,
-        "pred_text": hyp_std,
-    }
+    result["wer_c"] = wer_c
+    result["wer_pc"] = wer_pc
+    result["per"] = per
+    result["is_correct"] = wer_pc < 0.5
+    result["text"] = ref_std
+    result["pred_text"] = hyp_std
+    return result
 
 
 def _normalize_digits_to_words(text: str) -> str:
@@ -571,7 +568,10 @@ def evaluate_translation(
 
         tokenize = "13a"
         if isinstance(tgt_lang, str):
-            lang_code = tgt_lang[:2]
+            lang_code = tgt_lang.split("_")[0]
+            if lang_code in ["cmn", "yue"]:
+                lang_code = "zh"
+            
             if lang_code == "ja":
                 tokenize = "ja-mecab"
             elif lang_code == "zh":
