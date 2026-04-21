@@ -608,7 +608,6 @@ def evaluate_cer(
     ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
-    # Only normalize compound pairs for non-English languages
     if normalize_compound:
         ref, hyp = normalize_compound_pairs(ref, hyp)
 
