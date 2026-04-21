@@ -72,8 +72,9 @@ class MCQMultilingualMetrics(MathMetrics):
                 # so we don't mutate the original prediction dict
                 temp = {"generation": prediction["generation"]}
                 parse_reasoning(temp)
-                # _generation_finished_thinking=False means no </think> tag was found,
-                # in which case parse_reasoning sets generation="" — fall back to original
+                # _generation_finished_thinking=False means no </think> tag was found;
+                # parse_reasoning leaves generation unchanged in that case but we fall back
+                # to the original for clarity.
                 text_for_lang_detection = (
                     temp["generation"] if temp.get("_generation_finished_thinking") else prediction["generation"]
                 )

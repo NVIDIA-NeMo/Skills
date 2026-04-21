@@ -50,16 +50,20 @@ def parse_reasoning(sample: dict, generation_key: str = "generation", end_reason
     if not isinstance(sample[generation_key], str):
         return
     sample[f"_{generation_key}_finished_thinking"] = end_reasoning_string in sample[generation_key]
+    sample[f"_full_{generation_key}"] = sample[generation_key]
     if end_reasoning_string in sample[generation_key]:
-        sample[f"_full_{generation_key}"] = sample[generation_key]
         sample[generation_key] = sample[generation_key].split(end_reasoning_string)[-1].strip()
     else:
-        sample[f"_full_{generation_key}"] = sample[generation_key]
-        sample[generation_key] = ""  # no end tag, so setting the generation to empty
+        # End tag missing — either the model never closed its reasoning (truncation) or the
+        # generation was already stripped upstream (e.g. server-side reasoning parser that
+        # returns clean `content` + separate `reasoning_content`). In both cases wiping the
+        # generation is destructive; leave it untouched and rely on `_finished_thinking` as
+        # the diagnostic signal.
         LOG.warning(
-            "Thinking end tag `%s` not found in generation; setting generation to empty. "
+            "Thinking end tag `%s` not found in generation; leaving generation unchanged. "
             "If this happens for every generation, you might have accidentally set ++parse_reasoning=True for a "
-            "non-reasoning model or have incorrect end tag.",
+            "non-reasoning model, have an incorrect end tag, or the generation was already stripped upstream "
+            "(e.g. server-side reasoning parser).",
             end_reasoning_string,
         )
 
