@@ -275,8 +275,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                             "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
                         }
                     )
-                    comet_text_key = "src_raw_transcription"
-                    comet_translation_key = "tgt_raw_transcription"
+                    comet_text_key = "src_raw_text"
+                    comet_translation_key = "tgt_raw_text"
                 else:
                     expected_answer = source_row[gt_key]
                     comet_text_key, comet_translation_key = None, None

@@ -59,9 +59,6 @@ class AudioMetrics(BaseMetrics):
         super().__init__(compute_no_answer=compute_no_answer)
         self.max_k = max_k
 
-        # Core audio metrics
-        self.wer_scores = []
-
         # Corpus-level WER accumulators (total errors / total ref words)
         self.wer_total_errors = 0
         self.wer_total_ref_words = 0
