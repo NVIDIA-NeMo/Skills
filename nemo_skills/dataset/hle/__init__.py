@@ -16,7 +16,7 @@
 def _shell_quote_override_value(value: str) -> str:
     """Preserve override values through pipeline splitting and shell execution."""
     escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'\\"{escaped_value}\\"'
+    return f"\\'\\\"{escaped_value}\\\"\\'"
 
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
