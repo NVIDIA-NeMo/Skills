@@ -793,6 +793,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 generation, 
                 normalization_mode=mode, 
                 key_prefix="wer", # use wer prefix for consistency with _wer_with_counts
+                # Only normalize compound pairs for non-English languages
                 normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
@@ -801,6 +802,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 expected_answer, 
                 generation, 
                 normalization_mode=mode,
+                # Only normalize compound pairs for non-English languages
                 normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
