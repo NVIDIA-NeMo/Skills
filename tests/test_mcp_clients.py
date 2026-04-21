@@ -1002,3 +1002,72 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     # Must not raise; session must be removed from the mapping regardless.
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
+
+
+# ── ArXiv tool tests ─────────────────────────────────────────────────────
+
+
+class TestArxivTool:
+    def test_arxiv_tool_config(self):
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
+        assert "-m" in tool._config["client_params"]["args"]
+        assert "nemo_skills.mcp.servers.arxiv_tool" in tool._config["client_params"]["args"]
+
+    @pytest.mark.live
+    def test_arxiv_search_live(self):
+        from nemo_skills.mcp.servers.arxiv_tool import arxiv_search
+
+        result = arxiv_search("quantum entanglement", max_results=2)
+        assert "Error" not in result
+        assert "**" in result
+
+    @pytest.mark.live
+    def test_arxiv_get_live(self):
+        from nemo_skills.mcp.servers.arxiv_tool import arxiv_get
+
+        result = arxiv_get("2301.07041")
+        assert "not found" not in result.lower()
+        assert "Abstract" in result
+
+    def test_arxiv_get_invalid_id(self):
+        from nemo_skills.mcp.servers.arxiv_tool import arxiv_get
+
+        result = arxiv_get("0000.00000")
+        assert "not found" in result.lower() or "failed" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_arxiv_stdio_list_tools(self):
+        """Launch ArxivSearchTool over a real stdio subprocess and verify tool listing."""
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        tool.configure()
+
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert "arxiv-search" in tool_names
+        assert "arxiv-get" in tool_names
+
+        await tool.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_arxiv_stdio_hide_args(self):
+        """Verify hide_args removes max_results from the listed schema."""
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        tool.configure()
+
+        tools = await tool.list_tools()
+        search_tool = next(t for t in tools if t["name"] == "arxiv-search")
+        schema_props = search_tool["input_schema"]["properties"]
+        assert "query" in schema_props
+        assert "max_results" not in schema_props
+
+        get_tool = next(t for t in tools if t["name"] == "arxiv-get")
+        assert "paper_id" in get_tool["input_schema"]["properties"]
+
+        await tool.shutdown()
