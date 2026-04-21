@@ -61,8 +61,6 @@ class AudioMetrics(BaseMetrics):
 
         # Core audio metrics
         self.wer_scores = []
-        self.wer_references = []
-        self.wer_predictions = []
 
         # Corpus-level WER accumulators (total errors / total ref words)
         self.wer_total_errors = 0
@@ -203,18 +201,12 @@ class AudioMetrics(BaseMetrics):
 
         # Collect existing metrics: WER, PnC, and BLEU scores
         for pred in predictions:
-            if "wer" in pred and pred["wer"] is not None:
-                if "text" in pred and "pred_text" in pred:
-                    self.wer_references.append(pred["text"])
-                    self.wer_predictions.append(pred["pred_text"])
-                else:
-                    self.wer_scores.append(pred["wer"])
-                if "wer_errors" in pred and "wer_ref_words" in pred:
-                    self.wer_total_errors += pred["wer_errors"]
-                    self.wer_total_ref_words += pred["wer_ref_words"]
-                    self.wer_total_substitutions += pred["wer_substitutions"]
-                    self.wer_total_insertions += pred["wer_insertions"]
-                    self.wer_total_deletions += pred["wer_deletions"]
+            if "wer_errors" in pred and "wer_ref_words" in pred:
+                self.wer_total_errors += pred["wer_errors"]
+                self.wer_total_ref_words += pred["wer_ref_words"]
+                self.wer_total_substitutions += pred["wer_substitutions"]
+                self.wer_total_insertions += pred["wer_insertions"]
+                self.wer_total_deletions += pred["wer_deletions"]
             if "wer_c" in pred and pred["wer_c"] is not None:
                 self.wer_c_scores.append(pred["wer_c"])
             if "wer_pc" in pred and pred["wer_pc"] is not None:
@@ -300,17 +292,12 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["judge_score"] = avg_rating * 20
 
             # Add existing metrics: WER, PnC, and BLEU if available (convert to percentages and round to 2 decimals)
-            if self.wer_references:
-                import jiwer
-
-                agg_metrics["wer"] = round(100.0 * jiwer.wer(self.wer_references, self.wer_predictions), 2)
-            elif self.wer_scores:
-                agg_metrics["wer"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
             if self.wer_total_ref_words > 0:
                 agg_metrics["substitutions"] = self.wer_total_substitutions
                 agg_metrics["insertions"] = self.wer_total_insertions
                 agg_metrics["deletions"] = self.wer_total_deletions
                 agg_metrics["ref_words"] = self.wer_total_ref_words
+                agg_metrics["wer"] = round(100.0 * self.wer_total_errors / self.wer_total_ref_words, 2)
             if self.wer_c_scores:
                 agg_metrics["wer_c"] = round(100.0 * sum(self.wer_c_scores) / len(self.wer_c_scores), 2)
             if self.wer_pc_scores:

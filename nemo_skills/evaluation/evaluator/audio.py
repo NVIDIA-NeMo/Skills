@@ -521,7 +521,6 @@ def evaluate_asr(
     reference: str, 
     hypothesis: str, 
     normalization_mode: str = "standard",
-    add_text_fields: bool = True,
     normalize_compound: bool = False,
     **kwargs
     ) -> dict[str, Any]:
@@ -531,7 +530,6 @@ def evaluate_asr(
         reference: Ground truth transcription.
         hypothesis: Model output transcription.
         normalization_mode: "standard", "audiobench", "hf_leaderboard", "none", or "no_tn_itn".
-        add_text_fields: Whether to add text fields to the result.
         normalize_compound: Whether to normalize compound pairs.
         **kwargs: Additional keyword arguments.
     """
@@ -544,9 +542,7 @@ def evaluate_asr(
     # Match the HF Open ASR Leaderboard: drop samples whose normalized
     # reference is empty rather than scoring them against a placeholder.
     if not ref:
-        result = {"wer": None, "is_correct": None}
-        if add_text_fields:
-            result.update({"text": "", "pred_text": hyp or ""})
+        result = {"wer": None, "is_correct": None, "text": "", "pred_text": hyp or ""}
         return result
 
     if not hyp:
@@ -554,8 +550,8 @@ def evaluate_asr(
 
     result = _wer_with_counts(ref, hyp)
     result["is_correct"] = result["wer"] < 0.5
-    if add_text_fields:
-        result.update({"text": ref, "pred_text": hyp})
+    result["text"] = ref
+    result["pred_text"] = hyp
     return result
 
 
@@ -563,7 +559,6 @@ def evaluate_translation(
     reference: str, 
     hypothesis: str, 
     tgt_lang: str | None = None,
-    add_text_fields: bool = True
 ) -> dict[str, Any]:
     """Evaluate translation: computes sentence-level BLEU score."""
     try:
@@ -584,22 +579,20 @@ def evaluate_translation(
         bleu = sacrebleu.sentence_bleu(pred_text, [text], tokenize=tokenize)
         bleu_score = bleu.score / 100.0
 
-        result = {
+        return {
             "bleu": bleu_score,
             "is_correct": bleu_score > 0.3,
+            "text": text,
+            "pred_text": pred_text,
         }
-        if add_text_fields:
-            result.update({"text": text, "pred_text": pred_text})
-        return result
     except Exception as e:
-        result = {
+        return {
             "bleu": 0.0,
             "is_correct": False,
-            "error": str(e)
+            "error": str(e),
+            "text": reference.strip(),
+            "pred_text": hypothesis.strip(),
         }
-        if add_text_fields:
-            result.update({"text": reference.strip(), "pred_text": hypothesis.strip()})
-        return result
 
 
 def evaluate_cer(
@@ -607,7 +600,6 @@ def evaluate_cer(
     hypothesis: str, 
     normalization_mode: str = "none",
     key_prefix: str = "cer",
-    add_text_fields: bool = True,
     normalize_compound: bool = False,
     **kwargs
 ) -> dict[str, Any]:
@@ -622,9 +614,8 @@ def evaluate_cer(
 
     result = _cer_with_counts(ref, hyp, key_prefix=key_prefix)
     result["is_correct"] = result[key_prefix] < 0.5
-
-    if add_text_fields:
-        result.update({"text": ref, "pred_text": hyp})
+    result["text"] = ref
+    result["pred_text"] = hyp
     return result
 
 
@@ -782,7 +773,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     elif task_type in ["AST", "Translation", "Multilingual-AST"]:
         extra_fields = sample.get("extra_fields", {})
         tgt_lang = extra_fields.get("tgt_lang", None)
-        metrics = evaluate_translation(expected_answer, generation, tgt_lang, add_text_fields=False)
+        metrics = evaluate_translation(expected_answer, generation, tgt_lang)
         updates.update(metrics)
     
     elif task_type == "Multilingual-ASR":
@@ -803,7 +794,6 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 generation, 
                 normalization_mode=mode, 
                 key_prefix="wer", # use wer prefix for consistency with _wer_with_counts
-                add_text_fields=False,
                 normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
@@ -812,7 +802,6 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 expected_answer, 
                 generation, 
                 normalization_mode=mode,
-                add_text_fields=False,
                 normalize_compound=src_lang not in [None, "en"],
                 **preprocess_kwargs
             )
