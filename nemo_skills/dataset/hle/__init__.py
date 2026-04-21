@@ -12,13 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+def _shell_quote_override_value(value: str) -> str:
+    """Preserve override values through pipeline splitting and shell execution."""
+    escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'\\"{escaped_value}\\"'
+
+
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 METRICS_TYPE = "hle"  # This uses the MathMetrics class, but with compute_no_answer=False
 HLE_ANSWER_EXTRACT_REGEX = r"(?im)(?:^|\n)\s*\**Answer\**\s*:[^\S\n]*(.+?)(?=\n\s*\**Confidence\**\s*:|\Z)"
 HLE_EVAL_EXTRACTION_ARGS = (
     "++eval_config.extract_from_boxed=False "
     "++eval_config.relaxed_extraction=True "
-    f"++eval_config.extract_regex='{HLE_ANSWER_EXTRACT_REGEX}' "
+    f"++eval_config.extract_regex={_shell_quote_override_value(HLE_ANSWER_EXTRACT_REGEX)} "
 )
 GENERATION_ARGS = f"++prompt_config=generic/hle ++eval_type=math {HLE_EVAL_EXTRACTION_ARGS}"
 EVAL_SPLIT = "text"

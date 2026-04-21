@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.dataset.hle import HLE_ANSWER_EXTRACT_REGEX
+import shlex
+import subprocess
+import sys
+
+from nemo_skills.dataset.hle import HLE_ANSWER_EXTRACT_REGEX, HLE_EVAL_EXTRACTION_ARGS
 from nemo_skills.evaluation.math_grader import extract_answer, math_equal
 
 
@@ -81,3 +85,22 @@ Answer:
 Confidence: 10%"""
 
     assert extract_hle_answer(generation) is None
+
+
+def test_hle_regex_override_survives_pipeline_shell_roundtrip():
+    """The HLE regex override should remain intact when eval builds a shell command."""
+    regex_arg = next(
+        arg for arg in shlex.split(HLE_EVAL_EXTRACTION_ARGS) if arg.startswith("++eval_config.extract_regex=")
+    )
+
+    assert regex_arg == f'++eval_config.extract_regex="{HLE_ANSWER_EXTRACT_REGEX}"'
+
+    result = subprocess.run(
+        f'{shlex.quote(sys.executable)} -c "import sys; print(sys.argv[1])" {regex_arg}',
+        shell=True,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == f"++eval_config.extract_regex={HLE_ANSWER_EXTRACT_REGEX}"
