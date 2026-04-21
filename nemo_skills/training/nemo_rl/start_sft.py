@@ -16,6 +16,7 @@
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import pprint
@@ -94,6 +95,7 @@ class PromptResponseDataset:
     ):
         self.input_key = input_key
         self.output_key = output_key
+        self.input_template_path = input_template_path
         self.force_reprocess = force_reprocess
 
         # Auto-determine number of processes
@@ -104,10 +106,10 @@ class PromptResponseDataset:
             self.num_proc = num_proc
 
         self.input_template = None
-        if input_template_path:
-            input_template_config = load_prompt_config(input_template_path)
+        if self.input_template_path:
+            input_template_config = load_prompt_config(self.input_template_path)
             if "user" not in input_template_config:
-                raise KeyError(f"'user' key is missing in the YAML file: {input_template_path}")
+                raise KeyError(f"'user' key is missing in the YAML file: {self.input_template_path}")
             self.input_template = input_template_config["user"]
 
         # Train split
@@ -122,19 +124,34 @@ class PromptResponseDataset:
 
         self.task_spec = TaskDataSpec("json_dataset")
 
+    def _processing_cache_signature(self, data_path: Path) -> dict[str, Any]:
+        """Stable fingerprint for processed cache: data file size, keys, and template file contents."""
+        sig: dict[str, Any] = {
+            "sig_version": 2,
+            "data_size": str(data_path.stat().st_size),
+            "input_key": self.input_key,
+            "output_key": self.output_key,
+            "input_template_path": None,
+            "input_template_sha256": None,
+        }
+        if self.input_template_path:
+            template_path = Path(self.input_template_path).expanduser().resolve()
+            sig["input_template_path"] = str(template_path)
+            sig["input_template_sha256"] = hashlib.sha256(template_path.read_bytes()).hexdigest()
+        return sig
+
     def load_or_process_split(self, path: str, split_name: str) -> Dataset:
         data_path = Path(path)
         cache_dir = data_path.parent / ".cache" / f"{split_name}_{data_path.stem}"
         sig_file = cache_dir / "signature.json"
-        file_size = str(data_path.stat().st_size)
+        expected_sig = self._processing_cache_signature(data_path)
         if cache_dir.exists() and sig_file.exists() and not self.force_reprocess:
             with open(sig_file) as f:
-                old_sig = json.load(f)["size"]
-            if old_sig == file_size:
+                old_sig = json.load(f)
+            if old_sig == expected_sig:
                 print(f"[Cache] Loading {split_name} dataset from: {cache_dir}")
                 return load_from_disk(str(cache_dir))
-            else:
-                print(f"[Cache] Invalidated (file size changed): {path}")
+            print(f"[Cache] Invalidated (signature mismatch): {path}")
 
         # Re-process dataset
         print(f"[Map] Processing {split_name} dataset from: {path}")
@@ -158,11 +175,11 @@ class PromptResponseDataset:
                 fn_kwargs={"input_key": current_input_key},
             )
 
-        # Save dataset + new size signature
+        # Save dataset + processing signature (invalidates when data, keys, or template change)
         cache_dir.mkdir(parents=True, exist_ok=True)
         dataset.save_to_disk(str(cache_dir))
         with open(sig_file, "w") as f:
-            json.dump({"size": file_size}, f)
+            json.dump(expected_sig, f)
 
         print(f"[Cache] Saved {split_name} dataset to: {cache_dir}")
         return dataset
