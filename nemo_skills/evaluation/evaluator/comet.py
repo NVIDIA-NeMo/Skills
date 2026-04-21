@@ -45,6 +45,7 @@ def load_comet_model(model_path: str):
     LOG.info(f"Successfully loaded {model_path} on {device}")
     return model
 
+
 def _get_nested(sample: dict, key: str):
     if "." in key:
         value = sample
@@ -55,11 +56,11 @@ def _get_nested(sample: dict, key: str):
 
 
 def resolve_comet_fields(sample: dict) -> tuple[str, str, str]:
-    generation = sample["generation"]
-    comet_text_key = sample.get("comet_text_key", None)
-    comet_trans_key = sample.get("comet_translation_key", None)
-    text = sample["text"] if comet_text_key is None else _get_nested(sample, comet_text_key)
-    translation = sample["translation"] if comet_trans_key is None else _get_nested(sample, comet_trans_key)
+    comet_text_key = sample.get("comet_text_key", "text") # default to text field if not present
+    comet_trans_key = sample.get("comet_translation_key", "translation") # default to translation field if not present
+    text = _get_nested(sample, comet_text_key)
+    translation = _get_nested(sample, comet_trans_key)
+    generation = _get_nested(sample, "generation") # always present
     return text, translation, generation
 
 
