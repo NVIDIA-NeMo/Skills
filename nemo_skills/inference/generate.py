@@ -1096,11 +1096,6 @@ class GenerationTask:
             asyncio.run(self.async_loop(data))
 
         if self.should_run_evaluation and self.evaluator is None:
-            if len(data) == 0:
-                # If all samples were skipped, we never entered the main branch that waits for
-                # server/sandbox; SAFIM batch eval still needs a reachable vLLM and code sandbox.
-                self.wait_for_server()
-                self.wait_for_sandbox()
             self.run_batch_evaluation()
         self.postprocess()
 
