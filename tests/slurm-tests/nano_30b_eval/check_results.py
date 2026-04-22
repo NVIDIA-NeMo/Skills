@@ -24,7 +24,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
 from utils import assert_all, get_nested_value, load_json, soft_assert  # noqa: E402
 
 NO_TOOLS_METRICS = {
-    "aime25": ("pass@1[avg-of-4]", "symbolic_correct", (84.0, 94.0)),
+    "aime25": ("pass@1[avg-of-4]", "symbolic_correct", (88.0, 94.0)),
     "gpqa": ("pass@1[avg-of-4]", "symbolic_correct", (69.0, 76.0)),
     "mmlu-pro": ("pass@1", "symbolic_correct", (74.0, 82.0)),
     "ifbench": ("pass@1[avg-of-5]", "average_score", (66.0, 77.0)),
@@ -40,7 +40,7 @@ NO_TOOLS_METRICS = {
 }
 
 WITH_TOOLS_METRICS = {
-    "aime25": ("pass@1[avg-of-4]", "symbolic_correct", (88.0, 100.0)),
+    "aime25": ("pass@1[avg-of-4]", "symbolic_correct", (95.0, 100.0)),
     "gpqa": ("pass@1[avg-of-4]", "symbolic_correct", (72.0, 78.0)),
     "hle": ("pass@1", "judge_correct", (13.0, 19.0)),
 }
@@ -95,13 +95,21 @@ def check_metric_group(
     for benchmark, (agg_key, field, (lo, hi)) in metric_config.items():
         metrics_path, metrics, benchmark_label = resolve_metrics_entry(eval_dir, benchmark)
         soft_assert(agg_key in metrics, f"Missing aggregation key {agg_key} in {metrics_path}")
+        if agg_key not in metrics:
+            continue
+        agg_metrics = metrics[agg_key]
         if isinstance(field, tuple):
-            value = get_nested_value(metrics[agg_key], field)
+            value = get_nested_value(agg_metrics, field)
             field_label = "/".join(field)
         else:
-            value = metrics[agg_key].get(field)
+            soft_assert(field in agg_metrics, f"Missing field {field} in {metrics_path}")
+            if field not in agg_metrics:
+                continue
+            value = agg_metrics[field]
             field_label = field
         soft_assert(value is not None, f"Missing field {field_label} in {metrics_path}")
+        if value is None:
+            continue
         value = normalize_percent(float(value))
         print(f"{eval_dir.name}/{benchmark_label}/{agg_key}/{field_label}: {value}")
         soft_assert(lo <= value <= hi, f"{benchmark}: {field_label}={value} out of range [{lo}, {hi}]")
@@ -128,9 +136,23 @@ def check_tool_usage(eval_dir: Path):
         bench_dir = eval_dir / "eval-results" / benchmark
         for _, row in iter_output_rows(bench_dir):
             total_samples += 1
-            if row.get("num_tool_calls", 0) > 0:
+            soft_assert("num_tool_calls" in row, f"Missing num_tool_calls in {benchmark} output row")
+            soft_assert("conversation" in row, f"Missing conversation in {benchmark} output row")
+            if "num_tool_calls" not in row or "conversation" not in row:
+                continue
+            if row["num_tool_calls"] > 0:
                 samples_with_tools += 1
-            if any(msg.get("role") == "tool" for msg in row.get("conversation", [])):
+            has_tool_message = False
+            for msg in row["conversation"]:
+                soft_assert(isinstance(msg, dict), f"Conversation entry is not a dict in {benchmark} output row")
+                if not isinstance(msg, dict):
+                    continue
+                soft_assert("role" in msg, f"Missing role in {benchmark} conversation entry")
+                if "role" not in msg:
+                    continue
+                if msg["role"] == "tool":
+                    has_tool_message = True
+            if has_tool_message:
                 samples_with_tool_messages += 1
 
     soft_assert(total_samples > 0, "No samples found in with_tools outputs")
@@ -160,11 +182,25 @@ def check_timeouts(eval_dir: Path):
                     if not line.strip():
                         continue
                     row = json.loads(line)
-                    for msg in row.get("conversation", []):
-                        if msg.get("role") == "tool":
-                            content = str(msg.get("content", ""))
-                            if timeout_pattern.search(content):
-                                file_timeouts += 1
+                    soft_assert("conversation" in row, f"Missing conversation in {benchmark}/{output_path.name}")
+                    if "conversation" not in row:
+                        continue
+                    for msg in row["conversation"]:
+                        soft_assert(
+                            isinstance(msg, dict),
+                            f"Conversation entry is not a dict in {benchmark}/{output_path.name}",
+                        )
+                        if not isinstance(msg, dict):
+                            continue
+                        soft_assert("role" in msg, f"Missing role in {benchmark}/{output_path.name}")
+                        if "role" not in msg or msg["role"] != "tool":
+                            continue
+                        soft_assert("content" in msg, f"Missing content in {benchmark}/{output_path.name}")
+                        if "content" not in msg:
+                            continue
+                        content = str(msg["content"])
+                        if timeout_pattern.search(content):
+                            file_timeouts += 1
             bench_timeouts += file_timeouts
             if file_timeouts > 0:
                 print(f"{benchmark}/{output_path.name}: num_code_timeouts={file_timeouts}")

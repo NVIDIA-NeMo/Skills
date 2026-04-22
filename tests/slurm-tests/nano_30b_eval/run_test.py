@@ -16,7 +16,8 @@
 
 import argparse
 
-from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
+from nemo_skills.pipeline.cli import eval as run_eval
+from nemo_skills.pipeline.cli import prepare_data, run_cmd, wrap_arguments
 
 MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 MODEL_DIRNAME = MODEL.split("/")[-1]
@@ -115,7 +116,7 @@ def eval_no_tools(
     expnames = []
 
     expname = f"{expname_prefix}-no-tools-aime25"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -135,7 +136,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-gpqa"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=eval/aai/mcq-4choices-boxed "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -155,7 +156,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-mmlu-pro"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=eval/aai/mcq-10choices-boxed "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -175,7 +176,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-ifbench"
-    eval(
+    run_eval(
         ctx=wrap_arguments(
             NO_TOOLS_PARAMS + "++generation_key=response ++prompt_config=generic/default ++eval_type=ifbench "
         ),
@@ -197,7 +198,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-livecodebench"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -218,7 +219,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-arena-hard-v2"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -242,7 +243,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-scicode"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=eval/scicode/background ++eval_type=scicode "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -262,7 +263,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-hle"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -287,7 +288,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-aalcr"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -312,7 +313,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-mmlu-prox"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=generic/default ++eval_type=multichoice "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -332,7 +333,7 @@ def eval_no_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-no-tools-wmt24pp"
-    eval(
+    run_eval(
         ctx=wrap_arguments(NO_TOOLS_PARAMS + "++prompt_config=multilingual/segment-translation "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -373,7 +374,7 @@ def eval_with_tools(
     expnames = []
 
     expname = f"{expname_prefix}-with-tools-aime25"
-    eval(
+    run_eval(
         ctx=wrap_arguments(WITH_TOOLS_COMMON_PARAMS + "++prompt_config=qwen/math-tir "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -394,7 +395,7 @@ def eval_with_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-with-tools-gpqa"
-    eval(
+    run_eval(
         ctx=wrap_arguments(WITH_TOOLS_COMMON_PARAMS + "++prompt_config=eval/aai/mcq-4choices-boxed "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -415,7 +416,7 @@ def eval_with_tools(
     expnames.append(expname)
 
     expname = f"{expname_prefix}-with-tools-hle"
-    eval(
+    run_eval(
         ctx=wrap_arguments(WITH_TOOLS_COMMON_PARAMS + "++prompt_config=generic/hle "),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -458,7 +459,7 @@ def eval_formal_math(
         enable_tools=False,
     )
     expname = f"{expname_prefix}-formal-math-pass32"
-    eval(
+    run_eval(
         ctx=wrap_arguments(FORMAL_MATH_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
@@ -497,7 +498,7 @@ def eval_agentic(
         + " --async-scheduling --enforce-eager"
     )
     expname = f"{expname_prefix}-agentic-openhands"
-    eval(
+    run_eval(
         ctx=wrap_arguments(AGENTIC_PARAMS),
         cluster=cluster,
         model=get_local_model_path(workspace),
