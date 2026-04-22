@@ -92,25 +92,32 @@ async def execute_in_sandbox_with_retries(
 
 async def is_sandbox_available(sandbox_config: dict) -> bool:
     """
-    Checks if the sandbox service is running and accessible by sending a test request.
+    Checks if the sandbox service is running, accessible, and can execute commands.
+
+    This function verifies sandbox availability by:
+    1. Establishing a connection to the sandbox service
+    2. Executing a test command ("true") to ensure the sandbox can process requests
+    3. Verifying the command completes successfully
 
     Args:
-        sandbox_config: The configuration dictionary for the sandbox.
+        sandbox_config: The configuration dictionary for the sandbox service.
 
     Returns:
-        True if a connection can be established, False otherwise.
+        True if the sandbox is accessible and can successfully execute commands,
+        False if connection fails, command execution fails, or any error occurs.
     """
     LOG.info(f"Attempting to connect to sandbox with config: {sandbox_config}")
     try:
         async with sandbox_context(sandbox_config) as sandbox:
-            await execute_in_sandbox_with_retries(sandbox, 1, "true", language="shell", timeout=5)
-        LOG.info("Sandbox connection successful. Sandbox is available.")
-        return True
-    except httpx.NetworkError as e:
-        LOG.warning(f"Sandbox is unavailable due to a network error: {type(e).__name__} - {e}")
-        return False
-    except Exception as e:
-        LOG.warning(f"An unexpected error occurred while checking sandbox availability: {e}")
+            result, _ = await execute_in_sandbox_with_retries(sandbox, 1, "true", language="shell", timeout=5)
+            if result.get("process_status") != "completed":
+                LOG.warning(f"Sandbox responded but command failed: {result.get('stderr')}")
+                return False
+
+            LOG.info("Sandbox connection successful. Sandbox is available.")
+            return True
+    except (httpx.NetworkError, Exception) as e:
+        LOG.warning(f"Sandbox is unavailable or errored: {e}")
         return False
 
 
@@ -204,7 +211,7 @@ async def eval_livecodebench_async(eval_config: LiveCodeBenchEvaluatorConfig):
     """Evaluation running within a sandbox."""
     async with sandbox_context(eval_config.sandbox) as sandbox:
         if not await _install_packages_in_sandbox(sandbox, eval_config):
-            return
+            raise RuntimeError("Failed to install livecodebench packages in sandbox.")
 
         jsonl_file = eval_config.input_file
         LOG.info(f"Processing file: {jsonl_file} in sandbox")
@@ -292,6 +299,10 @@ def eval_livecodebench(cfg):
         raise RuntimeError("The 'pypy3' interpreter requires a running sandbox, but the service was unreachable.")
 
     if sandbox_is_ready:
-        asyncio.run(eval_livecodebench_async(eval_config))
+        try:
+            asyncio.run(eval_livecodebench_async(eval_config))
+        except Exception as e:
+            LOG.warning(f"Sandbox evaluation failed: {e}. Falling back to local evaluation.")
+            eval_livecodebench_without_sandbox(eval_config)
     else:
         eval_livecodebench_without_sandbox(eval_config)

@@ -1,0 +1,321 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import argparse
+import json
+from pathlib import Path
+from typing import Optional
+
+from omegaconf import OmegaConf
+
+WITHOUT_GT_SETTINGS = {"without_gt"}
+SEED_DATA_SETTINGS = {"seed_data"}
+BASE_FIELDS = {"problem", "expected_answer", "metadata"}
+TOPIC_FIELDS = {"topic", "subtopic"}
+DIFFICULTY_FIELDS = {"difficulty_model", "difficulty_model_pass_rate", "difficulty_model_pass_at_n"}
+SOLUTION_FIELDS = {
+    "predicted_answer",
+    "serialized_output",
+    "generation",
+    "generation_model",
+    "generation_model_pass_rate",
+    "generation_model_pass_at_n",
+}
+OPTIONAL_SOLUTION_FIELDS = {"judgement"}
+WITHOUT_GT_SOLUTION_FIELDS = {"majority_voting_agreement_rate", "majority_voting_agreement_at_n"}
+
+_SOFT_ASSERT_FAILURES: list[str] = []
+
+
+def soft_assert(condition: bool, message: str):
+    if not condition:
+        _SOFT_ASSERT_FAILURES.append(str(message))
+
+
+def assert_all():
+    if not _SOFT_ASSERT_FAILURES:
+        print("ALL TESTS PASSED")
+        return
+    print(f"\nTEST FAILURES ({len(_SOFT_ASSERT_FAILURES)})\n")
+    for idx, msg in enumerate(_SOFT_ASSERT_FAILURES, 1):
+        print(f"{idx:3d}. {msg}")
+    raise SystemExit(1)
+
+
+def iter_jsonl(path: Path):
+    with open(path) as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def count_jsonl(path: Path) -> int:
+    return sum(1 for _ in iter_jsonl(path))
+
+
+def load_first_record(path: Path) -> Optional[dict]:
+    for record in iter_jsonl(path):
+        return record
+    return None
+
+
+def ensure_file(path: Path, description: str) -> bool:
+    exists = path.exists()
+    soft_assert(exists, f"Missing {description}: {path}")
+    return exists
+
+
+def check_no_expected_answers(path: Path):
+    for record in iter_jsonl(path):
+        soft_assert(
+            record.get("expected_answer") in (None, ""),
+            f"Expected answer should be absent in {path}: id={record.get('id')}",
+        )
+
+
+def check_has_expected_answers(path: Path):
+    for record in iter_jsonl(path):
+        soft_assert(
+            record.get("expected_answer") not in (None, ""),
+            f"Expected answer should be present in {path}: id={record.get('id')}",
+        )
+
+
+def check_required_fields(record: dict, fields: set[str], stage: str, file_path: Path):
+    for field in fields:
+        soft_assert(field in record, f"Stage {stage} missing field '{field}' in {file_path}")
+
+
+def resolve_config_path(raw_path: str, search_dir: Path) -> Path:
+    """Resolve a config reference to an absolute path.
+
+    Accepts absolute paths, repo-relative paths, or bare names (optionally without
+    the `.yaml`/`.yml` suffix). Bare names are looked up inside ``search_dir``.
+    """
+
+    candidate = Path(raw_path)
+
+    def expand_options(path: Path):
+        if path.suffix:
+            yield path
+        else:
+            yield path
+            yield path.with_suffix(".yaml")
+            yield path.with_suffix(".yml")
+
+    search_locations = []
+    if candidate.is_absolute():
+        search_locations.extend(expand_options(candidate))
+    else:
+        search_locations.extend(expand_options(search_dir / candidate))
+        search_locations.extend(expand_options(Path.cwd() / candidate))
+
+    for option in search_locations:
+        if option.exists():
+            return option.resolve()
+
+    raise FileNotFoundError(f"Could not resolve config path '{raw_path}'.")
+
+
+def apply_overrides(config: OmegaConf, override_paths: list[str], dotlist: list[str]) -> dict:
+    merged = config
+    if override_paths:
+        overrides = [OmegaConf.load(path) for path in override_paths]
+        merged = OmegaConf.merge(merged, *overrides)
+    if dotlist:
+        merged = OmegaConf.merge(merged, OmegaConf.from_dotlist(dotlist))
+    return OmegaConf.to_container(merged, resolve=True, structured_config_mode="dict")
+
+
+def collect_setting_labels(paths: list[str]) -> set[str]:
+    labels: set[str] = set()
+    for raw in paths:
+        if not raw:
+            continue
+        labels.add(Path(raw).stem)
+    return labels
+
+
+def main():
+    configs_root = Path(__file__).resolve().parents[1] / "configs"
+    pipelines_dir = configs_root / "pipelines"
+    settings_dir = configs_root / "settings"
+
+    parser = argparse.ArgumentParser(description="Validate SDG pipeline artifacts.")
+    parser.add_argument("--config_path", required=True, help="Path to the merged pipeline config YAML")
+    parser.add_argument("--variant", required=False, help="Optional label used only for logging")
+    parser.add_argument(
+        "--settings_path",
+        action="append",
+        default=[],
+        help="Optional settings YAML overrides applied to the base config",
+    )
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        help="Optional dotlist overrides applied on top of the merged config",
+    )
+    args = parser.parse_args()
+
+    override_paths = []
+    for entry in args.settings_path or []:
+        for piece in entry.split(","):
+            cleaned = piece.strip()
+            if cleaned:
+                override_paths.append(str(resolve_config_path(cleaned, settings_dir)))
+
+    dotlist_overrides = []
+    if args.override:
+        for entry in args.override:
+            dotlist_overrides.append(entry.strip())
+
+    config_path = resolve_config_path(args.config_path, pipelines_dir)
+    base_config = OmegaConf.load(config_path)
+    config = apply_overrides(base_config, override_paths, dotlist_overrides)
+    applied_setting_labels = collect_setting_labels(override_paths)
+
+    dataset_path = Path(config["input_file"])
+    soft_assert(dataset_path.exists(), f"Input dataset not found: {dataset_path}")
+    base_count = count_jsonl(dataset_path)
+
+    artifacts: dict[str, dict] = {}
+    bucket_files: dict[str, list[Path]] = {}
+    bucket_totals: dict[str, int] = {}
+    is_without_gt_variant = bool(WITHOUT_GT_SETTINGS & applied_setting_labels)
+
+    for stage_name in config.get("pipeline_stages", []):
+        if stage_name == "validate":
+            continue
+        stage_cfg = config.get("stages", {}).get(stage_name, {}) or {}
+        if not stage_cfg.get("enabled", True):
+            continue
+
+        output_dir = Path(stage_cfg["output_dir"])
+        if stage_name == "decontaminate":
+            base_count = count_jsonl(output_dir / "final_result.jsonl")
+
+        if stage_name == "process_messages_and_bucket":
+            if ensure_file(output_dir, f"{stage_name} output directory"):
+                files = sorted(output_dir.glob("*.jsonl"))
+                soft_assert(files, f"Stage {stage_name} produced no bucket files in {output_dir}")
+                bucket_files[stage_name] = files
+                bucket_totals[stage_name] = sum(count_jsonl(file) for file in files)
+            continue
+
+        final_path = output_dir / "final_result.jsonl"
+        if not ensure_file(final_path, f"{stage_name} final_result.jsonl"):
+            continue
+
+        count = count_jsonl(final_path)
+        artifacts[stage_name] = {"path": final_path, "count": count, "cfg": stage_cfg}
+
+        if is_without_gt_variant:
+            if stage_name == "filter_problems":
+                check_no_expected_answers(final_path)
+            if stage_name in {"generate_solutions", "difficulty_estimation"}:
+                check_has_expected_answers(final_path)
+
+    def expect_equal(stage: str, expected: int):
+        if stage in artifacts:
+            actual = artifacts[stage]["count"]
+            soft_assert(actual == expected, f"Stage {stage} expected {expected} rows, found {actual}")
+
+    if "filter_problems" in artifacts and "decontaminate" in artifacts:
+        soft_assert(
+            artifacts["decontaminate"]["count"] <= artifacts["filter_problems"]["count"],
+            "decontaminate should not have more rows than filter_problems",
+        )
+
+    for stage in {"topics_labeling", "difficulty_estimation"}:
+        expect_equal(stage, base_count)
+
+    if "generate_solutions" in artifacts:
+        seeds = (
+            artifacts["generate_solutions"]["cfg"].get("generation_kwargs", {}).get("args", {}).get("num_random_seeds")
+            or 1
+        )
+        expect_equal("generate_solutions", base_count * int(seeds))
+
+    if "aggregate" in artifacts:
+        aggregate_cfg = artifacts["aggregate"]["cfg"]
+        if aggregate_cfg.get("solutions_path") and "generate_solutions" in artifacts:
+            expected = artifacts["generate_solutions"]["count"]
+        else:
+            expected = base_count
+        expect_equal("aggregate", expected)
+
+    if "filter_solutions" in artifacts:
+        if "aggregate" in artifacts:
+            soft_assert(
+                artifacts["filter_solutions"]["count"] <= artifacts["aggregate"]["count"],
+                "filter_solutions should not have more rows than aggregate",
+            )
+        for stage in [
+            "prepare_for_sft",
+            "convert_to_messages_format",
+            "bucket",
+            "convert_to_qwen_format",
+            "bucket_qwen",
+        ]:
+            expect_equal(stage, artifacts["filter_solutions"]["count"])
+            if stage in bucket_totals:
+                soft_assert(
+                    bucket_totals[stage] == artifacts["filter_solutions"]["count"],
+                    f"`{stage}` total ({bucket_totals[stage]}) should match filter_solutions ({artifacts['filter_solutions']['count']})",
+                )
+
+    has_topics = "topics_labeling" in artifacts
+    has_difficulty = "difficulty_estimation" in artifacts
+    has_solutions = "generate_solutions" in artifacts
+    generate_with_judge = has_solutions and artifacts["generate_solutions"]["cfg"].get("make_judgement")
+    require_solution_fields = not bool(SEED_DATA_SETTINGS & applied_setting_labels)
+
+    def validate_metadata(stage: str, file_path: Path):
+        record = load_first_record(file_path)
+        soft_assert(record is not None, f"Stage {stage} produced no records in {file_path}")
+        if record is None:
+            return
+
+        check_required_fields(record, BASE_FIELDS, stage, file_path)
+        if has_topics:
+            check_required_fields(record, TOPIC_FIELDS, stage, file_path)
+        if has_difficulty:
+            check_required_fields(record, DIFFICULTY_FIELDS, stage, file_path)
+        if has_solutions and require_solution_fields:
+            check_required_fields(record, SOLUTION_FIELDS, stage, file_path)
+            if generate_with_judge:
+                check_required_fields(record, OPTIONAL_SOLUTION_FIELDS, stage, file_path)
+            if is_without_gt_variant:
+                check_required_fields(record, WITHOUT_GT_SOLUTION_FIELDS, stage, file_path)
+
+    for stage in ["aggregate", "filter_solutions", "prepare_for_sft", "convert_to_messages_format"]:
+        if stage in artifacts:
+            validate_metadata(stage, artifacts[stage]["path"])
+
+    for stage_label, files in bucket_files.items():
+        if not files:
+            continue
+        first_bucket_path = files[0]
+        first_bucket_record = load_first_record(first_bucket_path)
+        soft_assert(first_bucket_record is not None, f"Bucket file {first_bucket_path} is empty")
+        if first_bucket_record is not None:
+            validate_metadata(stage_label, first_bucket_path)
+
+    assert_all()
+
+
+if __name__ == "__main__":
+    main()

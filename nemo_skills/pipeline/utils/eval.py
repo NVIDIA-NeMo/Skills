@@ -485,8 +485,9 @@ def prepare_eval_commands(
                         num_chunks=benchmark_args.num_chunks,
                         script=generation_module or benchmark_args.generation_module,
                         requirements=requirements,
+                        # only logging for the first seed
                         wandb_parameters=wandb_parameters if seed_idx == 0 else None,
-                        with_sandbox=benchmark_args.requires_sandbox,
+                        with_sandbox=benchmark_args.requires_sandbox or with_sandbox,
                     )
                 )
 

@@ -634,3 +634,371 @@ if __name__ == "__main__":
     assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
     assert len(result) == 3
     assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+
+
+# ==============================
+# Comparison tests: MCP PythonTool vs DirectPythonTool
+# ==============================
+
+
+async def _run_tool_sequence(tool_impl, tool_calls):
+    """Run a sequence of tool calls against a Tool implementation and return results.
+
+    Each tool_call is a dict with 'code' and 'request_id' keys.
+    Returns list of result strings.
+    """
+    results = []
+    for call in tool_calls:
+        result = await tool_impl.execute(
+            "stateful_python_code_exec",
+            {"code": call["code"]},
+            extra_args={"request_id": call["request_id"]},
+        )
+        results.append(result)
+    return results
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_basic_execution():
+    """DirectPythonTool can execute code and return output."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    tools = await tool.list_tools()
+    assert len(tools) == 1
+    assert tools[0]["name"] == "stateful_python_code_exec"
+    assert "code" in tools[0]["input_schema"]["properties"]
+    # session_id and timeout should NOT be exposed
+    assert "session_id" not in tools[0]["input_schema"]["properties"]
+    assert "timeout" not in tools[0]["input_schema"]["properties"]
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(2 + 2)"},
+        extra_args={"request_id": "test-basic"},
+    )
+    assert result == "4"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_session_persistence():
+    """DirectPythonTool maintains session state across calls with the same request_id."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    results = await _run_tool_sequence(
+        tool,
+        [
+            {"code": "x = 42", "request_id": "session-test"},
+            {"code": "y = x * 2", "request_id": "session-test"},
+            {"code": "print(y)", "request_id": "session-test"},
+        ],
+    )
+    assert results[0] == ""  # assignment, no output
+    assert results[1] == ""  # assignment, no output
+    assert results[2] == "84"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_sanitizes_hidden_args():
+    """Model-supplied session_id/timeout in arguments are stripped and cannot override internal values."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    # First call establishes a session
+    await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "x = 99"},
+        extra_args={"request_id": "sanitize-test"},
+    )
+
+    # Second call: model tries to inject a bogus session_id to hijack/reset the session
+    # If sanitization fails, this would either error or lose the variable 'x'
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(x)", "session_id": "bogus-session-id", "timeout": 0.001},
+        extra_args={"request_id": "sanitize-test"},
+    )
+    # x should still be accessible (session_id was not overridden)
+    # and the call should not have timed out (timeout was not overridden)
+    assert result == "99"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_separate_sessions():
+    """Different request_ids get independent sessions."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    # Set variable in session A
+    await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "secret = 'session_a'"},
+        extra_args={"request_id": "A"},
+    )
+
+    # Session B should not see it
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(secret)"},
+        extra_args={"request_id": "B"},
+    )
+    assert "NameError" in result
+
+    # Session A should still see it
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(secret)"},
+        extra_args={"request_id": "A"},
+    )
+    assert result == "session_a"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_cleanup_request_deletes_session():
+    """cleanup_request deletes the remote sandbox session for a finished request."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    request_id = "cleanup-DirectPythonTool"
+    try:
+        await tool.execute(
+            "stateful_python_code_exec",
+            {"code": "x = 123"},
+            extra_args={"request_id": request_id},
+        )
+
+        session_id = tool.requests_to_sessions[request_id]
+        assert session_id is not None
+
+        response = await tool._sandbox.http_session.get(
+            url=f"http://{tool._sandbox.host}:{tool._sandbox.port}/sessions",
+            timeout=10.0,
+            headers={"X-Session-ID": str(session_id)},
+        )
+        assert response.status_code == 200
+        assert str(session_id) in response.json()["sessions"]
+
+        await tool.cleanup_request(request_id)
+        assert request_id not in tool.requests_to_sessions
+
+        response = await tool._sandbox.http_session.get(
+            url=f"http://{tool._sandbox.host}:{tool._sandbox.port}/sessions",
+            timeout=10.0,
+            headers={"X-Session-ID": str(session_id)},
+        )
+        assert response.status_code == 200
+        assert str(session_id) not in response.json()["sessions"]
+
+        result = await tool.execute(
+            "stateful_python_code_exec",
+            {"code": "print(x)"},
+            extra_args={"request_id": request_id},
+        )
+        assert "NameError" in result
+    finally:
+        await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_mcp_vs_direct_python_tool_parity():
+    """MCP-based PythonTool and DirectPythonTool produce identical results for the same tool calls."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    sandbox_context = {"sandbox": {"sandbox_type": "local"}}
+
+    # Set up DirectPythonTool
+    direct = DirectPythonTool()
+    direct.configure(context=sandbox_context)
+
+    # Set up MCP PythonTool
+    mcp_tool = PythonTool()
+    mcp_tool.configure(context=sandbox_context)
+
+    # Verify both expose the same tool name
+    direct_tools = await direct.list_tools()
+    mcp_tools = await mcp_tool.list_tools()
+    assert direct_tools[0]["name"] == mcp_tools[0]["name"] == "stateful_python_code_exec"
+
+    # Define a sequence of tool calls that exercises session persistence
+    tool_calls = [
+        {"code": "import math", "request_id": "parity"},
+        {"code": "result = math.factorial(10)", "request_id": "parity"},
+        {"code": "print(result)", "request_id": "parity"},
+        {"code": "x = [i**2 for i in range(5)]", "request_id": "parity"},
+        {"code": "print(sum(x))", "request_id": "parity"},
+    ]
+
+    direct_results = await _run_tool_sequence(direct, tool_calls)
+    mcp_results = await _run_tool_sequence(mcp_tool, tool_calls)
+
+    for i, (d, m) in enumerate(zip(direct_results, mcp_results)):
+        assert d == m, f"Mismatch at step {i}: direct={d!r}, mcp={m!r}"
+
+    # Verify the actual computed values are correct
+    assert direct_results[2] == "3628800"  # 10!
+    assert direct_results[4] == "30"  # 0 + 1 + 4 + 9 + 16
+
+    await direct.shutdown()
+    await mcp_tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_mcp_vs_direct_error_parity():
+    """Both implementations handle errors the same way."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    sandbox_context = {"sandbox": {"sandbox_type": "local"}}
+
+    direct = DirectPythonTool()
+    direct.configure(context=sandbox_context)
+
+    mcp_tool = PythonTool()
+    mcp_tool.configure(context=sandbox_context)
+
+    tool_calls = [
+        {"code": "1 / 0", "request_id": "err"},
+    ]
+
+    direct_results = await _run_tool_sequence(direct, tool_calls)
+    mcp_results = await _run_tool_sequence(mcp_tool, tool_calls)
+
+    # Both should contain ZeroDivisionError
+    assert "ZeroDivisionError" in direct_results[0]
+    assert "ZeroDivisionError" in mcp_results[0]
+
+    await direct.shutdown()
+    await mcp_tool.shutdown()
+
+
+# ==============================
+# Hardening tests: DirectPythonTool should not raise on malformed calls or
+# transient sandbox/shutdown failures — RL runs must survive them.
+# ==============================
+
+
+class _StubSandbox:
+    """Stand-in sandbox whose behavior is controlled by the test."""
+
+    def __init__(self, execute_code=None, delete_session=None, close=None):
+        self._execute_code = execute_code
+        self._delete_session = delete_session
+        self._close = close
+        self.delete_calls = []
+        self.close_calls = 0
+
+    async def execute_code(self, code, language="ipython", timeout=10, session_id=None, **kwargs):
+        if self._execute_code is None:
+            raise AssertionError("execute_code called but not stubbed")
+        return await self._execute_code(code, language=language, timeout=timeout, session_id=session_id)
+
+    async def delete_session(self, session_id):
+        self.delete_calls.append(session_id)
+        if self._delete_session is not None:
+            await self._delete_session(session_id)
+
+    async def close(self):
+        self.close_calls += 1
+        if self._close is not None:
+            await self._close()
+
+
+def _direct_tool_with_stub(stub):
+    """Build a DirectPythonTool wired to a stub sandbox without needing a live server."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    # configure() builds sanitize keys from hide_args; we replace the sandbox afterwards
+    # so we don't depend on a running local sandbox server.
+    tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
+    tool._sandbox = stub
+    return tool
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_missing_code_returns_error_not_raise():
+    """A tool call without 'code' must return a sandbox-shaped error, not crash the run."""
+    tool = _direct_tool_with_stub(_StubSandbox())  # execute_code must NOT be called
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {},  # no 'code' key — mirrors the KeyError seen in production
+        extra_args={"request_id": "missing-code"},
+    )
+    assert isinstance(result, str)
+    assert "code" in result  # error mentions the missing argument
+    # Must not leak framework internals (Python exception names / tracebacks).
+    assert "KeyError" not in result
+    assert "Traceback" not in result
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_sandbox_exception_returns_generic_error():
+    """Unexpected sandbox exceptions must be contained and must not leak internals."""
+
+    async def exploding_execute(code, language, timeout, session_id):
+        raise RuntimeError("internal sandbox detail that must not reach the model")
+
+    tool = _direct_tool_with_stub(_StubSandbox(execute_code=exploding_execute))
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(1)"},
+        extra_args={"request_id": "boom"},
+    )
+    assert isinstance(result, str)
+    # Generic message only — no leaked exception detail, no stack.
+    assert "internal sandbox detail" not in result
+    assert "Traceback" not in result
+    assert "RuntimeError" not in result
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_shutdown_tolerates_delete_failure():
+    """A failing delete_session for one session must not abort shutdown of the rest."""
+
+    async def flaky_delete(session_id):
+        if session_id == "sess-a":
+            raise RuntimeError("transient delete failure")
+
+    stub = _StubSandbox(delete_session=flaky_delete)
+    tool = _direct_tool_with_stub(stub)
+    tool.requests_to_sessions["req-a"] = "sess-a"
+    tool.requests_to_sessions["req-b"] = "sess-b"
+
+    # Must not raise despite sess-a's delete blowing up.
+    await tool.shutdown()
+
+    assert set(stub.delete_calls) == {"sess-a", "sess-b"}
+    assert stub.close_calls == 1  # close() still called after delete failures
+    assert tool.requests_to_sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
+    """cleanup_request must not propagate delete_session errors into ToolManager."""
+
+    async def failing_delete(session_id):
+        raise RuntimeError("transient delete failure")
+
+    stub = _StubSandbox(delete_session=failing_delete)
+    tool = _direct_tool_with_stub(stub)
+    tool.requests_to_sessions["req-x"] = "sess-x"
+
+    # Must not raise; session must be removed from the mapping regardless.
+    await tool.cleanup_request("req-x")
+    assert "req-x" not in tool.requests_to_sessions

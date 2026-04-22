@@ -71,9 +71,9 @@ class InferenceConfig:
     # You can override tokenizer with tokenizer parameter.
     # "responses": for responses api format.
     endpoint_type: EndpointType = EndpointType.chat
-    temperature: float = 0.0  # Temperature of 0 means greedy decoding
+    temperature: float | None = 0.0  # Temperature of 0 means greedy decoding
     top_k: int = -1
-    top_p: float = 0.95
+    top_p: float | None = 0.95
     min_p: float = 0.0
     random_seed: int = 0
     tokens_to_generate: int | None = None
@@ -81,6 +81,7 @@ class InferenceConfig:
     top_logprobs: int | None = None
     timeout: int | None = 14400  # Timeout for each individual LLM call in seconds
     reasoning_effort: str | None = None
+    stream: bool = False  # Use streaming for tool-calling
 
     extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
 
@@ -341,8 +342,12 @@ class GenerationTask:
         # Setup tokenizer
         if (
             self.cfg.inference.endpoint_type == EndpointType.text
-            or self.cfg.server.get("enable_soft_fail", False)
+            or (
+                self.cfg.server.get("enable_soft_fail", False)
+                and self.cfg.server.get("context_limit_retry_strategy", None) is not None
+            )
             or self.cfg.count_prompt_tokens
+            or (self.cfg.tool_modules is not None and self.cfg.inference.tokens_to_generate is not None)
         ):
             # These are the only cases where we need a tokenizer
             self.tokenizer = self.cfg.tokenizer or self.cfg.server["model"]
@@ -478,6 +483,7 @@ class GenerationTask:
                 schema_overrides=self.cfg.schema_overrides,
                 max_tool_calls=self.cfg.max_tool_calls,
                 tokenizer=self.tokenizer,
+                require_tokenizer=self.cfg.inference.tokens_to_generate is not None,
                 additional_config={"sandbox": self.cfg.sandbox},
                 data_dir=self.data_dir or "",
                 output_dir=output_dir,
@@ -805,7 +811,18 @@ class GenerationTask:
         as long as those requests also use this function.
         """
         async with self.semaphore:
-            return await self.llm.generate_async(**generation_params)
+            result = await self.llm.generate_async(**generation_params)
+            # When streaming, generate_async returns an async generator.
+            # Drain it and return only the final result dict.
+            if hasattr(result, "__aiter__"):
+                final = None
+                async for chunk in result:
+                    if isinstance(chunk, dict) and chunk.get("type") == "final":
+                        final = chunk
+                if final is None:
+                    raise RuntimeError("Streaming generation did not produce a final result")
+                return final
+            return result
 
     async def evaluate_single_datapoint(self, data_point):
         eval_start_time = time.time()

@@ -1,0 +1,7 @@
+# Configure the pipeline for multiple-choice questions.
+
+stages:
+  generate_solutions:
+    prompt_config: ++prompt_config=eval/aai/mcq-4choices
+    predicted_answer_regex: 'Answer: ([A-D])(?![A-Za-z])'
+    make_judgement: False
