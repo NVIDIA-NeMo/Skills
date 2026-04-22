@@ -107,6 +107,12 @@ def nemo_gym_rollouts(
         "If not specified, uses cluster_config['containers'][server_type].",
     ),
     with_sandbox: bool = typer.Option(False, help="If True, start a sandbox container for code execution"),
+    gym_container: str = typer.Option(
+        None,
+        help="Container image path/ref (e.g. a .sqsh file or docker:// reference) for the "
+        "NeMo Gym rollouts step. If not specified, falls back to "
+        "cluster_config['containers']['nemo-rl'].",
+    ),
     gym_path: str = typer.Option(
         "/opt/NeMo-RL/3rdparty/Gym-workspace/Gym",
         help="Path to NeMo Gym installation. Defaults to container built-in. Use for mounted/custom Gym.",
@@ -260,6 +266,12 @@ def nemo_gym_rollouts(
         else:
             resolved_server_container = cluster_config["containers"][server_type_str]
 
+    # Resolve the container for the NeMo Gym rollouts step.
+    # Explicit --gym_container (a .sqsh path or docker:// ref) wins; otherwise the
+    # pipeline falls back to the RL container, which still bundles Gym today.
+    resolved_gym_container = gym_container or cluster_config["containers"]["nemo-rl"]
+    LOG.info(f"Using gym container: {resolved_gym_container}")
+
     # Filter out seeds with existing output files (unless rerun_done=True)
     if not rerun_done and seed_indices != [None]:
         filtered_seeds = []
@@ -346,7 +358,7 @@ def nemo_gym_rollouts(
 
         nemo_gym_cmd = Command(
             script=nemo_gym_script,
-            container=cluster_config["containers"]["nemo-rl"],
+            container=resolved_gym_container,
             name=f"{expname}_nemo_gym{job_suffix}",
             avoid_nemo_run_code=not use_mounted_nemo_skills,
         )
