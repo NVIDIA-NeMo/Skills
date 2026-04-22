@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Annotated, Any, Dict, List
 
+import httpx
 from httpx import RemoteProtocolError
 from mcp.server.fastmcp import FastMCP
 from omegaconf import OmegaConf
@@ -215,21 +216,41 @@ class DirectPythonTool(Tool):
         timeout = extra_args.get("timeout", self._config.get("exec_timeout_s", 10))
         session_id = self.requests_to_sessions[request_id] if request_id is not None else None
 
-        try:
-            output_dict, session_id = await self._sandbox.execute_code(
-                arguments["code"],
-                language="ipython",
-                timeout=timeout,
-                session_id=session_id,
-            )
-        except RemoteProtocolError:
-            output_dict = {"process_status": "fail", "stdout": "", "stderr": "Error connecting to sandbox"}
-            session_id = None
+        # Validate required `code` argument. The MCP path gets this via Pydantic at the FastMCP
+        # boundary; since we bypass FastMCP we need to validate ourselves so a malformed tool call
+        # surfaces as a handleable error instead of crashing the tool.
+        code = arguments.get("code")
+        if not isinstance(code, str):
+            output_dict = {
+                "process_status": "fail",
+                "stdout": "",
+                "stderr": "Error: missing required argument 'code'",
+            }
+        else:
+            try:
+                output_dict, session_id = await self._sandbox.execute_code(
+                    code,
+                    language="ipython",
+                    timeout=timeout,
+                    session_id=session_id,
+                )
+            except (httpx.HTTPError, RemoteProtocolError):
+                # Transport/protocol errors talking to the sandbox — log details, return generic.
+                logger.exception("Sandbox communication error during stateful_python_code_exec")
+                output_dict = {"process_status": "fail", "stdout": "", "stderr": "Error connecting to sandbox"}
+                session_id = None
+            except Exception:
+                # Catch-all so a poorly-formed call or transient issue never crashes the RL run.
+                # Log full details server-side but keep the model-facing stderr generic to avoid
+                # leaking framework internals into what is supposed to be sandbox output.
+                logger.exception("Unexpected error during stateful_python_code_exec")
+                output_dict = {"process_status": "fail", "stdout": "", "stderr": "Error executing code"}
+                session_id = None
 
         if request_id is not None:
             self.requests_to_sessions[request_id] = session_id
 
-        output = f"{output_dict['stdout']}{output_dict['stderr']}"
+        output = f"{output_dict.get('stdout', '')}{output_dict.get('stderr', '')}"
         if output.endswith("\n"):
             output = output[:-1]
         return output
@@ -240,8 +261,14 @@ class DirectPythonTool(Tool):
                 str(session_id) for session_id in self.requests_to_sessions.values() if session_id is not None
             }
             for session_id in session_ids:
-                await self._sandbox.delete_session(session_id)
-            await self._sandbox.close()
+                try:
+                    await self._sandbox.delete_session(session_id)
+                except Exception:
+                    logger.exception("Failed to delete sandbox session %s during shutdown", session_id)
+            try:
+                await self._sandbox.close()
+            except Exception:
+                logger.exception("Failed to close sandbox HTTP session during shutdown")
         self.requests_to_sessions.clear()
 
     async def cleanup_request(self, request_id: str) -> None:
@@ -249,7 +276,10 @@ class DirectPythonTool(Tool):
         if session_id is None:
             return
         if self._sandbox is not None:
-            await self._sandbox.delete_session(str(session_id))
+            try:
+                await self._sandbox.delete_session(str(session_id))
+            except Exception:
+                logger.exception("Failed to delete sandbox session %s during cleanup_request", session_id)
         self.requests_to_sessions.pop(request_id, None)
 
 
