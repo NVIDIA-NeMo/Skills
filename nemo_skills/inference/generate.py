@@ -79,6 +79,10 @@ def _runtime_sandbox_env_overrides() -> dict[str, Any]:
     out: dict[str, Any] = {}
     if h := os.environ.get("NEMO_SKILLS_SANDBOX_HOST"):
         out["host"] = h
+    elif slurm_master := os.environ.get("SLURM_MASTER_NODE"):
+        # Batch eval (e.g. SAFIM) runs in the client step; eval_config often defaults host to
+        # 127.0.0.1 which does not reach the sandbox sidecar on Slurm/Pyxis. Prefer the job head node.
+        out["host"] = slurm_master.strip()
     if p := os.environ.get("NEMO_SKILLS_SANDBOX_PORT"):
         out["port"] = p
     if s := os.environ.get("NEMO_SKILLS_SSH_SERVER"):

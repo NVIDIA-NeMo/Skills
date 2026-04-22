@@ -309,6 +309,8 @@ def eval_safim(cfg: dict) -> dict[str, Any]:
             "SAFIM evaluation requires a reachable NeMo code sandbox. "
             "Start the sandbox sidecar and set host/port (e.g. Hydra ++sandbox.host, ++sandbox.port, "
             "eval_config.sandbox, or NEMO_SKILLS_SANDBOX_HOST / NEMO_SKILLS_SANDBOX_PORT). "
+            "On Slurm, the client step must use a host that reaches the sandbox container (not 127.0.0.1 from "
+            "another container); generate merges SLURM_MASTER_NODE into eval_config.sandbox when appropriate. "
             "For eval_type=safim, generate.py merges eval_config.sandbox with top-level sandbox and those env vars."
         )
 

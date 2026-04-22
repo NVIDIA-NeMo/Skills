@@ -82,6 +82,9 @@ class GenerationClientScript(BaseJobScript):
 
             if self.sandbox:
                 env_vars["NEMO_SKILLS_SANDBOX_PORT"] = str(self.sandbox.port)
+                # Heterogeneous Slurm: nemo-run exports SLURM_MASTER_NODE_HET_GROUP_* per step; match nemo_gym.
+                if self.sandbox.het_group_index is not None:
+                    env_vars["NEMO_SKILLS_SANDBOX_HOST"] = self.sandbox.hostname_ref()
 
             server_addresses = None
             if self.servers is not None:
