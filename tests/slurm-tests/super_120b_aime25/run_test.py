@@ -25,7 +25,7 @@ SERVER_CONTAINERS = {
 }
 COMMON_CTX = (
     "++chat_template_kwargs.enable_thinking=true "
-    "++inference.tokens_to_generate=65536 "
+    "++inference.tokens_to_generate=131072 "
     "++inference.temperature=1.0 "
     "++inference.top_p=0.95 "
 )

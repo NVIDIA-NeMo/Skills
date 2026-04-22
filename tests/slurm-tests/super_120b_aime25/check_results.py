@@ -21,9 +21,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))  # for utils.py
 from utils import assert_all, load_json, soft_assert  # noqa: E402
 
 METRIC_RANGES = {
-    "vllm": {"aime25": {"pass@1": (80.0, 100.0)}},
-    "sglang": {"aime25": {"pass@1": (80.0, 100.0)}},
-    "trtllm": {"aime25": {"pass@1": (75.0, 100.0)}},
+    "vllm": {"aime25": {"pass@1": (88.0, 92.0)}},
+    "sglang": {"aime25": {"pass@1": (88.0, 92.0)}},
+    "trtllm": {"aime25": {"pass@1": (88.0, 92.0)}},
 }
 
 
