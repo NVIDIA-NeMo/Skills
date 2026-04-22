@@ -657,6 +657,11 @@ class Pipeline:
         #   mounts list verbatim (even empty) so cluster mounts are NOT merged in.
         # - keep_mounts=True + non-empty extras: additive merge with cluster mounts.
         # - keep_mounts=True + empty extras: inherit cluster mounts.
+        # Stage A invariant: mounts=None is only produced when keep_mounts=True
+        # (keep_mounts=False with no explicit Command.mounts is normalized to []),
+        # so the `extra_mounts is None` branch below is safe to take before
+        # consulting keep_mounts. `.get(..., True)` defends against exec_configs
+        # built by callers that bypass Stage A.
         extra_mounts = exec_config["mounts"]
         keep_mounts = exec_config.get("keep_mounts", True)
         if extra_mounts is None:
