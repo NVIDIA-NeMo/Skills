@@ -40,6 +40,21 @@ running commands from it.
     ```
     In all cases, uncommitted code will not be used.
 
+!!! note
+
+    You can override the default packaging behavior with the following environment variables:
+
+    - `NEMO_SKILLS_FORCE_PATTERN_PACKAGER=1` — Skip git-based packaging entirely and always use the installed
+      `nemo_skills` package tree (PatternPackager). Useful when you have an editable install and don't want
+      packaging tied to the git state of your current directory.
+    - `NEMO_SKILLS_FORCE_INSTALLED_PACKAGE=1` — When running from a git repo, use the installed `nemo_skills`
+      package instead of the repo's `nemo_skills/` directory. The git repo is still packaged, but `nemo_skills`
+      is picked up from the installed location. Useful when your repo checkout has extra files you don't want
+      uploaded.
+
+    Note that `NEMO_SKILLS_FORCE_INSTALLED_PACKAGE` has no effect when `NEMO_SKILLS_FORCE_PATTERN_PACKAGER`
+    is also set, since the latter bypasses the git repo branch entirely.
+
 
 Finally, it's important to keep in mind that whenever you submit a new experiment, NeMo-Run will create a copy of your
 code package both locally (inside `~/.nemo_run`) and on cluster (inside `ssh_tunnel/job_dir` path in your cluster config).
