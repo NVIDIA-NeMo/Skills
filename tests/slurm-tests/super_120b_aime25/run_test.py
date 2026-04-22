@@ -25,7 +25,6 @@ SERVER_CONTAINERS = {
 }
 COMMON_CTX = (
     "++chat_template_kwargs.enable_thinking=true "
-    "++parse_reasoning=true "
     "++inference.tokens_to_generate=65536 "
     "++inference.temperature=1.0 "
     "++inference.top_p=0.95 "
@@ -75,7 +74,7 @@ def eval_backend(
     eval(
         ctx=wrap_arguments(COMMON_CTX),
         cluster=cluster,
-        benchmarks="aime25:1",
+        benchmarks="aime25:8",
         model=MODEL,
         server_gpus=8,
         num_jobs=1,
