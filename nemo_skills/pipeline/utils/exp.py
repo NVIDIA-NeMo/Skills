@@ -703,9 +703,9 @@ def add_task(
                     "--kill-on-bad-exit=0",
                     "--mpi=none",
                     *(
-                        cluster_srun
-                        if (cluster_srun := (cluster_config.get("sandbox_extra_srun_args") or []))
-                        else (sandbox_extra_srun_args or [])
+                        list(cluster_config.get("sandbox_extra_srun_args") or [])
+                        if "sandbox_extra_srun_args" in cluster_config
+                        else list(sandbox_extra_srun_args or [])
                     ),
                 ],
             )
