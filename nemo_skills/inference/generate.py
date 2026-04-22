@@ -119,12 +119,16 @@ def _runtime_sandbox_env_overrides() -> dict[str, Any]:
     return out
 
 
-def _merge_sandbox_into_eval_for_safim(cfg: Any) -> None:
+def _merge_sandbox_into_eval_for_safim(cfg: Any, working_sandbox: Any = None) -> None:
     """Align SAFIM batch ``eval_config.sandbox`` with how generation reaches the sidecar.
 
     ``eval_config`` often carries Hydra defaults (e.g. ``host: 127.0.0.1``). Those must not
     overwrite job-level ``++sandbox.*`` or ``NEMO_SKILLS_SANDBOX_*`` used during generation.
     Merge order: ``eval_config`` base, then ``cfg.sandbox``, then env overrides (last wins).
+
+    If ``working_sandbox`` is the :class:`~nemo_skills.code_execution.sandbox.Sandbox` built in
+    :meth:`GenerationTask.setup_llm`, it is used as a fallback for host/port when env and Hydra
+    do not provide the same target (e.g. no ``NEMO_SKILLS_SANDBOX_PORT`` in this process).
     """
     gen_sandbox = _mapping_to_plain_dict(getattr(cfg, "sandbox", None))
     ec = cfg.eval_config
@@ -137,6 +141,12 @@ def _merge_sandbox_into_eval_for_safim(cfg: Any) -> None:
             merged["host"] = discovered
     if p := os.environ.get("NEMO_SKILLS_SANDBOX_PORT"):
         merged["port"] = str(p).strip()
+    if working_sandbox is not None and getattr(working_sandbox, "port", None) is not None:
+        if not os.environ.get("NEMO_SKILLS_SANDBOX_PORT"):
+            merged["port"] = str(working_sandbox.port).strip()
+        wh = str(getattr(working_sandbox, "host", "") or "").strip()
+        if wh and not _sandbox_connect_host_is_loopback(wh) and _sandbox_connect_host_is_loopback(merged.get("host")):
+            merged["host"] = wh
     if isinstance(ec, DictConfig):
         ec["sandbox"] = OmegaConf.create(merged)
     else:
@@ -521,7 +531,21 @@ class GenerationTask:
         return prompt
 
     def setup_llm(self):
-        self.sandbox = get_sandbox(**self.cfg.sandbox) if self.cfg.sandbox is not None else None
+        if self.cfg.sandbox is not None:
+            # Prefer job env (set by nemo_run / client metadata) over Hydra defaults, so a dynamic
+            # sandbox port and real host for Slurm are not lost to a literal 6000 / 127.0.0.1 in YAML.
+            _sb = (
+                _mapping_to_plain_dict(self.cfg.sandbox)
+                if not isinstance(self.cfg.sandbox, dict)
+                else dict(self.cfg.sandbox)
+            )
+            if p := os.environ.get("NEMO_SKILLS_SANDBOX_PORT"):
+                _sb["port"] = p
+            if h := os.environ.get("NEMO_SKILLS_SANDBOX_HOST"):
+                _sb["host"] = h
+            self.sandbox = get_sandbox(**_sb)
+        else:
+            self.sandbox = None
 
         # Determine data_dir for resolving relative paths (e.g., images, audio)
         # Always resolve relative to input file's parent directory
@@ -648,7 +672,7 @@ class GenerationTask:
         """Run final evaluation consuming all data together if configured."""
         self.cfg.eval_config["input_file"] = self.cfg.output_file
         if self.cfg.eval_type == "safim":
-            _merge_sandbox_into_eval_for_safim(self.cfg)
+            _merge_sandbox_into_eval_for_safim(self.cfg, getattr(self, "sandbox", None))
         evaluate(self.cfg.eval_type, self.cfg.eval_config)
 
     def skip_completed_samples(self, data):
@@ -1072,6 +1096,11 @@ class GenerationTask:
             asyncio.run(self.async_loop(data))
 
         if self.should_run_evaluation and self.evaluator is None:
+            if len(data) == 0:
+                # If all samples were skipped, we never entered the main branch that waits for
+                # server/sandbox; SAFIM batch eval still needs a reachable vLLM and code sandbox.
+                self.wait_for_server()
+                self.wait_for_sandbox()
             self.run_batch_evaluation()
         self.postprocess()
 
