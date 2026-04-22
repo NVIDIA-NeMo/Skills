@@ -27,9 +27,6 @@ def main():
     args, unknown = parser.parse_known_args()
 
     extra_arguments = join(unknown)
-    has_distributed_backend = any(
-        arg == "--distributed-executor-backend" or arg.startswith("--distributed-executor-backend=") for arg in unknown
-    )
 
     print(f"Deploying model {args.model}")
     print("Starting OpenAI Server")
@@ -40,7 +37,7 @@ def main():
         logging_args = ""
 
     distributed_backend_args = ""
-    if args.num_nodes > 1 and not has_distributed_backend:
+    if args.num_nodes > 1:
         distributed_backend_args = " --distributed-executor-backend=ray "
 
     cmd = (

@@ -28,8 +28,8 @@ set `DOCKER_PLATFORM=linux/arm64` for the build script described above.
 
 ## Building trtllm image
 
-We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc1` image.
+We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8` image.
 
 ## Building sglang image
 
-We directly use official `lmsysorg/sglang:v0.5.8` image.
+We directly use official `lmsysorg/sglang:v0.5.10.post1` image.
