@@ -17,12 +17,6 @@ import argparse
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 
 MODEL = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
-CONTAINER_ROOT = "/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/wedu/images"
-SERVER_CONTAINERS = {
-    "vllm": f"{CONTAINER_ROOT}/vllm-18.1-ray.sqsh",
-    "sglang": f"{CONTAINER_ROOT}/sglang.v0.5.10.post1.sqsh",
-    "trtllm": f"{CONTAINER_ROOT}/trtllm.1.3.0rc8.sqsh",
-}
 COMMON_CTX = (
     "++chat_template_kwargs.enable_thinking=true "
     "++inference.tokens_to_generate=131072 "
@@ -80,7 +74,6 @@ def eval_backend(
         num_jobs=1,
         partition=partition,
         server_type=server_type,
-        server_container=SERVER_CONTAINERS[server_type],
         output_dir=output_dir,
         server_args=server_args,
         expname=expname,
