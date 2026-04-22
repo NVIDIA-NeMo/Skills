@@ -18,6 +18,7 @@ import logging
 import os
 import random
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -74,15 +75,41 @@ def _mapping_to_plain_dict(obj: Any) -> dict:
     return {}
 
 
+def _sandbox_connect_host_is_loopback(host: Any) -> bool:
+    if host is None:
+        return True
+    s = str(host).strip().lower()
+    return s in ("", "127.0.0.1", "localhost", "::1")
+
+
+def _normalize_sandbox_connect_host_candidate(raw: str | None) -> str | None:
+    """Return a usable host string, or None if value is empty, loopback, or an unexpanded shell snippet."""
+    if not raw:
+        return None
+    v = raw.strip().strip('"').strip("'")
+    if not v or _sandbox_connect_host_is_loopback(v):
+        return None
+    if "$" in v or v.startswith("`"):
+        return None
+    return v
+
+
+def _discover_sandbox_connect_host() -> str | None:
+    """Best-effort host for the client to reach the code sandbox (Slurm sidecar / same node)."""
+    for key in ("NEMO_SKILLS_SANDBOX_HOST", "SLURM_MASTER_NODE", "SLURMD_NODENAME", "HOSTNAME"):
+        if h := _normalize_sandbox_connect_host_candidate(os.environ.get(key)):
+            return h
+    try:
+        return _normalize_sandbox_connect_host_candidate(socket.gethostname())
+    except OSError:
+        return None
+
+
 def _runtime_sandbox_env_overrides() -> dict[str, Any]:
     """Env vars that :class:`~nemo_skills.code_execution.sandbox.Sandbox` consults (see its docstring)."""
     out: dict[str, Any] = {}
     if h := os.environ.get("NEMO_SKILLS_SANDBOX_HOST"):
-        out["host"] = h
-    elif slurm_master := os.environ.get("SLURM_MASTER_NODE"):
-        # Batch eval (e.g. SAFIM) runs in the client step; eval_config often defaults host to
-        # 127.0.0.1 which does not reach the sandbox sidecar on Slurm/Pyxis. Prefer the job head node.
-        out["host"] = slurm_master.strip()
+        out["host"] = h.strip()
     if p := os.environ.get("NEMO_SKILLS_SANDBOX_PORT"):
         out["port"] = p
     if s := os.environ.get("NEMO_SKILLS_SSH_SERVER"):
@@ -103,6 +130,13 @@ def _merge_sandbox_into_eval_for_safim(cfg: Any) -> None:
     ec = cfg.eval_config
     eval_sandbox = _mapping_to_plain_dict(ec.get("sandbox") if hasattr(ec, "get") else None)
     merged = {**eval_sandbox, **gen_sandbox, **_runtime_sandbox_env_overrides()}
+    # Hydra defaults often pin host to 127.0.0.1; on Slurm that does not reach a sibling sandbox container.
+    # SLURM_MASTER_NODE is sometimes unset or left as an unexpanded $(...) snippet—fall back to other signals.
+    if _sandbox_connect_host_is_loopback(merged.get("host")):
+        if discovered := _discover_sandbox_connect_host():
+            merged["host"] = discovered
+    if p := os.environ.get("NEMO_SKILLS_SANDBOX_PORT"):
+        merged["port"] = str(p).strip()
     if isinstance(ec, DictConfig):
         ec["sandbox"] = OmegaConf.create(merged)
     else:
