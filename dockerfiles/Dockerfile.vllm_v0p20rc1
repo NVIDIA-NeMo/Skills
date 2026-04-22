@@ -1,0 +1,29 @@
+FROM vllm/vllm-openai:v0.19.1
+
+# Upgrade vllm to 0.20.0rc1 (commit 5a532c7e0b8b07d9715e64e3ca3546d7b9e5b35a)
+# from the per-commit wheel index on wheels.vllm.ai (the v0.20.0rc1 tag is not
+# yet on PyPI / Docker Hub).
+RUN pip uninstall -y vllm && \
+    pip install --no-cache-dir \
+        --extra-index-url https://wheels.vllm.ai/5a532c7e0b8b07d9715e64e3ca3546d7b9e5b35a \
+        "vllm==0.20.0rc1"
+
+RUN pip install --no-cache-dir "vllm[audio]==0.20.0rc1" \
+        --extra-index-url https://wheels.vllm.ai/5a532c7e0b8b07d9715e64e3ca3546d7b9e5b35a
+
+# vllm 0.20.0rc1 pins torch==2.11.0; the default PyPI wheel is the +cu130 build,
+# which requires a driver newer than the cluster has. Swap in the +cu129 variant
+# (same torch version, CUDA 12.9 build) without touching other deps.
+RUN pip install --no-cache-dir --force-reinstall --no-deps \
+        --index-url https://download.pytorch.org/whl/cu129 \
+        "torch==2.11.0+cu129" "torchvision==0.26.0+cu129" "torchaudio==2.11.0+cu129"
+
+# Keep flashinfer-jit-cache aligned with flashinfer-python 0.6.7 (the base image
+# shipped 0.6.6+cu129). CUDA-suffixed jit-cache wheels are on flashinfer's index.
+RUN pip install --no-cache-dir \
+        --extra-index-url https://flashinfer.ai/whl/cu129 \
+        "flashinfer-jit-cache==0.6.7+cu129"
+
+RUN pip install --no-cache-dir "ray[cgraph]>=2.48.0"
+# Required by vLLM for Qwen-VL model family (runtime dependency, not directly imported)
+RUN pip install --no-cache-dir qwen-vl-utils
