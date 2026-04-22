@@ -329,7 +329,11 @@ class BaseModel:
                     return result
 
                 except openai.BadRequestError as e:
-                    if "output messages (reasoning and final)" in str(e):
+                    retryable_patterns = (
+                        "output messages (reasoning and final)",  # existing
+                        "Already borrowed",  # vllm #34932 for qwen3coder and hermes parser
+                    )
+                    if any(p in str(e) for p in retryable_patterns):
                         if retry_count < max_retries:
                             retry_count += 1
                             LOG.warning(f"BadRequestError, retrying {retry_count}/{max_retries}: {e}")
