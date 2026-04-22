@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
@@ -673,6 +674,10 @@ class Pipeline:
                 "--mpi=none",
                 *(cluster_config.get("sandbox_extra_srun_args") or []),
             ]
+
+        if isinstance(command.script, SandboxScript) and cluster_config.get("executor") == "local":
+            # Match exp.add_task: SAFIM / ExecEval need prlimit(RLIMIT_RSS) inside the sandbox image.
+            os.environ.setdefault("NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE", "1")
 
         with env_context:
             return get_executor(

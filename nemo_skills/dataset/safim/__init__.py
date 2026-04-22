@@ -31,4 +31,7 @@ KEEP_MOUNTS_FOR_SANDBOX = True
 SANDBOX_EXTRA_SRUN_ARGS = [
     "--container-options=--cap-add=SYS_RESOURCE",
 ]
-# Local Docker: eval sets NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE for the sandbox container (cap_add).
+# Local Docker: pipeline sets NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE=1 before starting the sandbox
+# (Docker --cap-add=SYS_RESOURCE). For a manually started sandbox, run:
+#   NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE=1 ./nemo_skills/code_execution/local_sandbox/start_local_sandbox.sh
+# Opt out (if your site forbids the capability): export NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE=0 before launch.

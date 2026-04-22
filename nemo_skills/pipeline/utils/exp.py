@@ -663,6 +663,10 @@ def add_task(
 
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
+            # ExecEval (SAFIM) uses prlimit(RLIMIT_RSS); Docker must grant CAP_SYS_RESOURCE.
+            # setdefault so eval.py / users can still opt out with NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE=0.
+            if cluster_config["executor"] == "local":
+                os.environ.setdefault("NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE", "1")
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
                 container=sandbox_container or cluster_config["containers"]["sandbox"],

@@ -20,7 +20,15 @@ SANDBOX_NAME=${1:-'local-sandbox'}
 docker build --tag=${SANDBOX_NAME} --build-arg="NUM_WORKERS=$((`nproc --all`))" -f dockerfiles/Dockerfile.sandbox .
 
 echo "Multi-worker mode: Starting $((`nproc --all`)) workers with session affinity"
+# SAFIM / ExecEval call prlimit(RLIMIT_RSS); without CAP_SYS_RESOURCE you may see:
+#   prlimit: failed to set the RSS resource limit: Operation not permitted
+CAP_ADD_SYS_RESOURCE=""
+case "${NEMO_SKILLS_SANDBOX_CAP_SYS_RESOURCE:-}" in
+    1|true|TRUE|yes|YES) CAP_ADD_SYS_RESOURCE="--cap-add=SYS_RESOURCE" ;;
+esac
+
 docker run --network=host --rm \
+    ${CAP_ADD_SYS_RESOURCE} \
     --memory=${NEMO_SKILLS_SANDBOX_MEM_LIMIT:-"16g"} \
     ${UWSGI_CPU_AFFINITY:+-e UWSGI_CPU_AFFINITY=${UWSGI_CPU_AFFINITY}} \
     ${UWSGI_PROCESSES:+-e UWSGI_PROCESSES=${UWSGI_PROCESSES}} \
