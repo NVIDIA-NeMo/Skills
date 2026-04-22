@@ -286,7 +286,7 @@ class BaseModel:
         }
 
         # TODO: remove this after we no longer use gpt-oss or it's fixed in vllm
-        max_retries = 2
+        max_retries = 5
         retry_count = 0
 
         async with self.concurrent_semaphore:
