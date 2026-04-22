@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import argparse
-from pathlib import Path
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 
@@ -48,36 +47,10 @@ VLLM_SERVER_ARGS = (
     "--tool-call-parser qwen3_coder "
 )
 SGLANG_SERVER_ARGS = "--trust-remote-code --ep-size 8 --tool-call-parser qwen3_coder --reasoning-parser nemotron_3 "
+TRTLLM_EXTRA_CONFIG = "/nemo_run/code/tests/slurm-tests/super_120b_aime25/trtllm-extra-llm-api-config.yml"
 
 
-def _write_trtllm_config(workspace: str) -> str:
-    config_path = Path(workspace) / "trtllm-extra-llm-api-config.yml"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(
-        "\n".join(
-            [
-                "kv_cache_config:",
-                "  enable_block_reuse: false",
-                "  free_gpu_memory_fraction: 0.8",
-                "  mamba_ssm_cache_dtype: float32",
-                "moe_config:",
-                "  backend: TRTLLM",
-                "cuda_graph_config:",
-                "  enable_padding: true",
-                "  max_batch_size: 256",
-                "enable_attention_dp: true",
-                "enable_chunked_prefill: true",
-                "num_postprocess_workers: 4",
-                "stream_interval: 10",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    return str(config_path)
-
-
-def _get_trtllm_server_args(trtllm_config_path: str) -> str:
+def _get_trtllm_server_args() -> str:
     return (
         "--backend pytorch "
         "--max_batch_size 256 "
@@ -86,7 +59,7 @@ def _get_trtllm_server_args(trtllm_config_path: str) -> str:
         "--trust_remote_code "
         "--reasoning_parser nano-v3 "
         "--tool_parser qwen3_coder "
-        f"--extra_llm_api_options {trtllm_config_path}"
+        f"--extra_llm_api_options {TRTLLM_EXTRA_CONFIG}"
     )
 
 
@@ -133,8 +106,6 @@ def main():
 
     prepare_data(ctx=wrap_arguments("aime25"))
 
-    trtllm_config_path = _write_trtllm_config(args.workspace)
-
     eval_expnames = []
 
     eval_expnames.append(
@@ -169,7 +140,7 @@ def main():
             wandb_project=args.wandb_project,
             partition=args.partition,
             server_type="trtllm",
-            server_args=_get_trtllm_server_args(trtllm_config_path),
+            server_args=_get_trtllm_server_args(),
         )
     )
 
