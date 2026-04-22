@@ -65,3 +65,8 @@ job_name_prefix: "nemo_skills:"
 # options your site documents (capability / privileged sandbox), e.g. one string per list entry:
 # sandbox_extra_srun_args:
 #   - "--container-options=..."
+#
+# If srun errors with "unrecognized option '--container-options=--cap-add=...'" (Slurm without
+# that Pyxis flag), set an empty list so SAFIM's default cap-add is not passed (add_task respects
+# this when the key is present; see nemo_skills/pipeline/utils/exp.py):
+# sandbox_extra_srun_args: []
