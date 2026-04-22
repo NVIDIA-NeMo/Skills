@@ -1096,6 +1096,12 @@ class GenerationTask:
             asyncio.run(self.async_loop(data))
 
         if self.should_run_evaluation and self.evaluator is None:
+            if len(data) == 0:
+                # No generation ran, so we never called wait_for_sandbox() above. Batch eval (e.g. SAFIM)
+                # only needs the code sandbox, not the inference server — do not call wait_for_server() here
+                # (Slurm/127.0.0.1:PORT can block forever). sandbox.wait_for_sandbox() polls until ready; eval
+                # only does a single is_sandbox_available() probe.
+                self.wait_for_sandbox()
             self.run_batch_evaluation()
         self.postprocess()
 
