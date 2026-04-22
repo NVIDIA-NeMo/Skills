@@ -44,14 +44,16 @@ VLLM_SERVER_ARGS = (
 )
 SGLANG_SERVER_ARGS = "--trust-remote-code --ep-size 8 --tool-call-parser qwen3_coder --reasoning-parser nemotron_3 "
 TRTLLM_EXTRA_CONFIG = "/nemo_run/code/tests/slurm-tests/super_120b_aime25/trtllm-extra-llm-api-config.yml"
+TRTLLM_MAX_BATCH_SIZE = 8
+TRTLLM_MAX_NUM_TOKENS = 2048
 
 
 def _get_trtllm_server_args() -> str:
     return (
         "--backend pytorch "
-        "--max_batch_size 256 "
+        f"--max_batch_size {TRTLLM_MAX_BATCH_SIZE} "
         "--ep_size 8 "
-        "--max_num_tokens 8192 "
+        f"--max_num_tokens {TRTLLM_MAX_NUM_TOKENS} "
         "--trust_remote_code "
         "--reasoning_parser nano-v3 "
         "--tool_parser qwen3_coder "
