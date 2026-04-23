@@ -16,7 +16,7 @@ import argparse
 
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 
-MODEL = "/lustre/fsw/portfolios/llmservice/users/igitman/hf_models/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
+MODEL = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
 COMMON_CTX = "++chat_template_kwargs.enable_thinking=true ++inference.temperature=1.0 ++inference.top_p=0.95 "
 TIR_CTX = (
     "++chat_template_kwargs.enable_thinking=true "
@@ -42,15 +42,6 @@ SGLANG_SERVER_ARGS = "--trust-remote-code --ep-size 8 --tool-call-parser qwen3_c
 TRTLLM_EXTRA_CONFIG = "/nemo_run/code/tests/slurm-tests/super_120b_aime25/trtllm-extra-llm-api-config.yml"
 TRTLLM_MAX_BATCH_SIZE = 8
 TRTLLM_MAX_NUM_TOKENS = 2048
-DEFAULT_VLLM_SERVER_CONTAINER = (
-    "/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/wedu/images/vllm-18.1-ray.sqsh"
-)
-DEFAULT_SGLANG_SERVER_CONTAINER = (
-    "/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/wedu/images/sglang.v0.5.10.post1.sqsh"
-)
-DEFAULT_TRTLLM_SERVER_CONTAINER = (
-    "/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/wedu/images/trtllm.1.3.0rc8.sqsh"
-)
 VLLM_TIR_SERVER_ARGS = (
     "--async-scheduling "
     "--dtype auto "
@@ -92,7 +83,6 @@ def eval_backend(
     partition,
     server_type,
     server_args,
-    server_container,
 ):
     output_dir = f"{workspace}/{server_type}"
     expname = f"{expname_prefix}-{server_type}"
@@ -107,7 +97,6 @@ def eval_backend(
         server_type=server_type,
         output_dir=output_dir,
         server_args=server_args,
-        server_container=server_container,
         expname=expname,
         wandb_project=wandb_project,
         wandb_name=expname,
@@ -124,7 +113,6 @@ def eval_backend_tir(
     partition,
     server_type,
     server_args,
-    server_container,
 ):
     output_dir = f"{workspace}/{server_type}_tir"
     expname = f"{expname_prefix}-{server_type}-tir"
@@ -139,7 +127,6 @@ def eval_backend_tir(
         server_type=server_type,
         output_dir=output_dir,
         server_args=server_args,
-        server_container=server_container,
         with_sandbox=True,
         expname=expname,
         wandb_project=wandb_project,
@@ -156,21 +143,6 @@ def main():
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
     parser.add_argument("--wandb_project", default="nemo-skills-slurm-ci", help="W&B project name")
     parser.add_argument("--partition", default=None, help="Cluster partition to use")
-    parser.add_argument(
-        "--vllm_server_container",
-        default=DEFAULT_VLLM_SERVER_CONTAINER,
-        help="Container image used for vLLM server jobs",
-    )
-    parser.add_argument(
-        "--sglang_server_container",
-        default=DEFAULT_SGLANG_SERVER_CONTAINER,
-        help="Container image used for SGLang server jobs",
-    )
-    parser.add_argument(
-        "--trtllm_server_container",
-        default=DEFAULT_TRTLLM_SERVER_CONTAINER,
-        help="Container image used for TRT-LLM server jobs",
-    )
 
     args = parser.parse_args()
 
@@ -187,7 +159,6 @@ def main():
             partition=args.partition,
             server_type="vllm",
             server_args=VLLM_SERVER_ARGS,
-            server_container=args.vllm_server_container,
         )
     )
     eval_expnames.append(
@@ -199,7 +170,6 @@ def main():
             partition=args.partition,
             server_type="vllm",
             server_args=VLLM_TIR_SERVER_ARGS,
-            server_container=args.vllm_server_container,
         )
     )
 
@@ -212,7 +182,6 @@ def main():
             partition=args.partition,
             server_type="sglang",
             server_args=SGLANG_SERVER_ARGS,
-            server_container=args.sglang_server_container,
         )
     )
     eval_expnames.append(
@@ -224,7 +193,6 @@ def main():
             partition=args.partition,
             server_type="sglang",
             server_args=SGLANG_TIR_SERVER_ARGS,
-            server_container=args.sglang_server_container,
         )
     )
 
@@ -237,7 +205,6 @@ def main():
             partition=args.partition,
             server_type="trtllm",
             server_args=_get_trtllm_server_args(),
-            server_container=args.trtllm_server_container,
         )
     )
     eval_expnames.append(
@@ -249,7 +216,6 @@ def main():
             partition=args.partition,
             server_type="trtllm",
             server_args=_get_trtllm_server_args(),
-            server_container=args.trtllm_server_container,
         )
     )
 

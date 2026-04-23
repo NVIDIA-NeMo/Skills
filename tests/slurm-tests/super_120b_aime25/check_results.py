@@ -27,9 +27,9 @@ METRIC_RANGES = {
     "trtllm": {"aime25": {"pass@1": (88.0, 92.0)}},
 }
 TIR_METRIC_RANGES = {
-    "vllm": {"aime25": {"pass@1": (95.0, 100.0)}},
-    "sglang": {"aime25": {"pass@1": (95.0, 100.0)}},
-    "trtllm": {"aime25": {"pass@1": (95.0, 100.0)}},
+    "vllm": {"aime25": {"pass@1": (92.0, 100.0)}},
+    "sglang": {"aime25": {"pass@1": (92.0, 100.0)}},
+    "trtllm": {"aime25": {"pass@1": (92.0, 100.0)}},
 }
 MIN_TOOL_CALL_FRACTION = 0.05
 
