@@ -48,7 +48,6 @@ LOCALES = set(FLEURS_LANGS)
 
 CER_LOCALES = set(
     [
-        # Strict CER-oriented (no reliable word boundaries)
         "cmn_hans_cn",  # Mandarin Chinese (Simplified)
         "yue_hant_hk",  # Cantonese Chinese (Traditional)
         "ja_jp",  # Japanese
@@ -56,23 +55,8 @@ CER_LOCALES = set(
         "lo_la",  # Lao
         "my_mm",  # Burmese
         "km_kh",  # Khmer
-        # Optional / borderline (WER standard, but CER often useful)
         "ko_kr",  # Korean
         "vi_vn",  # Vietnamese
-        "am_et",  # Amharic
-        "hi_in",  # Hindi
-        "ta_in",  # Tamil
-        "te_in",  # Telugu
-        "bn_in",  # Bengali
-        "gu_in",  # Gujarati
-        "kn_in",  # Kannada
-        "ml_in",  # Malayalam
-        "mr_in",  # Marathi
-        "ne_np",  # Nepali
-        "ur_pk",  # Urdu
-        "fa_ir",  # Persian (Farsi)
-        "ar_eg",  # Arabic (dialects vary, CER sometimes used for robustness)
-        "ckb_iq",  # Central Kurdish
     ]
 )
 
