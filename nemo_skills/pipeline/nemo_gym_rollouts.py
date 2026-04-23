@@ -110,7 +110,8 @@ def nemo_gym_rollouts(
     gym_container: str = typer.Option(
         None,
         help="Container image path/ref (e.g. a .sqsh file or docker:// reference) for the "
-        "NeMo Gym rollouts step. If not specified, falls back to "
+        "NeMo Gym rollouts step. If not specified, uses "
+        "cluster_config['containers']['nemo-gym'] when present, otherwise falls back to "
         "cluster_config['containers']['nemo-rl'].",
     ),
     gym_path: str = typer.Option(
@@ -267,9 +268,16 @@ def nemo_gym_rollouts(
             resolved_server_container = cluster_config["containers"][server_type_str]
 
     # Resolve the container for the NeMo Gym rollouts step.
-    # Explicit --gym_container (a .sqsh path or docker:// ref) wins; otherwise the
-    # pipeline falls back to the RL container, which still bundles Gym today.
-    resolved_gym_container = gym_container or cluster_config["containers"]["nemo-rl"]
+    # Precedence: explicit --gym_container > cluster_config['containers']['nemo-gym'] > 'nemo-rl'.
+    # Using `is not None` (not truthiness) so an explicit empty string passes through as caller input
+    # rather than silently falling back and masking misconfiguration.
+    containers = cluster_config["containers"]
+    if gym_container is not None:
+        resolved_gym_container = gym_container
+    elif "nemo-gym" in containers:
+        resolved_gym_container = containers["nemo-gym"]
+    else:
+        resolved_gym_container = containers["nemo-rl"]
     LOG.info(f"Using gym container: {resolved_gym_container}")
 
     # Filter out seeds with existing output files (unless rerun_done=True)
