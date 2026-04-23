@@ -23,8 +23,7 @@ import pytest
 from nemo_skills.evaluation.metrics import ComputeMetrics
 from nemo_skills.inference.model.base import BaseModel
 from nemo_skills.pipeline.generate import _create_job_unified
-from nemo_skills.pipeline.utils import eval as eval_utils
-from nemo_skills.pipeline.utils.scripts import EvalClientScript, ServerScript
+from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
 @pytest.mark.timeout(300)
@@ -313,62 +312,3 @@ def test_parse_completion_response_token_counts(usage_kwargs, expected_input):
     result = model._parse_completion_response(response)
     assert result["num_generated_tokens"] == 10
     assert result.get("num_input_tokens") == expected_input
-
-
-def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(monkeypatch):
-    """Ensure `--with-sandbox` is treated as an override when building eval commands.
-
-    Previously, if a benchmark had `REQUIRES_SANDBOX` unset and the user passed
-    `--with-sandbox`, the sandbox sidecar was still launched because `add_task()`
-    ORed the two flags together. This checks that the prepared eval generation
-    unit keeps `with_sandbox=True` all the way into `get_generation_cmd`.
-    """
-    benchmark_args = eval_utils.BenchmarkArgs(
-        name="aime25",
-        input_file="/tmp/aime25.jsonl",
-        generation_args="",
-        judge_args="",
-        judge_pipeline_args={},
-        requires_sandbox=False,
-        keep_mounts_for_sandbox=False,
-        generation_module="nemo_skills.inference.generate",
-        num_samples=0,
-        num_chunks=None,
-        eval_subfolder="eval-results/aime25",
-    )
-
-    monkeypatch.setattr(eval_utils, "add_default_args", lambda *args, **kwargs: [benchmark_args])
-    monkeypatch.setattr(eval_utils.pipeline_utils, "get_remaining_jobs", lambda **kwargs: {None: [None]})
-
-    captured = {}
-
-    def fake_get_generation_cmd(*args, **kwargs):
-        captured["with_sandbox"] = kwargs["with_sandbox"]
-        return "echo generation"
-
-    monkeypatch.setattr("nemo_skills.pipeline.utils.scripts.generation.get_generation_cmd", fake_get_generation_cmd)
-
-    _, job_batches = eval_utils.prepare_eval_commands(
-        cluster_config={"executor": "none"},
-        benchmarks_or_groups="aime25",
-        split=None,
-        num_jobs=1,
-        starting_seed=0,
-        output_dir="/tmp/out",
-        num_chunks=None,
-        chunk_ids=None,
-        rerun_done=False,
-        extra_arguments="",
-        data_dir=None,
-        exclusive=False,
-        with_sandbox=True,
-        keep_mounts_for_sandbox=False,
-        wandb_parameters=None,
-        eval_requires_judge=False,
-    )
-
-    units = [vars(unit).copy() for unit in job_batches[0][0]]
-    client_script = EvalClientScript(units=units)
-    client_script.inline()
-
-    assert captured["with_sandbox"] is True

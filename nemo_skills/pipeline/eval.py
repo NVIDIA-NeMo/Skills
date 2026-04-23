@@ -494,7 +494,8 @@ def eval(
                 job_sandbox_env_overrides,
             ) = job_args
 
-            task_name = f"{expname}-{'-'.join(job_benchmarks)}"
+            benchmark_keys = [b for b in benchmarks_dict.keys() if b in job_benchmarks]
+            task_name = f"{expname}-job{job_idx}-{'-'.join(benchmark_keys)}"
 
             # Build server scripts list (one per model, None if pre-hosted)
             server_scripts: list[ServerScript | None] = []
@@ -587,7 +588,7 @@ def eval(
                 group0_components.append(
                     Command(
                         script=sandbox_script,
-                        container=cluster_config["containers"]["sandbox"],
+                        container=sandbox_container or cluster_config["containers"]["sandbox"],
                         name=f"{task_name}_sandbox",
                     )
                 )
@@ -595,7 +596,7 @@ def eval(
             group0_components.append(
                 Command(
                     script=client_script,
-                    container=cluster_config["containers"]["nemo-skills"],
+                    container=main_container or cluster_config["containers"]["nemo-skills"],
                     name=f"{task_name}",
                 )
             )
