@@ -29,12 +29,14 @@
 # =============================================================================
 
 # Use the base image with Python 3.10 and Flask.
-# Pinned to the last Debian 12 (bookworm) build of this image: later tags moved
-# to Debian 13 (trixie), whose arm64 binaries the CI runner's qemu-user-static
-# cannot emulate (causes `exec /bin/sh: exec format error` during the arm64
-# leg of the multi-arch build). Bump only after verifying the runner's QEMU
+# Pinned to a Debian 11 (bullseye) build of this image. Later tags are on
+# Debian 12/13, whose arm64 binaries the CI runner's qemu-user-static cannot
+# emulate (causes `exec /bin/sh: exec format error` during the arm64 leg of
+# the multi-arch build in igitman/nemo-skills-configs CI). Pinning to bullseye
+# matches the vintage of other images that do build successfully (ubuntu:22.04
+# arm64 works on the runner). Bump only after verifying the runner's QEMU
 # handles the new tag's arm64 variant.
-FROM tiangolo/uwsgi-nginx-flask:python3.10-2025-07-28
+FROM tiangolo/uwsgi-nginx-flask:python3.10-2025-04-21
 
 # Install dependencies required for Lean 4, pypy3, and other tools
 ARG TARGETARCH
