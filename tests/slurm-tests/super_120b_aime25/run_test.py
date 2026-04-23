@@ -27,7 +27,7 @@ VLLM_SERVER_ARGS = (
     "--async-scheduling "
     "--dtype auto "
     "--kv-cache-dtype fp8 "
-    "--max-model-len 262144 "
+    "--max-model-len 131072 "
     "--enable-expert-parallel "
     "--gpu-memory-utilization 0.9 "
     "--max-cudagraph-capture-size 128 "
