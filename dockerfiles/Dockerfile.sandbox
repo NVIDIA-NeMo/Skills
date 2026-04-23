@@ -28,8 +28,13 @@
 #         -o requirements/sandbox.lock
 # =============================================================================
 
-# Use the base image with Python 3.10 and Flask
-FROM tiangolo/uwsgi-nginx-flask:python3.10
+# Use the base image with Python 3.10 and Flask.
+# Pinned to the last Debian 12 (bookworm) build of this image: later tags moved
+# to Debian 13 (trixie), whose arm64 binaries the CI runner's qemu-user-static
+# cannot emulate (causes `exec /bin/sh: exec format error` during the arm64
+# leg of the multi-arch build). Bump only after verifying the runner's QEMU
+# handles the new tag's arm64 variant.
+FROM tiangolo/uwsgi-nginx-flask:python3.10-2025-07-28
 
 # Install dependencies required for Lean 4, pypy3, and other tools
 ARG TARGETARCH
