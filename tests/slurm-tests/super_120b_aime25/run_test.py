@@ -19,7 +19,6 @@ from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 MODEL = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
 COMMON_CTX = (
     "++chat_template_kwargs.enable_thinking=true "
-    "++inference.tokens_to_generate=131072 "
     "++inference.temperature=1.0 "
     "++inference.top_p=0.95 "
 )
