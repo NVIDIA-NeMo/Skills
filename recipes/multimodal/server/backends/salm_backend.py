@@ -178,17 +178,15 @@ class SALMBackend(InferenceBackend):
                     req = requests[valid_indices[out_idx]]
                     user_prompt = req.user_prompt or self.salm_config.user_prompt
 
-                    conversation = []
-                    if req.system_prompt:
-                        conversation.append({"role": "system", "content": req.system_prompt})
-                    conversation.append(
-                        {
-                            "role": "user",
-                            "content": f"{user_prompt} {audio_tag}",
-                            "audio": [path],
-                        }
+                    prompts.append(
+                        [
+                            {
+                                "role": "user",
+                                "content": f"{user_prompt} {audio_tag}",
+                                "audio": [path],
+                            }
+                        ]
                     )
-                    prompts.append(conversation)
 
                     req_tokens = req.max_new_tokens or self.config.max_new_tokens
                     if req_tokens and (batch_max_tokens is None or req_tokens > batch_max_tokens):
@@ -226,5 +224,5 @@ class SALMBackend(InferenceBackend):
                 Path(p).unlink(missing_ok=True)
             try:
                 tmp_dir.rmdir()
-            except OSError:
-                pass
+            except OSError as e:
+                logger.warning("Could not remove temp dir %s: %s", tmp_dir, e)
