@@ -372,14 +372,14 @@ class AudioMetrics(BaseMetrics):
             base_metrics["judge_score"] = lambda _k, v, _all: f"{v:.2f}"
 
         # Add existing metrics if they were computed
+        if self.wer_scores:
+            base_metrics["wer-macro"] = as_percentage
         if self.wer_total_ref_words > 0:
             base_metrics["wer"] = as_percentage
             base_metrics["substitutions"] = as_int
             base_metrics["insertions"] = as_int
             base_metrics["deletions"] = as_int
             base_metrics["ref_words"] = as_int
-        if self.wer_scores:
-            base_metrics["wer-macro"] = as_percentage
         if self.wer_c_scores:
             base_metrics["wer_c"] = as_percentage
         if self.wer_pc_scores:
