@@ -24,7 +24,7 @@ from nemo_skills.evaluation.metrics import ComputeMetrics
 from nemo_skills.inference.model.base import BaseModel
 from nemo_skills.pipeline.generate import _create_job_unified
 from nemo_skills.pipeline.utils import eval as eval_utils
-from nemo_skills.pipeline.utils.scripts import ServerScript
+from nemo_skills.pipeline.utils.scripts import EvalClientScript, ServerScript
 
 
 @pytest.mark.timeout(300)
@@ -320,11 +320,8 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
 
     Previously, if a benchmark had `REQUIRES_SANDBOX` unset and the user passed
     `--with-sandbox`, the sandbox sidecar was still launched because `add_task()`
-    ORed the two flags together. But the generation command only used the
-    benchmark flag, so it would not wait for the sandbox to be ready.
-
-    This checks that eval command construction now applies the same OR logic
-    throughout and passes `with_sandbox=True` into the generation command.
+    ORed the two flags together. This checks that the prepared eval generation
+    unit keeps `with_sandbox=True` all the way into `get_generation_cmd`.
     """
     benchmark_args = eval_utils.BenchmarkArgs(
         name="aime25",
@@ -342,12 +339,6 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
 
     monkeypatch.setattr(eval_utils, "add_default_args", lambda *args, **kwargs: [benchmark_args])
     monkeypatch.setattr(eval_utils.pipeline_utils, "get_remaining_jobs", lambda **kwargs: {None: [None]})
-    monkeypatch.setattr(eval_utils.pipeline_utils, "should_get_random_port", lambda *args, **kwargs: False)
-    monkeypatch.setattr(
-        eval_utils.pipeline_utils,
-        "configure_client",
-        lambda **kwargs: ({}, "http://localhost:8000", ""),
-    )
 
     captured = {}
 
@@ -355,9 +346,9 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
         captured["with_sandbox"] = kwargs["with_sandbox"]
         return "echo generation"
 
-    monkeypatch.setattr(eval_utils.pipeline_utils, "get_generation_cmd", fake_get_generation_cmd)
+    monkeypatch.setattr("nemo_skills.pipeline.utils.scripts.generation.get_generation_cmd", fake_get_generation_cmd)
 
-    eval_utils.prepare_eval_commands(
+    _, job_batches = eval_utils.prepare_eval_commands(
         cluster_config={"executor": "none"},
         benchmarks_or_groups="aime25",
         split=None,
@@ -367,16 +358,6 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
         num_chunks=None,
         chunk_ids=None,
         rerun_done=False,
-        server_parameters={
-            "model": "test-model",
-            "server_type": "openai",
-            "server_address": "http://localhost:8000",
-            "server_gpus": 0,
-            "server_nodes": 1,
-            "server_args": "",
-            "server_entrypoint": None,
-            "server_container": None,
-        },
         extra_arguments="",
         data_dir=None,
         exclusive=False,
@@ -385,5 +366,9 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
         wandb_parameters=None,
         eval_requires_judge=False,
     )
+
+    units = [vars(unit).copy() for unit in job_batches[0][0]]
+    client_script = EvalClientScript(units=units)
+    client_script.inline()
 
     assert captured["with_sandbox"] is True
