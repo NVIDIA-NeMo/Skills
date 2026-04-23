@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -57,10 +58,13 @@ LANG_TO_NAME = {
 
 XX_EN_LANGUAGES = ["fr", "de", "es", "ca", "it", "ru", "zh-CN", "pt", "fa", "et", "mn", "nl", "tr", "ar", "sv-SE", "lv", "sl", "ta", "ja", "id", "cy"]
 EN_XX_LANGUAGES = ["de", "tr", "fa", "sv-SE", "mn", "zh-CN", "cy", "ca", "sl", "et", "id", "ar", "ta", "lv", "ja"]
-ALL_LANGUAGES_WITHOUT_EN = sorted(set(XX_EN_LANGUAGES) | set(EN_XX_LANGUAGES))
-ALL_LANGUAGES = ["en"] + ALL_LANGUAGES_WITHOUT_EN
 VALID_PAIRS = sorted(
     [(lang, "en") for lang in XX_EN_LANGUAGES] + [("en", lang) for lang in EN_XX_LANGUAGES]
+)
+ALL_LANGUAGES = (
+    set(["en"]) | 
+    set(XX_EN_LANGUAGES) | 
+    set(EN_XX_LANGUAGES)
 )
 
 
@@ -132,7 +136,15 @@ def get_audio_duration(audio_file: str) -> float:
 
 
 def get_container_audio_path(src_lang: str, split: str, audio_id: str) -> str:
-    return f"{CONTAINER_DATASET_PATH_PREFIX}/{src_lang}/{split}/{audio_id}.wav"
+    return f"{CONTAINER_DATASET_PATH_PREFIX}/audio/{src_lang}/{split}/{audio_id}.wav"
+
+
+def copy_audio_file(src_wav: Path, audio_dir: Path, src_lang: str, split: str) -> Path:
+    dest = audio_dir / src_lang / split / src_wav.name
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_wav, dest)
+    return dest
 
 
 def get_ast_instruction(target_lang: str) -> str:
@@ -200,6 +212,9 @@ def prepare_covost2(
     output_jsonl = data_dir / f"{split}-{task_type.lower()}.jsonl"
     sentences = load_validated_sentences(validated_tsv)
 
+    audio_dir = data_dir / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+
     if task_type == "AST":
         local_dir = data_dir / f"fb-{DATASET}"
         local_dir.mkdir(parents=True, exist_ok=True)
@@ -217,6 +232,7 @@ def prepare_covost2(
                             f"No validated sentence for wav={wav_file.name}, split={split}, lang={src_lang}"
                         )
                     duration = get_audio_duration(str(wav_file))
+                    copy_audio_file(wav_file, audio_dir, src_lang, split)
                     cpath = get_container_audio_path(src_lang, split, wav_file.stem)
                     record = _build_record(
                         expected_answer=sentence,
@@ -237,6 +253,7 @@ def prepare_covost2(
                 dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
                 for item in tqdm(dataset, desc=tag):
                     duration = get_audio_duration(item["audio_file"])
+                    copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
                     cpath = get_container_audio_path(src_lang, split, item["id"])
                     record = _build_record(
                         expected_answer=item["translation"],
