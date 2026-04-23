@@ -36,7 +36,8 @@ from nemo_skills.evaluation.evaluator import (
 )
 from nemo_skills.evaluation.metrics.base import BaseMetrics
 from nemo_skills.evaluation.metrics.map_metrics import get_metrics
-from nemo_skills.pipeline.prepare_data import _build_command, _parse_prepare_cli_arguments
+from nemo_skills.pipeline.cli import wrap_arguments
+from nemo_skills.pipeline.prepare_data import _apply_prepare_data_env, _build_command, _parse_prepare_cli_arguments, prepare_data
 from nemo_skills.pipeline.utils.packager import (
     EXTERNAL_REPOS,
     RepoMetadata,
@@ -367,6 +368,32 @@ class TestBuildCommand:
             prepare_unknown_args=["--split", "test"],
         )
         assert "--split test" in cmd
+
+    def test_prepare_data_env_prefix_added(self):
+        cmd = _apply_prepare_data_env("python -m nemo_skills.dataset.prepare gsm8k", "/tmp/ns data")
+        assert cmd == "NEMO_SKILLS_DATA_DIR='/tmp/ns data' python -m nemo_skills.dataset.prepare gsm8k"
+
+
+class TestPrepareDataCommand:
+    def test_prepare_data_exports_data_dir_env(self, monkeypatch):
+        captured = {}
+
+        def fake_run_cmd(**kwargs):
+            captured.update(kwargs)
+            return kwargs
+
+        monkeypatch.setattr("nemo_skills.pipeline.prepare_data._run_cmd", fake_run_cmd)
+        monkeypatch.setattr("nemo_skills.pipeline.prepare_data.get_cluster_config", lambda *args, **kwargs: {"executor": "none"})
+        monkeypatch.setattr("nemo_skills.pipeline.prepare_data.get_env_variables", lambda *args, **kwargs: {})
+
+        prepare_data(
+            ctx=wrap_arguments("gsm8k"),
+            cluster="local",
+            data_dir="/tmp/ns-data",
+        )
+
+        assert captured["command"].startswith("NEMO_SKILLS_DATA_DIR=/tmp/ns-data python -m nemo_skills.dataset.prepare")
+        assert "gsm8k" in captured["command"]
 
 
 # ---------------------------------------------------------------------------

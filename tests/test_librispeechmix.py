@@ -74,6 +74,7 @@ def test_librispeechmix_sa_asr_uses_speaker_indices_not_order():
 def test_librispeechmix_prepare_records_writes_absolute_paths(tmp_path):
     from nemo_skills.dataset.librispeechmix.prepare import (
         build_output_record,
+        resolve_base_data_dir,
         write_benchmark_records,
     )
 
@@ -129,3 +130,14 @@ def test_librispeechmix_prepare_records_writes_absolute_paths(tmp_path):
     assert Path(saved["messages"][-1]["audio"]["path"]).is_absolute()
     assert Path(saved["messages"][1]["audios"][0]["path"]).is_absolute()
     assert (audio_root / "mixed" / "dev-clean-2mix" / "dev-clean-2mix-0000.wav").exists()
+
+    assert resolve_base_data_dir(str(data_root)) == data_root.resolve()
+
+
+def test_librispeechmix_prepare_uses_nemo_skills_data_dir_env(monkeypatch, tmp_path):
+    from nemo_skills.dataset.librispeechmix.prepare import resolve_base_data_dir
+
+    expected_root = (tmp_path / "external-data").resolve()
+    monkeypatch.setenv("NEMO_SKILLS_DATA_DIR", str(expected_root))
+
+    assert resolve_base_data_dir(None) == expected_root

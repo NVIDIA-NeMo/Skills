@@ -18,6 +18,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -87,6 +88,14 @@ def _default_data_dir() -> Path:
         if (parent / "pyproject.toml").exists():
             return parent.parent / f"{parent.name}-data"
     return Path.home() / ".cache" / "nemo-skills-data"
+
+
+def resolve_base_data_dir(data_dir: str | None) -> Path:
+    """Resolve the base data directory from args, env, or the repo-sibling fallback."""
+    configured_data_dir = data_dir or os.getenv("NEMO_SKILLS_DATA_DIR")
+    if configured_data_dir:
+        return _absolute_path(configured_data_dir)
+    return _default_data_dir()
 
 
 def _manifest_asset_path(manifest_name: str) -> Path:
@@ -390,10 +399,11 @@ def main() -> None:
     parser.add_argument(
         "--data_dir",
         type=str,
-        default=None,
+        default=os.getenv("NEMO_SKILLS_DATA_DIR"),
         help=(
-            "Base output directory. Prepared files are written under <data_dir>/librispeechmix/. "
-            "When omitted, defaults to a sibling directory of the repo so raw audio stays outside the tree."
+            "Base output directory. Prepared files are written under <data_dir>/librispeechmix/. Defaults to "
+            "$NEMO_SKILLS_DATA_DIR when set; otherwise uses a sibling directory of the repo so raw audio stays "
+            "outside the tree."
         ),
     )
     parser.add_argument(
@@ -417,7 +427,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    base_data_dir = _absolute_path(args.data_dir) if args.data_dir else _default_data_dir()
+    base_data_dir = resolve_base_data_dir(args.data_dir)
     dataset_root = base_data_dir / BENCHMARK_NAME
     audio_prefix = _absolute_path(args.audio_prefix) if args.audio_prefix else dataset_root / "audio"
 
