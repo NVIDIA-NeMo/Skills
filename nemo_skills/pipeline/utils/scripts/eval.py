@@ -29,7 +29,7 @@ def _combine_cmds(cmds: List[str], single_node_mode: str) -> str:
         if len(cmds) == 1:
             return cmds[0]
         # record pids of all commands and wait for them to finish.
-        # this is so we can return the exit code of the first command that fails.
+        # this is so we can return the exit code of the last command that fails.
         launch_cmds = " ".join(f"( {cmd} ) & pids+=($!);" for cmd in cmds)
         return f'pids=(); {launch_cmds} rc=0; for pid in "${{pids[@]}}"; do wait "$pid" || rc=$?; done; exit "$rc"'
     raise ValueError(f"Unknown single_node_mode: {single_node_mode}")
@@ -123,7 +123,7 @@ class EvalClientScript(BaseJobScript):
                     if self.servers is not None and self.servers[0] is not None:
                         srv = self.servers[0]
                         unit["extra_arguments"] = _inject_single_server_overrides(
-                            extra_arguments=unit.get("extra_arguments", ""),
+                            extra_arguments=unit["extra_arguments"],
                             server_type=server_type,
                             model_name=model_name,
                             host=srv.hostname_ref(),
@@ -131,7 +131,7 @@ class EvalClientScript(BaseJobScript):
                         )
                     else:
                         unit["extra_arguments"] = _inject_single_server_overrides(
-                            extra_arguments=unit.get("extra_arguments", ""),
+                            extra_arguments=unit["extra_arguments"],
                             server_type=server_type,
                             model_name=model_name,
                             base_url=server_addresses[0] if server_addresses else None,
