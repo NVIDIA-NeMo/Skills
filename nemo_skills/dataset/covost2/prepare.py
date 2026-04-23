@@ -56,6 +56,8 @@ LANG_TO_NAME = {
     "cy": "Welsh",
 }
 
+CER_LOCALES = set(["zh-CN", "ja"])
+
 XX_EN_LANGUAGES = ["fr", "de", "es", "ca", "it", "ru", "zh-CN", "pt", "fa", "et", "mn", "nl", "tr", "ar", "sv-SE", "lv", "sl", "ta", "ja", "id", "cy"]
 EN_XX_LANGUAGES = ["de", "tr", "fa", "sv-SE", "mn", "zh-CN", "cy", "ca", "sl", "et", "id", "ar", "ta", "lv", "ja"]
 VALID_PAIRS = sorted(
@@ -245,6 +247,7 @@ def prepare_covost2(
                             "src_text": sentence,
                             "src_lang_name": LANG_TO_NAME[src_lang],
                             "src_lang": src_lang,
+                            "use_cer": src_lang in CER_LOCALES,
                         },
                     )
                     out.write(json.dumps(record, ensure_ascii=False) + "\n")
