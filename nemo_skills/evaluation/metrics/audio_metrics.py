@@ -300,7 +300,7 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["ref_words"] = self.wer_total_ref_words
                 agg_metrics["wer"] = round(100.0 * self.wer_total_errors / self.wer_total_ref_words, 2)
             if self.wer_scores:
-                agg_metrics["wer-macro"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
+                agg_metrics["wer_macro"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
             if self.wer_c_scores:
                 agg_metrics["wer_c"] = round(100.0 * sum(self.wer_c_scores) / len(self.wer_c_scores), 2)
             if self.wer_pc_scores:
@@ -373,7 +373,7 @@ class AudioMetrics(BaseMetrics):
 
         # Add existing metrics if they were computed
         if self.wer_scores:
-            base_metrics["wer-macro"] = as_percentage
+            base_metrics["wer_macro"] = as_percentage
         if self.wer_total_ref_words > 0:
             base_metrics["wer"] = as_percentage
             base_metrics["substitutions"] = as_int
