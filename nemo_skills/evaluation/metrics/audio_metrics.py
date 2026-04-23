@@ -59,6 +59,8 @@ class AudioMetrics(BaseMetrics):
         super().__init__(compute_no_answer=compute_no_answer)
         self.max_k = max_k
 
+        self.wer_scores = []
+
         # Corpus-level WER accumulators (total errors / total ref words)
         self.wer_total_errors = 0
         self.wer_total_ref_words = 0
@@ -204,6 +206,8 @@ class AudioMetrics(BaseMetrics):
                 self.wer_total_substitutions += pred["wer_substitutions"]
                 self.wer_total_insertions += pred["wer_insertions"]
                 self.wer_total_deletions += pred["wer_deletions"]
+            if "wer" in pred and pred["wer"] is not None:
+                self.wer_scores.append(pred["wer"])
             if "wer_c" in pred and pred["wer_c"] is not None:
                 self.wer_c_scores.append(pred["wer_c"])
             if "wer_pc" in pred and pred["wer_pc"] is not None:
@@ -295,6 +299,8 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["deletions"] = self.wer_total_deletions
                 agg_metrics["ref_words"] = self.wer_total_ref_words
                 agg_metrics["wer"] = round(100.0 * self.wer_total_errors / self.wer_total_ref_words, 2)
+            if self.wer_scores:
+                agg_metrics["wer-macro"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
             if self.wer_c_scores:
                 agg_metrics["wer_c"] = round(100.0 * sum(self.wer_c_scores) / len(self.wer_c_scores), 2)
             if self.wer_pc_scores:
@@ -372,6 +378,8 @@ class AudioMetrics(BaseMetrics):
             base_metrics["insertions"] = as_int
             base_metrics["deletions"] = as_int
             base_metrics["ref_words"] = as_int
+        if self.wer_scores:
+            base_metrics["wer-macro"] = as_percentage
         if self.wer_c_scores:
             base_metrics["wer_c"] = as_percentage
         if self.wer_pc_scores:
