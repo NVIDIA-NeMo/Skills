@@ -170,25 +170,31 @@ class SALMBackend(InferenceBackend):
                     results[idx] = GenerationResult(error=str(e), request_id=req.request_id)
 
             if temp_paths:
-                first_req = requests[valid_indices[0]]
-                first_extra = first_req.extra_params or {}
-                user_prompt = first_extra.get("user_prompt", self.salm_config.user_prompt)
-                max_new_tokens = first_req.max_new_tokens or self.config.max_new_tokens
                 audio_tag = self._model.audio_locator_tag
-
                 prompts = []
-                for path in temp_paths:
-                    prompts.append(
-                        [
-                            {
-                                "role": "user",
-                                "content": f"{user_prompt} {audio_tag}",
-                                "audio": [path],
-                            }
-                        ]
-                    )
+                batch_max_tokens = self.config.max_new_tokens
 
-                output_ids = self._model.generate(prompts=prompts, max_new_tokens=max_new_tokens)
+                for out_idx, path in enumerate(temp_paths):
+                    req = requests[valid_indices[out_idx]]
+                    user_prompt = req.user_prompt or self.salm_config.user_prompt
+
+                    conversation = []
+                    if req.system_prompt:
+                        conversation.append({"role": "system", "content": req.system_prompt})
+                    conversation.append(
+                        {
+                            "role": "user",
+                            "content": f"{user_prompt} {audio_tag}",
+                            "audio": [path],
+                        }
+                    )
+                    prompts.append(conversation)
+
+                    req_tokens = req.max_new_tokens or self.config.max_new_tokens
+                    if req_tokens and (batch_max_tokens is None or req_tokens > batch_max_tokens):
+                        batch_max_tokens = req_tokens
+
+                output_ids = self._model.generate(prompts=prompts, max_new_tokens=batch_max_tokens)
 
                 if len(output_ids) != len(temp_paths):
                     raise RuntimeError(
@@ -208,7 +214,7 @@ class SALMBackend(InferenceBackend):
                         debug_info={
                             "backend": "salm",
                             "model": self._model_name,
-                            "user_prompt": user_prompt,
+                            "user_prompt": req.user_prompt or self.salm_config.user_prompt,
                         },
                     )
 
