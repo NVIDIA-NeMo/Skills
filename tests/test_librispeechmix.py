@@ -23,6 +23,7 @@ from nemo_skills.evaluation.evaluator.audio import (
     evaluate_librispeechmix_asr,
     evaluate_librispeechmix_sa_asr,
 )
+from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
 
 
 def _write_tone(path: Path, duration_sec: float = 0.1, sample_rate: int = 16000) -> None:
@@ -141,3 +142,41 @@ def test_librispeechmix_prepare_uses_nemo_skills_data_dir_env(monkeypatch, tmp_p
     monkeypatch.setenv("NEMO_SKILLS_DATA_DIR", str(expected_root))
 
     assert resolve_base_data_dir(None) == expected_root
+
+
+def test_audio_metrics_uses_corpus_wer_from_aggregated_counts():
+    metrics = AudioMetrics(compute_no_answer=False, max_k=1)
+
+    metrics.update(
+        [
+            {
+                "generation": "wrong",
+                "wer": 1.0,
+                "wer_errors": 1,
+                "wer_ref_words": 1,
+                "wer_substitutions": 1,
+                "wer_insertions": 0,
+                "wer_deletions": 0,
+                "is_correct": False,
+            }
+        ]
+    )
+    metrics.update(
+        [
+            {
+                "generation": "correct",
+                "wer": 0.0,
+                "wer_errors": 0,
+                "wer_ref_words": 100,
+                "wer_substitutions": 0,
+                "wer_insertions": 0,
+                "wer_deletions": 0,
+                "is_correct": True,
+            }
+        ]
+    )
+
+    aggregated = metrics.get_metrics()["pass@1"]
+
+    assert aggregated["wer"] == 0.99
+    assert aggregated["ref_words"] == 101
