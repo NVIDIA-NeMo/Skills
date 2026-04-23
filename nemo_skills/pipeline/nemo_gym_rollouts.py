@@ -107,6 +107,13 @@ def nemo_gym_rollouts(
         "If not specified, uses cluster_config['containers'][server_type].",
     ),
     with_sandbox: bool = typer.Option(False, help="If True, start a sandbox container for code execution"),
+    gym_container: str = typer.Option(
+        None,
+        help="Container image path/ref (e.g. a .sqsh file or docker:// reference) for the "
+        "NeMo Gym rollouts step. If not specified, uses "
+        "cluster_config['containers']['nemo-gym'] when present, otherwise falls back to "
+        "cluster_config['containers']['nemo-rl'].",
+    ),
     gym_path: str = typer.Option(
         "/opt/NeMo-RL/3rdparty/Gym-workspace/Gym",
         help="Path to NeMo Gym installation. Defaults to container built-in. Use for mounted/custom Gym.",
@@ -260,6 +267,19 @@ def nemo_gym_rollouts(
         else:
             resolved_server_container = cluster_config["containers"][server_type_str]
 
+    # Resolve the container for the NeMo Gym rollouts step.
+    # Precedence: explicit --gym_container > cluster_config['containers']['nemo-gym'] > 'nemo-rl'.
+    # Using `is not None` (not truthiness) so an explicit empty string passes through as caller input
+    # rather than silently falling back and masking misconfiguration.
+    containers = cluster_config["containers"]
+    if gym_container is not None:
+        resolved_gym_container = gym_container
+    elif "nemo-gym" in containers:
+        resolved_gym_container = containers["nemo-gym"]
+    else:
+        resolved_gym_container = containers["nemo-rl"]
+    LOG.info(f"Using gym container: {resolved_gym_container}")
+
     # Filter out seeds with existing output files (unless rerun_done=True)
     if not rerun_done and seed_indices != [None]:
         filtered_seeds = []
@@ -346,7 +366,7 @@ def nemo_gym_rollouts(
 
         nemo_gym_cmd = Command(
             script=nemo_gym_script,
-            container=cluster_config["containers"]["nemo-rl"],
+            container=resolved_gym_container,
             name=f"{expname}_nemo_gym{job_suffix}",
             avoid_nemo_run_code=not use_mounted_nemo_skills,
         )
