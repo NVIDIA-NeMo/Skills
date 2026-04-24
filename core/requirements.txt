@@ -21,7 +21,7 @@ iso639-lang
 langcodes
 langdetect
 language-data
-litellm[caching]==1.83.0
+litellm[caching]==1.83.7
 math-verify[antlr4_9_3]
 mcp
 numpy
