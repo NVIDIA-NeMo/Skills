@@ -61,13 +61,15 @@ BENCHMARKS = "apex-shortlist:1" if DEBUG else "apex-shortlist:4,imo-answerbench:
 # for stochastic sampling at T=1.0. Bump for tighter error bars.
 NUM_REPEATS = 4
 
-CLUSTER = "aws-iad"
+CLUSTER = "aws-iad-dsv4"  # drops /workspace mount so the container's
+# built-in /workspace/sglang (v4-aware) isn't shadowed by lustre.
 ACCOUNT = "nemotron_reason_math"
 PARTITION = "pool0"
 
-# Container paths on aws-iad (see cluster_configs/aws-iad.yaml mounts).
+# Container paths on aws-iad-dsv4 (see cluster_configs/aws-iad-dsv4.yaml).
 MODEL_DIR = "/hf_models"
-OUT_DIR = "/workspace/claude-dsv4-eval"  # -> /lustre/fsw/.../igitman/claude-dsv4-eval
+# /workspace is no longer mounted; write outputs straight to lustre.
+OUT_DIR = "/lustre/fsw/portfolios/nemotron/users/igitman/claude-dsv4-eval"
 
 # DeepSeek-V4 on H100: vllm does not officially support Hopper for V4
 #   (recipes target H200+). The default DeepSeek checkpoint stores MoE
@@ -207,7 +209,9 @@ def run():
             # enough to diagnose from logs.
             dependent_jobs=0 if DEBUG else 2,
             server_args=build_server_args(max_model_len, tp_size),
-            server_container=V4_SGLANG_CONTAINER,
+            # server_container override removed -- use whatever the
+            # aws-iad-dsv4 cluster config provides (sglang container path
+            # is set there).
             output_dir=f"{OUT_DIR}/{variant}",
             # Local gpt-oss-120b judge for imo-answerbench.
             judge_model=JUDGE_MODEL,
