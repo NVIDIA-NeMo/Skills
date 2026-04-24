@@ -1,0 +1,4 @@
+user: |-
+  Solve the following problem. The problem may ask you to prove a statement, or ask for an answer. If finding an answer is required, you should come up with the answer, and your final solution should also be a rigorous proof of that answer being valid.
+
+  {problem}
