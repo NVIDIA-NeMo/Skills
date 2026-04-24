@@ -21,19 +21,18 @@ from shlex import join
 def _sglang_launch_prefix():
     """Return a command prefix that gets the right Python + sglang module.
 
-    SGLang's DeepSeek-V4-hopper image does NOT pip-install sglang into the
-    system python; instead the source tree may sit under /workspace/sglang
-    or /sgl-workspace/sglang and there's a companion venv at
-    /sgl-workspace/ns-venv. Neither path alone is enough -- we need to use
-    the venv's python3 AND set PYTHONPATH to the sglang source dir.
+    SGLang's DeepSeek-V4-hopper image does not expose sglang as an installed
+    package by default; instead the source tree may sit under /workspace/sglang
+    or /sgl-workspace/sglang. In the Hopper image, system python has the runtime
+    deps, while the companion /sgl-workspace/ns-venv lacks some deps, so prefer
+    system python with PYTHONPATH pointed at the source tree.
     """
-    venv_py = "/sgl-workspace/ns-venv/bin/python3"
     sglang_src = next(
         (path for path in ["/workspace/sglang/python", "/sgl-workspace/sglang/python"] if os.path.isdir(path)),
         None,
     )
-    if os.path.isfile(venv_py) and sglang_src:
-        return f"PYTHONPATH={sglang_src}:$PYTHONPATH {venv_py}"
+    if sglang_src:
+        return f"PYTHONPATH={sglang_src}:$PYTHONPATH python3"
     return "python3"
 
 
