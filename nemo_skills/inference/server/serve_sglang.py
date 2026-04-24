@@ -18,13 +18,20 @@ import subprocess
 from shlex import join
 
 
-def _pick_python():
-    # SGLang's DeepSeek-V4-hopper image installs sglang into a venv at
-    # /sgl-workspace/ns-venv rather than into system python, so
-    # `python3 -m sglang.launch_server` fails there. Prefer the venv
-    # python if it exists, otherwise fall back to system python3.
+def _sglang_launch_prefix():
+    """Return a command prefix that gets the right Python + sglang module.
+
+    SGLang's DeepSeek-V4-hopper image does NOT pip-install sglang into the
+    system python; instead the source tree sits at /sgl-workspace/sglang
+    and there's a companion venv at /sgl-workspace/ns-venv. Neither path
+    alone is enough -- we need to use the venv's python3 AND set
+    PYTHONPATH to the sglang source dir.
+    """
     venv_py = "/sgl-workspace/ns-venv/bin/python3"
-    return venv_py if os.path.isfile(venv_py) else "python3"
+    sglang_src = "/sgl-workspace/sglang/python"
+    if os.path.isfile(venv_py) and os.path.isdir(sglang_src):
+        return f"PYTHONPATH={sglang_src}:$PYTHONPATH {venv_py}"
+    return "python3"
 
 
 def main():
@@ -60,7 +67,7 @@ def main():
     )
 
     cmd = (
-        f"{_pick_python()} -m sglang.launch_server "
+        f"{_sglang_launch_prefix()} -m sglang.launch_server "
         f'    --model="{args.model}" '
         f'    --served-model-name="{args.model}"'
         f"    --trust-remote-code "
