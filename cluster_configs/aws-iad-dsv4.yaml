@@ -1,0 +1,42 @@
+executor: slurm
+
+ssh_tunnel:
+  host: aws-iad-cs-002-login-03.nvidia.com
+  user: igitman
+  job_dir: /lustre/fsw/portfolios/nemotron/users/igitman/nemo-run/
+  identity: /home/igitman/.ssh/id_ed25519
+
+account: nemotron_reason_math
+partition: pool0
+cpu_partition: cpu
+job_name_prefix: ""
+
+containers:
+  trtllm: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-trtllm-latest.sqsh
+  vllm: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-vllm-deepseekv4-cu130.sqsh
+  sglang: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-sglang-deepseek-v4-hopper.sqsh
+  sandbox: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-sandbox-latest.sqsh
+  nemo-skills: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-latest.sqsh
+  verl: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-verl-latest.sqsh
+  megatron: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-megatron-latest.sqsh
+  nemo-rl: /lustre/fsw/portfolios/nemotron/users/igitman/images/nemo-skills-nemo-rl-latest.sqsh
+
+mounts:
+  - /lustre/fsw/portfolios/nemotron/users/igitman/hf_models:/hf_models
+  - /lustre/fsw/portfolios/nemotron/users/igitman/images/swe-bench:/swe-bench-images
+  - /lustre:/lustre
+
+env_vars:
+  - HF_HOME=/lustre/fsw/portfolios/nemotron/users/igitman/hf_cache
+  - TIKTOKEN_ENCODINGS_BASE=/lustre/fsw/portfolios/nemotron/users/igitman/encodings
+  - TIKTOKEN_RS_CACHE_DIR=/lustre/fsw/portfolios/nemotron/users/igitman/encodings
+
+timeouts:
+  pool0: 04:00:00
+  interactive: 04:00:00
+  cpu: 04:00:00
+  backfill: 09:00:00
+
+# num_workers: 16
+
+# dependency_type: afterok

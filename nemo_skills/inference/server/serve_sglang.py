@@ -13,8 +13,18 @@
 # limitations under the License.
 
 import argparse
+import os
 import subprocess
 from shlex import join
+
+
+def _pick_python():
+    # SGLang's DeepSeek-V4-hopper image installs sglang into a venv at
+    # /sgl-workspace/ns-venv rather than into system python, so
+    # `python3 -m sglang.launch_server` fails there. Prefer the venv
+    # python if it exists, otherwise fall back to system python3.
+    venv_py = "/sgl-workspace/ns-venv/bin/python3"
+    return venv_py if os.path.isfile(venv_py) else "python3"
 
 
 def main():
@@ -24,6 +34,8 @@ def main():
     parser.add_argument("--num_nodes", type=int, required=False, default=1)
     parser.add_argument("--node_rank", type=int, required=False)
     parser.add_argument("--dist_init_addr", type=str, required=False)
+    parser.add_argument("--tensor_parallel_size", "--tensor-parallel-size", "--tp-size", type=int, required=False)
+    parser.add_argument("--data_parallel_size", "--data-parallel-size", "--dp-size", type=int, required=False)
     parser.add_argument("--port", type=int, default=20000, help="Server port")
     args, unknown = parser.parse_known_args()
 
@@ -37,6 +49,7 @@ def main():
 
     print(f"Deploying model {args.model}")
     print("Starting OpenAI Server")
+    tensor_parallel_size = args.tensor_parallel_size or args.num_gpus * args.num_nodes
 
     multinode_paramaters = (
         f"    --nnodes={args.num_nodes} "
@@ -47,13 +60,14 @@ def main():
     )
 
     cmd = (
-        f"python3 -m sglang.launch_server "
+        f"{_pick_python()} -m sglang.launch_server "
         f'    --model="{args.model}" '
         f'    --served-model-name="{args.model}"'
         f"    --trust-remote-code "
         f'    --host="0.0.0.0" '
         f"    --port={args.port} "
-        f"    --tensor-parallel-size={args.num_gpus * args.num_nodes} "  # TODO: is this a good default for multinode setup?
+        f"    --tensor-parallel-size={tensor_parallel_size} "
+        f"    {f'--data-parallel-size={args.data_parallel_size}' if args.data_parallel_size else ''} "
         f"    {multinode_paramaters} "
         f"    {extra_arguments} "
     )
