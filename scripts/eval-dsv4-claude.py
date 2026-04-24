@@ -195,7 +195,11 @@ def run():
         eval(
             ctx=build_ctx(prompt_config, tokens_to_generate, mode),
             cluster=CLUSTER,
-            expname=f"eval-dsv4-{variant}",
+            # Distinct prefix so we don't collide with the parallel
+            # `eval-dsv4-{variant}` runs the user is iterating on; their
+            # nemo-skills launcher otherwise nukes our experiment dir on
+            # each of their resubmissions.
+            expname=f"eval-dsv4-claude-{variant}",
             model=model_path,
             server_type="sglang",
             server_gpus=server_gpus,
