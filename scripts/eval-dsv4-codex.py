@@ -2,8 +2,10 @@
 """Run DeepSeek V4 Flash/Pro evals on aws-iad.
 
 Defaults are aimed at reproducing the DeepSeek V4 math settings:
-temperature=1.0, top_p=1.0, Think High at 128K, Think Max at 384K,
-and DeepSeek's math prompts for Apex Shortlist and IMOAnswerBench.
+temperature=1.0, top_p=1.0, Think High with a 128K context window,
+Think Max with a 384K context window, and DeepSeek's math prompts for
+Apex Shortlist and IMOAnswerBench. By default the generation budget is
+derived as context window minus --prompt-margin.
 
 The aws-iad-dsv4 cluster config mounts
 /lustre/fsw/portfolios/nemotron/users/igitman/hf_models at /hf_models
@@ -47,7 +49,7 @@ PROMPT_CONFIG = {
     ("pro", "max"): "generic/deepseek-v4-math-max",
 }
 
-DEFAULT_TOKENS = {
+DEFAULT_CONTEXT_LENGTHS = {
     "high": 131072,
     "max": 393216,
 }
@@ -330,9 +332,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--server-container", default=None)
     parser.add_argument("--disable-reasoning-parser", action="store_true")
 
-    parser.add_argument("--tokens-high", type=int, default=DEFAULT_TOKENS["high"])
-    parser.add_argument("--tokens-max", type=int, default=DEFAULT_TOKENS["max"])
-    parser.add_argument("--prompt-margin", type=int, default=4096)
+    parser.add_argument("--context-high", type=int, default=DEFAULT_CONTEXT_LENGTHS["high"])
+    parser.add_argument("--context-max", type=int, default=DEFAULT_CONTEXT_LENGTHS["max"])
+    parser.add_argument(
+        "--tokens-high",
+        type=int,
+        default=None,
+        help="Max generated tokens for High. Defaults to --context-high minus --prompt-margin.",
+    )
+    parser.add_argument(
+        "--tokens-max",
+        type=int,
+        default=None,
+        help="Max generated tokens for Max. Defaults to --context-max minus --prompt-margin.",
+    )
+    parser.add_argument(
+        "--prompt-margin",
+        type=int,
+        default=4096,
+        help="Reserved prompt budget when deriving generated-token caps from context windows.",
+    )
     parser.add_argument("--max-concurrent-requests", type=int, default=None)
     parser.add_argument("--max-running-requests", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=None)
@@ -401,6 +420,8 @@ def parse_args() -> argparse.Namespace:
         args.repeats = 1
         args.tokens_high = 8192
         args.tokens_max = 8192
+        args.context_high = args.tokens_high + args.prompt_margin
+        args.context_max = args.tokens_max + args.prompt_margin
         args.max_samples = 2
         args.num_jobs = 1
         args.max_concurrent_requests = args.max_concurrent_requests or 2
@@ -412,16 +433,26 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     validate_gpu_plan(args)
-    tokens_by_effort = {"high": args.tokens_high, "max": args.tokens_max}
+    context_by_effort = {"high": args.context_high, "max": args.context_max}
+    tokens_by_effort = {
+        "high": args.tokens_high or max(1, args.context_high - args.prompt_margin),
+        "max": args.tokens_max or max(1, args.context_max - args.prompt_margin),
+    }
 
     for variant in args.variants:
         for effort in args.efforts:
             tokens_to_generate = tokens_by_effort[effort]
+            context_length = context_by_effort[effort]
+            if tokens_to_generate >= context_length:
+                raise ValueError(
+                    f"{effort} generation budget ({tokens_to_generate}) must be smaller than "
+                    f"the server context window ({context_length})"
+                )
             spec_base = {
                 "variant": variant,
                 "effort": effort,
                 "tokens_to_generate": tokens_to_generate,
-                "context_length": tokens_to_generate + args.prompt_margin,
+                "context_length": context_length,
                 "max_concurrent_requests": default_max_concurrent_requests(args, effort),
             }
             for benchmark in args.benchmark_names:
