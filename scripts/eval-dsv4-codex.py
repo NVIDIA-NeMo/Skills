@@ -7,9 +7,8 @@ Think Max with a 384K context window, and DeepSeek's math prompts for
 Apex Shortlist and IMOAnswerBench. By default the generation budget is
 derived as context window minus --prompt-margin.
 
-The aws-iad-dsv4 cluster config mounts
-/lustre/fsw/portfolios/nemotron/users/igitman/hf_models at /hf_models
-and keeps /workspace inside the SGLang image visible.
+The default H100 deployment uses vLLM's DeepSeek V4 DP+EP recipe. SGLang
+is still available through --backend sglang for follow-up benchmarking.
 """
 
 from __future__ import annotations
@@ -64,7 +63,7 @@ DEFAULT_VARIANT_RESOURCES = {
     },
     "vllm": {
         "flash": {"server_gpus": 4, "server_nodes": 1},
-        "pro": {"server_gpus": 8, "server_nodes": 2},
+        "pro": {"server_gpus": 8, "server_nodes": 1},
     },
 }
 
@@ -130,7 +129,7 @@ def default_server_resources(args: argparse.Namespace, variant: str) -> tuple[in
 def default_max_concurrent_requests(args: argparse.Namespace, effort: str) -> int:
     if args.max_concurrent_requests is not None:
         return args.max_concurrent_requests
-    return 8 if effort == "max" else 32
+    return 1 if effort == "max" else 2
 
 
 def build_sglang_server_args(args: argparse.Namespace, spec: RunSpec, total_gpus: int) -> str:
@@ -303,7 +302,11 @@ def validate_gpu_plan(args: argparse.Namespace) -> None:
     planned_gpus = 0
     for variant in args.variants:
         server_gpus, server_nodes = default_server_resources(args, variant)
-        planned_gpus += server_gpus * server_nodes * args.num_jobs * len(args.efforts) * len(args.benchmark_names)
+        model_gpus = server_gpus * server_nodes * args.num_jobs * len(args.efforts) * len(args.benchmark_names)
+        judge_gpus = 0
+        if "imo-answerbench" in args.benchmark_names and not args.use_default_imo_judge:
+            judge_gpus = args.judge_server_gpus * args.judge_server_nodes * args.num_jobs * len(args.efforts)
+        planned_gpus += model_gpus + judge_gpus
 
     if planned_gpus > args.max_total_gpus:
         raise ValueError(
@@ -325,7 +328,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=OUTPUT_ROOT)
     parser.add_argument("--exp-prefix", default="dsv4-codex")
 
-    parser.add_argument("--backend", choices=["sglang", "vllm"], default="sglang")
+    parser.add_argument("--backend", choices=["sglang", "vllm"], default="vllm")
     parser.add_argument("--server-gpus", type=int, default=None)
     parser.add_argument("--server-nodes", type=int, default=None)
     parser.add_argument("--server-args", default="", help="Appended to generated server args")
@@ -369,7 +372,7 @@ def parse_args() -> argparse.Namespace:
         default="deepep",
     )
     parser.add_argument("--sglang-deepep-mode", choices=["normal", "low_latency", "auto"], default=None)
-    parser.add_argument("--vllm-parallel", choices=["tp", "dp-ep"], default="tp")
+    parser.add_argument("--vllm-parallel", choices=["tp", "dp-ep"], default="dp-ep")
     parser.add_argument("--kv-cache-dtype", default="fp8")
     parser.add_argument("--max-num-batched-tokens", type=int, default=16384)
     parser.add_argument("--max-num-seqs", type=int, default=None)
