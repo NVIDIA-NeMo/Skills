@@ -90,7 +90,8 @@ def _create_llm_judge_tasks(
             judge_pipeline_args[judge_server_param] = judge_server_value
     if judge_pipeline_kwargs:
         judge_pipeline_args.update(parse_kwargs(judge_pipeline_kwargs))
-
+    if "segment" in sbatch_kwargs:
+        sbatch_kwargs["segment"] = 1
     judge_tasks = _generate(
         ctx=judge_ctx,
         expname=f"{expname}-{benchmark}-judge",

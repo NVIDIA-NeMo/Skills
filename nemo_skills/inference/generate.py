@@ -84,6 +84,7 @@ class InferenceConfig:
     stream: bool = False  # Use streaming for tool-calling
 
     extra_body: dict = field(default_factory=dict)  # Any other extra params passed with extra_body argument
+    extra_headers: dict = field(default_factory=dict)  # Extra HTTP headers to send with each request
 
 
 @nested_dataclass(kw_only=True)
@@ -317,6 +318,11 @@ class GenerationTask:
             self.cfg.inference.extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
         else:
             self.cfg.inference.extra_body = dict(self.cfg.inference.extra_body)
+
+        if isinstance(self.cfg.inference.extra_headers, DictConfig):
+            self.cfg.inference.extra_headers = OmegaConf.to_container(self.cfg.inference.extra_headers, resolve=True)
+        else:
+            self.cfg.inference.extra_headers = dict(self.cfg.inference.extra_headers)
 
         # chat template kwargs goes either into extra body of inference or as a prompt parameter
         if self.cfg.chat_template_kwargs:

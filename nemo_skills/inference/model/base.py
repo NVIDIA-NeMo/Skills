@@ -256,6 +256,7 @@ class BaseModel:
         tools: list[dict] | None = None,
         include_response: bool = False,
         extra_body: dict = None,
+        extra_headers: dict = None,
         response_format=None,
     ) -> dict:
         if endpoint_type is None:
@@ -289,13 +290,17 @@ class BaseModel:
         max_retries = 2
         retry_count = 0
 
+        # Headers are injected directly into the litellm call — not all _build_* request
+        # builders accept an extra_headers kwarg, so we keep it out of `kwargs`.
+        litellm_extra = {"extra_headers": extra_headers} if extra_headers else {}
+
         async with self.concurrent_semaphore:
             while retry_count <= max_retries:
                 try:
                     if endpoint_type == EndpointType.chat:
                         assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
-                        response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
+                        response = await litellm.acompletion(**request_params, **self.litellm_kwargs, **litellm_extra)
                         if stream:
                             result = self._stream_chat_chunks_async(response)
                         else:
@@ -305,7 +310,9 @@ class BaseModel:
                     elif endpoint_type == EndpointType.text:
                         assert isinstance(prompt, str), "Text completion requests must be a string."
                         request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
-                        response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
+                        response = await litellm.atext_completion(
+                            **request_params, **self.litellm_kwargs, **litellm_extra
+                        )
                         if stream:
                             result = self._stream_completion_chunks_async(response)
                         else:
@@ -315,7 +322,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.responses:
                         assert isinstance(prompt, list), "Responses completion requests must be a list."
                         request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
-                        response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
+                        response = await litellm.aresponses(**request_params, **self.litellm_kwargs, **litellm_extra)
                         if stream:
                             raise NotImplementedError("Streaming responses is not supported yet.")
                         else:

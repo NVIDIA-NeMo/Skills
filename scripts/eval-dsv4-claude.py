@@ -130,16 +130,16 @@ def pick_prompt_config(model_short: str, mode: str) -> str:
 
 
 def build_server_args(max_model_len: int, tp_size: int) -> str:
-    # SGLang flags. --tp-size, --mem-fraction-static, --context-length
-    # are sglang's equivalents. --enable-ep-moe engages expert parallelism
-    # for the MoE layers. --reasoning-parser deepseek-r1 handles <think>.
+    # SGLang DSv4-hopper flags. The cookbook uses TP across all GPUs +
+    # implicit expert parallelism (no --enable-ep-moe in this sglang
+    # version; was removed/renamed). --reasoning-parser deepseek-r1
+    # handles V4's <think>...</think>.
     return " ".join(
         [
             "--trust-remote-code",
             f"--tp-size {tp_size}",
             f"--context-length {max_model_len}",
             "--mem-fraction-static 0.9",
-            "--enable-ep-moe",
             "--reasoning-parser deepseek-r1",
         ]
     )

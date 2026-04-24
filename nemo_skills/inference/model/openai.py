@@ -52,11 +52,23 @@ class OpenAIModel(BaseModel):
                 api_key = os.getenv("NVIDIA_API_KEY")
                 if not api_key:
                     raise ValueError("NVIDIA_API_KEY is required for NVIDIA models and could not be found.")
+            elif "api.deepseek.com" in base_url:
+                api_key = os.getenv("DEEPSEEK_API_KEY")
+                if not api_key:
+                    raise ValueError("DEEPSEEK_API_KEY is required for DeepSeek models and could not be found.")
             else:
                 api_key = os.getenv("OPENAI_API_KEY")
                 if not api_key and "api.openai.com" in base_url:
                     raise ValueError("OPENAI_API_KEY is required for OpenAI models and could not be found.")
         return api_key
+
+    def _is_deepseek_model(self, model_name: str) -> bool:
+        return model_name in {
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        }
 
     def _is_reasoning_model(self, model_name: str) -> bool:
         if "gpt-5" in model_name:
@@ -114,7 +126,7 @@ class OpenAIModel(BaseModel):
             raise ValueError("`min_p` is not supported by OpenAI API, please set it to 0.0.")
         if stream and top_logprobs is not None:
             raise ValueError("`top_logprobs` is not supported with stream=True.")
-        if extra_body:
+        if extra_body and not self._is_deepseek_model(self.model):
             raise ValueError("`extra_body` is not supported by OpenAI API")
         if repetition_penalty != 1.0:
             raise ValueError(
@@ -130,6 +142,23 @@ class OpenAIModel(BaseModel):
             "tools": tools,
             "response_format": response_format,
         }
+
+        if self._is_deepseek_model(self.model):
+            if tokens_to_generate is not None:
+                params["max_tokens"] = tokens_to_generate
+            if temperature is not None:
+                params["temperature"] = temperature
+            if top_p is not None:
+                params["top_p"] = top_p
+            if top_logprobs is not None:
+                params["logprobs"] = True
+                params["top_logprobs"] = top_logprobs
+            if reasoning_effort is not None:
+                params["reasoning_effort"] = reasoning_effort
+                params["allowed_openai_params"] = ["reasoning_effort"]
+            if extra_body:
+                params["extra_body"] = extra_body
+            return params
 
         if self._is_reasoning_model(self.model):
             # Reasoning model specific validations and parameters
