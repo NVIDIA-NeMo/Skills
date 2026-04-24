@@ -6,8 +6,12 @@ user: |-
 
   {prompt_excel_section}
 
-  You have access to a stateful Python tool. Use it to read files (if available) and for any other computations or checks you need (e.g. numeric work, small simulations, verifying reasoning). Use /tmp for any intermediate files you create.
+  You have access to a stateful Python tool. Use it to read files (if available) and for any other computations or checks you need (e.g. numeric work, small simulations, verifying reasoning).
 
+  System limitations
+  - The data files are in read-only folders, use /tmp to store any modifications, copies, or intermediate files.
+  - The code executes in a sandbox with no GPUs; each tool call can run for up to 120 seconds before timing out.
+  - The stdout/stderr are truncated to 1000 characters each and returned as tool result.
 
   Put your final answer in \boxed{{your final answer}}. Format your answer based on the question type:
   - Multiple choice: Put only the option letter (e.g., \boxed{{A}})
