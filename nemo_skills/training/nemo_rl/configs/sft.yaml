@@ -82,8 +82,7 @@ policy:
     sequence_parallel: ${policy.sequence_parallel}
     freeze_moe_router: false
     moe_router_dtype: null
-    moe_router_load_balancing_type: "aux_loss"
-    moe_aux_loss_coeff: 0.0
+    moe_router_load_balancing_type: "none"
     moe_router_bias_update_rate: 1e-3
     moe_permute_fusion: false
     #gives ~20% training perf speedup with sequence packing
