@@ -132,6 +132,9 @@ class SweBenchGenerationConfig:
     # This does not affect evaluation, which still runs in the container_formatter containers.
     swe_zero_container: str | None = None
 
+    # If set, will skip inference and directly evaluate on model patches produced earlier in the same output folder.
+    skip_inference: bool = False
+
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
 
@@ -925,19 +928,56 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
 
-        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            pred_file = await self._run_swe_agent(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-            pred_file = await self._run_mini_swe_agent(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            pred_file = await self._run_openhands(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            pred_file = await self._get_gold_patch(data_point)
+        if self.cfg.skip_inference:
+            # Skip running the agent, get the patch from a previously generated output file
+            instance_id = data_point["instance_id"]
+            if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+                search_path = os.path.join(
+                    self.output_dir, "trajectories", "*", "*", instance_id, f"{instance_id}.jsonl"
+                )
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+                search_path = os.path.join(self.output_dir, "trajectories", f"{instance_id}.jsonl")
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+                search_path = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+                search_path = await self._get_gold_patch(data_point)
+            else:
+                raise ValueError(
+                    f"Unsupported agent framework: {self.cfg.agent_framework}. "
+                    f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
+                )
+
+            pred_files = glob.glob(search_path, recursive=True)
+            if len(pred_files) != 1:
+                LOG.error(
+                    f"Expected exactly one file matching {search_path} for {instance_id}, found {len(pred_files)}. "
+                    "Skipping instance by setting resolved=None."
+                )
+                return {
+                    "swe-bench-metrics": {
+                        "resolved": None,
+                        "patch_exists": None,
+                        "patch_successfully_applied": None,
+                    },
+                    "swe-bench-outputs": None,
+                    "generation": "",
+                }
+            pred_file = pred_files[0]
         else:
-            raise ValueError(
-                f"Unsupported agent framework: {self.cfg.agent_framework}. "
-                f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
-            )
+            # Run the agent to get the patch
+            if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+                pred_file = await self._run_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+                pred_file = await self._run_mini_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+                pred_file = await self._run_openhands(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+                pred_file = await self._get_gold_patch(data_point)
+            else:
+                raise ValueError(
+                    f"Unsupported agent framework: {self.cfg.agent_framework}. "
+                    f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
+                )
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
         with open(pred_file, "r") as f:
