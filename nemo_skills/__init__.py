@@ -16,9 +16,9 @@ from nemo_skills.version import __version__
 
 # only used in ns setup command to initialize with defaults
 _containers = {
-    "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc1",
+    "trtllm": "nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8",
     "vllm": "dockerfile:dockerfiles/Dockerfile.vllm",
-    "sglang": "lmsysorg/sglang:v0.5.8",
+    "sglang": "lmsysorg/sglang:v0.5.10.post1",
     "megatron": "dockerfile:dockerfiles/Dockerfile.megatron",
     "sandbox": "dockerfile:dockerfiles/Dockerfile.sandbox",
     "nemo-skills": "dockerfile:dockerfiles/Dockerfile.nemo-skills",
