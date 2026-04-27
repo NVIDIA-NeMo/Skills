@@ -17,7 +17,7 @@
 # =============================================================================
 # To regenerate after changing code_execution.txt or stem.txt:
 #     uv pip compile requirements/code_execution.txt requirements/stem.txt \
-#         --extra-index-url https://download.pytorch.org/whl/cpu
+#         --extra-index-url https://download.pytorch.org/whl/cpu \
 #         --universal -p 3.10 -o requirements/sandbox.lock
 # =============================================================================
 
