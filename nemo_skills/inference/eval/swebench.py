@@ -251,8 +251,12 @@ class SweBenchGenerationTask(GenerationTask):
             "export UV_TOOL_BIN_DIR=/root/uv/tool-bin"
         )
 
-        # Install SWE-agent/OpenHands.
-        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+        # Install SWE-agent/OpenHands/mini-swe-agent if needed.
+
+        if self.cfg.skip_inference:
+            pass
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             if self.cfg.multilingual:
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/ludwig-n/SWE-agent.git"
