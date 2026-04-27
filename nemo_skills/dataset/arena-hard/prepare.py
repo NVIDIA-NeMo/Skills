@@ -50,4 +50,9 @@ if __name__ == "__main__":
             data = json.loads(line)
             data["question"] = data.pop("prompt")
             data["baseline_answer"] = baseline_answers[data["uid"]]
+            # The upstream lmarena/arena-hard-auto source stores a dataset-version
+            # string ("arena-hard-v0.1") in the category field. v1 has no real
+            # sub-categories, so drop it to let ArenaJudgeTask.fill_prompt fall
+            # through to the default prompt via its `if not category` branch.
+            data.pop("category", None)
             fout.write(json.dumps(data) + "\n")

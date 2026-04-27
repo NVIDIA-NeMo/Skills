@@ -317,6 +317,7 @@ def get_executor(
         "--no-container-mount-home",
         "--mpi=pmix",
         "--wait=10",
+        "--kill-on-bad-exit=1",  # Fail entire job if any task exits with non-zero (e.g., vLLM crash)
         # we need to be explicit about this in srun as commands might need to run in parallel
         f"--ntasks-per-node={tasks_per_node}",
         f"--nodes={num_nodes}",

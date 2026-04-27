@@ -303,6 +303,32 @@ def test_stream_max_tool_calls_stops_loop():
     assert execute_count == 1  # second tool call was never executed
 
 
+@pytest.mark.asyncio
+async def test_execute_tool_calls_preserves_order():
+    """Tool calls execute sequentially so stateful tools observe model order."""
+    wrapper = _make_wrapper()
+    execution_trace = []
+
+    async def mock_execute_tool_call(tool_call, request_id, endpoint_type):
+        call_id = tool_call["id"]
+        execution_trace.append(f"start-{call_id}")
+        await asyncio.sleep(0)
+        execution_trace.append(f"end-{call_id}")
+        return {"call_id": call_id}
+
+    wrapper._execute_tool_call = mock_execute_tool_call
+    tool_calls = [{"id": "first"}, {"id": "second"}]
+
+    with patch(
+        "nemo_skills.inference.model.tool_call.format_tool_response_by_endpoint_type",
+        side_effect=lambda tool_call, tool_result, endpoint_type: tool_result,
+    ):
+        results = await wrapper._execute_tool_calls(tool_calls, request_id="req-1", endpoint_type=EndpointType.chat)
+
+    assert execution_trace == ["start-first", "end-first", "start-second", "end-second"]
+    assert results == [{"call_id": "first"}, {"call_id": "second"}]
+
+
 def test_stream_no_tokenizer_raises():
     """Streaming without a tokenizer raises RuntimeError."""
     wrapper = _make_wrapper()
