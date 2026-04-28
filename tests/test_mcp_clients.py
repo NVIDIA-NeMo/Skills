@@ -1002,3 +1002,95 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     # Must not raise; session must be removed from the mapping regardless.
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
+
+
+# ── Wikipedia tool tests ──────────────────────────────────────────────────
+
+
+class TestWikipediaTool:
+    def test_wikipedia_tool_config(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
+        assert "nemo_skills.mcp.servers.wikipedia_tool" in tool._config["client_params"]["args"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.live
+    async def test_wikipedia_search_live(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import wikipedia_search
+
+        result = await wikipedia_search("Schrödinger equation", num_results=2)
+        assert "failed" not in result.lower()
+        assert "**" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.live
+    async def test_wikipedia_page_live(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import wikipedia_page
+
+        result = await wikipedia_page("Hydrogen atom")
+        assert "failed" not in result.lower()
+        assert "not found" not in result.lower()
+        assert "Hydrogen" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.live
+    async def test_wikipedia_disambiguation(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import wikipedia_page
+
+        result = await wikipedia_page("Mercury")
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "mercury" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_stdio_list_tools(self):
+        """Launch WikipediaSearchTool over a real stdio subprocess and verify tool listing."""
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        tool.configure()
+        try:
+            tools = await tool.list_tools()
+            tool_names = {t["name"] for t in tools}
+            assert "wikipedia-search" in tool_names
+            assert "wikipedia-page" in tool_names
+            assert "wikipedia-summary" in tool_names
+            assert "wikipedia-sections" in tool_names
+            assert "wikipedia-section" in tool_names
+            assert "wikipedia-query-summary" in tool_names
+            assert "wikipedia-key-facts" in tool_names
+        finally:
+            await tool.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_stdio_hide_args(self):
+        """Verify hide_args removes optional budget args from listed schemas."""
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        tool.configure()
+        try:
+            tools = await tool.list_tools()
+            search_tool = next(t for t in tools if t["name"] == "wikipedia-search")
+            schema_props = search_tool["input_schema"]["properties"]
+            assert "query" in schema_props
+            assert "num_results" not in schema_props
+
+            page_tool = next(t for t in tools if t["name"] == "wikipedia-page")
+            assert "title" in page_tool["input_schema"]["properties"]
+
+            summary_tool = next(t for t in tools if t["name"] == "wikipedia-summary")
+            assert "title" in summary_tool["input_schema"]["properties"]
+            assert "max_chars" not in summary_tool["input_schema"]["properties"]
+
+            sections_tool = next(t for t in tools if t["name"] == "wikipedia-sections")
+            assert "title" in sections_tool["input_schema"]["properties"]
+            assert "max_sections" not in sections_tool["input_schema"]["properties"]
+
+            facts_tool = next(t for t in tools if t["name"] == "wikipedia-key-facts")
+            assert "title" in facts_tool["input_schema"]["properties"]
+            assert "count" not in facts_tool["input_schema"]["properties"]
+        finally:
+            await tool.shutdown()
