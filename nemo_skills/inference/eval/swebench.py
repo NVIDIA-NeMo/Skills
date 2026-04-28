@@ -132,8 +132,12 @@ class SweBenchGenerationConfig:
     # This does not affect evaluation, which still runs in the container_formatter containers.
     swe_zero_container: str | None = None
 
-    # If set, will skip inference and directly evaluate on model patches produced earlier in the same output folder.
+    # If set, will skip inference and directly evaluate model patches produced by an earlier run.
     skip_inference: bool = False
+
+    # Path to the output_dir of an earlier run containing patches to evaluate if skip_inference=True.
+    # If None, will use the output_dir of the current run.
+    inference_output_dir: str | None = None
 
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
@@ -227,6 +231,15 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.inference.random_seed is not None:
             self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Set up inference_output_dir
+
+        if self.cfg.inference_output_dir is None:
+            self.cfg.inference_output_dir = self.output_dir
+        else:
+            self.cfg.inference_output_dir = Path(self.cfg.inference_output_dir)
+            if self.cfg.inference.random_seed is not None:
+                self.cfg.inference_output_dir = self.cfg.inference_output_dir / f"rs{self.cfg.inference.random_seed}"
 
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
@@ -937,12 +950,14 @@ class SweBenchGenerationTask(GenerationTask):
             instance_id = data_point["instance_id"]
             if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
                 search_path = os.path.join(
-                    self.output_dir, "trajectories", "*", "*", instance_id, f"{instance_id}.jsonl"
+                    self.cfg.inference_output_dir, "trajectories", "*", "*", instance_id, f"{instance_id}.jsonl"
                 )
             elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-                search_path = os.path.join(self.output_dir, "trajectories", f"{instance_id}.jsonl")
+                search_path = os.path.join(self.cfg.inference_output_dir, "trajectories", f"{instance_id}.jsonl")
             elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-                search_path = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
+                search_path = os.path.join(
+                    self.cfg.inference_output_dir, "trajectories", instance_id, "output_for_eval.jsonl"
+                )
             elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
                 search_path = await self._get_gold_patch(data_point)
             else:
