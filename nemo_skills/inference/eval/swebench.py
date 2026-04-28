@@ -19,6 +19,7 @@ import logging
 import os
 import random
 import shlex
+import shutil
 import sys
 from dataclasses import field
 from enum import Enum
@@ -963,10 +964,10 @@ class SweBenchGenerationTask(GenerationTask):
                     f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
                 )
 
-            pred_files = glob.glob(search_path, recursive=True)
-            if len(pred_files) != 1:
+            out_files = glob.glob(search_path, recursive=True)
+            if len(out_files) != 1:
                 LOG.error(
-                    f"Expected exactly one file matching {search_path} for {instance_id}, found {len(pred_files)}. "
+                    f"Expected exactly one file matching {search_path} for {instance_id}, found {len(out_files)}. "
                     "Skipping instance by setting resolved=None."
                 )
                 return {
@@ -978,7 +979,10 @@ class SweBenchGenerationTask(GenerationTask):
                     "swe-bench-outputs": None,
                     "generation": "",
                 }
-            pred_file = pred_files[0]
+
+            (self.output_dir / "patches").mkdir(parents=True, exist_ok=True)
+            pred_file = str(self.output_dir / "patches" / f"{data_point['instance_id']}.jsonl")
+            shutil.copy2(out_files[0], pred_file)
         else:
             # Run the agent to get the patch
             if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
