@@ -5,7 +5,6 @@
 # import time by the current implementation, but it excludes model-client
 # dependencies such as litellm and openai.
 
-arxiv
 httpx
 math-verify[antlr4_9_3]
 mcp

@@ -69,6 +69,7 @@ dev = { file = ["requirements/common-tests.txt", "requirements/common-dev.txt"] 
 [tool.pytest.ini_options]
 markers = [
     "gpu: tests that require a GPU to run",
+    "live: tests that call external services",
 ]
 addopts = "--ignore=tests/slurm-tests -W ignore::DeprecationWarning -W ignore::PendingDeprecationWarning"
 
