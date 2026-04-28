@@ -948,16 +948,13 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.skip_inference:
             # Skip running the agent, get the patch from a previously generated output file
             instance_id = data_point["instance_id"]
+            trajectories_path = os.path.join(self.cfg.inference_output_dir, "eval-results", "*", "trajectories")
             if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-                search_path = os.path.join(
-                    self.cfg.inference_output_dir, "trajectories", "*", "*", instance_id, f"{instance_id}.jsonl"
-                )
+                search_path = os.path.join(trajectories_path, "*", "*", instance_id, f"{instance_id}.jsonl")
             elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-                search_path = os.path.join(self.cfg.inference_output_dir, "trajectories", f"{instance_id}.jsonl")
+                search_path = os.path.join(trajectories_path, f"{instance_id}.jsonl")
             elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-                search_path = os.path.join(
-                    self.cfg.inference_output_dir, "trajectories", instance_id, "output_for_eval.jsonl"
-                )
+                search_path = os.path.join(trajectories_path, instance_id, "output_for_eval.jsonl")
             elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
                 search_path = await self._get_gold_patch(data_point)
             else:
