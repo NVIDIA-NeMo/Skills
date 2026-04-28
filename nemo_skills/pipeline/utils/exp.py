@@ -615,7 +615,7 @@ def add_task(
             if with_sandbox and with_ray:
                 main_env_updates.update(
                     {
-                        "SANDBOX_PORT": sandbox_port,
+                        "SANDBOX_PORT": str(sandbox_port),
                         "SANDBOX_CONTAINER": sandbox_container or cluster_config["containers"]["sandbox"],
                         "SANDBOX_COMMAND": get_sandbox_command(cluster_config),
                     }

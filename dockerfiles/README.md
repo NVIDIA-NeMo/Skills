@@ -32,4 +32,17 @@ We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8` image.
 
 ## Building sglang image
 
+<<<<<<< HEAD
 We directly use official `lmsysorg/sglang:v0.5.10.post1` image.
+=======
+We directly use official `lmsysorg/sglang:v0.5.8` image.
+
+## NeMo-RL image default
+
+The sample local cluster config currently defaults `containers.nemo-rl` to the pinned private image
+`nvcr.io/nvidian/nemo-rl:733c7d6-48669320`. This image is accessible to NVIDIA employees who already have access
+to the corresponding internal registry.
+
+If you do not have access to that registry, build the NeMo-RL image yourself from the matching commit in the
+upstream NeMo-RL repository and point your cluster config at that locally built image instead.
+>>>>>>> 1a725b3d (Address review feedback on GRPO sandbox integration)

@@ -333,7 +333,9 @@ def grpo_nemo_rl(
         help="If specified, will reuse the code from this experiment. "
         "Can provide an experiment name or an experiment object if running from code.",
     ),
-    config: str = typer.Option(None, help="Override training config YAML; defaults to the upstream container config"),
+    config: str = typer.Option(
+        None, help="Override training config YAML; defaults to the upstream container config for nano-v3"
+    ),
     container: str = typer.Option(None, help="Override container image for NeMo-RL training/conversion jobs"),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
     sandbox_container: str = typer.Option(None, help="Override container image for the sandbox sidecar"),
