@@ -39,10 +39,10 @@ class FactsGroundingMetrics(BaseMetrics):
       Equals the reference's ``average_grounding_score`` and matches the paper's
       Table 5 "unadjusted factuality" when averaged across judges.
     - ``final_factuality``: same, but per-sample grounding is zeroed when the
-      sample fails the consensus eligibility check (``all`` judges eligible).
+      sample fails the consensus eligibility check (all judges mark it ineligible).
       Equals the reference's ``average_grounding_score_where_quality_check_passed``
       and matches paper Table 6.
-    - ``eligibility_rate``: fraction of samples where ``all`` judges passed
+    - ``eligibility_rate``: fraction of samples where at least one judge passed
       the ineligible-responses filter (reference's ``average_quality_check_passed``).
     - ``unadjusted_{judge}`` / ``eligibility_{judge}``: per-judge slices
       (reference's ``average_grounding_scores_per_model`` + a matching quality row).
@@ -95,7 +95,9 @@ class FactsGroundingMetrics(BaseMetrics):
             grounding_mean = float(legacy_grounding)
 
         if per_q:
-            quality_consensus = all(bool(v) for v in per_q.values())
+            # FACTS paper consensus: disqualify only on unanimous ineligibility.
+            # True means this judge considered the response eligible.
+            quality_consensus = any(bool(v) for v in per_q.values())
         else:
             quality_consensus = bool(prediction.get("judgement_quality", True))
 

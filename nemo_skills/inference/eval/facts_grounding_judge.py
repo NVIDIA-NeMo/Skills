@@ -396,7 +396,10 @@ class FactsGroundingJudgeTask(GenerationTask):
 
         # Reference-style aggregates.
         grounding_mean = sum(grounding_per_judge.values()) / max(len(grounding_per_judge), 1)
-        quality_consensus = bool(quality_per_judge and all(quality_per_judge.values()))
+        # FACTS paper consensus: a response is ineligible only if all judges
+        # mark it ineligible. Since True means eligible here, any passing judge
+        # is enough for the response to survive the quality filter.
+        quality_consensus = bool(quality_per_judge and any(quality_per_judge.values()))
 
         # Backward-compat top-level fields (used by legacy consumers).
         legacy_grounding = grounding_mean >= 1.0  # unanimous
