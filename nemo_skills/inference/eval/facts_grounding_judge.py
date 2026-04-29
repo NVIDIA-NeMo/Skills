@@ -335,12 +335,20 @@ class FactsGroundingJudgeTask(GenerationTask):
             .replace("{{context_document}}", context_document)
             .replace("{{response}}", response)
         )
-        raw = await self._judge_call(judge, prompt)
+        try:
+            raw = await self._judge_call(judge, prompt)
+        except Exception as e:
+            LOG.warning("FACTS grounding judge call failed for %s: %s", judge["tag"], e)
+            return False, _empty_sentence_stats(), f"JUDGE_ERROR: {type(e).__name__}: {e}"
         passed, stats = judge["grounding_parser"](raw)
         return passed, stats, raw
 
     async def _reference_one(self, judge: dict, full_prompt: str) -> str:
-        return await self._judge_call(judge, full_prompt)
+        try:
+            return await self._judge_call(judge, full_prompt)
+        except Exception as e:
+            LOG.warning("FACTS reference judge call failed for %s: %s", judge["tag"], e)
+            return ""
 
     async def _quality_one(
         self, judge: dict, user_request: str, test_response: str, reference_response: str
@@ -351,7 +359,11 @@ class FactsGroundingJudgeTask(GenerationTask):
             .replace("{{response_a}}", test_response)
             .replace("{{response_b}}", reference_response)
         )
-        raw = await self._judge_call(judge, prompt)
+        try:
+            raw = await self._judge_call(judge, prompt)
+        except Exception as e:
+            LOG.warning("FACTS quality judge call failed for %s: %s", judge["tag"], e)
+            return False, f"JUDGE_ERROR: {type(e).__name__}: {e}"
         return parse_quality_json(raw), raw
 
     def _datapoint_worker_count(self, num_samples: int) -> int:
