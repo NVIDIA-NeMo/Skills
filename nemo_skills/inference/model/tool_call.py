@@ -26,6 +26,7 @@ from nemo_skills.mcp.adapters import (
     load_schema_overrides,
     remap_tool_call,
 )
+from nemo_skills.mcp.servers.final_answer import FINAL_ANSWER_TOOL_NAME
 from nemo_skills.mcp.tool_manager import FatalToolError, ToolManager
 from nemo_skills.utils import get_logger_name
 
@@ -107,6 +108,18 @@ class ToolCallingWrapper:
             format_tool_response_by_endpoint_type(tool_call, tool_result, endpoint_type)
             for tool_call, tool_result in zip(tool_calls, tool_results)
         ]
+
+    def _get_original_tool_name(self, tool_call, endpoint_type: EndpointType) -> str:
+        tool_name, _ = get_tool_details_by_endpoint_type(tool_call, endpoint_type)
+        return self.schema_mappings.get("tool_names", {}).get(tool_name, tool_name)
+
+    def _get_final_answer_output(
+        self, tool_calls: List, tool_response_messages: list, endpoint_type: EndpointType
+    ) -> str | None:
+        for tool_call, response_message in zip(tool_calls, tool_response_messages):
+            if self._get_original_tool_name(tool_call, endpoint_type) == FINAL_ANSWER_TOOL_NAME:
+                return str(response_message.get("content") or response_message.get("output") or "")
+        return None
 
     def _count_tool_response_tokens(self, tool_response_messages: list) -> int:
         """Count tokens in tool response content using the model tokenizer.
@@ -283,14 +296,22 @@ class ToolCallingWrapper:
                     LOG.info("Sending tool calls: %s", tool_calls_output_messages)
                     conversation.extend(tool_calls_output_messages)
 
+                    result_steps["num_tool_calls"].append(len(tool_calls))
+                    tool_calls_executed += len(tool_calls)
+
+                    final_answer_output = self._get_final_answer_output(
+                        tool_calls, tool_calls_output_messages, endpoint_type
+                    )
+                    if final_answer_output is not None:
+                        result_steps["generation"].append(final_answer_output)
+                        result_steps["finish_reason"].append(FINAL_ANSWER_TOOL_NAME)
+                        break
+
                     if isinstance(tokens_to_generate, int):
                         tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
                         if tokens_to_generate <= 0:
                             result_steps["finish_reason"].append("length")
                             break
-
-                    result_steps["num_tool_calls"].append(len(tool_calls))
-                    tool_calls_executed += len(tool_calls)
 
                     continue
 
@@ -422,9 +443,18 @@ class ToolCallingWrapper:
                     yield {"type": "tool_results", "results": tool_calls_output_messages}
 
                     conversation.extend(tool_calls_output_messages)
+                    total_tool_calls += len(tool_calls)
+
+                    final_answer_output = self._get_final_answer_output(
+                        tool_calls, tool_calls_output_messages, endpoint_type
+                    )
+                    if final_answer_output is not None:
+                        all_generations.append(final_answer_output)
+                        last_finish_reason = FINAL_ANSWER_TOOL_NAME
+                        break
+
                     if isinstance(tokens_to_generate, int):
                         tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
-                    total_tool_calls += len(tool_calls)
                     continue
 
                 break

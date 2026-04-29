@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import types
 
 import pytest
@@ -656,6 +657,38 @@ async def _run_tool_sequence(tool_impl, tool_calls):
         )
         results.append(result)
     return results
+
+
+def test_final_answer_tool_returns_answer():
+    """FinalAnswerTool exposes final_answer and returns the answer argument."""
+    from nemo_skills.mcp.servers.final_answer import FinalAnswerTool
+
+    async def run_test():
+        tool = FinalAnswerTool()
+        tool.configure()
+
+        tools = await tool.list_tools()
+        assert tools == [
+            {
+                "name": "final_answer",
+                "description": "Use this tool to provide the final answer to the user's question.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "answer": {
+                            "type": "string",
+                            "description": "The final answer to the user's question.",
+                        },
+                    },
+                    "required": ["answer"],
+                },
+            }
+        ]
+
+        result = await tool.execute("final_answer", {"answer": "42"})
+        assert result == "42"
+
+    asyncio.run(run_test())
 
 
 @pytest.mark.asyncio
