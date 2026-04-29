@@ -20,6 +20,7 @@ from dataclasses import asdict, field, is_dataclass
 from pathlib import Path
 
 import hydra
+from tqdm import tqdm
 
 from nemo_skills.inference.generate import (
     GenerationTask,
@@ -352,6 +353,59 @@ class FactsGroundingJudgeTask(GenerationTask):
         )
         raw = await self._judge_call(judge, prompt)
         return parse_quality_json(raw), raw
+
+    def _datapoint_worker_count(self, num_samples: int) -> int:
+        """Bound FACTS datapoint fan-out so rows can complete under low call concurrency."""
+        if num_samples <= 0:
+            return 0
+        calls_before_first_quality = len(self.judges) if self.cfg.skip_quality else 2 * len(self.judges)
+        calls_before_first_quality = max(calls_before_first_quality, 1)
+        return max(1, min(num_samples, self.cfg.max_concurrent_requests // calls_before_first_quality))
+
+    async def async_loop(self, data):
+        """Generate judge results with bounded datapoint-level concurrency.
+
+        A single FACTS datapoint fans out into multiple judge calls. The base
+        generation loop schedules every datapoint at once, which can cause all
+        semaphore slots to be consumed by partial work from many rows. Keeping a
+        small datapoint worker pool lets each row finish and flush progress.
+        """
+        if self.output_lock is None:
+            self.output_lock = asyncio.Lock()
+
+        pbar = tqdm(total=len(data), desc="Remaining generations")
+        worker_count = self._datapoint_worker_count(len(data))
+        LOG.info(
+            "FACTS judge datapoint workers: %s for %s samples with %s LLM-call slots",
+            worker_count,
+            len(data),
+            self.cfg.max_concurrent_requests,
+        )
+
+        queue = asyncio.Queue()
+        for data_point in data:
+            queue.put_nowait(data_point)
+        for _ in range(worker_count):
+            queue.put_nowait(None)
+
+        async def worker(fout):
+            while True:
+                data_point = await queue.get()
+                try:
+                    if data_point is None:
+                        return
+                    await self._generate_and_save_datapoint(data_point, data, fout, pbar)
+                finally:
+                    queue.task_done()
+
+        try:
+            with open(self.cfg.output_file + "-async", "at", encoding="utf-8", buffering=1) as fout:
+                workers = [asyncio.create_task(worker(fout)) for _ in range(worker_count)]
+                await asyncio.gather(*workers)
+        finally:
+            pbar.close()
+
+        self.restore_async_order()
 
     async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         generation = data_point.get("generation", "")
