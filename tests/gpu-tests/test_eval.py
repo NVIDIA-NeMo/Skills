@@ -18,10 +18,9 @@ from importlib import import_module
 from pathlib import Path
 
 import pytest
-from utils import require_env_var
-
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 from tests.conftest import docker_rm
+from utils import require_env_var
 
 # Datasets excluded from test_aaa_prepare_and_eval_all_datasets
 # These don't support max_samples, require explicit parameters, or are very heavy to prepare
@@ -55,6 +54,7 @@ EXCLUDED_DATASETS = {
     "librispeech-pc",
     "musan",
     "numb3rs",
+    "contextasr-bench",  # audio benchmark, requires ~22 GB download
     # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
     "compute-eval",
     # CritPt requires exactly 70 submissions and external API key (ARTIFICIAL_ANALYSIS_API_KEY)

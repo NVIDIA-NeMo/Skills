@@ -41,8 +41,13 @@ class ContextASRMetrics(BaseMetrics):
         self.ne_fnr_total_entities = 0
 
     def _get_score_dict(self, prediction):
-        """Extract the binary correctness score from a prediction (WER < 0.5)."""
-        return {"is_correct": prediction["is_correct"]}
+        """Extract the binary correctness score from a prediction (WER < 0.5).
+
+        Uses the standard ``correct`` key so the base class populates
+        ``pass@k["correct"]``, which ``get_metrics`` then surfaces as
+        ``success_rate``.
+        """
+        return {"correct": prediction["is_correct"]}
 
     def get_incorrect_sample(self, prediction):
         """Return a copy of the prediction marked as incorrect (for no-answer handling)."""
@@ -58,18 +63,32 @@ class ContextASRMetrics(BaseMetrics):
             agg_dict["gen_seconds"] = int(self.max_end_time - self.min_start_time)
 
     def update(self, predictions):
-        """Accumulate per-sample error counts for corpus-level metric computation."""
+        """Accumulate per-sample error counts for corpus-level metric computation.
+
+        ContextASR-Bench corpus-level WER/NE-WER/NE-FNR are defined per single
+        hypothesis: there is no canonical way to combine WER across k
+        hypotheses without reference comparison (which would defeat pass@k).
+        Multi-generation aggregation is therefore not supported here -- run
+        with a single greedy generation.
+        """
         super().update(predictions)
 
-        predicted_answers = [pred["generation"].strip() or None for pred in predictions]
+        if len(predictions) != 1:
+            raise ValueError(
+                f"ContextASRMetrics expects exactly 1 generation per sample, "
+                f"got {len(predictions)}. Run with a single greedy generation "
+                f"(num_random_seeds=1) for ContextASR-Bench."
+            )
 
-        for pred in predictions:
-            self.wer_total_errors += pred["wer_errors"]
-            self.wer_total_ref_words += pred["wer_ref_words"]
-            self.ne_wer_total_errors += pred["ne_wer_errors"]
-            self.ne_wer_total_ref_words += pred["ne_wer_ref_words"]
-            self.ne_fnr_total_hits += pred["ne_fnr_hits"]
-            self.ne_fnr_total_entities += pred["ne_fnr_total"]
+        pred = predictions[0]
+        predicted_answers = [pred["generation"].strip() or None]
+
+        self.wer_total_errors += pred["wer_errors"]
+        self.wer_total_ref_words += pred["wer_ref_words"]
+        self.ne_wer_total_errors += pred["ne_wer_errors"]
+        self.ne_wer_total_ref_words += pred["ne_wer_ref_words"]
+        self.ne_fnr_total_hits += pred["ne_fnr_hits"]
+        self.ne_fnr_total_entities += pred["ne_fnr_total"]
 
         self._compute_pass_at_k(predictions=predictions, predicted_answers=predicted_answers)
         self._compute_majority_at_k(predictions=predictions, predicted_answers=predicted_answers)
