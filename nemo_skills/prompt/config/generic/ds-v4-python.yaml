@@ -1,0 +1,11 @@
+user: |-
+  You are an expert competitive programmer. You will be given a problem statement, test case constraints and example test inputs and outputs.
+
+  Please reason step by step about the solution, then provide a complete implementation in Python. You should correctly implement all necessary routines.
+
+  Provide the final solution code in the following format:
+  ```python
+  # Your solution code here
+  ```
+
+  {question}

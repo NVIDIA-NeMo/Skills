@@ -1,0 +1,12 @@
+user: |-
+  You are an expert competitive programmer. You will be given a problem statement, test case constraints and example test inputs and outputs.
+
+  Please reason step by step about the solution, then provide a complete implementation in C++17. You should correctly implement all necessary routines.
+
+  Put your final solution within a single code block:
+
+  ```cpp
+  // Your code here
+  ```
+
+  {question}
