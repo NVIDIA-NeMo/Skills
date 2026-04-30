@@ -233,15 +233,6 @@ class SweBenchGenerationTask(GenerationTask):
             self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Set up inference_output_dir
-
-        if self.cfg.inference_output_dir is None:
-            self.cfg.inference_output_dir = self.output_dir
-        else:
-            self.cfg.inference_output_dir = Path(self.cfg.inference_output_dir)
-            if self.cfg.inference.random_seed is not None:
-                self.cfg.inference_output_dir = self.cfg.inference_output_dir / f"rs{self.cfg.inference.random_seed}"
-
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
         # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
@@ -949,7 +940,20 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.skip_inference:
             # Skip running the agent, get the patch from a previously generated output file
             instance_id = data_point["instance_id"]
-            trajectories_path = os.path.join(self.cfg.inference_output_dir, "eval-results", "*", "trajectories")
+
+            if self.cfg.inference_output_dir is None:
+                trajectories_path = os.path.join(self.output_dir, "trajectories")
+            elif self.cfg.inference.random_seed is None:
+                trajectories_path = os.path.join(self.cfg.inference_output_dir, "eval-results", "*", "trajectories")
+            else:
+                trajectories_path = os.path.join(
+                    self.cfg.inference_output_dir,
+                    "eval-results",
+                    "*",
+                    f"rs{self.cfg.inference.random_seed}",
+                    "trajectories",
+                )
+
             if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
                 search_path = os.path.join(trajectories_path, "*", "*", instance_id, f"{instance_id}.jsonl")
             elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
