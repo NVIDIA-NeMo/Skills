@@ -18,9 +18,10 @@ from importlib import import_module
 from pathlib import Path
 
 import pytest
+from utils import require_env_var
+
 from nemo_skills.pipeline.cli import eval, prepare_data, run_cmd, wrap_arguments
 from tests.conftest import docker_rm
-from utils import require_env_var
 
 # Datasets excluded from test_aaa_prepare_and_eval_all_datasets
 # These don't support max_samples, require explicit parameters, or are very heavy to prepare
