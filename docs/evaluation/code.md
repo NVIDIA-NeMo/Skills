@@ -66,7 +66,7 @@ When this path is accessed during evaluation, `{instance_id}` will be replaced b
 
 There are a few parameters specific to SWE-bench. They have to be specified with the `++` prefix. All of them are optional, except for ++agent_framework.
 
-- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent` or `openhands`. No default, must be specified explicitly.
+- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands` or `gold_patch`. The latter option runs evaluation of gold (ground truth) patches from the dataset, skipping the agent rollout. No default, must be specified explicitly.
 
 - **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands.
 
@@ -79,6 +79,13 @@ There are a few parameters specific to SWE-bench. They have to be specified with
     - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/mini-swe-agent/swebench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench.yaml) for mini-SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands. Note that if you store your configs in your local Nemo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
 
 - **++agent_max_turns:** The maximum number of turns the agent is allowed to take before the trajectory is forcibly terminated. Defaults to 100 for all agent frameworks.
+
+- **++swe_zero_container:** Mounted path to the container to use for SWE-Zero in .sif format. If this option is set, SWE-Zero mode will be enabled. During inference, this will override the `container_formatter` field from the dataset file and run all instances in this container instead, cloning the repo from GitHub before running the agent. The recommended dockerfile for this container is provided [here](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.swe-zero).
+    - In SWE-Zero, the agent is prompted not to run tests or execute any code, instead relying only on basic Bash commands and file editing. Therefore, it does not have access to instance-specific Docker environments. For more details, see the [SWE-Zero-to-Hero paper](https://arxiv.org/abs/2604.01496).
+    - For OpenHands only, this will also switch the default `agent_framework_commit` to our SWE-Zero branch where the agent is prompted not to use tests or other code execution. For other frameworks this is not supported automatically, though you may modify the prompt yourself in the agent config.
+    - This option does not affect evaluation of the generated patches, which still runs in the containers specified in `container_formatter`.
+
+- **++evaluate:** If set to False, disables evaluation (i.e. running unit tests to obtain resolution labels) and runs only inference (i.e. trajectory/patch generation). Defaults to True.
 
 - **++eval_harness_repo:** URL of the repository to use for the evaluation harness. This is passed directly as an argument to `git clone`. Defaults to [`https://github.com/Kipok/SWE-bench.git`](https://github.com/Kipok/SWE-bench), our fork of SWE-bench that supports local evaluation.
 

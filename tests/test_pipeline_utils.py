@@ -361,8 +361,8 @@ def test_separate_hydra_args_with_quoted_special_chars():
 # --- SandboxScript.keep_mounts wiring tests ---
 
 
-@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
-@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+@patch("nemo_skills.pipeline.utils.scripts.server.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.server.get_free_port", return_value=12345)
 def test_sandbox_keep_mounts_false_produces_empty_mounts(mock_port, mock_cmd):
     """Default keep_mounts=False must produce mounts=[] so the sandbox is filesystem-isolated.
 
@@ -381,8 +381,8 @@ def test_sandbox_keep_mounts_false_produces_empty_mounts(mock_port, mock_cmd):
     )
 
 
-@patch("nemo_skills.pipeline.utils.scripts.sandbox_command", return_value=("echo sandbox", {}))
-@patch("nemo_skills.pipeline.utils.scripts.get_free_port", return_value=12345)
+@patch("nemo_skills.pipeline.utils.scripts.server.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.server.get_free_port", return_value=12345)
 def test_sandbox_keep_mounts_true_produces_none_mounts(mock_port, mock_cmd):
     """keep_mounts=True must produce mounts=None so the sandbox inherits cluster mounts."""
     from nemo_skills.pipeline.utils.scripts import SandboxScript
