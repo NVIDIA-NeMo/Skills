@@ -227,7 +227,7 @@ def evaluate_contextasr_sample(data_point):
     """
     reference = data_point["expected_answer"]
     generation = data_point["generation"].strip()
-    entity_list = data_point.get("entity_list", [])
+    entity_list = data_point["entity_list"]
 
     norm_ref = simple_tokenize(reference)
     norm_hyp = simple_tokenize(generation)

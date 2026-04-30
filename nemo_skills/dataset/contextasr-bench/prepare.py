@@ -31,7 +31,7 @@ Usage:
     ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench
 
     # Skip audio download (JSONL only, not recommended)
-    ns prepare_data contextasr-bench --no-audio --skip_data_dir_check
+    ns prepare_data contextasr-bench --no-audio
 """
 
 import argparse
@@ -253,14 +253,12 @@ def main():
 
     print("\nWriting JSONL splits...")
     for mode_name, output_path in modes.items():
+        entries = [format_entry(sample, mode_name, audio_prefix) for sample in samples]
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        count = 0
         with open(output_path, "w", encoding="utf-8") as fout:
-            for sample in samples:
-                entry = format_entry(sample, mode_name, audio_prefix)
+            for entry in entries:
                 fout.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                count += 1
-        print(f"  {mode_name}: wrote {count} samples to {output_path}")
+        print(f"  {mode_name}: wrote {len(entries)} samples to {output_path}")
 
     print(f"\nDone. Total: {len(samples)} samples x 3 modes = {len(samples) * 3} records")
 

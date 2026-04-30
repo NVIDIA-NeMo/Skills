@@ -42,7 +42,7 @@ class ContextASRMetrics(BaseMetrics):
 
     def _get_score_dict(self, prediction):
         """Extract the binary correctness score from a prediction (WER < 0.5)."""
-        return {"is_correct": prediction.get("is_correct", False)}
+        return {"is_correct": prediction["is_correct"]}
 
     def get_incorrect_sample(self, prediction):
         """Return a copy of the prediction marked as incorrect (for no-answer handling)."""
@@ -61,15 +61,15 @@ class ContextASRMetrics(BaseMetrics):
         """Accumulate per-sample error counts for corpus-level metric computation."""
         super().update(predictions)
 
-        predicted_answers = [pred.get("generation", "").strip() or None for pred in predictions]
+        predicted_answers = [pred["generation"].strip() or None for pred in predictions]
 
         for pred in predictions:
-            self.wer_total_errors += pred.get("wer_errors", 0)
-            self.wer_total_ref_words += pred.get("wer_ref_words", 0)
-            self.ne_wer_total_errors += pred.get("ne_wer_errors", 0)
-            self.ne_wer_total_ref_words += pred.get("ne_wer_ref_words", 0)
-            self.ne_fnr_total_hits += pred.get("ne_fnr_hits", 0)
-            self.ne_fnr_total_entities += pred.get("ne_fnr_total", 0)
+            self.wer_total_errors += pred["wer_errors"]
+            self.wer_total_ref_words += pred["wer_ref_words"]
+            self.ne_wer_total_errors += pred["ne_wer_errors"]
+            self.ne_wer_total_ref_words += pred["ne_wer_ref_words"]
+            self.ne_fnr_total_hits += pred["ne_fnr_hits"]
+            self.ne_fnr_total_entities += pred["ne_fnr_total"]
 
         self._compute_pass_at_k(predictions=predictions, predicted_answers=predicted_answers)
         self._compute_majority_at_k(predictions=predictions, predicted_answers=predicted_answers)

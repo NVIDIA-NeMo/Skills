@@ -37,27 +37,33 @@ def compute_score(combined_metrics: dict) -> dict:
         weighted_wer = 0.0
         weighted_ne_wer = 0.0
         weighted_ne_fnr = 0.0
+        wer_entries = 0
+        ne_wer_entries = 0
+        ne_fnr_entries = 0
 
         for benchmark_data in benchmarks.values():
             if eval_mode not in benchmark_data:
                 continue
 
             metrics = benchmark_data[eval_mode]
-            num_entries = metrics.get("num_entries", 0)
+            num_entries = metrics["num_entries"]
             if num_entries == 0:
                 continue
 
             total_entries += num_entries
-            weighted_success += metrics.get("success_rate", 0.0) * num_entries
-            total_gen_seconds += metrics.get("gen_seconds", 0)
-            weighted_tokens += metrics.get("avg_tokens", 0.0) * num_entries
+            weighted_success += metrics["success_rate"] * num_entries
+            total_gen_seconds += metrics["gen_seconds"]
+            weighted_tokens += metrics["avg_tokens"] * num_entries
 
             if "wer" in metrics:
                 weighted_wer += metrics["wer"] * num_entries
+                wer_entries += num_entries
             if "ne_wer" in metrics:
                 weighted_ne_wer += metrics["ne_wer"] * num_entries
+                ne_wer_entries += num_entries
             if "ne_fnr" in metrics:
                 weighted_ne_fnr += metrics["ne_fnr"] * num_entries
+                ne_fnr_entries += num_entries
 
         if total_entries == 0:
             continue
@@ -68,16 +74,13 @@ def compute_score(combined_metrics: dict) -> dict:
             "success_rate": weighted_success / total_entries,
             "num_entries": total_entries,
         }
-        has_wer = any("wer" in benchmark_data.get(eval_mode, {}) for benchmark_data in benchmarks.values())
-        has_ne_wer = any("ne_wer" in benchmark_data.get(eval_mode, {}) for benchmark_data in benchmarks.values())
-        has_ne_fnr = any("ne_fnr" in benchmark_data.get(eval_mode, {}) for benchmark_data in benchmarks.values())
 
-        if has_wer:
-            agg["wer"] = round(weighted_wer / total_entries, 2)
-        if has_ne_wer:
-            agg["ne_wer"] = round(weighted_ne_wer / total_entries, 2)
-        if has_ne_fnr:
-            agg["ne_fnr"] = round(weighted_ne_fnr / total_entries, 2)
+        if wer_entries > 0:
+            agg["wer"] = round(weighted_wer / wer_entries, 2)
+        if ne_wer_entries > 0:
+            agg["ne_wer"] = round(weighted_ne_wer / ne_wer_entries, 2)
+        if ne_fnr_entries > 0:
+            agg["ne_fnr"] = round(weighted_ne_fnr / ne_fnr_entries, 2)
 
         aggregated[eval_mode] = agg
 
