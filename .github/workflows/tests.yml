@@ -53,6 +53,7 @@ jobs:
         # Clear pip cache
         pip cache purge || true
     - name: Build Images
+      if: ${{ env.HAS_GHCR_PAT == 'true' }}
       env:
         GHCR_PAT: ${{ secrets.GHCR_PAT }}
       run: |
@@ -110,6 +111,7 @@ jobs:
           --load \
           .
     - name: Run all tests
+      if: ${{ env.HAS_GHCR_PAT == 'true' }}
       env:
         NV_INFERENCE_API_KEY: ${{ secrets.NV_INFERENCE_API_KEY }}
         NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -123,3 +125,12 @@ jobs:
         set -o pipefail # this will make sure next line returns non-0 exit code if tests fail
         ns prepare_data gsm8k math-500 hle
         python -m pytest tests/ -m "not gpu and not live" --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=nemo_skills --cov=pipeline --durations=30 -rs -s -vvv
+
+    - name: Run fork-safe MCP tests
+      if: ${{ env.HAS_GHCR_PAT != 'true' }}
+      run: |
+        python -m nemo_skills.code_execution.local_sandbox.local_sandbox_server &
+        SANDBOX_PID=$!
+        trap "kill ${SANDBOX_PID}" EXIT
+        sleep 5
+        python -m pytest tests/test_mcp_clients.py -m "not gpu and not live" --junitxml=pytest.xml --durations=30 -rs -s -vvv
