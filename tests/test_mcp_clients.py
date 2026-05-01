@@ -1045,6 +1045,13 @@ class TestWikipediaTool:
         assert "mercury" in result.lower()
 
     @pytest.mark.asyncio
+    async def test_wikipedia_search_rejects_out_of_range_num_results(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import wikipedia_search
+
+        result = await wikipedia_search("Hydrogen atom", num_results=6)
+        assert result == "num_results must be between 1 and 5."
+
+    @pytest.mark.asyncio
     async def test_wikipedia_stdio_list_tools(self):
         """Launch WikipediaSearchTool over a real stdio subprocess and verify tool listing."""
         from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool

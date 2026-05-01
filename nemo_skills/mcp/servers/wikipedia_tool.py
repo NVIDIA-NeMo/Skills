@@ -244,7 +244,7 @@ async def _rate_limit() -> None:
 @mcp.tool(name="wikipedia-search")
 async def wikipedia_search(
     query: Annotated[str, Field(description="Search query for Wikipedia articles.")],
-    num_results: Annotated[int, Field(description="Number of search results to return (1-10).")] = 3,
+    num_results: Annotated[int, Field(description="Number of search results to return (1-5).")] = 3,
 ) -> str:
     """Search Wikipedia for articles. Returns titles, URLs, and ~400-char snippets.
 
@@ -254,7 +254,9 @@ async def wikipedia_search(
     """
     # Keep search output compact. The model can drill into a specific page or
     # section after seeing the title list.
-    n = max(1, min(int(num_results or 3), 5))
+    n = int(num_results or 3)
+    if n < 1 or n > 5:
+        return "num_results must be between 1 and 5."
     cache_key = _cache_key("search", query, n)
     if cached := _cache_get(cache_key):
         return cached
