@@ -1003,8 +1003,7 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
 
-
-# -- Radioactive decay tool tests -------------------------------------------
+# -- Radioactive decay direct tool tests ------------------------------------
 
 
 class TestRadioactivedecayTool:
@@ -1012,23 +1011,26 @@ class TestRadioactivedecayTool:
         from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
 
         tool = RadioactivedecayTool()
-        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
-        assert "nemo_skills.mcp.servers.radioactivedecay_tool" in tool._config["client_params"]["args"]
+        assert tool.default_config()["time_unit"] == "s"
 
     @pytest.mark.asyncio
-    async def test_radioactivedecay_stdio_list_tools(self):
+    async def test_radioactivedecay_direct_list_tools(self):
         from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
 
         tool = RadioactivedecayTool()
         tool.configure()
-        try:
-            tools = await tool.list_tools()
-            tool_names = {t["name"] for t in tools}
-            assert "nuclide-info" in tool_names
-            assert "decay-chain" in tool_names
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert "nuclide-info" in tool_names
+        assert "decay-chain" in tool_names
+        decay_tool = next(t for t in tools if t["name"] == "decay-chain")
+        assert "time_unit" not in decay_tool["input_schema"]["properties"]
 
-            decay_tool = next(t for t in tools if t["name"] == "decay-chain")
-            schema_props = decay_tool["input_schema"]["properties"]
-            assert "time_unit" not in schema_props
-        finally:
-            await tool.shutdown()
+    @pytest.mark.asyncio
+    async def test_radioactivedecay_rejects_non_finite_time(self):
+        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        tool.configure()
+        result = await tool.execute("decay-chain", {"nuclide": "H-3", "time": float("inf")})
+        assert result == "Time must be a finite number."

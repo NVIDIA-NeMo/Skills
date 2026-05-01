@@ -26,21 +26,17 @@ Usage:
 
 import logging
 import math
-from typing import Annotated
+from typing import Annotated, Any
 
-from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from nemo_skills.mcp.tool_providers import MCPClientTool
+from nemo_skills.mcp.tool_manager import Tool
 
 logger = logging.getLogger(__name__)
-
-mcp = FastMCP(name="radioactivedecay")
 
 VALID_TIME_UNITS = {"ps", "ns", "us", "ms", "s", "m", "h", "d", "y", "ky", "My", "Gy", "Ty"}
 
 
-@mcp.tool(name="nuclide-info")
 def nuclide_info(
     nuclide: Annotated[str, Field(description="Nuclide in standard notation (e.g. 'H-3', 'U-238', 'Co-60').")],
 ) -> str:
@@ -82,7 +78,6 @@ def nuclide_info(
     return "\n".join(lines)
 
 
-@mcp.tool(name="decay-chain")
 def decay_chain(
     nuclide: Annotated[str, Field(description="Starting nuclide (e.g. 'U-238', 'Co-60').")],
     time: Annotated[float, Field(description="Elapsed time for decay calculation.")],
@@ -117,27 +112,47 @@ def decay_chain(
 
     return "\n".join(lines)
 
-
-class RadioactivedecayTool(MCPClientTool):
+class RadioactivedecayTool(Tool):
     def __init__(self) -> None:
-        super().__init__()
-        self.apply_config_updates(
+        self._config: dict[str, Any] = {"time_unit": "s"}
+
+    def default_config(self) -> dict[str, Any]:
+        return dict(self._config)
+
+    def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
+        if overrides:
+            self._config.update(overrides)
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        return [
             {
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "client_params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.radioactivedecay_tool"],
+                "name": "nuclide-info",
+                "description": "Look up half-life, decay modes, progeny, and branching fractions for a nuclide.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"nuclide": {"type": "string", "description": "Nuclide notation, e.g. H-3, U-238, Co-60."}},
+                    "required": ["nuclide"],
                 },
-                "hide_args": {
-                    "decay-chain": ["time_unit"],
+            },
+            {
+                "name": "decay-chain",
+                "description": "Calculate decay-chain product activities after an elapsed time.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "nuclide": {"type": "string", "description": "Starting nuclide."},
+                        "time": {"type": "number", "description": "Elapsed time for the decay calculation."},
+                    },
+                    "required": ["nuclide", "time"],
                 },
-            }
-        )
+            },
+        ]
 
-
-def main():
-    mcp.run(transport="stdio")
-
-
-if __name__ == "__main__":
-    main()
+    async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+        arguments = dict(arguments or {})
+        if tool_name == "nuclide-info":
+            return nuclide_info(**arguments)
+        if tool_name == "decay-chain":
+            arguments.setdefault("time_unit", self._config.get("time_unit", "s"))
+            return decay_chain(**arguments)
+        return f"Error: unknown tool '{tool_name}'"
