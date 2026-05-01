@@ -18,9 +18,6 @@ concurrency:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
-    env:
-      GHCR_PAT: ${{ secrets.GHCR_PAT }}
-      GHCR_TOKEN: ${{ secrets.GHCR_PAT || github.token }}
     steps:
     - name: Checkout
       uses: actions/checkout@v6
@@ -28,12 +25,11 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Login to GHCR
-      if: ${{ env.GHCR_TOKEN != '' }}
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ env.GHCR_TOKEN }}
+        password: ${{ secrets.GHCR_PAT || github.token }}
 
     - name: Free up disk space on Ubuntu
       run: |
@@ -53,6 +49,8 @@ jobs:
         # Clear pip cache
         pip cache purge || true
     - name: Build Images
+      env:
+        GHCR_PAT: ${{ secrets.GHCR_PAT }}
       run: |
         # Calculate image tags that match what Python code expects
         # Python generates: locally-built-{sanitized_path}:{sha256_hash[:12]}
