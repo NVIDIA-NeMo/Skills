@@ -665,13 +665,15 @@ class GenerationTask:
                 if self.cfg.prompt_suffix:
                     GenerationTask._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
                 if self.cfg.system_message is not None:
+                    messages = data_point["messages"]
+                    has_system = len(messages) > 0 and messages[0]["role"] == "system"
                     if self.cfg.system_message == "":
-                        if data_point["messages"] and data_point["messages"][0]["role"] == "system":
-                            data_point["messages"].pop(0)
-                    elif data_point["messages"][0]["role"] != "system":
-                        data_point["messages"].insert(0, {"role": "system", "content": self.cfg.system_message})
+                        if has_system:
+                            messages.pop(0)
+                    elif has_system:
+                        messages[0]["content"] = self.cfg.system_message
                     else:
-                        data_point["messages"][0]["content"] = self.cfg.system_message
+                        messages.insert(0, {"role": "system", "content": self.cfg.system_message})
                 return data_point["messages"]
 
             # OpenAI path with prompt_config template -- build prompt from template, merge audio from data.
