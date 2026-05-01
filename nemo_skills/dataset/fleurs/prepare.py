@@ -25,19 +25,12 @@ import soundfile as sf
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
-DATASET = "fleurs"
-CONTAINER_DATASET_PATH_PREFIX = f"/dataset/{DATASET}"
-AUDIO_DIR = "audio"
-HF = f"google/{DATASET}"
-EN = "en_us"
-
-
 def load_fleurs_module():
     """Download and dynamically import google/fleurs/fleurs.py from HuggingFace."""
     import importlib.util
 
-    path = hf_hub_download(repo_id=HF, filename="fleurs.py", repo_type="dataset")
-    spec = importlib.util.spec_from_file_location(DATASET, path)
+    path = hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
+    spec = importlib.util.spec_from_file_location("fleurs", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod._FLEURS_LANG, mod._FLEURS_LANG_TO_LONG, mod._FLEURS_LANG_TO_GROUP
@@ -46,19 +39,17 @@ def load_fleurs_module():
 FLEURS_LANGS, FLEURS_LANG_TO_LONG, FLEURS_LANG_TO_GROUP = load_fleurs_module()
 LOCALES = set(FLEURS_LANGS)
 
-CER_LOCALES = set(
-    [
-        "cmn_hans_cn",  # Mandarin Chinese (Simplified)
-        "yue_hant_hk",  # Cantonese Chinese (Traditional)
-        "ja_jp",  # Japanese
-        "th_th",  # Thai
-        "lo_la",  # Lao
-        "my_mm",  # Burmese
-        "km_kh",  # Khmer
-        "ko_kr",  # Korean
-        "vi_vn",  # Vietnamese
-    ]
-)
+CER_LOCALES = {
+    "cmn_hans_cn",  # Mandarin Chinese (Simplified)
+    "yue_hant_hk",  # Cantonese Chinese (Traditional)
+    "ja_jp",  # Japanese
+    "th_th",  # Thai
+    "lo_la",  # Lao
+    "my_mm",  # Burmese
+    "km_kh",  # Khmer
+    "ko_kr",  # Korean
+    "vi_vn",  # Vietnamese
+}
 
 
 def parse_tsv(tsv_path: str) -> dict[str, dict]:
@@ -82,13 +73,13 @@ def parse_tsv(tsv_path: str) -> dict[str, dict]:
 def load_fleurs(locale: str, split: str, local_dir: str) -> list[dict]:
     """Download and parse a FLEURS locale/split directly from HuggingFace."""
     tsv_path = hf_hub_download(
-        repo_id=HF,
+        repo_id="google/fleurs",
         filename=f"data/{locale}/{split}.tsv",
         repo_type="dataset",
         local_dir=local_dir,
     )
     tar_path = hf_hub_download(
-        repo_id=HF,
+        repo_id="google/fleurs",
         filename=f"data/{locale}/audio/{split}.tar.gz",
         repo_type="dataset",
         local_dir=local_dir,
@@ -119,10 +110,10 @@ def build_translation_pairs(languages: list[str]) -> list[tuple[str, str]]:
     """Build (en_us -> lang) and (lang -> en_us) pairs for each language."""
     pairs = set()
     for lang in languages:
-        if lang == EN:
+        if lang == "en_us":
             continue
-        pairs.add((EN, lang))
-        pairs.add((lang, EN))
+        pairs.add(("en_us", lang))
+        pairs.add((lang, "en_us"))
     return sorted(pairs)
 
 
@@ -134,7 +125,7 @@ def prepare_audio(item: dict) -> tuple[np.ndarray, int, float]:
 
 
 def get_container_audio_path(locale: str, wav_filename: str) -> str:
-    return f"{CONTAINER_DATASET_PATH_PREFIX}/{AUDIO_DIR}/{locale}/{wav_filename}"
+    return f"/dataset/fleurs/audio/{locale}/{wav_filename}"
 
 
 def save_audio(y: np.ndarray, sr: int, wav_path: Path) -> None:
@@ -196,8 +187,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
     if not pairs:
         raise ValueError("No (source, target) pairs to process")
 
-    audio_dir = data_dir / AUDIO_DIR
-    local_dir = data_dir / f"hf-{DATASET}"
+    audio_dir = data_dir / "audio"
+    local_dir = data_dir / "hf-fleurs"
     local_dir.mkdir(parents=True, exist_ok=True)
 
     output_jsonl = data_dir / f"{split}-{task_type.lower()}.jsonl"
@@ -319,7 +310,7 @@ def main():
         raise ValueError(f"Unknown language(s): {', '.join(sorted(unknown))}. Available: {', '.join(sorted(LOCALES))}")
 
     if args.data_dir:
-        data_dir = Path(args.data_dir) / DATASET
+        data_dir = Path(args.data_dir) / "fleurs"
     else:
         data_dir = Path(__file__).parent
     data_dir.mkdir(parents=True, exist_ok=True)
