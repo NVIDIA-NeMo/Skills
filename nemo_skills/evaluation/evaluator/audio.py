@@ -473,7 +473,7 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
     # and whisper normalization for English
     if mode == "multilingual":
         text = text.lower()
-        lang = kwargs.get("lang")
+        lang = kwargs["lang"]
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
