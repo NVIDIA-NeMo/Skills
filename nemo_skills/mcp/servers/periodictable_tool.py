@@ -119,6 +119,7 @@ def isotope_info(
 
     return "\n".join(lines)
 
+
 class PeriodictableTool(Tool):
     def __init__(self) -> None:
         self._config: dict[str, Any] = {}
@@ -137,7 +138,9 @@ class PeriodictableTool(Tool):
                 "description": "Look up an element by symbol, name, or atomic number.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {"element": {"type": "string", "description": "Element symbol, name, or atomic number."}},
+                    "properties": {
+                        "element": {"type": "string", "description": "Element symbol, name, or atomic number."}
+                    },
                     "required": ["element"],
                 },
             },
