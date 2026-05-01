@@ -1003,6 +1003,7 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
 
+
 # -- CoolProp direct tool tests ---------------------------------------------
 
 

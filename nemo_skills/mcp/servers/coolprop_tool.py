@@ -90,6 +90,7 @@ def fluid_list() -> str:
     fluids = sorted(CP.FluidsList())
     return f"**{len(fluids)} fluids available:**\n" + ", ".join(fluids)
 
+
 class CoolPropTool(Tool):
     def __init__(self) -> None:
         self._config: dict[str, Any] = {}
@@ -110,14 +111,21 @@ class CoolPropTool(Tool):
                     "type": "object",
                     "properties": {
                         "fluid": {"type": "string", "description": "Fluid name, e.g. Water, Nitrogen, R134a, CO2."},
-                        "output_property": {"type": "string", "description": "CoolProp output property code, e.g. D, C, H, S, V, L."},
+                        "output_property": {
+                            "type": "string",
+                            "description": "CoolProp output property code, e.g. D, C, H, S, V, L.",
+                        },
                         "temperature": {"type": "number", "description": "Temperature in Kelvin."},
                         "pressure": {"type": "number", "description": "Pressure in Pascals."},
                     },
                     "required": ["fluid", "output_property", "temperature", "pressure"],
                 },
             },
-            {"name": "fluid-list", "description": "List fluids available in CoolProp.", "input_schema": {"type": "object", "properties": {}}},
+            {
+                "name": "fluid-list",
+                "description": "List fluids available in CoolProp.",
+                "input_schema": {"type": "object", "properties": {}},
+            },
         ]
 
     async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
