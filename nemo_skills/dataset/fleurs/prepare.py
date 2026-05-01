@@ -25,6 +25,7 @@ import soundfile as sf
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
+
 def load_fleurs_module():
     """Download and dynamically import google/fleurs/fleurs.py from HuggingFace."""
     import importlib.util
