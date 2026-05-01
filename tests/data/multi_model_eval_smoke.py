@@ -147,7 +147,7 @@ class MultiModelEvalSmokeTask(GenerationTask):
             raise AssertionError(f"Expected both generations to equal {expected_answer!r}, got: {generations}")
 
         return {
-            "generation": generations[0],
+            "generation": f"\\boxed{{{expected_answer}}}",
             "generation_model_0": generations[0],
             "generation_model_1": generations[1],
             "model_0_exact_match": model_0_exact_match,
