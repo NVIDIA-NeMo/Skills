@@ -298,10 +298,13 @@ class Command:
         # For SandboxScript, keep_mounts=False (the safe default) maps to mounts=[]
         # so the sandbox container has no access to cluster filesystems.
         # keep_mounts=True maps to mounts=None, which inherits cluster mounts.
+        # keep_mounts is propagated separately so Stage B (_create_executor) can
+        # honor the isolation request even when Command.mounts is an explicit list
+        # (in which case Stage A's resolved_mounts alone loses that signal).
+        keep_mounts = getattr(self.script, "keep_mounts", True)
         if self.mounts is not None:
             resolved_mounts = self.mounts
         else:
-            keep_mounts = getattr(self.script, "keep_mounts", True)
             resolved_mounts = None if keep_mounts else []
 
         merged_env = dict(runtime_metadata.get("environment", {}))
@@ -311,6 +314,7 @@ class Command:
             "log_prefix": getattr(self.script, "log_prefix", "main"),
             "environment": merged_env,
             "mounts": resolved_mounts,
+            "keep_mounts": keep_mounts,
             "container": self.container,
         }
 
@@ -647,13 +651,28 @@ class Pipeline:
             else (hardware.num_tasks if hardware and hardware.num_tasks is not None else 1)
         )
 
-        # Allow per-command extra mounts without requiring editing the cluster YAML.
-        # We treat exec_config["mounts"] as additive and merge it with mounts from cluster_config.
-        mounts = None
-        extra_mounts = exec_config["mounts"] or None
-        if extra_mounts:
+        # Resolve mounts based on Stage A output and the script's keep_mounts flag:
+        # - mounts=None: inherit cluster mounts (Stage C default).
+        # - keep_mounts=False: the script asked for filesystem isolation. Pass its
+        #   mounts list verbatim (even empty) so cluster mounts are NOT merged in.
+        # - keep_mounts=True + non-empty extras: additive merge with cluster mounts.
+        # - keep_mounts=True + empty extras: inherit cluster mounts.
+        # Stage A invariant: mounts=None is only produced when keep_mounts=True
+        # (keep_mounts=False with no explicit Command.mounts is normalized to []),
+        # so the `extra_mounts is None` branch below is safe to take before
+        # consulting keep_mounts. `.get(..., True)` defends against exec_configs
+        # built by callers that bypass Stage A.
+        extra_mounts = exec_config["mounts"]
+        keep_mounts = exec_config.get("keep_mounts", True)
+        if extra_mounts is None:
+            mounts = None
+        elif not keep_mounts:
+            mounts = list(extra_mounts)
+        elif extra_mounts:
             base_mounts = get_mounts_from_config(cluster_config)
             mounts = base_mounts + [m for m in extra_mounts if m not in base_mounts]
+        else:
+            mounts = None
 
         # Sandbox-specific srun overrides: allow the sandbox to survive individual
         # worker crashes (e.g. SIGILL from libraries compiled for a different CPU).
