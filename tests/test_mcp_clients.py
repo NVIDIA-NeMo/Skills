@@ -1043,6 +1043,13 @@ class TestArxivTool:
         assert "failed" in result.lower() or "not found" in result.lower()
 
     @pytest.mark.asyncio
+    async def test_arxiv_search_rejects_non_positive_max_results(self):
+        from nemo_skills.mcp.servers.arxiv_tool import arxiv_search
+
+        result = await arxiv_search("quantum entanglement", max_results=0)
+        assert result == "max_results must be >= 1."
+
+    @pytest.mark.asyncio
     async def test_arxiv_stdio_list_tools(self):
         """Launch ArxivSearchTool over a real stdio subprocess and verify tool listing."""
         from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool

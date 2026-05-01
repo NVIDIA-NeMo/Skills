@@ -34,6 +34,7 @@ import os
 import re
 import tempfile
 import time
+from collections import OrderedDict
 from html import unescape
 from html.parser import HTMLParser
 from typing import Annotated, Any
@@ -70,6 +71,7 @@ NUM_RETRIES = 3
 INITIAL_BACKOFF = 1.0
 MAX_BACKOFF = 30.0
 CACHE_MAX_SIZE = 512
+PAPER_CACHE_MAX_SIZE = 32
 
 # arXiv's public API asks clients to wait 3 seconds between requests. The
 # evaluation can launch many chunk processes, often on different nodes, so a
@@ -84,7 +86,7 @@ _arxiv_last_request = 0.0
 _arxiv_lock = asyncio.Lock()
 
 _cache: dict[str, str] = {}
-_paper_cache: dict[str, tuple[str, str]] = {}
+_paper_cache: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -106,6 +108,22 @@ def _cache_set(key: str, value: str) -> None:
         # Drop one arbitrary entry; simple FIFO-ish eviction.
         _cache.pop(next(iter(_cache)))
     _cache[key] = value
+
+
+def _paper_cache_get(key: str) -> tuple[str, str] | None:
+    """Return cached paper text and refresh recency."""
+    value = _paper_cache.get(key)
+    if value is not None:
+        _paper_cache.move_to_end(key)
+    return value
+
+
+def _paper_cache_set(key: str, value: tuple[str, str]) -> None:
+    """Store full paper text in a bounded LRU cache."""
+    _paper_cache[key] = value
+    _paper_cache.move_to_end(key)
+    while len(_paper_cache) > PAPER_CACHE_MAX_SIZE:
+        _paper_cache.popitem(last=False)
 
 
 def _reconstruct_abstract(inv_idx: dict[str, list[int]] | None) -> str:
@@ -241,8 +259,9 @@ async def _fetch_paper_text(paper_id: str) -> tuple[str, str]:
             "Use arxiv-get for DOI/OpenAlex metadata lookups."
         )
     cache_key = arxiv_id.split("v")[0]
-    if cache_key in _paper_cache:
-        return _paper_cache[cache_key]
+    cached_paper = _paper_cache_get(cache_key)
+    if cached_paper is not None:
+        return cached_paper
 
     urls = [
         f"https://arxiv.org/html/{arxiv_id}",
@@ -259,7 +278,7 @@ async def _fetch_paper_text(paper_id: str) -> tuple[str, str]:
                     parser.feed(r.text)
                     text = parser.text()
                     if len(text) > 500:
-                        _paper_cache[cache_key] = (url, text)
+                        _paper_cache_set(cache_key, (url, text))
                         return url, text
                 last_err = RuntimeError(f"{url} returned HTTP {r.status_code}")
             except Exception as e:
@@ -542,10 +561,10 @@ async def arxiv_search(
     truncated abstract. This path intentionally avoids OpenAlex to eliminate
     API-key budget/rate failures during large ablations.
     """
+    if max_results < 1:
+        return "max_results must be >= 1."
     if max_results > MAX_RESULTS:
         max_results = MAX_RESULTS
-    if max_results < 1:
-        max_results = 1
 
     cache_key = _cache_key("arxiv-search", query, max_results)
     if cached := _cache_get(cache_key):
@@ -593,9 +612,9 @@ async def arxiv_get(
             work = await _http_get_json(client, url, params=params)
         except Exception as e:
             # Fallback: bare arXiv API (with rate limit) for arxiv ids.
-            if re.match(r"^\d{4}\.\d{4,5}(v\d+)?$", paper_id.strip()):
+            if arxiv_id := _extract_arxiv_id(paper_id):
                 try:
-                    return await _arxiv_api_get(paper_id.strip())
+                    return await _arxiv_api_get(arxiv_id)
                 except Exception as e2:
                     return f"Paper lookup failed (OpenAlex: {e}; arXiv: {e2})."
             return f"Paper lookup failed (OpenAlex): {e}"
