@@ -556,7 +556,13 @@ def add_task(
         # NOTE: avoid evaluating default (which would index cluster_config) unless needed
         server_container = _server_config.pop("container", None)
         if server_container is None:
-            server_container = cluster_config["containers"][_server_config["server_type"]]
+            # Server-type variants that share a container image with a base
+            # server type (e.g. vllm_dp_ray uses the vllm container). Keep
+            # this dict small and local — it's a minor convenience, not a
+            # general extension point.
+            _container_aliases = {"vllm_dp_ray": "vllm", "vllm_multimodal": "vllm"}
+            container_key = _container_aliases.get(_server_config["server_type"], _server_config["server_type"])
+            server_container = cluster_config["containers"][container_key]
 
         for server_idx in range(n_servers):
             server_cmd, num_server_tasks = get_server_command(**_server_config, cluster_config=cluster_config)
