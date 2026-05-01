@@ -214,7 +214,8 @@ def _normalize_id(paper_id: str) -> str:
     if low.startswith(("https://openalex.org/", "openalex:")):
         return pid.split("/")[-1].split(":")[-1]
     if low.startswith("doi:") or low.startswith("https://doi.org/") or low.startswith("http://doi.org/"):
-        doi = pid.split("doi.org/")[-1].replace("doi:", "")
+        doi = re.split(r"(?i)https?://doi\.org/", pid, maxsplit=1)[-1]
+        doi = re.sub(r"(?i)^doi:\s*", "", doi).strip()
         return f"doi:{doi}"
     if low.startswith("10.") and "/" in pid:
         return f"doi:{pid}"
@@ -722,6 +723,9 @@ async def _arxiv_api_get(arxiv_id: str) -> str:
         r = await client.get(ARXIV_BASE, params=params, timeout=HTTP_TIMEOUT)
         r.raise_for_status()
         text = r.text
+
+    if "<entry>" not in text:
+        return f"Paper {arxiv_id!r} not found."
 
     # Tiny Atom parser — extract title and summary without depending on lxml.
     def _grab(tag: str) -> str:
