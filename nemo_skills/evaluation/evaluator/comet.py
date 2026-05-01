@@ -55,16 +55,14 @@ def _get_nested(sample: dict, key: str):
     return sample[key]
 
 
-def resolve_comet_fields(sample: dict) -> tuple[str, str, str]:
-    comet_text_key = sample.get("comet_text_key", "text")  # default to text field if not present
-    comet_trans_key = sample.get("comet_translation_key", "translation")  # default to translation field if not present
-    text = _get_nested(sample, comet_text_key)
-    translation = _get_nested(sample, comet_trans_key)
-    generation = _get_nested(sample, "generation")  # always present
-    return text, translation, generation
-
-
-def process_file(input_file: Path, output_file: Path, comet_model, batch_size: int = 16):
+def process_file(
+    input_file: Path,
+    output_file: Path,
+    comet_model,
+    batch_size: int = 16,
+    source_key: str = "source",
+    reference_key: str = "reference",
+):
     """Copy input file to output location and run xCOMET-XXL evaluation."""
     LOG.info(f"Processing {input_file} -> {output_file}")
 
@@ -87,9 +85,13 @@ def process_file(input_file: Path, output_file: Path, comet_model, batch_size: i
     comet_list = []
     for sample in data:
         try:
-            text, translation, generation = resolve_comet_fields(sample)
-            comet_dict = {"src": text, "mt": generation, "gt": translation}
-            comet_list.append(comet_dict)
+            comet_list.append(
+                {
+                    "src": _get_nested(sample, source_key),
+                    "mt": _get_nested(sample, "generation"),
+                    "gt": _get_nested(sample, reference_key),
+                }
+            )
         except KeyError as e:
             LOG.error(f"Sample missing required field {e}: {sample}")
             raise ValueError(f"Sample missing required field: {e}")
@@ -148,6 +150,18 @@ def main():
         default=1,
         help="Number of random seeds (for multiple seeds mode)",
     )
+    parser.add_argument(
+        "--source-key",
+        type=str,
+        default="source",
+        help="Sample field (supports dotted paths) holding the source text passed as COMET 'src'",
+    )
+    parser.add_argument(
+        "--reference-key",
+        type=str,
+        default="reference",
+        help="Sample field (supports dotted paths) holding the reference translation passed as COMET 'gt'",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -174,7 +188,14 @@ def main():
     # Process all files
     LOG.info(f"Processing {len(files_to_process)} file(s)")
     for input_file, output_file in files_to_process:
-        process_file(input_file, output_file, comet_model, args.batch_size)
+        process_file(
+            input_file,
+            output_file,
+            comet_model,
+            args.batch_size,
+            source_key=args.source_key,
+            reference_key=args.reference_key,
+        )
 
     LOG.info("All files processed successfully")
 
