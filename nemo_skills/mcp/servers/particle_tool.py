@@ -25,16 +25,13 @@ Usage:
 """
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
-from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from nemo_skills.mcp.tool_providers import MCPClientTool
+from nemo_skills.mcp.tool_manager import Tool
 
 logger = logging.getLogger(__name__)
-
-mcp = FastMCP(name="particle")
 
 MAX_SEARCH_RESULTS = 10
 
@@ -63,7 +60,6 @@ def _format_particle(p) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(name="particle-lookup")
 def particle_lookup(
     name_or_id: Annotated[
         str,
@@ -92,7 +88,6 @@ def particle_lookup(
     return f"Particle '{name_or_id}' not found. Try a standard name like 'pi+', 'K-', 'D0', or a PDG ID."
 
 
-@mcp.tool(name="particle-search")
 def particle_search(
     query: Annotated[
         str, Field(description="Search query - substring match on particle names (e.g. 'K', 'charm', 'omega').")
@@ -113,24 +108,43 @@ def particle_search(
     header = f"Found {len(results)} particle(s) matching '{query}':\n"
     return header + "\n".join(results)
 
-
-class ParticleTool(MCPClientTool):
+class ParticleTool(Tool):
     def __init__(self) -> None:
-        super().__init__()
-        self.apply_config_updates(
+        self._config: dict[str, Any] = {}
+
+    def default_config(self) -> dict[str, Any]:
+        return dict(self._config)
+
+    def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
+        if overrides:
+            self._config.update(overrides)
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        return [
             {
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "client_params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.particle_tool"],
+                "name": "particle-lookup",
+                "description": "Look up a particle by name or PDG ID.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"name_or_id": {"type": "string", "description": "Particle name or PDG ID."}},
+                    "required": ["name_or_id"],
                 },
-            }
-        )
+            },
+            {
+                "name": "particle-search",
+                "description": "Search for particles by name.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string", "description": "Substring query on particle names."}},
+                    "required": ["query"],
+                },
+            },
+        ]
 
-
-def main():
-    mcp.run(transport="stdio")
-
-
-if __name__ == "__main__":
-    main()
+    async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+        arguments = dict(arguments or {})
+        if tool_name == "particle-lookup":
+            return particle_lookup(**arguments)
+        if tool_name == "particle-search":
+            return particle_search(**arguments)
+        return f"Error: unknown tool '{tool_name}'"
