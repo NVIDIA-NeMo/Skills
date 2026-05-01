@@ -115,9 +115,12 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
 
     cmd = (
         f"ns eval "
-        f"    --server_type=openai openai "
-        f"    --model=nvidia/nemotron-3-nano-30b-a3b nvidia/nemotron-3-nano-30b-a3b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 https://integrate.api.nvidia.com/v1 "
+        f"    --server_type=openai "
+        f"    --server_type=openai "
+        f"    --model=nvidia/nemotron-3-nano-30b-a3b "
+        f"    --model=nvidia/nemotron-3-nano-30b-a3b "
+        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --server_address=https://integrate.api.nvidia.com/v1 "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={shlex.quote(str(output_dir))} "
         f"    --generation_module={shlex.quote(str(generation_module))} "
