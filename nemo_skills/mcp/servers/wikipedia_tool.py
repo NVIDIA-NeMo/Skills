@@ -622,6 +622,7 @@ async def _suggest_titles(query: str, n: int = 5) -> list[str]:
     except Exception:
         return []
 
+
 # ── Tool provider ──────────────────────────────────────────────────────────
 
 
