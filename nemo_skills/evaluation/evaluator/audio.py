@@ -400,6 +400,7 @@ def _remove_non_speech_elements(text: str) -> str:
 
 
 VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual")
+TASKS_NEED_PARSING = {"ASR", "ASR-PC", "ASR_LEADERBOARD", "Multilingual-ASR", "CER", "Hallucination", "PC-Rate"}
 
 
 def resolve_asr_normalization_mode(config: AudioEvaluatorConfig) -> str:
@@ -736,7 +737,8 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
 
     # Extract ASR text from generation
     # E.g Qwen ASR uses <asr_text> tags to indicate the ASR text
-    generation = extract_asr_text(generation)
+    if task_type in TASKS_NEED_PARSING:
+        generation = extract_asr_text(generation)
 
     # Strip helpful prefixes for ASR tasks (e.g., "The audio says: ...")
     if config.strip_helpful_prefixes:
