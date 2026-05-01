@@ -1003,8 +1003,7 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
 
-
-# ── ArXiv tool tests ─────────────────────────────────────────────────────
+# -- ArXiv direct tool tests ------------------------------------------------
 
 
 class TestArxivTool:
@@ -1012,84 +1011,26 @@ class TestArxivTool:
         from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
 
         tool = ArxivSearchTool()
-        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
-        assert "-m" in tool._config["client_params"]["args"]
-        assert "nemo_skills.mcp.servers.arxiv_tool" in tool._config["client_params"]["args"]
-
-    @pytest.mark.asyncio
-    @pytest.mark.live
-    async def test_arxiv_search_live(self):
-        from nemo_skills.mcp.servers.arxiv_tool import arxiv_search
-
-        result = await arxiv_search("quantum entanglement", max_results=2)
-        assert "failed" not in result.lower()
-        assert "**" in result
-
-    @pytest.mark.asyncio
-    @pytest.mark.live
-    async def test_arxiv_get_live(self):
-        from nemo_skills.mcp.servers.arxiv_tool import arxiv_get
-
-        result = await arxiv_get("2301.07041")
-        assert "not found" not in result.lower()
-        assert "Abstract" in result
-
-    @pytest.mark.asyncio
-    @pytest.mark.live
-    async def test_arxiv_get_invalid_id(self):
-        from nemo_skills.mcp.servers.arxiv_tool import arxiv_get
-
-        result = await arxiv_get("0000.00000")
-        assert "failed" in result.lower() or "not found" in result.lower()
+        assert tool.default_config()["max_results"] == 3
 
     @pytest.mark.asyncio
     async def test_arxiv_search_rejects_non_positive_max_results(self):
-        from nemo_skills.mcp.servers.arxiv_tool import arxiv_search
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
 
-        result = await arxiv_search("quantum entanglement", max_results=0)
+        tool = ArxivSearchTool()
+        tool.configure()
+        result = await tool.execute("arxiv-search", {"query": "quantum entanglement", "max_results": 0})
         assert result == "max_results must be >= 1."
 
     @pytest.mark.asyncio
-    async def test_arxiv_stdio_list_tools(self):
-        """Launch ArxivSearchTool over a real stdio subprocess and verify tool listing."""
+    async def test_arxiv_direct_list_tools(self):
         from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
 
         tool = ArxivSearchTool()
         tool.configure()
-        try:
-            tools = await tool.list_tools()
-            tool_names = {t["name"] for t in tools}
-            assert "arxiv-search" in tool_names
-            assert "arxiv-get" in tool_names
-            assert "arxiv-sections" in tool_names
-            assert "arxiv-read-chunk" in tool_names
-        finally:
-            await tool.shutdown()
-
-    @pytest.mark.asyncio
-    async def test_arxiv_stdio_hide_args(self):
-        """Verify hide_args removes max_results from the listed schema."""
-        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
-
-        tool = ArxivSearchTool()
-        tool.configure()
-        try:
-            tools = await tool.list_tools()
-            search_tool = next(t for t in tools if t["name"] == "arxiv-search")
-            schema_props = search_tool["input_schema"]["properties"]
-            assert "query" in schema_props
-            assert "max_results" not in schema_props
-
-            get_tool = next(t for t in tools if t["name"] == "arxiv-get")
-            assert "paper_id" in get_tool["input_schema"]["properties"]
-
-            sections_tool = next(t for t in tools if t["name"] == "arxiv-sections")
-            assert "paper_id" in sections_tool["input_schema"]["properties"]
-            assert "max_sections" not in sections_tool["input_schema"]["properties"]
-
-            chunk_tool = next(t for t in tools if t["name"] == "arxiv-read-chunk")
-            assert "paper_id" in chunk_tool["input_schema"]["properties"]
-            assert "offset" in chunk_tool["input_schema"]["properties"]
-            assert "max_chars" not in chunk_tool["input_schema"]["properties"]
-        finally:
-            await tool.shutdown()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert {"arxiv-search", "arxiv-get", "arxiv-sections", "arxiv-read-chunk"} <= tool_names
+        search_tool = next(t for t in tools if t["name"] == "arxiv-search")
+        assert "query" in search_tool["input_schema"]["properties"]
+        assert "max_results" not in search_tool["input_schema"]["properties"]

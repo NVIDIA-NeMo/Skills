@@ -40,14 +40,11 @@ from html.parser import HTMLParser
 from typing import Annotated, Any
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from nemo_skills.mcp.tool_providers import MCPClientTool
+from nemo_skills.mcp.tool_manager import Tool
 
 logger = logging.getLogger(__name__)
-
-mcp = FastMCP(name="arxiv")
 
 # ── Config ─────────────────────────────────────────────────────────────────
 OPENALEX_BASE = "https://api.openalex.org"
@@ -541,7 +538,6 @@ async def _arxiv_rate_limit() -> None:
 # ── Tools ──────────────────────────────────────────────────────────────────
 
 
-@mcp.tool(name="arxiv-search")
 async def arxiv_search(
     query: Annotated[
         str,
@@ -578,7 +574,6 @@ async def arxiv_search(
     return result
 
 
-@mcp.tool(name="arxiv-get")
 async def arxiv_get(
     paper_id: Annotated[
         str,
@@ -626,7 +621,6 @@ async def arxiv_get(
     return rendered
 
 
-@mcp.tool(name="arxiv-sections")
 async def arxiv_sections(
     paper_id: Annotated[
         str,
@@ -669,7 +663,6 @@ async def arxiv_sections(
     return rendered
 
 
-@mcp.tool(name="arxiv-read-chunk")
 async def arxiv_read_chunk(
     paper_id: Annotated[
         str,
@@ -752,35 +745,83 @@ async def _arxiv_api_get(arxiv_id: str) -> str:
         f"Abstract:\n{_truncate(summary)}"
     )
 
-
 # ── Tool provider ──────────────────────────────────────────────────────────
 
 
-class ArxivSearchTool(MCPClientTool):
-    """OpenAlex-backed paper search; class name kept for backward compat."""
+class ArxivSearchTool(Tool):
+    """Direct arXiv search/retrieval tool."""
 
     def __init__(self) -> None:
-        super().__init__()
-        self.apply_config_updates(
+        self._config: dict[str, Any] = {
+            "max_results": 3,
+            "max_sections": 40,
+            "max_chars": PAPER_CHUNK_LIMIT,
+        }
+
+    def default_config(self) -> dict[str, Any]:
+        return dict(self._config)
+
+    def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
+        if overrides:
+            self._config.update(overrides)
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        return [
             {
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "client_params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.arxiv_tool"],
+                "name": "arxiv-search",
+                "description": "Search arXiv papers by keywords/categories and return compact metadata and abstracts.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string", "description": "Natural-language arXiv query."}},
+                    "required": ["query"],
                 },
-                "hide_args": {
-                    "arxiv-search": ["max_results"],
-                    "arxiv-sections": ["max_sections"],
-                    "arxiv-read-chunk": ["max_chars"],
+            },
+            {
+                "name": "arxiv-get",
+                "description": "Fetch metadata and abstract for a paper by arXiv id, DOI, PMID, or OpenAlex id.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"paper_id": {"type": "string", "description": "Paper identifier."}},
+                    "required": ["paper_id"],
                 },
-            }
-        )
+            },
+            {
+                "name": "arxiv-sections",
+                "description": "List parsed section headings for an arXiv paper.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"paper_id": {"type": "string", "description": "arXiv id or URL."}},
+                    "required": ["paper_id"],
+                },
+            },
+            {
+                "name": "arxiv-read-chunk",
+                "description": "Read a bounded chunk of arXiv full text by offset or query.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "paper_id": {"type": "string", "description": "arXiv id or URL."},
+                        "offset": {"type": "integer", "description": "Character offset into the extracted text."},
+                        "query": {"type": "string", "description": "Optional phrase to center the chunk around."},
+                    },
+                    "required": ["paper_id"],
+                },
+            },
+        ]
 
-
-def main():
-    """Run the MCP server over stdio."""
-    mcp.run(transport="stdio")
-
-
-if __name__ == "__main__":
-    main()
+    async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+        arguments = dict(arguments or {})
+        if tool_name == "arxiv-search":
+            arguments.setdefault("max_results", self._config.get("max_results", 3))
+            return await arxiv_search(**arguments)
+        if tool_name == "arxiv-get":
+            return await arxiv_get(**arguments)
+        if tool_name == "arxiv-sections":
+            arguments.setdefault("max_sections", self._config.get("max_sections", 40))
+            return await arxiv_sections(**arguments)
+        if tool_name == "arxiv-read-chunk":
+            arguments.setdefault("offset", 0)
+            arguments.setdefault("max_chars", self._config.get("max_chars", PAPER_CHUNK_LIMIT))
+            arguments.setdefault("query", "")
+            return await arxiv_read_chunk(**arguments)
+        return f"Error: unknown tool '{tool_name}'"
