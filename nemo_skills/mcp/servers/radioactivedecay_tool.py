@@ -112,6 +112,7 @@ def decay_chain(
 
     return "\n".join(lines)
 
+
 class RadioactivedecayTool(Tool):
     def __init__(self) -> None:
         self._config: dict[str, Any] = {"time_unit": "s"}
@@ -130,7 +131,9 @@ class RadioactivedecayTool(Tool):
                 "description": "Look up half-life, decay modes, progeny, and branching fractions for a nuclide.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {"nuclide": {"type": "string", "description": "Nuclide notation, e.g. H-3, U-238, Co-60."}},
+                    "properties": {
+                        "nuclide": {"type": "string", "description": "Nuclide notation, e.g. H-3, U-238, Co-60."}
+                    },
                     "required": ["nuclide"],
                 },
             },
