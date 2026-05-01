@@ -108,6 +108,7 @@ def particle_search(
     header = f"Found {len(results)} particle(s) matching '{query}':\n"
     return header + "\n".join(results)
 
+
 class ParticleTool(Tool):
     def __init__(self) -> None:
         self._config: dict[str, Any] = {}
