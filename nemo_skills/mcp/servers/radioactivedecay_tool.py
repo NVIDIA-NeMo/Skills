@@ -25,6 +25,7 @@ Usage:
 """
 
 import logging
+import math
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -93,6 +94,8 @@ def decay_chain(
     if time_unit not in VALID_TIME_UNITS:
         return f"Invalid time unit '{time_unit}'. Valid units: {', '.join(sorted(VALID_TIME_UNITS))}"
 
+    if not math.isfinite(time):
+        return "Time must be a finite number."
     if time < 0:
         return "Time must be non-negative."
 
