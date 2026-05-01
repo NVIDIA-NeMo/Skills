@@ -1003,8 +1003,7 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
 
-
-# -- Periodictable tool tests -----------------------------------------------
+# -- Periodictable direct tool tests ----------------------------------------
 
 
 class TestPeriodictableTool:
@@ -1012,19 +1011,14 @@ class TestPeriodictableTool:
         from nemo_skills.mcp.servers.periodictable_tool import PeriodictableTool
 
         tool = PeriodictableTool()
-        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
-        assert "nemo_skills.mcp.servers.periodictable_tool" in tool._config["client_params"]["args"]
+        assert tool.default_config() == {}
 
     @pytest.mark.asyncio
-    async def test_periodictable_stdio_list_tools(self):
+    async def test_periodictable_direct_list_tools(self):
         from nemo_skills.mcp.servers.periodictable_tool import PeriodictableTool
 
         tool = PeriodictableTool()
         tool.configure()
-        try:
-            tools = await tool.list_tools()
-            tool_names = {t["name"] for t in tools}
-            assert "element-info" in tool_names
-            assert "isotope-info" in tool_names
-        finally:
-            await tool.shutdown()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "element-info" in tool_names
+        assert "isotope-info" in tool_names

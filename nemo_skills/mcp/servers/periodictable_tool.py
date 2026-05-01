@@ -25,16 +25,13 @@ Usage:
 """
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
-from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from nemo_skills.mcp.tool_providers import MCPClientTool
+from nemo_skills.mcp.tool_manager import Tool
 
 logger = logging.getLogger(__name__)
-
-mcp = FastMCP(name="periodictable")
 
 
 def _resolve_element(name_or_symbol: str):
@@ -50,7 +47,6 @@ def _resolve_element(name_or_symbol: str):
     return None
 
 
-@mcp.tool(name="element-info")
 def element_info(
     element: Annotated[str, Field(description="Element symbol, name, or atomic number (e.g. 'Fe', 'iron', '26').")],
 ) -> str:
@@ -88,7 +84,6 @@ def element_info(
     return "\n".join(lines)
 
 
-@mcp.tool(name="isotope-info")
 def isotope_info(
     element: Annotated[str, Field(description="Element symbol or name (e.g. 'U', 'uranium').")],
     mass_number: Annotated[int, Field(description="Mass number A of the isotope (e.g. 235 for U-235).")],
@@ -124,24 +119,46 @@ def isotope_info(
 
     return "\n".join(lines)
 
-
-class PeriodictableTool(MCPClientTool):
+class PeriodictableTool(Tool):
     def __init__(self) -> None:
-        super().__init__()
-        self.apply_config_updates(
+        self._config: dict[str, Any] = {}
+
+    def default_config(self) -> dict[str, Any]:
+        return dict(self._config)
+
+    def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
+        if overrides:
+            self._config.update(overrides)
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        return [
             {
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "client_params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.periodictable_tool"],
+                "name": "element-info",
+                "description": "Look up an element by symbol, name, or atomic number.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"element": {"type": "string", "description": "Element symbol, name, or atomic number."}},
+                    "required": ["element"],
                 },
-            }
-        )
+            },
+            {
+                "name": "isotope-info",
+                "description": "Look up isotope mass, abundance, and neutron scattering data.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "element": {"type": "string", "description": "Element symbol or name."},
+                        "mass_number": {"type": "integer", "description": "Mass number A of the isotope."},
+                    },
+                    "required": ["element", "mass_number"],
+                },
+            },
+        ]
 
-
-def main():
-    mcp.run(transport="stdio")
-
-
-if __name__ == "__main__":
-    main()
+    async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+        arguments = dict(arguments or {})
+        if tool_name == "element-info":
+            return element_info(**arguments)
+        if tool_name == "isotope-info":
+            return isotope_info(**arguments)
+        return f"Error: unknown tool '{tool_name}'"
