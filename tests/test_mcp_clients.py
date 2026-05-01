@@ -1003,8 +1003,7 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
 
-
-# -- CoolProp tool tests -----------------------------------------------------
+# -- CoolProp direct tool tests ---------------------------------------------
 
 
 class TestCoolPropTool:
@@ -1012,19 +1011,14 @@ class TestCoolPropTool:
         from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
 
         tool = CoolPropTool()
-        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
-        assert "nemo_skills.mcp.servers.coolprop_tool" in tool._config["client_params"]["args"]
+        assert tool.default_config() == {}
 
     @pytest.mark.asyncio
-    async def test_coolprop_stdio_list_tools(self):
+    async def test_coolprop_direct_list_tools(self):
         from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
 
         tool = CoolPropTool()
         tool.configure()
-        try:
-            tools = await tool.list_tools()
-            tool_names = {t["name"] for t in tools}
-            assert "fluid-property" in tool_names
-            assert "fluid-list" in tool_names
-        finally:
-            await tool.shutdown()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "fluid-property" in tool_names
+        assert "fluid-list" in tool_names
