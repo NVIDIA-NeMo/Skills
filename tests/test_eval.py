@@ -124,7 +124,6 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
         f"    --benchmarks=gsm8k "
         f"    --output_dir={shlex.quote(str(output_dir))} "
         f"    --generation_module={shlex.quote(str(generation_module))} "
-        f"    --no-auto-summarize-results "
         f"    ++max_samples=1 "
         f"    ++max_concurrent_requests=1 "
         f"    ++inference.timeout=120 "
