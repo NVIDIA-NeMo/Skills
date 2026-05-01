@@ -1002,3 +1002,29 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     # Must not raise; session must be removed from the mapping regardless.
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
+
+
+# -- CoolProp tool tests -----------------------------------------------------
+
+
+class TestCoolPropTool:
+    def test_coolprop_tool_config(self):
+        from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
+
+        tool = CoolPropTool()
+        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
+        assert "nemo_skills.mcp.servers.coolprop_tool" in tool._config["client_params"]["args"]
+
+    @pytest.mark.asyncio
+    async def test_coolprop_stdio_list_tools(self):
+        from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
+
+        tool = CoolPropTool()
+        tool.configure()
+        try:
+            tools = await tool.list_tools()
+            tool_names = {t["name"] for t in tools}
+            assert "fluid-property" in tool_names
+            assert "fluid-list" in tool_names
+        finally:
+            await tool.shutdown()
