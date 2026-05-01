@@ -1002,3 +1002,33 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     # Must not raise; session must be removed from the mapping regardless.
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
+
+
+# -- Radioactive decay tool tests -------------------------------------------
+
+
+class TestRadioactivedecayTool:
+    def test_radioactivedecay_tool_config(self):
+        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        assert tool._config["client"] == "nemo_skills.mcp.clients.MCPStdioClient"
+        assert "nemo_skills.mcp.servers.radioactivedecay_tool" in tool._config["client_params"]["args"]
+
+    @pytest.mark.asyncio
+    async def test_radioactivedecay_stdio_list_tools(self):
+        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        tool.configure()
+        try:
+            tools = await tool.list_tools()
+            tool_names = {t["name"] for t in tools}
+            assert "nuclide-info" in tool_names
+            assert "decay-chain" in tool_names
+
+            decay_tool = next(t for t in tools if t["name"] == "decay-chain")
+            schema_props = decay_tool["input_schema"]["properties"]
+            assert "time_unit" not in schema_props
+        finally:
+            await tool.shutdown()
