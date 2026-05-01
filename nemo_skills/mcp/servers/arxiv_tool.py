@@ -745,6 +745,7 @@ async def _arxiv_api_get(arxiv_id: str) -> str:
         f"Abstract:\n{_truncate(summary)}"
     )
 
+
 # ── Tool provider ──────────────────────────────────────────────────────────
 
 
