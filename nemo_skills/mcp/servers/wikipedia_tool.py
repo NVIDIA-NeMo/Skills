@@ -45,14 +45,11 @@ import time
 from typing import Annotated, Any
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from nemo_skills.mcp.tool_providers import MCPClientTool
+from nemo_skills.mcp.tool_manager import Tool
 
 logger = logging.getLogger(__name__)
-
-mcp = FastMCP(name="wikipedia")
 
 # ── Config ─────────────────────────────────────────────────────────────────
 WIKI_LANG = os.getenv("WIKIPEDIA_LANG", "en")
@@ -241,7 +238,6 @@ async def _rate_limit() -> None:
 # ── Tools ──────────────────────────────────────────────────────────────────
 
 
-@mcp.tool(name="wikipedia-search")
 async def wikipedia_search(
     query: Annotated[str, Field(description="Search query for Wikipedia articles.")],
     num_results: Annotated[int, Field(description="Number of search results to return (1-5).")] = 3,
@@ -297,7 +293,6 @@ async def wikipedia_search(
     return result
 
 
-@mcp.tool(name="wikipedia-page")
 async def wikipedia_page(
     title: Annotated[
         str,
@@ -358,7 +353,6 @@ async def wikipedia_page(
     return rendered
 
 
-@mcp.tool(name="wikipedia-summary")
 async def wikipedia_summary(
     title: Annotated[str, Field(description="Title of the Wikipedia article.")],
     max_chars: Annotated[int, Field(description="Maximum characters to return (200-1500).")] = 700,
@@ -403,7 +397,6 @@ async def wikipedia_summary(
     return rendered
 
 
-@mcp.tool(name="wikipedia-sections")
 async def wikipedia_sections(
     title: Annotated[str, Field(description="Title of the Wikipedia article.")],
     max_sections: Annotated[int, Field(description="Maximum number of section headings to list (1-50).")] = 25,
@@ -450,7 +443,6 @@ async def wikipedia_sections(
     return rendered
 
 
-@mcp.tool(name="wikipedia-query-summary")
 async def wikipedia_query_summary(
     title: Annotated[str, Field(description="Title of the Wikipedia article.")],
     query: Annotated[str, Field(description="Term or phrase to locate within the article.")],
@@ -488,7 +480,6 @@ async def wikipedia_query_summary(
     return rendered
 
 
-@mcp.tool(name="wikipedia-key-facts")
 async def wikipedia_key_facts(
     title: Annotated[str, Field(description="Title of the Wikipedia article.")],
     topic: Annotated[str, Field(description="Optional topic to focus facts on.")] = "",
@@ -524,7 +515,6 @@ async def wikipedia_key_facts(
     return rendered
 
 
-@mcp.tool(name="wikipedia-section")
 async def wikipedia_section(
     title: Annotated[str, Field(description="Title of the Wikipedia article.")],
     section: Annotated[
@@ -632,37 +622,118 @@ async def _suggest_titles(query: str, n: int = 5) -> list[str]:
     except Exception:
         return []
 
-
 # ── Tool provider ──────────────────────────────────────────────────────────
 
 
-class WikipediaSearchTool(MCPClientTool):
-    """Wikipedia-backed MCP client tool provider."""
+class WikipediaSearchTool(Tool):
+    """Direct Wikipedia search/retrieval tool."""
 
     def __init__(self) -> None:
-        super().__init__()
-        self.apply_config_updates(
+        self._config: dict[str, Any] = {
+            "num_results": 3,
+            "max_chars": EXTRACT_LIMIT,
+            "max_sections": 40,
+            "count": 5,
+        }
+
+    def default_config(self) -> dict[str, Any]:
+        return dict(self._config)
+
+    def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
+        if overrides:
+            self._config.update(overrides)
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        return [
             {
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "client_params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.wikipedia_tool"],
+                "name": "wikipedia-search",
+                "description": "Search Wikipedia articles and return compact snippets.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string", "description": "Search query."}},
+                    "required": ["query"],
                 },
-                "hide_args": {
-                    "wikipedia-search": ["num_results"],
-                    "wikipedia-summary": ["max_chars"],
-                    "wikipedia-sections": ["max_sections"],
-                    "wikipedia-query-summary": ["max_chars"],
-                    "wikipedia-key-facts": ["count"],
+            },
+            {
+                "name": "wikipedia-page",
+                "description": "Fetch a Wikipedia article extract by title.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"title": {"type": "string", "description": "Article title."}},
+                    "required": ["title"],
                 },
-            }
-        )
+            },
+            {
+                "name": "wikipedia-summary",
+                "description": "Fetch a compact Wikipedia article summary by title.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"title": {"type": "string", "description": "Article title."}},
+                    "required": ["title"],
+                },
+            },
+            {
+                "name": "wikipedia-sections",
+                "description": "List section headings for a Wikipedia page.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"title": {"type": "string", "description": "Article title."}},
+                    "required": ["title"],
+                },
+            },
+            {
+                "name": "wikipedia-section",
+                "description": "Fetch one named Wikipedia page section.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "Article title."},
+                        "section": {"type": "string", "description": "Section heading."},
+                    },
+                    "required": ["title", "section"],
+                },
+            },
+            {
+                "name": "wikipedia-query-summary",
+                "description": "Search for a query, then summarize the top result.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string", "description": "Search query."}},
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "wikipedia-key-facts",
+                "description": "Extract compact key facts from a Wikipedia page.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"title": {"type": "string", "description": "Article title."}},
+                    "required": ["title"],
+                },
+            },
+        ]
 
-
-def main():
-    """Run the MCP server over stdio."""
-    mcp.run(transport="stdio")
-
-
-if __name__ == "__main__":
-    main()
+    async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+        arguments = dict(arguments or {})
+        if tool_name == "wikipedia-search":
+            arguments.setdefault("num_results", self._config.get("num_results", 3))
+            return await wikipedia_search(**arguments)
+        if tool_name == "wikipedia-page":
+            arguments.setdefault("max_chars", self._config.get("max_chars", EXTRACT_LIMIT))
+            return await wikipedia_page(**arguments)
+        if tool_name == "wikipedia-summary":
+            arguments.setdefault("max_chars", self._config.get("max_chars", 900))
+            return await wikipedia_summary(**arguments)
+        if tool_name == "wikipedia-sections":
+            arguments.setdefault("max_sections", self._config.get("max_sections", 40))
+            return await wikipedia_sections(**arguments)
+        if tool_name == "wikipedia-section":
+            arguments.setdefault("max_chars", self._config.get("max_chars", EXTRACT_LIMIT))
+            return await wikipedia_section(**arguments)
+        if tool_name == "wikipedia-query-summary":
+            arguments.setdefault("max_chars", self._config.get("max_chars", 900))
+            return await wikipedia_query_summary(**arguments)
+        if tool_name == "wikipedia-key-facts":
+            arguments.setdefault("count", self._config.get("count", 5))
+            return await wikipedia_key_facts(**arguments)
+        return f"Error: unknown tool '{tool_name}'"
