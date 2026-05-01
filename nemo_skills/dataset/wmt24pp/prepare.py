@@ -30,7 +30,7 @@ def write_data_to_file(output_file, datasets, tgt_languages):
                     "source_language": "en",
                     "target_language": tgt_lang,
                     "source_lang_name": "English",
-                    "target_lang_name": Language(tgt_lang[:2]).display_name(),
+                    "target_lang_name": Language.get(tgt_lang).display_name(),
                 }
                 json.dump(json_dict, fout)
                 fout.write("\n")
