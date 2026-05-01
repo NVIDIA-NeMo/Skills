@@ -408,6 +408,54 @@ or
 ns prepare_data librispeech-pc --split test-other --data_dir=/path/to/data
 ```
 
+## LibriSpeechMix SOT
+
+LibriSpeechMix SOT evaluates multispeaker ASR with serialized speaker tags. It uses the official [LibriSpeechMix](https://github.com/NaoyukiKanda/LibriSpeechMix) JSONL lists and LibriSpeech/OpenSLR audio, then writes NeMo SOT manifests with `[s0]`, `[s1]`, etc. reference text, RTTM supervision, and reference SegLST files.
+
+Supported benchmark variants:
+
+- `librispeechmix-sot.under20s-test-clean-1mix`
+- `librispeechmix-sot.under20s-test-clean-2mix`
+- `librispeechmix-sot.under20s-test-clean-3mix`
+- `librispeechmix-sot.over20s-test-clean-1mix`
+- `librispeechmix-sot.over20s-test-clean-2mix`
+- `librispeechmix-sot.over20s-test-clean-3mix`
+
+Dev smoke variants are also available with `dev-clean` in place of `test-clean`. The duration split is explicit: `under20s` contains records with mixed duration `<= 20.0` seconds, and `over20s` contains records with duration `> 20.0` seconds.
+
+Prepare the required test-clean variants:
+
+```bash
+ns prepare_data librispeechmix-sot --cluster=local --data_dir=/path/to/ns-data --splits test-clean --mixes 1mix 2mix 3mix
+```
+
+For a tiny local smoke using a pre-cloned LibriSpeechMix checkout:
+
+```bash
+python -m nemo_skills.dataset.prepare librispeechmix-sot \
+    --data_dir=/path/to/lsm-sot-data \
+    --librispeechmix-dir=/path/to/LibriSpeechMix \
+    --splits test-clean \
+    --mixes 1mix \
+    --max-samples 2 \
+    --no-audio
+```
+
+The primary metric is corpus-level no-PnC cpWER. The scorer reads reference SOT text from `text`, reads hypotheses from `pred_text` when available and otherwise `generation`, splits both by `[sN]` tags, removes punctuation/case, and applies minimum speaker permutation matching. It also writes `*_ref.seglst.json` and `*_hyp.seglst.json`; when `meeteval-wer` is installed it additionally runs MeetEval cpWER with `--normalizer chime8 --partial`.
+
+True speaker-attributed baselines should use a SOT-capable generation module, for example:
+
+```bash
+ns eval \
+    --benchmarks=librispeechmix-sot.under20s-test-clean-1mix \
+    --generation_module=nemo_skills.inference.librispeechmix_rtmtasr \
+    --server_type=none \
+    --server_gpus=0 \
+    --extra_arguments="++model_path=/path/to/MSCanary-v2.nemo ++spk_supervision=rttm ++nemo_root=/path/to/NeMo"
+```
+
+`nemo_skills.inference.librispeechmix_multitalker_parakeet` wraps the streaming Multitalker Parakeet path. The generic SALM backend can run `nvidia/canary-qwen-2.5b`, but the public model card documents generic ASR output, not SOT speaker-tagged output, so treat it as a generic ASR baseline unless a run proves it emits `[sN]` speaker-attributed text.
+
 ## Numb3rs
 
 Numb3rs is a speech benchmark for evaluating text normalization (TN) and inverse text normalization (ITN) capabilities of audio-language models. It contains paired written/spoken forms with corresponding synthetic audio, allowing evaluation of whether a model transcribes numbers in written form (e.g., `$100`, `3.14`) or spoken form (e.g., `one hundred dollars`, `three point one four`).

@@ -1,0 +1,5 @@
+METRICS_TYPE = "librispeechmix_sot"
+EVAL_ARGS = "++eval_type=librispeechmix_sot"
+GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
+GENERATION_MODULE = "nemo_skills.inference.generate"
+EVAL_SPLIT = "test"
