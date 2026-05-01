@@ -142,7 +142,10 @@ class BaseModel:
         else:
             self.base_url = base_url
 
-        needs_retry_tokenizer = context_limit_retry_strategy in {"reduce_prompt_from_start", "reduce_prompt_from_end"}
+        needs_retry_tokenizer = enable_soft_fail and context_limit_retry_strategy in {
+            "reduce_prompt_from_start",
+            "reduce_prompt_from_end",
+        }
         if require_tokenizer or needs_retry_tokenizer:
             self.tokenizer = self._get_tokenizer(tokenizer)
         else:

@@ -99,6 +99,7 @@ def get_ray_server_cmd(start_cmd):
         "        --head "
         "        --port=6379 "
         f"       {ports} && "
+        "    sleep ${NEMO_SKILLS_RAY_HEAD_START_DELAY:-90} && "
         f"   {start_cmd} ; "
         "else "
         "    echo 'Starting worker node' && "
@@ -224,7 +225,12 @@ def get_server_command(
     else:
         raise ValueError(f"Server type '{server_type}' not supported for model inference.")
 
+    # Some Slurm/container launchers normalize mixed-case environment keys when
+    # exporting, but vLLM reads this variable with the lowercase "get" spelling.
+    # Set it inside the container immediately before Ray/vLLM starts.
+    ray_cgraph_timeout = "export RAY_CGRAPH_get_timeout=${RAY_CGRAPH_get_timeout:-${RAY_CGRAPH_GET_TIMEOUT:-1800}} && "
     server_cmd = (
-        f"nvidia-smi && cd /nemo_run/code && export PYTHONPATH=$PYTHONPATH:/nemo_run/code && {server_start_cmd} "
+        "nvidia-smi && cd /nemo_run/code && export PYTHONPATH=$PYTHONPATH:/nemo_run/code && "
+        f"{ray_cgraph_timeout}{server_start_cmd} "
     )
     return server_cmd, num_tasks

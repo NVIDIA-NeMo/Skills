@@ -42,10 +42,11 @@ mcp = FastMCP(name="python_tool")
 # Initialized from config in main()
 sandbox = None
 
-# TODO: how should we control timeout in description?
+DEFAULT_EXEC_TIMEOUT_S = 10
+
 description = (
     "Call this function to execute Python code in a stateful Jupyter notebook environment. "
-    "Python will respond with the output of the execution or time out after 120.0 seconds."
+    f"Python will respond with the output of the execution or time out after {DEFAULT_EXEC_TIMEOUT_S:.1f} seconds."
 )
 
 
@@ -53,7 +54,7 @@ description = (
 async def stateful_python_code_exec(
     code: Annotated[str, Field(description="Code to execute")],
     session_id: Annotated[str | None, Field(description="Session id for session persistence")] = None,
-    timeout: Annotated[float, Field(description="Time in seconds to allow the job to run")] = 10,
+    timeout: Annotated[float, Field(description="Time in seconds to allow the job to run")] = DEFAULT_EXEC_TIMEOUT_S,
 ) -> ExecutionResult:
     language = "ipython"
     try:
@@ -119,7 +120,7 @@ class PythonTool(MCPClientTool):
                 # use explicit Hydra connector built from full context by default
                 "init_hook": "hydra",
                 # execution-specific default
-                "exec_timeout_s": 10,
+                "exec_timeout_s": DEFAULT_EXEC_TIMEOUT_S,
             }
         )
         self.requests_to_sessions = defaultdict(lambda: None)
@@ -130,7 +131,7 @@ class PythonTool(MCPClientTool):
         # TODO: error handling?
         request_id = extra_args.pop("request_id")
         merged_extra = dict(extra_args or {})
-        merged_extra.setdefault("timeout", self._config.get("exec_timeout_s", 10))
+        merged_extra.setdefault("timeout", self._config.get("exec_timeout_s", DEFAULT_EXEC_TIMEOUT_S))
         merged_extra["session_id"] = self.requests_to_sessions[request_id]
         result = await self._client.call_tool(tool=tool_name, args=arguments, extra_args=merged_extra)
         self.requests_to_sessions[request_id] = result["session_id"]
@@ -162,7 +163,7 @@ class DirectPythonTool(Tool):
         self._config: Dict[str, Any] = {
             # Same keys/defaults as PythonTool (minus MCP-specific: client, client_params, init_hook)
             "hide_args": {"stateful_python_code_exec": ["session_id", "timeout"]},
-            "exec_timeout_s": 10,
+            "exec_timeout_s": DEFAULT_EXEC_TIMEOUT_S,
             "sandbox": {},
         }
         self._sandbox = None
@@ -212,7 +213,7 @@ class DirectPythonTool(Tool):
 
         extra_args = dict(extra_args or {})
         request_id = extra_args.pop("request_id", None)
-        timeout = extra_args.get("timeout", self._config.get("exec_timeout_s", 10))
+        timeout = extra_args.get("timeout", self._config.get("exec_timeout_s", DEFAULT_EXEC_TIMEOUT_S))
         session_id = self.requests_to_sessions[request_id] if request_id is not None else None
 
         try:

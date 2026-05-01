@@ -636,7 +636,7 @@ def eval(
                     ),
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
+                    # sbatch_kwargs=sbatch_kwargs,
                 )
                 all_tasks.append(summarize_task)
                 if benchmark_args.benchmark_group:
