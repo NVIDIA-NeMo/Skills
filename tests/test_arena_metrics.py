@@ -152,3 +152,46 @@ def test_arena_metrics_invalid_score_handling():
     m.update([pred])
 
     assert m.scores[0] == [None, None]
+
+
+def test_arena_metrics_task_n_flattens_samples():
+    """Each (row, sample) pair should contribute its own battle entry — not best-of-N."""
+    m = ArenaMetrics()
+
+    random.seed(42)
+    scores_pool = [("A>B", "B>A"), ("B>A", "A>B"), ("A=B", "A=B"), ("A>>B", "B>>A"), ("B>>A", "A>>B")]
+
+    n = 4
+    rows = 30
+    for _ in range(rows):
+        sample = [_make_prediction(*random.choice(scores_pool), category="hard_prompt") for _ in range(n)]
+        m.update(sample)
+
+    assert m.total == rows
+    assert m.max_k == n
+    # Flattened: one battle pair per (row, sample), not per row.
+    assert len(m.scores) == rows * n
+    assert len(m.categories) == rows * n
+
+    metrics = m.get_metrics()
+    # Single-key output: pass@1 already aggregates over all rows*N battle pairs.
+    assert list(metrics.keys()) == ["pass@1"]
+    assert metrics["pass@1"]["num_entries"] == rows
+    assert m.evaluations_to_print() == ["pass@1"]
+
+
+def test_arena_metrics_task_n_appends_per_sample_scores():
+    """Flattening should append exactly one (gen-base, base-gen) pair per sample, in order."""
+    m = ArenaMetrics()
+
+    sample = [
+        _make_prediction("A>>B", "B>>A", category="hard_prompt"),
+        _make_prediction("A=B", "A=B", category="hard_prompt"),
+        _make_prediction("B>A", "A>B", category="hard_prompt"),
+    ]
+    m.update(sample)
+
+    assert m.scores == [["A>>B", "B>>A"], ["A=B", "A=B"], ["B>A", "A>B"]]
+    assert m.categories == ["hard_prompt", "hard_prompt", "hard_prompt"]
+    assert m.total == 1
+    assert m.max_k == 3
