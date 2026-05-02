@@ -1043,3 +1043,36 @@ class TestWikipediaTool:
         search_tool = next(t for t in tools if t["name"] == "wikipedia-search")
         assert "query" in search_tool["input_schema"]["properties"]
         assert "num_results" not in search_tool["input_schema"]["properties"]
+
+        query_summary_tool = next(t for t in tools if t["name"] == "wikipedia-query-summary")
+        assert {"title", "query"} <= set(query_summary_tool["input_schema"]["properties"])
+        assert set(query_summary_tool["input_schema"]["required"]) == {"title", "query"}
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_execute_dispatch_contracts(self, monkeypatch):
+        from nemo_skills.mcp.servers import wikipedia_tool
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        async def fake_page(title):
+            return f"page:{title}"
+
+        async def fake_section(title, section):
+            return f"section:{title}:{section}"
+
+        async def fake_query_summary(title, query, max_chars=700):
+            return f"query-summary:{title}:{query}:{max_chars}"
+
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_page", fake_page)
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_section", fake_section)
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_query_summary", fake_query_summary)
+
+        tool = WikipediaSearchTool()
+        assert await tool.execute("wikipedia-page", {"title": "Hydrogen"}) == "page:Hydrogen"
+        assert (
+            await tool.execute("wikipedia-section", {"title": "Hydrogen", "section": "Isotopes"})
+            == "section:Hydrogen:Isotopes"
+        )
+        assert (
+            await tool.execute("wikipedia-query-summary", {"title": "Hydrogen", "query": "isotope"})
+            == "query-summary:Hydrogen:isotope:2500"
+        )

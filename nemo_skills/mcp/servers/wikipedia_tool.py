@@ -72,6 +72,7 @@ RATE_LIMIT_LOCK = os.getenv(
     "WIKIPEDIA_RATE_LIMIT_LOCK",
     os.path.join(tempfile.gettempdir(), "nemo_skills_wikipedia_api_rate_limit.lock"),
 )
+EXPECTED_HTTP_ERRORS = (httpx.HTTPError, RuntimeError, json.JSONDecodeError)
 
 _cache: dict[str, str] = {}
 _request_lock = asyncio.Lock()
@@ -270,7 +271,7 @@ async def wikipedia_search(
     async with httpx.AsyncClient(headers=headers) as client:
         try:
             data = await _http_get_json(client, ACTION_BASE, params=params)
-        except Exception as e:
+        except EXPECTED_HTTP_ERRORS as e:
             return f"Wikipedia search failed: {e}"
 
     hits = (data.get("query") or {}).get("search") or []
@@ -328,7 +329,7 @@ async def wikipedia_page(
     async with httpx.AsyncClient(headers=headers) as client:
         try:
             data = await _http_get_json(client, ACTION_BASE, params=params)
-        except Exception as e:
+        except EXPECTED_HTTP_ERRORS as e:
             return f"Wikipedia lookup failed: {e}"
 
     pages = (data.get("query") or {}).get("pages") or []
@@ -383,7 +384,7 @@ async def wikipedia_summary(
     async with httpx.AsyncClient(headers=headers) as client:
         try:
             data = await _http_get_json(client, ACTION_BASE, params=params)
-        except Exception as e:
+        except EXPECTED_HTTP_ERRORS as e:
             return f"Wikipedia summary failed: {e}"
     pages = (data.get("query") or {}).get("pages") or []
     if not pages or pages[0].get("missing"):
@@ -427,7 +428,7 @@ async def wikipedia_sections(
                     "formatversion": "2",
                 },
             )
-        except Exception as e:
+        except EXPECTED_HTTP_ERRORS as e:
             return f"Wikipedia section listing failed: {e}"
     sections = (data.get("parse") or {}).get("sections") or []
     if not sections:
@@ -457,7 +458,7 @@ async def wikipedia_query_summary(
         return cached
     try:
         rendered_title, url, extract = await _page_extract(t)
-    except Exception as e:
+    except EXPECTED_HTTP_ERRORS as e:
         return f"Wikipedia query summary failed: {e}"
     if rendered_title is None:
         return extract
@@ -498,7 +499,7 @@ async def wikipedia_key_facts(
         return cached
     try:
         rendered_title, url, extract = await _page_extract(t)
-    except Exception as e:
+    except EXPECTED_HTTP_ERRORS as e:
         return f"Wikipedia key facts failed: {e}"
     if rendered_title is None:
         return extract
@@ -554,7 +555,7 @@ async def wikipedia_section(
                     "formatversion": "2",
                 },
             )
-        except Exception as e:
+        except EXPECTED_HTTP_ERRORS as e:
             return f"Wikipedia section listing failed: {e}"
         sections = (sec_data.get("parse") or {}).get("sections") or []
         if not sections:
@@ -585,7 +586,7 @@ async def wikipedia_section(
                     "formatversion": "2",
                 },
             )
-        except Exception as e:
+        except EXPECTED_HTTP_ERRORS as e:
             return f"Wikipedia section fetch failed: {e}"
 
         # Prefer the rendered HTML stripped (cleaner than raw wikitext).
@@ -619,7 +620,7 @@ async def _suggest_titles(query: str, n: int = 5) -> list[str]:
                 return []
             data = r.json()
             return data[1] if isinstance(data, list) and len(data) > 1 else []
-    except Exception:
+    except EXPECTED_HTTP_ERRORS:
         return []
 
 
@@ -641,8 +642,24 @@ class WikipediaSearchTool(Tool):
         return dict(self._config)
 
     def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
-        if overrides:
-            self._config.update(overrides)
+        if not overrides:
+            return
+
+        unknown = set(overrides) - set(self._config)
+        if unknown:
+            raise ValueError(f"Unknown WikipediaSearchTool override(s): {sorted(unknown)}")
+
+        if "num_results" in overrides:
+            num_results = int(overrides["num_results"])
+            if num_results < 1 or num_results > 5:
+                raise ValueError("num_results must be between 1 and 5.")
+            self._config["num_results"] = num_results
+        if "max_chars" in overrides:
+            self._config["max_chars"] = max(200, min(int(overrides["max_chars"]), 1500))
+        if "max_sections" in overrides:
+            self._config["max_sections"] = max(1, min(int(overrides["max_sections"]), 50))
+        if "count" in overrides:
+            self._config["count"] = max(1, min(int(overrides["count"]), MAX_FACTS))
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return [
@@ -696,11 +713,14 @@ class WikipediaSearchTool(Tool):
             },
             {
                 "name": "wikipedia-query-summary",
-                "description": "Search for a query, then summarize the top result.",
+                "description": "Return a compact snippet around a query inside a Wikipedia article.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {"query": {"type": "string", "description": "Search query."}},
-                    "required": ["query"],
+                    "properties": {
+                        "title": {"type": "string", "description": "Article title."},
+                        "query": {"type": "string", "description": "Term or phrase to locate within the article."},
+                    },
+                    "required": ["title", "query"],
                 },
             },
             {
@@ -717,24 +737,22 @@ class WikipediaSearchTool(Tool):
     async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
         arguments = dict(arguments or {})
         if tool_name == "wikipedia-search":
-            arguments.setdefault("num_results", self._config.get("num_results", 3))
+            arguments.setdefault("num_results", self._config["num_results"])
             return await wikipedia_search(**arguments)
         if tool_name == "wikipedia-page":
-            arguments.setdefault("max_chars", self._config.get("max_chars", EXTRACT_LIMIT))
             return await wikipedia_page(**arguments)
         if tool_name == "wikipedia-summary":
-            arguments.setdefault("max_chars", self._config.get("max_chars", 900))
+            arguments.setdefault("max_chars", self._config["max_chars"])
             return await wikipedia_summary(**arguments)
         if tool_name == "wikipedia-sections":
-            arguments.setdefault("max_sections", self._config.get("max_sections", 40))
+            arguments.setdefault("max_sections", self._config["max_sections"])
             return await wikipedia_sections(**arguments)
         if tool_name == "wikipedia-section":
-            arguments.setdefault("max_chars", self._config.get("max_chars", EXTRACT_LIMIT))
             return await wikipedia_section(**arguments)
         if tool_name == "wikipedia-query-summary":
-            arguments.setdefault("max_chars", self._config.get("max_chars", 900))
+            arguments.setdefault("max_chars", self._config["max_chars"])
             return await wikipedia_query_summary(**arguments)
         if tool_name == "wikipedia-key-facts":
-            arguments.setdefault("count", self._config.get("count", 5))
+            arguments.setdefault("count", self._config["count"])
             return await wikipedia_key_facts(**arguments)
         return f"Error: unknown tool '{tool_name}'"
