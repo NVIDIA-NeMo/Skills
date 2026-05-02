@@ -23,7 +23,7 @@ Tool names are kept as `arxiv-search` / `arxiv-get` for backward
 compatibility with prior generation runs that already learned to use them.
 
 Usage:
-    ++tool_modules=[nemo_skills.mcp.servers.arxiv_tool::ArxivSearchTool]
+    ++tool_modules=[nemo_skills.mcp.servers.web.arxiv_tool::ArxivSearchTool]
 """
 
 import asyncio

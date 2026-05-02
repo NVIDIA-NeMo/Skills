@@ -370,10 +370,10 @@ For vLLM, you may need to specify tool calling arguments:
 ### Built-in Tools
 
 - [`nemo_skills.mcp.servers.python_tool.PythonTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/python_tool.py) - Python code execution
-- [`nemo_skills.mcp.servers.arxiv_tool.ArxivSearchTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/arxiv_tool.py) - ArXiv paper search and retrieval (no API key required)
+- [`nemo_skills.mcp.servers.web.arxiv_tool.ArxivSearchTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/web/arxiv_tool.py) - ArXiv paper search and retrieval (no API key required)
 - [`nemo_skills.mcp.servers.exa_tool.ExaTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/exa_tool.py) - Web search via Exa API
-- [`nemo_skills.mcp.servers.periodictable_tool.PeriodictableTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/periodictable_tool.py) - Direct element, isotope, and neutron scattering lookup via periodictable (requires `periodictable`)
-- [`nemo_skills.mcp.servers.particle_tool.ParticleTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/particle_tool.py) - Direct particle physics lookup from the PDG database via particle (requires `particle`)
-- [`nemo_skills.mcp.servers.radioactivedecay_tool.RadioactivedecayTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/radioactivedecay_tool.py) - Direct nuclear nuclide and decay-chain lookup via radioactivedecay (requires `radioactivedecay`)
-- [`nemo_skills.mcp.servers.coolprop_tool.CoolPropTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/coolprop_tool.py) - Direct thermophysical fluid property lookup via CoolProp (requires `CoolProp`)
-- [`nemo_skills.mcp.servers.wikipedia_tool.WikipediaSearchTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/wikipedia_tool.py) - Direct Wikipedia article search and retrieval (no API key required)
+- [`nemo_skills.mcp.servers.chemistry.periodictable_tool.PeriodictableTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/chemistry/periodictable_tool.py) - Direct element, isotope, and neutron scattering lookup via periodictable (requires `periodictable`)
+- [`nemo_skills.mcp.servers.physics.particle_tool.ParticleTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/physics/particle_tool.py) - Direct particle physics lookup from the PDG database via particle (requires `particle`)
+- [`nemo_skills.mcp.servers.physics.radioactivedecay_tool.RadioactivedecayTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/physics/radioactivedecay_tool.py) - Direct nuclear nuclide and decay-chain lookup via radioactivedecay (requires `radioactivedecay`)
+- [`nemo_skills.mcp.servers.physics.coolprop_tool.CoolPropTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/physics/coolprop_tool.py) - Direct thermophysical fluid property lookup via CoolProp (requires `CoolProp`)
+- [`nemo_skills.mcp.servers.web.wikipedia_tool.WikipediaSearchTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/web/wikipedia_tool.py) - Direct Wikipedia article search and retrieval (no API key required)

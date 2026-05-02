@@ -21,7 +21,7 @@ Prerequisites:
     pip install radioactivedecay
 
 Usage:
-    ++tool_modules=[nemo_skills.mcp.servers.radioactivedecay_tool::RadioactivedecayTool]
+    ++tool_modules=[nemo_skills.mcp.servers.physics.radioactivedecay_tool::RadioactivedecayTool]
 """
 
 import logging
