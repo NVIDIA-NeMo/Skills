@@ -1076,6 +1076,8 @@ class TestWikipediaTool:
             await tool.execute("wikipedia-query-summary", {"title": "Hydrogen", "query": "isotope"})
             == "query-summary:Hydrogen:isotope:2500"
         )
+
+
 # -- ArXiv direct tool tests ------------------------------------------------
 
 
