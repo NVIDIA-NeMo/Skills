@@ -767,8 +767,20 @@ class ArxivSearchTool(Tool):
         return dict(self._config)
 
     def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
-        if overrides:
-            self._config.update(overrides)
+        if not overrides:
+            return
+
+        allowed = {"max_results", "max_sections", "max_chars"}
+        unknown = set(overrides) - allowed
+        if unknown:
+            raise ValueError(f"Unsupported ArxivSearchTool override(s): {sorted(unknown)}")
+
+        if "max_results" in overrides:
+            self._config["max_results"] = max(1, min(int(overrides["max_results"]), MAX_RESULTS))
+        if "max_sections" in overrides:
+            self._config["max_sections"] = max(1, min(int(overrides["max_sections"]), 80))
+        if "max_chars" in overrides:
+            self._config["max_chars"] = max(500, min(int(overrides["max_chars"]), PAPER_CHUNK_LIMIT))
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return [
@@ -817,16 +829,16 @@ class ArxivSearchTool(Tool):
     async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
         arguments = dict(arguments or {})
         if tool_name == "arxiv-search":
-            arguments.setdefault("max_results", self._config.get("max_results", 3))
+            arguments.setdefault("max_results", self._config["max_results"])
             return await arxiv_search(**arguments)
         if tool_name == "arxiv-get":
             return await arxiv_get(**arguments)
         if tool_name == "arxiv-sections":
-            arguments.setdefault("max_sections", self._config.get("max_sections", 40))
+            arguments.setdefault("max_sections", self._config["max_sections"])
             return await arxiv_sections(**arguments)
         if tool_name == "arxiv-read-chunk":
             arguments.setdefault("offset", 0)
-            arguments.setdefault("max_chars", self._config.get("max_chars", PAPER_CHUNK_LIMIT))
+            arguments.setdefault("max_chars", self._config["max_chars"])
             arguments.setdefault("query", "")
             return await arxiv_read_chunk(**arguments)
         return f"Error: unknown tool '{tool_name}'"
