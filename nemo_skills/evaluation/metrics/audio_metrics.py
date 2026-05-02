@@ -301,6 +301,8 @@ class AudioMetrics(BaseMetrics):
                 import jiwer
 
                 agg_metrics["wer"] = round(100.0 * jiwer.wer(self.wer_references, self.wer_predictions), 2)
+            elif self.wer_total_ref_words > 0:
+                agg_metrics["wer"] = round(100.0 * self.wer_total_errors / self.wer_total_ref_words, 2)
             elif self.wer_scores:
                 agg_metrics["wer"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
             if self.wer_total_ref_words > 0:

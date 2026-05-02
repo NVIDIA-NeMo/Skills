@@ -106,6 +106,13 @@ def _build_command(
     return command
 
 
+def _apply_prepare_data_env(command: str, data_dir: str | None) -> str:
+    """Expose ``data_dir`` to dataset prepare scripts through the standard env var."""
+    if not data_dir:
+        return command
+    return f"NEMO_SKILLS_DATA_DIR={shlex.quote(data_dir)} {command}"
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 @typer_unpacker
 def prepare_data(
@@ -206,6 +213,7 @@ def prepare_data(
         skip_data_dir_check,
         prepare_unknown_args,
     )
+    command = _apply_prepare_data_env(command, data_dir)
 
     if data_dir:
         command += f" && mkdir -p {data_dir}"

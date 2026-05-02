@@ -33,6 +33,15 @@ MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for
 - Benchmark is defined in [`nemo_skills/dataset/mmau-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmau-pro/__init__.py)
 - Original benchmark source is hosted on [HuggingFace](https://huggingface.co/datasets/gamma-lab-umd/MMAU-Pro)
 
+### LibriSpeechMix
+
+LibriSpeechMix is a multi-talker LibriSpeech benchmark for overlapped ASR and speaker-attributed ASR (SA-ASR). The NeMo Skills integration supports:
+
+- `dev-clean` and `test-clean`
+- `1mix`, `2mix`, and `3mix`
+- standard overlapped ASR scoring
+- SA-ASR scoring with the upstream default `8prof-2utt` speaker-profile setting
+
 ## Preparing Data
 
 These benchmarks require audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.
@@ -407,6 +416,66 @@ or
 ```bash
 ns prepare_data librispeech-pc --split test-other --data_dir=/path/to/data
 ```
+
+## LibriSpeechMix
+
+LibriSpeechMix evaluates overlapped transcription and speaker-attributed transcription on mixtures derived from LibriSpeech `dev-clean` and `test-clean`.
+
+### Dataset Location
+
+- Benchmark group is defined in [`nemo_skills/dataset/librispeechmix/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/librispeechmix/__init__.py)
+- Official manifests come from [NaoyukiKanda/LibriSpeechMix](https://github.com/NaoyukiKanda/LibriSpeechMix)
+- Source speech audio comes from [LibriSpeech OpenSLR-12](https://www.openslr.org/12/)
+
+### Supported Benchmarks
+
+- Overlapped ASR:
+  `librispeechmix.asr-dev-clean-1mix`,
+  `librispeechmix.asr-dev-clean-2mix`,
+  `librispeechmix.asr-dev-clean-3mix`,
+  `librispeechmix.asr-test-clean-1mix`,
+  `librispeechmix.asr-test-clean-2mix`,
+  `librispeechmix.asr-test-clean-3mix`
+- Speaker-attributed ASR:
+  `librispeechmix.sa-asr-dev-clean-1mix`,
+  `librispeechmix.sa-asr-dev-clean-2mix`,
+  `librispeechmix.sa-asr-dev-clean-3mix`,
+  `librispeechmix.sa-asr-test-clean-1mix`,
+  `librispeechmix.sa-asr-test-clean-2mix`,
+  `librispeechmix.sa-asr-test-clean-3mix`
+
+### Preparing LibriSpeechMix Data
+
+LibriSpeechMix downloads LibriSpeech `dev-clean` and `test-clean` from OpenSLR, caches source WAV files for speaker profiles, synthesizes mixed WAVs, and writes benchmark JSONL files under your external `--data_dir`.
+
+```bash
+ns prepare_data librispeechmix --data_dir=/path/to/data --cluster=<cluster_name>
+```
+
+Prepare only specific splits, mixtures, or modes:
+
+```bash
+ns prepare_data librispeechmix \
+    --data_dir=/path/to/data \
+    --splits dev-clean \
+    --mixes 2mix 3mix \
+    --modes asr sa-asr
+```
+
+Override the absolute audio-path prefix embedded in JSONL files:
+
+```bash
+ns prepare_data librispeechmix \
+    --data_dir=/path/to/data \
+    --audio-prefix /dataset/librispeechmix/audio
+```
+
+### Evaluation Assumptions
+
+- `1mix` uses standard WER against the single reference transcript.
+- `2mix` and `3mix` use permutation-invariant WER over newline-separated hypothesized utterances.
+- SA-ASR expects speaker-labeled lines in the format `speaker_<profile_index>: <transcript>`.
+- SA-ASR scoring matches hypotheses to the reference `speaker_profile_index` values instead of transcript order.
 
 ## Numb3rs
 

@@ -15,6 +15,7 @@
 """Audio evaluation framework supporting ASR, ASR-PC, Translation, CER, and more."""
 
 import asyncio
+import itertools
 import logging
 import re
 from typing import Any
@@ -374,6 +375,176 @@ def evaluate_asr(reference: str, hypothesis: str, normalization_mode: str = "sta
     return result
 
 
+def _split_librispeechmix_lines(text: str) -> list[str]:
+    """Split newline-delimited LibriSpeechMix generations into non-empty utterances."""
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _counts_for_normalized_pair(reference: str, hypothesis: str) -> dict[str, int]:
+    """Compute WER counts for a normalized reference/hypothesis pair, handling empty refs safely."""
+    ref = reference.strip()
+    hyp = hypothesis.strip()
+
+    if not ref:
+        insertions = len(hyp.split()) if hyp else 0
+        return {
+            "wer_errors": insertions,
+            "wer_ref_words": 0,
+            "wer_substitutions": 0,
+            "wer_insertions": insertions,
+            "wer_deletions": 0,
+        }
+
+    if not hyp:
+        deletions = len(ref.split())
+        return {
+            "wer_errors": deletions,
+            "wer_ref_words": deletions,
+            "wer_substitutions": 0,
+            "wer_insertions": 0,
+            "wer_deletions": deletions,
+        }
+
+    return _wer_with_counts(ref, hyp)
+
+
+def _pick_best_librispeechmix_alignment(references: list[str], hypotheses: list[str]) -> dict[str, Any]:
+    """Choose the permutation with the fewest total ASR errors."""
+    padded_size = max(len(references), len(hypotheses), 1)
+    padded_refs = list(references) + [""] * (padded_size - len(references))
+    padded_hyps = list(hypotheses) + [""] * (padded_size - len(hypotheses))
+
+    best_result = None
+    best_key = None
+
+    for permutation in itertools.permutations(range(padded_size)):
+        aligned_hypotheses = [padded_hyps[index] for index in permutation]
+        current = {
+            "wer_errors": 0,
+            "wer_ref_words": 0,
+            "wer_substitutions": 0,
+            "wer_insertions": 0,
+            "wer_deletions": 0,
+            "aligned_references": list(padded_refs),
+            "aligned_hypotheses": aligned_hypotheses,
+        }
+
+        for reference, hypothesis in zip(padded_refs, aligned_hypotheses):
+            counts = _counts_for_normalized_pair(reference, hypothesis)
+            current["wer_errors"] += counts["wer_errors"]
+            current["wer_ref_words"] += counts["wer_ref_words"]
+            current["wer_substitutions"] += counts["wer_substitutions"]
+            current["wer_insertions"] += counts["wer_insertions"]
+            current["wer_deletions"] += counts["wer_deletions"]
+
+        key = (
+            current["wer_errors"],
+            current["wer_insertions"],
+            current["wer_deletions"],
+            current["wer_substitutions"],
+        )
+        if best_key is None or key < best_key:
+            best_key = key
+            best_result = current
+
+    total_ref_words = best_result["wer_ref_words"]
+    best_result["wer"] = best_result["wer_errors"] / total_ref_words if total_ref_words > 0 else 0.0
+    best_result["is_correct"] = best_result["wer"] < 0.5 if total_ref_words > 0 else best_result["wer_errors"] == 0
+    return best_result
+
+
+def evaluate_librispeechmix_asr(
+    references: list[str], hypothesis: str, normalization_mode: str = "standard"
+) -> dict[str, Any]:
+    """Evaluate LibriSpeechMix overlapped ASR with permutation-invariant WER."""
+    normalized_refs = [preprocess_asr_text(reference, mode=normalization_mode) for reference in references]
+    normalized_hyps = [preprocess_asr_text(line, mode=normalization_mode) for line in _split_librispeechmix_lines(hypothesis)]
+
+    if not normalized_hyps and hypothesis.strip():
+        normalized_hyps = [preprocess_asr_text(hypothesis, mode=normalization_mode)]
+
+    result = _pick_best_librispeechmix_alignment(normalized_refs, normalized_hyps)
+    result["reference_streams"] = normalized_refs
+    result["predicted_streams"] = result.pop("aligned_hypotheses")
+    result["aligned_reference_streams"] = result.pop("aligned_references")
+    return result
+
+
+_SA_ASR_LINE_PATTERN = re.compile(r"^\s*speaker_(\d+)\s*:\s*(.*)$", re.IGNORECASE)
+
+
+def _parse_sa_asr_hypothesis(hypothesis: str) -> tuple[dict[str, str], list[str]]:
+    """Parse SA-ASR output lines into speaker-labeled predictions and unlabeled extras."""
+    parsed_predictions: dict[str, str] = {}
+    extras: list[str] = []
+
+    for line in _split_librispeechmix_lines(hypothesis):
+        match = _SA_ASR_LINE_PATTERN.match(line)
+        if match is None:
+            extras.append(line)
+            continue
+
+        speaker_label = f"speaker_{int(match.group(1))}"
+        transcript = match.group(2).strip()
+        if speaker_label in parsed_predictions:
+            extras.append(transcript)
+        else:
+            parsed_predictions[speaker_label] = transcript
+
+    return parsed_predictions, extras
+
+
+def evaluate_librispeechmix_sa_asr(
+    references: list[str], speaker_profile_index: list[int], hypothesis: str, normalization_mode: str = "standard"
+) -> dict[str, Any]:
+    """Evaluate LibriSpeechMix speaker-attributed ASR using speaker-profile indices."""
+    reference_map = {
+        f"speaker_{speaker_idx}": preprocess_asr_text(reference, mode=normalization_mode)
+        for speaker_idx, reference in zip(speaker_profile_index, references)
+    }
+    parsed_predictions, extras = _parse_sa_asr_hypothesis(hypothesis)
+
+    normalized_predictions = {
+        speaker_label: preprocess_asr_text(text, mode=normalization_mode)
+        for speaker_label, text in parsed_predictions.items()
+    }
+    normalized_extras = [preprocess_asr_text(text, mode=normalization_mode) for text in extras]
+
+    counts = {
+        "wer_errors": 0,
+        "wer_ref_words": 0,
+        "wer_substitutions": 0,
+        "wer_insertions": 0,
+        "wer_deletions": 0,
+    }
+    aligned_predictions = {}
+
+    for speaker_label, reference in reference_map.items():
+        hypothesis_text = normalized_predictions.pop(speaker_label, "")
+        aligned_predictions[speaker_label] = hypothesis_text
+        pair_counts = _counts_for_normalized_pair(reference, hypothesis_text)
+        counts["wer_errors"] += pair_counts["wer_errors"]
+        counts["wer_ref_words"] += pair_counts["wer_ref_words"]
+        counts["wer_substitutions"] += pair_counts["wer_substitutions"]
+        counts["wer_insertions"] += pair_counts["wer_insertions"]
+        counts["wer_deletions"] += pair_counts["wer_deletions"]
+
+    for hypothesis_text in list(normalized_predictions.values()) + normalized_extras:
+        pair_counts = _counts_for_normalized_pair("", hypothesis_text)
+        counts["wer_errors"] += pair_counts["wer_errors"]
+        counts["wer_ref_words"] += pair_counts["wer_ref_words"]
+        counts["wer_substitutions"] += pair_counts["wer_substitutions"]
+        counts["wer_insertions"] += pair_counts["wer_insertions"]
+        counts["wer_deletions"] += pair_counts["wer_deletions"]
+
+    total_ref_words = counts["wer_ref_words"]
+    counts["wer"] = counts["wer_errors"] / total_ref_words if total_ref_words > 0 else 0.0
+    counts["is_correct"] = counts["wer"] < 0.5 if total_ref_words > 0 else counts["wer_errors"] == 0
+    counts["reference_streams"] = [reference_map[key] for key in sorted(reference_map)]
+    counts["predicted_streams"] = [aligned_predictions.get(key, "") for key in sorted(reference_map)]
+    return counts
+
+
 def evaluate_translation(reference: str, hypothesis: str) -> dict[str, Any]:
     """Evaluate translation: computes sentence-level BLEU score."""
     try:
@@ -542,6 +713,23 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
     elif task_type == "ASR":
         mode = resolve_asr_normalization_mode(config)
         metrics = evaluate_asr(expected_answer, generation, normalization_mode=mode)
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
+
+    elif task_type == "LIBRISPEECHMIX_ASR":
+        mode = resolve_asr_normalization_mode(config)
+        metrics = evaluate_librispeechmix_asr(sample["reference_streams"], generation, normalization_mode=mode)
+        updates.update(metrics)
+        updates["predicted_answer"] = generation
+
+    elif task_type == "LIBRISPEECHMIX_SA_ASR":
+        mode = resolve_asr_normalization_mode(config)
+        metrics = evaluate_librispeechmix_sa_asr(
+            sample["reference_streams"],
+            sample["speaker_profile_index"],
+            generation,
+            normalization_mode=mode,
+        )
         updates.update(metrics)
         updates["predicted_answer"] = generation
 
