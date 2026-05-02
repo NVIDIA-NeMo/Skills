@@ -372,4 +372,3 @@ For vLLM, you may need to specify tool calling arguments:
 - [`nemo_skills.mcp.servers.python_tool.PythonTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/python_tool.py) - Python code execution
 - [`nemo_skills.mcp.servers.exa_tool.ExaTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/exa_tool.py) - Web search via Exa API
 - [`nemo_skills.mcp.servers.radioactivedecay_tool.RadioactivedecayTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/radioactivedecay_tool.py) - Direct nuclear nuclide and decay-chain lookup via radioactivedecay (requires `radioactivedecay`)
-- [`nemo_skills.mcp.servers.radioactivedecay_tool.RadioactivedecayTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/radioactivedecay_tool.py) - Nuclear nuclide and decay-chain lookup via radioactivedecay (requires `radioactivedecay`)

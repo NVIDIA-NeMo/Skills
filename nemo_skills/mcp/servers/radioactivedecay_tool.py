@@ -121,8 +121,18 @@ class RadioactivedecayTool(Tool):
         return dict(self._config)
 
     def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
-        if overrides:
-            self._config.update(overrides)
+        if not overrides:
+            return
+
+        allowed = {"time_unit"}
+        unknown = set(overrides) - allowed
+        if unknown:
+            raise ValueError(f"Unsupported RadioactivedecayTool override(s): {sorted(unknown)}")
+
+        time_unit = overrides.get("time_unit", self._config["time_unit"])
+        if time_unit not in VALID_TIME_UNITS:
+            raise ValueError(f"Invalid time unit '{time_unit}'. Valid units: {', '.join(sorted(VALID_TIME_UNITS))}")
+        self._config["time_unit"] = time_unit
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return [
@@ -156,6 +166,6 @@ class RadioactivedecayTool(Tool):
         if tool_name == "nuclide-info":
             return nuclide_info(**arguments)
         if tool_name == "decay-chain":
-            arguments.setdefault("time_unit", self._config.get("time_unit", "s"))
+            arguments.setdefault("time_unit", self._config["time_unit"])
             return decay_chain(**arguments)
         return f"Error: unknown tool '{tool_name}'"
