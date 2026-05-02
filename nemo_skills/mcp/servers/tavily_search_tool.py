@@ -107,7 +107,8 @@ async def answer(
         return {"error": "Search authentication failed", "fatal": True}
     if response.status_code != 200:
         error_msg = STATUS_CODE_ERRORS.get(
-            response.status_code, f"Search request failed with status {response.status_code}"
+            response.status_code,
+            f"Search request failed with status {response.status_code}",
         )
         return {"error": error_msg}
 
@@ -160,14 +161,18 @@ class TavilySearchTool(MCPClientTool):
                 exlude_config = json.load(f)
                 self.exclude_domains = _parse_exclude_domains(exlude_config)
         else:
-            raise ValueError("exclude_domains_config is not set")
+            self.exclude_domains = []
+            logger.warning("exclude_domains_config is not set")
 
-    async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+    async def execute(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        extra_args: dict[str, Any] | None = None,
+    ):
         arguments = dict(arguments)
         merged_extra = dict(extra_args or {})
-        if not hasattr(self, "exclude_domains"):
-            raise ValueError("exclude_domains_config is not set")
-        merged_extra["exclude_domains"] = self.exclude_domains
+        merged_extra["exclude_domains"] = getattr(self, "exclude_domains", [])
         for key in ["num_results", "answer_type"]:
             if key in self._config:
                 merged_extra[key] = self._config[key]
@@ -182,7 +187,12 @@ class TavilySearchTool(MCPClientTool):
 
 def main():
     parser = argparse.ArgumentParser(description="MCP server for Tavily web search tool")
-    parser.add_argument("--api-key", type=str, default=os.getenv("TAVILY_API_KEY"), help="Tavily API Key")
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=os.getenv("TAVILY_API_KEY"),
+        help="Tavily API Key",
+    )
     args = parser.parse_args()
 
     if not args.api_key:
