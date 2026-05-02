@@ -84,8 +84,6 @@ def decay_chain(
     time_unit: Annotated[str, Field(description="Time unit: s, m, h, d, y, ky, My, Gy, Ty, ps, ns, us, ms.")] = "s",
 ) -> str:
     """Calculate the decay chain products and activities after a given time."""
-    import radioactivedecay as rd
-
     if time_unit not in VALID_TIME_UNITS:
         return f"Invalid time unit '{time_unit}'. Valid units: {', '.join(sorted(VALID_TIME_UNITS))}"
 
@@ -93,6 +91,8 @@ def decay_chain(
         return "Time must be a finite number."
     if time < 0:
         return "Time must be non-negative."
+
+    import radioactivedecay as rd
 
     try:
         rd.Nuclide(nuclide)
