@@ -1024,7 +1024,7 @@ class TestCoolPropTool:
         assert "fluid-property" in tool_names
         assert "fluid-list" in tool_names
 
-        
+
 # -- Wikipedia direct tool tests --------------------------------------------
 
 
