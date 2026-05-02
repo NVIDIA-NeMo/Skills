@@ -144,6 +144,9 @@ class ParticleTool(Tool):
         ]
 
     async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
+        if extra_args:
+            unknown = ", ".join(sorted(map(str, extra_args)))
+            raise ValueError(f"ParticleTool does not support extra_args: {unknown}")
         arguments = dict(arguments or {})
         if tool_name == "particle-lookup":
             return particle_lookup(**arguments)

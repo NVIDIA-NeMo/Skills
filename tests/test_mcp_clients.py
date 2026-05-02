@@ -1023,3 +1023,11 @@ class TestParticleTool:
         tool_names = {t["name"] for t in await tool.list_tools()}
         assert "particle-lookup" in tool_names
         assert "particle-search" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_particle_tool_rejects_extra_args(self):
+        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        with pytest.raises(ValueError, match="does not support extra_args"):
+            await tool.execute("particle-search", {"query": "pi"}, extra_args={"unused": True})
