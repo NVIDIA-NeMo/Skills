@@ -372,4 +372,3 @@ For vLLM, you may need to specify tool calling arguments:
 - [`nemo_skills.mcp.servers.python_tool.PythonTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/python_tool.py) - Python code execution
 - [`nemo_skills.mcp.servers.exa_tool.ExaTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/exa_tool.py) - Web search via Exa API
 - [`nemo_skills.mcp.servers.periodictable_tool.PeriodictableTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/periodictable_tool.py) - Direct element, isotope, and neutron scattering lookup via periodictable (requires `periodictable`)
-- [`nemo_skills.mcp.servers.periodictable_tool.PeriodictableTool`](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/mcp/servers/periodictable_tool.py) - Element, isotope, and neutron scattering lookup via periodictable (requires `periodictable`)

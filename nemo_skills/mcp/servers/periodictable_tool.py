@@ -42,7 +42,7 @@ def _resolve_element(name_or_symbol: str):
     for el in pt.elements:
         if el.symbol == 0:
             continue
-        if s.lower() == el.name.lower() or s == el.symbol or s == str(el.number):
+        if s.lower() == el.name.lower() or s.lower() == el.symbol.lower() or s == str(el.number):
             return el
     return None
 
@@ -63,17 +63,16 @@ def element_info(
     if hasattr(el, "crystal_structure") and el.crystal_structure is not None:
         lines.append(f"Crystal structure: {el.crystal_structure}")
 
-    try:
-        if el.neutron.b_c is not None:
-            lines.append(f"Neutron b_c: {el.neutron.b_c} fm")
-        if el.neutron.coherent is not None:
-            lines.append(f"Neutron coherent xs: {el.neutron.coherent} barn")
-        if el.neutron.incoherent is not None:
-            lines.append(f"Neutron incoherent xs: {el.neutron.incoherent} barn")
-        if el.neutron.absorption is not None:
-            lines.append(f"Neutron absorption xs: {el.neutron.absorption} barn")
-    except AttributeError:
-        pass
+    neutron = getattr(el, "neutron", None)
+    if neutron is not None:
+        if neutron.b_c is not None:
+            lines.append(f"Neutron b_c: {neutron.b_c} fm")
+        if neutron.coherent is not None:
+            lines.append(f"Neutron coherent xs: {neutron.coherent} barn")
+        if neutron.incoherent is not None:
+            lines.append(f"Neutron incoherent xs: {neutron.incoherent} barn")
+        if neutron.absorption is not None:
+            lines.append(f"Neutron absorption xs: {neutron.absorption} barn")
 
     isotopes = [iso for iso in el if iso.abundance and iso.abundance > 0]
     if isotopes:
@@ -104,18 +103,16 @@ def isotope_info(
     if iso.abundance is not None:
         lines.append(f"Natural abundance: {iso.abundance:.4f}%")
 
-    try:
-        n = iso.neutron
-        if n.b_c is not None:
-            lines.append(f"Neutron b_c: {n.b_c} fm")
-        if n.coherent is not None:
-            lines.append(f"Neutron coherent xs: {n.coherent} barn")
-        if n.incoherent is not None:
-            lines.append(f"Neutron incoherent xs: {n.incoherent} barn")
-        if n.absorption is not None:
-            lines.append(f"Neutron absorption xs: {n.absorption} barn")
-    except AttributeError:
-        pass
+    neutron = getattr(iso, "neutron", None)
+    if neutron is not None:
+        if neutron.b_c is not None:
+            lines.append(f"Neutron b_c: {neutron.b_c} fm")
+        if neutron.coherent is not None:
+            lines.append(f"Neutron coherent xs: {neutron.coherent} barn")
+        if neutron.incoherent is not None:
+            lines.append(f"Neutron incoherent xs: {neutron.incoherent} barn")
+        if neutron.absorption is not None:
+            lines.append(f"Neutron absorption xs: {neutron.absorption} barn")
 
     return "\n".join(lines)
 
