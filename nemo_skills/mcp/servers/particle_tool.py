@@ -118,7 +118,8 @@ class ParticleTool(Tool):
 
     def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
         if overrides:
-            self._config.update(overrides)
+            unknown = ", ".join(sorted(overrides))
+            raise ValueError(f"ParticleTool does not support overrides: {unknown}")
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return [
