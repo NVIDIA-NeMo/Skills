@@ -117,7 +117,6 @@ def load_covost2(
     local_dir: Path,
     sentences: dict[tuple[str, str, str], str],
 ) -> list[dict]:
-
     covost_tsv_path = download_covost_tsv(src_lang, tgt_lang, local_dir)
     covost_split = "dev" if split == "validation" else "test"
 
