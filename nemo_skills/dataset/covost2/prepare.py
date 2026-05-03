@@ -127,9 +127,7 @@ def load_covost2(
             continue
         wav_name = row["path"].replace(".mp3", ".wav")
         wav_file = audio_split_dir / wav_name
-        sentence = sentences.get((wav_name, split, src_lang))
-        if sentence is None:
-            raise ValueError(f"No validated sentence for wav={wav_name}, split={split}, lang={src_lang}")
+        sentence = sentences[(wav_name, split, src_lang)]
         items.append(
             {
                 "id": wav_file.stem,
@@ -230,11 +228,7 @@ def prepare_covost2(
                 audio_split_dir = cv_data_dir / src_lang / split
                 wav_files = sorted(audio_split_dir.glob("*.wav"))
                 for wav_file in tqdm(wav_files, desc=tag):
-                    sentence = sentences.get((wav_file.name, split, src_lang))
-                    if sentence is None:
-                        raise ValueError(
-                            f"No validated sentence for wav={wav_file.name}, split={split}, lang={src_lang}"
-                        )
+                    sentence = sentences[(wav_file.name, split, src_lang)]
                     duration = get_audio_duration(str(wav_file))
                     copy_audio_file(wav_file, audio_dir, src_lang, split)
                     cpath = get_container_audio_path(src_lang, split, wav_file.stem)
