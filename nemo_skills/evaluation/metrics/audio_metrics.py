@@ -321,7 +321,7 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["per"] = round(100.0 * sum(self.per_scores) / len(self.per_scores), 2)
             if self.bleu_refs:
                 from sacrebleu import corpus_bleu
-                
+
                 agg_metrics["bleu"] = round(corpus_bleu(self.bleu_hyps, [self.bleu_refs]).score, 2)
             if self.comet_scores:
                 agg_metrics["comet"] = round(100.0 * sum(self.comet_scores) / len(self.comet_scores), 2)
