@@ -74,7 +74,13 @@ class AudioMetrics(BaseMetrics):
         self.wer_c_scores = []
         self.wer_pc_scores = []
         self.per_scores = []
+<<<<<<< Updated upstream
         self.bleu_scores = []
+=======
+        self.bleu_hyps: list[str] = []
+        self.bleu_refs: list[str] = []
+        self.comet_scores = []
+>>>>>>> Stashed changes
 
         # Extended metrics
         self.cer_scores = []
@@ -221,7 +227,14 @@ class AudioMetrics(BaseMetrics):
             if "per" in pred and pred["per"] is not None:
                 self.per_scores.append(pred["per"])
             if "bleu" in pred and pred["bleu"] is not None:
+<<<<<<< Updated upstream
                 self.bleu_scores.append(pred["bleu"])
+=======
+                self.bleu_hyps.append(pred.get("pred_text", "") or "")
+                self.bleu_refs.append(pred.get("text", "") or "")
+            if "comet" in pred and pred["comet"] is not None:
+                self.comet_scores.append(pred["comet"])
+>>>>>>> Stashed changes
 
             # Collect extended metrics
             if "cer" in pred and pred["cer"] is not None:
@@ -314,8 +327,17 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["wer_pc"] = round(100.0 * sum(self.wer_pc_scores) / len(self.wer_pc_scores), 2)
             if self.per_scores:
                 agg_metrics["per"] = round(100.0 * sum(self.per_scores) / len(self.per_scores), 2)
+<<<<<<< Updated upstream
             if self.bleu_scores:
                 agg_metrics["bleu"] = round(100.0 * sum(self.bleu_scores) / len(self.bleu_scores), 2)
+=======
+            if self.bleu_refs:
+                from sacrebleu import corpus_bleu
+
+                agg_metrics["bleu"] = round(corpus_bleu(self.bleu_hyps, [self.bleu_refs]).score, 2)
+            if self.comet_scores:
+                agg_metrics["comet"] = round(100.0 * sum(self.comet_scores) / len(self.comet_scores), 2)
+>>>>>>> Stashed changes
 
             # Add extended metrics if available
             if self.cer_scores:
@@ -390,7 +412,7 @@ class AudioMetrics(BaseMetrics):
             base_metrics["wer_pc"] = as_percentage
         if self.per_scores:
             base_metrics["per"] = as_percentage
-        if self.bleu_scores:
+        if self.bleu_refs:
             base_metrics["bleu"] = as_percentage
 
         # Add extended metrics if they were computed
