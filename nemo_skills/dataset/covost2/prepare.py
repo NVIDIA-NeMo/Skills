@@ -55,17 +55,32 @@ LANG_TO_NAME = {
 
 CER_LOCALES = set(["zh-CN", "ja"])
 
-XX_EN_LANGUAGES = ["fr", "de", "es", "ca", "it", "ru", "zh-CN", "pt", "fa", "et", "mn", "nl", "tr", "ar", "sv-SE", "lv", "sl", "ta", "ja", "id", "cy"]
+XX_EN_LANGUAGES = [
+    "fr",
+    "de",
+    "es",
+    "ca",
+    "it",
+    "ru",
+    "zh-CN",
+    "pt",
+    "fa",
+    "et",
+    "mn",
+    "nl",
+    "tr",
+    "ar",
+    "sv-SE",
+    "lv",
+    "sl",
+    "ta",
+    "ja",
+    "id",
+    "cy",
+]
 EN_XX_LANGUAGES = ["de", "tr", "fa", "sv-SE", "mn", "zh-CN", "cy", "ca", "sl", "et", "id", "ar", "ta", "lv", "ja"]
-VALID_PAIRS = sorted(
-    [(lang, "en") for lang in XX_EN_LANGUAGES] + [("en", lang) for lang in EN_XX_LANGUAGES]
-)
-ALL_LANGUAGES = (
-    set(["en"]) | 
-    set(XX_EN_LANGUAGES) | 
-    set(EN_XX_LANGUAGES)
-)
-
+VALID_PAIRS = sorted([(lang, "en") for lang in XX_EN_LANGUAGES] + [("en", lang) for lang in EN_XX_LANGUAGES])
+ALL_LANGUAGES = set(["en"]) | set(XX_EN_LANGUAGES) | set(EN_XX_LANGUAGES)
 
 
 def load_tsv(path: Path) -> list[dict]:
@@ -115,9 +130,7 @@ def load_covost2(
         wav_file = audio_split_dir / wav_name
         sentence = sentences.get((wav_name, split, src_lang))
         if sentence is None:
-            raise ValueError(
-                f"No validated sentence for wav={wav_name}, split={split}, lang={src_lang}"
-            )
+            raise ValueError(f"No validated sentence for wav={wav_name}, split={split}, lang={src_lang}")
         items.append(
             {
                 "id": wav_file.stem,
@@ -281,8 +294,7 @@ def main():
         type=str,
         required=True,
         help=(
-            "Path to audio root directory. Expected layout: "
-            "<cv_data_dir>/<lang>/<split>/common_voice_<lang>_<id>.wav"
+            "Path to audio root directory. Expected layout: <cv_data_dir>/<lang>/<split>/common_voice_<lang>_<id>.wav"
         ),
     )
     parser.add_argument(
