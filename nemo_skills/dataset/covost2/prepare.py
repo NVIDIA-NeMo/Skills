@@ -25,9 +25,6 @@ from pathlib import Path
 import soundfile as sf
 from tqdm import tqdm
 
-DATASET = "covost2"
-CONTAINER_DATASET_PATH_PREFIX = f"/dataset/{DATASET}"
-
 COVOST_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/covost/covost_v2.{src_lang}_{tgt_lang}.tsv.tar.gz"
 SPLITS = ["validation", "test"]
 
@@ -138,7 +135,7 @@ def get_audio_duration(audio_file: str) -> float:
 
 
 def get_container_audio_path(src_lang: str, split: str, audio_id: str) -> str:
-    return f"{CONTAINER_DATASET_PATH_PREFIX}/audio/{src_lang}/{split}/{audio_id}.wav"
+    return f"/dataset/covost2/audio/{src_lang}/{split}/{audio_id}.wav"
 
 
 def copy_audio_file(src_wav: Path, audio_dir: Path, src_lang: str, split: str) -> Path:
@@ -211,7 +208,7 @@ def prepare_covost2(
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     if task_type == "AST":
-        local_dir = data_dir / f"fb-{DATASET}"
+        local_dir = data_dir / "fb-covost2"
         local_dir.mkdir(parents=True, exist_ok=True)
 
     with open(output_jsonl, "w", encoding="utf-8") as out:
@@ -317,7 +314,7 @@ def main():
     args = parser.parse_args()
 
     if args.data_dir:
-        data_dir = Path(args.data_dir) / DATASET
+        data_dir = Path(args.data_dir) / "covost2"
     else:
         data_dir = Path(__file__).parent
     data_dir.mkdir(parents=True, exist_ok=True)
