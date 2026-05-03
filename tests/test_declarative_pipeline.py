@@ -922,5 +922,157 @@ class TestGenerateEnvironmentVariables:
                     )
 
 
+class TestMountsResolution:
+    """Regression tests for the Command/Pipeline mounts resolution flow.
+
+    Covers the full (Command.mounts x script.keep_mounts) matrix described in
+    the sandbox-mount-leak bug analysis. The three bug rows share keep_mounts=False
+    and must NOT receive cluster mounts back via the Stage B additive merge.
+    """
+
+    CLUSTER_MOUNTS = ["/cluster/a:/cluster/a", "/cluster/b:/cluster/b"]
+
+    def _make_script(self, *, keep_mounts=None):
+        """Return a DummyScript with an optional keep_mounts attribute."""
+        script = DummyScript(inline="echo test")
+        if keep_mounts is not None:
+            script.keep_mounts = keep_mounts
+        return script
+
+    # -------------------- Stage A: Command.prepare_for_execution --------------------
+
+    @pytest.mark.parametrize(
+        "command_mounts, keep_mounts_attr, expected_mounts, expected_keep_mounts",
+        [
+            # Command.mounts=None
+            (None, None, None, True),  # non-sandbox (keep_mounts attr absent -> defaults True)
+            (None, True, None, True),  # sandbox opt-in: inherit cluster mounts
+            (None, False, [], False),  # sandbox default: empty list, flag propagated
+            # Command.mounts=[]
+            ([], None, [], True),
+            ([], True, [], True),
+            ([], False, [], False),
+            # Command.mounts=[/a:/b]
+            (["/a:/b"], None, ["/a:/b"], True),
+            (["/a:/b"], True, ["/a:/b"], True),
+            (["/a:/b"], False, ["/a:/b"], False),
+        ],
+    )
+    def test_stage_a_resolved_mounts_and_keep_mounts(
+        self, command_mounts, keep_mounts_attr, expected_mounts, expected_keep_mounts
+    ):
+        """Stage A must store mounts and the keep_mounts flag in execution_config."""
+        script = self._make_script(keep_mounts=keep_mounts_attr)
+        cmd = Command(script=script, name="c", mounts=command_mounts)
+        cluster_config = {"executor": "local", "containers": {}}
+
+        _, exec_config = cmd.prepare_for_execution(cluster_config)
+
+        assert exec_config["mounts"] == expected_mounts
+        assert exec_config["keep_mounts"] is expected_keep_mounts
+
+    # -------------------- Stage B/C: end-to-end mounts passed to get_executor --------------------
+
+    def _run_pipeline_and_capture_mounts(self, command_mounts, keep_mounts_attr):
+        """Run a one-command Pipeline with mocks and return the mounts kwarg passed to get_executor."""
+        captured = {}
+
+        def mock_get_executor(**kwargs):
+            captured["mounts"] = kwargs.get("mounts")
+            executor = MagicMock()
+            executor.packager = MagicMock()
+            return executor
+
+        cluster_config = {
+            "executor": "slurm",
+            "containers": {"nemo-skills": "test/container"},
+            "account": "test",
+            "env_vars": {"HF_HOME": "/hf"},
+            "mounts": self.CLUSTER_MOUNTS,
+        }
+
+        script = self._make_script(keep_mounts=keep_mounts_attr)
+        cmd = Command(script=script, name="c", mounts=command_mounts)
+        group = CommandGroup(commands=[cmd], name="g", log_dir="/logs")
+
+        with (
+            patch("nemo_skills.pipeline.utils.declarative.get_executor", side_effect=mock_get_executor),
+            patch(
+                "nemo_skills.pipeline.utils.declarative.get_mounts_from_config",
+                return_value=list(self.CLUSTER_MOUNTS),
+            ),
+            patch("nemo_skills.pipeline.utils.declarative.get_env_variables", return_value={"HF_HOME": "/hf"}),
+            patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp,
+            patch("nemo_skills.pipeline.utils.declarative.run_exp"),
+        ):
+            mock_exp = MagicMock()
+            mock_exp.__enter__ = MagicMock(return_value=mock_exp)
+            mock_exp.__exit__ = MagicMock(return_value=False)
+            mock_exp.add = MagicMock(return_value="handle")
+            mock_get_exp.return_value = mock_exp
+
+            Pipeline(
+                name="test",
+                cluster_config=cluster_config,
+                jobs=[{"name": "j", "group": group}],
+                skip_hf_home_check=True,
+                reuse_code=False,
+            ).run(dry_run=True)
+
+        assert "mounts" in captured, "get_executor was not called"
+        return captured["mounts"]
+
+    # ---- Non-bug rows: expected pre-fix behavior is preserved ----
+
+    def test_mounts_none_no_keep_mounts_attr_inherits_cluster(self):
+        """Non-sandbox script with no explicit mounts inherits cluster mounts."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=None, keep_mounts_attr=None)
+        # Stage C falls back to cluster mounts when mounts kwarg is None
+        assert mounts is None
+
+    def test_mounts_none_keep_mounts_true_inherits_cluster(self):
+        """keep_mounts=True with no explicit list inherits cluster mounts."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=None, keep_mounts_attr=True)
+        assert mounts is None
+
+    def test_mounts_empty_no_keep_mounts_attr_inherits_cluster(self):
+        """Empty Command.mounts on a non-sandbox script is treated as 'no extras' -> inherit."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=[], keep_mounts_attr=None)
+        assert mounts is None
+
+    def test_mounts_empty_keep_mounts_true_inherits_cluster(self):
+        """Empty Command.mounts with keep_mounts=True also inherits cluster mounts."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=[], keep_mounts_attr=True)
+        assert mounts is None
+
+    def test_mounts_extra_no_keep_mounts_attr_additive_merge(self):
+        """Non-sandbox extras are additively merged with cluster mounts."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=["/a:/b"], keep_mounts_attr=None)
+        assert mounts == self.CLUSTER_MOUNTS + ["/a:/b"]
+
+    def test_mounts_extra_keep_mounts_true_additive_merge(self):
+        """keep_mounts=True with extras: additive merge (opt-in inherit + extras)."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=["/a:/b"], keep_mounts_attr=True)
+        assert mounts == self.CLUSTER_MOUNTS + ["/a:/b"]
+
+    # ---- Bug rows: keep_mounts=False must isolate from cluster mounts ----
+
+    def test_bug_row_1_mounts_none_keep_mounts_false_no_cluster_leak(self):
+        """Sandbox default (Command.mounts=None, keep_mounts=False): no cluster mounts leak through."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=None, keep_mounts_attr=False)
+        # Must be an empty list passed to get_executor so Stage C does NOT fall back to cluster mounts
+        assert mounts == [], f"keep_mounts=False leaked cluster mounts: {mounts}"
+
+    def test_bug_row_2_mounts_empty_keep_mounts_false_no_cluster_leak(self):
+        """Sandbox with explicit empty list (Command.mounts=[], keep_mounts=False): no cluster mounts leak."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=[], keep_mounts_attr=False)
+        assert mounts == [], f"keep_mounts=False leaked cluster mounts: {mounts}"
+
+    def test_bug_row_3_mounts_extra_keep_mounts_false_no_cluster_merge(self):
+        """Sandbox with explicit extras (Command.mounts=[/a:/b], keep_mounts=False): extras verbatim, no cluster merge."""
+        mounts = self._run_pipeline_and_capture_mounts(command_mounts=["/a:/b"], keep_mounts_attr=False)
+        assert mounts == ["/a:/b"], f"keep_mounts=False merged cluster mounts into sandbox: {mounts}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

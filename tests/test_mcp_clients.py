@@ -1002,3 +1002,214 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
     # Must not raise; session must be removed from the mapping regardless.
     await tool.cleanup_request("req-x")
     assert "req-x" not in tool.requests_to_sessions
+
+
+# -- Radioactive decay direct tool tests ------------------------------------
+
+
+class TestRadioactivedecayTool:
+    def test_radioactivedecay_tool_config(self):
+        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        assert tool.default_config()["time_unit"] == "s"
+
+    @pytest.mark.asyncio
+    async def test_radioactivedecay_direct_list_tools(self):
+        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        tool.configure()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert "nuclide-info" in tool_names
+        assert "decay-chain" in tool_names
+        decay_tool = next(t for t in tools if t["name"] == "decay-chain")
+        assert "time_unit" not in decay_tool["input_schema"]["properties"]
+
+    @pytest.mark.asyncio
+    async def test_radioactivedecay_rejects_non_finite_time(self):
+        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        tool.configure()
+        result = await tool.execute("decay-chain", {"nuclide": "H-3", "time": float("inf")})
+        assert result == "Time must be a finite number."
+
+
+# -- Particle direct tool tests ---------------------------------------------
+
+
+class TestParticleTool:
+    def test_particle_tool_config(self):
+        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        assert tool.default_config() == {}
+
+    @pytest.mark.asyncio
+    async def test_particle_direct_list_tools(self):
+        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        tool.configure()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "particle-lookup" in tool_names
+        assert "particle-search" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_particle_tool_rejects_extra_args(self):
+        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        with pytest.raises(ValueError, match="does not support extra_args"):
+            await tool.execute("particle-search", {"query": "pi"}, extra_args={"unused": True})
+
+
+# -- Periodictable direct tool tests ----------------------------------------
+
+
+class TestPeriodictableTool:
+    def test_periodictable_tool_config(self):
+        from nemo_skills.mcp.servers.periodictable_tool import PeriodictableTool
+
+        tool = PeriodictableTool()
+        assert tool.default_config() == {}
+
+    @pytest.mark.asyncio
+    async def test_periodictable_direct_list_tools(self):
+        from nemo_skills.mcp.servers.periodictable_tool import PeriodictableTool
+
+        tool = PeriodictableTool()
+        tool.configure()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "element-info" in tool_names
+        assert "isotope-info" in tool_names
+
+
+# -- CoolProp direct tool tests ---------------------------------------------
+
+
+class TestCoolPropTool:
+    def test_coolprop_tool_config(self):
+        from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
+
+        tool = CoolPropTool()
+        assert tool.default_config() == {}
+
+    @pytest.mark.asyncio
+    async def test_coolprop_direct_list_tools(self):
+        from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
+
+        tool = CoolPropTool()
+        tool.configure()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "fluid-property" in tool_names
+        assert "fluid-list" in tool_names
+
+
+# -- Wikipedia direct tool tests --------------------------------------------
+
+
+class TestWikipediaTool:
+    def test_wikipedia_tool_config(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        assert tool.default_config()["num_results"] == 3
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_search_rejects_out_of_range_num_results(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        tool.configure()
+        result = await tool.execute("wikipedia-search", {"query": "Hydrogen atom", "num_results": 6})
+        assert result == "num_results must be between 1 and 5."
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_direct_list_tools(self):
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        tool.configure()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert {
+            "wikipedia-search",
+            "wikipedia-page",
+            "wikipedia-summary",
+            "wikipedia-sections",
+            "wikipedia-section",
+            "wikipedia-query-summary",
+            "wikipedia-key-facts",
+        } <= tool_names
+        search_tool = next(t for t in tools if t["name"] == "wikipedia-search")
+        assert "query" in search_tool["input_schema"]["properties"]
+        assert "num_results" not in search_tool["input_schema"]["properties"]
+
+        query_summary_tool = next(t for t in tools if t["name"] == "wikipedia-query-summary")
+        assert {"title", "query"} <= set(query_summary_tool["input_schema"]["properties"])
+        assert set(query_summary_tool["input_schema"]["required"]) == {"title", "query"}
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_execute_dispatch_contracts(self, monkeypatch):
+        from nemo_skills.mcp.servers import wikipedia_tool
+        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+
+        async def fake_page(title):
+            return f"page:{title}"
+
+        async def fake_section(title, section):
+            return f"section:{title}:{section}"
+
+        async def fake_query_summary(title, query, max_chars=700):
+            return f"query-summary:{title}:{query}:{max_chars}"
+
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_page", fake_page)
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_section", fake_section)
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_query_summary", fake_query_summary)
+
+        tool = WikipediaSearchTool()
+        assert await tool.execute("wikipedia-page", {"title": "Hydrogen"}) == "page:Hydrogen"
+        assert (
+            await tool.execute("wikipedia-section", {"title": "Hydrogen", "section": "Isotopes"})
+            == "section:Hydrogen:Isotopes"
+        )
+        assert (
+            await tool.execute("wikipedia-query-summary", {"title": "Hydrogen", "query": "isotope"})
+            == "query-summary:Hydrogen:isotope:2500"
+        )
+
+
+# -- ArXiv direct tool tests ------------------------------------------------
+
+
+class TestArxivTool:
+    def test_arxiv_tool_config(self):
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        assert tool.default_config()["max_results"] == 3
+
+    @pytest.mark.asyncio
+    async def test_arxiv_search_rejects_non_positive_max_results(self):
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        tool.configure()
+        result = await tool.execute("arxiv-search", {"query": "quantum entanglement", "max_results": 0})
+        assert result == "max_results must be >= 1."
+
+    @pytest.mark.asyncio
+    async def test_arxiv_direct_list_tools(self):
+        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        tool.configure()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert {"arxiv-search", "arxiv-get", "arxiv-sections", "arxiv-read-chunk"} <= tool_names
+        search_tool = next(t for t in tools if t["name"] == "arxiv-search")
+        assert "query" in search_tool["input_schema"]["properties"]
+        assert "max_results" not in search_tool["input_schema"]["properties"]
