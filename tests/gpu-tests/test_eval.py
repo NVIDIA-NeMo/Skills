@@ -55,6 +55,7 @@ EXCLUDED_DATASETS = {
     "librispeech-pc",
     "musan",
     "numb3rs",
+    "covost2",
     # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
     "compute-eval",
     # CritPt requires exactly 70 submissions and external API key (ARTIFICIAL_ANALYSIS_API_KEY)
