@@ -426,8 +426,7 @@ def normalize_mounts_list(mounts: list[str], allow_rw_mode: bool = False):
         parts = mount.split(":")
         if len(parts) != 2 and not (allow_rw_mode and len(parts) == 3):
             raise ValueError(
-                f"Invalid mount format: {mount}. "
-                "Expected src:dst" + (" or src:dst:mode." if allow_rw_mode else ".")
+                f"Invalid mount format: {mount}. Expected src:dst" + (" or src:dst:mode." if allow_rw_mode else ".")
             )
 
         mount_source, mount_target = parts[0], parts[1]
@@ -435,7 +434,9 @@ def normalize_mounts_list(mounts: list[str], allow_rw_mode: bool = False):
         if not mount_source or not mount_target:
             raise ValueError(f"Invalid mount format: {mount}. Source and target paths must not be empty.")
         if mount_mode is not None and mount_mode not in {"ro", "rw"}:
-            raise ValueError(f"Invalid mount mode: {mount_mode} in `{mount}`. Supported mount modes are `ro` and `rw`.")
+            raise ValueError(
+                f"Invalid mount mode: {mount_mode} in `{mount}`. Supported mount modes are `ro` and `rw`."
+            )
 
         # Then handle {VAR} style for full path replacement (legacy support)
         if mount_source[0] == "{" and mount_source[-1] == "}":
