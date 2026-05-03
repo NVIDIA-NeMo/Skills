@@ -166,11 +166,9 @@ def _build_record(
     subset_for_metrics: str,
     task_type: str,
     extra_fields: dict,
-    comet_text_key: str | None = None,
-    comet_translation_key: str | None = None,
 ) -> dict:
     audio_metadata = {"path": container_audio_path, "duration": duration}
-    record = {
+    return {
         "expected_answer": expected_answer,
         "audio_path": container_audio_path,
         "duration": duration,
@@ -180,13 +178,8 @@ def _build_record(
         ],
         "subset_for_metrics": subset_for_metrics,
         "task_type": f"Multilingual-{task_type.upper()}",
+        "extra_fields": extra_fields,
     }
-    if comet_text_key is not None and comet_translation_key is not None:
-        # Required to compute COMET metrics
-        record["comet_text_key"] = f"extra_fields.{comet_text_key}"
-        record["comet_translation_key"] = f"extra_fields.{comet_translation_key}"
-    record["extra_fields"] = extra_fields
-    return record
 
 
 def prepare_covost2(
@@ -265,8 +258,6 @@ def prepare_covost2(
                         duration=duration,
                         subset_for_metrics=tag,
                         task_type=task_type,
-                        comet_text_key="src_text",
-                        comet_translation_key="tgt_text",
                         extra_fields={
                             "src_text": item["sentence"],
                             "tgt_text": item["translation"],
