@@ -57,6 +57,7 @@ def _create_job_unified(
     partition: Optional[str],
     account: Optional[str],
     keep_mounts_for_sandbox: bool,
+    sandbox_mounts: Optional[List[str]],
     task_name: str,
     log_dir: str,
     sbatch_kwargs: Optional[Dict] = None,
@@ -84,6 +85,7 @@ def _create_job_unified(
         with_sandbox: Whether to include sandbox
         partition: Slurm partition
         keep_mounts_for_sandbox: Whether to keep mounts for sandbox
+        sandbox_mounts: Mounts to pass only to the sandbox container
         task_name: Name for the task
         log_dir: Directory for logs
         sbatch_kwargs: Additional sbatch kwargs
@@ -152,6 +154,7 @@ def _create_job_unified(
                     script=sandbox_script,
                     container=sandbox_container or cluster_config["containers"]["sandbox"],
                     name=f"{task_name}_sandbox",
+                    mounts=sandbox_mounts,
                 )
                 components.append(sandbox_cmd)
 
@@ -336,6 +339,10 @@ def generate(
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
     ),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     log_samples: bool = typer.Option(
@@ -598,6 +605,7 @@ def generate(
                     partition=partition,
                     account=account,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+                    sandbox_mounts=sandbox_mounts,
                     task_name=task_name,
                     log_dir=log_dir,
                     sbatch_kwargs=sbatch_kwargs,

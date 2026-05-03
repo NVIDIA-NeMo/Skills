@@ -48,6 +48,7 @@ Example usage:
 """
 
 import logging
+from typing import List
 
 import typer
 
@@ -107,6 +108,10 @@ def nemo_gym_rollouts(
         "If not specified, uses cluster_config['containers'][server_type].",
     ),
     with_sandbox: bool = typer.Option(False, help="If True, start a sandbox container for code execution"),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     gym_container: str = typer.Option(
         None,
         help="Container image path/ref (e.g. a .sqsh file or docker:// reference) for the "
@@ -346,6 +351,7 @@ def nemo_gym_rollouts(
                 script=sandbox_script,
                 container=cluster_config["containers"]["sandbox"],
                 name=f"{expname}_sandbox{job_suffix}",
+                mounts=sandbox_mounts,
             )
             components.append(sandbox_cmd)
             LOG.info(f"Job{job_suffix}: sandbox on port {sandbox_script.port}")

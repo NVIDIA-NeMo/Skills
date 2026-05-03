@@ -16,6 +16,8 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from nemo_skills.pipeline.utils.declarative import Command
 from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
@@ -404,3 +406,54 @@ def test_non_sandbox_command_mounts_unchanged():
     cmd = Command(script=script, container="nemo-skills:latest", name="client")
     _, exec_config = cmd.prepare_for_execution({"executor": "slurm"})
     assert exec_config["mounts"] is None, "Non-sandbox commands should inherit cluster mounts (mounts=None)"
+
+
+def test_normalize_mounts_list_supports_sandbox_modes(monkeypatch):
+    from nemo_skills.pipeline.utils.mounts import normalize_mounts_list
+
+    monkeypatch.setenv("SANDBOX_DATA", "/cluster/sandbox-data")
+
+    assert normalize_mounts_list(
+        ["${SANDBOX_DATA}:/sandbox/data:ro", "/host/scratch:/sandbox/scratch:rw"],
+        allow_rw_mode=True,
+    ) == ["/cluster/sandbox-data:/sandbox/data:ro", "/host/scratch:/sandbox/scratch:rw"]
+
+
+@pytest.mark.parametrize("mount", ["/host/data:/sandbox/data:rw", ":/sandbox/data", "/host/data:"])
+def test_normalize_mounts_list_rejects_invalid_regular_mounts(mount):
+    from nemo_skills.pipeline.utils.mounts import normalize_mounts_list
+
+    with pytest.raises(ValueError):
+        normalize_mounts_list([mount])
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_sandbox_mounts_override_keep_mounts_true(mock_port, mock_get_executor):
+    """Legacy add_task sandbox sidecars should also use sandbox_mounts exactly."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="task_handle"))
+    cluster_config = {
+        "executor": "local",
+        "containers": {"sandbox": "sandbox:latest"},
+    }
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_sandbox=True,
+        keep_mounts_for_sandbox=True,
+        sandbox_mounts=["/host/data:/sandbox/data:ro"],
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    assert mock_get_executor.call_args_list[-1].kwargs["mounts"] == ["/host/data:/sandbox/data:ro"]

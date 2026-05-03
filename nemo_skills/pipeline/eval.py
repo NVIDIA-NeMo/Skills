@@ -65,6 +65,7 @@ def _create_llm_judge_tasks(
     sandbox_container,
     with_sandbox,
     keep_mounts_for_sandbox,
+    sandbox_mounts,
     run_after,
     reuse_code_exp,
     reuse_code,
@@ -108,6 +109,7 @@ def _create_llm_judge_tasks(
         sandbox_container=sandbox_container,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_mounts=sandbox_mounts,
         run_after=run_after,
         reuse_code_exp=reuse_code_exp,
         reuse_code=reuse_code,
@@ -289,6 +291,10 @@ def eval(
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
     ),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     log_samples: bool = typer.Option(
@@ -590,6 +596,7 @@ def eval(
                         script=sandbox_script,
                         container=sandbox_container or cluster_config["containers"]["sandbox"],
                         name=f"{task_name}_sandbox",
+                        mounts=sandbox_mounts,
                     )
                 )
 
@@ -770,6 +777,7 @@ def eval(
                     sandbox_container=sandbox_container,
                     with_sandbox=with_sandbox,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+                    sandbox_mounts=sandbox_mounts,
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
