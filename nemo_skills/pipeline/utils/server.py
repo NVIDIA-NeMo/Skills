@@ -333,7 +333,7 @@ def get_server_command(
         num_tasks = 1
     elif server_type == "trtllm":
         server_entrypoint = server_entrypoint or "trtllm-serve"
-        if num_nodes > 1 and server_entrypoint == "trtllm":
+        if num_nodes > 1 and server_entrypoint in ("trtllm", "trtllm-serve"):
             server_entrypoint = f"trtllm-llmapi-launch {server_entrypoint}"
         else:
             server_entrypoint = f"mpirun -n 1 --oversubscribe --allow-run-as-root {server_entrypoint}"
