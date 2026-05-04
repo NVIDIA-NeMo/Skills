@@ -57,9 +57,9 @@ def _create_job_unified(
     partition: Optional[str],
     account: Optional[str],
     keep_mounts_for_sandbox: bool,
-    sandbox_mounts: Optional[List[str]],
     task_name: str,
     log_dir: str,
+    sandbox_mounts: Optional[List[str]] = None,
     sbatch_kwargs: Optional[Dict] = None,
     sandbox_env_overrides: Optional[List[str]] = None,
     main_container: Optional[str] = None,
@@ -85,9 +85,9 @@ def _create_job_unified(
         with_sandbox: Whether to include sandbox
         partition: Slurm partition
         keep_mounts_for_sandbox: Whether to keep mounts for sandbox
-        sandbox_mounts: Mounts to pass only to the sandbox container
         task_name: Name for the task
         log_dir: Directory for logs
+        sandbox_mounts: Mounts to pass only to the sandbox container
         sbatch_kwargs: Additional sbatch kwargs
 
     Returns:
