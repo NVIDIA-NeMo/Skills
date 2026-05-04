@@ -29,7 +29,7 @@ New auxiliary:
 - `wikipedia-section(title, section)`  — fetch a single named section
 
 Usage:
-    ++tool_modules=[nemo_skills.mcp.servers.wikipedia_tool::WikipediaSearchTool]
+    ++tool_modules=[nemo_skills.mcp.servers.web.wikipedia_tool::WikipediaSearchTool]
 """
 
 import asyncio

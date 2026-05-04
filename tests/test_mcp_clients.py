@@ -1009,14 +1009,14 @@ async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
 
 class TestRadioactivedecayTool:
     def test_radioactivedecay_tool_config(self):
-        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+        from nemo_skills.mcp.servers.physics.radioactivedecay_tool import RadioactivedecayTool
 
         tool = RadioactivedecayTool()
         assert tool.default_config()["time_unit"] == "s"
 
     @pytest.mark.asyncio
     async def test_radioactivedecay_direct_list_tools(self):
-        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+        from nemo_skills.mcp.servers.physics.radioactivedecay_tool import RadioactivedecayTool
 
         tool = RadioactivedecayTool()
         tool.configure()
@@ -1029,7 +1029,7 @@ class TestRadioactivedecayTool:
 
     @pytest.mark.asyncio
     async def test_radioactivedecay_rejects_non_finite_time(self):
-        from nemo_skills.mcp.servers.radioactivedecay_tool import RadioactivedecayTool
+        from nemo_skills.mcp.servers.physics.radioactivedecay_tool import RadioactivedecayTool
 
         tool = RadioactivedecayTool()
         tool.configure()
@@ -1042,14 +1042,14 @@ class TestRadioactivedecayTool:
 
 class TestParticleTool:
     def test_particle_tool_config(self):
-        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+        from nemo_skills.mcp.servers.physics.particle_tool import ParticleTool
 
         tool = ParticleTool()
         assert tool.default_config() == {}
 
     @pytest.mark.asyncio
     async def test_particle_direct_list_tools(self):
-        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+        from nemo_skills.mcp.servers.physics.particle_tool import ParticleTool
 
         tool = ParticleTool()
         tool.configure()
@@ -1059,7 +1059,7 @@ class TestParticleTool:
 
     @pytest.mark.asyncio
     async def test_particle_tool_rejects_extra_args(self):
-        from nemo_skills.mcp.servers.particle_tool import ParticleTool
+        from nemo_skills.mcp.servers.physics.particle_tool import ParticleTool
 
         tool = ParticleTool()
         with pytest.raises(ValueError, match="does not support extra_args"):
@@ -1071,14 +1071,14 @@ class TestParticleTool:
 
 class TestPeriodictableTool:
     def test_periodictable_tool_config(self):
-        from nemo_skills.mcp.servers.periodictable_tool import PeriodictableTool
+        from nemo_skills.mcp.servers.chemistry.periodictable_tool import PeriodictableTool
 
         tool = PeriodictableTool()
         assert tool.default_config() == {}
 
     @pytest.mark.asyncio
     async def test_periodictable_direct_list_tools(self):
-        from nemo_skills.mcp.servers.periodictable_tool import PeriodictableTool
+        from nemo_skills.mcp.servers.chemistry.periodictable_tool import PeriodictableTool
 
         tool = PeriodictableTool()
         tool.configure()
@@ -1092,14 +1092,14 @@ class TestPeriodictableTool:
 
 class TestCoolPropTool:
     def test_coolprop_tool_config(self):
-        from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
+        from nemo_skills.mcp.servers.physics.coolprop_tool import CoolPropTool
 
         tool = CoolPropTool()
         assert tool.default_config() == {}
 
     @pytest.mark.asyncio
     async def test_coolprop_direct_list_tools(self):
-        from nemo_skills.mcp.servers.coolprop_tool import CoolPropTool
+        from nemo_skills.mcp.servers.physics.coolprop_tool import CoolPropTool
 
         tool = CoolPropTool()
         tool.configure()
@@ -1113,14 +1113,14 @@ class TestCoolPropTool:
 
 class TestWikipediaTool:
     def test_wikipedia_tool_config(self):
-        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
 
         tool = WikipediaSearchTool()
         assert tool.default_config()["num_results"] == 3
 
     @pytest.mark.asyncio
     async def test_wikipedia_search_rejects_out_of_range_num_results(self):
-        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
 
         tool = WikipediaSearchTool()
         tool.configure()
@@ -1129,7 +1129,7 @@ class TestWikipediaTool:
 
     @pytest.mark.asyncio
     async def test_wikipedia_direct_list_tools(self):
-        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
 
         tool = WikipediaSearchTool()
         tool.configure()
@@ -1154,8 +1154,8 @@ class TestWikipediaTool:
 
     @pytest.mark.asyncio
     async def test_wikipedia_execute_dispatch_contracts(self, monkeypatch):
-        from nemo_skills.mcp.servers import wikipedia_tool
-        from nemo_skills.mcp.servers.wikipedia_tool import WikipediaSearchTool
+        from nemo_skills.mcp.servers.web import wikipedia_tool
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
 
         async def fake_page(title):
             return f"page:{title}"
@@ -1187,14 +1187,14 @@ class TestWikipediaTool:
 
 class TestArxivTool:
     def test_arxiv_tool_config(self):
-        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+        from nemo_skills.mcp.servers.web.arxiv_tool import ArxivSearchTool
 
         tool = ArxivSearchTool()
         assert tool.default_config()["max_results"] == 3
 
     @pytest.mark.asyncio
     async def test_arxiv_search_rejects_non_positive_max_results(self):
-        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+        from nemo_skills.mcp.servers.web.arxiv_tool import ArxivSearchTool
 
         tool = ArxivSearchTool()
         tool.configure()
@@ -1203,7 +1203,7 @@ class TestArxivTool:
 
     @pytest.mark.asyncio
     async def test_arxiv_direct_list_tools(self):
-        from nemo_skills.mcp.servers.arxiv_tool import ArxivSearchTool
+        from nemo_skills.mcp.servers.web.arxiv_tool import ArxivSearchTool
 
         tool = ArxivSearchTool()
         tool.configure()

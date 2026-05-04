@@ -21,7 +21,7 @@ Prerequisites:
     pip install periodictable
 
 Usage:
-    ++tool_modules=[nemo_skills.mcp.servers.periodictable_tool::PeriodictableTool]
+    ++tool_modules=[nemo_skills.mcp.servers.chemistry.periodictable_tool::PeriodictableTool]
 """
 
 import logging

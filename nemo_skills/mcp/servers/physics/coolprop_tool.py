@@ -21,7 +21,7 @@ Prerequisites:
     pip install CoolProp
 
 Usage:
-    ++tool_modules=[nemo_skills.mcp.servers.coolprop_tool::CoolPropTool]
+    ++tool_modules=[nemo_skills.mcp.servers.physics.coolprop_tool::CoolPropTool]
 """
 
 import logging

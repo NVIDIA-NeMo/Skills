@@ -52,6 +52,7 @@ EXCLUDED_DATASETS = {
     "asr-leaderboard",
     "mrcr",
     "audiobench",
+    "fleurs",
     "librispeech-pc",
     "musan",
     "numb3rs",
