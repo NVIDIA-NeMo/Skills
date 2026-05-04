@@ -590,3 +590,102 @@ pass@1          | 128        | 12000       | 98.87%       | 1.13%  | 1.55%  | 0.
 ```
 
 Per-domain breakdowns are included automatically based on the `domain_label` field.
+
+## CoVoST 2
+
+CoVoST 2 is a large-scale multilingual corpus for speech recognition (ASR) and speech translation (AST), built on Common Voice audio with translation references from Facebook's [CoVoST v2](https://github.com/facebookresearch/covost) release.
+
+**Tasks:** ASR (monolingual transcription) and AST (X→en / en→X translation)
+
+**Splits:** `validation`, `test`
+
+For non-alphabetic scripts (`zh-CN`, `ja`), evaluation reports Character Error Rate (CER) instead of Word Error Rate (WER); the choice is made per-sample via the `use_cer` flag set during data preparation.
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/covost2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/covost2/__init__.py)
+- Original benchmark source is hosted on [GitHub](https://github.com/facebookresearch/covost)
+
+### Preparing CoVoST 2 Data
+
+Unlike most other benchmarks on this page, **CoVoST 2 does not auto-download audio**. You must provide a Common Voice extraction with the layout:
+
+```
+<cv_data_dir>/
+    <lang>/
+        <split>/
+            common_voice_<lang>_<id>.wav
+```
+
+and the corresponding `validated.tsv` (columns: `path, split, lang, sentence`).
+
+The `--languages` flag selects which CoVoST 2 languages are prepared. For ASR it filters the source-language audio that is transcribed; for AST every valid X→en / en→X pair touching the listed languages is included. Omit it to prepare all 21 supported languages.
+
+=== "ASR"
+
+    ```bash
+    ns prepare_data covost2 \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task ASR \
+        --languages de fr \
+        --split test \
+        --cv_data_dir /workspace/datasets/covost2 \
+        --validated_tsv /workspace/datasets/covost2/validated.tsv
+    ```
+
+=== "AST"
+
+    ```bash
+    ns prepare_data covost2 \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task AST \
+        --languages de fr es \
+        --split test \
+        --cv_data_dir /workspace/datasets/covost2 \
+        --validated_tsv /workspace/datasets/covost2/validated.tsv
+    ```
+
+Each `--task` produces a separate manifest: `{split}-asr.jsonl` or `{split}-ast.jsonl` (e.g. `test-asr.jsonl`).
+
+## FLEURS
+
+[FLEURS](https://huggingface.co/datasets/google/fleurs) (Few-shot Learning Evaluation of Universal Representations of Speech) is Google's multilingual speech benchmark covering 102 locales. It supports both ASR and AST.
+
+**Splits:** `train`, `dev`, `test`
+
+CER (rather than WER) is used for these locales: `cmn_hans_cn`, `yue_hant_hk`, `ja_jp`, `th_th`, `lo_la`, `my_mm`, `km_kh`, `ko_kr`, `vi_vn`.
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/fleurs/__init__.py)
+- Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/google/fleurs)
+
+### Preparing FLEURS Data
+
+Audio is downloaded automatically from HuggingFace. As with CoVoST 2, `--task` produces `{split}-asr.jsonl` or `{split}-ast.jsonl`.
+
+The `--languages` flag selects which FLEURS locales are prepared. For ASR it filters the source-language audio that is transcribed; for AST every (`en_us` → locale) and (locale → `en_us`) pair across the listed locales is included. Omit it to prepare all 102 locales.
+
+=== "ASR"
+
+    ```bash
+    ns prepare_data fleurs \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task ASR \
+        --languages en_us de_de fr_fr \
+        --split test
+    ```
+
+=== "AST"
+
+    ```bash
+    ns prepare_data fleurs \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task AST \
+        --languages en_us de_de fr_fr es_419 it_it ja_jp \
+        --split test
+    ```
