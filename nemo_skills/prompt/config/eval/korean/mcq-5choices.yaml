@@ -1,0 +1,6 @@
+# Korean MCQ prompt with 5 answer choices (e.g. KMMLU-Pro, KorMedMCQA).
+
+user: |-
+  다음 객관식 질문에 답하시오. 응답의 마지막 줄은 반드시 다음과 같은 형식이어야 합니다: '정답: A/B/C/D/E' (예시: '정답: A').
+
+  {problem}
