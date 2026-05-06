@@ -46,7 +46,7 @@ jobs:
         python -m pip install --upgrade pip uv
         # Use `uv pip` so [tool.uv].override-dependencies in pyproject.toml is honored
         # (relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x can be installed).
-        uv pip install --system -e .[dev] --extra-index-url https://download.pytorch.org/whl/cpu
+        uv pip install --system -e .[dev]
         # Clear pip cache
         pip cache purge || true
     - name: Build Images
