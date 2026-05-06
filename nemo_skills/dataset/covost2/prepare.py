@@ -156,7 +156,7 @@ def copy_audio_file(src_wav: Path, audio_dir: Path, src_lang: str, split: str) -
     return dest
 
 
-def get_ast_instruction(target_lang: str) -> str:
+def get_st_instruction(target_lang: str) -> str:
     tgt_lang_name = LANG_TO_NAME[target_lang]
     return f"Please translate the given speech to {tgt_lang_name}."
 
@@ -200,17 +200,17 @@ def prepare_covost2(
         raise ValueError("No languages to process")
 
     lang_set = set(languages)
-    ast_pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
+    st_pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
 
     audio_dir = data_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     asr_dir = data_dir / "asr"
-    ast_dir = data_dir / "ast"
+    st_dir = data_dir / "st"
     asr_dir.mkdir(parents=True, exist_ok=True)
-    ast_dir.mkdir(parents=True, exist_ok=True)
+    st_dir.mkdir(parents=True, exist_ok=True)
     asr_jsonl = asr_dir / f"{split}.jsonl"
-    ast_jsonl = ast_dir / f"{split}.jsonl"
+    st_jsonl = st_dir / f"{split}.jsonl"
 
     local_dir = data_dir / "fb-covost2"
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -242,21 +242,21 @@ def prepare_covost2(
                 )
                 asr_out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    with open(ast_jsonl, "w", encoding="utf-8") as ast_out:
-        for src_lang, tgt_lang in ast_pairs:
+    with open(st_jsonl, "w", encoding="utf-8") as st_out:
+        for src_lang, tgt_lang in st_pairs:
             tag = f"{src_lang}->{tgt_lang}"
             dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
-            for item in tqdm(dataset, desc=f"ast:{tag}"):
+            for item in tqdm(dataset, desc=f"st:{tag}"):
                 duration = get_audio_duration(item["audio_file"])
                 copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
                 cpath = get_container_audio_path(src_lang, split, item["id"])
                 record = _build_record(
                     expected_answer=item["translation"],
-                    instruction=get_ast_instruction(tgt_lang),
+                    instruction=get_st_instruction(tgt_lang),
                     container_audio_path=cpath,
                     duration=duration,
                     subset_for_metrics=tag,
-                    task_type="AST",
+                    task_type="ST",
                     extra_fields={
                         "src_text": item["sentence"],
                         "tgt_text": item["translation"],
@@ -266,10 +266,10 @@ def prepare_covost2(
                         "tgt_lang": tgt_lang,
                     },
                 )
-                ast_out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                st_out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     print(f"CoVoST2 ASR dataset prepared: {asr_jsonl}")
-    print(f"CoVoST2 AST dataset prepared: {ast_jsonl}")
+    print(f"CoVoST2 ST dataset prepared: {st_jsonl}")
 
 
 def main():

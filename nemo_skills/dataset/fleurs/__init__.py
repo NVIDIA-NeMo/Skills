@@ -17,5 +17,5 @@ IS_BENCHMARK_GROUP = True
 
 BENCHMARKS = {
     "fleurs.asr": {},
-    "fleurs.ast": {},
+    "fleurs.st": {},
 }

@@ -134,7 +134,7 @@ def save_audio(y: np.ndarray, sr: int, wav_path: Path) -> None:
         sf.write(str(wav_path), y, sr)
 
 
-def get_ast_instruction(target_locale: str) -> str:
+def get_st_instruction(target_locale: str) -> str:
     tgt_lang_name = FLEURS_LANG_TO_LONG[target_locale]
     return f"Please translate the given speech to {tgt_lang_name}."
 
@@ -187,16 +187,16 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
     local_dir.mkdir(parents=True, exist_ok=True)
 
     asr_dir = data_dir / "asr"
-    ast_dir = data_dir / "ast"
+    st_dir = data_dir / "st"
     asr_dir.mkdir(parents=True, exist_ok=True)
-    ast_dir.mkdir(parents=True, exist_ok=True)
+    st_dir.mkdir(parents=True, exist_ok=True)
     asr_jsonl = asr_dir / f"{split}.jsonl"
-    ast_jsonl = ast_dir / f"{split}.jsonl"
+    st_jsonl = st_dir / f"{split}.jsonl"
 
-    ast_pairs = build_translation_pairs(languages)
-    ast_targets_per_src: dict[str, list[str]] = {}
-    for src, tgt in ast_pairs:
-        ast_targets_per_src.setdefault(src, []).append(tgt)
+    st_pairs = build_translation_pairs(languages)
+    st_targets_per_src: dict[str, list[str]] = {}
+    for src, tgt in st_pairs:
+        st_targets_per_src.setdefault(src, []).append(tgt)
 
     target_cache: dict[str, dict[int, dict]] = {}
 
@@ -205,7 +205,7 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
             target_cache[locale] = index_by_id(load_fleurs(locale, split, local_dir=local_dir))
         return target_cache[locale]
 
-    with open(asr_jsonl, "w", encoding="utf-8") as asr_out, open(ast_jsonl, "w", encoding="utf-8") as ast_out:
+    with open(asr_jsonl, "w", encoding="utf-8") as asr_out, open(st_jsonl, "w", encoding="utf-8") as st_out:
         for src_locale in languages:
             locale_audio_dir = audio_dir / src_locale
             if not no_audio:
@@ -234,12 +234,12 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                 )
                 asr_out.write(json.dumps(asr_record, ensure_ascii=False) + "\n")
 
-                for tgt_locale in ast_targets_per_src.get(src_locale, []):
+                for tgt_locale in st_targets_per_src.get(src_locale, []):
                     target_row = get_target_index(tgt_locale).get(source_row["id"])
                     if target_row is None:
                         continue
-                    ast_extra = dict(src_fields)
-                    ast_extra.update(
+                    st_extra = dict(src_fields)
+                    st_extra.update(
                         {
                             "tgt_text": target_row["transcription"],
                             "tgt_raw_text": target_row["raw_transcription"],
@@ -248,19 +248,19 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                             "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
                         }
                     )
-                    ast_record = _build_record(
+                    st_record = _build_record(
                         expected_answer=target_row["raw_transcription"],
-                        instruction=get_ast_instruction(tgt_locale),
+                        instruction=get_st_instruction(tgt_locale),
                         container_audio_path=cpath,
                         duration=duration,
                         subset_for_metrics=f"{src_locale}->{tgt_locale}",
-                        task_type="AST",
-                        extra_fields=ast_extra,
+                        task_type="ST",
+                        extra_fields=st_extra,
                     )
-                    ast_out.write(json.dumps(ast_record, ensure_ascii=False) + "\n")
+                    st_out.write(json.dumps(st_record, ensure_ascii=False) + "\n")
 
     print(f"Fleurs ASR dataset prepared: {asr_jsonl}")
-    print(f"Fleurs AST dataset prepared: {ast_jsonl}")
+    print(f"Fleurs ST dataset prepared: {st_jsonl}")
 
 
 def main():

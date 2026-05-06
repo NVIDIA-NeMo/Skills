@@ -17,5 +17,5 @@ IS_BENCHMARK_GROUP = True
 
 BENCHMARKS = {
     "covost2.asr": {},
-    "covost2.ast": {},
+    "covost2.st": {},
 }
