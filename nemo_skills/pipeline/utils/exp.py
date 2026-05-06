@@ -46,6 +46,8 @@ from nemo_skills.pipeline.utils.packager import (
     get_packager,
     get_registered_external_repo,
 )
+from nemo_skills.pipeline.utils.ray_executor import RayExecutor
+from nemo_skills.pipeline.utils.ray_executor_client import RayJobConfig, get_ray_client
 from nemo_skills.pipeline.utils.server import get_free_port, get_server_command
 from nemo_skills.utils import get_logger_name, remove_handlers
 
@@ -267,6 +269,26 @@ def get_executor(
             network="host",
             env_vars=env_vars,
             additional_kwargs={"entrypoint": ""},
+        )
+
+    if cluster_config["executor"] == "ray":
+        # Ray top-level scheduler executor (standalone Ray clusters or Ray-on-Slurm).
+        # Distinct from the existing `with_ray=True` flag, which is "Ray inside a Slurm
+        # allocation" via heterogeneous Slurm jobs. Here, Ray IS the scheduler.
+        # Actual job submission is performed in `add_task()` via `RayJobClient`; this
+        # branch returns a `RayExecutor` config object for callers that introspect the
+        # executor type (e.g., `Pipeline._create_executor`).
+        ray_config = cluster_config.get("ray", {})
+        return RayExecutor(
+            ray_address=ray_config.get("address", "auto"),
+            ray_namespace=ray_config.get("namespace", "nemo"),
+            num_gpus=int(gpus_per_node) * num_nodes if gpus_per_node else 1,
+            num_cpus=ray_config.get("default_num_cpus", 8) * num_nodes,
+            num_nodes=num_nodes,
+            ntasks_per_node=tasks_per_node,
+            log_dir=cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs"),
+            env_vars=env_vars,
+            packager=packager,
         )
 
     if not heterogeneous:
@@ -530,6 +552,74 @@ def add_task(
             )
         if not is_mounted_filepath(cluster_config, env_vars["HF_HOME"]):
             raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
+
+    # Ray executor path: bypass nemo_run.Experiment.add() and submit directly via
+    # RayJobClient. Scoped to single-command Ray jobs (SFT, eventually GRPO) per the
+    # 2026-05-06 alignment with George/Igor on the staged Ray support contract.
+    # Unsupported modes raise NotImplementedError to fail fast (per Igor's earlier
+    # framing). Distinct from `with_ray=True` (Ray inside a Slurm allocation).
+    if cluster_config["executor"] == "ray":
+        if with_sandbox:
+            raise NotImplementedError(
+                "Ray executor does not support sandbox containers in this release. "
+                "Sandbox judge containers are out of scope for the staged Ray PR. "
+                "Use cluster_config.executor='slurm' for sandbox workflows."
+            )
+        if server_config is not None:
+            raise NotImplementedError(
+                "Ray executor does not support co-scheduled servers (vLLM/SGLang/TRT-LLM) "
+                "alongside the main job in this release. For Ray-based workflows that "
+                "require an inference endpoint, use a separately-deployed external endpoint "
+                "(e.g., a JPMC-managed vLLM service) and call it via the OpenAI-compatible "
+                "server_type='openai'."
+            )
+        if heterogeneous:
+            raise NotImplementedError(
+                "Ray executor does not support heterogeneous tasks in this release."
+            )
+        if isinstance(cmd, list) and len(cmd) > 1:
+            raise NotImplementedError(
+                "Ray executor only supports single-command tasks in this release. "
+                f"Got {len(cmd)} commands."
+            )
+        if with_ray:
+            raise NotImplementedError(
+                "with_ray=True (Ray-inside-Slurm-allocation, heterogeneous Slurm jobs) is "
+                "not compatible with cluster_config.executor='ray' (Ray-as-top-level-scheduler). "
+                "Use exactly one path per task."
+            )
+
+        # Validate task_name length already happened above. Build the Ray submission.
+        ray_cmd = cmd if isinstance(cmd, str) else cmd[0]
+        ray_dependencies = []
+        if task_dependencies:
+            for dep in task_dependencies:
+                # task_dependencies for the Ray path are expected to be Ray submission IDs (strings).
+                if isinstance(dep, str):
+                    ray_dependencies.append(dep)
+        ray_cluster_config = cluster_config.get("ray", {})
+        ray_default_cpus = ray_cluster_config.get("default_num_cpus", 8)
+        ray_log_dir = log_dir or cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs")
+
+        ray_job_config = RayJobConfig(
+            name=task_name,
+            command=ray_cmd,
+            num_gpus=num_gpus if num_gpus is not None else 1,
+            num_cpus=ray_default_cpus * num_nodes,
+            num_nodes=num_nodes,
+            env_vars=env_vars,
+            log_dir=ray_log_dir,
+            dependencies=ray_dependencies if ray_dependencies else None,
+        )
+
+        if dry_run:
+            LOG.info("Dry run mode: would submit Ray job %s with command: %s", task_name, ray_cmd)
+            return f"<dry-run-ray:{task_name}>"
+
+        ray_client = get_ray_client(cluster_config)
+        submission_id = ray_client.submit_job(ray_job_config)
+        LOG.info("Ray job submitted: task=%s submission_id=%s", task_name, submission_id)
+        return submission_id
 
     het_group = 0
     het_group_indices = []
