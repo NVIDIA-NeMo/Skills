@@ -40,6 +40,42 @@ from nemo_skills.utils import get_logger_name
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def compute_corpus_bleu(
+    hyps: list[str],
+    refs: list[str],
+    tgt_langs: list[str | None],
+) -> float:
+    """Compute corpus BLEU using the same tokenizer that sentence-level BLEU used.
+
+    Groups (hyp, ref) pairs by the tokenize resolved from each sample's tgt_lang
+    so ja/zh/ko aren't silently scored under the default 13a tokenizer. With a
+    single language, this is one corpus_bleu call; with mixed languages we
+    weighted-average per-language corpus_bleu scores by sample count.
+    """
+    from sacrebleu import corpus_bleu
+
+    from nemo_skills.evaluation.evaluator.audio import resolve_bleu_tokenize
+
+    groups: dict[str, tuple[list[str], list[str]]] = {}
+    for hyp, ref, tgt_lang in zip(hyps, refs, tgt_langs, strict=True):
+        tokenize = resolve_bleu_tokenize(tgt_lang)
+        bucket = groups.setdefault(tokenize, ([], []))
+        bucket[0].append(hyp)
+        bucket[1].append(ref)
+
+    if len(groups) == 1:
+        tokenize, (group_hyps, group_refs) = next(iter(groups.items()))
+        return corpus_bleu(hypotheses=group_hyps, references=[group_refs], tokenize=tokenize).score
+
+    weighted_sum = 0.0
+    total = 0
+    for tokenize, (group_hyps, group_refs) in groups.items():
+        score = corpus_bleu(hypotheses=group_hyps, references=[group_refs], tokenize=tokenize).score
+        weighted_sum += score * len(group_hyps)
+        total += len(group_hyps)
+    return weighted_sum / total
+
+
 class AudioMetrics(BaseMetrics):
     """Metrics class for audio evaluation tasks.
 
@@ -73,6 +109,7 @@ class AudioMetrics(BaseMetrics):
         self.per_scores = []
         self.bleu_hyps: list[str] = []
         self.bleu_refs: list[str] = []
+        self.bleu_tgt_langs: list[str | None] = []
         self.comet_scores = []
 
         # Extended metrics
@@ -218,6 +255,7 @@ class AudioMetrics(BaseMetrics):
             if "bleu" in pred and pred["bleu"] is not None:
                 self.bleu_hyps.append(pred["pred_text"])
                 self.bleu_refs.append(pred["text"])
+                self.bleu_tgt_langs.append(pred["tgt_lang"])
             if "comet" in pred and pred["comet"] is not None:
                 self.comet_scores.append(pred["comet"])
 
@@ -310,9 +348,9 @@ class AudioMetrics(BaseMetrics):
             if self.per_scores:
                 agg_metrics["per"] = round(100.0 * sum(self.per_scores) / len(self.per_scores), 2)
             if self.bleu_refs:
-                from sacrebleu import corpus_bleu
-
-                agg_metrics["bleu"] = round(corpus_bleu(self.bleu_hyps, [self.bleu_refs]).score, 2)
+                agg_metrics["bleu"] = round(
+                    compute_corpus_bleu(self.bleu_hyps, self.bleu_refs, self.bleu_tgt_langs), 2
+                )
             if self.comet_scores:
                 agg_metrics["comet"] = round(100.0 * sum(self.comet_scores) / len(self.comet_scores), 2)
 

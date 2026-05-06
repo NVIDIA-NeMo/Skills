@@ -558,6 +558,27 @@ def evaluate_asr(
     return result
 
 
+def resolve_bleu_tokenize(tgt_lang: str | None) -> str:
+    """Resolve sacrebleu tokenize from a target language code.
+
+    Shared by sentence-level and corpus-level BLEU so both stay consistent
+    for languages that need language-specific tokenization (ja/zh/ko).
+    """
+    tokenize = "13a"
+    if isinstance(tgt_lang, str):
+        lang_code = tgt_lang.split("_")[0]
+        if lang_code in ["cmn", "yue"]:
+            lang_code = "zh"
+
+        if lang_code == "ja":
+            tokenize = "ja-mecab"
+        elif lang_code == "zh":
+            tokenize = "zh"
+        elif lang_code == "ko":
+            tokenize = "ko-mecab"
+    return tokenize
+
+
 def evaluate_translation(
     reference: str,
     hypothesis: str,
@@ -567,18 +588,7 @@ def evaluate_translation(
     try:
         import sacrebleu
 
-        tokenize = "13a"
-        if isinstance(tgt_lang, str):
-            lang_code = tgt_lang.split("_")[0]
-            if lang_code in ["cmn", "yue"]:
-                lang_code = "zh"
-
-            if lang_code == "ja":
-                tokenize = "ja-mecab"
-            elif lang_code == "zh":
-                tokenize = "zh"
-            elif lang_code == "ko":
-                tokenize = "ko-mecab"
+        tokenize = resolve_bleu_tokenize(tgt_lang)
 
         text = reference.strip()
         pred_text = hypothesis.strip()
@@ -590,6 +600,7 @@ def evaluate_translation(
             "is_correct": bleu_score > 0.3,
             "text": text,
             "pred_text": pred_text,
+            "tgt_lang": tgt_lang,
         }
     except Exception as e:
         return {
@@ -598,6 +609,7 @@ def evaluate_translation(
             "error": str(e),
             "text": reference.strip(),
             "pred_text": hypothesis.strip(),
+            "tgt_lang": tgt_lang,
         }
 
 
