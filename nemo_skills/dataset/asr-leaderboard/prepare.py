@@ -166,6 +166,15 @@ def main():
         help="Datasets to prepare (default: all)",
     )
     parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=None,
+        help=(
+            "Output directory. If provided, outputs go under <data_dir>/asr-leaderboard. "
+            "If omitted, writes into this package's dataset directory."
+        ),
+    )
+    parser.add_argument(
         "--no-audio",
         action="store_true",
         help="Skip saving audio files (JSONL still includes audio paths)",
@@ -178,7 +187,10 @@ def main():
     )
     args = parser.parse_args()
 
-    output_dir = Path(__file__).parent
+    if args.data_dir:
+        output_dir = Path(args.data_dir) / "asr-leaderboard"
+    else:
+        output_dir = Path(__file__).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with_audio = not args.no_audio
