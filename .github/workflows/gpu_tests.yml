@@ -42,10 +42,12 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         cd ${{ github.run_id }}
-        python -m pip install --upgrade pip
-        pip uninstall -y nemo-skills nemo_run
-        pip install -e .
-        pip install -r requirements/common-tests.txt
+        python -m pip install --upgrade pip uv
+        uv pip uninstall --system nemo-skills nemo_run || true
+        # Use `uv pip` so [tool.uv].override-dependencies in pyproject.toml is honored
+        # (relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x can be installed).
+        uv pip install --system -e .
+        uv pip install --system -r requirements/common-tests.txt
         ns prepare_data gsm8k human-eval mbpp algebra222 mmlu ifeval math-500 amc23 aime24
     - name: Build Docker image
       run: |
