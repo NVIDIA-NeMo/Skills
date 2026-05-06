@@ -256,7 +256,7 @@ def prepare_covost2(
                     container_audio_path=cpath,
                     duration=duration,
                     subset_for_metrics=tag,
-                    task_type="ST",
+                    task_type="AST",
                     extra_fields={
                         "src_text": item["sentence"],
                         "tgt_text": item["translation"],

@@ -254,7 +254,7 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                         container_audio_path=cpath,
                         duration=duration,
                         subset_for_metrics=f"{src_locale}->{tgt_locale}",
-                        task_type="ST",
+                        task_type="AST",
                         extra_fields=st_extra,
                     )
                     st_out.write(json.dumps(st_record, ensure_ascii=False) + "\n")
