@@ -24,4 +24,10 @@ python tests/slurm-tests/unified_asr/run_test.py --cluster $CLUSTER --workspace 
 python tests/slurm-tests/unified_tts/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/unified_tts --expname_prefix unified_tts_$RUN_NAME
 # sleep 10
 python tests/slurm-tests/wmt24pp_gym_topology/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/wmt24pp_gym_topology --expname_prefix wmt24pp_gym_topology_$RUN_NAME
+# sleep 10
+# Ray executor smoke test — staged Ray support per 2026-05-06 alignment with George/Igor.
+# Requires a cluster_config with `executor: ray` (e.g. cluster_configs/example-ray.yaml).
+# Disabled by default in run_all.sh because most CI clusters do not have a Ray endpoint
+# configured; enable explicitly when running against a Ray-enabled cluster config.
+# python tests/slurm-tests/qwen3_4b_ray_executor/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/qwen3_4b_ray_executor --expname_prefix qwen3_4b_ray_executor_$RUN_NAME
 # wait
