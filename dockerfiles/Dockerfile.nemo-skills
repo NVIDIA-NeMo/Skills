@@ -29,7 +29,7 @@ RUN apt update && \
 # Apply security patches for PackageKit, pulled in transitively by software-properties-common.
 # Ubuntu 22.04 has published 1.2.5-2ubuntu3.1 with the fix for the local privilege escalation CVE.
 RUN apt-get update && \
-    apt-get upgrade -y \
+    apt-get install --only-upgrade -y \
         packagekit \
         packagekit-tools \
         libpackagekit-glib2-18 \
