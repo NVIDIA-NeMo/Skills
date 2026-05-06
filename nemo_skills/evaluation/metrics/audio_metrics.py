@@ -216,8 +216,8 @@ class AudioMetrics(BaseMetrics):
             if "per" in pred and pred["per"] is not None:
                 self.per_scores.append(pred["per"])
             if "bleu" in pred and pred["bleu"] is not None:
-                self.bleu_hyps.append(pred.get("pred_text", "") or "")
-                self.bleu_refs.append(pred.get("text", "") or "")
+                self.bleu_hyps.append(pred["pred_text"])
+                self.bleu_refs.append(pred["text"])
             if "comet" in pred and pred["comet"] is not None:
                 self.comet_scores.append(pred["comet"])
 
