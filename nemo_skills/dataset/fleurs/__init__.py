@@ -13,10 +13,9 @@
 # limitations under the License.
 
 REQUIRES_DATA_DIR = True
-METRICS_TYPE = "audio"
-EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=multilingual"
-GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
-JUDGE_PIPELINE_ARGS = {
-    "source_key": "extra_fields.src_raw_text",
-    "reference_key": "extra_fields.tgt_raw_text",
+IS_BENCHMARK_GROUP = True
+
+BENCHMARKS = {
+    "fleurs.asr": {},
+    "fleurs.ast": {},
 }
