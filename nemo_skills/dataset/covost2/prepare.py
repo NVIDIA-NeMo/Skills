@@ -189,35 +189,15 @@ def _build_record(
     }
 
 
-def prepare_covost2(
-    data_dir: Path,
-    split: str,
+def _write_asr_jsonl(
+    asr_jsonl: Path,
     languages: list[str],
+    audio_dir: Path,
     cv_data_dir: Path,
-    validated_tsv: Path,
+    sentences: dict,
+    split: str,
 ) -> None:
-    if not languages:
-        raise ValueError("No languages to process")
-
-    lang_set = set(languages)
-    st_pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
-
-    audio_dir = data_dir / "audio"
-    audio_dir.mkdir(parents=True, exist_ok=True)
-
-    asr_dir = data_dir / "asr"
-    st_dir = data_dir / "st"
-    asr_dir.mkdir(parents=True, exist_ok=True)
-    st_dir.mkdir(parents=True, exist_ok=True)
-    asr_jsonl = asr_dir / f"{split}.jsonl"
-    st_jsonl = st_dir / f"{split}.jsonl"
-
-    local_dir = data_dir / "fb-covost2"
-    local_dir.mkdir(parents=True, exist_ok=True)
-
-    sentences = load_validated_sentences(validated_tsv)
-
-    with open(asr_jsonl, "w", encoding="utf-8") as asr_out:
+    with open(asr_jsonl, "w", encoding="utf-8") as out:
         for src_lang in languages:
             audio_split_dir = cv_data_dir / src_lang / split
             wav_files = sorted(audio_split_dir.glob("*.wav"))
@@ -240,10 +220,22 @@ def prepare_covost2(
                         "use_cer": src_lang in CER_LOCALES,
                     },
                 )
-                asr_out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    with open(st_jsonl, "w", encoding="utf-8") as st_out:
-        for src_lang, tgt_lang in st_pairs:
+
+def _write_st_jsonl(
+    st_jsonl: Path,
+    languages: list[str],
+    audio_dir: Path,
+    cv_data_dir: Path,
+    local_dir: Path,
+    sentences: dict,
+    split: str,
+) -> None:
+    lang_set = set(languages)
+    pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
+    with open(st_jsonl, "w", encoding="utf-8") as out:
+        for src_lang, tgt_lang in pairs:
             tag = f"{src_lang}->{tgt_lang}"
             dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
             for item in tqdm(dataset, desc=f"st:{tag}"):
@@ -266,7 +258,36 @@ def prepare_covost2(
                         "tgt_lang": tgt_lang,
                     },
                 )
-                st_out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def prepare_covost2(
+    data_dir: Path,
+    split: str,
+    languages: list[str],
+    cv_data_dir: Path,
+    validated_tsv: Path,
+) -> None:
+    if not languages:
+        raise ValueError("No languages to process")
+
+    audio_dir = data_dir / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+
+    asr_dir = data_dir / "asr"
+    st_dir = data_dir / "st"
+    asr_dir.mkdir(parents=True, exist_ok=True)
+    st_dir.mkdir(parents=True, exist_ok=True)
+    asr_jsonl = asr_dir / f"{split}.jsonl"
+    st_jsonl = st_dir / f"{split}.jsonl"
+
+    local_dir = data_dir / "fb-covost2"
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    sentences = load_validated_sentences(validated_tsv)
+
+    _write_asr_jsonl(asr_jsonl, languages, audio_dir, cv_data_dir, sentences, split)
+    _write_st_jsonl(st_jsonl, languages, audio_dir, cv_data_dir, local_dir, sentences, split)
 
     print(f"CoVoST2 ASR dataset prepared: {asr_jsonl}")
     print(f"CoVoST2 ST dataset prepared: {st_jsonl}")
