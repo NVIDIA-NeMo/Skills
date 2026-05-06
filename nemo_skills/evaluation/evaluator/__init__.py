@@ -29,6 +29,7 @@ _EVALUATOR_MAP_PATHS = {
     "evalplus": "nemo_skills.evaluation.evaluator.code:eval_evalplus",
     "if": "nemo_skills.evaluation.evaluator.ifeval:eval_if",
     "ifbench": "nemo_skills.evaluation.evaluator.ifbench:eval_ifbench",
+    "koifeval": "nemo_skills.evaluation.evaluator.koifeval:eval_koif",
     "bfcl": "nemo_skills.evaluation.evaluator.bfcl:eval_bfcl",
     "multichoice": "nemo_skills.evaluation.evaluator.mcq:eval_mcq",
     "ruler": "nemo_skills.evaluation.evaluator.ruler:eval_ruler",
