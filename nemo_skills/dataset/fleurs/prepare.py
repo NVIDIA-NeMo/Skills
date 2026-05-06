@@ -178,6 +178,93 @@ def _src_extra_fields(source_row: dict, src_locale: str) -> dict:
     }
 
 
+def _write_asr_jsonl(
+    asr_jsonl: Path,
+    languages: list[str],
+    audio_dir: Path,
+    local_dir: Path,
+    split: str,
+    no_audio: bool,
+) -> None:
+    with open(asr_jsonl, "w", encoding="utf-8") as out:
+        for src_locale in languages:
+            locale_audio_dir = audio_dir / src_locale
+            if not no_audio:
+                locale_audio_dir.mkdir(parents=True, exist_ok=True)
+            for source_row in tqdm(load_fleurs(src_locale, split, local_dir=local_dir), desc=src_locale):
+                y, sr, duration = prepare_audio(source_row)
+                wav_filename = source_row["wav_filename"]
+                wav_path = locale_audio_dir / wav_filename
+                cpath = get_container_audio_path(src_locale, wav_filename)
+                if not no_audio:
+                    save_audio(y, sr, wav_path)
+                record = _build_record(
+                    expected_answer=source_row["transcription"],
+                    instruction=get_asr_instruction(),
+                    container_audio_path=cpath,
+                    duration=duration,
+                    subset_for_metrics=src_locale,
+                    task_type="ASR",
+                    extra_fields=_src_extra_fields(source_row, src_locale),
+                )
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _write_st_jsonl(
+    st_jsonl: Path,
+    languages: list[str],
+    audio_dir: Path,
+    local_dir: Path,
+    split: str,
+    no_audio: bool,
+) -> None:
+    pairs = build_translation_pairs(languages)
+    target_cache: dict[str, dict[int, dict]] = {}
+
+    def get_target_index(locale: str) -> dict[int, dict]:
+        if locale not in target_cache:
+            target_cache[locale] = index_by_id(load_fleurs(locale, split, local_dir=local_dir))
+        return target_cache[locale]
+
+    with open(st_jsonl, "w", encoding="utf-8") as out:
+        for src_locale, tgt_locale in pairs:
+            locale_audio_dir = audio_dir / src_locale
+            if not no_audio:
+                locale_audio_dir.mkdir(parents=True, exist_ok=True)
+            target_by_id = get_target_index(tgt_locale)
+            tag = f"{src_locale}->{tgt_locale}"
+            for source_row in tqdm(load_fleurs(src_locale, split, local_dir=local_dir), desc=tag):
+                target_row = target_by_id.get(source_row["id"])
+                if target_row is None:
+                    continue
+                y, sr, duration = prepare_audio(source_row)
+                wav_filename = source_row["wav_filename"]
+                wav_path = locale_audio_dir / wav_filename
+                cpath = get_container_audio_path(src_locale, wav_filename)
+                if not no_audio:
+                    save_audio(y, sr, wav_path)
+                extra = _src_extra_fields(source_row, src_locale)
+                extra.update(
+                    {
+                        "tgt_text": target_row["transcription"],
+                        "tgt_raw_text": target_row["raw_transcription"],
+                        "tgt_lang_name": FLEURS_LANG_TO_LONG[tgt_locale],
+                        "tgt_lang": tgt_locale,
+                        "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
+                    }
+                )
+                record = _build_record(
+                    expected_answer=target_row["raw_transcription"],
+                    instruction=get_st_instruction(tgt_locale),
+                    container_audio_path=cpath,
+                    duration=duration,
+                    subset_for_metrics=tag,
+                    task_type="AST",
+                    extra_fields=extra,
+                )
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: bool) -> None:
     if not languages:
         raise ValueError("No languages to process")
@@ -193,71 +280,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
     asr_jsonl = asr_dir / f"{split}.jsonl"
     st_jsonl = st_dir / f"{split}.jsonl"
 
-    st_pairs = build_translation_pairs(languages)
-    st_targets_per_src: dict[str, list[str]] = {}
-    for src, tgt in st_pairs:
-        st_targets_per_src.setdefault(src, []).append(tgt)
-
-    target_cache: dict[str, dict[int, dict]] = {}
-
-    def get_target_index(locale: str) -> dict[int, dict]:
-        if locale not in target_cache:
-            target_cache[locale] = index_by_id(load_fleurs(locale, split, local_dir=local_dir))
-        return target_cache[locale]
-
-    with open(asr_jsonl, "w", encoding="utf-8") as asr_out, open(st_jsonl, "w", encoding="utf-8") as st_out:
-        for src_locale in languages:
-            locale_audio_dir = audio_dir / src_locale
-            if not no_audio:
-                locale_audio_dir.mkdir(parents=True, exist_ok=True)
-
-            source_dataset = load_fleurs(src_locale, split, local_dir=local_dir)
-
-            for source_row in tqdm(source_dataset, desc=src_locale):
-                y, sr, duration = prepare_audio(source_row)
-                wav_filename = source_row["wav_filename"]
-                wav_path = locale_audio_dir / wav_filename
-                cpath = get_container_audio_path(src_locale, wav_filename)
-                if not no_audio:
-                    save_audio(y, sr, wav_path)
-
-                src_fields = _src_extra_fields(source_row, src_locale)
-
-                asr_record = _build_record(
-                    expected_answer=source_row["transcription"],
-                    instruction=get_asr_instruction(),
-                    container_audio_path=cpath,
-                    duration=duration,
-                    subset_for_metrics=src_locale,
-                    task_type="ASR",
-                    extra_fields=src_fields,
-                )
-                asr_out.write(json.dumps(asr_record, ensure_ascii=False) + "\n")
-
-                for tgt_locale in st_targets_per_src.get(src_locale, []):
-                    target_row = get_target_index(tgt_locale).get(source_row["id"])
-                    if target_row is None:
-                        continue
-                    st_extra = dict(src_fields)
-                    st_extra.update(
-                        {
-                            "tgt_text": target_row["transcription"],
-                            "tgt_raw_text": target_row["raw_transcription"],
-                            "tgt_lang_name": FLEURS_LANG_TO_LONG[tgt_locale],
-                            "tgt_lang": tgt_locale,
-                            "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
-                        }
-                    )
-                    st_record = _build_record(
-                        expected_answer=target_row["raw_transcription"],
-                        instruction=get_st_instruction(tgt_locale),
-                        container_audio_path=cpath,
-                        duration=duration,
-                        subset_for_metrics=f"{src_locale}->{tgt_locale}",
-                        task_type="AST",
-                        extra_fields=st_extra,
-                    )
-                    st_out.write(json.dumps(st_record, ensure_ascii=False) + "\n")
+    _write_asr_jsonl(asr_jsonl, languages, audio_dir, local_dir, split, no_audio)
+    _write_st_jsonl(st_jsonl, languages, audio_dir, local_dir, split, no_audio)
 
     print(f"Fleurs ASR dataset prepared: {asr_jsonl}")
     print(f"Fleurs ST dataset prepared: {st_jsonl}")
