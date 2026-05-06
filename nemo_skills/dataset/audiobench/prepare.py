@@ -35,6 +35,8 @@ import numpy as np
 import soundfile as sf
 from tqdm import tqdm
 
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+
 # AudioBench datasets categorized by evaluation type
 JUDGE_DATASETS = [
     "alpaca_audio_test",
@@ -140,6 +142,7 @@ def create_manifest_entry(
     dataset_name: str,
     sample_id: int,
     category: str,
+    audio_root: str = "/data",
 ) -> Dict:
     """Create a nemo-skills compatible manifest entry.
 
@@ -158,9 +161,9 @@ def create_manifest_entry(
     reference = sample.get("reference", sample.get("answer", ""))
     task_type = sample.get("task_type", "unknown")
 
-    # Create absolute audio path with /data/ prefix for cluster deployment
-    # Format: /data/audiobench/{category}/audio/{dataset_name}/{filename}
-    audio_rel_path = f"/data/audiobench/{category}/audio/{dataset_name}/{audio_filename}"
+    audio_rel_path = build_container_audio_path(
+        "audiobench", category, "audio", dataset_name, audio_filename, audio_prefix=audio_root
+    )
 
     # Create audio metadata (both singular and plural forms for compatibility)
     audio_metadata = {"path": audio_rel_path, "duration": duration}
@@ -209,6 +212,7 @@ def process_dataset(
     save_audio: bool = True,
     split: str = "test",
     max_samples: int = -1,
+    audio_root: str = "/data",
 ) -> tuple[int, List[Dict]]:
     """Process a single AudioBench dataset.
 
@@ -459,6 +463,7 @@ def process_dataset(
                 dataset_name=dataset_name,
                 sample_id=idx,
                 category=category,
+                audio_root=audio_root,
             )
 
             manifest_entries.append(entry)
@@ -519,6 +524,12 @@ def main():
         default=-1,
         help="Maximum number of samples to process per dataset (-1 for all)",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     parser.set_defaults(save_audio=True)
 
     args = parser.parse_args()
@@ -531,6 +542,7 @@ def main():
         output_dir = Path(__file__).parent
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
 
     print("\n" + "=" * 60)
     print("AudioBench Dataset Preparation")
@@ -539,6 +551,7 @@ def main():
     print(f"Output directory: {output_dir}")
     print(f"Save audio files: {args.save_audio}")
     print(f"Split: {args.split}")
+    print(f"Audio paths in JSONL will use: {audio_root}/audiobench/...")
     print("=" * 60 + "\n")
 
     # Determine which datasets to process
@@ -585,6 +598,7 @@ def main():
                 save_audio=args.save_audio,
                 split=args.split,
                 max_samples=args.max_samples,
+                audio_root=audio_root,
             )
             total_samples += num_samples
             total_datasets += 1

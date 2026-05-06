@@ -30,10 +30,10 @@ Output structure:
 Usage:
     ns prepare_data numb3rs --no-audio
     ns prepare_data numb3rs --categories CARDINAL DATE MONEY --no-audio
-    ns prepare_data numb3rs --no-audio --audio-prefix /data/numb3rs
+    ns prepare_data numb3rs --no-audio --audio-prefix /data
 
-Audio path in JSONL files: {audio_prefix}/Numb3rs/{CATEGORY}/{name}.wav
-Default audio_prefix: /data/numb3rs (maps to container mount)
+Audio path in JSONL files: {audio_prefix}/numb3rs/Numb3rs/{CATEGORY}/{name}.wav
+Default audio_prefix: $NEMO_SKILLS_AUDIO_ROOT or /data (maps to container mount)
 """
 
 import argparse
@@ -43,6 +43,8 @@ from pathlib import Path
 import soundfile as sf
 from datasets import load_dataset
 from tqdm import tqdm
+
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
 
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
 
@@ -72,15 +74,15 @@ def build_messages_with_prompt(audio_metadata, prompt_text):
     return [system_message, user_message]
 
 
-def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_audio=True, audio_prefix="/data/numb3rs"):
+def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_audio=True, audio_root="/data"):
     """Format a dataset entry and optionally save audio file.
 
     Returns a base entry dict with audio metadata. Messages are added separately
     based on prompt variant when writing to files.
 
     Args:
-        audio_prefix: Prefix for audio paths in the generated JSONL files.
-                      Default is '/data/numb3rs' which maps to container mount.
+        audio_root: In-container root for generated audio paths.
+                    Default is '/data' which maps to container mount.
                       Set to your local audio storage path as needed.
     """
     # Extract fields from Numb3rs dataset
@@ -110,10 +112,7 @@ def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_aud
         audio_file_path = audio_dir / audio_filename
         sf.write(str(audio_file_path), audio_array, sampling_rate)
 
-    # Container path for evaluation
-    # Use audio_prefix to set the base path (e.g., /data/numb3rs or full cluster path)
-    # Audio files are organized as: {audio_prefix}/Numb3rs/{category}/{filename}.wav
-    audio_filepath = f"{audio_prefix}/Numb3rs/{category}/{audio_filename}"
+    audio_filepath = build_container_audio_path("numb3rs", "Numb3rs", category, audio_filename, audio_prefix=audio_root)
 
     # Build audio metadata (to be embedded in messages later)
     audio_metadata = {
@@ -137,7 +136,7 @@ def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_aud
     return formatted_entry
 
 
-def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefix="/data/numb3rs"):
+def prepare_category(category, dataset, output_dir, with_audio=True, audio_root="/data"):
     """Prepare a single category from the Numb3rs dataset.
 
     Generates 3 files per category in categories/ subfolder:
@@ -146,7 +145,7 @@ def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefi
     - categories/{category}_itn.jsonl
 
     Args:
-        audio_prefix: Prefix for audio paths in the generated JSONL files.
+        audio_root: In-container root for generated audio paths.
     """
     print(f"\nProcessing category: {category}")
 
@@ -175,7 +174,7 @@ def prepare_category(category, dataset, output_dir, with_audio=True, audio_prefi
 
     for idx, entry in enumerate(tqdm(category_samples, desc=f"Processing {category}")):
         formatted = save_audio_and_format_entry(
-            entry, category, audio_dir, idx, with_audio=with_audio, audio_prefix=audio_prefix
+            entry, category, audio_dir, idx, with_audio=with_audio, audio_root=audio_root
         )
         if formatted is None:
             skipped += 1
@@ -232,9 +231,8 @@ def main():
     )
     parser.add_argument(
         "--audio-prefix",
-        default="/data/numb3rs",
-        help="Prefix for audio paths in JSONL files (default: /data/numb3rs). "
-        "Examples: /data/numb3rs, /dataset/numb3rs",
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
     )
     args = parser.parse_args()
 
@@ -242,10 +240,10 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with_audio = not args.no_audio
-    audio_prefix = args.audio_prefix.rstrip("/")  # Remove trailing slash if present
+    audio_root = get_container_audio_root(args.audio_prefix)
 
-    print(f"Audio path prefix: {audio_prefix}")
-    print(f"Audio paths in JSONL: {audio_prefix}/Numb3rs/{{CATEGORY}}/{{name}}.wav")
+    print(f"Audio path root: {audio_root}")
+    print(f"Audio paths in JSONL: {audio_root}/numb3rs/Numb3rs/{{CATEGORY}}/{{name}}.wav")
     if args.no_audio:
         print("Running without saving audio files.")
     else:
@@ -280,7 +278,7 @@ def main():
     total_samples = 0
     for category in categories_to_prepare:
         total_samples += prepare_category(
-            category, dataset, output_dir, with_audio=with_audio, audio_prefix=audio_prefix
+            category, dataset, output_dir, with_audio=with_audio, audio_root=audio_root
         )
 
     # Combine all category variant files into test variant files

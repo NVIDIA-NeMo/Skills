@@ -22,7 +22,7 @@ from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import get_mcq_fields
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root, get_mcq_fields
 
 
 def download_mmau_data(download_dir, hf_token):
@@ -56,7 +56,20 @@ def download_mmau_data(download_dir, hf_token):
     return extracted_data_dir
 
 
-def format_entry(entry, with_audio=False):
+def _normalize_audio_path(path: str, audio_root: str) -> str:
+    """Convert a dataset audio path into the configured in-container path.
+
+    Preserves the dataset's relative layout (e.g. ``data/<uuid>.wav``) verbatim
+    so the JSONL path matches where files actually live after ``cp -r``. The
+    HF MMAU-Pro dataset records audio entries as ``data/<uuid>.wav`` and that
+    ``data/`` is the subdir its zip extracts into; stripping it here would
+    produce JSONL paths that fail to resolve against the on-disk layout.
+    """
+    rel_path = str(path).lstrip("/")
+    return build_container_audio_path("mmau-pro", rel_path, audio_prefix=audio_root)
+
+
+def format_entry(entry, with_audio=False, audio_root="/data"):
     """Format entry for nemo-skills with OpenAI messages and audio support."""
     choices = entry.get("choices", []) or []
 
@@ -86,8 +99,12 @@ def format_entry(entry, with_audio=False):
         audio_path = entry["audio_path"]
 
         if isinstance(audio_path, list) and audio_path:
-            user_message["audios"] = [{"path": path, "duration": 10.0} for path in audio_path]
+            audio_paths = [_normalize_audio_path(path, audio_root) for path in audio_path]
+            formatted_entry["audio_path"] = audio_paths
+            user_message["audios"] = [{"path": path, "duration": 10.0} for path in audio_paths]
         elif isinstance(audio_path, str):
+            audio_path = _normalize_audio_path(audio_path, audio_root)
+            formatted_entry["audio_path"] = audio_path
             user_message["audio"] = {"path": audio_path, "duration": 10.0}
 
     formatted_entry["messages"] = [user_message]
@@ -102,9 +119,17 @@ def main():
         action="store_true",
         help="Skip downloading audio files",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
     data_dir = Path(__file__).parent
+    audio_root = get_container_audio_root(args.audio_prefix)
+    print(f"Audio paths in JSONL will use: {audio_root}/mmau-pro/...")
 
     # Download audio by default unless --no-audio is specified
     if not args.no_audio:
@@ -136,7 +161,7 @@ def main():
 
     try:
         for entry in tqdm(dataset):
-            formatted_entry = format_entry(entry, with_audio=not args.no_audio)
+            formatted_entry = format_entry(entry, with_audio=not args.no_audio, audio_root=audio_root)
             category = entry.get("category", "closed_form")
 
             # Map category to file

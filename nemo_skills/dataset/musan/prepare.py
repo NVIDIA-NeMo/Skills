@@ -40,6 +40,8 @@ import numpy as np
 import soundfile as sf
 from tqdm import tqdm
 
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+
 # HuggingFace dataset label mappings
 CATEGORY_LABELS = {
     "noise": 0,
@@ -166,10 +168,10 @@ def create_manifest_entry(
     category: str,
     sample_id: int,
     label: str,
+    audio_root: str = "/data",
 ) -> Dict:
     """Create nemo-skills manifest entry."""
-    audio_root = os.getenv("NEMO_SKILLS_AUDIO_ROOT", "/data")
-    audio_rel_path = f"{audio_root}/musan/{category}/audio/{audio_filename}"
+    audio_rel_path = build_container_audio_path("musan", category, "audio", audio_filename, audio_prefix=audio_root)
     audio_metadata = {"path": audio_rel_path, "duration": duration}
 
     # Instruction for transcription (expects empty response for non-speech audio)
@@ -207,6 +209,7 @@ def process_category_from_files(
     save_audio: bool = True,
     split: str = "train",
     max_samples: int = -1,
+    audio_root: str = "/data",
 ) -> tuple[int, List[Dict]]:
     """Process MUSAN category from WAV files (Kaggle/OpenSLR format)."""
     category_path = dataset_path / category
@@ -253,6 +256,7 @@ def process_category_from_files(
                 category=category,
                 sample_id=idx,
                 label=wav_path.stem,
+                audio_root=audio_root,
             )
 
             manifest_entries.append(entry)
@@ -283,6 +287,7 @@ def process_category(
     save_audio: bool = True,
     split: str = "train",
     max_samples: int = -1,
+    audio_root: str = "/data",
 ) -> tuple[int, List[Dict]]:
     """Process a single MUSAN category."""
     print(f"\n{'=' * 60}")
@@ -297,6 +302,7 @@ def process_category(
             save_audio=save_audio,
             split=split,
             max_samples=max_samples,
+            audio_root=audio_root,
         )
 
     elif source_type != "huggingface":
@@ -372,6 +378,7 @@ def process_category(
                 category=category,
                 sample_id=idx,
                 label=str(label),
+                audio_root=audio_root,
             )
 
             manifest_entries.append(entry)
@@ -412,6 +419,12 @@ def main():
     )
     parser.add_argument("--no-audio", dest="save_audio", action="store_false")
     parser.add_argument("--max-samples", type=int, default=-1)
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     parser.set_defaults(save_audio=True)
 
     args = parser.parse_args()
@@ -422,12 +435,14 @@ def main():
         output_dir = Path(__file__).parent
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
 
     print("\n" + "=" * 60)
     print("MUSAN Dataset Preparation")
     print("=" * 60)
     print(f"Source: {args.source}")
     print(f"Output: {output_dir}")
+    print(f"Audio paths in JSONL will use: {audio_root}/musan/...")
     print(f"Categories: {', '.join(args.categories)}")
     print("=" * 60 + "\n")
 
@@ -452,6 +467,7 @@ def main():
                 save_audio=args.save_audio,
                 split=args.split,
                 max_samples=args.max_samples,
+                audio_root=audio_root,
             )
             total_samples += num_samples
             successful_categories.append(category)
