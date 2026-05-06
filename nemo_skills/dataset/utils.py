@@ -26,6 +26,8 @@ from urllib.error import URLError
 
 from nemo_skills.evaluation.math_grader import extract_answer
 
+DEFAULT_CONTAINER_AUDIO_ROOT = "/data"
+
 
 def locate(path):
     """Import an object by path using ``::`` or dotted notation.
@@ -96,6 +98,23 @@ def get_dataset_name(dataset):
     if "/" in dataset:
         return Path(dataset).name
     return dataset
+
+
+def get_container_audio_root(audio_prefix: str | None = None) -> str:
+    """Return the in-container root used for generated audio paths.
+
+    ``--audio-prefix`` is the explicit override. ``NEMO_SKILLS_AUDIO_ROOT`` is
+    the process-wide default used by cluster wrappers. ``/data`` matches the
+    standard evaluation mount convention.
+    """
+    return (audio_prefix or os.getenv("NEMO_SKILLS_AUDIO_ROOT", DEFAULT_CONTAINER_AUDIO_ROOT)).rstrip("/")
+
+
+def build_container_audio_path(benchmark: str, *parts: str, audio_prefix: str | None = None) -> str:
+    """Build an in-container audio path to write into prepared JSONL manifests."""
+    root = get_container_audio_root(audio_prefix)
+    path_parts = [benchmark.strip("/"), *(str(part).strip("/") for part in parts)]
+    return "/".join([root, *path_parts])
 
 
 def get_dataset_path(dataset, extra_benchmark_map=None):

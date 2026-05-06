@@ -25,6 +25,8 @@ from pathlib import Path
 import soundfile as sf
 from tqdm import tqdm
 
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+
 COVOST_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/covost/covost_v2.{src_lang}_{tgt_lang}.tsv.tar.gz"
 SPLITS = ["validation", "test"]
 
@@ -144,8 +146,8 @@ def get_audio_duration(audio_file: str) -> float:
     return float(info.frames / info.samplerate)
 
 
-def get_container_audio_path(src_lang: str, split: str, audio_id: str) -> str:
-    return f"/dataset/covost2/audio/{src_lang}/{split}/{audio_id}.wav"
+def get_container_audio_path(src_lang: str, split: str, audio_id: str, audio_root: str) -> str:
+    return build_container_audio_path("covost2", "audio", src_lang, split, f"{audio_id}.wav", audio_prefix=audio_root)
 
 
 def copy_audio_file(src_wav: Path, audio_dir: Path, src_lang: str, split: str) -> Path:
@@ -196,6 +198,7 @@ def prepare_covost2(
     cv_data_dir: Path,
     validated_tsv: Path,
     task_type: str,
+    audio_root: str = "/data",
 ) -> None:
     if not languages:
         raise ValueError("No languages to process")
@@ -231,7 +234,7 @@ def prepare_covost2(
                     sentence = sentences[(wav_file.name, split, src_lang)]
                     duration = get_audio_duration(str(wav_file))
                     copy_audio_file(wav_file, audio_dir, src_lang, split)
-                    cpath = get_container_audio_path(src_lang, split, wav_file.stem)
+                    cpath = get_container_audio_path(src_lang, split, wav_file.stem, audio_root=audio_root)
                     record = _build_record(
                         expected_answer=sentence,
                         instruction=get_asr_instruction(),
@@ -253,7 +256,7 @@ def prepare_covost2(
                 for item in tqdm(dataset, desc=tag):
                     duration = get_audio_duration(item["audio_file"])
                     copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
-                    cpath = get_container_audio_path(src_lang, split, item["id"])
+                    cpath = get_container_audio_path(src_lang, split, item["id"], audio_root=audio_root)
                     record = _build_record(
                         expected_answer=item["translation"],
                         instruction=get_ast_instruction(tgt_lang),
@@ -316,6 +319,12 @@ def main():
         choices=["ASR", "AST", "asr", "ast"],
         help="Task to prepare. ASR: speech recognition, AST: speech translation.",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
     if args.data_dir:
@@ -323,6 +332,8 @@ def main():
     else:
         data_dir = Path(__file__).parent
     data_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
+    print(f"Audio paths in JSONL will use: {audio_root}/covost2/audio/...")
 
     prepare_covost2(
         data_dir=data_dir,
@@ -331,6 +342,7 @@ def main():
         cv_data_dir=Path(args.cv_data_dir),
         validated_tsv=Path(args.validated_tsv),
         task_type=args.task.upper(),
+        audio_root=audio_root,
     )
 
 

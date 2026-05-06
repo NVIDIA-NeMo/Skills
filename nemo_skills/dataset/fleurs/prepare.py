@@ -25,6 +25,8 @@ import soundfile as sf
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+
 
 def load_fleurs_module():
     """Download and dynamically import google/fleurs/fleurs.py from HuggingFace."""
@@ -125,8 +127,8 @@ def prepare_audio(item: dict) -> tuple[np.ndarray, int, float]:
     return y, sr, duration
 
 
-def get_container_audio_path(locale: str, wav_filename: str) -> str:
-    return f"/dataset/fleurs/audio/{locale}/{wav_filename}"
+def get_container_audio_path(locale: str, wav_filename: str, audio_root: str) -> str:
+    return build_container_audio_path("fleurs", "audio", locale, wav_filename, audio_prefix=audio_root)
 
 
 def save_audio(y: np.ndarray, sr: int, wav_path: Path) -> None:
@@ -167,7 +169,14 @@ def _build_record(
     }
 
 
-def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: bool, task_type: str) -> None:
+def prepare_fleurs(
+    data_dir: Path,
+    split: str,
+    languages: list[str],
+    no_audio: bool,
+    task_type: str,
+    audio_root: str = "/data",
+) -> None:
     if not languages:
         raise ValueError("No languages to process")
 
@@ -221,7 +230,7 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                 y, sr, duration = prepare_audio(source_row)
                 wav_filename = source_row["wav_filename"]
                 wav_path = locale_audio_dir / wav_filename
-                cpath = get_container_audio_path(src_locale, wav_filename)
+                cpath = get_container_audio_path(src_locale, wav_filename, audio_root=audio_root)
                 if not no_audio:
                     save_audio(y, sr, wav_path)
 
@@ -292,6 +301,12 @@ def main():
         action="store_true",
         help="Skip saving audio files (only create manifests)",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
     unknown = set(args.languages) - LOCALES
@@ -303,6 +318,8 @@ def main():
     else:
         data_dir = Path(__file__).parent
     data_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
+    print(f"Audio paths in JSONL will use: {audio_root}/fleurs/audio/...")
 
     prepare_fleurs(
         data_dir=data_dir,
@@ -310,6 +327,7 @@ def main():
         languages=args.languages,
         no_audio=args.no_audio,
         task_type=args.task.upper(),
+        audio_root=audio_root,
     )
 
 

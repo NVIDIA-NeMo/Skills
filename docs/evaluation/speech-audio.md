@@ -37,12 +37,40 @@ MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for
 
 These benchmarks require audio files for meaningful evaluation. **Audio files are downloaded by default** to ensure proper evaluation.
 
+### Audio path convention
+
+Prepared audio manifests should write audio paths using the in-container audio
+root, not the host filesystem path. The default in-container root is `/data`.
+Override it with `--audio-prefix` when a different mount point is needed; if
+`--audio-prefix` is omitted, prepare scripts fall back to
+`NEMO_SKILLS_AUDIO_ROOT` and then `/data`.
+
+`--audio-prefix` is the global in-container audio root. Do not include the
+benchmark name in it; the prepare script appends the benchmark directory.
+For example, use `--audio-prefix /data`, not
+`--audio-prefix /data/contextasr-bench`.
+
+For example, preparing data with `--audio-prefix /data` writes manifest paths
+like:
+
+```text
+/data/asr-leaderboard/...
+/data/contextasr-bench/...
+```
+
+At evaluation time, mount the host prepared-data directory to the same
+in-container root:
+
+```bash
+ns eval ... --data_dir=/lustre/.../skills_data --mount-paths=/lustre/.../skills_data:/data
+```
+
 ### Data Preparation
 
 To prepare the dataset with audio files:
 
 ```bash
-ns prepare_data asr-leaderboard --data_dir=/path/to/data --cluster=<cluster>
+ns prepare_data asr-leaderboard --data_dir=/path/to/data --cluster=<cluster> --audio-prefix=/data
 ```
 
 Prepare specific datasets only:
@@ -74,7 +102,7 @@ eval(
     model="/workspace/checkpoint",
     server_entrypoint="/workspace/megatron-lm/server.py",
     server_container="/path/to/container.sqsh",
-    data_dir="/dataset",
+    data_dir="/data",
     installation_command="pip install -r requirements/audio.txt",
     server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
 )
@@ -98,7 +126,7 @@ eval(benchmarks="asr-leaderboard", split="librispeech_clean", ...)
         --model=/workspace/path/to/checkpoint \
         --server_entrypoint=/workspace/megatron-lm/server.py \
         --server_container=/path/to/container.sqsh \
-        --data_dir=/dataset \
+        --data_dir=/data \
         --installation_command="pip install -r requirements/audio.txt"
     ```
 
@@ -120,7 +148,7 @@ eval(
     model="/workspace/checkpoint",
     server_entrypoint="/workspace/megatron-lm/server.py",
     server_container="/path/to/container.sqsh",
-    data_dir="/dataset",
+    data_dir="/data",
     installation_command="pip install sacrebleu",
     server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
 )

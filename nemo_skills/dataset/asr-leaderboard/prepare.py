@@ -19,7 +19,7 @@ test-only sorted dataset (hf-audio/esb-datasets-test-only-sorted). This is the
 same data source used by the official leaderboard and the offline NeMo eval
 pipeline, ensuring apples-to-apples WER comparison.
 
-Audio paths in JSONL: /dataset/asr-leaderboard/data/{dataset}/{sample_id}.flac
+Audio paths in JSONL: {audio_prefix}/asr-leaderboard/data/{dataset}/{sample_id}.flac
 
 Usage:
     ns prepare_data asr-leaderboard
@@ -35,6 +35,8 @@ from pathlib import Path
 import soundfile as sf
 from datasets import load_dataset
 from tqdm import tqdm
+
+from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
 
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
 MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this (causes mel spectrogram errors)
@@ -53,7 +55,14 @@ DATASET_CONFIGS = {
 
 
 def save_audio_and_format_entry(
-    entry, dataset_name, audio_dir, sample_idx, text_field="text", id_field="id", with_audio=True
+    entry,
+    dataset_name,
+    audio_dir,
+    sample_idx,
+    text_field="text",
+    id_field="id",
+    with_audio=True,
+    audio_root="/data",
 ):
     """Format a dataset entry and optionally save audio file."""
     text = entry[text_field].strip()
@@ -77,7 +86,11 @@ def save_audio_and_format_entry(
         if with_audio:
             sf.write(str(audio_dir / audio_filename), audio_array, sampling_rate)
 
-    audio_meta = {"path": f"/dataset/asr-leaderboard/data/{dataset_name}/{audio_filename}"}
+    audio_meta = {
+        "path": build_container_audio_path(
+            "asr-leaderboard", "data", dataset_name, audio_filename, audio_prefix=audio_root
+        )
+    }
     if duration is not None:
         audio_meta["duration"] = float(duration)
     user_message["audio"] = audio_meta
@@ -96,7 +109,7 @@ def save_audio_and_format_entry(
     return formatted_entry
 
 
-def prepare_dataset(dataset_name, output_dir, with_audio=True):
+def prepare_dataset(dataset_name, output_dir, with_audio=True, audio_root="/data"):
     """Prepare a single ASR dataset."""
     if dataset_name not in DATASET_CONFIGS:
         raise ValueError(f"Unknown dataset: {dataset_name}. Available: {list(DATASET_CONFIGS.keys())}")
@@ -120,7 +133,14 @@ def prepare_dataset(dataset_name, output_dir, with_audio=True):
     with open(output_file, "w", encoding="utf-8") as fout:
         for idx, entry in enumerate(tqdm(dataset, desc=dataset_name)):
             formatted = save_audio_and_format_entry(
-                entry, dataset_name, audio_dir, idx, text_field=text_field, id_field=id_field, with_audio=with_audio
+                entry,
+                dataset_name,
+                audio_dir,
+                idx,
+                text_field=text_field,
+                id_field=id_field,
+                with_audio=with_audio,
+                audio_root=audio_root,
             )
             if formatted is None:
                 skipped += 1
@@ -150,24 +170,31 @@ def main():
         action="store_true",
         help="Skip saving audio files (JSONL still includes audio paths)",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
-    data_dir = Path("/dataset/asr-leaderboard")
-    output_dir = data_dir if data_dir.exists() else Path(__file__).parent
+    output_dir = Path(__file__).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with_audio = not args.no_audio
+    audio_root = get_container_audio_root(args.audio_prefix)
 
     if args.no_audio:
         print("Running without saving audio files.")
     else:
         print("Running with audio. Saving to data/{dataset}/")
+    print(f"Audio paths in JSONL will use: {audio_root}/asr-leaderboard/data/...")
 
     datasets_to_prepare = list(DATASET_CONFIGS.keys()) if "all" in args.datasets else args.datasets
 
     total_samples = 0
     for dataset_name in datasets_to_prepare:
-        total_samples += prepare_dataset(dataset_name, output_dir, with_audio=with_audio)
+        total_samples += prepare_dataset(dataset_name, output_dir, with_audio=with_audio, audio_root=audio_root)
 
     # Combine all dataset JSONLs into test.jsonl
     combined_file = output_dir / "test.jsonl"
