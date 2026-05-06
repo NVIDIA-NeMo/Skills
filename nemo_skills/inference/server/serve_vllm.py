@@ -36,6 +36,10 @@ def main():
     else:
         logging_args = ""
 
+    distributed_backend_args = ""
+    if args.num_nodes > 1:
+        distributed_backend_args = " --distributed-executor-backend=ray "
+
     cmd = (
         f"python3 -m vllm.entrypoints.openai.api_server "
         f'    --model="{args.model}" '
@@ -44,6 +48,7 @@ def main():
         f'    --host="0.0.0.0" '
         f"    --port={args.port} "
         f"    --tensor-parallel-size={args.num_gpus * args.num_nodes} "  # TODO: is this a good default for multinode setup?
+        f"    {distributed_backend_args} "
         f"    {logging_args} "
         f"    {extra_arguments} " + (' | grep -v "200 OK"' if args.no_verbose else "")
     )

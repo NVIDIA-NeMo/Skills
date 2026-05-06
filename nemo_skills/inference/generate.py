@@ -655,7 +655,7 @@ class GenerationTask:
             if self.prompt is None:
                 # Pure openai path -- messages come from the data
                 data_point = deepcopy(data_point)
-                if self.cfg.user_message:
+                if self.cfg.user_message is not None:
                     user_msgs = [m for m in data_point["messages"] if m["role"] == "user"]
                     if len(user_msgs) != 1:
                         raise ValueError(
@@ -664,11 +664,16 @@ class GenerationTask:
                     GenerationTask._set_message_text_content(user_msgs[0], self.cfg.user_message)
                 if self.cfg.prompt_suffix:
                     GenerationTask._append_message_text_suffix(data_point["messages"][-1], self.cfg.prompt_suffix)
-                if self.cfg.system_message:
-                    if data_point["messages"][0]["role"] != "system":
-                        data_point["messages"].insert(0, {"role": "system", "content": self.cfg.system_message})
+                if self.cfg.system_message is not None:
+                    messages = data_point["messages"]
+                    has_system = len(messages) > 0 and messages[0]["role"] == "system"
+                    if self.cfg.system_message == "":
+                        if has_system:
+                            messages.pop(0)
+                    elif has_system:
+                        messages[0]["content"] = self.cfg.system_message
                     else:
-                        data_point["messages"][0]["content"] = self.cfg.system_message
+                        messages.insert(0, {"role": "system", "content": self.cfg.system_message})
                 return data_point["messages"]
 
             # OpenAI path with prompt_config template -- build prompt from template, merge audio from data.

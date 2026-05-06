@@ -483,3 +483,209 @@ Numb3rs reports the following metrics:
 - **success_rate**: Percentage of samples with WER < 0.5
 
 Per-category breakdowns (e.g., `numb3rs-numb3rs_CARDINAL`, `numb3rs-numb3rs_MONEY`) are included automatically.
+
+## ContextASR-Bench
+
+ContextASR-Bench evaluates contextual ASR performance by measuring how well models transcribe speech when given different levels of contextual information. It focuses on named entity recognition accuracy alongside standard WER.
+
+**Dataset:** [MrSupW/ContextASR-Bench](https://huggingface.co/datasets/MrSupW/ContextASR-Bench) (English Speech subset: 15,326 samples, ~188 hours, 116,167 named entities across 10+ domains)
+
+**Evaluation Modes:**
+
+- `contextasr-bench.contextless`: Plain transcription (no context)
+- `contextasr-bench.coarse`: Domain label provided as context
+- `contextasr-bench.fine`: Domain label + entity list provided as context
+
+**Metrics:**
+
+- **WER**: Word Error Rate (corpus-level)
+- **NE-WER**: Named Entity WER — WER computed on fuzzy-matched entity token sequences
+- **NE-FNR**: Named Entity False Negative Rate — fraction of reference entities not found in the transcription
+
+### Dataset Location
+
+* Benchmark is defined in `nemo_skills/dataset/contextasr-bench/__init__.py`
+* Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/MrSupW/ContextASR-Bench)
+
+### Preparing ContextASR-Bench Data
+
+ContextASR-Bench requires audio files for meaningful evaluation. **Audio files are downloaded
+automatically by default** from HuggingFace (~22 GB, may take 30-60 minutes).
+
+```bash
+ns prepare_data contextasr-bench
+```
+
+!!! warning "Large download"
+
+    The automatic download fetches ~22 GB of audio data (JSONL + 8 tar files) from HuggingFace.
+    This can take 30-60 minutes depending on network speed. If you already have the data
+    downloaded, use `--data_dir` to skip the download.
+
+To download to a specific directory, or to use pre-downloaded data:
+
+```bash
+ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench
+```
+
+If the directory already contains `ContextASR-Speech_English.jsonl`, the existing data is
+used directly. If the file is missing, data is downloaded there automatically.
+
+To use a custom audio path prefix (e.g., for container mount points):
+
+```bash
+ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench --audio-prefix /data/contextasr
+```
+
+### Running ContextASR-Bench Evaluation
+
+Evaluate all three modes:
+
+```bash
+ns eval \
+    --cluster=local \
+    --benchmarks=contextasr-bench \
+    --server_type=openai \
+    --server_address=http://localhost:8000/v1 \
+    --model=Qwen/Qwen3-Omni-7B \
+    --output_dir=/workspace/contextasr-eval \
+    --data_dir=/path/to/ContextASR-Bench
+```
+
+Evaluate a single mode:
+
+```bash
+ns eval --benchmarks=contextasr-bench.fine ...
+```
+
+### Understanding ContextASR-Bench Results
+
+```
+<output_dir>/
+└── eval-results/
+    └── contextasr-bench/
+        ├── metrics.json                          # Overall aggregate
+        ├── contextasr-bench.contextless/
+        │   └── metrics.json
+        ├── contextasr-bench.coarse/
+        │   └── metrics.json
+        └── contextasr-bench.fine/
+            └── metrics.json
+```
+
+Example output:
+
+```
+----------------------- contextasr-bench.contextless -----------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | wer    | ne_wer | ne_fnr | num_entries
+pass@1          | 128        | 12000       | 97.73%       | 2.27%  | 7.83%  | 9.08%  | 15326
+
+------------------------- contextasr-bench.coarse --------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | wer    | ne_wer | ne_fnr | num_entries
+pass@1          | 128        | 12000       | 97.83%       | 2.17%  | 8.11%  | 9.32%  | 15326
+
+-------------------------- contextasr-bench.fine ---------------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | wer    | ne_wer | ne_fnr | num_entries
+pass@1          | 128        | 12000       | 98.87%       | 1.13%  | 1.55%  | 0.53%  | 15326
+```
+
+Per-domain breakdowns are included automatically based on the `domain_label` field.
+
+## CoVoST 2
+
+CoVoST 2 is a large-scale multilingual corpus for speech recognition (ASR) and speech translation (AST), built on Common Voice audio with translation references from Facebook's [CoVoST v2](https://github.com/facebookresearch/covost) release.
+
+**Tasks:** ASR (monolingual transcription) and AST (X→en / en→X translation)
+
+**Splits:** `validation`, `test`
+
+For non-alphabetic scripts (`zh-CN`, `ja`), evaluation reports Character Error Rate (CER) instead of Word Error Rate (WER); the choice is made per-sample via the `use_cer` flag set during data preparation.
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/covost2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/covost2/__init__.py)
+- Original benchmark source is hosted on [GitHub](https://github.com/facebookresearch/covost)
+
+### Preparing CoVoST 2 Data
+
+Unlike most other benchmarks on this page, **CoVoST 2 does not auto-download audio**. You must provide a Common Voice extraction with the layout:
+
+```
+<cv_data_dir>/
+    <lang>/
+        <split>/
+            common_voice_<lang>_<id>.wav
+```
+
+and the corresponding `validated.tsv` (columns: `path, split, lang, sentence`).
+
+The `--languages` flag selects which CoVoST 2 languages are prepared. For ASR it filters the source-language audio that is transcribed; for AST every valid X→en / en→X pair touching the listed languages is included. Omit it to prepare all 21 supported languages.
+
+=== "ASR"
+
+    ```bash
+    ns prepare_data covost2 \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task ASR \
+        --languages de fr \
+        --split test \
+        --cv_data_dir /workspace/datasets/covost2 \
+        --validated_tsv /workspace/datasets/covost2/validated.tsv
+    ```
+
+=== "AST"
+
+    ```bash
+    ns prepare_data covost2 \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task AST \
+        --languages de fr es \
+        --split test \
+        --cv_data_dir /workspace/datasets/covost2 \
+        --validated_tsv /workspace/datasets/covost2/validated.tsv
+    ```
+
+Each `--task` produces a separate manifest: `{split}-asr.jsonl` or `{split}-ast.jsonl` (e.g. `test-asr.jsonl`).
+
+## FLEURS
+
+[FLEURS](https://huggingface.co/datasets/google/fleurs) (Few-shot Learning Evaluation of Universal Representations of Speech) is Google's multilingual speech benchmark covering 102 locales. It supports both ASR and AST.
+
+**Splits:** `train`, `dev`, `test`
+
+CER (rather than WER) is used for these locales: `cmn_hans_cn`, `yue_hant_hk`, `ja_jp`, `th_th`, `lo_la`, `my_mm`, `km_kh`, `ko_kr`, `vi_vn`.
+
+### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/fleurs/__init__.py)
+- Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/google/fleurs)
+
+### Preparing FLEURS Data
+
+Audio is downloaded automatically from HuggingFace. As with CoVoST 2, `--task` produces `{split}-asr.jsonl` or `{split}-ast.jsonl`.
+
+The `--languages` flag selects which FLEURS locales are prepared. For ASR it filters the source-language audio that is transcribed; for AST every (`en_us` → locale) and (locale → `en_us`) pair across the listed locales is included. Omit it to prepare all 102 locales.
+
+=== "ASR"
+
+    ```bash
+    ns prepare_data fleurs \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task ASR \
+        --languages en_us de_de fr_fr \
+        --split test
+    ```
+
+=== "AST"
+
+    ```bash
+    ns prepare_data fleurs \
+        --data_dir /path/to/data \
+        --cluster <cluster_name> \
+        --task AST \
+        --languages en_us de_de fr_fr es_419 it_it ja_jp \
+        --split test
+    ```

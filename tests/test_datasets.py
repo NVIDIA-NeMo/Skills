@@ -55,6 +55,7 @@ DATASETS = [
     ("college_math", ["test"]),
     ("comp-math-24-25", ["test"]),
     ("mmau-pro", ["test"]),
+    ("contextasr-bench", ["test"]),
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),
