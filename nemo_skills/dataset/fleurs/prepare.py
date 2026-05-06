@@ -1,0 +1,317 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import tarfile
+from pathlib import Path
+
+import numpy as np
+import soundfile as sf
+from huggingface_hub import hf_hub_download
+from tqdm import tqdm
+
+
+def load_fleurs_module():
+    """Download and dynamically import google/fleurs/fleurs.py from HuggingFace."""
+    import importlib.util
+
+    path = hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
+    spec = importlib.util.spec_from_file_location("fleurs", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod._FLEURS_LANG, mod._FLEURS_LANG_TO_LONG, mod._FLEURS_LANG_TO_GROUP
+
+
+FLEURS_LANGS, FLEURS_LANG_TO_LONG, FLEURS_LANG_TO_GROUP = load_fleurs_module()
+LOCALES = set(FLEURS_LANGS)
+
+CER_LOCALES = {
+    "cmn_hans_cn",  # Mandarin Chinese (Simplified)
+    "yue_hant_hk",  # Cantonese Chinese (Traditional)
+    "ja_jp",  # Japanese
+    "th_th",  # Thai
+    "lo_la",  # Lao
+    "my_mm",  # Burmese
+    "km_kh",  # Khmer
+    "ko_kr",  # Korean
+    "vi_vn",  # Vietnamese
+}
+
+
+def parse_tsv(tsv_path: str) -> dict[str, dict]:
+    """Parse FLEURS TSV metadata file. Returns dict keyed by audio filename."""
+    metadata = {}
+    with open(tsv_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row_id, wav_filename, raw_transcription, transcription, _, _, _ = line.split("\t")
+            metadata[wav_filename] = {
+                "id": int(row_id),
+                "raw_transcription": raw_transcription,
+                "transcription": transcription,
+                "wav_filename": wav_filename,
+            }
+    return metadata
+
+
+def load_fleurs(locale: str, split: str, local_dir: str) -> list[dict]:
+    """Download and parse a FLEURS locale/split directly from HuggingFace."""
+    tsv_path = hf_hub_download(
+        repo_id="google/fleurs",
+        filename=f"data/{locale}/{split}.tsv",
+        repo_type="dataset",
+        local_dir=local_dir,
+    )
+    tar_path = hf_hub_download(
+        repo_id="google/fleurs",
+        filename=f"data/{locale}/audio/{split}.tar.gz",
+        repo_type="dataset",
+        local_dir=local_dir,
+    )
+
+    metadata = parse_tsv(tsv_path)
+    rows = []
+    with tarfile.open(tar_path, "r:gz") as tar:
+        for member in tar:
+            if not member.isfile():
+                continue
+            wav_filename = Path(member.name).name
+            if wav_filename not in metadata:
+                continue
+            audio_bytes = tar.extractfile(member).read()
+            y, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32")
+            row = dict(metadata[wav_filename])
+            row["audio"] = {"array": y, "sampling_rate": sr}
+            rows.append(row)
+    return rows
+
+
+def index_by_id(rows: list[dict]) -> dict[int, dict]:
+    return {row["id"]: row for row in rows}
+
+
+def build_translation_pairs(languages: list[str]) -> list[tuple[str, str]]:
+    """Build (en_us -> lang) and (lang -> en_us) pairs for each language."""
+    pairs = set()
+    for lang in languages:
+        if lang == "en_us":
+            continue
+        pairs.add(("en_us", lang))
+        pairs.add((lang, "en_us"))
+    return sorted(pairs)
+
+
+def prepare_audio(item: dict) -> tuple[np.ndarray, int, float]:
+    audio_dict = item["audio"]
+    y, sr = audio_dict["array"], audio_dict["sampling_rate"]
+    duration = float(len(y) / sr)
+    return y, sr, duration
+
+
+def get_container_audio_path(locale: str, wav_filename: str) -> str:
+    return f"/dataset/fleurs/audio/{locale}/{wav_filename}"
+
+
+def save_audio(y: np.ndarray, sr: int, wav_path: Path) -> None:
+    if not wav_path.exists():
+        sf.write(str(wav_path), y, sr)
+
+
+def get_ast_instruction(target_locale: str) -> str:
+    tgt_lang_name = FLEURS_LANG_TO_LONG[target_locale]
+    return f"Please translate the given speech to {tgt_lang_name}."
+
+
+def get_asr_instruction() -> str:
+    return "Transcribe the following audio."
+
+
+def _build_record(
+    expected_answer: str,
+    instruction: str,
+    container_audio_path: str,
+    duration: float,
+    subset_for_metrics: str,
+    task_type: str,
+    extra_fields: dict,
+) -> dict:
+    audio_metadata = {"path": container_audio_path, "duration": duration}
+    return {
+        "expected_answer": expected_answer,
+        "audio_path": container_audio_path,
+        "duration": duration,
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant. /no_think"},
+            {"role": "user", "content": instruction, "audio": audio_metadata},
+        ],
+        "subset_for_metrics": subset_for_metrics,
+        "task_type": f"Multilingual-{task_type.upper()}",
+        "extra_fields": extra_fields,
+    }
+
+
+def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: bool, task_type: str) -> None:
+    if not languages:
+        raise ValueError("No languages to process")
+
+    if task_type == "ASR":
+        pairs = [(lang, lang) for lang in languages]
+    elif task_type == "AST":
+        pairs = build_translation_pairs(languages)
+    else:
+        raise ValueError(f"Unsupported task_type: {task_type}")
+
+    if not pairs:
+        raise ValueError("No (source, target) pairs to process")
+
+    audio_dir = data_dir / "audio"
+    local_dir = data_dir / "hf-fleurs"
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    output_jsonl = data_dir / f"{split}-{task_type.lower()}.jsonl"
+
+    with open(output_jsonl, "w", encoding="utf-8") as out:
+        for src_locale, tgt_locale in pairs:
+            if task_type == "ASR":
+                instruction = get_asr_instruction()
+                subset_for_metrics = src_locale
+                tag = src_locale
+                gt_key = "transcription"  # For ASR, use normalized transcription
+            else:
+                instruction = get_ast_instruction(tgt_locale)
+                subset_for_metrics = f"{src_locale}->{tgt_locale}"
+                tag = subset_for_metrics
+                gt_key = "raw_transcription"  # For AST, use raw transcription
+
+            locale_audio_dir = audio_dir / src_locale
+            if not no_audio:
+                locale_audio_dir.mkdir(parents=True, exist_ok=True)
+
+            source_dataset = load_fleurs(src_locale, split, local_dir=local_dir)
+            if task_type == "AST":
+                target_by_id = index_by_id(load_fleurs(tgt_locale, split, local_dir=local_dir))
+            else:
+                target_by_id = None
+
+            for source_row in tqdm(source_dataset, desc=tag):
+                if target_by_id is not None:
+                    target_row = target_by_id.get(source_row["id"])
+                    if target_row is None:
+                        continue
+                else:
+                    target_row = None
+
+                y, sr, duration = prepare_audio(source_row)
+                wav_filename = source_row["wav_filename"]
+                wav_path = locale_audio_dir / wav_filename
+                cpath = get_container_audio_path(src_locale, wav_filename)
+                if not no_audio:
+                    save_audio(y, sr, wav_path)
+
+                extra_fields = {
+                    "src_text": source_row["transcription"],
+                    "src_raw_text": source_row["raw_transcription"],
+                    "src_lang_name": FLEURS_LANG_TO_LONG[src_locale],
+                    "src_lang": src_locale,
+                    "src_lang_group": FLEURS_LANG_TO_GROUP[src_locale],
+                    "use_cer": src_locale in CER_LOCALES,
+                }
+                if task_type == "AST":
+                    expected_answer = target_row[gt_key]
+                    extra_fields.update(
+                        {
+                            "tgt_text": target_row["transcription"],
+                            "tgt_raw_text": target_row["raw_transcription"],
+                            "tgt_lang_name": FLEURS_LANG_TO_LONG[tgt_locale],
+                            "tgt_lang": tgt_locale,
+                            "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
+                        }
+                    )
+                else:
+                    expected_answer = source_row[gt_key]
+
+                record = _build_record(
+                    expected_answer=expected_answer,
+                    instruction=instruction,
+                    container_audio_path=cpath,
+                    duration=duration,
+                    subset_for_metrics=subset_for_metrics,
+                    task_type=task_type,
+                    extra_fields=extra_fields,
+                )
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+    print(f"Fleurs {task_type} dataset prepared: {output_jsonl}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Prepare FLEURS Benchmark")
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=None,
+        help="Output directory (defaults to $NEMO_SKILLS_DATA_DIR/fleurs or this package directory)",
+    )
+    parser.add_argument(
+        "--split",
+        default="test",
+        choices=["train", "dev", "test"],
+        help="Dataset split to process",
+    )
+    parser.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        choices=["ASR", "AST", "asr", "ast"],
+        help="Task to prepare. ASR: speech recognition, AST: speech translation.",
+    )
+    parser.add_argument(
+        "--languages",
+        nargs="+",
+        default=LOCALES,
+        help="Languages to process",
+    )
+    parser.add_argument(
+        "--no-audio",
+        action="store_true",
+        help="Skip saving audio files (only create manifests)",
+    )
+    args = parser.parse_args()
+
+    unknown = set(args.languages) - LOCALES
+    if unknown:
+        raise ValueError(f"Unknown language(s): {', '.join(sorted(unknown))}. Available: {', '.join(sorted(LOCALES))}")
+
+    if args.data_dir:
+        data_dir = Path(args.data_dir) / "fleurs"
+    else:
+        data_dir = Path(__file__).parent
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    prepare_fleurs(
+        data_dir=data_dir,
+        split=args.split,
+        languages=args.languages,
+        no_audio=args.no_audio,
+        task_type=args.task.upper(),
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -21,7 +21,7 @@ Prerequisites:
     pip install particle
 
 Usage:
-    ++tool_modules=[nemo_skills.mcp.servers.particle_tool::ParticleTool]
+    ++tool_modules=[nemo_skills.mcp.servers.physics.particle_tool::ParticleTool]
 """
 
 import logging

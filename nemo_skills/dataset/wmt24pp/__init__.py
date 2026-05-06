@@ -15,3 +15,7 @@
 
 METRICS_TYPE = "translation"
 GENERATION_ARGS = "++prompt_config=multilingual/segment-translation"
+JUDGE_PIPELINE_ARGS = {
+    "source_key": "text",
+    "reference_key": "translation",
+}
