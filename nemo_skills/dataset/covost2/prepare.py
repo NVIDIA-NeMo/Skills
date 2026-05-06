@@ -189,24 +189,24 @@ def _build_record(
     }
 
 
-def _write_asr_jsonl(
-    asr_jsonl: Path,
+def _collect_asr_records(
     languages: list[str],
     audio_dir: Path,
     cv_data_dir: Path,
     sentences: dict,
     split: str,
-) -> None:
-    with open(asr_jsonl, "w", encoding="utf-8") as out:
-        for src_lang in languages:
-            audio_split_dir = cv_data_dir / src_lang / split
-            wav_files = sorted(audio_split_dir.glob("*.wav"))
-            for wav_file in tqdm(wav_files, desc=f"asr:{src_lang}"):
-                sentence = sentences[(wav_file.name, split, src_lang)]
-                duration = get_audio_duration(str(wav_file))
-                copy_audio_file(wav_file, audio_dir, src_lang, split)
-                cpath = get_container_audio_path(src_lang, split, wav_file.stem)
-                record = _build_record(
+) -> list[dict]:
+    records: list[dict] = []
+    for src_lang in languages:
+        audio_split_dir = cv_data_dir / src_lang / split
+        wav_files = sorted(audio_split_dir.glob("*.wav"))
+        for wav_file in tqdm(wav_files, desc=f"asr:{src_lang}"):
+            sentence = sentences[(wav_file.name, split, src_lang)]
+            duration = get_audio_duration(str(wav_file))
+            copy_audio_file(wav_file, audio_dir, src_lang, split)
+            cpath = get_container_audio_path(src_lang, split, wav_file.stem)
+            records.append(
+                _build_record(
                     expected_answer=sentence,
                     instruction=get_asr_instruction(),
                     container_audio_path=cpath,
@@ -220,29 +220,30 @@ def _write_asr_jsonl(
                         "use_cer": src_lang in CER_LOCALES,
                     },
                 )
-                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+            )
+    return records
 
 
-def _write_st_jsonl(
-    st_jsonl: Path,
+def _collect_st_records(
     languages: list[str],
     audio_dir: Path,
     cv_data_dir: Path,
     local_dir: Path,
     sentences: dict,
     split: str,
-) -> None:
+) -> list[dict]:
     lang_set = set(languages)
     pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
-    with open(st_jsonl, "w", encoding="utf-8") as out:
-        for src_lang, tgt_lang in pairs:
-            tag = f"{src_lang}->{tgt_lang}"
-            dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
-            for item in tqdm(dataset, desc=f"st:{tag}"):
-                duration = get_audio_duration(item["audio_file"])
-                copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
-                cpath = get_container_audio_path(src_lang, split, item["id"])
-                record = _build_record(
+    records: list[dict] = []
+    for src_lang, tgt_lang in pairs:
+        tag = f"{src_lang}->{tgt_lang}"
+        dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
+        for item in tqdm(dataset, desc=f"st:{tag}"):
+            duration = get_audio_duration(item["audio_file"])
+            copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
+            cpath = get_container_audio_path(src_lang, split, item["id"])
+            records.append(
+                _build_record(
                     expected_answer=item["translation"],
                     instruction=get_st_instruction(tgt_lang),
                     container_audio_path=cpath,
@@ -258,7 +259,14 @@ def _write_st_jsonl(
                         "tgt_lang": tgt_lang,
                     },
                 )
-                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+            )
+    return records
+
+
+def _dump_jsonl(path: Path, records: list[dict]) -> None:
+    with open(path, "w", encoding="utf-8") as out:
+        for record in records:
+            out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def prepare_covost2(
@@ -286,11 +294,14 @@ def prepare_covost2(
 
     sentences = load_validated_sentences(validated_tsv)
 
-    _write_asr_jsonl(asr_jsonl, languages, audio_dir, cv_data_dir, sentences, split)
-    _write_st_jsonl(st_jsonl, languages, audio_dir, cv_data_dir, local_dir, sentences, split)
+    asr_records = _collect_asr_records(languages, audio_dir, cv_data_dir, sentences, split)
+    st_records = _collect_st_records(languages, audio_dir, cv_data_dir, local_dir, sentences, split)
 
-    print(f"CoVoST2 ASR dataset prepared: {asr_jsonl}")
-    print(f"CoVoST2 ST dataset prepared: {st_jsonl}")
+    _dump_jsonl(asr_jsonl, asr_records)
+    _dump_jsonl(st_jsonl, st_records)
+
+    print(f"CoVoST2 ASR dataset prepared: {asr_jsonl} ({len(asr_records)} records)")
+    print(f"CoVoST2 ST dataset prepared: {st_jsonl} ({len(st_records)} records)")
 
 
 def main():
