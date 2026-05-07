@@ -32,8 +32,6 @@ Coverage (per the staged Ray PR scope):
 """
 
 import sys
-import time
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -241,9 +239,12 @@ def test_get_job_logs_returns_empty_string_on_error(caplog):
     underlying.get_job_logs.side_effect = RuntimeError("connection lost")
     client = _make_client(underlying)
 
-    result = client.get_job_logs("some_job")
+    with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor_client"):
+        result = client.get_job_logs("some_job")
 
     assert result == ""
+    assert any("connection lost" in rec.message for rec in caplog.records), \
+        "expected a WARNING log naming the underlying error"
 
 
 def test_cancel_job_swallows_error_and_logs_warning(caplog):
@@ -251,10 +252,13 @@ def test_cancel_job_swallows_error_and_logs_warning(caplog):
     underlying.stop_job.side_effect = RuntimeError("already stopped")
     client = _make_client(underlying)
 
-    # Should not raise.
-    client.cancel_job("some_job")
+    with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor_client"):
+        # Should not raise.
+        client.cancel_job("some_job")
 
     underlying.stop_job.assert_called_once_with("some_job")
+    assert any("already stopped" in rec.message for rec in caplog.records), \
+        "expected a WARNING log naming the underlying error"
 
 
 def test_get_job_logs_returns_underlying_logs_on_success():
