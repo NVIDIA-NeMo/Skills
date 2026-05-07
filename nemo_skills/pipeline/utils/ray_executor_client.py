@@ -70,14 +70,14 @@ class RayJobClient:
                 ray.init(address=self.ray_address, namespace=self.namespace,
                          ignore_reinit_error=True)
             self.client = JobSubmissionClient(address=self.ray_address)
-            LOG.info(f"Connected to Ray cluster at {self.ray_address}")
+            LOG.info("Connected to Ray cluster at %s", self.ray_address)
 
             # Get cluster info
             cluster_info = ray.cluster_resources()
-            LOG.info(f"Ray cluster resources: {cluster_info}")
+            LOG.info("Ray cluster resources: %s", cluster_info)
             return self.client
         except Exception as e:
-            LOG.error(f"Failed to connect to Ray cluster: {e}")
+            LOG.error("Failed to connect to Ray cluster: %s", e)
             raise
 
     def submit_job(self, config: RayJobConfig) -> str:
@@ -122,15 +122,17 @@ class RayJobClient:
                 entrypoint_num_cpus=cpus_per_node,
             )
 
-            LOG.info(f"✓ Submitted job '{config.name}' (ID: {job_id})")
-            LOG.info(f"  Resources: {config.num_nodes} node(s), {gpus_per_node:.1f} GPU/node, "
-                     f"{cpus_per_node:.1f} CPU/node")
-            LOG.info(f"  Log dir: {config.log_dir}")
+            LOG.info("✓ Submitted job '%s' (ID: %s)", config.name, job_id)
+            LOG.info(
+                "  Resources: %d node(s), %.1f GPU/node, %.1f CPU/node",
+                config.num_nodes, gpus_per_node, cpus_per_node,
+            )
+            LOG.info("  Log dir: %s", config.log_dir)
 
             return job_id
 
         except Exception as e:
-            LOG.error(f"Failed to submit job {config.name}: {e}")
+            LOG.error("Failed to submit job %s: %s", config.name, e)
             raise
 
     def _wait_for_dependencies(self, job_ids: List[str], poll_interval: int = 30, timeout: int = 86400):
@@ -152,7 +154,7 @@ class RayJobClient:
                 ``len(job_ids) * timeout`` in the worst case.
         """
         for job_id in job_ids:
-            LOG.info(f"Waiting for dependent job {job_id} to complete...")
+            LOG.info("Waiting for dependent job %s to complete...", job_id)
             start_time = time.time()
 
             while True:
@@ -164,17 +166,17 @@ class RayJobClient:
                 try:
                     status = self.client.get_job_status(job_id)
                 except Exception as e:
-                    LOG.debug(f"Transient error checking job status: {e}")
+                    LOG.debug("Transient error checking job status: %s", e)
                     time.sleep(poll_interval)
                     continue
 
                 status_str = str(status)
                 if "SUCCEEDED" in status_str:
-                    LOG.info(f"✓ Dependent job {job_id} completed successfully")
+                    LOG.info("✓ Dependent job %s completed successfully", job_id)
                     break
                 if any(x in status_str for x in ["FAILED", "STOPPED"]):
                     raise RuntimeError(f"Dependent job {job_id} failed with status {status}")
-                LOG.debug(f"Job {job_id} status: {status}")
+                LOG.debug("Job %s status: %s", job_id, status)
                 time.sleep(poll_interval)
 
     def get_job_status(self, job_id: str) -> str:
@@ -186,23 +188,23 @@ class RayJobClient:
         try:
             return self.client.get_job_logs(job_id)
         except Exception as e:
-            LOG.warning(f"Failed to retrieve logs for job {job_id}: {e}")
+            LOG.warning("Failed to retrieve logs for job %s: %s", job_id, e)
             return ""
 
     def cancel_job(self, job_id: str):
         """Cancel a job."""
         try:
             self.client.stop_job(job_id)
-            LOG.info(f"✓ Cancelled job {job_id}")
+            LOG.info("✓ Cancelled job %s", job_id)
         except Exception as e:
-            LOG.warning(f"Failed to cancel job {job_id}: {e}")
+            LOG.warning("Failed to cancel job %s: %s", job_id, e)
 
     def list_jobs(self) -> List[Dict[str, Any]]:
         """List all jobs in the cluster."""
         try:
             return self.client.list_jobs()
         except Exception as e:
-            LOG.error(f"Failed to list jobs: {e}")
+            LOG.error("Failed to list jobs: %s", e)
             return []
 
 
