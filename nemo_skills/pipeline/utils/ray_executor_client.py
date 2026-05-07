@@ -137,6 +137,13 @@ class RayJobClient:
         """
         Wait for dependent jobs to complete.
 
+        This is a synchronous, blocking wait — ``submit_job()`` calls this before
+        submitting the next Ray job, so the calling process must stay alive across
+        the entire dependency chain (hours for a multi-stage pipeline like
+        SDG → SFT → eval). Distinct from Slurm ``--dependency=afterany`` which is
+        fire-and-forget; a future iteration may move dependency tracking to the
+        Ray task graph or an async watcher.
+
         Args:
             job_ids: List of job IDs to wait for
             poll_interval: How often to poll job status (seconds)
