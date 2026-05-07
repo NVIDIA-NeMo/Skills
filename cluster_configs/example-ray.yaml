@@ -44,8 +44,10 @@ ray:
   address: auto
   # Namespace for job isolation across users/jobs on a shared cluster.
   namespace: nemo
-  # Default per-job CPU allocation. GPU count is derived from the workflow's
-  # `num_gpus` parameter.
+  # Default *per-node* CPU allocation. NeMo-Skills multiplies this by the
+  # workflow's `num_nodes` to compute the per-job total CPU request, and Ray's
+  # `entrypoint_num_cpus` is then derived as total / num_nodes (= this value).
+  # GPU count is derived separately from the workflow's `num_gpus` parameter.
   default_num_cpus: 8
 
 # Where Ray submission metadata + per-job logs are written. Should be on a

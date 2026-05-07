@@ -290,6 +290,8 @@ def get_executor(
             ray_address=ray_config.get("address", "auto"),
             ray_namespace=ray_config.get("namespace", "nemo"),
             num_gpus=ray_num_gpus,
+            # cluster_config.ray.default_num_cpus is per-node; multiply by
+            # num_nodes to get the per-job total RayExecutor expects.
             num_cpus=ray_config.get("default_num_cpus", 8) * num_nodes,
             num_nodes=num_nodes,
             ntasks_per_node=tasks_per_node,
@@ -613,14 +615,15 @@ def add_task(
                 )
             ray_dependencies.append(dep)
         ray_cluster_config = cluster_config.get("ray", {})
-        ray_default_cpus = ray_cluster_config.get("default_num_cpus", 8)
+        # default_num_cpus is per-node; multiply by num_nodes to get the per-job total.
+        ray_default_cpus_per_node = ray_cluster_config.get("default_num_cpus", 8)
         ray_log_dir = log_dir or cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs")
 
         ray_job_config = RayJobConfig(
             name=task_name,
             command=ray_cmd,
             num_gpus=num_gpus if num_gpus is not None else 1,
-            num_cpus=ray_default_cpus * num_nodes,
+            num_cpus=ray_default_cpus_per_node * num_nodes,
             num_nodes=num_nodes,
             env_vars=env_vars,
             log_dir=ray_log_dir,
