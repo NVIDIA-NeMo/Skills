@@ -41,6 +41,7 @@ slurm tests, not here.
 """
 
 import argparse
+import shlex
 
 from nemo_skills.pipeline.cli import run_cmd, wrap_arguments
 
@@ -49,13 +50,23 @@ def submit_ray_smoke_task(workspace, cluster, expname_prefix):
     """Submit a trivial Ray job that writes marker files to the workspace."""
     expname = f"{expname_prefix}-ray-smoke"
     marker_dir = f"{workspace}/ray_smoke_output"
+    qdir = shlex.quote(marker_dir)
+    qdone = shlex.quote(f"{marker_dir}/done.marker")
+    qts = shlex.quote(f"{marker_dir}/timestamp.txt")
+    qstatus = shlex.quote(f"{marker_dir}/status.json")
+    # Pass status.json path as sys.argv[1] rather than embedding it in the
+    # python -c source — avoids the quoting trap when workspace contains a
+    # single quote, space, or other shell metacharacter.
+    py_code = (
+        "import json, sys, platform; "
+        'json.dump({"host": platform.node(), "python": sys.version}, '
+        'open(sys.argv[1], "w"))'
+    )
     smoke_cmd = (
-        f"mkdir -p {marker_dir} && "
-        f"echo 'ray_executor_smoke ok' > {marker_dir}/done.marker && "
-        f"date -u +%Y-%m-%dT%H:%M:%SZ > {marker_dir}/timestamp.txt && "
-        f'python -c "import json, sys, platform; '
-        f"json.dump({{'host': platform.node(), 'python': sys.version}}, "
-        f"open('{marker_dir}/status.json', 'w'))\""
+        f"mkdir -p {qdir} && "
+        f"echo 'ray_executor_smoke ok' > {qdone} && "
+        f"date -u +%Y-%m-%dT%H:%M:%SZ > {qts} && "
+        f"python -c {shlex.quote(py_code)} {qstatus}"
     )
 
     run_cmd(
