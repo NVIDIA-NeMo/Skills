@@ -37,8 +37,7 @@ Out of scope (raise NotImplementedError at the routing layer):
 - Generic eval/generate/server orchestration
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
 
 from nemo_run.core.execution.base import Executor
 
@@ -88,11 +87,6 @@ class RayExecutor(Executor):
     #: Directory where Ray submission metadata + logs are written. Should be on
     #: a shared filesystem visible to head + workers.
     log_dir: str = "/tmp/ray_jobs"
-
-    #: Optional pre-built Ray `runtime_env` dict. When provided, takes precedence
-    #: over the default constructed from `env_vars`. Use to set `working_dir`,
-    #: `pip`, `conda`, `py_modules`, etc.
-    runtime_env_overrides: Optional[Dict[str, Any]] = field(default=None)
 
     def assign(
         self,
