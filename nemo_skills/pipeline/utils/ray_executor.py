@@ -37,6 +37,7 @@ Out of scope (raise NotImplementedError at the routing layer):
 - Generic eval/generate/server orchestration
 """
 
+import os
 from dataclasses import dataclass
 
 from nemo_run.core.execution.base import Executor
@@ -101,7 +102,6 @@ class RayExecutor(Executor):
         expectations even though the Ray path skips `exp.add()` for actual
         submission.
         """
-        import os
         self.experiment_id = exp_id
         self.experiment_dir = exp_dir
         self.job_dir = os.path.join(exp_dir, task_dir)
