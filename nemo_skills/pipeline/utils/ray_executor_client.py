@@ -145,22 +145,23 @@ class RayJobClient:
                 if time.time() - start_time > timeout:
                     raise TimeoutError(f"Timeout waiting for job {job_id}")
 
+                # Only swallow transient errors from the status fetch itself
+                # (e.g., network blips). Terminal-state RuntimeError must propagate.
                 try:
                     status = self.client.get_job_status(job_id)
-                    status_str = str(status)
-
-                    if "SUCCEEDED" in status_str:
-                        LOG.info(f"✓ Dependent job {job_id} completed successfully")
-                        break
-                    elif any(x in status_str for x in ["FAILED", "STOPPED"]):
-                        raise RuntimeError(f"Dependent job {job_id} failed with status {status}")
-                    else:
-                        LOG.debug(f"Job {job_id} status: {status}")
-                        time.sleep(poll_interval)
-
                 except Exception as e:
-                    LOG.debug(f"Error checking job status: {e}")
+                    LOG.debug(f"Transient error checking job status: {e}")
                     time.sleep(poll_interval)
+                    continue
+
+                status_str = str(status)
+                if "SUCCEEDED" in status_str:
+                    LOG.info(f"✓ Dependent job {job_id} completed successfully")
+                    break
+                if any(x in status_str for x in ["FAILED", "STOPPED"]):
+                    raise RuntimeError(f"Dependent job {job_id} failed with status {status}")
+                LOG.debug(f"Job {job_id} status: {status}")
+                time.sleep(poll_interval)
 
     def get_job_status(self, job_id: str) -> str:
         """Get job status."""
