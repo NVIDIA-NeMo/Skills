@@ -20,13 +20,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    import ray
-    from ray.job_submission import JobSubmissionClient
-except ImportError:
-    raise ImportError("ray is required for Ray executor. Install with: pip install ray")
-
 LOG = logging.getLogger(__name__)
+
+
+def _import_ray():
+    """Lazy-load Ray + JobSubmissionClient.
+
+    Kept out of module-level imports so callers can construct ``RayJobConfig``
+    or hold typed references to ``RayJobClient`` without ray installed —
+    only actual cluster connection requires it.
+    """
+    try:
+        import ray
+        from ray.job_submission import JobSubmissionClient
+    except ImportError as e:
+        raise ImportError(
+            "ray is required for Ray executor. Install with: pip install ray"
+        ) from e
+    return ray, JobSubmissionClient
 
 
 @dataclass
@@ -59,12 +70,13 @@ class RayJobClient:
         self.client = None
         self._connect()
 
-    def _connect(self) -> JobSubmissionClient:
+    def _connect(self):
         """Connect to Ray cluster.
 
         On success: stores the client on ``self.client`` and returns it.
         On failure: raises and ``self.client`` is left unchanged.
         """
+        ray, JobSubmissionClient = _import_ray()
         try:
             if not ray.is_initialized():
                 ray.init(address=self.ray_address, namespace=self.namespace,
