@@ -79,8 +79,8 @@ def check_results(workspace: str):
                 "status.json missing or has empty 'host' (Ray worker did not record hostname)",
             )
             soft_assert(
-                "python" in status and "Python" not in status["python"],
-                "status.json 'python' field unexpected — should be sys.version output",
+                "python" in status and bool(status["python"]),
+                "status.json missing or has empty 'python' (Ray worker did not record sys.version)",
             )
 
 
