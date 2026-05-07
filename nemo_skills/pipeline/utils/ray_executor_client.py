@@ -134,12 +134,13 @@ class RayJobClient:
         Args:
             job_ids: List of job IDs to wait for
             poll_interval: How often to poll job status (seconds)
-            timeout: Maximum time to wait (seconds)
+            timeout: Maximum time per dependency to wait (seconds). Each dependency
+                gets its own budget; the overall wait can be up to
+                ``len(job_ids) * timeout`` in the worst case.
         """
-        start_time = time.time()
-
         for job_id in job_ids:
             LOG.info(f"Waiting for dependent job {job_id} to complete...")
+            start_time = time.time()
 
             while True:
                 if time.time() - start_time > timeout:
