@@ -59,8 +59,12 @@ class RayJobClient:
         self.client = None
         self._connect()
 
-    def _connect(self):
-        """Connect to Ray cluster."""
+    def _connect(self) -> JobSubmissionClient:
+        """Connect to Ray cluster.
+
+        On success: stores the client on ``self.client`` and returns it.
+        On failure: raises and ``self.client`` is left unchanged.
+        """
         try:
             if not ray.is_initialized():
                 ray.init(address=self.ray_address, namespace=self.namespace,
@@ -71,6 +75,7 @@ class RayJobClient:
             # Get cluster info
             cluster_info = ray.cluster_resources()
             LOG.info(f"Ray cluster resources: {cluster_info}")
+            return self.client
         except Exception as e:
             LOG.error(f"Failed to connect to Ray cluster: {e}")
             raise
@@ -85,8 +90,9 @@ class RayJobClient:
         Returns:
             Job submission ID
         """
-        if not self.client:
-            self._connect()
+        # Resolve the client via the connect contract: either we already have one,
+        # or _connect() returns a live one (or raises). No silent None-client path.
+        client = self.client or self._connect()
 
         # Handle dependencies: wait for prior jobs to complete
         if config.dependencies:
@@ -108,7 +114,7 @@ class RayJobClient:
 
         try:
             # Submit job. Ray 2.54 deprecated `job_id=`; use `submission_id=` instead.
-            job_id = self.client.submit_job(
+            job_id = client.submit_job(
                 entrypoint=config.command,
                 submission_id=config.name,
                 runtime_env=runtime_env,
