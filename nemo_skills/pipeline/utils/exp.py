@@ -592,11 +592,19 @@ def add_task(
         # Validate task_name length already happened above. Build the Ray submission.
         ray_cmd = cmd if isinstance(cmd, str) else cmd[0]
         ray_dependencies = []
-        if task_dependencies:
-            for dep in task_dependencies:
-                # task_dependencies for the Ray path are expected to be Ray submission IDs (strings).
-                if isinstance(dep, str):
-                    ray_dependencies.append(dep)
+        for dep in task_dependencies or []:
+            # task_dependencies for the Ray path must be Ray submission IDs (strings).
+            # Slurm callers commonly pass nemo-run task handles; silently dropping those
+            # would cause the new job to run without waiting for its dependency, defeating
+            # the contract without any signal. Fail fast instead.
+            if not isinstance(dep, str):
+                raise NotImplementedError(
+                    f"Ray executor task_dependencies must be Ray submission IDs (str); "
+                    f"got {type(dep).__name__}. If you copied a slurm pattern, replace the "
+                    f"nemo-run task handle with the string returned by the prior "
+                    f"add_task() call under cluster_config.executor='ray'."
+                )
+            ray_dependencies.append(dep)
         ray_cluster_config = cluster_config.get("ray", {})
         ray_default_cpus = ray_cluster_config.get("default_num_cpus", 8)
         ray_log_dir = log_dir or cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs")
