@@ -89,7 +89,7 @@ def process_file(
                 {
                     "src": _get_nested(sample, source_key),
                     "mt": _get_nested(sample, "generation"),
-                    "gt": _get_nested(sample, reference_key),
+                    "ref": _get_nested(sample, reference_key),
                 }
             )
         except KeyError as e:
@@ -160,7 +160,7 @@ def main():
         "--reference-key",
         type=str,
         default="reference",
-        help="Sample field (supports dotted paths) holding the reference translation passed as COMET 'gt'",
+        help="Sample field (supports dotted paths) holding the reference translation passed as COMET 'ref'",
     )
     args = parser.parse_args()
 
