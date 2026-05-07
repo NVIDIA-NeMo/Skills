@@ -279,10 +279,17 @@ def get_executor(
         # branch returns a `RayExecutor` config object for callers that introspect the
         # executor type (e.g., `Pipeline._create_executor`).
         ray_config = cluster_config.get("ray", {})
+        # gpus_per_node convention (per get_executor docstring): 0 or None for
+        # CPU-only jobs. Treat None as "caller didn't say" → default 1, but
+        # respect an explicit 0 so CPU-only Ray jobs don't silently get a GPU.
+        if gpus_per_node is None:
+            ray_num_gpus = 1
+        else:
+            ray_num_gpus = int(gpus_per_node) * num_nodes
         return RayExecutor(
             ray_address=ray_config.get("address", "auto"),
             ray_namespace=ray_config.get("namespace", "nemo"),
-            num_gpus=int(gpus_per_node) * num_nodes if gpus_per_node else 1,
+            num_gpus=ray_num_gpus,
             num_cpus=ray_config.get("default_num_cpus", 8) * num_nodes,
             num_nodes=num_nodes,
             ntasks_per_node=tasks_per_node,
