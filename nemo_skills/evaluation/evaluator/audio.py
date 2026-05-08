@@ -568,11 +568,7 @@ _BLEU_TOKENIZE_BY_LANG = {
 
 
 def resolve_bleu_tokenize(tgt_lang: str | None) -> str:
-    """Resolve sacrebleu tokenize from a target language code.
-
-    Shared by sentence-level and corpus-level BLEU so both stay consistent
-    for languages that need language-specific tokenization (ja/zh/ko).
-    """
+    """Resolve sacrebleu tokenize from a target language code."""
     if not isinstance(tgt_lang, str):
         return "13a"
     lang_code = tgt_lang.split("_")[0]
