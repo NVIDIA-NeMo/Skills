@@ -26,7 +26,12 @@ from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
 from nemo_skills.pipeline.generate import generate as _generate
 from nemo_skills.pipeline.utils import kwargs_to_string, parse_kwargs
-from nemo_skills.pipeline.utils.eval import combine_cmds, prepare_eval_commands
+from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
+from nemo_skills.pipeline.utils.eval import (
+    EvalGenerationUnit,
+    prepare_eval_commands,
+)
+from nemo_skills.pipeline.utils.scripts import EvalClientScript, SandboxScript, ServerScript
 from nemo_skills.utils import (
     get_logger_name,
     setup_logging,
@@ -149,16 +154,38 @@ def eval(
         "If not specified, will use the registered generation module for the "
         "generation type (which is required in this case).",
     ),
-    model: str = typer.Option(None, help="Path to the model to be evaluated"),
-    server_address: str = typer.Option(None, help="Address of the server hosting the model"),
-    server_type: pipeline_utils.SupportedServers = typer.Option(..., help="Type of server to use"),
-    server_gpus: int = typer.Option(None, help="Number of GPUs to use if hosting the model"),
-    server_nodes: int = typer.Option(1, help="Number of nodes to use if hosting the model"),
-    server_args: str = typer.Option("", help="Additional arguments for the server"),
-    server_entrypoint: str = typer.Option(
+    model: List[str] = typer.Option(
+        None,
+        help="Path to the model(s) to be evaluated. CLI: space-separated. Python API: string or list. "
+        "Single value broadcasts to all models for multi-model evaluation.",
+    ),
+    server_address: List[str] = typer.Option(
+        None,
+        help="Server address(es). CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
+    ),
+    server_type: List[pipeline_utils.SupportedServers] = typer.Option(
+        ...,
+        help="Server type(s). CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
+    ),
+    server_gpus: List[int] = typer.Option(
+        None,
+        help="Number of GPUs per model if hosting. CLI: space-separated ints. Python API: int or list. "
+        "Single value broadcasts to all models.",
+    ),
+    server_nodes: List[int] = typer.Option(
+        [1],
+        help="Number of nodes per model. CLI: space-separated ints. Python API: int or list. "
+        "Single value broadcasts to all models.",
+    ),
+    server_args: List[str] = typer.Option(
+        [""],
+        help="Server arguments per model. CLI: space-separated. Python API: string or list. "
+        "Single value broadcasts to all models.",
+    ),
+    server_entrypoint: List[str] = typer.Option(
         None,
         help="Path to the entrypoint of the server. "
-        "If not specified, will use the default entrypoint for the server type.",
+        "CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     judge_step_fn: str = typer.Option(
         None,
@@ -187,8 +214,10 @@ def eval(
         "If not specified, will use the registered generation module for the "
         "generation type.",
     ),
-    server_container: str = typer.Option(
-        None, help="Override container image for the hosted server (if server_gpus is set)"
+    server_container: List[str] = typer.Option(
+        None,
+        help="Override container image(s) for the hosted server(s) (if server_gpus is set). "
+        "CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     main_container: str = typer.Option(None, help="Override container image for the main evaluation client"),
     sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
@@ -321,10 +350,14 @@ def eval(
     LOG.info("Starting evaluation job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
 
-    try:
-        server_type = server_type.value
-    except AttributeError:
-        pass
+    # Convert server_type enum values to strings
+    def convert_server_type_to_string(st):
+        return st.value if hasattr(st, "value") else st
+
+    if isinstance(server_type, list):
+        server_type = [convert_server_type_to_string(st) for st in server_type]
+    else:
+        server_type = convert_server_type_to_string(server_type)
     try:
         single_node_mode = single_node_mode.value
     except AttributeError:
@@ -344,16 +377,26 @@ def eval(
     else:
         wandb_parameters = None
 
-    server_parameters = {
-        "model": model,
-        "server_type": server_type,
-        "server_address": server_address,
-        "server_gpus": server_gpus,
-        "server_nodes": server_nodes,
-        "server_args": server_args,
-        "server_entrypoint": server_entrypoint,
-        "server_container": server_container,
-    }
+    # Normalize model configuration to list
+    models_list = pipeline_utils.normalize_models_config(model)
+    num_models = len(models_list)
+
+    LOG.info(f"Number of models: {num_models}")
+    for model_idx, model_name in enumerate(models_list):
+        LOG.info(f"  Model {model_idx}: {model_name}")
+
+    server_types_list = pipeline_utils.normalize_parameter(server_type, num_models, "server_type")
+    server_gpus_list = pipeline_utils.normalize_parameter(server_gpus, num_models, "server_gpus")
+    server_nodes_list = pipeline_utils.normalize_parameter(server_nodes, num_models, "server_nodes")
+    server_args_list = pipeline_utils.normalize_parameter(server_args, num_models, "server_args")
+    server_entrypoints_list = pipeline_utils.normalize_parameter(server_entrypoint, num_models, "server_entrypoint")
+    server_containers_list = pipeline_utils.normalize_parameter(server_container, num_models, "server_container")
+
+    if server_address is not None:
+        server_addresses_list = pipeline_utils.normalize_parameter(server_address, num_models, "server_address")
+    else:
+        server_addresses_list = [None] * num_models
+
     cli_judge_pipeline_args = {
         "model": judge_model,
         "server_type": judge_server_type,
@@ -390,23 +433,24 @@ def eval(
     if " " in str(benchmarks):
         raise ValueError("benchmarks should be separated with commas")
 
-    benchmarks_dict, job_batches = prepare_eval_commands(
-        cluster_config,
-        benchmarks,
-        split,
-        num_jobs,
-        starting_seed,
-        output_dir,
-        num_chunks,
-        chunk_ids,
-        rerun_done,
-        server_parameters,
-        extra_arguments,
-        data_dir,
-        exclusive,
-        with_sandbox,
-        keep_mounts_for_sandbox,
-        wandb_parameters,
+    # Use a single shared code path for both single-model and multi-model eval:
+    # build structured "eval units" and run via declarative Pipeline (like ns generate).
+    benchmarks_dict, job_batches_units = prepare_eval_commands(
+        cluster_config=cluster_config,
+        benchmarks_or_groups=benchmarks,
+        split=split,
+        num_jobs=num_jobs,
+        starting_seed=starting_seed,
+        output_dir=output_dir,
+        num_chunks=num_chunks,
+        chunk_ids=chunk_ids,
+        rerun_done=rerun_done,
+        extra_arguments=extra_arguments,
+        data_dir=data_dir,
+        exclusive=exclusive,
+        with_sandbox=with_sandbox,
+        keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        wandb_parameters=wandb_parameters,
         eval_requires_judge=eval_requires_judge,
         generation_type=generation_type,
         generation_module=generation_module,
@@ -415,7 +459,6 @@ def eval(
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
 
-    get_random_port = pipeline_utils.should_get_random_port(server_gpus, exclusive)
     has_tasks = False
     job_id_to_tasks = {}
     benchmark_to_judge_tasks = {}
@@ -424,51 +467,220 @@ def eval(
         _task_dependencies = []
     with pipeline_utils.get_exp(expname, cluster_config, _reuse_exp) as exp:
         # scheduling main eval jobs
-        for idx, job_args in enumerate(job_batches):
+        has_tasks = True
+
+        # Validate that pre-hosted models have server addresses (applies to both single & multi-model)
+        for model_idx in range(num_models):
+            if not (server_gpus_list[model_idx] is not None and int(server_gpus_list[model_idx] or 0) > 0):
+                if not server_addresses_list[model_idx]:
+                    raise ValueError(
+                        f"Model {model_idx} is not self-hosted (server_gpus=0/None) but server_address is missing. "
+                        "Please provide --server-address (one per model, or a single value to broadcast)."
+                    )
+
+        jobs = []
+        job_names = []
+        job_batch_to_last_job_name = {}
+
+        # Pipeline-level: local/none executors should run sequentially
+        sequential = True if cluster_config["executor"] in ["local", "none"] else False
+
+        for job_idx, job_args in enumerate(job_batches_units):
             (
-                cmds,
+                units,
                 job_benchmarks,
                 job_needs_sandbox,
                 job_needs_sandbox_to_keep_mounts,
-                job_server_config,
-                job_server_address,
-                job_server_command,
                 job_sandbox_env_overrides,
             ) = job_args
-            prev_tasks = _task_dependencies
 
-            for _ in range(dependent_jobs + 1):
-                has_tasks = True
-                new_task = pipeline_utils.add_task(
-                    exp,
-                    cmd=pipeline_utils.wrap_python_path(cmd=combine_cmds(cmds, single_node_mode)),
-                    task_name=f"{expname}-{'-'.join(job_benchmarks)}",
-                    log_dir=log_dir,
-                    container=main_container or cluster_config["containers"]["nemo-skills"],
+            benchmark_keys = [b for b in benchmarks_dict.keys() if b in job_benchmarks]
+            task_name = f"{expname}-job{job_idx}-{'-'.join(benchmark_keys)}"
+
+            # Build server scripts list (one per model, None if pre-hosted)
+            server_scripts: list[ServerScript | None] = []
+            for model_idx in range(num_models):
+                if server_gpus_list[model_idx] is not None and int(server_gpus_list[model_idx] or 0) > 0:
+                    server_scripts.append(
+                        ServerScript(
+                            server_type=server_types_list[model_idx],
+                            model_path=models_list[model_idx],
+                            cluster_config=cluster_config,
+                            num_gpus=server_gpus_list[model_idx],
+                            num_nodes=server_nodes_list[model_idx],
+                            server_args=server_args_list[model_idx] or "",
+                            server_entrypoint=server_entrypoints_list[model_idx],
+                            port=None,
+                            allocate_port=True,
+                        )
+                    )
+                else:
+                    server_scripts.append(None)
+
+            sandbox_script = None
+            sandbox_enabled = (job_needs_sandbox or with_sandbox) is True
+            if sandbox_enabled:
+                sandbox_script = SandboxScript(
                     cluster_config=cluster_config,
-                    partition=partition,
-                    account=account,
-                    server_config=job_server_config,
-                    with_sandbox=job_needs_sandbox or with_sandbox,
-                    keep_mounts_for_sandbox=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
-                    sandbox_port=None if get_random_port else 6000,
-                    sandbox_env_overrides=job_sandbox_env_overrides,
-                    sandbox_container=sandbox_container,
-                    run_after=run_after,
-                    reuse_code_exp=reuse_code_exp,
-                    reuse_code=reuse_code,
-                    task_dependencies=(
-                        prev_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
-                    ),
-                    get_server_command=job_server_command,
-                    sbatch_kwargs=sbatch_kwargs,
-                    installation_command=installation_command,
-                    skip_hf_home_check=skip_hf_home_check,
+                    keep_mounts=job_needs_sandbox_to_keep_mounts or keep_mounts_for_sandbox,
+                    allocate_port=True,
+                    env_overrides=job_sandbox_env_overrides,
                 )
-                prev_tasks = [new_task]
-                all_tasks.append(new_task)
-                # only last dependent job will be here, which is what we want
-                job_id_to_tasks[idx] = prev_tasks
+                # Ensure sandbox runs on all nodes in the group (like the server does)
+                # This is critical for multi-node setups where client tasks need local sandbox access
+                sandbox_script.span_group_nodes = True
+
+            # Convert units to dict payloads for EvalClientScript
+            unit_dicts = []
+            for u in units:
+                if isinstance(u, EvalGenerationUnit):
+                    unit_dicts.append(
+                        {
+                            "input_file": u.input_file,
+                            "output_dir": u.output_dir,
+                            "extra_arguments": u.extra_arguments,
+                            "random_seed": u.random_seed,
+                            "chunk_id": u.chunk_id,
+                            "num_chunks": u.num_chunks,
+                            "script": u.script,
+                            "requirements": u.requirements,
+                            "wandb_parameters": u.wandb_parameters,
+                            "with_sandbox": u.with_sandbox,
+                        }
+                    )
+                else:
+                    unit_dicts.append(dict(u))
+
+            client_script = EvalClientScript(
+                units=unit_dicts,
+                single_node_mode=single_node_mode,
+                with_sandbox=sandbox_enabled,
+                servers=server_scripts,
+                server_addresses_prehosted=server_addresses_list,
+                model_names=models_list,
+                server_types=server_types_list,
+                sandbox=sandbox_script,
+                installation_command=installation_command,
+            )
+
+            # Build groups: group0 = (optional server0) + (optional sandbox) + client
+            groups = []
+
+            group0_components = []
+            group0_server = server_scripts[0] if server_scripts else None
+            group_gpus = 0
+            group_nodes = 1
+            group_tasks = 1
+
+            if group0_server is not None:
+                group0_components.append(
+                    Command(
+                        script=group0_server,
+                        container=server_containers_list[0] or cluster_config["containers"][server_types_list[0]],
+                        name=f"{task_name}_model_0_server",
+                    )
+                )
+                group_gpus = int(server_gpus_list[0])
+                group_nodes = int(server_nodes_list[0])
+                group_tasks = int(group0_server.num_tasks)
+
+            if sandbox_script is not None:
+                group0_components.append(
+                    Command(
+                        script=sandbox_script,
+                        container=sandbox_container or cluster_config["containers"]["sandbox"],
+                        name=f"{task_name}_sandbox",
+                    )
+                )
+
+            group0_components.append(
+                Command(
+                    script=client_script,
+                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    name=f"{task_name}",
+                )
+            )
+
+            groups.append(
+                CommandGroup(
+                    commands=group0_components,
+                    hardware=HardwareConfig(
+                        partition=partition,
+                        num_gpus=group_gpus,
+                        num_nodes=group_nodes,
+                        num_tasks=group_tasks,
+                        sbatch_kwargs=sbatch_kwargs,
+                    ),
+                    name=f"{task_name}_group0",
+                    log_dir=log_dir,
+                )
+            )
+
+            # Additional groups for hosted models 1..N-1
+            for model_idx in range(1, num_models):
+                srv = server_scripts[model_idx]
+                if srv is None:
+                    continue
+                groups.append(
+                    CommandGroup(
+                        commands=[
+                            Command(
+                                script=srv,
+                                container=server_containers_list[model_idx]
+                                or cluster_config["containers"][server_types_list[model_idx]],
+                                name=f"{task_name}_model_{model_idx}_server",
+                            )
+                        ],
+                        hardware=HardwareConfig(
+                            partition=partition,
+                            num_gpus=int(server_gpus_list[model_idx]),
+                            num_nodes=int(server_nodes_list[model_idx]),
+                            num_tasks=int(srv.num_tasks),
+                            sbatch_kwargs=sbatch_kwargs,
+                        ),
+                        name=f"{task_name}_model_{model_idx}_group",
+                        log_dir=log_dir,
+                    )
+                )
+
+            base_deps = list(_task_dependencies or [])
+            if run_after:
+                base_deps.extend(run_after if isinstance(run_after, list) else [run_after])
+
+            prev_job = None
+            for dep_idx in range(dependent_jobs + 1):
+                internal_job_name = f"{task_name}-dep{dep_idx}" if dep_idx > 0 else task_name
+                if dep_idx == 0:
+                    job_deps = base_deps if base_deps else None
+                else:
+                    job_deps = [prev_job]
+
+                job_spec = {"name": internal_job_name, "dependencies": job_deps}
+                if len(groups) > 1:
+                    job_spec["groups"] = groups
+                else:
+                    job_spec["group"] = groups[0]
+
+                jobs.append(job_spec)
+                job_names.append(internal_job_name)
+                prev_job = job_spec
+
+            job_batch_to_last_job_name[job_idx] = internal_job_name
+
+        if jobs:
+            pipeline = Pipeline(
+                name=expname,
+                cluster_config=cluster_config,
+                jobs=jobs,
+                reuse_code=reuse_code,
+                reuse_code_exp=reuse_code_exp,
+                skip_hf_home_check=skip_hf_home_check,
+            )
+            handles = pipeline.run(dry_run=dry_run, _reuse_exp=exp, sequential=sequential)
+            job_name_to_handle = dict(zip(job_names, handles))
+            for job_idx, last_job_name in job_batch_to_last_job_name.items():
+                job_id_to_tasks[job_idx] = [job_name_to_handle[last_job_name]]
+                all_tasks.append(job_name_to_handle[last_job_name])
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
             if not eval_requires_judge and not benchmark_args.requires_judge:
