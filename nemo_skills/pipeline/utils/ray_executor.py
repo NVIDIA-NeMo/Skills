@@ -52,6 +52,16 @@ from nemo_run.core.execution.base import Executor
 
 LOG = logging.getLogger(__name__)
 
+# Exception types that Ray's job-submission client may surface for network and
+# HTTP-level failures. ``OSError`` covers stdlib + requests-based connection
+# and timeout errors (``ConnectionError``, ``TimeoutError``, and
+# ``requests.exceptions.RequestException`` are all ``OSError`` subclasses in
+# Python 3); ``RuntimeError`` is what Ray's dashboard client wraps non-2xx HTTP
+# responses in. Used to bound the scope of ``try`` blocks around Ray client
+# calls so unrelated programmer errors (``ValueError``, ``KeyError``, …)
+# propagate naturally instead of being swallowed.
+_RAY_CLIENT_EXCEPTIONS = (OSError, RuntimeError)
+
 
 # ---------------------------------------------------------------------------
 # Ray Jobs API client layer
@@ -123,7 +133,7 @@ class RayJobClient:
             cluster_info = ray.cluster_resources()
             LOG.info("Ray cluster resources: %s", cluster_info)
             return self.client
-        except Exception as e:
+        except _RAY_CLIENT_EXCEPTIONS as e:
             LOG.error("Failed to connect to Ray cluster: %s", e)
             raise
 
@@ -178,7 +188,7 @@ class RayJobClient:
 
             return job_id
 
-        except Exception as e:
+        except _RAY_CLIENT_EXCEPTIONS as e:
             LOG.error("Failed to submit job %s: %s", config.name, e)
             raise
 
@@ -208,11 +218,14 @@ class RayJobClient:
                 if time.time() - start_time > timeout:
                     raise TimeoutError(f"Timeout waiting for job {job_id}")
 
-                # Only swallow transient errors from the status fetch itself
-                # (e.g., network blips). Terminal-state RuntimeError must propagate.
+                # Only swallow Ray client-layer errors from the status fetch
+                # itself (network blips, transient HTTP failures wrapped as
+                # RuntimeError by Ray's dashboard client). Terminal-state
+                # RuntimeErrors raised below for FAILED/STOPPED propagate
+                # because they are raised after the try block.
                 try:
                     status = self.client.get_job_status(job_id)
-                except Exception as e:
+                except _RAY_CLIENT_EXCEPTIONS as e:
                     LOG.debug("Transient error checking job status: %s", e)
                     time.sleep(poll_interval)
                     continue
@@ -231,26 +244,26 @@ class RayJobClient:
         return str(self.client.get_job_status(job_id))
 
     def get_job_logs(self, job_id: str) -> str:
-        """Get job logs."""
+        """Get job logs (best-effort: returns "" on Ray client errors)."""
         try:
             return self.client.get_job_logs(job_id)
-        except Exception as e:
+        except _RAY_CLIENT_EXCEPTIONS as e:
             LOG.warning("Failed to retrieve logs for job %s: %s", job_id, e)
             return ""
 
     def cancel_job(self, job_id: str):
-        """Cancel a job."""
+        """Cancel a job (best-effort: logs a warning on Ray client errors)."""
         try:
             self.client.stop_job(job_id)
             LOG.info("✓ Cancelled job %s", job_id)
-        except Exception as e:
+        except _RAY_CLIENT_EXCEPTIONS as e:
             LOG.warning("Failed to cancel job %s: %s", job_id, e)
 
     def list_jobs(self) -> List[Dict[str, Any]]:
-        """List all jobs in the cluster."""
+        """List all jobs in the cluster (best-effort: returns [] on Ray client errors)."""
         try:
             return self.client.list_jobs()
-        except Exception as e:
+        except _RAY_CLIENT_EXCEPTIONS as e:
             LOG.error("Failed to list jobs: %s", e)
             return []
 
