@@ -35,7 +35,11 @@ import numpy as np
 import soundfile as sf
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 # AudioBench datasets categorized by evaluation type
 JUDGE_DATASETS = [
@@ -142,7 +146,7 @@ def create_manifest_entry(
     dataset_name: str,
     sample_id: int,
     category: str,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> Dict:
     """Create a nemo-skills compatible manifest entry.
 
@@ -212,7 +216,7 @@ def process_dataset(
     save_audio: bool = True,
     split: str = "test",
     max_samples: int = -1,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> tuple[int, List[Dict]]:
     """Process a single AudioBench dataset.
 

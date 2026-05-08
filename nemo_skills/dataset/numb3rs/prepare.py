@@ -44,7 +44,11 @@ import soundfile as sf
 from datasets import load_dataset
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
 
@@ -74,7 +78,14 @@ def build_messages_with_prompt(audio_metadata, prompt_text):
     return [system_message, user_message]
 
 
-def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_audio=True, audio_root="/data"):
+def save_audio_and_format_entry(
+    entry,
+    category,
+    audio_dir,
+    sample_idx,
+    with_audio=True,
+    audio_root=DEFAULT_CONTAINER_AUDIO_ROOT,
+):
     """Format a dataset entry and optionally save audio file.
 
     Returns a base entry dict with audio metadata. Messages are added separately
@@ -136,7 +147,7 @@ def save_audio_and_format_entry(entry, category, audio_dir, sample_idx, with_aud
     return formatted_entry
 
 
-def prepare_category(category, dataset, output_dir, with_audio=True, audio_root="/data"):
+def prepare_category(category, dataset, output_dir, with_audio=True, audio_root=DEFAULT_CONTAINER_AUDIO_ROOT):
     """Prepare a single category from the Numb3rs dataset.
 
     Generates 3 files per category in categories/ subfolder:

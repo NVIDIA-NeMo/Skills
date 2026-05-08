@@ -40,7 +40,11 @@ import numpy as np
 import soundfile as sf
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 # HuggingFace dataset label mappings
 CATEGORY_LABELS = {
@@ -168,7 +172,7 @@ def create_manifest_entry(
     category: str,
     sample_id: int,
     label: str,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> Dict:
     """Create nemo-skills manifest entry."""
     audio_rel_path = build_container_audio_path("musan", category, "audio", audio_filename, audio_prefix=audio_root)
@@ -209,7 +213,7 @@ def process_category_from_files(
     save_audio: bool = True,
     split: str = "train",
     max_samples: int = -1,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> tuple[int, List[Dict]]:
     """Process MUSAN category from WAV files (Kaggle/OpenSLR format)."""
     category_path = dataset_path / category
@@ -287,7 +291,7 @@ def process_category(
     save_audio: bool = True,
     split: str = "train",
     max_samples: int = -1,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> tuple[int, List[Dict]]:
     """Process a single MUSAN category."""
     print(f"\n{'=' * 60}")

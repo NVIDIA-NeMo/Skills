@@ -178,7 +178,7 @@ eval(benchmarks="mmau-pro.closed_form", ...)
         --model=/workspace/path/to/checkpoint \
         --server_entrypoint=/workspace/megatron-lm/server.py \
         --server_container=/path/to/container.sqsh \
-        --data_dir=/dataset \
+        --data_dir=/data \
         --installation_command="pip install sacrebleu"
     ```
 
@@ -562,7 +562,7 @@ used directly. If the file is missing, data is downloaded there automatically.
 To use a custom audio path prefix (e.g., for container mount points):
 
 ```bash
-ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench --audio-prefix /data/contextasr
+ns prepare_data contextasr-bench --data_dir=/path/to/ContextASR-Bench --audio-prefix /data
 ```
 
 ### Running ContextASR-Bench Evaluation

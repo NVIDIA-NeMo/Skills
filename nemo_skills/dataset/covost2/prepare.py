@@ -25,7 +25,11 @@ from pathlib import Path
 import soundfile as sf
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 COVOST_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/covost/covost_v2.{src_lang}_{tgt_lang}.tsv.tar.gz"
 SPLITS = ["validation", "test"]
@@ -198,7 +202,7 @@ def prepare_covost2(
     cv_data_dir: Path,
     validated_tsv: Path,
     task_type: str,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> None:
     if not languages:
         raise ValueError("No languages to process")

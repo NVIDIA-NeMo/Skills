@@ -33,7 +33,11 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 
 def download_with_progress(url: str, output_path: Path, desc: str):
@@ -102,7 +106,13 @@ def download_audio(split: str, audio_dir: Path):
     os.remove(tar_path)
 
 
-def process_split(split: str, data_dir: Path, audio_dir: Path, with_audio: bool, audio_root: str = "/data") -> int:
+def process_split(
+    split: str,
+    data_dir: Path,
+    audio_dir: Path,
+    with_audio: bool,
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
+) -> int:
     """Process one LibriSpeech-PC split into nemo-skills format."""
 
     output_file = data_dir / f"{split}.jsonl"

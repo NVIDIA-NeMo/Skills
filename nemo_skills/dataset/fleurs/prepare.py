@@ -25,7 +25,11 @@ import soundfile as sf
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 
 def load_fleurs_module():
@@ -175,7 +179,7 @@ def prepare_fleurs(
     languages: list[str],
     no_audio: bool,
     task_type: str,
-    audio_root: str = "/data",
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> None:
     if not languages:
         raise ValueError("No languages to process")

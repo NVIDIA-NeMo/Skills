@@ -22,7 +22,12 @@ from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root, get_mcq_fields
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+    get_mcq_fields,
+)
 
 
 def download_mmau_data(download_dir, hf_token):
@@ -69,7 +74,7 @@ def _normalize_audio_path(path: str, audio_root: str) -> str:
     return build_container_audio_path("mmau-pro", rel_path, audio_prefix=audio_root)
 
 
-def format_entry(entry, with_audio=False, audio_root="/data"):
+def format_entry(entry, with_audio=False, audio_root=DEFAULT_CONTAINER_AUDIO_ROOT):
     """Format entry for nemo-skills with OpenAI messages and audio support."""
     choices = entry.get("choices", []) or []
 

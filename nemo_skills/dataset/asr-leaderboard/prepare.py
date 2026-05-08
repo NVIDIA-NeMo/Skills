@@ -36,7 +36,11 @@ import soundfile as sf
 from datasets import load_dataset
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import build_container_audio_path, get_container_audio_root
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
 MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this (causes mel spectrogram errors)
@@ -62,7 +66,7 @@ def save_audio_and_format_entry(
     text_field="text",
     id_field="id",
     with_audio=True,
-    audio_root="/data",
+    audio_root=DEFAULT_CONTAINER_AUDIO_ROOT,
 ):
     """Format a dataset entry and optionally save audio file."""
     text = entry[text_field].strip()
@@ -109,7 +113,7 @@ def save_audio_and_format_entry(
     return formatted_entry
 
 
-def prepare_dataset(dataset_name, output_dir, with_audio=True, audio_root="/data"):
+def prepare_dataset(dataset_name, output_dir, with_audio=True, audio_root=DEFAULT_CONTAINER_AUDIO_ROOT):
     """Prepare a single ASR dataset."""
     if dataset_name not in DATASET_CONFIGS:
         raise ValueError(f"Unknown dataset: {dataset_name}. Available: {list(DATASET_CONFIGS.keys())}")
