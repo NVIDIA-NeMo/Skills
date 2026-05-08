@@ -67,9 +67,13 @@ def check_results(workspace: str):
     )
 
     if os.path.isfile(status_file):
+        # Narrow scope: json.load() raises json.JSONDecodeError (a ValueError
+        # subclass) on bad JSON, OSError on file-read issues, and UnicodeDecodeError
+        # (also ValueError) on non-UTF-8 content. Anything else is a bug worth
+        # surfacing with the original traceback.
         try:
             status = load_json(status_file)
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             soft_assert(False, f"status.json could not be parsed as JSON: {exc}")
             status = None
 
