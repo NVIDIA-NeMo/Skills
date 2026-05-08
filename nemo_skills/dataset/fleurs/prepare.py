@@ -151,9 +151,11 @@ def _build_record(
     subset_for_metrics: str,
     task_type: str,
     extra_fields: dict,
+    source: str | None = None,
+    reference: str | None = None,
 ) -> dict:
     audio_metadata = {"path": container_audio_path, "duration": duration}
-    return {
+    record = {
         "expected_answer": expected_answer,
         "audio_path": container_audio_path,
         "duration": duration,
@@ -165,6 +167,11 @@ def _build_record(
         "task_type": f"Multilingual-{task_type.upper()}",
         "extra_fields": extra_fields,
     }
+    if source is not None:
+        record["source"] = source
+    if reference is not None:
+        record["reference"] = reference
+    return record
 
 
 def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: bool, task_type: str) -> None:
@@ -244,8 +251,12 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                             "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
                         }
                     )
+                    source_text = source_row["raw_transcription"]
+                    reference_text = target_row["raw_transcription"]
                 else:
                     expected_answer = source_row[gt_key]
+                    source_text = None
+                    reference_text = None
 
                 record = _build_record(
                     expected_answer=expected_answer,
@@ -255,6 +266,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
                     subset_for_metrics=subset_for_metrics,
                     task_type=task_type,
                     extra_fields=extra_fields,
+                    source=source_text,
+                    reference=reference_text,
                 )
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
     print(f"Fleurs {task_type} dataset prepared: {output_jsonl}")

@@ -46,22 +46,11 @@ def load_comet_model(model_path: str):
     return model
 
 
-def _get_nested(sample: dict, key: str):
-    if "." in key:
-        value = sample
-        for part in key.split("."):
-            value = value[part]
-        return value
-    return sample[key]
-
-
 def process_file(
     input_file: Path,
     output_file: Path,
     comet_model,
     batch_size: int = 16,
-    source_key: str = "source",
-    reference_key: str = "reference",
 ):
     """Copy input file to output location and run xCOMET-XXL evaluation."""
     LOG.info(f"Processing {input_file} -> {output_file}")
@@ -87,9 +76,9 @@ def process_file(
         try:
             comet_list.append(
                 {
-                    "src": _get_nested(sample, source_key),
-                    "mt": _get_nested(sample, "generation"),
-                    "ref": _get_nested(sample, reference_key),
+                    "src": sample["source"],
+                    "mt": sample["generation"],
+                    "ref": sample["reference"],
                 }
             )
         except KeyError as e:
@@ -150,18 +139,6 @@ def main():
         default=1,
         help="Number of random seeds (for multiple seeds mode)",
     )
-    parser.add_argument(
-        "--source-key",
-        type=str,
-        default="source",
-        help="Sample field (supports dotted paths) holding the source text passed as COMET 'src'",
-    )
-    parser.add_argument(
-        "--reference-key",
-        type=str,
-        default="reference",
-        help="Sample field (supports dotted paths) holding the reference translation passed as COMET 'ref'",
-    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -193,8 +170,6 @@ def main():
             output_file,
             comet_model,
             args.batch_size,
-            source_key=args.source_key,
-            reference_key=args.reference_key,
         )
 
     LOG.info("All files processed successfully")
