@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import types
 
 import pytest
@@ -1180,6 +1181,103 @@ class TestWikipediaTool:
             await tool.execute("wikipedia-query-summary", {"title": "Hydrogen", "query": "isotope"})
             == "query-summary:Hydrogen:isotope:2500"
         )
+
+
+# -- Tavily direct tool tests -----------------------------------------------
+
+
+class TestTavilySearchTool:
+    def test_tavily_postprocess_search_results(self):
+        from nemo_skills.mcp.servers import tavily_search_tool
+
+        formatted = tavily_search_tool._postprocess_search_results(
+            {
+                "results": [
+                    {
+                        "url": "https://example.com/page",
+                        "title": "Example Page",
+                        "content": "Hello [edit] world",
+                        "score": 0.99,
+                        "raw_content": "raw",
+                    }
+                ]
+            }
+        )
+
+        assert "Search Results" in formatted
+        assert "[1] Example Page (example.com)" in formatted
+        assert "URL: https://example.com/page" in formatted
+        assert "Hello  world" in formatted
+        assert "0.99" not in formatted
+        assert "raw" not in formatted
+
+    def test_tavily_url_exclusion_matches_subdomains(self):
+        from nemo_skills.mcp.servers import tavily_search_tool
+
+        excluded = ["blacklisteddomain.com"]
+        assert tavily_search_tool._is_url_excluded("https://blacklisteddomain.com/page", excluded) is True
+        assert tavily_search_tool._is_url_excluded("https://sub.blacklisteddomain.com/page", excluded) is True
+        assert tavily_search_tool._is_url_excluded("https://example.com/page", excluded) is False
+
+    def test_tavily_page_tools_format_extract_results(self, monkeypatch):
+        from nemo_skills.mcp.servers import tavily_search_tool
+
+        async def fake_tavily_post(endpoint, payload):
+            assert endpoint == "/extract"
+            assert payload == {"urls": "https://example.com/page", "query": "needle"}
+            return {"results": [{"raw_content": "first line\n[Jump to content]\nsecond needle line"}]}
+
+        monkeypatch.setattr(tavily_search_tool, "_tavily_post", fake_tavily_post)
+
+        result = asyncio.run(tavily_search_tool.find_in_page("https://example.com/page", "needle"))
+
+        assert "Content from: example.com" in result
+        assert 'Query: "needle"' in result
+        assert "L0: first line" in result
+        assert "L2: second needle line" in result
+
+    def test_tavily_scroll_page_uses_cache(self, monkeypatch):
+        from nemo_skills.mcp.servers import tavily_search_tool
+
+        tavily_search_tool.PAGE_CACHE.clear()
+        calls = []
+
+        async def fake_tavily_post(endpoint, payload):
+            calls.append((endpoint, payload))
+            return {"results": [{"raw_content": "zero one two three four five"}]}
+
+        monkeypatch.setattr(tavily_search_tool, "_tavily_post", fake_tavily_post)
+
+        first = asyncio.run(tavily_search_tool.scroll_page("https://example.com/page", start_index=1, n=3))
+        second = asyncio.run(tavily_search_tool.scroll_page("https://example.com/page", start_index=3, n=2))
+
+        assert first["total_words"] == 6
+        assert "Showing words [1-4] of 6" in first["results_string"]
+        assert "L0: one two three" in first["results_string"]
+        assert "Showing words [3-5] of 6" in second["results_string"]
+        assert calls == [("/extract", {"urls": "https://example.com/page"})]
+
+    def test_tavily_tool_execute_injects_hidden_defaults(self):
+        from nemo_skills.mcp.servers.tavily_search_tool import TavilySearchTool
+
+        class DummyClient:
+            async def call_tool(self, tool, args, extra_args=None):
+                return {"tool": tool, "args": args, "extra_args": extra_args}
+
+        tool = TavilySearchTool()
+        tool.exclude_domains = ["blacklisteddomain.com"]
+        tool._client = DummyClient()
+
+        result = asyncio.run(tool.execute("web-search", {"query": "nvidia"}))
+
+        assert result["tool"] == "web-search"
+        assert result["args"] == {"query": "nvidia"}
+        assert result["extra_args"]["exclude_domains"] == ["blacklisteddomain.com"]
+        assert result["extra_args"]["num_results"] == 10
+        assert result["extra_args"]["answer_type"] == "formatted"
+
+        page_result = asyncio.run(tool.execute("find-in-page", {"url": "https://example.com/page", "query": "needle"}))
+        assert page_result["extra_args"] == {"exclude_domains": ["blacklisteddomain.com"]}
 
 
 # -- ArXiv direct tool tests ------------------------------------------------
