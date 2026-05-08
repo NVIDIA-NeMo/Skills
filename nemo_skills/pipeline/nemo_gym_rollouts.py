@@ -193,8 +193,8 @@ def nemo_gym_rollouts(
     extra_arguments = " ".join(ctx.args)
     LOG.info("Starting NeMo Gym rollouts pipeline")
     LOG.info(f"Extra arguments: {extra_arguments}")
-    # if sandbox_mounts and not with_sandbox:
-    #     raise ValueError("--sandbox-mounts requires --with-sandbox")
+    if sandbox_mounts and not with_sandbox:
+        raise ValueError("--sandbox-mounts requires --with-sandbox")
 
     # Parse config paths
     config_paths_list = [p.strip() for p in config_paths.split(",") if p.strip()]
