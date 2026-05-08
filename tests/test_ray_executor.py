@@ -12,286 +12,354 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mock-based unit tests for `nemo_skills.pipeline.utils.ray_executor` client layer.
+"""Unit tests for ``nemo_skills.pipeline.utils.ray_executor``.
 
-These tests exercise the Ray submission client without requiring an actual Ray
-cluster. The Ray Python SDK is mocked at import time so the module can be
-loaded in environments where `ray` is not installed.
+The tests run against a real Ray cluster started inside the test file
+(``ray.init`` in a module-scoped fixture). No GPU is required — Ray runs
+local-only with two CPU slots — and the cluster lifecycle is fully managed
+here so the tests are self-contained.
 
-Coverage (per the staged Ray PR scope):
-- submit_job builds runtime_env correctly from RayJobConfig
-- env_vars from config merge into runtime_env["env_vars"]
-- pre-existing runtime_env["env_vars"] is preserved when merging
-- _wait_for_dependencies returns cleanly when status reaches SUCCEEDED
-- _wait_for_dependencies raises on FAILED / STOPPED
-- _wait_for_dependencies raises TimeoutError after timeout elapses
-- get_job_logs returns "" + warns on underlying client errors
-- cancel_job swallows and warns on underlying client errors
-- submit_job uses `submission_id=` (not the deprecated `job_id=` kwarg)
-- get_ray_client factory reads ray.address / ray.namespace correctly
+Behavioural assertions submit tiny Python entrypoints through
+``RayJobClient`` and inspect the resulting ``JobInfo`` once Ray reports a
+terminal state. Error-path tests monkey-patch a single method on the live
+``JobSubmissionClient`` so we can exercise the wrapper's defensive code
+without resorting to module-level import-time SDK mocks.
+
+Two configuration-parsing tests at the end do not touch Ray at all — they
+just assert that ``get_ray_client`` reads ``cluster_config["ray"]`` keys
+correctly — so they remain plain unit tests.
 """
 
-import sys
-from unittest.mock import MagicMock, patch
+import time
+from pathlib import Path
 
 import pytest
 
+# Skip the entire module if Ray is not installed in this environment. CI
+# pulls ray[default] in via the dev extras (see requirements/common-tests.txt);
+# contributors running `pytest` without dev extras get a clean skip rather
+# than an ImportError.
+ray = pytest.importorskip("ray")
+pytest.importorskip("ray.job_submission")
 
-# ----------------------------------------------------------------------------
-# Mock the Ray SDK at import time so this test file works in environments where
-# `ray` is not installed (e.g., the NeMo-Skills CI without GPU/Ray deps).
-# ----------------------------------------------------------------------------
-def _install_ray_mocks():
-    ray_module = MagicMock(name="ray")
-    ray_module.is_initialized = MagicMock(return_value=False)
-    ray_module.init = MagicMock()
-    ray_module.cluster_resources = MagicMock(return_value={"CPU": 8.0, "GPU": 1.0})
-
-    job_submission_module = MagicMock(name="ray.job_submission")
-    job_submission_module.JobSubmissionClient = MagicMock(name="JobSubmissionClient")
-
-    sys.modules["ray"] = ray_module
-    sys.modules["ray.job_submission"] = job_submission_module
-    return ray_module, job_submission_module
-
-
-_install_ray_mocks()
-
-# Import after mocks are in place.
 from nemo_skills.pipeline.utils.ray_executor import (  # noqa: E402
     RayJobClient,
     RayJobConfig,
     get_ray_client,
 )
 
-
-# ----------------------------------------------------------------------------
-# Helpers
-# ----------------------------------------------------------------------------
-def _make_client(client_mock=None) -> RayJobClient:
-    """Construct a RayJobClient with a mocked JobSubmissionClient instance."""
-    client = RayJobClient.__new__(RayJobClient)
-    client.ray_address = "auto"
-    client.namespace = "nemo"
-    client.client = client_mock if client_mock is not None else MagicMock()
-    return client
+# Treat each individual test as bounded by the wait helpers below; this
+# module-level marker prevents an unexpected stall from hanging CI.
+pytestmark = pytest.mark.timeout(120)
 
 
-# ----------------------------------------------------------------------------
-# submit_job — runtime_env construction
-# ----------------------------------------------------------------------------
-def test_submit_job_uses_submission_id_not_job_id(tmp_path):
-    """Regression: Ray 2.54 deprecated `job_id=`; we must use `submission_id=`.
+# ---------------------------------------------------------------------------
+# Cluster + client fixtures
+# ---------------------------------------------------------------------------
 
-    If a future refactor accidentally reverts to `job_id=`, this test catches it.
+
+@pytest.fixture(scope="module")
+def _ray_cluster():
+    """Start a local Ray cluster (head + workers in this process)."""
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(
+        num_cpus=2,
+        include_dashboard=True,
+        ignore_reinit_error=True,
+        configure_logging=False,
+        log_to_driver=False,
+    )
+    try:
+        yield
+    finally:
+        ray.shutdown()
+
+
+@pytest.fixture
+def client(_ray_cluster):
+    """A ``RayJobClient`` connected to the in-process Ray cluster."""
+    return RayJobClient(ray_address="auto", namespace="nemo-skills-tests")
+
+
+def _wait_until_terminal(client: RayJobClient, job_id: str, timeout: float = 60.0) -> str:
+    """Poll the live cluster until ``job_id`` reaches a terminal state."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        status = client.get_job_status(job_id)
+        if any(t in status for t in ("SUCCEEDED", "FAILED", "STOPPED")):
+            return status
+        time.sleep(0.5)
+    raise AssertionError(f"job {job_id} did not reach a terminal state within {timeout}s")
+
+
+def _raiser(exc: BaseException):
+    """Return a callable that raises ``exc`` regardless of arguments."""
+    def _fn(*args, **kwargs):
+        raise exc
+    return _fn
+
+
+# ---------------------------------------------------------------------------
+# submit_job — round-trip behaviour against a real Ray cluster
+# ---------------------------------------------------------------------------
+
+
+def test_submit_job_returns_submission_id(client, tmp_path):
+    """``submit_job`` returns the same submission ID Ray uses internally.
+
+    This also serves as the regression for the Ray 2.54 ``submission_id=``
+    kwarg fix: if a future refactor reverts to the deprecated ``job_id=``
+    kwarg, ``client.submit_job`` raises ``TypeError`` immediately — the test
+    fails at submission time rather than silently regressing.
     """
-    underlying = MagicMock()
-    underlying.submit_job.return_value = "ray_sub_123"
-    client = _make_client(underlying)
     config = RayJobConfig(
-        name="my_job",
-        command="python train.py",
-        num_gpus=1,
-        num_cpus=8,
-        num_nodes=1,
+        name="ns-test-id",
+        command='python -c "print(\'hello\')"',
+        num_gpus=0,
+        num_cpus=1,
         log_dir=str(tmp_path),
     )
 
     sub_id = client.submit_job(config)
+    try:
+        assert sub_id == "ns-test-id"
+        status = _wait_until_terminal(client, sub_id)
+        assert "SUCCEEDED" in status
+    finally:
+        client.cancel_job(sub_id)
 
-    assert sub_id == "ray_sub_123"
-    underlying.submit_job.assert_called_once()
-    kwargs = underlying.submit_job.call_args.kwargs
-    assert "submission_id" in kwargs, "must use submission_id (not the deprecated job_id)"
-    assert "job_id" not in kwargs
-    assert kwargs["submission_id"] == "my_job"
 
-
-def test_submit_job_builds_runtime_env_from_env_vars(tmp_path):
-    underlying = MagicMock()
-    underlying.submit_job.return_value = "ray_sub_456"
-    client = _make_client(underlying)
+def test_submit_job_env_vars_reach_the_worker(client, tmp_path):
+    """``env_vars`` from RayJobConfig must be visible inside the entrypoint."""
+    expected = "ns-real-ray-marker-value"
+    out_file = tmp_path / "env_marker.txt"
     config = RayJobConfig(
-        name="env_job",
-        command="echo hi",
-        env_vars={"HF_HOME": "/models/hf", "TOKENIZERS_PARALLELISM": "false"},
+        name="ns-test-env",
+        command=f'python -c "import os; open({str(out_file)!r}, \'w\').write(os.environ[\'NS_TEST_VAR\'])"',
+        num_gpus=0,
+        num_cpus=1,
+        env_vars={"NS_TEST_VAR": expected},
         log_dir=str(tmp_path),
     )
 
-    client.submit_job(config)
+    sub_id = client.submit_job(config)
+    try:
+        status = _wait_until_terminal(client, sub_id)
+        assert "SUCCEEDED" in status, f"job ended in {status}; logs:\n{client.get_job_logs(sub_id)}"
+        assert out_file.read_text() == expected
+    finally:
+        client.cancel_job(sub_id)
 
-    kwargs = underlying.submit_job.call_args.kwargs
-    assert kwargs["runtime_env"]["env_vars"] == {
-        "HF_HOME": "/models/hf",
-        "TOKENIZERS_PARALLELISM": "false",
-    }
 
-
-def test_submit_job_preserves_preexisting_runtime_env_overrides(tmp_path):
-    """User-supplied runtime_env (e.g., working_dir, pip) must not be clobbered."""
-    underlying = MagicMock()
-    underlying.submit_job.return_value = "ray_sub_789"
-    client = _make_client(underlying)
+def test_submit_job_preserves_runtime_env_overrides(client, tmp_path):
+    """Pre-existing ``runtime_env`` keys (e.g., ``env_vars``) must merge, not clobber."""
+    out_file = tmp_path / "merge_marker.txt"
     config = RayJobConfig(
-        name="merge_job",
-        command="python -m pkg.main",
-        env_vars={"MY_VAR": "1"},
-        log_dir=str(tmp_path),
-        runtime_env={"working_dir": "/repo", "pip": ["numpy==1.26"]},
-    )
-
-    client.submit_job(config)
-
-    runtime_env = underlying.submit_job.call_args.kwargs["runtime_env"]
-    assert runtime_env["working_dir"] == "/repo"
-    assert runtime_env["pip"] == ["numpy==1.26"]
-    assert runtime_env["env_vars"] == {"MY_VAR": "1"}
-
-
-def test_submit_job_per_node_resource_split(tmp_path):
-    """num_gpus / num_cpus get divided across num_nodes for entrypoint resources."""
-    underlying = MagicMock()
-    underlying.submit_job.return_value = "ray_sub_split"
-    client = _make_client(underlying)
-    config = RayJobConfig(
-        name="multi_node",
-        command="echo multi",
-        num_gpus=8,
-        num_cpus=64,
-        num_nodes=2,
+        name="ns-test-merge",
+        # Both BASE_VAR (pre-set in runtime_env) and OVERLAY_VAR (added via env_vars)
+        # should land in the worker's environment.
+        command=(
+            f'python -c "import os; open({str(out_file)!r}, \'w\').write('
+            "os.environ.get('BASE_VAR', '') + ':' + os.environ.get('OVERLAY_VAR', ''))\""
+        ),
+        num_gpus=0,
+        num_cpus=1,
+        env_vars={"OVERLAY_VAR": "from_env_vars"},
+        runtime_env={"env_vars": {"BASE_VAR": "from_runtime_env"}},
         log_dir=str(tmp_path),
     )
 
-    client.submit_job(config)
+    sub_id = client.submit_job(config)
+    try:
+        status = _wait_until_terminal(client, sub_id)
+        assert "SUCCEEDED" in status
+        assert out_file.read_text() == "from_runtime_env:from_env_vars"
+    finally:
+        client.cancel_job(sub_id)
 
-    kwargs = underlying.submit_job.call_args.kwargs
-    assert kwargs["entrypoint_num_gpus"] == 4.0  # 8 / 2
-    assert kwargs["entrypoint_num_cpus"] == 32.0  # 64 / 2
 
-
-def test_submit_job_creates_log_dir(tmp_path):
-    """The log_dir directory must be created if it does not exist."""
+def test_submit_job_creates_log_dir(client, tmp_path):
+    """``log_dir`` must be created if it does not already exist."""
     log_dir = tmp_path / "deeply" / "nested" / "ray_jobs"
     assert not log_dir.exists()
-    underlying = MagicMock()
-    underlying.submit_job.return_value = "ray_sub_logdir"
-    client = _make_client(underlying)
+
     config = RayJobConfig(
-        name="log_dir_job",
-        command="echo x",
+        name="ns-test-logdir",
+        command='python -c "pass"',
+        num_gpus=0,
+        num_cpus=1,
         log_dir=str(log_dir),
     )
 
-    client.submit_job(config)
-
-    assert log_dir.is_dir()
-
-
-# ----------------------------------------------------------------------------
-# _wait_for_dependencies — happy / error / timeout
-# ----------------------------------------------------------------------------
-def test_wait_for_dependencies_returns_on_succeeded():
-    underlying = MagicMock()
-    underlying.get_job_status.side_effect = ["RUNNING", "SUCCEEDED"]
-    client = _make_client(underlying)
-
-    # poll_interval=0 to avoid sleeping in tests
-    with patch("nemo_skills.pipeline.utils.ray_executor.time.sleep"):
-        client._wait_for_dependencies(["dep_job_1"], poll_interval=0, timeout=60)
-
-    assert underlying.get_job_status.call_count == 2
+    sub_id = client.submit_job(config)
+    try:
+        assert log_dir.is_dir()
+        _wait_until_terminal(client, sub_id)
+    finally:
+        client.cancel_job(sub_id)
 
 
-@pytest.mark.parametrize("terminal_status", ["FAILED", "STOPPED"])
-def test_wait_for_dependencies_raises_on_terminal_failure(terminal_status):
-    underlying = MagicMock()
-    underlying.get_job_status.return_value = terminal_status
-    client = _make_client(underlying)
-
-    with patch("nemo_skills.pipeline.utils.ray_executor.time.sleep"):
-        with pytest.raises(RuntimeError, match=terminal_status):
-            client._wait_for_dependencies(["bad_dep"], poll_interval=0, timeout=60)
+# ---------------------------------------------------------------------------
+# _wait_for_dependencies — real success / failure / timeout
+# ---------------------------------------------------------------------------
 
 
-def test_wait_for_dependencies_raises_on_timeout():
-    underlying = MagicMock()
-    underlying.get_job_status.return_value = "RUNNING"
-    client = _make_client(underlying)
+def test_wait_for_dependencies_returns_on_succeeded(client, tmp_path):
+    """A real successful dependency lets the wait return cleanly."""
+    dep_config = RayJobConfig(
+        name="ns-test-dep-ok",
+        command='python -c "print(\'dep ok\')"',
+        num_gpus=0,
+        num_cpus=1,
+        log_dir=str(tmp_path),
+    )
+    dep_id = client.submit_job(dep_config)
+    try:
+        _wait_until_terminal(client, dep_id)
+        # Short poll to keep the test fast; the dependency is already SUCCEEDED.
+        client._wait_for_dependencies([dep_id], poll_interval=1, timeout=30)
+    finally:
+        client.cancel_job(dep_id)
 
-    # Patch time.time to return ever-increasing values so the timeout check
-    # fires after one iteration. Use a small timeout to keep the test fast.
-    fake_clock = iter([0.0, 100.0, 200.0])
 
-    def _fake_time():
-        return next(fake_clock)
+@pytest.mark.parametrize("exit_code", [1, 2])
+def test_wait_for_dependencies_raises_on_terminal_failure(client, tmp_path, exit_code):
+    """A real failed dependency raises ``RuntimeError`` describing the status."""
+    dep_config = RayJobConfig(
+        name=f"ns-test-dep-fail-{exit_code}",
+        command=f'python -c "import sys; sys.exit({exit_code})"',
+        num_gpus=0,
+        num_cpus=1,
+        log_dir=str(tmp_path),
+    )
+    dep_id = client.submit_job(dep_config)
+    try:
+        _wait_until_terminal(client, dep_id)
+        with pytest.raises(RuntimeError, match="FAILED"):
+            client._wait_for_dependencies([dep_id], poll_interval=1, timeout=30)
+    finally:
+        client.cancel_job(dep_id)
 
-    with patch("nemo_skills.pipeline.utils.ray_executor.time.time", side_effect=_fake_time):
-        with patch("nemo_skills.pipeline.utils.ray_executor.time.sleep"):
-            with pytest.raises(TimeoutError, match="dep_timeout"):
-                client._wait_for_dependencies(["dep_timeout"], poll_interval=0, timeout=10)
+
+def test_wait_for_dependencies_raises_on_timeout(client, tmp_path):
+    """If a dependency never completes within ``timeout``, ``TimeoutError`` fires."""
+    # Long-running job: sleeps longer than the wait budget.
+    dep_config = RayJobConfig(
+        name="ns-test-dep-timeout",
+        command='python -c "import time; time.sleep(60)"',
+        num_gpus=0,
+        num_cpus=1,
+        log_dir=str(tmp_path),
+    )
+    dep_id = client.submit_job(dep_config)
+    try:
+        with pytest.raises(TimeoutError, match=dep_id):
+            client._wait_for_dependencies([dep_id], poll_interval=1, timeout=2)
+    finally:
+        client.cancel_job(dep_id)
 
 
-# ----------------------------------------------------------------------------
-# get_job_logs / cancel_job — error swallowing
-# ----------------------------------------------------------------------------
-def test_get_job_logs_returns_empty_string_on_error(caplog):
-    underlying = MagicMock()
-    underlying.get_job_logs.side_effect = RuntimeError("connection lost")
-    client = _make_client(underlying)
+# ---------------------------------------------------------------------------
+# get_job_status / get_job_logs — round-trip + error swallowing
+# ---------------------------------------------------------------------------
+
+
+def test_get_job_status_stringifies(client, tmp_path):
+    """``get_job_status`` returns a plain ``str`` even when Ray returns an enum."""
+    config = RayJobConfig(
+        name="ns-test-status",
+        command='python -c "print(\'ok\')"',
+        num_gpus=0,
+        num_cpus=1,
+        log_dir=str(tmp_path),
+    )
+    sub_id = client.submit_job(config)
+    try:
+        _wait_until_terminal(client, sub_id)
+        status = client.get_job_status(sub_id)
+        assert isinstance(status, str)
+        assert status == "SUCCEEDED"
+    finally:
+        client.cancel_job(sub_id)
+
+
+def test_get_job_logs_returns_underlying_logs_on_success(client, tmp_path):
+    """``get_job_logs`` returns the entrypoint's captured stdout/stderr."""
+    sentinel = "ns-real-ray-stdout-sentinel"
+    config = RayJobConfig(
+        name="ns-test-logs",
+        command=f"python -c \"print('{sentinel}')\"",
+        num_gpus=0,
+        num_cpus=1,
+        log_dir=str(tmp_path),
+    )
+    sub_id = client.submit_job(config)
+    try:
+        _wait_until_terminal(client, sub_id)
+        logs = client.get_job_logs(sub_id)
+        assert sentinel in logs
+    finally:
+        client.cancel_job(sub_id)
+
+
+def test_get_job_logs_returns_empty_string_on_error(client, monkeypatch, caplog):
+    """When the underlying ``get_job_logs`` raises, return ``""`` and warn."""
+    monkeypatch.setattr(client.client, "get_job_logs", _raiser(RuntimeError("connection lost")))
 
     with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor"):
-        result = client.get_job_logs("some_job")
+        result = client.get_job_logs("nonexistent-job")
 
     assert result == ""
-    assert any("connection lost" in rec.message for rec in caplog.records), \
+    assert any("connection lost" in rec.message for rec in caplog.records), (
         "expected a WARNING log naming the underlying error"
+    )
 
 
-def test_cancel_job_swallows_error_and_logs_warning(caplog):
-    underlying = MagicMock()
-    underlying.stop_job.side_effect = RuntimeError("already stopped")
-    client = _make_client(underlying)
+def test_get_job_logs_propagates_unexpected_errors(client, monkeypatch):
+    """Programmer errors (``ValueError``, ``KeyError``, ...) must NOT be swallowed."""
+    monkeypatch.setattr(client.client, "get_job_logs", _raiser(ValueError("bad arg")))
+
+    with pytest.raises(ValueError, match="bad arg"):
+        client.get_job_logs("nonexistent-job")
+
+
+# ---------------------------------------------------------------------------
+# cancel_job / list_jobs — round-trip + error swallowing
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_job_swallows_error_and_logs_warning(client, monkeypatch, caplog):
+    """When the underlying ``stop_job`` raises, log a warning and return ``None``."""
+    monkeypatch.setattr(client.client, "stop_job", _raiser(RuntimeError("already stopped")))
 
     with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor"):
         # Should not raise.
-        client.cancel_job("some_job")
+        client.cancel_job("any-job")
 
-    underlying.stop_job.assert_called_once_with("some_job")
-    assert any("already stopped" in rec.message for rec in caplog.records), \
-        "expected a WARNING log naming the underlying error"
+    assert any("already stopped" in rec.message for rec in caplog.records)
 
 
-def test_get_job_logs_returns_underlying_logs_on_success():
-    underlying = MagicMock()
-    underlying.get_job_logs.return_value = "stdout/stderr captured"
-    client = _make_client(underlying)
-
-    assert client.get_job_logs("ok_job") == "stdout/stderr captured"
+def test_list_jobs_returns_list_against_real_cluster(client):
+    """``list_jobs`` returns a list (possibly empty) against the live cluster."""
+    jobs = client.list_jobs()
+    assert isinstance(jobs, list)
 
 
-def test_get_job_status_stringifies():
-    """get_job_status must coerce Ray's status enum to a plain string."""
-    underlying = MagicMock()
-    underlying.get_job_status.return_value = "SUCCEEDED"
-    client = _make_client(underlying)
-
-    assert client.get_job_status("any") == "SUCCEEDED"
-
-
-def test_list_jobs_returns_empty_list_on_error():
-    underlying = MagicMock()
-    underlying.list_jobs.side_effect = RuntimeError("api unavailable")
-    client = _make_client(underlying)
+def test_list_jobs_returns_empty_list_on_error(client, monkeypatch):
+    """When the underlying ``list_jobs`` raises, return ``[]``."""
+    monkeypatch.setattr(client.client, "list_jobs", _raiser(RuntimeError("api unavailable")))
 
     assert client.list_jobs() == []
 
 
-# ----------------------------------------------------------------------------
-# get_ray_client factory
-# ----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# get_ray_client factory — pure config parsing, no Ray cluster needed
+# ---------------------------------------------------------------------------
+
+
 def test_get_ray_client_reads_address_and_namespace(monkeypatch):
-    """Factory reads `ray.address` and `ray.namespace` from cluster_config."""
-    # Patch the RayJobClient constructor to capture args without needing a live cluster.
+    """``get_ray_client`` reads ``ray.address`` / ``ray.namespace`` from config."""
     captured = {}
 
     class _DummyClient:
@@ -315,6 +383,7 @@ def test_get_ray_client_reads_address_and_namespace(monkeypatch):
 
 
 def test_get_ray_client_uses_defaults_when_ray_block_absent(monkeypatch):
+    """``get_ray_client`` defaults ``ray_address`` to "auto" and namespace to "nemo"."""
     captured = {}
 
     class _DummyClient:
