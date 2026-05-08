@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""End-to-end slurm-test for the staged Ray executor.
+"""End-to-end slurm-test for the Ray executor.
 
 Validates that a cluster_config with ``executor: ray`` can submit a job
 through NeMo-Skills, the job actually executes on the Ray cluster, and the

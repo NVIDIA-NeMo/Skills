@@ -573,7 +573,7 @@ def add_task(
         if with_sandbox:
             raise NotImplementedError(
                 "Ray executor does not support sandbox containers in this release. "
-                "Sandbox judge containers are out of scope for the staged Ray PR. "
+                "Sandbox judge containers are out of scope for the initial Ray support. "
                 "Use cluster_config.executor='slurm' for sandbox workflows."
             )
         if server_config is not None:

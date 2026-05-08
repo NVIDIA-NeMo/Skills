@@ -14,7 +14,7 @@
 
 """Validate Ray-executor smoke run: assert the marker files exist + are well-formed.
 
-Ground truth check for the staged Ray PR. If this passes, the Ray executor
+Ground truth check for the Ray executor. If this passes, the executor
 successfully:
   - routed via get_executor() Ray branch
   - submitted a job via RayJobClient

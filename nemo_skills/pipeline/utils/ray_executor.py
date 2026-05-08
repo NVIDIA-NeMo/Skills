@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Staged Ray support for NeMo-Skills.
+"""Initial Ray support for NeMo-Skills.
 
 This module provides two layers that together let the pipeline target a
 top-level Ray scheduler (standalone Ray clusters and Ray-on-Slurm), distinct

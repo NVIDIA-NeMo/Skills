@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Ray executor cluster config — staged Ray support for SFT (and eventually GRPO).
+# Ray executor cluster config — initial Ray support for SFT (and eventually GRPO).
 #
 # Use this for either:
-#   (a) standalone Ray clusters (e.g., a customer-managed Ray deployment), or
+#   (a) standalone Ray clusters (e.g., an existing self-managed Ray deployment), or
 #   (b) Ray-on-Slurm setups where Slurm allocates the nodes and Ray runs the
 #       job-submission layer inside the allocation.
 #
