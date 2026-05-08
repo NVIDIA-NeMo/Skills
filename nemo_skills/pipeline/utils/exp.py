@@ -563,10 +563,9 @@ def add_task(
             raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
 
     # Ray executor path: bypass nemo_run.Experiment.add() and submit directly via
-    # RayJobClient. Scoped to single-command Ray jobs (SFT, eventually GRPO) per the
-    # 2026-05-06 alignment with George/Igor on the staged Ray support contract.
-    # Unsupported modes raise NotImplementedError to fail fast (per Igor's earlier
-    # framing). Distinct from `with_ray=True` (Ray inside a Slurm allocation).
+    # RayJobClient. Scoped to single-command Ray jobs; unsupported modes raise
+    # NotImplementedError to fail fast. Distinct from `with_ray=True`, which runs
+    # Ray inside a Slurm allocation rather than as the top-level scheduler.
     if cluster_config["executor"] == "ray":
         if with_sandbox:
             raise NotImplementedError(
@@ -579,8 +578,7 @@ def add_task(
                 "Ray executor does not support co-scheduled servers (vLLM/SGLang/TRT-LLM) "
                 "alongside the main job in this release. For Ray-based workflows that "
                 "require an inference endpoint, use a separately-deployed external endpoint "
-                "(e.g., a JPMC-managed vLLM service) and call it via the OpenAI-compatible "
-                "server_type='openai'."
+                "and call it via server_type='openai' (OpenAI-compatible)."
             )
         if heterogeneous:
             raise NotImplementedError(
