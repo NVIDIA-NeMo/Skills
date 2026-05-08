@@ -585,10 +585,9 @@ def evaluate_translation(
     tgt_lang: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate translation: computes sentence-level BLEU score."""
+    tokenize = resolve_bleu_tokenize(tgt_lang)
     try:
         import sacrebleu
-
-        tokenize = resolve_bleu_tokenize(tgt_lang)
 
         text = reference.strip()
         pred_text = hypothesis.strip()
@@ -600,7 +599,7 @@ def evaluate_translation(
             "is_correct": bleu_score > 0.3,
             "text": text,
             "pred_text": pred_text,
-            "tgt_lang": tgt_lang,
+            "bleu_tokenize": tokenize,
         }
     except Exception as e:
         return {
@@ -609,7 +608,7 @@ def evaluate_translation(
             "error": str(e),
             "text": reference.strip(),
             "pred_text": hypothesis.strip(),
-            "tgt_lang": tgt_lang,
+            "bleu_tokenize": tokenize,
         }
 
 
