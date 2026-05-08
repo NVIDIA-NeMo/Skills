@@ -584,13 +584,10 @@ def add_task(
                 "and call it via server_type='openai' (OpenAI-compatible)."
             )
         if heterogeneous:
-            raise NotImplementedError(
-                "Ray executor does not support heterogeneous tasks in this release."
-            )
+            raise NotImplementedError("Ray executor does not support heterogeneous tasks in this release.")
         if isinstance(cmd, list) and len(cmd) > 1:
             raise NotImplementedError(
-                "Ray executor only supports single-command tasks in this release. "
-                f"Got {len(cmd)} commands."
+                f"Ray executor only supports single-command tasks in this release. Got {len(cmd)} commands."
             )
         if with_ray:
             raise NotImplementedError(

@@ -79,15 +79,14 @@ def _import_ray():
         import ray
         from ray.job_submission import JobSubmissionClient
     except ImportError as e:
-        raise ImportError(
-            "ray is required for Ray executor. Install with: pip install ray"
-        ) from e
+        raise ImportError("ray is required for Ray executor. Install with: pip install ray") from e
     return ray, JobSubmissionClient
 
 
 @dataclass
 class RayJobConfig:
     """Configuration for a Ray job submission."""
+
     name: str
     command: str
     num_gpus: int = 1
@@ -124,8 +123,7 @@ class RayJobClient:
         ray, JobSubmissionClient = _import_ray()
         try:
             if not ray.is_initialized():
-                ray.init(address=self.ray_address, namespace=self.namespace,
-                         ignore_reinit_error=True)
+                ray.init(address=self.ray_address, namespace=self.namespace, ignore_reinit_error=True)
             self.client = JobSubmissionClient(address=self.ray_address)
             LOG.info("Connected to Ray cluster at %s", self.ray_address)
 
@@ -182,7 +180,9 @@ class RayJobClient:
             LOG.info("✓ Submitted job '%s' (ID: %s)", config.name, job_id)
             LOG.info(
                 "  Resources: %d node(s), %.1f GPU/node, %.1f CPU/node",
-                config.num_nodes, gpus_per_node, cpus_per_node,
+                config.num_nodes,
+                gpus_per_node,
+                cpus_per_node,
             )
             LOG.info("  Log dir: %s", config.log_dir)
 
@@ -271,10 +271,7 @@ class RayJobClient:
 def get_ray_client(cluster_config: Dict[str, Any]) -> RayJobClient:
     """Factory function to create Ray client from cluster config."""
     ray_config = cluster_config.get("ray", {})
-    return RayJobClient(
-        ray_address=ray_config.get("address", "auto"),
-        namespace=ray_config.get("namespace", "nemo")
-    )
+    return RayJobClient(ray_address=ray_config.get("address", "auto"), namespace=ray_config.get("namespace", "nemo"))
 
 
 # ---------------------------------------------------------------------------

@@ -31,7 +31,6 @@ correctly — so they remain plain unit tests.
 """
 
 import time
-from pathlib import Path
 
 import pytest
 
@@ -95,8 +94,10 @@ def _wait_until_terminal(client: RayJobClient, job_id: str, timeout: float = 60.
 
 def _raiser(exc: BaseException):
     """Return a callable that raises ``exc`` regardless of arguments."""
+
     def _fn(*args, **kwargs):
         raise exc
+
     return _fn
 
 
@@ -115,7 +116,7 @@ def test_submit_job_returns_submission_id(client, tmp_path):
     """
     config = RayJobConfig(
         name="ns-test-id",
-        command='python -c "print(\'hello\')"',
+        command="python -c \"print('hello')\"",
         num_gpus=0,
         num_cpus=1,
         log_dir=str(tmp_path),
@@ -136,7 +137,7 @@ def test_submit_job_env_vars_reach_the_worker(client, tmp_path):
     out_file = tmp_path / "env_marker.txt"
     config = RayJobConfig(
         name="ns-test-env",
-        command=f'python -c "import os; open({str(out_file)!r}, \'w\').write(os.environ[\'NS_TEST_VAR\'])"',
+        command=f"python -c \"import os; open({str(out_file)!r}, 'w').write(os.environ['NS_TEST_VAR'])\"",
         num_gpus=0,
         num_cpus=1,
         env_vars={"NS_TEST_VAR": expected},
@@ -160,7 +161,7 @@ def test_submit_job_preserves_runtime_env_overrides(client, tmp_path):
         # Both BASE_VAR (pre-set in runtime_env) and OVERLAY_VAR (added via env_vars)
         # should land in the worker's environment.
         command=(
-            f'python -c "import os; open({str(out_file)!r}, \'w\').write('
+            f"python -c \"import os; open({str(out_file)!r}, 'w').write("
             "os.environ.get('BASE_VAR', '') + ':' + os.environ.get('OVERLAY_VAR', ''))\""
         ),
         num_gpus=0,
@@ -209,7 +210,7 @@ def test_wait_for_dependencies_returns_on_succeeded(client, tmp_path):
     """A real successful dependency lets the wait return cleanly."""
     dep_config = RayJobConfig(
         name="ns-test-dep-ok",
-        command='python -c "print(\'dep ok\')"',
+        command="python -c \"print('dep ok')\"",
         num_gpus=0,
         num_cpus=1,
         log_dir=str(tmp_path),
@@ -269,7 +270,7 @@ def test_get_job_status_stringifies(client, tmp_path):
     """``get_job_status`` returns a plain ``str`` even when Ray returns an enum."""
     config = RayJobConfig(
         name="ns-test-status",
-        command='python -c "print(\'ok\')"',
+        command="python -c \"print('ok')\"",
         num_gpus=0,
         num_cpus=1,
         log_dir=str(tmp_path),
