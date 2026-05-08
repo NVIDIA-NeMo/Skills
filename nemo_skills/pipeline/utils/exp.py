@@ -41,6 +41,7 @@ from nemo_skills.pipeline.utils.mounts import (
     get_mounts_from_config,
     get_unmounted_path,
     is_mounted_filepath,
+    normalize_mounts_list,
 )
 from nemo_skills.pipeline.utils.packager import (
     get_packager,
@@ -480,6 +481,7 @@ def add_task(
     with_sandbox=False,
     sandbox_container=None,
     keep_mounts_for_sandbox=False,
+    sandbox_mounts: list[str] | None = None,
     sandbox_port: int | None = None,
     server_config=None,
     n_servers: int = 1,
@@ -769,6 +771,10 @@ def add_task(
 
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
+            if sandbox_mounts is not None:
+                sandbox_exec_mounts = normalize_mounts_list(sandbox_mounts, allow_rw_mode=True)
+            else:
+                sandbox_exec_mounts = None if keep_mounts_for_sandbox else []
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
                 container=sandbox_container or cluster_config["containers"]["sandbox"],
@@ -777,7 +783,7 @@ def add_task(
                 gpus_per_node=0,
                 partition=partition,
                 account=account,
-                mounts=None if keep_mounts_for_sandbox else [],
+                mounts=sandbox_exec_mounts,
                 dependencies=dependencies,
                 job_name=task_name,
                 log_dir=log_dir,
@@ -807,7 +813,9 @@ def add_task(
             het_group_indices.append(het_group)
         het_group += 1
         LOG.info("Sandbox command: %s", commands[-1])
-
+    else:
+        if sandbox_mounts or keep_mounts_for_sandbox:
+            raise ValueError("`sandbox_mounts` or `keep_mounts_for_sandbox` requires `with_sandbox=True`.")
     # If server wasn't added first (because client needs GPUs or server doesn't need GPUs), add it now
     if server_config is not None and not server_goes_first:
         add_server_tasks()
