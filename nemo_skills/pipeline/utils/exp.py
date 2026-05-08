@@ -46,8 +46,11 @@ from nemo_skills.pipeline.utils.packager import (
     get_packager,
     get_registered_external_repo,
 )
-from nemo_skills.pipeline.utils.ray_executor import RayExecutor
-from nemo_skills.pipeline.utils.ray_executor_client import RayJobConfig, get_ray_client
+from nemo_skills.pipeline.utils.ray_executor import (
+    RayExecutor,
+    RayJobConfig,
+    get_ray_client,
+)
 from nemo_skills.pipeline.utils.server import get_free_port, get_server_command
 from nemo_skills.utils import get_logger_name, remove_handlers
 

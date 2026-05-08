@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mock-based unit tests for `nemo_skills.pipeline.utils.ray_executor_client`.
+"""Mock-based unit tests for `nemo_skills.pipeline.utils.ray_executor` client layer.
 
 These tests exercise the Ray submission client without requiring an actual Ray
 cluster. The Ray Python SDK is mocked at import time so the module can be
@@ -58,7 +58,7 @@ def _install_ray_mocks():
 _install_ray_mocks()
 
 # Import after mocks are in place.
-from nemo_skills.pipeline.utils.ray_executor_client import (  # noqa: E402
+from nemo_skills.pipeline.utils.ray_executor import (  # noqa: E402
     RayJobClient,
     RayJobConfig,
     get_ray_client,
@@ -196,7 +196,7 @@ def test_wait_for_dependencies_returns_on_succeeded():
     client = _make_client(underlying)
 
     # poll_interval=0 to avoid sleeping in tests
-    with patch("nemo_skills.pipeline.utils.ray_executor_client.time.sleep"):
+    with patch("nemo_skills.pipeline.utils.ray_executor.time.sleep"):
         client._wait_for_dependencies(["dep_job_1"], poll_interval=0, timeout=60)
 
     assert underlying.get_job_status.call_count == 2
@@ -208,7 +208,7 @@ def test_wait_for_dependencies_raises_on_terminal_failure(terminal_status):
     underlying.get_job_status.return_value = terminal_status
     client = _make_client(underlying)
 
-    with patch("nemo_skills.pipeline.utils.ray_executor_client.time.sleep"):
+    with patch("nemo_skills.pipeline.utils.ray_executor.time.sleep"):
         with pytest.raises(RuntimeError, match=terminal_status):
             client._wait_for_dependencies(["bad_dep"], poll_interval=0, timeout=60)
 
@@ -225,8 +225,8 @@ def test_wait_for_dependencies_raises_on_timeout():
     def _fake_time():
         return next(fake_clock)
 
-    with patch("nemo_skills.pipeline.utils.ray_executor_client.time.time", side_effect=_fake_time):
-        with patch("nemo_skills.pipeline.utils.ray_executor_client.time.sleep"):
+    with patch("nemo_skills.pipeline.utils.ray_executor.time.time", side_effect=_fake_time):
+        with patch("nemo_skills.pipeline.utils.ray_executor.time.sleep"):
             with pytest.raises(TimeoutError, match="dep_timeout"):
                 client._wait_for_dependencies(["dep_timeout"], poll_interval=0, timeout=10)
 
@@ -239,7 +239,7 @@ def test_get_job_logs_returns_empty_string_on_error(caplog):
     underlying.get_job_logs.side_effect = RuntimeError("connection lost")
     client = _make_client(underlying)
 
-    with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor_client"):
+    with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor"):
         result = client.get_job_logs("some_job")
 
     assert result == ""
@@ -252,7 +252,7 @@ def test_cancel_job_swallows_error_and_logs_warning(caplog):
     underlying.stop_job.side_effect = RuntimeError("already stopped")
     client = _make_client(underlying)
 
-    with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor_client"):
+    with caplog.at_level("WARNING", logger="nemo_skills.pipeline.utils.ray_executor"):
         # Should not raise.
         client.cancel_job("some_job")
 
@@ -300,7 +300,7 @@ def test_get_ray_client_reads_address_and_namespace(monkeypatch):
             captured["namespace"] = namespace
 
     monkeypatch.setattr(
-        "nemo_skills.pipeline.utils.ray_executor_client.RayJobClient",
+        "nemo_skills.pipeline.utils.ray_executor.RayJobClient",
         _DummyClient,
     )
 
@@ -323,7 +323,7 @@ def test_get_ray_client_uses_defaults_when_ray_block_absent(monkeypatch):
             captured["namespace"] = namespace
 
     monkeypatch.setattr(
-        "nemo_skills.pipeline.utils.ray_executor_client.RayJobClient",
+        "nemo_skills.pipeline.utils.ray_executor.RayJobClient",
         _DummyClient,
     )
 
