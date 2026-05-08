@@ -110,10 +110,7 @@ def test_asr_leaderboard_audio_prefix(monkeypatch, tmp_path):
         audio_root="/data",
     )
 
-    assert (
-        formatted["messages"][1]["audio"]["path"]
-        == "/data/asr-leaderboard/data/librispeech_clean/sample_001.flac"
-    )
+    assert formatted["messages"][1]["audio"]["path"] == "/data/asr-leaderboard/data/librispeech_clean/sample_001.flac"
     _assert_clean_audio_paths(formatted, "/data/asr-leaderboard/")
 
 
@@ -136,9 +133,7 @@ def test_asr_leaderboard_end_to_end(monkeypatch, tmp_path):
     ]
     monkeypatch.setattr(prepare, "load_dataset", lambda *args, **kwargs: fake_dataset)
 
-    count = prepare.prepare_dataset(
-        "librispeech_clean", tmp_path, with_audio=False, audio_root="/data"
-    )
+    count = prepare.prepare_dataset("librispeech_clean", tmp_path, with_audio=False, audio_root="/data")
 
     assert count == 2
     _assert_clean_audio_paths(tmp_path / "librispeech_clean.jsonl", "/data/asr-leaderboard/")

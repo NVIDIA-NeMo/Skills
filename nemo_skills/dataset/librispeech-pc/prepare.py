@@ -227,7 +227,9 @@ def main():
     download_manifests(data_dir)
 
     splits = ["test-clean", "test-other"] if args.split == "all" else [args.split]
-    total = sum(process_split(split, data_dir, audio_dir, not args.no_audio, audio_root=audio_root) for split in splits)
+    total = sum(
+        process_split(split, data_dir, audio_dir, not args.no_audio, audio_root=audio_root) for split in splits
+    )
 
     print(f"\n✓ Complete: {total} samples")
 

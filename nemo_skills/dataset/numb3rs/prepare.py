@@ -123,7 +123,9 @@ def save_audio_and_format_entry(
         audio_file_path = audio_dir / audio_filename
         sf.write(str(audio_file_path), audio_array, sampling_rate)
 
-    audio_filepath = build_container_audio_path("numb3rs", "Numb3rs", category, audio_filename, audio_prefix=audio_root)
+    audio_filepath = build_container_audio_path(
+        "numb3rs", "Numb3rs", category, audio_filename, audio_prefix=audio_root
+    )
 
     # Build audio metadata (to be embedded in messages later)
     audio_metadata = {
@@ -288,9 +290,7 @@ def main():
     # Process each category
     total_samples = 0
     for category in categories_to_prepare:
-        total_samples += prepare_category(
-            category, dataset, output_dir, with_audio=with_audio, audio_root=audio_root
-        )
+        total_samples += prepare_category(category, dataset, output_dir, with_audio=with_audio, audio_root=audio_root)
 
     # Combine all category variant files into test variant files
     print("\nCreating combined test files for each variant...")
