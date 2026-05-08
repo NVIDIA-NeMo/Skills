@@ -14,20 +14,19 @@
 
 """End-to-end slurm-test for the staged Ray executor.
 
-Ground-truth execution flow per George's 2026-05-06 ask: validate that a
-cluster_config with `executor: ray` can submit a job through NeMo-Skills,
-the job actually executes on the Ray cluster, and the dependency-chained
-check_results step runs after.
+Validates that a cluster_config with ``executor: ray`` can submit a job
+through NeMo-Skills, the job actually executes on the Ray cluster, and the
+dependency-chained check_results step runs after.
 
 Cluster requirements (provided by the cluster_config passed via --cluster):
-- `executor: ray`
-- A Ray cluster reachable via `ray.address` (typically a Ray-on-Slurm setup
+- ``executor: ray``
+- A Ray cluster reachable via ``ray.address`` (typically a Ray-on-Slurm setup
   where Slurm allocated the nodes and Ray started a head + workers inside
   that allocation; alternatively a standalone Ray endpoint).
-- A `/workspace` mount visible to Ray workers.
+- A ``/workspace`` mount visible to Ray workers.
 
 What this test does:
-1. Submits a tiny `run_cmd` task via the Ray executor that writes a marker
+1. Submits a tiny ``run_cmd`` task via the Ray executor that writes a marker
    file + a status JSON to the workspace. This exercises:
      - cluster_config["executor"] == "ray" routing in get_executor()
      - add_task() Ray short-circuit → RayJobClient.submit_job()
@@ -44,6 +43,7 @@ import argparse
 import shlex
 
 from nemo_skills.pipeline.cli import run_cmd, wrap_arguments
+from nemo_skills.pipeline.utils.cluster import get_cluster_config
 
 
 def submit_ray_smoke_task(workspace, cluster, expname_prefix):
@@ -86,6 +86,14 @@ def main():
     parser.add_argument("--expname_prefix", required=True, help="Experiment name prefix")
 
     args = parser.parse_args()
+
+    cluster_config = get_cluster_config(cluster=args.cluster)
+    executor = cluster_config.get("executor")
+    if executor != "ray":
+        raise ValueError(
+            f"qwen3_4b_ray_executor slurm-test requires cluster_config with "
+            f"executor: ray, got executor={executor!r} from cluster {args.cluster!r}"
+        )
 
     smoke_expname = submit_ray_smoke_task(
         workspace=args.workspace,
