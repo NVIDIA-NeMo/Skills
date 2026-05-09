@@ -36,7 +36,7 @@ from nemo_skills.pipeline.utils.exp import (
     get_packaging_job_key,
     tunnel_hash,
 )
-from nemo_skills.pipeline.utils.mounts import get_mounts_from_config, is_mounted_filepath
+from nemo_skills.pipeline.utils.mounts import get_mounts_from_config, is_mounted_filepath, normalize_mounts_list
 from nemo_skills.pipeline.utils.scripts import SandboxScript
 from nemo_skills.pipeline.utils.server import wrap_python_path
 from nemo_skills.utils import get_logger_name
@@ -303,7 +303,11 @@ class Command:
         # (in which case Stage A's resolved_mounts alone loses that signal).
         keep_mounts = getattr(self.script, "keep_mounts", True)
         if self.mounts is not None:
-            resolved_mounts = self.mounts
+            if isinstance(self.script, SandboxScript):
+                resolved_mounts = normalize_mounts_list(self.mounts, allow_rw_mode=True)
+                keep_mounts = False
+            else:
+                resolved_mounts = self.mounts
         else:
             resolved_mounts = None if keep_mounts else []
 

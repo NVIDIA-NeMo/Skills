@@ -1055,6 +1055,45 @@ class TestMountsResolution:
         mounts = self._run_pipeline_and_capture_mounts(command_mounts=["/a:/b"], keep_mounts_attr=True)
         assert mounts == self.CLUSTER_MOUNTS + ["/a:/b"]
 
+    @patch("nemo_skills.pipeline.utils.scripts.server.sandbox_command", return_value=("echo sandbox", {}))
+    @patch("nemo_skills.pipeline.utils.scripts.server.get_free_port", return_value=12345)
+    def test_sandbox_script_mounts_override_keep_mounts_true(self, _mock_port, _mock_command):
+        """Explicit SandboxScript mounts are exact, even when keep_mounts=True."""
+        from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+        cluster_config = {
+            "executor": "local",
+            "containers": {"sandbox": "sandbox:latest"},
+            "mounts": self.CLUSTER_MOUNTS,
+        }
+        command_mounts = ["/host/data:/sandbox/data:ro"]
+        sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=True)
+        cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox", mounts=command_mounts)
+
+        _, exec_config = cmd.prepare_for_execution(cluster_config)
+
+        assert exec_config["mounts"] == command_mounts
+        assert exec_config["keep_mounts"] is False
+
+        pipeline = object.__new__(Pipeline)
+        pipeline.with_ray = False
+        hardware = HardwareConfig(num_gpus=0, num_nodes=1, num_tasks=1)
+        with patch("nemo_skills.pipeline.utils.declarative.get_executor") as mock_get_executor:
+            pipeline._create_executor(
+                cmd,
+                exec_config,
+                "sandbox:latest",
+                cluster_config,
+                "/tmp/logs",
+                hardware,
+                heterogeneous=False,
+                het_group=0,
+                total_het_groups=1,
+                overlap=True,
+            )
+
+        assert mock_get_executor.call_args.kwargs["mounts"] == command_mounts
+
     # ---- Bug rows: keep_mounts=False must isolate from cluster mounts ----
 
     def test_bug_row_1_mounts_none_keep_mounts_false_no_cluster_leak(self):

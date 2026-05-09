@@ -63,6 +63,7 @@ from nemo_skills.pipeline.utils.mounts import (
     get_mounts_from_config,
     get_unmounted_path,
     is_mounted_filepath,
+    normalize_mounts_list,
     resolve_mount_paths,
 )
 from nemo_skills.pipeline.utils.packager import (
