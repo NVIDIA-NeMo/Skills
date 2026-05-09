@@ -35,6 +35,8 @@ def create_judge_tasks(
     judge_server_gpus,
     judge_server_nodes,
     partition,
+    account,
+    judge_container,
     run_after,
     reuse_code_exp,
     reuse_code,
@@ -59,6 +61,8 @@ def create_judge_tasks(
         judge_server_gpus: Number of GPUs for judge
         judge_server_nodes: Number of nodes for judge
         partition: SLURM partition
+        account: SLURM account (unused, kept for interface compatibility)
+        judge_container: Container to use for the judge (unused, kept for interface compatibility)
         run_after: Dependencies to run after
         reuse_code_exp: Experiment to reuse code from
         reuse_code: Whether to reuse code
@@ -96,7 +100,9 @@ def create_judge_tasks(
         return []
 
     # Build command to run xCOMET-XXL judge script
-    script_args = [f"--output-dir {output_dir_path} --comet-model-path {comet_model_path}"]
+    script_args = [
+        f"--output-dir {output_dir_path} --comet-model-path {comet_model_path}",
+    ]
 
     if input_file is None:
         input_dir = judge_pipeline_args.get("input_dir")

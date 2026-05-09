@@ -61,6 +61,7 @@ models = {
     "azureopenai": AzureOpenAIModel,
     "gemini": GeminiModel,
     "vllm": VLLMModel,
+    "vllm_dp_ray": VLLMModel,
     "vllm_multimodal": VLLMMultimodalModel,
     "sglang": SGLangModel,
     "tts_nim": TTSNIMModel,

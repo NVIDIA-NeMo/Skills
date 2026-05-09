@@ -270,6 +270,7 @@ class ShellManager:
 
         exec_id = time.time_ns()
         with lock:
+            _need_restart = False
             # send execution request
             try:
                 conn.send({"cmd": "exec", "id": exec_id, "code": code, "traceback_verbosity": traceback_verbosity})
@@ -278,25 +279,26 @@ class ShellManager:
                 # clean up the shell process and connection - best-effort
                 self._cleanup_shell_resources(proc, conn)
 
-                # remove and restart a fresh shell for this id
+                # remove the old shell entry
                 with self.manager_lock:
                     self.shells.pop(shell_id, None)
-                self.start_shell(shell_id)
 
-                # Mark the new shell as having a restart pending so the caller can restore session state
-                with self.manager_lock:
-                    if shell_id in self.shells:
-                        self.shells[shell_id]["restart_pending"] = True
-
-                return {
+                _need_restart = True
+                _exc_msg = str(exc)
+                _restart_result = {
                     "status": "error",
-                    "msg": f"send failed: {exc}",
+                    "msg": f"send failed: {_exc_msg}",
                     "shell_was_created": shell_was_created,
                     "shell_was_restarted": True,
                     "shell_was_recently_restarted": shell_was_recently_restarted,
                 }
 
+            if _need_restart:
+                self._finish_restart(shell_id)
+                return _restart_result
+
             # wait for the result up to `timeout`
+            _need_restart = False
             if conn.poll(timeout):
                 try:
                     result = conn.recv()
@@ -313,20 +315,19 @@ class ShellManager:
                     # remove and restart a fresh shell for this id
                     with self.manager_lock:
                         self.shells.pop(shell_id, None)
-                    self.start_shell(shell_id)
 
-                    # Mark the new shell as having a restart pending
-                    with self.manager_lock:
-                        if shell_id in self.shells:
-                            self.shells[shell_id]["restart_pending"] = True
-
-                    return {
+                    _need_restart = True
+                    _restart_result = {
                         "status": "error",
                         "msg": "connection closed",
                         "shell_was_created": shell_was_created,
                         "shell_was_restarted": True,
                         "shell_was_recently_restarted": shell_was_recently_restarted,
                     }
+
+            if _need_restart:
+                self._finish_restart(shell_id)
+                return _restart_result
 
             # no reply yet -> try gentle interrupt (SIGINT)
             try:
@@ -340,6 +341,7 @@ class ShellManager:
                 pass
 
             # wait short grace period for the shell to handle the interrupt
+            _need_restart = False
             if conn.poll(grace):
                 try:
                     result = conn.recv()
@@ -355,14 +357,9 @@ class ShellManager:
                     # remove and restart a fresh shell for this id
                     with self.manager_lock:
                         self.shells.pop(shell_id, None)
-                    self.start_shell(shell_id)
 
-                    # Mark the new shell as having a restart pending
-                    with self.manager_lock:
-                        if shell_id in self.shells:
-                            self.shells[shell_id]["restart_pending"] = True
-
-                    return {
+                    _need_restart = True
+                    _restart_result = {
                         "status": "interrupted",
                         "msg": "connection closed after interrupt",
                         "shell_was_created": shell_was_created,
@@ -377,12 +374,7 @@ class ShellManager:
             # remove and restart a fresh shell for this id
             with self.manager_lock:
                 self.shells.pop(shell_id, None)
-            self.start_shell(shell_id)
-
-            # Mark the new shell as having a restart pending
-            with self.manager_lock:
-                if shell_id in self.shells:
-                    self.shells[shell_id]["restart_pending"] = True
+            self._finish_restart(shell_id)
 
             return {
                 "status": "timeout_killed",

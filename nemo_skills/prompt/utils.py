@@ -338,7 +338,7 @@ class Prompt:
                     if isinstance(user_content, list):
                         text_parts = [item["text"] for item in user_content if item.get("type") == "text"]
                         user_content = " ".join(text_parts)
-                    if hasattr(self.tokenizer, "bos_token"):
+                    if hasattr(self.tokenizer, "bos_token") and self.tokenizer.bos_token:
                         messages_string = self.tokenizer.bos_token + user_content
                     else:
                         messages_string = user_content

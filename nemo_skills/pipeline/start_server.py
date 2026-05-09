@@ -15,6 +15,7 @@ import logging
 import signal
 import subprocess
 import time
+from typing import List
 
 import typer
 from nemo_run import SSHTunnel
@@ -128,6 +129,7 @@ def launch_server(
     account=None,
     with_sandbox=False,
     keep_mounts_for_sandbox=False,
+    sandbox_mounts=None,
     server_port=None,
     sandbox_port=None,
     main_container=None,
@@ -184,6 +186,7 @@ def launch_server(
         server_config=server_config,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_mounts=sandbox_mounts,
         sandbox_port=sandbox_port,
         sandbox_container=sandbox_container,
         sbatch_kwargs=sbatch_kwargs,
@@ -231,6 +234,10 @@ def start_server(
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
     ),
     launch_chat_interface: bool = typer.Option(
         False, help="If True, will launch a gradio app that provides chat with the model"
@@ -285,6 +292,7 @@ def start_server(
         account=account,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_mounts=sandbox_mounts,
         server_port=server_port,
         sandbox_port=sandbox_port,
         main_container=main_container,

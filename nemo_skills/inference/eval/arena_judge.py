@@ -84,7 +84,7 @@ class ArenaJudgeTask(GenerationTask):
         if self.cfg.prompt_format == "openai":
             return None
 
-        # Load the default prompt (used for most categories including hard_prompt, arena-hard-v0.1, etc.)
+        # Load the default prompt (used for any category not explicitly mapped below, including hard_prompt)
         default_prompt = get_prompt(
             prompt_config=self.cfg.prompt_config,
             tokenizer=self.tokenizer,

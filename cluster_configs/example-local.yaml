@@ -15,9 +15,9 @@
 executor: local
 
 containers:
-  trtllm: nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc1
+  trtllm: nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8
   vllm: dockerfile:dockerfiles/Dockerfile.vllm
-  sglang: lmsysorg/sglang:v0.5.8
+  sglang: lmsysorg/sglang:v0.5.10.post1
   # dockerfile: for now can only specify relative to repo root
   megatron: dockerfile:dockerfiles/Dockerfile.megatron
   sandbox: dockerfile:dockerfiles/Dockerfile.sandbox
@@ -36,15 +36,6 @@ containers:
 #   - /home/<username>/workspace:/workspace
 #   you can also override container libraries by directly mounting over them. E.g. to override NeMo-RL do
 #   - <...>/NeMo-RL:/opt/NeMo-RL
-
-# optional: sandbox-specific mounts (independent of mounts above).
-# when defined, the sandbox container receives exactly these mounts instead of either all cluster
-# mounts (keep_mounts_for_sandbox=True) or no mounts (keep_mounts_for_sandbox=False, the default).
-# supports src:dst or src:dst:mode format, where mode must be ro or rw (e.g. src:dst:ro for read-only).
-# if absent, the existing keep_mounts_for_sandbox behaviour is used as fallback.
-# sandbox_mounts:
-#   - /mnt/datadrive/sandbox-data:/sandbox-data
-#   - /mnt/datadrive/readonly-data:/readonly-data:ro
 
 # define any environment variables. Note that HF_HOME is required by default and needs to be a mounted path!
 # env_vars:
