@@ -39,7 +39,6 @@ from nemo_skills.pipeline.utils.docker_images import resolve_container_image
 from nemo_skills.pipeline.utils.mounts import (
     check_remote_mount_directories,
     get_mounts_from_config,
-    get_sandbox_mounts_from_config,
     get_unmounted_path,
     is_mounted_filepath,
     normalize_mounts_list,
@@ -770,17 +769,6 @@ def add_task(
                     override = override[11:]
                 sandbox_env_updates["PYTHONPATH"] = override + ":/app"
 
-        # Determine sandbox mounts (in priority order):
-        #   sandbox_mounts in config (non-empty) -> use those exactly  (takes precedence over keep_mounts_for_sandbox)
-        #   keep_mounts_for_sandbox=True + no sandbox_mounts -> None  (inherit all cluster mounts, risky)
-        #   keep_mounts_for_sandbox=False + no sandbox_mounts -> []  (no filesystem access, safe default)
-        _sandbox_mounts = get_sandbox_mounts_from_config(cluster_config)
-        if _sandbox_mounts:
-            sandbox_exec_mounts = _sandbox_mounts
-        elif keep_mounts_for_sandbox:
-            sandbox_exec_mounts = None
-        else:
-            sandbox_exec_mounts = []
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
             if sandbox_mounts is not None:
@@ -913,17 +901,6 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
         mount_sources = [m.split(":")[0] for m in mounts]
 
         LOG.info("Checking mount paths: %s", mount_sources)
-        exit_if_failure = os.environ.get("NEMO_SKILLS_DISABLE_MOUNT_CHECK", "False").lower() not in (
-            "1",
-            "true",
-            "yes",
-        )
-        check_remote_mount_directories(mount_sources, cluster_config, exit_on_failure=exit_if_failure)
-
-    if "sandbox_mounts" in cluster_config:
-        sandbox_mounts = get_sandbox_mounts_from_config(cluster_config)
-        mount_sources = [m.split(":")[0] for m in sandbox_mounts]
-        LOG.info("Checking sandbox mount paths: %s", mount_sources)
         exit_if_failure = os.environ.get("NEMO_SKILLS_DISABLE_MOUNT_CHECK", "False").lower() not in (
             "1",
             "true",

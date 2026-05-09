@@ -296,11 +296,22 @@ class ToolCallingWrapper:
                     LOG.info("Sending tool calls: %s", tool_calls_output_messages)
                     conversation.extend(tool_calls_output_messages)
 
-                    if isinstance(tokens_to_generate, int):
-                        tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
-
                     result_steps["num_tool_calls"].append(len(tool_calls))
                     tool_calls_executed += len(tool_calls)
+
+                    final_answer_output = self._get_final_answer_output(
+                        tool_calls, tool_calls_output_messages, endpoint_type
+                    )
+                    if final_answer_output is not None:
+                        result_steps["generation"].append(final_answer_output)
+                        result_steps["finish_reason"].append(FINAL_ANSWER_TOOL_NAME)
+                        break
+
+                    if isinstance(tokens_to_generate, int):
+                        tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
+                        if tokens_to_generate <= 0:
+                            result_steps["finish_reason"].append("length")
+                            break
 
                     continue
 
@@ -350,6 +361,7 @@ class ToolCallingWrapper:
         try:
             while True:
                 if isinstance(tokens_to_generate, int) and tokens_to_generate <= 0:
+                    last_finish_reason = "length"
                     break
 
                 model_token_iterator = await self.model.generate_async(
@@ -432,9 +444,18 @@ class ToolCallingWrapper:
                     yield {"type": "tool_results", "results": tool_calls_output_messages}
 
                     conversation.extend(tool_calls_output_messages)
+                    total_tool_calls += len(tool_calls)
+
+                    final_answer_output = self._get_final_answer_output(
+                        tool_calls, tool_calls_output_messages, endpoint_type
+                    )
+                    if final_answer_output is not None:
+                        all_generations.append(final_answer_output)
+                        last_finish_reason = FINAL_ANSWER_TOOL_NAME
+                        break
+
                     if isinstance(tokens_to_generate, int):
                         tokens_to_generate -= self._count_tool_response_tokens(tool_calls_output_messages)
-                    total_tool_calls += len(tool_calls)
                     continue
 
                 break

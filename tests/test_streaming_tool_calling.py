@@ -120,6 +120,50 @@ def test_generate_async_duplicates_reasoning_key_in_conversation():
     assert assistant_message["reasoning"] == "internal trace"
 
 
+def test_generate_async_final_answer_tool_stops_loop():
+    """Calling final_answer uses the tool output as the generation and stops."""
+    wrapper = _make_wrapper()
+    tool_call = MagicMock()
+    tool_call.model_dump.return_value = {
+        "id": "call_final",
+        "type": "function",
+        "function": {"name": "final_answer", "arguments": '{"answer": "done"}'},
+    }
+    wrapper.model.generate_async = AsyncMock(
+        return_value={
+            "generation": "",
+            "num_generated_tokens": 3,
+            "finish_reason": "tool_calls",
+            "serialized_output": [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [tool_call.model_dump.return_value],
+                }
+            ],
+            "tool_calls": [tool_call],
+        }
+    )
+
+    async def mock_execute_tool_calls(tool_calls, request_id, endpoint_type):
+        return [{"role": "tool", "tool_call_id": "call_final", "content": "done"}]
+
+    wrapper._execute_tool_calls = mock_execute_tool_calls
+
+    with _PATCH_TOOLS:
+        result = asyncio.run(
+            wrapper.generate_async(
+                prompt=[{"role": "user", "content": "finish"}],
+                endpoint_type=EndpointType.chat,
+            )
+        )
+
+    assert result["generation"] == "done"
+    assert result["num_tool_calls"] == 1
+    assert result["finish_reason"][-1] == "final_answer"
+    wrapper.model.generate_async.assert_awaited_once()
+
+
 def test_stream_final_conversation_duplicates_reasoning_key():
     """Streaming conversation entries mirror reasoning_content to reasoning."""
     wrapper = _make_wrapper()

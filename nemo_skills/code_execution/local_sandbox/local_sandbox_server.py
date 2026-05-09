@@ -212,6 +212,20 @@ class ShellManager:
         proc.terminate()
         proc.join(timeout=2.0)
 
+    def _finish_restart(self, shell_id):
+        """Start a fresh shell and mark it as needing session restore.
+
+        IMPORTANT: Must be called OUTSIDE except handlers. start_shell() uses
+        multiprocessing.Process.start() → os.fork(). A child forked inside an
+        except block inherits sys.exc_info() from the parent, causing Python's
+        implicit exception chaining to attach the parent's exception context to
+        every subsequent exception in the child process.
+        """
+        self.start_shell(shell_id)
+        with self.manager_lock:
+            if shell_id in self.shells:
+                self.shells[shell_id]["restart_pending"] = True
+
     def _cleanup_shell_resources(self, proc, conn):
         # Best-effort teardown for the current shell process and pipe.
         try:
@@ -312,7 +326,7 @@ class ShellManager:
                     # clean up the shell process and connection - best-effort
                     self._cleanup_shell_resources(proc, conn)
 
-                    # remove and restart a fresh shell for this id
+                    # remove the old shell entry
                     with self.manager_lock:
                         self.shells.pop(shell_id, None)
 
@@ -354,7 +368,7 @@ class ShellManager:
                     # clean up the shell process and connection - best-effort
                     self._cleanup_shell_resources(proc, conn)
 
-                    # remove and restart a fresh shell for this id
+                    # remove the old shell entry
                     with self.manager_lock:
                         self.shells.pop(shell_id, None)
 
@@ -366,6 +380,10 @@ class ShellManager:
                         "shell_was_restarted": True,
                         "shell_was_recently_restarted": shell_was_recently_restarted,
                     }
+
+            if _need_restart:
+                self._finish_restart(shell_id)
+                return _restart_result
 
             # still stuck -> terminate the shell and restart it (drop memory)
             # clean up the shell process and connection - best-effort
