@@ -269,6 +269,8 @@ def _collect_st_records(
                     subset_for_metrics=tag,
                     task_type="AST",
                     extra_fields=extra,
+                    source=source_row["raw_transcription"],
+                    reference=target_row["raw_transcription"],
                 )
             )
     return records

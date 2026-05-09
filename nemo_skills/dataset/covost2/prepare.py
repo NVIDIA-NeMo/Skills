@@ -265,6 +265,8 @@ def _collect_st_records(
                         "src_lang": src_lang,
                         "tgt_lang": tgt_lang,
                     },
+                    source=item["sentence"],
+                    reference=item["translation"],
                 )
             )
     return records
