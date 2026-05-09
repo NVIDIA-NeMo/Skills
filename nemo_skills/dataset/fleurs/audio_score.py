@@ -26,7 +26,7 @@ def compute_score(combined_metrics: dict) -> dict:
     if not benchmarks:
         return {}
 
-    weighted_metrics = ["wer", "wer_macro", "cer", "bleu", "comet"]
+    weighted_metrics = ["wer", "wer_macro", "bleu", "comet"]
     summed_metrics = ["substitutions", "insertions", "deletions", "ref_words"]
 
     first_benchmark = next(iter(benchmarks.values()))
