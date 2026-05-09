@@ -14,7 +14,7 @@
 
 
 def compute_score(combined_metrics: dict) -> dict:
-    """Aggregate metrics from the FLEURS asr and st sub-benchmarks.
+    """Aggregate metrics from audio benchmark groups with asr and st sub-benchmarks.
 
     Computes weighted averages (by num_entries) of per-task metrics; metrics
     that only one sub-benchmark emits (e.g. wer for asr, bleu for st) are

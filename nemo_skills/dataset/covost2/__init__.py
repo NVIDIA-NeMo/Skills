@@ -14,7 +14,7 @@
 
 REQUIRES_DATA_DIR = True
 IS_BENCHMARK_GROUP = True
-SCORE_MODULE = "nemo_skills.dataset.covost2.covost2_score"
+SCORE_MODULE = "nemo_skills.dataset.fleurs.audio_score"
 
 BENCHMARKS = {
     "covost2.asr": {},
