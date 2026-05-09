@@ -16,7 +16,3 @@
 METRICS_TYPE = "translation"
 GENERATION_ARGS = "++prompt_config=multilingual/segment-translation"
 EVAL_SPLIT = "devtest"
-JUDGE_PIPELINE_ARGS = {
-    "source_key": "text",
-    "reference_key": "translation",
-}

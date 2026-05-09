@@ -66,6 +66,22 @@ pipeline = { file = ["requirements/pipeline.txt"] }
 # Dev: development and testing tools
 dev = { file = ["requirements/common-tests.txt", "requirements/common-dev.txt"] }
 
+[tool.uv]
+# Force resolver-wide overrides to break dependency conflicts that come from
+# transitive pins we can't easily change upstream. These are honored by `uv`
+# (uv pip / uv sync) but ignored by plain pip — Dockerfiles using plain pip
+# rely on pip's looser resolver instead.
+override-dependencies = [
+    # leptonai (pulled in by nemo_run) hard-pins httpx[http2]==0.27.2, which
+    # conflicts with litellm==1.83.14's httpx==0.28.1. Relax the pin so the
+    # resolver can pick a single version that satisfies litellm.
+    "httpx[http2]>=0.28.1",
+    # urllib3<2 has open CVEs (e.g. CVE-2024-37891 / CVE-2025-50182). torchx
+    # 0.7.0 (a transitive dep of nemo_run) pins urllib3<1.27, but in practice
+    # urllib3>=2 works at runtime, so override the constraint.
+    "urllib3>=2.6.3",
+]
+
 [tool.pytest.ini_options]
 markers = [
     "gpu: tests that require a GPU to run",

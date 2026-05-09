@@ -15,12 +15,14 @@
 """Script classes for NeMo-Skills pipeline components."""
 
 from nemo_skills.pipeline.utils.scripts.base import BaseJobScript
+from nemo_skills.pipeline.utils.scripts.eval import EvalClientScript
 from nemo_skills.pipeline.utils.scripts.generation import GenerationClientScript
 from nemo_skills.pipeline.utils.scripts.nemo_gym import NemoGymRolloutsScript
 from nemo_skills.pipeline.utils.scripts.server import SandboxScript, ServerScript
 
 __all__ = [
     "BaseJobScript",
+    "EvalClientScript",
     "GenerationClientScript",
     "NemoGymRolloutsScript",
     "SandboxScript",

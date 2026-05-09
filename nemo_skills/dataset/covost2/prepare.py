@@ -173,9 +173,11 @@ def _build_record(
     subset_for_metrics: str,
     task_type: str,
     extra_fields: dict,
+    source: str | None = None,
+    reference: str | None = None,
 ) -> dict:
     audio_metadata = {"path": container_audio_path, "duration": duration}
-    return {
+    record = {
         "expected_answer": expected_answer,
         "audio_path": container_audio_path,
         "duration": duration,
@@ -187,6 +189,11 @@ def _build_record(
         "task_type": f"Multilingual-{task_type.upper()}",
         "extra_fields": extra_fields,
     }
+    if source is not None:
+        record["source"] = source
+    if reference is not None:
+        record["reference"] = reference
+    return record
 
 
 def _collect_asr_records(
