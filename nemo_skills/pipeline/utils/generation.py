@@ -625,8 +625,10 @@ def configure_client(
         }
         if server_container:
             server_config["container"] = server_container
+        # Use SLURM_MASTER_NODE for multi-node, localhost for single-node.
+        server_host = "$SLURM_MASTER_NODE" if server_nodes > 1 else "127.0.0.1"
         extra_arguments = (
-            f"++server.host=127.0.0.1 ++server.port={server_port} ++server.model={model} {extra_arguments}"
+            f"{extra_arguments} ++server.host={server_host} ++server.port={server_port} ++server.model={model} "
         )
     else:  # model is hosted elsewhere
         server_config = None
