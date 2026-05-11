@@ -46,6 +46,12 @@ class SingleNodeMode(str, enum.Enum):
     parallel = "parallel"
 
 
+def _resolve_child_sbatch_kwargs(sbatch_kwargs, child_sbatch_kwargs):
+    if child_sbatch_kwargs is None:
+        return sbatch_kwargs
+    return parse_kwargs(child_sbatch_kwargs)
+
+
 def _create_llm_judge_tasks(
     ctx,
     expname,
@@ -327,6 +333,16 @@ def eval(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
+    judge_sbatch_kwargs: str = typer.Option(
+        None,
+        help="Additional sbatch kwargs for judge tasks. Defaults to sbatch_kwargs when unset. "
+        "Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
+    summarize_sbatch_kwargs: str = typer.Option(
+        None,
+        help="Additional sbatch kwargs for summarize-results tasks. Defaults to sbatch_kwargs when unset. "
+        "Values should be provided as a JSON string or as a `dict` if invoking from code.",
+    ),
     extra_benchmark_map: str = typer.Option(
         None,
         help="Path to a JSON file mapping benchmark short names to directory paths. "
@@ -464,6 +480,8 @@ def eval(
     )
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+    judge_sbatch_kwargs = _resolve_child_sbatch_kwargs(sbatch_kwargs, judge_sbatch_kwargs)
+    summarize_sbatch_kwargs = _resolve_child_sbatch_kwargs(sbatch_kwargs, summarize_sbatch_kwargs)
 
     has_tasks = False
     job_id_to_tasks = {}
@@ -613,6 +631,7 @@ def eval(
                     commands=group0_components,
                     hardware=HardwareConfig(
                         partition=partition,
+                        account=account,
                         num_gpus=group_gpus,
                         num_nodes=group_nodes,
                         num_tasks=group_tasks,
@@ -640,6 +659,7 @@ def eval(
                         ],
                         hardware=HardwareConfig(
                             partition=partition,
+                            account=account,
                             num_gpus=int(server_gpus_list[model_idx]),
                             num_nodes=int(server_nodes_list[model_idx]),
                             num_tasks=int(srv.num_tasks),
@@ -753,7 +773,7 @@ def eval(
                     _task_dependencies=_task_dependencies,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
+                    sbatch_kwargs=judge_sbatch_kwargs,
                 )
             else:
                 # Use default LLM judge pipeline
@@ -783,7 +803,7 @@ def eval(
                     reuse_code=reuse_code,
                     exclusive=exclusive,
                     installation_command=installation_command,
-                    sbatch_kwargs=sbatch_kwargs,
+                    sbatch_kwargs=judge_sbatch_kwargs,
                     exp=exp,
                     cluster_config=cluster_config,
                     dependent_tasks=dependent_tasks,
@@ -850,12 +870,13 @@ def eval(
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
+                    account=account,
                     task_dependencies=(
                         dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
                     ),
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
+                    sbatch_kwargs=summarize_sbatch_kwargs,
                 )
                 all_tasks.append(summarize_task)
                 if benchmark_args.benchmark_group:
@@ -884,12 +905,13 @@ def eval(
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
+                    account=account,
                     task_dependencies=(
                         group_tasks[group] if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
                     ),
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
-                    sbatch_kwargs=sbatch_kwargs,
+                    sbatch_kwargs=summarize_sbatch_kwargs,
                 )
                 all_tasks.append(score_task)
 
