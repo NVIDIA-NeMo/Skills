@@ -46,7 +46,12 @@ def load_comet_model(model_path: str):
     return model
 
 
-def process_file(input_file: Path, output_file: Path, comet_model, batch_size: int = 16):
+def process_file(
+    input_file: Path,
+    output_file: Path,
+    comet_model,
+    batch_size: int = 16,
+):
     """Copy input file to output location and run xCOMET-XXL evaluation."""
     LOG.info(f"Processing {input_file} -> {output_file}")
 
@@ -69,8 +74,13 @@ def process_file(input_file: Path, output_file: Path, comet_model, batch_size: i
     comet_list = []
     for sample in data:
         try:
-            comet_dict = {"src": sample["text"], "mt": sample["generation"], "gt": sample["translation"]}
-            comet_list.append(comet_dict)
+            comet_list.append(
+                {
+                    "src": sample["source"],
+                    "mt": sample["generation"],
+                    "ref": sample["reference"],
+                }
+            )
         except KeyError as e:
             LOG.error(f"Sample missing required field {e}: {sample}")
             raise ValueError(f"Sample missing required field: {e}")
@@ -155,7 +165,12 @@ def main():
     # Process all files
     LOG.info(f"Processing {len(files_to_process)} file(s)")
     for input_file, output_file in files_to_process:
-        process_file(input_file, output_file, comet_model, args.batch_size)
+        process_file(
+            input_file,
+            output_file,
+            comet_model,
+            args.batch_size,
+        )
 
     LOG.info("All files processed successfully")
 

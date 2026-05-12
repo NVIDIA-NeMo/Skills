@@ -23,9 +23,11 @@ from dateutil.relativedelta import relativedelta
 
 
 class PromptConstants:
-    # reference: https://github.com/LiveCodeBench/LiveCodeBench/blob/main/lcb_runner/prompts/code_generation.py#L35C5-L38C1
-    FORMATTING_MESSAGE_WITH_STARTER_CODE = "You will use the following starter code to write the solution to the problem and enclose your code within delimiters."
-    FORMATTING_WITHOUT_STARTER_CODE = "Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the python program runs, it reads the inputs, runs the algorithm and writes output to STDOUT."
+    # reference: https://huggingface.co/nvidia/Nemotron-Cascade-8B/blob/main/evaluation/data/benchmark.py#L1166
+    FORMATTING_WITHOUT_STARTER_CODE = """Write Python code to solve the problem. Please place the solution code in the following format:\n```python\n# Your solution code here\n```"""
+    FORMATTING_MESSAGE_WITH_STARTER_CODE = (
+        """Please place the solution code in the following format:\n```python\n# Your solution code here\n```"""
+    )
 
 
 def parse_data(release_version="release_latest"):
@@ -74,11 +76,17 @@ def parse_month_range(start_date, end_date):
 def clean_data(dataset, keep_all_columns=False):
     def map_fn(data):
         if data["starter_code"]:
+            data["starter_code"] = (
+                "\n\n"
+                + "Solve the problem starting with the provided function header.\n\nFunction header:\n"
+                + "```\n"
+                + data["starter_code"]
+                + "\n```"
+            )
             data["formatting_message"] = PromptConstants.FORMATTING_MESSAGE_WITH_STARTER_CODE
-            data["starter_code"] = f"```python\n{data['starter_code']}\n```"
         else:
+            data["starter_code"] = ""
             data["formatting_message"] = PromptConstants.FORMATTING_WITHOUT_STARTER_CODE
-            data["starter_code"] = "```python\n# YOUR CODE HERE\n```"
 
         data["task_id"] = data["question_id"]
         return data

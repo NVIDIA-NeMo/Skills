@@ -108,3 +108,15 @@ The results, including per-category scores, are stored in metrics.json. Detailed
 ```
 ns summarize_results --cluster=<cluster_config> <folder_of_output_json>
 ```
+
+### longbench-v2
+
+- Benchmark is defined in [`nemo_skills/dataset/longbench-v2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/longbench-v2/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/zai-org/LongBench-v2).
+- We don't directly follow [original evaluation paradigm](https://github.com/THUDM/LongBench/blob/main/pred.py#L101-L104) that first outputs Chain-of-Thought based on long-context texts and then generates answers based on thoughts without long-context texts. We unify two stages into one stage to give model flexibility to generate thoughts and finalize answers.
+
+
+### longcodebench
+- Benchmark is defined in [`nemo_skills/dataset/longcodebench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/longcodebench/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/Steefano/LCB).
+- We only evaluate CodeQA with multi-choice questions.

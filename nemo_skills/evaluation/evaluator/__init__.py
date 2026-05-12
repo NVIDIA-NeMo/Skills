@@ -51,9 +51,11 @@ _EVALUATOR_CLASS_MAP_PATHS = {
     "code_exec": "nemo_skills.evaluation.evaluator.code:CodeExecEvaluator",
     "ioi": "nemo_skills.evaluation.evaluator.ioi:IOIEvaluator",
     "icpc": "nemo_skills.evaluation.evaluator.icpc:ICPCEvaluator",
+    "ccc": "nemo_skills.evaluation.evaluator.ccc:CCCEvaluator",
     "audio": "nemo_skills.evaluation.evaluator.audio:AudioEvaluator",
     "bird": "nemo_skills.evaluation.evaluator.bird:BirdEvaluator",
     "compute-eval": "nemo_skills.evaluation.evaluator.compute_eval:ComputeEvalEvaluator",
+    "contextasr": "nemo_skills.evaluation.evaluator.contextasr:ContextASREvaluator",
     "critpt": "nemo_skills.evaluation.evaluator.critpt:CritPtEvaluator",
     "dsbench": "nemo_skills.evaluation.evaluator.dsbench:DSBenchEvaluator",
 }

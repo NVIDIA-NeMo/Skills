@@ -127,6 +127,95 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
 }
 ```
 
+### HotpotQA
+
+[HotpotQA](https://hotpotqa.github.io/) is a multi-hop question-answering benchmark that requires reasoning over multiple Wikipedia paragraphs. Two variants are supported:
+
+| Variant | Slug | Description |
+|:---|:---|:---|
+| **Distractor** | `hotpotqa` | Model receives the question plus 10 context paragraphs (2 gold + 8 distractors) and must return the answer **and** identify supporting-fact sentences. |
+| **Closed-book** | `hotpotqa_closedbook` | Same questions, no context provided — tests the model's parametric knowledge. |
+
+- Benchmark definitions: [`nemo_skills/dataset/hotpotqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa/__init__.py) and [`nemo_skills/dataset/hotpotqa_closedbook/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa_closedbook/__init__.py)
+- Original benchmark source is the [HotpotQA repository](https://github.com/hotpotqa/hotpot).
+- Uses 7,405 distractor-setting validation examples. Both variants share the same data; preparation is unified in [`nemo_skills/dataset/hotpotqa/prepare_utils.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hotpotqa/prepare_utils.py). The closed-book variant copies the prepared file from the distractor dataset (no separate download).
+- Metrics follow the [official evaluation script](https://github.com/hotpotqa/hotpot/blob/master/hotpot_evaluate_v1.py): Answer EM/F1, Supporting-facts EM/F1, Joint EM/F1, plus alternative-aware substring matching.
+- Both unfiltered and filtered (excluding unreliable questions) metrics are reported automatically.
+
+#### Data Preparation
+
+Prepare the distractor validation set (single source of truth), then the closed-book variant (copies from it):
+
+```bash
+ns prepare_data hotpotqa
+ns prepare_data hotpotqa_closedbook
+```
+
+You can also run `ns prepare_data hotpotqa_closedbook` alone; it will run the shared preparation for `hotpotqa` first if that data is not yet present, then copy it.
+
+#### Running the Evaluation
+
+Distractor evaluation (with context and supporting-fact scoring). Use `hotpotqa:4` for 4 seeds (produces the example results below):
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --server_type=vllm \
+    --server_gpus=8 \
+    --benchmarks=hotpotqa:4 \
+    --output_dir=<OUTPUT_DIR> \
+    --server_args="--max-model-len 32768" \
+    ++inference.temperature=1.0 \
+    ++inference.top_p=1.0 \
+    ++inference.tokens_to_generate=16384
+```
+
+Closed-book evaluation (no context). Use `hotpotqa_closedbook:4` for 4 seeds (produces the example results below):
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --server_type=vllm \
+    --server_gpus=8 \
+    --benchmarks=hotpotqa_closedbook:4 \
+    --output_dir=<OUTPUT_DIR> \
+    --server_args="--max-model-len 32768" \
+    ++inference.temperature=1.0 \
+    ++inference.top_p=1.0 \
+    ++inference.tokens_to_generate=16384
+```
+
+#### Verifying Results
+
+After all jobs are complete, check the results in `<OUTPUT_DIR>/eval-results/hotpotqa/metrics.json`.
+The results table is printed to stdout and captured in the summarize-results srun log.
+
+Example distractor results (Nemotron-3-Nano, `hotpotqa:4`):
+
+```text
+----------------------------------------------------------------------------- hotpotqa -----------------------------------------------------------------------------
+evaluation_mode           | num_entries | answer_em    | answer_f1    | sp_em        | sp_f1        | joint_em     | joint_f1     | is_correct   | is_correct_strict
+pass@1[avg-of-4]          | 7405        | 62.92 ± 0.25 | 78.15 ± 0.16 | 21.52 ± 0.12 | 60.75 ± 0.21 | 15.45 ± 0.14 | 49.52 ± 0.15 | 73.35 ± 0.22 | 71.68 ± 0.26
+pass@4                    | 7405        | 70.28        | 83.86        | 35.29        | 74.41        | 25.75        | 62.69        | 79.23        | 77.92
+filtered_pass@1[avg-of-4] | 6057        | 67.71        | 79.30        | 22.09        | 60.95        | 17.01        | 50.56        | 78.79        | 77.12
+filtered_pass@4           | 6057        | 74.95        | 85.10        | 35.86        | 74.55        | 27.92        | 63.88        | 84.27        | 83.11
+```
+
+Example closed-book results (Nemotron-3-Nano, `hotpotqa_closedbook:4`):
+
+```text
+----------------------------------------- hotpotqa_closedbook ------------------------------------------
+evaluation_mode           | num_entries | answer_em    | answer_f1    | is_correct   | is_correct_strict
+pass@1[avg-of-4]          | 7405        | 29.05 ± 0.15 | 39.35 ± 0.18 | 33.14 ± 0.32 | 32.36 ± 0.28
+pass@4                    | 7405        | 37.91        | 50.40        | 42.50        | 41.30
+filtered_pass@1[avg-of-4] | 6057        | 31.85        | 39.57        | 36.48        | 35.60
+filtered_pass@4           | 6057        | 41.59        | 51.01        | 46.77        | 45.44
+```
+
+The closed-book variant reports answer-level metrics only (no supporting-fact or joint metrics).
+
 ### AA-Omniscience
 
 This is a benchmark developed by AA to measure hallucinations in LLMs and penalize confidently-false answers.

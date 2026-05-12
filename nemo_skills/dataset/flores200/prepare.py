@@ -25,10 +25,10 @@ def write_data_to_file(output_file, datasets, src_languages, tgt_languages):
         for src_lang in src_languages:
             for tgt_lang in tgt_languages:
                 if src_lang != tgt_lang:
-                    for src, tgt in zip(datasets[src_lang], datasets[tgt_lang], strict=True):
+                    for src, ref in zip(datasets[src_lang], datasets[tgt_lang], strict=True):
                         json_dict = {
-                            "text": src,
-                            "translation": tgt,
+                            "source": src,
+                            "reference": ref,
                             "source_language": src_lang,
                             "target_language": tgt_lang,
                             "source_lang_name": Language(src_lang).display_name(),
