@@ -119,9 +119,10 @@ def nemo_gym_rollouts(
         "cluster_config['containers']['nemo-gym'] when present, otherwise falls back to "
         "cluster_config['containers']['nemo-rl'].",
     ),
-    gym_path: str = typer.Option(
-        "/opt/NeMo-RL/3rdparty/Gym-workspace/Gym",
-        help="Path to NeMo Gym installation. Defaults to container built-in. Use for mounted/custom Gym.",
+    gym_path: str | None = typer.Option(
+        None,
+        help="Path to NeMo Gym installation. If omitted, resolves from importable nemo_gym package "
+        "(e.g. packaged /nemo_run/code) and falls back to the container built-in path.",
     ),
     policy_api_key: str = typer.Option(
         "dummy",
