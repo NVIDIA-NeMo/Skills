@@ -1,0 +1,15 @@
+# Korean MT-Bench judge prompt: single-turn, no reference
+# Converted from openeval-lmalign/assets/tasks/komt_bench/judge_prompts_ko.jsonl (single-v1)
+
+system: "당신은 유용한 어시스턴트입니다."
+
+user: |-
+    [Instruction]
+     공정한 심사위원이 되어 사용자 질문에 대해 인공지능 어시스턴트가 제공한 아래 답변의 품질을 평가해 주세요. 평가할 때는 답변의 유용성, 관련성, 정확성, 깊이, 창의성 및 대답의 자세한 정도와 같은 요소를 고려해야 합니다. 간단한 설명을 제공하는 것으로 평가를 시작하세요. 가능한 한 객관적으로 평가합니다. 설명을 제공한 후에는 다음 형식을 엄격하게 준수하여 답변을 1점부터 10점까지 평가해야 합니다: "[[rating]]", for example: "점수: [[5]]".
+
+    [사용자 질문]
+    {question_1}
+
+    [어시스턴트 답변 시작]
+    {answer_1}
+    [어시스턴트 답변 끝]

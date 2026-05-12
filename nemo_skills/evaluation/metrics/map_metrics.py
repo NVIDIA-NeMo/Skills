@@ -42,6 +42,7 @@ from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 from nemo_skills.evaluation.metrics.mcq_multilingual_metrics import MCQMultilingualMetrics
 from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
+from nemo_skills.evaluation.metrics.mt_bench_metrics import MTBenchMetrics
 from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.physics_metrics import PhysicsMetrics
 from nemo_skills.evaluation.metrics.ruler2_metrics import Ruler2Metrics
@@ -101,6 +102,7 @@ METRICS_MAP = {
     "hotpotqa": HotpotQAMetrics,
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
     "weighted-math": WeightedMathMetrics,
+    "mt_bench": MTBenchMetrics,
 }
 
 
