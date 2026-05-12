@@ -12,6 +12,27 @@ Once prepared, the `ns eval` command will run on all languages prepared, and the
 - Benchmark is defined in [`nemo_skills/dataset/mmlu-prox/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/li-lab/MMLU-ProX).
 
+```bash
+ns prepare_data mmlu-prox --languages <lang1> <lang2> ...
+```
+
+Few-shot evaluation is disabled by default. To enable 5-shot, add the `examples_type` override to
+`GENERATION_ARGS` in
+[`nemo_skills/dataset/mmlu-prox/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py):
+
+```python
+GENERATION_ARGS = "++prompt_config=multilingual/mmlu-prox ++eval_type=multichoice ++examples_type=\\'{examples_type}\\'"
+```
+
+Alternatively, pass the override on the command line (note the extra escaping):
+
+```bash
+"++examples_type=\\\\\\\"{examples_type}\\\\\\\""
+```
+
+In both cases, the quotes around `{examples_type}` are required so that the value
+(e.g. `mmlu_prox_few_shot_de`) is passed as a quoted string through the Hydra override layer.
+
 Our evaluation template and answer extraction mechanism tries to match the configration in [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks/mmlu_prox).
 Some reference numbers for reference and commands for reproduction:
 

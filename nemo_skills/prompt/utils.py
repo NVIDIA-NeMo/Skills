@@ -154,7 +154,7 @@ class Prompt:
     def build_examples_dict(self, input_dict):
         if self.config.few_shot_examples.examples_type:
             key = self.config.few_shot_examples.examples_type.format(**input_dict)
-            if key is None or key == "None" or key == "":
+            if key in (None, "", "None"):
                 return []
             return examples_map[key]
 

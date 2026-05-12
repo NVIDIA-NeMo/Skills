@@ -16,7 +16,7 @@
 
 import importlib.util
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from datasets import load_dataset
 
@@ -34,7 +34,7 @@ _lang_libs_cache = [None]  # [0] = (lang_libs, lang_subjects)
 _validation_examples_cache = {}
 
 
-def _format_validation_row_to_few_shot(entry, language, lang_libs) -> dict:
+def _format_validation_row_to_few_shot(entry: Dict[str, Any], language: str, lang_libs: Dict[str, Any]) -> dict:
     """Format a single MMLU-ProX validation row to {problem, solution, topic} for the few-shot template.
 
     Matches lm-evaluation-harness format_cot_example(): problem is [0] + question + [1] + options;
@@ -68,9 +68,8 @@ def _format_validation_row_to_few_shot(entry, language, lang_libs) -> dict:
 def load_mmlu_prox_validation_few_shot(
     language: str,
     n: int = 5,
-    *,
-    lang_libs=None,
-    lang_subjects=None,
+    lang_libs: Optional[Dict[str, Any]] = None,
+    lang_subjects: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """
     Load the first n examples from the MMLU-ProX validation split for the given language.

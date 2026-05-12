@@ -25,7 +25,7 @@ from tqdm import tqdm
 LANG_LIBS_URL = "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/refs/heads/main/lm_eval/tasks/mmlu_prox/lang_libs.py"
 
 
-def download_and_parse_lang_libs():
+def download_and_parse_lang_libs() -> tuple[dict, dict]:
     """Download lang_libs.py from GitHub (if not cached) and import it as a module."""
     # Cache the file in the same directory as this script
     cache_dir = Path(__file__).absolute().parent
@@ -81,7 +81,7 @@ def download_and_parse_lang_libs():
             Path(lang_libs_path).unlink(missing_ok=True)
 
 
-def format_entry(entry, language, lang_libs, lang_subjects):
+def format_entry(entry: dict, language: str, lang_libs: dict, lang_subjects: dict) -> dict:
     category = entry["category"].replace(" ", "_")  # Fix computer science category
 
     entry["options"] = []
@@ -121,7 +121,9 @@ def format_entry(entry, language, lang_libs, lang_subjects):
     }
 
 
-def write_data_to_file(output_file, datasets, languages, lang_libs, lang_subjects):
+def write_data_to_file(
+    output_file: Path, datasets: list, languages: list[str], lang_libs: dict, lang_subjects: dict
+) -> None:
     with open(output_file, "wt", encoding="utf-8") as fout:
         for idx, dataset in enumerate(datasets):
             for entry in tqdm(dataset, desc=f"Writing {output_file.name}"):

@@ -18,7 +18,9 @@ of li-lab/MMLU-ProX per language (first n examples). Keys: mmlu_prox_few_shot_{l
 """
 
 import importlib.util
+import types
 from pathlib import Path
+from typing import Any, Iterator, List
 
 # Number of validation examples to use per language (change here if needed)
 DEFAULT_N = 5
@@ -26,7 +28,7 @@ DEFAULT_N = 5
 _loader_module = None
 
 
-def _get_loader():
+def _get_loader() -> types.ModuleType:
     global _loader_module
     if _loader_module is None:
         loader_path = Path(__file__).resolve().parent.parent.parent / "dataset" / "mmlu-prox" / "few_shot_loader.py"
@@ -44,29 +46,25 @@ class _MMLUProXExamplesMap:
     validation examples from li-lab/MMLU-ProX. No static keys; used via ChainMap in __init__.py.
     """
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> List[dict]:
         if not key.startswith("mmlu_prox_few_shot_"):
             raise KeyError(key)
         language = key.replace("mmlu_prox_few_shot_", "", 1)
         return _get_loader().load_mmlu_prox_validation_few_shot(language, n=DEFAULT_N)
 
-    def __contains__(self, key):
-        return key.startswith("mmlu_prox_few_shot_")
+    def __contains__(self, key: Any) -> bool:
+        return isinstance(key, str) and key.startswith("mmlu_prox_few_shot_")
 
-    def __iter__(self):
-        # No static keys — this map resolves keys on demand at lookup time.
+    def __iter__(self) -> Iterator:
         return iter(())
 
-    def keys(self):
-        # No static keys — this map resolves keys on demand at lookup time.
+    def keys(self) -> Iterator:
         return iter(())
 
-    def items(self):
-        # No static items — this map resolves keys on demand at lookup time.
+    def items(self) -> Iterator:
         return iter(())
 
-    def __len__(self):
-        # Reported as 0 so this map is invisible to static deduplication checks.
+    def __len__(self) -> int:
         return 0
 
 
