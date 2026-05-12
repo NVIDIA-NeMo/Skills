@@ -156,7 +156,7 @@ def copy_audio_file(src_wav: Path, audio_dir: Path, src_lang: str, split: str) -
     return dest
 
 
-def get_ast_instruction(target_lang: str) -> str:
+def get_st_instruction(target_lang: str) -> str:
     tgt_lang_name = LANG_TO_NAME[target_lang]
     return f"Please translate the given speech to {tgt_lang_name}."
 
@@ -196,91 +196,121 @@ def _build_record(
     return record
 
 
+def _collect_asr_records(
+    languages: list[str],
+    audio_dir: Path,
+    cv_data_dir: Path,
+    sentences: dict,
+    split: str,
+) -> list[dict]:
+    records: list[dict] = []
+    for src_lang in languages:
+        audio_split_dir = cv_data_dir / src_lang / split
+        wav_files = sorted(audio_split_dir.glob("*.wav"))
+        for wav_file in tqdm(wav_files, desc=f"asr:{src_lang}"):
+            sentence = sentences[(wav_file.name, split, src_lang)]
+            duration = get_audio_duration(str(wav_file))
+            copy_audio_file(wav_file, audio_dir, src_lang, split)
+            cpath = get_container_audio_path(src_lang, split, wav_file.stem)
+            records.append(
+                _build_record(
+                    expected_answer=sentence,
+                    instruction=get_asr_instruction(),
+                    container_audio_path=cpath,
+                    duration=duration,
+                    subset_for_metrics=src_lang,
+                    task_type="ASR",
+                    extra_fields={
+                        "src_text": sentence,
+                        "src_lang_name": LANG_TO_NAME[src_lang],
+                        "src_lang": src_lang,
+                        "use_cer": src_lang in CER_LOCALES,
+                    },
+                )
+            )
+    return records
+
+
+def _collect_st_records(
+    languages: list[str],
+    audio_dir: Path,
+    cv_data_dir: Path,
+    local_dir: Path,
+    sentences: dict,
+    split: str,
+) -> list[dict]:
+    lang_set = set(languages)
+    pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
+    records: list[dict] = []
+    for src_lang, tgt_lang in pairs:
+        tag = f"{src_lang}->{tgt_lang}"
+        dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
+        for item in tqdm(dataset, desc=f"st:{tag}"):
+            duration = get_audio_duration(item["audio_file"])
+            copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
+            cpath = get_container_audio_path(src_lang, split, item["id"])
+            records.append(
+                _build_record(
+                    expected_answer=item["translation"],
+                    instruction=get_st_instruction(tgt_lang),
+                    container_audio_path=cpath,
+                    duration=duration,
+                    subset_for_metrics=tag,
+                    task_type="AST",
+                    extra_fields={
+                        "src_text": item["sentence"],
+                        "tgt_text": item["translation"],
+                        "src_lang_name": LANG_TO_NAME[src_lang],
+                        "tgt_lang_name": LANG_TO_NAME[tgt_lang],
+                        "src_lang": src_lang,
+                        "tgt_lang": tgt_lang,
+                    },
+                    source=item["sentence"],
+                    reference=item["translation"],
+                )
+            )
+    return records
+
+
+def _dump_jsonl(path: Path, records: list[dict]) -> None:
+    with open(path, "w", encoding="utf-8") as out:
+        for record in records:
+            out.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def prepare_covost2(
     data_dir: Path,
     split: str,
     languages: list[str],
     cv_data_dir: Path,
     validated_tsv: Path,
-    task_type: str,
 ) -> None:
     if not languages:
         raise ValueError("No languages to process")
 
-    if task_type == "ASR":
-        pairs = [(lang, lang) for lang in languages]
-    elif task_type == "AST":
-        lang_set = set(languages)
-        pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
-    else:
-        raise ValueError(f"Unsupported task_type: {task_type}")
-
-    if not pairs:
-        raise ValueError("No (source, target) pairs to process")
-
-    output_jsonl = data_dir / f"{split}-{task_type.lower()}.jsonl"
-    sentences = load_validated_sentences(validated_tsv)
-
     audio_dir = data_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
-    if task_type == "AST":
-        local_dir = data_dir / "fb-covost2"
-        local_dir.mkdir(parents=True, exist_ok=True)
+    asr_dir = data_dir / "asr"
+    st_dir = data_dir / "st"
+    asr_dir.mkdir(parents=True, exist_ok=True)
+    st_dir.mkdir(parents=True, exist_ok=True)
+    asr_jsonl = asr_dir / f"{split}.jsonl"
+    st_jsonl = st_dir / f"{split}.jsonl"
 
-    with open(output_jsonl, "w", encoding="utf-8") as out:
-        for src_lang, tgt_lang in pairs:
-            if task_type == "ASR":
-                tag = src_lang
-                audio_split_dir = cv_data_dir / src_lang / split
-                wav_files = sorted(audio_split_dir.glob("*.wav"))
-                for wav_file in tqdm(wav_files, desc=tag):
-                    sentence = sentences[(wav_file.name, split, src_lang)]
-                    duration = get_audio_duration(str(wav_file))
-                    copy_audio_file(wav_file, audio_dir, src_lang, split)
-                    cpath = get_container_audio_path(src_lang, split, wav_file.stem)
-                    record = _build_record(
-                        expected_answer=sentence,
-                        instruction=get_asr_instruction(),
-                        container_audio_path=cpath,
-                        duration=duration,
-                        subset_for_metrics=src_lang,
-                        task_type=task_type,
-                        extra_fields={
-                            "src_text": sentence,
-                            "src_lang_name": LANG_TO_NAME[src_lang],
-                            "src_lang": src_lang,
-                            "use_cer": src_lang in CER_LOCALES,
-                        },
-                    )
-                    out.write(json.dumps(record, ensure_ascii=False) + "\n")
-            else:
-                tag = f"{src_lang}->{tgt_lang}"
-                dataset = load_covost2(src_lang, tgt_lang, split, cv_data_dir, local_dir, sentences)
-                for item in tqdm(dataset, desc=tag):
-                    duration = get_audio_duration(item["audio_file"])
-                    copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
-                    cpath = get_container_audio_path(src_lang, split, item["id"])
-                    record = _build_record(
-                        expected_answer=item["translation"],
-                        instruction=get_ast_instruction(tgt_lang),
-                        container_audio_path=cpath,
-                        duration=duration,
-                        subset_for_metrics=tag,
-                        task_type=task_type,
-                        extra_fields={
-                            "src_text": item["sentence"],
-                            "tgt_text": item["translation"],
-                            "src_lang_name": LANG_TO_NAME[src_lang],
-                            "tgt_lang_name": LANG_TO_NAME[tgt_lang],
-                            "src_lang": src_lang,
-                            "tgt_lang": tgt_lang,
-                        },
-                        source=item["sentence"],
-                        reference=item["translation"],
-                    )
-                    out.write(json.dumps(record, ensure_ascii=False) + "\n")
-    print(f"CoVoST2 {task_type} dataset prepared: {output_jsonl}")
+    local_dir = data_dir / "fb-covost2"
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    sentences = load_validated_sentences(validated_tsv)
+
+    asr_records = _collect_asr_records(languages, audio_dir, cv_data_dir, sentences, split)
+    st_records = _collect_st_records(languages, audio_dir, cv_data_dir, local_dir, sentences, split)
+
+    _dump_jsonl(asr_jsonl, asr_records)
+    _dump_jsonl(st_jsonl, st_records)
+
+    print(f"CoVoST2 ASR dataset prepared: {asr_jsonl} ({len(asr_records)} records)")
+    print(f"CoVoST2 ST dataset prepared: {st_jsonl} ({len(st_records)} records)")
 
 
 def main():
@@ -318,13 +348,6 @@ def main():
         default=ALL_LANGUAGES,
         help="Languages to process (all valid pairs with English are included)",
     )
-    parser.add_argument(
-        "--task",
-        type=str,
-        required=True,
-        choices=["ASR", "AST", "asr", "ast"],
-        help="Task to prepare. ASR: speech recognition, AST: speech translation.",
-    )
     args = parser.parse_args()
 
     if args.data_dir:
@@ -339,7 +362,6 @@ def main():
         languages=args.languages,
         cv_data_dir=Path(args.cv_data_dir),
         validated_tsv=Path(args.validated_tsv),
-        task_type=args.task.upper(),
     )
 
 
