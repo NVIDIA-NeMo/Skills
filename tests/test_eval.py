@@ -17,12 +17,22 @@ import os
 import shlex
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import nemo_skills.pipeline.utils.scripts.eval as eval_scripts
+from nemo_skills.pipeline import eval as eval_pipeline
 from nemo_skills.pipeline.utils import eval as eval_utils
 from nemo_skills.pipeline.utils.scripts import EvalClientScript
+
+
+class FakeExp:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
 
 
 def test_eval_client_script_parallel_fails_if_any_unit_fails(monkeypatch, tmp_path):
@@ -104,6 +114,133 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
     client_script.inline()
 
     assert captured["with_sandbox"] is True
+
+
+def test_resolve_child_sbatch_kwargs_inherits_or_overrides():
+    parent = {"segment": 4, "qos": "batch"}
+
+    assert eval_pipeline._resolve_child_sbatch_kwargs(parent, None) is parent
+    assert eval_pipeline._resolve_child_sbatch_kwargs(parent, {}) is None
+    assert eval_pipeline._resolve_child_sbatch_kwargs(parent, '{"segment": 1}') == {"segment": 1}
+
+
+def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args):
+    cluster_config = {"executor": "slurm", "containers": {"nemo-skills": "nemo-skills-container"}}
+
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_cluster_config", lambda *args, **kwargs: cluster_config)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "resolve_mount_paths", lambda config, *args, **kwargs: config)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_env_variables", lambda config: {})
+    monkeypatch.setattr(
+        eval_pipeline.pipeline_utils,
+        "check_mounts",
+        lambda config, log_dir, mount_map, check_mounted_paths: (
+            next(iter(mount_map.keys())),
+            list(mount_map.keys())[1],
+            log_dir,
+        ),
+    )
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_exp", lambda *args, **kwargs: FakeExp())
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "run_exp", lambda *args, **kwargs: None)
+    monkeypatch.setattr(eval_pipeline, "prepare_eval_commands", lambda **kwargs: ({"gsm8k": benchmark_args()}, []))
+
+
+@pytest.mark.parametrize(
+    "summarize_sbatch_kwargs,expected_sbatch_kwargs",
+    [
+        (None, {"segment": 4, "qos": "main"}),
+        ({}, None),
+        ({"segment": 1}, {"segment": 1}),
+    ],
+)
+def test_eval_summarize_sbatch_kwargs_and_account(
+    monkeypatch, tmp_path, summarize_sbatch_kwargs, expected_sbatch_kwargs
+):
+    def benchmark_args():
+        return eval_utils.BenchmarkArgs(
+            name="gsm8k",
+            input_file="/tmp/gsm8k.jsonl",
+            generation_args="",
+            judge_args="",
+            judge_pipeline_args={},
+            requires_sandbox=False,
+            keep_mounts_for_sandbox=False,
+            generation_module="nemo_skills.inference.generate",
+            num_samples=0,
+            num_chunks=None,
+            eval_subfolder="eval-results/gsm8k",
+            metrics_type="math",
+        )
+
+    _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
+    captured = []
+
+    def fake_add_task(*args, **kwargs):
+        captured.append(kwargs)
+        return f"task-{len(captured)}"
+
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "add_task", fake_add_task)
+
+    eval_pipeline.eval(
+        ctx=SimpleNamespace(args=[]),
+        cluster="test-cluster",
+        output_dir=str(tmp_path),
+        benchmarks="gsm8k",
+        model="model",
+        server_type="openai",
+        server_address="http://server",
+        account="acct",
+        sbatch_kwargs={"segment": 4, "qos": "main"},
+        summarize_sbatch_kwargs=summarize_sbatch_kwargs,
+    )
+
+    assert len(captured) == 1
+    assert captured[0]["account"] == "acct"
+    assert captured[0]["sbatch_kwargs"] == expected_sbatch_kwargs
+
+
+def test_eval_judge_sbatch_kwargs_override(monkeypatch, tmp_path):
+    def benchmark_args():
+        return eval_utils.BenchmarkArgs(
+            name="gsm8k",
+            input_file="/tmp/gsm8k.jsonl",
+            generation_args="",
+            judge_args="++judge=True",
+            judge_pipeline_args={},
+            requires_sandbox=False,
+            keep_mounts_for_sandbox=False,
+            generation_module="nemo_skills.inference.generate",
+            num_samples=0,
+            num_chunks=None,
+            eval_subfolder="tmp-eval-results/gsm8k",
+            metrics_type="math",
+        )
+
+    _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
+    captured = {}
+
+    def fake_generate(**kwargs):
+        captured["sbatch_kwargs"] = kwargs["sbatch_kwargs"]
+        captured["account"] = kwargs["account"]
+        return ["judge-task"]
+
+    monkeypatch.setattr(eval_pipeline, "_generate", fake_generate)
+
+    eval_pipeline.eval(
+        ctx=SimpleNamespace(args=[]),
+        cluster="test-cluster",
+        output_dir=str(tmp_path),
+        benchmarks="gsm8k",
+        model="model",
+        server_type="openai",
+        server_address="http://server",
+        account="acct",
+        sbatch_kwargs={"segment": 4, "qos": "main"},
+        judge_sbatch_kwargs={"segment": 1},
+        auto_summarize_results=False,
+    )
+
+    assert captured["account"] == "acct"
+    assert captured["sbatch_kwargs"] == {"segment": 1}
 
 
 @pytest.mark.timeout(300)
