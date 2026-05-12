@@ -138,6 +138,10 @@ def prepare_data(
         "sandbox executes LLM commands and could potentially lead to data loss. "
         "So, we advise not to use this unless absolutely necessary.",
     ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     log_dir: str = typer.Option(None, help="Custom location for slurm logs"),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     check_mounted_paths: bool = typer.Option(False, help="Check mounted paths availability"),
@@ -253,6 +257,7 @@ def prepare_data(
         config_dir=config_dir,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_mounts=sandbox_mounts,
         log_dir=log_dir,
         exclusive=exclusive,
         check_mounted_paths=check_mounted_paths,

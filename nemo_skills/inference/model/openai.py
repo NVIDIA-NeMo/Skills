@@ -82,6 +82,8 @@ class OpenAIModel(BaseModel):
             kwargs["seed"] = kwargs.pop("random_seed")
         if "stop_phrases" in kwargs:
             kwargs["stop"] = kwargs.pop("stop_phrases")
+        if "temperature" in kwargs and kwargs["temperature"] is None:
+            kwargs.pop("temperature")
         if "top_p" in kwargs and kwargs["top_p"] is None:
             kwargs.pop("top_p")
         return dict(kwargs)
@@ -90,7 +92,7 @@ class OpenAIModel(BaseModel):
         self,
         messages: list[dict],
         tokens_to_generate: int,
-        temperature: float,
+        temperature: float | None,
         top_p: float | None,
         top_k: int,
         min_p: float,
@@ -131,9 +133,9 @@ class OpenAIModel(BaseModel):
 
         if self._is_reasoning_model(self.model):
             # Reasoning model specific validations and parameters
-            if temperature != 0.0:
+            if temperature is not None and temperature != 0.0:
                 raise ValueError(
-                    "`temperature` is not supported by reasoning models, please set it to default value `0.0`."
+                    "`temperature` is not supported by reasoning models, please set it to default value `0.0` or None."
                 )
             if top_p is not None and top_p != 0.95:
                 raise ValueError(
@@ -156,7 +158,8 @@ class OpenAIModel(BaseModel):
             params["logprobs"] = top_logprobs is not None
             params["top_logprobs"] = top_logprobs
             params["max_completion_tokens"] = tokens_to_generate
-            params["temperature"] = temperature
+            if temperature is not None:
+                params["temperature"] = temperature
             if top_p is not None:
                 params["top_p"] = top_p
 

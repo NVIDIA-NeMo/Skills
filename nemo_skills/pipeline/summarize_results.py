@@ -62,9 +62,13 @@ def add_benchmark_groups(results, metrics_to_print, evaluations_to_print):
     # Average results for benchmarks with dot notation (e.g., ruler.niah_single_1, ruler.niah_single_2)
     benchmark_groups = defaultdict(list)
     for benchmark in results.keys():
-        if "." in benchmark:
-            prefix = benchmark.rsplit(".", 1)[0]
-            benchmark_groups[prefix].append(benchmark)
+        if "." not in benchmark:
+            continue
+        prefix, suffix = benchmark.rsplit(".", 1)
+        if "-" in suffix:
+            # entry is `<benchmark>-<subset>` from get_subset_name; not a sibling under a group
+            continue
+        benchmark_groups[prefix].append(benchmark)
 
     # Create a new ordered dictionary to ensure prefix benchmarks appear first
     new_results = OrderedDict()

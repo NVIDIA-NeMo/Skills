@@ -102,6 +102,10 @@ def run_cmd(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
     ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     log_dir: str = typer.Option(
         None,
         help="Can specify a custom location for slurm logs. "
@@ -203,6 +207,7 @@ def run_cmd(
                 server_config=server_config,
                 with_sandbox=with_sandbox,
                 keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+                sandbox_mounts=sandbox_mounts,
                 sandbox_port=None if get_random_port else 6000,
                 sandbox_container=sandbox_container,
                 run_after=run_after,

@@ -23,14 +23,14 @@ from langcodes import Language
 def write_data_to_file(output_file, datasets, tgt_languages):
     with open(output_file, "wt", encoding="utf-8") as fout:
         for tgt_lang in tgt_languages:
-            for src, tgt in zip(datasets[tgt_lang]["source"], datasets[tgt_lang]["target"], strict=True):
+            for src, ref in zip(datasets[tgt_lang]["source"], datasets[tgt_lang]["target"], strict=True):
                 json_dict = {
-                    "text": src,
-                    "translation": tgt,
+                    "source": src,
+                    "reference": ref,
                     "source_language": "en",
                     "target_language": tgt_lang,
                     "source_lang_name": "English",
-                    "target_lang_name": Language(tgt_lang[:2]).display_name(),
+                    "target_lang_name": Language.get(tgt_lang).display_name(),
                 }
                 json.dump(json_dict, fout)
                 fout.write("\n")
