@@ -39,6 +39,7 @@ from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
 from nemo_skills.evaluation.metrics.lean4_metrics import Lean4Metrics
+from nemo_skills.evaluation.metrics.librispeechmix_sot_metrics import LibriSpeechMixSOTMetrics
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
 from nemo_skills.evaluation.metrics.mcq_multilingual_metrics import MCQMultilingualMetrics
 from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
@@ -68,6 +69,7 @@ METRICS_MAP = {
     "answer-judgement": AnswerJudgementMetrics,
     "arena": ArenaMetrics,
     "audio": AudioMetrics,
+    "librispeechmix_sot": LibriSpeechMixSOTMetrics,
     "speechlm": AudioMetrics,  # Alias for backward compatibility
     "bfcl": BFCLMetrics,
     "bird": BirdMetrics,

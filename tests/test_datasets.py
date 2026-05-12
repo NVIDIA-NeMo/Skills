@@ -58,6 +58,7 @@ DATASETS = [
     ("contextasr-bench", ["test"]),
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
+    ("librispeechmix-sot", ["test"]),
     ("musan", ["test"]),
     ("compute-eval", ["eval"]),
 ]
