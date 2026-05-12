@@ -13,6 +13,10 @@
 # limitations under the License.
 
 REQUIRES_DATA_DIR = True
-METRICS_TYPE = "audio"
-EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=multilingual"
-GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
+IS_BENCHMARK_GROUP = True
+SCORE_MODULE = "nemo_skills.dataset.fleurs.audio_score"
+
+BENCHMARKS = {
+    "fleurs.asr": {},
+    "fleurs.st": {},
+}

@@ -619,10 +619,13 @@ def add_task(
         ray_default_cpus_per_node = ray_cluster_config.get("default_num_cpus", 8)
         ray_log_dir = log_dir or cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs")
 
+        # num_gpus arg is per-node (matches get_executor's `int(gpus_per_node) * num_nodes`);
+        # RayJobConfig.num_gpus is per-job total (ray_executor.py divides by num_nodes).
+        ray_num_gpus_per_node = num_gpus if num_gpus is not None else 1
         ray_job_config = RayJobConfig(
             name=task_name,
             command=ray_cmd,
-            num_gpus=num_gpus if num_gpus is not None else 1,
+            num_gpus=ray_num_gpus_per_node * num_nodes,
             num_cpus=ray_default_cpus_per_node * num_nodes,
             num_nodes=num_nodes,
             env_vars=env_vars,
