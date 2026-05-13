@@ -18,7 +18,7 @@
 #
 # RS-specific requirements note:
 #   At job start the rollouts pipeline runs `uv sync --active --extra dev` at
-#   /opt/NeMo-Gym, which reconciles the venv with Gym's uv.lock. Any packages
+#   /opt/Gym, which reconciles the venv with Gym's uv.lock. Any packages
 #   only listed in per-RS requirements.txt (e.g. tavily-python for
 #   browsecomp_advanced_harness, tiktoken for mrcr) are NOT installed and will
 #   need to be added either as a fork layer on top of this image or by moving
@@ -55,8 +55,8 @@ RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | env UV_INSTALL_DI
 
 FROM base AS gym
 
-WORKDIR /opt/NeMo-Gym
-COPY --from=gym-src / /opt/NeMo-Gym/
+WORKDIR /opt/Gym
+COPY --from=gym-src / /opt/Gym/
 
 # Pre-create the venv + warm the uv cache. `nemo_gym_rollouts` runs
 # `uv venv --python 3.12 --allow-existing .venv` + `uv sync --active --extra dev`
@@ -76,4 +76,4 @@ RUN . .venv/bin/activate \
     && command -v ng_run \
     && command -v ng_collect_rollouts
 
-ENV NEMO_GYM_PATH=/opt/NeMo-Gym
+ENV NEMO_GYM_PATH=/opt/Gym
