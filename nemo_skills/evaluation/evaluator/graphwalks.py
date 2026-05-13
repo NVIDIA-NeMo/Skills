@@ -25,7 +25,7 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def get_list(response: str) -> tuple[list[str], bool]:
-    """Parse the predicted node list from the last line of the model response.
+    """Parse the predicted node list from the last non-empty line of the response.
 
     Expects the format: ``Final Answer: [node1, node2, ...]``
 
@@ -35,19 +35,19 @@ def get_list(response: str) -> tuple[list[str], bool]:
 
     Reference: https://huggingface.co/datasets/openai/graphwalks
     """
-    # get the very last line of the response
-    line = response.split("\n")[-1]
-    # check if formatted correctly
-    if "Final Answer:" not in line:
+    lines = [line for line in response.strip().split("\n") if line.strip()]
+    if not lines:
         return [], True
-    list_part = re.search(r"Final Answer: ?\[.*\]", line)
-    if list_part:
-        result_list = list_part.group(0).strip("[]").split(",")
-        # if the list was empty, then get [] not [""]
-        result_list = [item.strip() for item in result_list if item.strip()]
-        return result_list, False
-    else:
-        return [], True
+
+    last_line = lines[-1]
+    match = re.search(r"Final Answer:\s*\[(.*)\]", last_line)
+    if match:
+        content = match.group(1)
+        if not content.strip():
+            return [], False
+        return [item.strip() for item in content.split(",") if item.strip()], False
+
+    return [], True
 
 
 def eval_graphwalks(cfg):
