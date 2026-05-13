@@ -72,8 +72,15 @@ def _is_global_rank_zero() -> bool:
     return True
 
 
-def load_comet_model(model_path: str):
-    """Load xCOMET-XXL checkpoint on CPU.
+_PRECISION_TO_DTYPE: dict[str, torch.dtype | None] = {
+    "fp32": None,           # keep the checkpoint's native dtype (typically fp32)
+    "bf16": torch.bfloat16,
+    "fp16": torch.float16,
+}
+
+
+def load_comet_model(model_path: str, dtype: torch.dtype | None = None):
+    """Load xCOMET-XXL checkpoint on CPU, optionally cast to a lower-precision dtype.
 
     Do NOT move the model to a GPU here. Under multi-GPU DDP, Lightning's
     subprocess_script launcher spawns one Python process per rank, and each
@@ -81,10 +88,21 @@ def load_comet_model(model_path: str):
     place every rank's copy on cuda:0 and OOM after a couple of ranks while
     the rest of the GPUs sit idle. `Predictor.predict(gpus=N)` later moves
     the model to each rank's correct device and sets eval mode itself.
+
+    `Predictor.predict()` does not expose a `precision=` argument (the Lightning
+    Trainer is constructed internally), so casting the model weights here is the
+    supported way to control inference precision. Lightning then runs the
+    forward in whatever dtype the model is in. Cast on CPU before Lightning
+    moves the model to GPU to halve PCIe traffic for bf16/fp16. bf16 keeps
+    fp32's dynamic range, so it's safe for forward-only inference without
+    loss scaling.
     """
     from comet import load_from_checkpoint
 
     model = load_from_checkpoint(model_path)
+    if dtype is not None:
+        model = model.to(dtype=dtype)
+        LOG.info(f"Cast COMET model weights to {dtype}")
     LOG.info(f"Loaded COMET checkpoint from {model_path} (device placement deferred to Trainer)")
     return model
 
@@ -183,7 +201,7 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=16,
+        default=64,
         help="Batch size for xCOMET-XXL inference",
     )
     parser.add_argument(
@@ -191,6 +209,17 @@ def main():
         type=int,
         default=1,
         help="Number of random seeds (for multiple seeds mode)",
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="bf16",
+        choices=sorted(_PRECISION_TO_DTYPE.keys()),
+        help=(
+            "Numerical precision for COMET inference. 'bf16' is recommended on H100/A100 "
+            "(~2x faster than fp32, half the per-rank weight memory, same dynamic range as fp32). "
+            "Use 'fp32' to reproduce the original behavior."
+        ),
     )
     args = parser.parse_args()
 
@@ -214,7 +243,7 @@ def main():
         LOG.error("Either --input-file or --input-dir must be specified")
         sys.exit(1)
 
-    comet_model = load_comet_model(args.comet_model_path)
+    comet_model = load_comet_model(args.comet_model_path, dtype=_PRECISION_TO_DTYPE[args.precision])
     # Process all files
     LOG.info(f"Processing {len(files_to_process)} file(s)")
     for input_file, output_file in files_to_process:

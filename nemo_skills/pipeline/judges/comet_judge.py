@@ -87,6 +87,13 @@ def create_judge_tasks(
     input_file = judge_pipeline_args.get("input_file")
     comet_model_path = judge_pipeline_args.get("judge_model")
 
+    # COMET-specific knobs forwarded via --judge_pipeline_kwargs (JSON).
+    # Defaults are pinned here so callers that don't set them still get bf16 /
+    # batch_size=16 -- the canonical configuration. Override via:
+    #   --judge_pipeline_kwargs='{"precision":"fp32","batch_size":64}'
+    precision = judge_pipeline_args.get("precision", "bf16")
+    batch_size = judge_pipeline_args.get("batch_size", 16)
+
     # Determine seeds to check
     if input_file is None:
         num_seeds = judge_pipeline_args.get("num_random_seeds", 1)
@@ -117,6 +124,9 @@ def create_judge_tasks(
         script_args.append(f"--num-seeds {num_seeds}")
     else:
         script_args.append(f"--input-file {input_file}")
+
+    script_args.append(f"--precision {precision}")
+    script_args.append(f"--batch-size {batch_size}")
 
     # Install unbabel-comet exactly once per node to avoid races between the
     # N srun tasks (one per GPU) writing to the same site-packages. Uses an

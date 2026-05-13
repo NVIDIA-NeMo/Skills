@@ -750,6 +750,12 @@ def eval(
                 if judge_model:
                     judge_pipeline_args.setdefault("judge_model", judge_model)
 
+                # Merge user-provided judge kwargs for parity with the LLM-judge path.
+                # This is the canonical extension point for judge-specific knobs
+                # (e.g. comet precision/batch_size); see judge_pipeline_kwargs help.
+                if judge_pipeline_kwargs:
+                    judge_pipeline_args.update(parse_kwargs(judge_pipeline_kwargs))
+
                 # Call with standardized parameters
                 judge_tasks = judge_step_fn(
                     exp=exp,
