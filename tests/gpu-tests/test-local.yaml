@@ -23,6 +23,7 @@ containers:
   megatron: dockerfile:dockerfiles/Dockerfile.megatron
   verl: dockerfile:dockerfiles/Dockerfile.verl
   nemo-rl: dockerfile:dockerfiles/Dockerfile.nemo-rl
+  nemo-gym: dockerfile:dockerfiles/Dockerfile.nemo-gym
 
 mounts:
   - /tmp:/tmp

@@ -1,0 +1,7 @@
+few_shot_examples:
+  prefix: ""
+  template: "{problem}{solution}\n\n"
+  suffix: ""
+
+user: |-
+  {description}{examples}{problem}

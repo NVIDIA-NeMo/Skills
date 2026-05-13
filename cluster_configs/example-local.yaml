@@ -24,6 +24,7 @@ containers:
   nemo-skills: dockerfile:dockerfiles/Dockerfile.nemo-skills
   verl: dockerfile:dockerfiles/Dockerfile.verl
   nemo-rl: dockerfile:dockerfiles/Dockerfile.nemo-rl
+  nemo-gym: dockerfile:dockerfiles/Dockerfile.nemo-gym
 
 # add required mounts for models/data here
 # the code is mounted automatically inside /nemo_run/code
