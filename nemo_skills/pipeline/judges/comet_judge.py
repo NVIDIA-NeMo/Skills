@@ -118,7 +118,28 @@ def create_judge_tasks(
     else:
         script_args.append(f"--input-file {input_file}")
 
-    run_cmd = f"pip install unbabel-comet && python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
+    # Install unbabel-comet exactly once per node to avoid races between the
+    # N srun tasks (one per GPU) writing to the same site-packages. Uses an
+    # atomic mkdir lock + ready-file, mirroring the pattern in
+    # nemo_skills/pipeline/utils/generation.py.
+    install_cmd = (
+        'mkdir -p /tmp/nemo_skills && '
+        'READY_FILE=/tmp/nemo_skills/unbabel_comet.ready && '
+        'LOCK_DIR=/tmp/nemo_skills/unbabel_comet.lock && '
+        'if [ ! -f "$READY_FILE" ]; then '
+        '  if mkdir "$LOCK_DIR" 2>/dev/null; then '
+        '    if ! pip install unbabel-comet; then rmdir "$LOCK_DIR"; exit 1; fi; '
+        '    touch "$READY_FILE"; '
+        '    rmdir "$LOCK_DIR"; '
+        '  else '
+        '    while [ ! -f "$READY_FILE" ]; do sleep 1; done; '
+        '  fi; '
+        'fi'
+    )
+    run_cmd = (
+        f"{install_cmd} && "
+        f"python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
+    )
 
     # Create task with GPU support for Comet
     #
