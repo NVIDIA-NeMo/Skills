@@ -22,7 +22,7 @@ from nemo_skills.pipeline.utils.scripts.base import BaseJobScript
 from nemo_skills.pipeline.utils.scripts.server import SandboxScript, ServerScript
 from nemo_skills.utils import get_server_wait_cmd
 
-DEFAULT_GYM_PATH = "/opt/NeMo-RL/3rdparty/Gym-workspace/Gym"
+DEFAULT_GYM_PATH = "/opt/Gym"
 
 
 @dataclass(kw_only=True)
