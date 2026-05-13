@@ -24,25 +24,47 @@ This script handles:
 import argparse
 import json
 import logging
-import shutil
 import sys
 from pathlib import Path
 
 import torch
+import torch.distributed as dist
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOG = logging.getLogger(__name__)
 
 
+def _is_global_rank_zero() -> bool:
+    """True if this process is global rank 0.
+
+    Reads from the torch.distributed process group when one is initialized --
+    that is the authoritative source under every launcher we use (SLURM-as-
+    launcher with one task per GPU, Lightning's subprocess_script spawner,
+    torchrun, etc.) and avoids env-var heuristics that differ between them.
+
+    Must be called AFTER Predictor.predict() has started, since that is when
+    Lightning initializes the process group. Single-process runs (CPU or 1 GPU
+    without DDP) leave the group uninitialized and are trivially rank 0.
+    """
+    if dist.is_available() and dist.is_initialized():
+        return dist.get_rank() == 0
+    return True
+
+
 def load_comet_model(model_path: str):
-    """Load xCOMET-XXL model with GPU support."""
+    """Load xCOMET-XXL checkpoint on CPU.
+
+    Do NOT move the model to a GPU here. Under multi-GPU DDP, Lightning's
+    subprocess_script launcher spawns one Python process per rank, and each
+    process runs this function. An explicit `.to("cuda")` (no index) would
+    place every rank's copy on cuda:0 and OOM after a couple of ranks while
+    the rest of the GPUs sit idle. `Predictor.predict(gpus=N)` later moves
+    the model to each rank's correct device and sets eval mode itself.
+    """
     from comet import load_from_checkpoint
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_from_checkpoint(model_path)
-    model.to(device)
-    model.eval()
-    LOG.info(f"Successfully loaded {model_path} on {device}")
+    LOG.info(f"Loaded COMET checkpoint from {model_path} (device placement deferred to Trainer)")
     return model
 
 
@@ -52,20 +74,21 @@ def process_file(
     comet_model,
     batch_size: int = 16,
 ):
-    """Copy input file to output location and run xCOMET-XXL evaluation."""
+    """Score one inference output file with xCOMET-XXL.
+
+    Read the input on every rank so they all build the same `comet_list` and
+    Lightning DDP can shard it. Only rank 0 writes the augmented JSONL and the
+    `.done` marker -- every rank writing to the same path would race and
+    produce truncated or interleaved files.
+    """
     LOG.info(f"Processing {input_file} -> {output_file}")
 
-    # Ensure output directory exists
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Copy input file to output location
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
-    shutil.copy(input_file, output_file)
-    LOG.info(f"Copied {input_file} to {output_file}")
 
-    # Load data
-    with open(output_file, "rt", encoding="utf-8") as fin:
+    # Read directly from the input on every rank; do NOT shutil.copy here, that
+    # races across ranks.
+    with open(input_file, "rt", encoding="utf-8") as fin:
         data = [json.loads(line) for line in fin]
 
     if not data:
@@ -85,22 +108,28 @@ def process_file(
             LOG.error(f"Sample missing required field {e}: {sample}")
             raise ValueError(f"Sample missing required field: {e}")
 
-    gpus=torch.cuda.device_count()
-    LOG.info(f"Using {gpus} GPUs for COMET evaluation.")
-    comet_scores = comet_model.predict(comet_list, batch_size=batch_size, gpus=gpus).scores
-    # comet_scores = comet_model.predict(comet_list, batch_size=batch_size).scores
+    num_gpus = torch.cuda.device_count()
+    LOG.info(f"Predicting COMET model with {num_gpus} GPUs")
+    # All ranks must call predict so DDP collectives complete; Lightning gathers
+    # the full score list back to rank 0.
+    prediction = comet_model.predict(comet_list, batch_size=batch_size, gpus=num_gpus)
 
+    if not _is_global_rank_zero():
+        # Non-zero ranks have already done their share of the DDP work; skip I/O.
+        return
+
+    comet_scores = prediction.scores
     for idx, sample in enumerate(data):
         data[idx]["comet"] = comet_scores[idx]
 
-    # Write results
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "wt", encoding="utf-8") as fout:
         for sample in data:
             fout.write(json.dumps(sample) + "\n")
+    LOG.info(f"Wrote scored output to {output_file}")
 
-    LOG.info(f"Evaluation completed for {output_file}")
-
-    # Create .done marker
+    # .done must be the LAST write -- it signals "scored JSONL is fully flushed"
+    # to downstream consumers.
     done_file = Path(str(output_file) + ".done")
     done_file.touch()
     LOG.info(f"Created done marker: {done_file}")
