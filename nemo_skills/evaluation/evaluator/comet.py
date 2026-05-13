@@ -30,6 +30,27 @@ from pathlib import Path
 import torch
 import torch.distributed as dist
 
+# unbabel-comet's CustomWriter.gather_all_predictions() reloads the per-rank
+# Prediction shards it just wrote with torch.save into a private tempdir.
+# PyTorch >=2.6 flipped torch.load's default to weights_only=True, which
+# refuses to unpickle COMET's `Prediction` (an OrderedDict subclass) and
+# raises `_pickle.UnpicklingError: Weights only load failed ...
+# Unsupported global: GLOBAL comet.models.utils.Prediction`. The shards are
+# 100% trusted -- we wrote them milliseconds earlier in this same job into a
+# tempfile.mkdtemp() dir -- so restore the pre-2.6 behavior for this process.
+# Done by monkey-patching rather than torch.serialization.add_safe_globals so
+# we don't have to enumerate every COMET-internal class that may end up in the
+# pickle (the set differs across comet versions).
+_orig_torch_load = torch.load
+
+
+def _torch_load_compat(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _orig_torch_load(*args, **kwargs)
+
+
+torch.load = _torch_load_compat
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOG = logging.getLogger(__name__)
 
