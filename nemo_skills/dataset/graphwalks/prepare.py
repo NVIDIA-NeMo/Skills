@@ -64,10 +64,18 @@ def write_data_to_file(output_file, data, max_context_window, problem_types, cou
                 continue
 
             prompt_text = entry["prompt"]
+            answer_nodes = entry["answer_nodes"]
 
             pattern = r"Perform a BFS from node (\S+) with depth (\d+)"
             replacement = r"Perform a BFS from node \1 and return only the nodes at exactly depth \2 (not nodes at intermediate depths)"
             prompt_text = re.sub(pattern, replacement, prompt_text)
+
+            m = re.search(r"Find the parents of node ([^\s.]+)\.", prompt_text)
+            node_id = m.group(1) if m else None
+            if node_id is not None and node_id in answer_nodes:
+                answer_nodes.remove(node_id)
+                print(f"Removing {idx} sample with node {node_id} from answer_nodes because it is in the prompt")
+
             n_tokens = count_tokens(prompt_text)
 
             if max_context_window is not None and n_tokens > max_context_window:
@@ -78,7 +86,7 @@ def write_data_to_file(output_file, data, max_context_window, problem_types, cou
 
             output_entry = {
                 "messages": messages,
-                "expected_answer": json.dumps(sorted(entry["answer_nodes"])),
+                "expected_answer": json.dumps(sorted(answer_nodes)),
                 "n_tokens": n_tokens,
                 "prompt_chars": entry["prompt_chars"],
                 "problem_type": entry["problem_type"],
