@@ -13,6 +13,7 @@
 # limitations under the License.
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -63,6 +64,10 @@ def write_data_to_file(output_file, data, max_context_window, problem_types, cou
                 continue
 
             prompt_text = entry["prompt"]
+
+            pattern = r"Perform a BFS from node (\S+) with depth (\d+)"
+            replacement = r"Perform a BFS from node \1 and return only the nodes at exactly depth \2 (not nodes at intermediate depths)"
+            prompt_text = re.sub(pattern, replacement, prompt_text)
             n_tokens = count_tokens(prompt_text)
 
             if max_context_window is not None and n_tokens > max_context_window:
