@@ -1,8 +1,7 @@
 # using ubuntu instead of debian for easier apptainer installation on arm64
 FROM ubuntu:22.04
 
-# Install Python and other dependencies (libgl1/gles2/egl1 are mediapipe runtime
-# requirements used by the MT-Bench / KoMT-Bench language detector).
+# Install Python and other dependencies
 RUN apt-get update && \
     apt-get install -y \
     python3.10 \
