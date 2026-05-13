@@ -76,7 +76,7 @@ def process_file(
         try:
             comet_list.append(
                 {
-                    "src": sample["source"],
+                    "src": sample["text"],
                     "mt": sample["generation"],
                     "ref": sample["reference"],
                 }
@@ -85,6 +85,9 @@ def process_file(
             LOG.error(f"Sample missing required field {e}: {sample}")
             raise ValueError(f"Sample missing required field: {e}")
 
+    # gpus=torch.cuda.device_count()
+    # LOG.info(f"Using {gpus} GPUs for COMET evaluation.")
+    # comet_scores = comet_model.predict(comet_list, batch_size=batch_size, gpus=gpus).scores
     comet_scores = comet_model.predict(comet_list, batch_size=batch_size).scores
 
     for idx, sample in enumerate(data):
