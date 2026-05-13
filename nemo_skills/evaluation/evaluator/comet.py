@@ -35,20 +35,10 @@ import torch.distributed as dist
 # PyTorch >=2.6 flipped torch.load's default to weights_only=True, which
 # refuses to unpickle COMET's `Prediction` (an OrderedDict subclass) and
 # raises `_pickle.UnpicklingError: Weights only load failed ...
-# Unsupported global: GLOBAL comet.models.utils.Prediction`. The shards are
-# 100% trusted -- we wrote them milliseconds earlier in this same job into a
-# tempfile.mkdtemp() dir -- so restore the pre-2.6 behavior for this process.
-# Done by monkey-patching rather than torch.serialization.add_safe_globals so
-# we don't have to enumerate every COMET-internal class that may end up in the
-# pickle (the set differs across comet versions).
 _orig_torch_load = torch.load
-
-
 def _torch_load_compat(*args, **kwargs):
     kwargs.setdefault("weights_only", False)
     return _orig_torch_load(*args, **kwargs)
-
-
 torch.load = _torch_load_compat
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -56,46 +46,25 @@ LOG = logging.getLogger(__name__)
 
 
 def _is_global_rank_zero() -> bool:
-    """True if this process is global rank 0.
-
-    Reads from the torch.distributed process group when one is initialized --
-    that is the authoritative source under every launcher we use (SLURM-as-
-    launcher with one task per GPU, Lightning's subprocess_script spawner,
-    torchrun, etc.) and avoids env-var heuristics that differ between them.
-
-    Must be called AFTER Predictor.predict() has started, since that is when
-    Lightning initializes the process group. Single-process runs (CPU or 1 GPU
-    without DDP) leave the group uninitialized and are trivially rank 0.
-    """
+    """True if this process is global rank 0."""
     if dist.is_available() and dist.is_initialized():
         return dist.get_rank() == 0
     return True
 
 
 _PRECISION_TO_DTYPE: dict[str, torch.dtype | None] = {
-    "fp32": None,           # keep the checkpoint's native dtype (typically fp32)
+    "fp32": None,
     "bf16": torch.bfloat16,
     "fp16": torch.float16,
 }
 
 
 def load_comet_model(model_path: str, dtype: torch.dtype | None = None):
-    """Load xCOMET-XXL checkpoint on CPU, optionally cast to a lower-precision dtype.
+    """Load COMET on CPU, optionally with lower precision.
 
-    Do NOT move the model to a GPU here. Under multi-GPU DDP, Lightning's
-    subprocess_script launcher spawns one Python process per rank, and each
-    process runs this function. An explicit `.to("cuda")` (no index) would
-    place every rank's copy on cuda:0 and OOM after a couple of ranks while
-    the rest of the GPUs sit idle. `Predictor.predict(gpus=N)` later moves
-    the model to each rank's correct device and sets eval mode itself.
-
-    `Predictor.predict()` does not expose a `precision=` argument (the Lightning
-    Trainer is constructed internally), so casting the model weights here is the
-    supported way to control inference precision. Lightning then runs the
-    forward in whatever dtype the model is in. Cast on CPU before Lightning
-    moves the model to GPU to halve PCIe traffic for bf16/fp16. bf16 keeps
-    fp32's dynamic range, so it's safe for forward-only inference without
-    loss scaling.
+    Do not move it to GPU here: in multi-GPU DDP, each spawned rank would run this
+    function, and `.to("cuda")` would put every copy on cuda:0, causing OOM.
+    `Predictor.predict(gpus=N)` later moves each rank to the correct device.
     """
     from comet import load_from_checkpoint
 
@@ -113,20 +82,12 @@ def process_file(
     comet_model,
     batch_size: int = 16,
 ):
-    """Score one inference output file with xCOMET-XXL.
-
-    Read the input on every rank so they all build the same `comet_list` and
-    Lightning DDP can shard it. Only rank 0 writes the augmented JSONL and the
-    `.done` marker -- every rank writing to the same path would race and
-    produce truncated or interleaved files.
-    """
+    """Score one inference output file with COMET."""
     LOG.info(f"Processing {input_file} -> {output_file}")
 
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
-    # Read directly from the input on every rank; do NOT shutil.copy here, that
-    # races across ranks.
     with open(input_file, "rt", encoding="utf-8") as fin:
         data = [json.loads(line) for line in fin]
 
@@ -138,7 +99,7 @@ def process_file(
         try:
             comet_list.append(
                 {
-                    "src": sample["text"],
+                    "src": sample["source"],
                     "mt": sample["generation"],
                     "ref": sample["reference"],
                 }
@@ -149,8 +110,6 @@ def process_file(
 
     num_gpus = torch.cuda.device_count()
     LOG.info(f"Predicting COMET model with {num_gpus} GPUs")
-    # All ranks must call predict so DDP collectives complete; Lightning gathers
-    # the full score list back to rank 0.
     prediction = comet_model.predict(comet_list, batch_size=batch_size, gpus=num_gpus)
 
     if not _is_global_rank_zero():
@@ -165,10 +124,9 @@ def process_file(
     with open(output_file, "wt", encoding="utf-8") as fout:
         for sample in data:
             fout.write(json.dumps(sample) + "\n")
-    LOG.info(f"Wrote scored output to {output_file}")
+    LOG.info(f"Evaluation completed for {output_file}")
 
-    # .done must be the LAST write -- it signals "scored JSONL is fully flushed"
-    # to downstream consumers.
+    # Create .done marker
     done_file = Path(str(output_file) + ".done")
     done_file.touch()
     LOG.info(f"Created done marker: {done_file}")

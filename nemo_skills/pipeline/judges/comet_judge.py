@@ -76,21 +76,10 @@ def create_judge_tasks(
     Returns:
         List of judge tasks created
     """
-    LOG.info(
-        "Comet judge received sbatch_kwargs=%r (type=%s) for benchmark=%s",
-        sbatch_kwargs,
-        type(sbatch_kwargs).__name__,
-        benchmark,
-    )
-
     output_dir_path = judge_pipeline_args.get("output_dir")
     input_file = judge_pipeline_args.get("input_file")
     comet_model_path = judge_pipeline_args.get("judge_model")
 
-    # COMET-specific knobs forwarded via --judge_pipeline_kwargs (JSON).
-    # Defaults are pinned here so callers that don't set them still get bf16 /
-    # batch_size=16 -- the canonical configuration. Override via:
-    #   --judge_pipeline_kwargs='{"precision":"fp32","batch_size":64}'
     precision = judge_pipeline_args.get("precision", "bf16")
     batch_size = judge_pipeline_args.get("batch_size", 16)
 
@@ -152,12 +141,6 @@ def create_judge_tasks(
     )
 
     # Create task with GPU support for Comet
-    #
-    # num_tasks (== srun --ntasks-per-node) must equal num_gpus so Lightning's
-    # SLURMEnvironment sees one task per GPU. add_task hardcodes
-    # --ntasks-per-node={num_tasks} on the srun line (overrides any
-    # #SBATCH --ntasks-per-node from sbatch_kwargs), so this is the only knob
-    # that actually controls task count for the comet step.
     judge_task = add_task(
         exp,
         cmd=run_cmd,
