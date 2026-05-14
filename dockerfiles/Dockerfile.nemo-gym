@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1
+#
+# Minimal NeMo Gym runtime container.
+#
+# Scope: run `ng_run` + `ng_collect_rollouts` against a pre-hosted or
+# separately-launched policy server. No torch, no vLLM, no Megatron, no CUDA.
+# The policy LLM is reached over HTTP; this container only holds the Gym
+# orchestration + FastAPI resource/agent servers.
+#
+# Build:
+#   docker build -f dockerfiles/Dockerfile.nemo-gym \
+#     --build-arg GYM_COMMIT=<sha> \
+#     -t nemo-gym:<tag> \
+#     dockerfiles/
+#
+# The build context is just the dockerfiles/ directory — Gym is pulled from
+# GitHub by SHA via ADD so the image is hermetic.
+#
+# RS-specific requirements note:
+#   At job start the rollouts pipeline runs `uv sync --active --extra dev` at
+#   /opt/Gym, which reconciles the venv with Gym's uv.lock. Any packages
+#   only listed in per-RS requirements.txt (e.g. tavily-python for
+#   browsecomp_advanced_harness, tiktoken for mrcr) are NOT installed and will
+#   need to be added either as a fork layer on top of this image or by moving
+#   them into Gym's own pyproject.toml.
+
+ARG BASE_IMAGE=python:3.12-slim-bookworm
+ARG GYM_COMMIT=90770c32ee40576dd68637e043545be6f494a02c
+
+FROM scratch AS gym-src
+ARG GYM_COMMIT
+ADD --keep-git-dir=true https://github.com/NVIDIA-NeMo/Gym.git#${GYM_COMMIT} /
+
+
+FROM ${BASE_IMAGE} AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG UV_VERSION=0.9.30  # Gym's pyproject.toml sets [tool.uv] required-version = ">=0.9.30"
+# Install uv into /usr/local/bin so it's on the default PATH even when SLURM/pyxis
+# strips the image's ENV PATH (pyxis resets PATH to the host's default and the
+# image's ENV PATH is dropped, which can make `uv` unfindable inside the job).
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+
+FROM base AS gym
+
+WORKDIR /opt/Gym
+COPY --from=gym-src / /opt/Gym/
+
+# Pre-create the venv + warm the uv cache. `nemo_gym_rollouts` runs
+# `uv venv --python 3.12 --allow-existing .venv` + `uv sync --active --extra dev`
+# at job start; with the cache warm this completes in ~1s.
+#
+# --copies places a full python binary inside .venv/bin so the venv doesn't
+# depend on any uv-managed interpreter path that could vanish during image
+# flattening (otherwise the symlink target under /root/.local/share/uv/python/
+# can be missing in the final squashfs).
+ENV UV_LINK_MODE=copy
+RUN uv venv --python /usr/local/bin/python3.12 .venv \
+    && uv sync --active --extra dev
+
+# Sanity: verify the baked venv imports Gym's core modules and exposes ng_run.
+RUN . .venv/bin/activate \
+    && python -c "import nemo_gym, nemo_gym.cli; print('nemo_gym', nemo_gym.__version__)" \
+    && command -v ng_run \
+    && command -v ng_collect_rollouts
+
+ENV NEMO_GYM_PATH=/opt/Gym

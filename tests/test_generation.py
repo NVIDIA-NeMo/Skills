@@ -21,7 +21,8 @@ from types import SimpleNamespace
 import pytest
 
 from nemo_skills.evaluation.metrics import ComputeMetrics
-from nemo_skills.inference.model.base import BaseModel
+from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig, InferenceConfig
+from nemo_skills.inference.model.base import BaseModel, EndpointType
 from nemo_skills.pipeline.generate import _create_job_unified
 from nemo_skills.pipeline.utils.generation import configure_client
 from nemo_skills.pipeline.utils.scripts import ServerScript
@@ -213,6 +214,106 @@ def test_server_metadata_from_num_tasks(tmp_path):
     assert server_cmd.script.num_gpus == server_config["num_gpus"]
     assert groups[0].hardware.num_gpus == server_config["num_gpus"]
     assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
+
+
+class TokenizerProbeModel(BaseModel):
+    def __init__(self, **kwargs):
+        self.tokenizer_requests = []
+        super().__init__(model="dummy-model", base_url="", **kwargs)
+
+    def _get_tokenizer(self, tokenizer):
+        self.tokenizer_requests.append(tokenizer)
+        return "tokenizer"
+
+    def _build_chat_request_params(self, **kwargs):
+        return {}
+
+    def _build_completion_request_params(self, **kwargs):
+        return {}
+
+
+@pytest.mark.parametrize(
+    "enable_soft_fail,context_limit_retry_strategy,require_tokenizer,expected_requests",
+    [
+        (False, None, False, 0),
+        (True, None, False, 0),
+        (True, "reduce_generation", False, 0),
+        (False, "reduce_prompt_from_start", False, 0),
+        (True, "reduce_prompt_from_start", False, 1),
+        (True, "reduce_prompt_from_end", False, 1),
+        (False, None, True, 1),
+    ],
+)
+def test_base_model_initializes_tokenizer_only_when_needed(
+    enable_soft_fail,
+    context_limit_retry_strategy,
+    require_tokenizer,
+    expected_requests,
+):
+    model = TokenizerProbeModel(
+        tokenizer="explicit-tokenizer",
+        enable_soft_fail=enable_soft_fail,
+        context_limit_retry_strategy=context_limit_retry_strategy,
+        require_tokenizer=require_tokenizer,
+    )
+
+    assert len(model.tokenizer_requests) == expected_requests
+    assert (model.tokenizer == "tokenizer") == (expected_requests == 1)
+
+
+@pytest.mark.parametrize(
+    "server_overrides,expected_tokenizer",
+    [
+        ({}, None),
+        ({"enable_soft_fail": True}, None),
+        ({"enable_soft_fail": True, "context_limit_retry_strategy": "reduce_generation"}, None),
+        ({"enable_soft_fail": False, "context_limit_retry_strategy": "reduce_prompt_from_start"}, None),
+        (
+            {"enable_soft_fail": True, "context_limit_retry_strategy": "reduce_prompt_from_start"},
+            "explicit-tokenizer",
+        ),
+        ({"enable_soft_fail": True, "context_limit_retry_strategy": "reduce_prompt_from_end"}, "explicit-tokenizer"),
+    ],
+)
+def test_generation_task_sets_tokenizer_only_for_prompt_retry_strategies(
+    monkeypatch,
+    server_overrides,
+    expected_tokenizer,
+):
+    monkeypatch.setattr(GenerationTask, "setup_litellm_cache", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_prompt", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_llm", lambda self: object())
+
+    cfg = GenerationTaskConfig(
+        input_file="input.jsonl",
+        output_file="output.jsonl",
+        prompt_format="openai",
+        tokenizer="explicit-tokenizer",
+        server={"server_type": "openai", "model": "server-model", **server_overrides},
+    )
+
+    task = GenerationTask(cfg)
+
+    assert task.tokenizer == expected_tokenizer
+
+
+def test_generation_task_keeps_text_endpoint_tokenizer(monkeypatch):
+    monkeypatch.setattr(GenerationTask, "setup_litellm_cache", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_prompt", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_llm", lambda self: object())
+
+    cfg = GenerationTaskConfig(
+        input_file="input.jsonl",
+        output_file="output.jsonl",
+        prompt_format="openai",
+        tokenizer="explicit-tokenizer",
+        server={"server_type": "openai", "model": "server-model"},
+        inference=InferenceConfig(endpoint_type=EndpointType.text, tokens_to_generate=1),
+    )
+
+    task = GenerationTask(cfg)
+
+    assert task.tokenizer == "explicit-tokenizer"
 
 
 @pytest.mark.parametrize(

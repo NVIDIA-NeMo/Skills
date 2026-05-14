@@ -595,7 +595,7 @@ Per-domain breakdowns are included automatically based on the `domain_label` fie
 
 CoVoST 2 is a large-scale multilingual corpus for speech recognition (ASR) and speech translation (AST), built on Common Voice audio with translation references from Facebook's [CoVoST v2](https://github.com/facebookresearch/covost) release.
 
-**Tasks:** ASR (monolingual transcription) and AST (X→en / en→X translation)
+**Subtasks:** `covost2.asr` (monolingual transcription) and `covost2.st` (X→en / en→X translation)
 
 **Splits:** `validation`, `test`
 
@@ -603,7 +603,7 @@ For non-alphabetic scripts (`zh-CN`, `ja`), evaluation reports Character Error R
 
 ### Dataset Location
 
-- Benchmark is defined in [`nemo_skills/dataset/covost2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/covost2/__init__.py)
+- Benchmark group is defined in [`nemo_skills/dataset/covost2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/covost2/__init__.py); per-subtask config lives in `covost2/asr/__init__.py` and `covost2/st/__init__.py`.
 - Original benchmark source is hosted on [GitHub](https://github.com/facebookresearch/covost)
 
 ### Preparing CoVoST 2 Data
@@ -619,39 +619,34 @@ Unlike most other benchmarks on this page, **CoVoST 2 does not auto-download aud
 
 and the corresponding `validated.tsv` (columns: `path, split, lang, sentence`).
 
-The `--languages` flag selects which CoVoST 2 languages are prepared. For ASR it filters the source-language audio that is transcribed; for AST every valid X→en / en→X pair touching the listed languages is included. Omit it to prepare all 21 supported languages.
+A single `prepare_data covost2` run produces both subtasks at once — `covost2/asr/{split}.jsonl` and `covost2/st/{split}.jsonl`. There is no `--task` flag; pass the parent group name (`covost2`), not the dotted subtask names.
 
-=== "ASR"
+The `--languages` flag selects which CoVoST 2 languages are prepared. For ASR it filters the source-language audio that is transcribed; for ST every valid X→en / en→X pair touching the listed languages is included. Omit it to prepare all 21 supported languages.
 
-    ```bash
-    ns prepare_data covost2 \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task ASR \
-        --languages de fr \
-        --split test \
-        --cv_data_dir /workspace/datasets/covost2 \
-        --validated_tsv /workspace/datasets/covost2/validated.tsv
-    ```
+```bash
+ns prepare_data covost2 \
+    --data_dir /path/to/data \
+    --cluster <cluster_name> \
+    --languages de fr es \
+    --split test \
+    --cv_data_dir /workspace/datasets/covost2 \
+    --validated_tsv /workspace/datasets/covost2/validated.tsv
+```
 
-=== "AST"
+Output:
 
-    ```bash
-    ns prepare_data covost2 \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task AST \
-        --languages de fr es \
-        --split test \
-        --cv_data_dir /workspace/datasets/covost2 \
-        --validated_tsv /workspace/datasets/covost2/validated.tsv
-    ```
-
-Each `--task` produces a separate manifest: `{split}-asr.jsonl` or `{split}-ast.jsonl` (e.g. `test-asr.jsonl`).
+```
+<data_dir>/covost2/
+    asr/test.jsonl   # one record per (lang, audio) for transcription
+    st/test.jsonl    # one record per (src→tgt, audio) for translation
+    audio/<lang>/<split>/...wav
+```
 
 ## FLEURS
 
-[FLEURS](https://huggingface.co/datasets/google/fleurs) (Few-shot Learning Evaluation of Universal Representations of Speech) is Google's multilingual speech benchmark covering 102 locales. It supports both ASR and AST.
+[FLEURS](https://huggingface.co/datasets/google/fleurs) (Few-shot Learning Evaluation of Universal Representations of Speech) is Google's multilingual speech benchmark covering 102 locales.
+
+**Subtasks:** `fleurs.asr` (monolingual transcription) and `fleurs.st` (`en_us` → locale and locale → `en_us` translation)
 
 **Splits:** `train`, `dev`, `test`
 
@@ -659,33 +654,28 @@ CER (rather than WER) is used for these locales: `cmn_hans_cn`, `yue_hant_hk`, `
 
 ### Dataset Location
 
-- Benchmark is defined in [`nemo_skills/dataset/fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/fleurs/__init__.py)
+- Benchmark group is defined in [`nemo_skills/dataset/fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/fleurs/__init__.py); per-subtask config lives in `fleurs/asr/__init__.py` and `fleurs/st/__init__.py`.
 - Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/google/fleurs)
 
 ### Preparing FLEURS Data
 
-Audio is downloaded automatically from HuggingFace. As with CoVoST 2, `--task` produces `{split}-asr.jsonl` or `{split}-ast.jsonl`.
+Audio is downloaded automatically from HuggingFace. A single `prepare_data fleurs` run produces both subtasks at once — `fleurs/asr/{split}.jsonl` and `fleurs/st/{split}.jsonl`. There is no `--task` flag; pass the parent group name (`fleurs`), not the dotted subtask names.
 
-The `--languages` flag selects which FLEURS locales are prepared. For ASR it filters the source-language audio that is transcribed; for AST every (`en_us` → locale) and (locale → `en_us`) pair across the listed locales is included. Omit it to prepare all 102 locales.
+The `--languages` flag selects which FLEURS locales are prepared. ASR records are emitted for the listed locales. ST records are emitted for every (`en_us` → locale) and (locale → `en_us`) pair touching the listed locales — even if `en_us` is not itself in `--languages`, since it is the pivot. Omit `--languages` to prepare all 102 locales.
 
-=== "ASR"
+```bash
+ns prepare_data fleurs \
+    --data_dir /path/to/data \
+    --cluster <cluster_name> \
+    --languages en_us de_de fr_fr es_419 it_it ja_jp \
+    --split test
+```
 
-    ```bash
-    ns prepare_data fleurs \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task ASR \
-        --languages en_us de_de fr_fr \
-        --split test
-    ```
+Output:
 
-=== "AST"
-
-    ```bash
-    ns prepare_data fleurs \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task AST \
-        --languages en_us de_de fr_fr es_419 it_it ja_jp \
-        --split test
-    ```
+```
+<data_dir>/fleurs/
+    asr/test.jsonl   # one record per (locale, audio) for transcription
+    st/test.jsonl    # one record per (src→tgt, audio) for translation
+    audio/<locale>/...wav
+```

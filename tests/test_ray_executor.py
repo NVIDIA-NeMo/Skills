@@ -401,3 +401,85 @@ def test_get_ray_client_uses_defaults_when_ray_block_absent(monkeypatch):
 
     assert captured["ray_address"] == "auto"
     assert captured["namespace"] == "nemo"
+
+
+# ---------------------------------------------------------------------------
+# add_task() Ray-branch resource-scaling regression tests.
+#
+# These don't touch a live Ray cluster — they monkey-patch the Ray client and
+# env-var lookup so add_task() goes down the executor=="ray" branch and the
+# resulting RayJobConfig can be inspected.
+# ---------------------------------------------------------------------------
+
+
+def _run_add_task_ray(monkeypatch, *, num_gpus, num_nodes):
+    """Drive ``add_task`` down its Ray branch and return the submitted ``RayJobConfig``."""
+    from nemo_skills.pipeline.utils import exp as exp_module
+
+    captured = {}
+
+    class _FakeRayClient:
+        def submit_job(self, config):
+            captured["config"] = config
+            return "fake-submission-id"
+
+    monkeypatch.setattr(
+        "nemo_skills.pipeline.utils.exp.get_ray_client",
+        lambda cluster_config: _FakeRayClient(),
+    )
+    monkeypatch.setattr(
+        "nemo_skills.pipeline.utils.exp.get_env_variables",
+        lambda cluster_config: {"HF_HOME": "/mnt/hf_home"},
+    )
+
+    cluster_config = {
+        "executor": "ray",
+        "ray": {"address": "auto"},
+        "skip_hf_home_check": True,
+    }
+
+    submission_id = exp_module.add_task(
+        exp=None,
+        cmd="echo hello",
+        task_name="ray-resource-scaling-test",
+        cluster_config=cluster_config,
+        container="dummy-container",
+        num_gpus=num_gpus,
+        num_nodes=num_nodes,
+    )
+
+    assert submission_id == "fake-submission-id"
+    return captured["config"]
+
+
+def test_add_task_ray_scales_num_gpus_by_num_nodes(monkeypatch):
+    """Multi-node Ray jobs must request ``num_gpus * num_nodes`` total GPUs.
+
+    ``add_task``'s ``num_gpus`` parameter is per-node (matches ``get_executor``'s
+    ``int(gpus_per_node) * num_nodes`` scaling in the same file).
+    ``RayJobConfig.num_gpus`` is per-job total — ``ray_executor.py`` divides by
+    ``num_nodes`` to derive ``entrypoint_num_gpus``. Without the multiplier,
+    a 2-GPU/node × 2-node job silently requests only 2 total GPUs.
+    """
+    config = _run_add_task_ray(monkeypatch, num_gpus=2, num_nodes=2)
+    assert config.num_gpus == 4, (
+        f"Expected num_gpus=4 (2 GPUs/node × 2 nodes); got {config.num_gpus}. "
+        "RayJobConfig.num_gpus is per-job total; add_task num_gpus is per-node."
+    )
+    # Sanity: num_cpus already scales by num_nodes; num_nodes propagates.
+    assert config.num_cpus == 16  # default 8 CPUs/node × 2 nodes
+    assert config.num_nodes == 2
+
+
+def test_add_task_ray_default_num_gpus_scales_by_num_nodes(monkeypatch):
+    """When ``num_gpus`` is None the default is 1/node, so total = ``num_nodes``."""
+    config = _run_add_task_ray(monkeypatch, num_gpus=None, num_nodes=3)
+    assert config.num_gpus == 3, f"Expected num_gpus=3 (default 1/node × 3 nodes); got {config.num_gpus}."
+    assert config.num_nodes == 3
+
+
+def test_add_task_ray_single_node_unchanged(monkeypatch):
+    """Single-node Ray jobs are unaffected: ``num_gpus * 1 == num_gpus``."""
+    config = _run_add_task_ray(monkeypatch, num_gpus=8, num_nodes=1)
+    assert config.num_gpus == 8
+    assert config.num_nodes == 1
