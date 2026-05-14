@@ -129,14 +129,14 @@ class OpenAIModel(BaseModel):
 
         if self._is_reasoning_model(self.model):
             # Reasoning model specific validations and parameters
-            if temperature != 0.0:
-                raise ValueError(
-                    "`temperature` is not supported by reasoning models, please set it to default value `0.0`."
-                )
-            if top_p != 0.95:
-                raise ValueError(
-                    "`top_p` is not supported by reasoning models, please set it to default value `0.95`."
-                )
+            # if temperature != 0.0:
+            #     raise ValueError(
+            #         "`temperature` is not supported by reasoning models, please set it to default value `0.0`."
+            #     )
+            # if top_p != 0.95:
+            #     raise ValueError(
+            #         "`top_p` is not supported by reasoning models, please set it to default value `0.95`."
+            #     )
             if top_logprobs is not None:
                 raise ValueError("`top_logprobs` is not supported by reasoning models, please set it to `None`.")
 
