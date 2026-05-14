@@ -23,6 +23,7 @@ import pytest
 from nemo_skills.evaluation.metrics import ComputeMetrics
 from nemo_skills.inference.model.base import BaseModel
 from nemo_skills.pipeline.generate import _create_job_unified
+from nemo_skills.pipeline.utils.generation import configure_client
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
@@ -212,6 +213,53 @@ def test_server_metadata_from_num_tasks(tmp_path):
     assert server_cmd.script.num_gpus == server_config["num_gpus"]
     assert groups[0].hardware.num_gpus == server_config["num_gpus"]
     assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
+
+
+@pytest.mark.parametrize(
+    "server_nodes,expected_host",
+    [
+        (1, "127.0.0.1"),
+        (2, "$SLURM_MASTER_NODE"),
+    ],
+)
+def test_configure_client_hosted_server_host_depends_on_num_nodes(server_nodes, expected_host):
+    server_config, server_address, extra_arguments = configure_client(
+        model="/models/test-model",
+        server_type="vllm",
+        server_address=None,
+        server_gpus=8,
+        server_nodes=server_nodes,
+        server_args="",
+        server_entrypoint=None,
+        get_random_port=False,
+        extra_arguments="++foo=bar",
+    )
+
+    assert server_config["server_port"] == 5000
+    assert server_address == "localhost:5000"
+    assert f"++server.host={expected_host}" in extra_arguments
+    assert "++server.port=5000" in extra_arguments
+    assert "++server.model=/models/test-model" in extra_arguments
+    assert extra_arguments.count("++server.server_type=") == 1
+    assert "++server.server_type=vllm" in extra_arguments
+
+
+def test_configure_client_preserves_explicit_server_type_override():
+    _, _, extra_arguments = configure_client(
+        model="/models/test-model",
+        server_type="vllm",
+        server_address=None,
+        server_gpus=8,
+        server_nodes=2,
+        server_args="",
+        server_entrypoint=None,
+        get_random_port=False,
+        extra_arguments="++server.server_type=vllm_multimodal",
+    )
+
+    assert extra_arguments.count("++server.server_type=") == 1
+    assert "++server.server_type=vllm_multimodal" in extra_arguments
+    assert "++server.host=$SLURM_MASTER_NODE" in extra_arguments
 
 
 @pytest.mark.timeout(300)
