@@ -434,7 +434,7 @@ Some reference numbers (symbolic_correct, %) and commands for reproduction:
 - Benchmark is defined in [`nemo_skills/dataset/kmmlu-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kmmlu-pro/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/LGAI-EXAONE/KMMLU-Pro).
 
-Korean-only 5-choice MCQ, sibling to `kmmlu` with a harder professional-exam focus. `subset_for_metrics` is the per-subject field.
+Korean-only 5-choice MCQ, sibling to `kmmlu` with a harder professional-exam focus. `subset_for_metrics` is the per-license breakdown (14 Korean National Professional Licenses), with names taken from the KMMLU-Pro paper.
 
 Some reference numbers (symbolic_correct, %) and commands for reproduction:
 
@@ -501,7 +501,7 @@ Some reference numbers (symbolic_correct, %) and commands for reproduction:
 - Benchmark is defined in [`nemo_skills/dataset/kmmlu-redux/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kmmlu-redux/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/LGAI-EXAONE/KMMLU-Redux).
 
-Korean-only 4-choice MCQ, a cleaner / smaller redux of `kmmlu`. `subset_for_metrics` is the per-category field.
+Korean-only 4-choice MCQ, a cleaner / smaller redux of `kmmlu`. `subset_for_metrics` is the per-category breakdown (14 industry / professional categories), with names taken from the KMMLU-Redux paper.
 
 Some reference numbers (symbolic_correct, %) and commands for reproduction:
 

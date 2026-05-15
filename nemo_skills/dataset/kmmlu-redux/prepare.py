@@ -32,22 +32,24 @@ answer_map = {
 _EXTRACT_REGEX = r"(?i)정답\s*[:：]\s*\**\(?([A-D])\)?\**"
 
 # Surface the per-category breakdown in English so non-Korean-speaking
-# readers of the metrics output can interpret it.
+# readers of the metrics output can interpret it. Names match the
+# Category labels reported in the KMMLU-Redux paper (arXiv:2507.08924,
+# Table "Category (EN)").
 _CATEGORY_EN = {
     "건설": "Construction",
     "건축": "Architecture",
-    "경영.회계.사무": "Management/Accounting/Office",
-    "광업자원": "Mining Resources",
-    "기계": "Machinery",
-    "농림어업": "Agriculture/Forestry/Fisheries",
-    "문화.예술.디자인.방송": "Culture/Arts/Design/Broadcasting",
-    "식품.가공": "Food Processing",
+    "경영.회계.사무": "Management, Accounting & Office",
+    "광업자원": "Mining & Resources",
+    "기계": "Mechanical Engineering",
+    "농림어업": "Agriculture, Forestry & Fisheries",
+    "문화.예술.디자인.방송": "Culture, Arts, Design & Broadcasting",
+    "식품.가공": "Food & Processing",
     "안전관리": "Safety Management",
     "재료": "Materials",
-    "전기.전자": "Electrical/Electronics",
-    "정보통신": "Information/Communication",
+    "전기.전자": "Electrical & Electronics",
+    "정보통신": "Information & Communication",
     "화학": "Chemistry",
-    "환경.에너지": "Environment/Energy",
+    "환경.에너지": "Environment & Energy",
 }
 
 
