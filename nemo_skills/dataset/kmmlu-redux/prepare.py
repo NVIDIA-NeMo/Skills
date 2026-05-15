@@ -31,6 +31,25 @@ answer_map = {
 # Matches the '정답: X' answer line the prompt instructs the model to produce.
 _EXTRACT_REGEX = r"(?i)정답\s*[:：]\s*\**\(?([A-D])\)?\**"
 
+# Surface the per-category breakdown in English so non-Korean-speaking
+# readers of the metrics output can interpret it.
+_CATEGORY_EN = {
+    "건설": "Construction",
+    "건축": "Architecture",
+    "경영.회계.사무": "Management/Accounting/Office",
+    "광업자원": "Mining Resources",
+    "기계": "Machinery",
+    "농림어업": "Agriculture/Forestry/Fisheries",
+    "문화.예술.디자인.방송": "Culture/Arts/Design/Broadcasting",
+    "식품.가공": "Food Processing",
+    "안전관리": "Safety Management",
+    "재료": "Materials",
+    "전기.전자": "Electrical/Electronics",
+    "정보통신": "Information/Communication",
+    "화학": "Chemistry",
+    "환경.에너지": "Environment/Energy",
+}
+
 
 def format_entry(entry):
     return {
@@ -38,7 +57,7 @@ def format_entry(entry):
         "extract_from_boxed": False,
         "extract_regex": _EXTRACT_REGEX,
         "relaxed": False,
-        "subset_for_metrics": entry["category"],
+        "subset_for_metrics": _CATEGORY_EN.get(entry["category"], entry["category"]),
         **get_mcq_fields(entry["question"], entry["options"]),
     }
 
