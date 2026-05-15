@@ -136,7 +136,9 @@ def test_arena_metrics_score_parsing():
     for gen_base, base_gen in test_cases:
         m.reset()
         m.update([_make_prediction(gen_base, base_gen, category="test")])
-        assert m.scores[0] == [gen_base, base_gen]
+        # per_prompt_scores stores the full per-prediction pair list (one tuple per
+        # prediction). For N=1 it's a single-element list.
+        assert m.per_prompt_scores[0] == [(gen_base, base_gen)]
 
 
 def test_arena_metrics_invalid_score_handling():
@@ -151,4 +153,45 @@ def test_arena_metrics_invalid_score_handling():
     }
     m.update([pred])
 
-    assert m.scores[0] == [None, None]
+    assert m.per_prompt_scores[0] == [(None, None)]
+
+
+def test_arena_metrics_pass_at_k_with_repeats():
+    """num_repeats > 1 should emit pass@N (best-of-N) and pass@1[avg-of-N] (avg-of-N),
+    including per-category breakdowns when more than one category is present."""
+    m = ArenaMetrics()
+    random.seed(42)
+    scores_pool = [("A>B", "B>A"), ("B>A", "A>B"), ("A=B", "A=B"), ("A>>B", "B>>A"), ("B>>A", "A>>B")]
+
+    # 100 prompts (50 per category) — enough samples for the Elo bootstrap inside each
+    # category to see >1 outcome class.
+    n_prompts, n_repeats = 100, 5
+    for i in range(n_prompts):
+        # Alternate categories to exercise the per-category emission path under N > 1.
+        category = "hard_prompt" if i % 2 == 0 else "creative_writing"
+        preds = [_make_prediction(*random.choice(scores_pool), category=category) for _ in range(n_repeats)]
+        m.update(preds)
+
+    metrics = m.get_metrics()
+
+    pass_at_n = f"pass@{n_repeats}"
+    avg_of_n = f"pass@1[avg-of-{n_repeats}]"
+    assert set(metrics.keys()) == {pass_at_n, avg_of_n}, (
+        f"Expected exactly {{{pass_at_n}, {avg_of_n}}}, got {set(metrics.keys())}"
+    )
+
+    assert metrics[pass_at_n]["num_entries"] == n_prompts
+    assert metrics[avg_of_n]["num_entries"] == n_prompts
+
+    # Per-category sub-aggregations should appear under both keys.
+    for metric_name in (pass_at_n, avg_of_n):
+        assert "category_hard_prompt" in metrics[metric_name]
+        assert "category_creative_writing" in metrics[metric_name]
+        assert metrics[metric_name]["category_hard_prompt"]["num_entries"] == n_prompts // 2
+        assert metrics[metric_name]["category_creative_writing"]["num_entries"] == n_prompts // 2
+
+    # best-of-N can never score worse than avg-of-N: picking the best out of N
+    # generations is at least as candidate-favorable as the average single-shot.
+    assert metrics[pass_at_n]["score"] >= metrics[avg_of_n]["score"], (
+        f"best-of-N ({metrics[pass_at_n]['score']}) < avg-of-N ({metrics[avg_of_n]['score']})"
+    )

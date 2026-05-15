@@ -48,6 +48,7 @@ Example usage:
 """
 
 import logging
+from typing import List
 
 import typer
 
@@ -88,8 +89,8 @@ def nemo_gym_rollouts(
     input_file: str = typer.Option(..., help="Path to input JSONL file for rollout collection"),
     output_dir: str = typer.Option(..., help="Directory for rollout outputs. Output file will be rollouts.jsonl"),
     expname: str = typer.Option("nemo_gym_rollouts", help="NeMo Run experiment name"),
-    model: str = typer.Option(None, help="Path to model or model name for the policy server"),
-    server_address: str = typer.Option(
+    model: str | None = typer.Option(None, help="Path to model or model name for the policy server"),
+    server_address: str | None = typer.Option(
         None,
         help="Address of pre-hosted server (e.g., http://localhost:8000/v1). "
         "If provided, skips self-hosted server setup.",
@@ -107,31 +108,43 @@ def nemo_gym_rollouts(
         "If not specified, uses cluster_config['containers'][server_type].",
     ),
     with_sandbox: bool = typer.Option(False, help="If True, start a sandbox container for code execution"),
-    gym_path: str = typer.Option(
-        "/opt/NeMo-RL/3rdparty/Gym-workspace/Gym",
-        help="Path to NeMo Gym installation. Defaults to container built-in. Use for mounted/custom Gym.",
+    sandbox_mounts: List[str] | None = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
+    gym_container: str | None = typer.Option(
+        None,
+        help="Container image path/ref (e.g. a .sqsh file or docker:// reference) for the "
+        "NeMo Gym rollouts step. If not specified, uses "
+        "cluster_config['containers']['nemo-gym'] when present, otherwise falls back to "
+        "cluster_config['containers']['nemo-rl'].",
+    ),
+    gym_path: str | None = typer.Option(
+        None,
+        help="Path to NeMo Gym installation. If omitted, resolves from importable nemo_gym package "
+        "(e.g. packaged /nemo_run/code) and falls back to the container built-in path.",
     ),
     policy_api_key: str = typer.Option(
         "dummy",
         help="API key for policy server. Use 'dummy' for local vLLM servers.",
     ),
-    policy_model_name: str = typer.Option(
+    policy_model_name: str | None = typer.Option(
         None,
         help="Model name for policy server. Required for pre-hosted servers. "
         "For self-hosted, defaults to the model path if not specified.",
     ),
-    partition: str = typer.Option(None, help="Cluster partition to use"),
-    qos: str = typer.Option(None, help="Specify Slurm QoS"),
-    time_min: str = typer.Option(None, help="Slurm time-min parameter"),
-    config_dir: str = typer.Option(None, help="Custom directory for cluster configs"),
-    log_dir: str = typer.Option(None, help="Custom location for logs"),
+    partition: str | None = typer.Option(None, help="Cluster partition to use"),
+    qos: str | None = typer.Option(None, help="Specify Slurm QoS"),
+    time_min: str | None = typer.Option(None, help="Slurm time-min parameter"),
+    config_dir: str | None = typer.Option(None, help="Custom directory for cluster configs"),
+    log_dir: str | None = typer.Option(None, help="Custom location for logs"),
     exclusive: bool | None = typer.Option(None, help="Add exclusive flag to slurm job"),
-    num_random_seeds: int = typer.Option(
+    num_random_seeds: int | None = typer.Option(
         None,
         help="Number of parallel rollout jobs to run. Each job writes to rollouts-rs{i}.jsonl. "
         "Use this to scale rollout collection across multiple nodes.",
     ),
-    random_seeds: str = typer.Option(
+    random_seeds: str | None = typer.Option(
         None,
         help="Explicit list of seed indices to run (comma-separated, e.g., '0,2,5,7'). "
         "Overrides num_random_seeds. Can provide a list directly when using through Python.",
@@ -181,6 +194,8 @@ def nemo_gym_rollouts(
     extra_arguments = " ".join(ctx.args)
     LOG.info("Starting NeMo Gym rollouts pipeline")
     LOG.info(f"Extra arguments: {extra_arguments}")
+    if sandbox_mounts and not with_sandbox:
+        raise ValueError("--sandbox-mounts requires --with-sandbox")
 
     # Parse config paths
     config_paths_list = [p.strip() for p in config_paths.split(",") if p.strip()]
@@ -260,6 +275,19 @@ def nemo_gym_rollouts(
         else:
             resolved_server_container = cluster_config["containers"][server_type_str]
 
+    # Resolve the container for the NeMo Gym rollouts step.
+    # Precedence: explicit --gym_container > cluster_config['containers']['nemo-gym'] > 'nemo-rl'.
+    # Using `is not None` (not truthiness) so an explicit empty string passes through as caller input
+    # rather than silently falling back and masking misconfiguration.
+    containers = cluster_config["containers"]
+    if gym_container is not None:
+        resolved_gym_container = gym_container
+    elif "nemo-gym" in containers:
+        resolved_gym_container = containers["nemo-gym"]
+    else:
+        resolved_gym_container = containers["nemo-rl"]
+    LOG.info(f"Using gym container: {resolved_gym_container}")
+
     # Filter out seeds with existing output files (unless rerun_done=True)
     if not rerun_done and seed_indices != [None]:
         filtered_seeds = []
@@ -326,6 +354,7 @@ def nemo_gym_rollouts(
                 script=sandbox_script,
                 container=cluster_config["containers"]["sandbox"],
                 name=f"{expname}_sandbox{job_suffix}",
+                mounts=sandbox_mounts,
             )
             components.append(sandbox_cmd)
             LOG.info(f"Job{job_suffix}: sandbox on port {sandbox_script.port}")
@@ -346,7 +375,7 @@ def nemo_gym_rollouts(
 
         nemo_gym_cmd = Command(
             script=nemo_gym_script,
-            container=cluster_config["containers"]["nemo-rl"],
+            container=resolved_gym_container,
             name=f"{expname}_nemo_gym{job_suffix}",
             avoid_nemo_run_code=not use_mounted_nemo_skills,
         )

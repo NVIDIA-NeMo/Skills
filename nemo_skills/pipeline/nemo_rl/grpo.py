@@ -320,6 +320,10 @@ def grpo_nemo_rl(
         "Can provide an experiment name or an experiment object if running from code.",
     ),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(
         None,
@@ -483,6 +487,7 @@ def grpo_nemo_rl(
                     sbatch_kwargs=sbatch_kwargs,
                     heterogeneous=True if server_config is not None else False,
                     with_sandbox=with_sandbox,
+                    sandbox_mounts=sandbox_mounts,
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,

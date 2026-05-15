@@ -509,6 +509,7 @@ class SweBenchGenerationTask(GenerationTask):
         apptainer_cmd = (
             f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
             f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
+            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
             f"--mount type=bind,src=/root,dst=/root_mount,ro "
             f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
             f"{extra_apptainer_args} "
@@ -838,7 +839,7 @@ class SweBenchGenerationTask(GenerationTask):
             "source /root/OpenHands/.venv/bin/activate && "
             # copy dataset
             f"mkdir {data_dir} && "
-            f"cp {self.cfg.input_file} {data_dir}/dataset.jsonl && "
+            f"cp /input_mount/{Path(self.cfg.input_file).name} {data_dir}/dataset.jsonl && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
             f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
@@ -969,7 +970,7 @@ class SweBenchGenerationTask(GenerationTask):
                     "cd /root/SWE-bench && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python -m swebench.harness.run_local_evaluation "
-                    f"    --raw_sample_path {self.cfg.input_file} "
+                    f"    --raw_sample_path /input_mount/{Path(self.cfg.input_file).name} "
                     f"    --patch_path {pred_mounted_path} "
                     f"    --output_dir eval-outputs "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
@@ -987,7 +988,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --instance_ids {data_point['instance_id']} "
                     f"    --run_id eval-outputs "
                     f"    --timeout {self.cfg.swebench_tests_timeout} "
-                    f"    --dataset_name {self.cfg.input_file} && "
+                    f"    --dataset_name /input_mount/{Path(self.cfg.input_file).name} && "
                     f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
                 )
 

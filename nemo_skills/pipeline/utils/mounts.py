@@ -396,20 +396,20 @@ def check_remote_mount_directories(directories: list, cluster_config: dict, exit
         raise ValueError(f"Unsupported executor: {cluster_config.get('executor')}")
 
 
-def get_mounts_from_config(cluster_config: dict):
+def normalize_mounts_list(mounts: list[str], allow_rw_mode: bool = False):
     """
     Determines if there are mount paths that are being passed via environment variables.
-    Selects the key in the cluster config called `mounts` which is a list of strings.
-    Each string is in the format of `<str | {env_var}>:<str | {env_var}>` where `env_var`
+    Each string is in the format of `<str | {env_var} | ${env_var}>:<str | {env_var} | ${env_var}>` where `env_var`
     is the name of the environment variable.
 
     Args:
-        cluster_config (dict): cluster config dictionary
+        mounts (list[str]): mounts to resolve.
+        allow_rw_mode (bool): whether to allow `src:dst:ro` and `src:dst:rw` mounts.
 
     Returns:
         list: updated list of mounts
     """
-    mounts = cluster_config.get("mounts", [])
+    mounts = list(mounts)
 
     # if there are env_mounts, we will add the mounts from the env_mounts
     for mount_id in range(len(mounts)):
@@ -423,7 +423,20 @@ def get_mounts_from_config(cluster_config: dict):
         if "$" in mount:
             mount = os.path.expandvars(mount)
 
-        mount_source, mount_target = mount.split(":")
+        parts = mount.split(":")
+        if len(parts) != 2 and not (allow_rw_mode and len(parts) == 3):
+            raise ValueError(
+                f"Invalid mount format: {mount}. Expected src:dst" + (" or src:dst:mode." if allow_rw_mode else ".")
+            )
+
+        mount_source, mount_target = parts[0], parts[1]
+        mount_mode = parts[2] if len(parts) == 3 else None
+        if not mount_source or not mount_target:
+            raise ValueError(f"Invalid mount format: {mount}. Source and target paths must not be empty.")
+        if mount_mode is not None and mount_mode not in {"ro", "rw"}:
+            raise ValueError(
+                f"Invalid mount mode: {mount_mode} in `{mount}`. Supported mount modes are `ro` and `rw`."
+            )
 
         # Then handle {VAR} style for full path replacement (legacy support)
         if mount_source[0] == "{" and mount_source[-1] == "}":
@@ -450,6 +463,24 @@ def get_mounts_from_config(cluster_config: dict):
 
         # add the mount to the list of mounts
         resolved_mount = f"{mount_source}:{mount_target}"
+        if mount_mode is not None:
+            resolved_mount = f"{resolved_mount}:{mount_mode}"
         mounts[mount_id] = resolved_mount
 
     return mounts
+
+
+def get_mounts_from_config(cluster_config: dict):
+    """
+    Selects the key in the cluster config called `mounts` which is a list of strings.
+    Normalizes the mount paths to resolve environment variables.
+    Each string is in the format of `<str | {env_var} | ${env_var}>:<str | {env_var} | ${env_var}>` where `env_var`
+    is the name of the environment variable.
+
+    Args:
+        cluster_config (dict): cluster config dictionary
+
+    Returns:
+        list: updated list of mounts
+    """
+    return normalize_mounts_list(cluster_config.get("mounts", []))

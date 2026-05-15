@@ -16,4 +16,7 @@ pytest
 pytest-asyncio
 pytest-cov
 pytest-timeout
+# Required by tests/test_ray_executor.py — RayJobClient uses
+# ray.job_submission, which lives in the [default] extras.
+ray[default]>=2.43,<3.0
 soundfile

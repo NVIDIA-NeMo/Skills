@@ -14,12 +14,15 @@
 
 """NeMo Gym rollout collection script for NeMo-Skills pipeline."""
 
+import shlex
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from nemo_skills.pipeline.utils.scripts.base import BaseJobScript
 from nemo_skills.pipeline.utils.scripts.server import SandboxScript, ServerScript
 from nemo_skills.utils import get_server_wait_cmd
+
+DEFAULT_GYM_PATH = "/opt/Gym"
 
 
 @dataclass(kw_only=True)
@@ -40,7 +43,8 @@ class NemoGymRolloutsScript(BaseJobScript):
         server: Optional ServerScript reference for policy model server
         server_address: Optional pre-hosted server address
         sandbox: Optional SandboxScript reference for sandbox port
-        gym_path: Path to NeMo Gym installation
+        gym_path: Path to NeMo Gym installation. If unset, resolve from importable nemo_gym package first,
+            then fall back to the container default.
         policy_api_key: API key for policy server
         policy_model_name: Model name override for policy server
         log_prefix: Prefix for log files (default: "nemo_gym")
@@ -53,7 +57,7 @@ class NemoGymRolloutsScript(BaseJobScript):
     server: Optional["ServerScript"] = None
     server_address: Optional[str] = None
     sandbox: Optional["SandboxScript"] = None
-    gym_path: str = "/opt/NeMo-RL/3rdparty/Gym-workspace/Gym"
+    gym_path: Optional[str] = None
     policy_api_key: str = "dummy"
     policy_model_name: Optional[str] = None
 
@@ -116,6 +120,24 @@ class NemoGymRolloutsScript(BaseJobScript):
             else:
                 server_wait_cmd = ""
 
+            if self.gym_path is None:
+                resolve_gym_path = f"""GYM_PATH=$(python - <<'PY'
+from importlib.util import find_spec
+from pathlib import Path
+
+spec = find_spec("nemo_gym")
+if spec is not None:
+    for candidate in Path(spec.origin).resolve().parents:
+        if (candidate / "pyproject.toml").is_file():
+            print(candidate)
+            raise SystemExit(0)
+
+print({DEFAULT_GYM_PATH!r})
+PY
+)"""
+            else:
+                resolve_gym_path = f"GYM_PATH={shlex.quote(str(self.gym_path))}"
+
             cmd = f"""set -e
 set -o pipefail
 
@@ -124,7 +146,11 @@ set -o pipefail
 # the mounted directory may not have a .venv. The --allow-existing flag makes
 # this fast (~1s) when the venv already exists and is up to date.
 echo "=== Installing NeMo Gym ==="
-cd {self.gym_path} || {{ echo "ERROR: Failed to cd to Gym directory"; exit 1; }}
+# Prefer a packaged/editable Gym checkout when it is importable; otherwise use
+# the prebaked container checkout.
+{resolve_gym_path}
+echo "Using NeMo Gym path: $GYM_PATH"
+cd "$GYM_PATH" || {{ echo "ERROR: Failed to cd to Gym directory: $GYM_PATH"; exit 1; }}
 uv venv --python 3.12 --allow-existing .venv || {{ echo "ERROR: Failed to create venv"; exit 1; }}
 source .venv/bin/activate || {{ echo "ERROR: Failed to activate venv"; exit 1; }}
 uv sync --active --extra dev || {{ echo "ERROR: Failed to sync dependencies"; exit 1; }}
