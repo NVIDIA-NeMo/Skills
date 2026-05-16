@@ -14,10 +14,9 @@
 
 import argparse
 import json
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
+from datasets import load_dataset
 from tqdm import tqdm
 
 from nemo_skills.dataset.utils import get_mcq_fields
@@ -25,54 +24,6 @@ from nemo_skills.dataset.utils import get_mcq_fields
 # Matches the '정답: X' answer line the prompt instructs the model to produce.
 # CLIcK mixes 4-choice and 5-choice items; the 5-choice prompt covers both.
 _EXTRACT_REGEX = r"(?i)정답\s*[:：]\s*\**\(?([A-E])\)?\**"
-
-# The CLIcK HF mirror is a single flat split with no category metadata, so we
-# pull the per-subcategory JSON files directly from the canonical GitHub repo
-# (https://github.com/rladmstn1714/CLIcK) to recover the labels used in the
-# LREC-COLING 2024 paper. Each subcategory is split across one or more files
-# named after the source exam (KIIP, Kedu, CSAT, TOPIK, KHB, PSE, PSAT).
-_GITHUB_BASE = "https://raw.githubusercontent.com/rladmstn1714/CLIcK/main/Dataset"
-_SUBDIR = {
-    "Korean Economy": "Culture/Korean Economy",
-    "Korean Geography": "Culture/Korean Geography",
-    "Korean History": "Culture/Korean History",
-    "Korean Law": "Culture/Korean Law",
-    "Korean Politics": "Culture/Korean Politics",
-    "Korean Popular": "Culture/Korean Popular",
-    "Korean Society": "Culture/Korean Society",
-    "Korean Tradition": "Culture/Korean Tradition",
-    "Functional": "Language/Functional",
-    "Grammar": "Language/Grammar",
-    "Textual": "Language/Textual",
-}
-_FILES = {
-    "Korean Economy": ["Economy_KIIP.json", "Economy_Kedu.json"],
-    "Korean Geography": ["Geography_CSAT.json", "Geography_KIIP.json", "Geography_Kedu.json"],
-    "Korean History": ["History_KHB.json", "History_Kedu.json", "History_PSE.json"],
-    "Korean Law": ["Law_KIIP.json", "Law_PSAT.json"],
-    "Korean Politics": ["Politics_KIIP.json", "Politics_Kedu.json"],
-    "Korean Popular": ["Popular_KIIP.json", "Popular_Kedu.json"],
-    "Korean Society": ["Society_KIIP.json", "Society_Kedu.json"],
-    "Korean Tradition": ["Tradition_KIIP.json", "Tradition_Kedu.json"],
-    "Functional": ["Functional_CSAT.json", "Functional_Kedu.json", "Functional_PSE.json"],
-    "Grammar": ["Grammar_CSAT.json", "Grammar_Kedu.json", "Grammar_TOPIK.json"],
-    "Textual": ["Textual_CSAT.json", "Textual_TOPIK.json"],
-}
-
-
-def _load_dataset():
-    """Pull every per-subcategory JSON from GitHub and tag each item with its
-    subcategory; returns a flat list of entries ready for format_entry."""
-    entries = []
-    for subcategory, filenames in _FILES.items():
-        for filename in filenames:
-            url = f"{_GITHUB_BASE}/{urllib.parse.quote(_SUBDIR[subcategory])}/{filename}"
-            with urllib.request.urlopen(url, timeout=30) as resp:
-                items = json.loads(resp.read())
-            for item in items:
-                item["subcategory"] = subcategory
-                entries.append(item)
-    return entries
 
 
 def format_entry(entry):
@@ -84,7 +35,7 @@ def format_entry(entry):
 
     # Some items carry an extra `paragraph` context that the question
     # refers to; prepend it when present.
-    paragraph = entry.get("paragraph", "").strip()
+    paragraph = entry["paragraph"].strip()
     question = entry["question"].strip()
     if paragraph:
         question = f"{paragraph}\n\n{question}"
@@ -108,7 +59,11 @@ def write_data_to_file(output_file, data):
 
 
 def main(args):
-    dataset = _load_dataset()
+    # bzantium/CLIcK is a mirror of the upstream CLIcK dataset
+    # (github.com/rladmstn1714/CLIcK, LREC-COLING 2024) with the per-item
+    # subcategory and broad-category labels that the EunsuKim/CLIcK HF mirror
+    # drops. See the dataset card for details.
+    dataset = load_dataset("bzantium/CLIcK", split="test")
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
     output_file = data_dir / f"{args.split}.jsonl"

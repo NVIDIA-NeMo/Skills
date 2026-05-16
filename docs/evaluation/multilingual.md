@@ -858,9 +858,9 @@ Some reference numbers (symbolic_correct, %) and commands for reproduction:
 ### click
 
 - Benchmark is defined in [`nemo_skills/dataset/click/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/click/__init__.py)
-- Original benchmark source is [here](https://huggingface.co/datasets/EunsuKim/CLIcK).
+- Original benchmark source is [here](https://github.com/rladmstn1714/CLIcK) (mirrored to [`bzantium/CLIcK`](https://huggingface.co/datasets/bzantium/CLIcK) with the per-item subcategory labels restored, since the [`EunsuKim/CLIcK`](https://huggingface.co/datasets/EunsuKim/CLIcK) HF mirror drops them).
 
-Korean Cultural and Linguistic Intelligence benchmark (LREC-COLING 2024). 1995 items across 11 subcategories under two broad domains (8 Culture: Economy / Geography / History / Law / Politics / Popular / Society / Tradition; 3 Language: Functional / Grammar / Textual). The HF mirror has no subcategory metadata so the prepare script pulls the per-subcategory JSON files directly from the canonical [GitHub repo](https://github.com/rladmstn1714/CLIcK). Items are a mix of 4- and 5-choice MCQ; the 5-choice prompt covers both.
+Korean Cultural and Linguistic Intelligence benchmark (LREC-COLING 2024). 1995 items across 11 subcategories under two broad domains (8 Culture: Economy / Geography / History / Law / Politics / Popular / Society / Tradition; 3 Language: Functional / Grammar / Textual). Items are a mix of 4- and 5-choice MCQ; the 5-choice prompt covers both.
 
 Some reference numbers (symbolic_correct, %) and commands for reproduction:
 
