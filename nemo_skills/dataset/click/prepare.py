@@ -60,16 +60,25 @@ _FILES = {
 }
 
 
-def _fetch(subcategory: str, filename: str):
-    url = f"{_GITHUB_BASE}/{urllib.parse.quote(_SUBDIR[subcategory])}/{filename}"
-    with urllib.request.urlopen(url, timeout=30) as resp:
-        return json.loads(resp.read())
+def _load_dataset():
+    """Pull every per-subcategory JSON from GitHub and tag each item with its
+    subcategory; returns a flat list of entries ready for format_entry."""
+    entries = []
+    for subcategory, filenames in _FILES.items():
+        for filename in filenames:
+            url = f"{_GITHUB_BASE}/{urllib.parse.quote(_SUBDIR[subcategory])}/{filename}"
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                items = json.loads(resp.read())
+            for item in items:
+                item["subcategory"] = subcategory
+                entries.append(item)
+    return entries
 
 
-def format_entry(entry, subcategory: str):
-    # The HF / GitHub schema stores the answer as the literal text of the
-    # correct choice; map it back to the corresponding letter so the
-    # per-sample regex can match.
+def format_entry(entry):
+    # The schema stores the answer as the literal text of the correct
+    # choice; map it back to the corresponding letter so the per-sample
+    # regex can match.
     answer_index = entry["choices"].index(entry["answer"])
     expected_letter = chr(ord("A") + answer_index)
 
@@ -85,27 +94,25 @@ def format_entry(entry, subcategory: str):
         "extract_from_boxed": False,
         "extract_regex": _EXTRACT_REGEX,
         "relaxed": False,
-        "subset_for_metrics": subcategory,
+        "subset_for_metrics": entry["subcategory"],
         "id": entry["id"],
         **get_mcq_fields(question, entry["choices"]),
     }
 
 
+def write_data_to_file(output_file, data):
+    with open(output_file, "wt", encoding="utf-8") as fout:
+        for entry in tqdm(data, desc=f"Writing {output_file.name}"):
+            json.dump(format_entry(entry), fout, ensure_ascii=False)
+            fout.write("\n")
+
+
 def main(args):
+    dataset = _load_dataset()
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
     output_file = data_dir / f"{args.split}.jsonl"
-
-    rows = []
-    for subcat, files in tqdm(_FILES.items(), desc="Fetching CLIcK"):
-        for filename in files:
-            for entry in _fetch(subcat, filename):
-                rows.append(format_entry(entry, subcat))
-
-    with open(output_file, "wt", encoding="utf-8") as fout:
-        for row in rows:
-            fout.write(json.dumps(row, ensure_ascii=False) + "\n")
-    print(f"wrote {len(rows)} items to {output_file}")
+    write_data_to_file(output_file, dataset)
 
 
 if __name__ == "__main__":
