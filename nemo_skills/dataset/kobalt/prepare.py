@@ -31,10 +31,11 @@ _EXTRACT_REGEX = r"(?i)정답\s*[:：]\s*\**\(?([A-J])\)?\**"
 # same format as the other Korean MCQ benchmarks.
 _OPTION_SPLIT = re.compile(r"\n(?=[A-J][:.\)]\s)")
 _OPTION_PREFIX = re.compile(r"^[A-J][:.\)]\s+")
+_FIRST_OPTION = re.compile(r"\nA[:.\)]\s")
 
 
 def _split_question(question_text: str) -> tuple[str, list[str]]:
-    first_option = re.search(r"\nA[:.\)]\s", question_text)
+    first_option = _FIRST_OPTION.search(question_text)
     stem = question_text[: first_option.start()].rstrip("\n")
     options_block = question_text[first_option.start() + 1 :]
     options = [_OPTION_PREFIX.sub("", o).strip() for o in _OPTION_SPLIT.split(options_block)]
