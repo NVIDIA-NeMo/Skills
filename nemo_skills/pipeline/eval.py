@@ -628,10 +628,15 @@ def eval(
                     )
                 (gym_benchmark,) = job_benchmarks
                 gym_cfg: GymBenchmarkConfig = get_gym_config(gym_benchmark)
+                # Effective metric_type for the gym→skills converter: prefer
+                # the CLI override, else the benchmark's METRICS_TYPE module
+                # constant. Same precedence summarize_results uses.
+                gym_metric_type = metric_type or benchmarks_dict[gym_benchmark].metrics_type
                 client_script = GymEvalClientScript(
                     units=unit_dicts,
                     config_paths=list(gym_cfg.config_paths),
                     agent_name=gym_cfg.agent_name,
+                    metric_type=gym_metric_type,
                     single_node_mode=single_node_mode,
                     with_sandbox=sandbox_enabled,
                     servers=server_scripts,
