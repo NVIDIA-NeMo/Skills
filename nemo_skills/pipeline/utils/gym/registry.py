@@ -38,11 +38,17 @@ class GymBenchmarkConfig:
     every registered benchmark must pin the Gym-shape input file path. The
     path is resolved relative to the Gym install dir at runtime (typically
     /opt/Gym in the cluster container).
+
+    `prompt_config` is the Gym-side prompt YAML path (also relative to the
+    Gym install dir). Without it, `ng_collect_rollouts` expects each input
+    row to already carry `responses_create_params.input`; our Skills-derived
+    benchmark JSONLs don't, so the path must be supplied per benchmark.
     """
 
     config_paths: List[str]
     agent_name: str
     input_jsonl_fpath: str
+    prompt_config: str
 
 
 _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
@@ -53,6 +59,7 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
         ],
         agent_name="gsm8k_math_with_judge_simple_agent",
         input_jsonl_fpath="benchmarks/gsm8k/data/gsm8k_benchmark.jsonl",
+        prompt_config="benchmarks/prompts/generic_math.yaml",
     ),
 }
 

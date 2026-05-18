@@ -127,6 +127,12 @@ class GymEvalClientScript(BaseJobScript):
     # resource server's `apply_prompt_to_row` expects.
     gym_input_jsonl_fpath: Optional[str] = None
 
+    # When set, passes `+prompt_config=$GYM_PATH/<value>` to ng_collect_rollouts
+    # so it renders responses_create_params.input from the Gym prompt YAML.
+    # Required for the Skills-derived input JSONLs (which carry raw fields
+    # like `question`/`expected_answer`, not pre-built responses_create_params).
+    gym_prompt_config: Optional[str] = None
+
     # `metric_type` selects the gym→skills row converter (math/code/...). When
     # set, each unit's rollouts.jsonl is also written out as a Skills-shape
     # output.jsonl so `summarize_results` produces the right metrics.json
@@ -245,6 +251,8 @@ class GymEvalClientScript(BaseJobScript):
             f"+input_jsonl_fpath={quoted_input}",
             f'+output_jsonl_fpath="{output_file}"',
         ]
+        if self.gym_prompt_config:
+            parts.append(f'+prompt_config="$GYM_PATH"/{self.gym_prompt_config}')
         # Per-seed reproducibility: when Skills set a per-seed seed, surface it
         # as a vLLM extra_body seed. The translator merges this into any
         # existing extra_body the user passed.

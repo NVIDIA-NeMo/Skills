@@ -206,6 +206,17 @@ class TestShellOutput:
         # The Gym-shape input file should be resolved against $GYM_PATH at runtime.
         assert '+input_jsonl_fpath="$GYM_PATH"/benchmarks/gsm8k/data/gsm8k_benchmark.jsonl' in cmd
 
+    def test_gym_prompt_config_injects_runtime_resolved_path(self):
+        """Gym needs +prompt_config to render responses_create_params from raw rows."""
+        script = _script(gym_prompt_config="benchmarks/prompts/generic_math.yaml")
+        cmd, _ = script.inline()
+        assert '+prompt_config="$GYM_PATH"/benchmarks/prompts/generic_math.yaml' in cmd
+
+    def test_no_gym_prompt_config_means_no_prompt_config_flag(self):
+        script = _script()
+        cmd, _ = script.inline()
+        assert "+prompt_config=" not in cmd
+
     def test_no_gym_input_jsonl_fpath_falls_back_to_unit_input(self):
         """When no override is set, we use the unit's Skills-side input file as-is."""
         script = _script()  # gym_input_jsonl_fpath defaults to None

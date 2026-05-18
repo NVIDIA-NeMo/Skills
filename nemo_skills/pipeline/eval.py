@@ -637,6 +637,7 @@ def eval(
                     config_paths=list(gym_cfg.config_paths),
                     agent_name=gym_cfg.agent_name,
                     gym_input_jsonl_fpath=gym_cfg.input_jsonl_fpath,
+                    gym_prompt_config=gym_cfg.prompt_config,
                     metric_type=gym_metric_type,
                     single_node_mode=single_node_mode,
                     with_sandbox=sandbox_enabled,
