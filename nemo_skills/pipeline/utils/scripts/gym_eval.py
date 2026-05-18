@@ -119,6 +119,14 @@ class GymEvalClientScript(BaseJobScript):
     config_paths: List[str]
     agent_name: str
 
+    # When set, the script rewrites each unit's `input_file` (which comes
+    # from Skills' dataset path) to the Gym-shape input file. The value is
+    # interpreted relative to the resolved Gym install dir at runtime
+    # (typically /opt/Gym). When None, units' input_file is used as-is —
+    # only correct when Skills' input schema happens to match what the
+    # resource server's `apply_prompt_to_row` expects.
+    gym_input_jsonl_fpath: Optional[str] = None
+
     # `metric_type` selects the gym→skills row converter (math/code/...). When
     # set, each unit's rollouts.jsonl is also written out as a Skills-shape
     # output.jsonl so `summarize_results` produces the right metrics.json
@@ -217,14 +225,24 @@ class GymEvalClientScript(BaseJobScript):
         return " ".join(parts)
 
     def _ng_collect_cmd(self, unit: Dict, policy_model_name: Optional[str]) -> str:
-        input_file = unit["input_file"]
+        if self.gym_input_jsonl_fpath:
+            # Resolve at runtime so the path is right regardless of where Gym
+            # actually ended up (packaged /nemo_run/code, mounted /opt/Gym,
+            # container default). $GYM_PATH is set by the shell scaffold.
+            input_file = f'"$GYM_PATH"/{self.gym_input_jsonl_fpath}'
+        else:
+            input_file = unit["input_file"]
         output_file = _output_jsonl_for_unit(unit)
         translated = translate_skills_overrides_to_gym(unit.get("extra_arguments", ""))
 
+        # input_file may already include shell quoting (when it's an
+        # interpolated $GYM_PATH path); only wrap in quotes when it's a
+        # plain absolute path.
+        quoted_input = input_file if input_file.startswith('"') else f'"{input_file}"'
         parts = [
             "ng_collect_rollouts",
             f"+agent_name={self.agent_name}",
-            f'+input_jsonl_fpath="{input_file}"',
+            f"+input_jsonl_fpath={quoted_input}",
             f'+output_jsonl_fpath="{output_file}"',
         ]
         # Per-seed reproducibility: when Skills set a per-seed seed, surface it

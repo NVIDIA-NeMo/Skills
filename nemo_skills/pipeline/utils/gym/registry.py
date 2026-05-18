@@ -31,10 +31,18 @@ from typing import Dict, List
 
 @dataclass(frozen=True)
 class GymBenchmarkConfig:
-    """How to invoke `ng_collect_rollouts` for a given Skills benchmark."""
+    """How to invoke `ng_collect_rollouts` for a given Skills benchmark.
+
+    Skills' input JSONL schema differs from Gym's per-benchmark JSONL schema
+    (e.g. Skills uses `problem` for gsm8k where Gym uses `question`), so
+    every registered benchmark must pin the Gym-shape input file path. The
+    path is resolved relative to the Gym install dir at runtime (typically
+    /opt/Gym in the cluster container).
+    """
 
     config_paths: List[str]
     agent_name: str
+    input_jsonl_fpath: str
 
 
 _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
@@ -44,6 +52,7 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
             "responses_api_models/vllm_model/configs/vllm_model.yaml",
         ],
         agent_name="gsm8k_math_with_judge_simple_agent",
+        input_jsonl_fpath="benchmarks/gsm8k/data/gsm8k_benchmark.jsonl",
     ),
 }
 

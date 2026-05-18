@@ -197,6 +197,21 @@ class TestShellOutput:
         assert env["NEMO_SKILLS_SANDBOX_PORT"] == "6000"
         assert "SLURM_JOB_NODELIST_HEAD" in env["NEMO_SKILLS_SANDBOX_HOST"]
 
+    def test_gym_input_jsonl_fpath_overrides_unit_input(self):
+        """Gym path uses its own input JSONL — Skills' input_file has the wrong schema."""
+        script = _script(gym_input_jsonl_fpath="benchmarks/gsm8k/data/gsm8k_benchmark.jsonl")
+        cmd, _ = script.inline()
+        # Skills' input_file should NOT appear as the ng_collect input.
+        assert '+input_jsonl_fpath="/data/gsm8k_benchmark.jsonl"' not in cmd
+        # The Gym-shape input file should be resolved against $GYM_PATH at runtime.
+        assert '+input_jsonl_fpath="$GYM_PATH"/benchmarks/gsm8k/data/gsm8k_benchmark.jsonl' in cmd
+
+    def test_no_gym_input_jsonl_fpath_falls_back_to_unit_input(self):
+        """When no override is set, we use the unit's Skills-side input file as-is."""
+        script = _script()  # gym_input_jsonl_fpath defaults to None
+        cmd, _ = script.inline()
+        assert '+input_jsonl_fpath="/data/gsm8k_benchmark.jsonl"' in cmd
+
     def test_no_metric_type_means_no_conversion_step(self):
         script = _script()
         cmd, _ = script.inline()
