@@ -24,6 +24,7 @@ import pytest
 
 import nemo_skills.pipeline.utils.scripts.eval as eval_scripts
 from nemo_skills.pipeline import eval as eval_pipeline
+from nemo_skills.pipeline.eval import EvalBackend
 from nemo_skills.pipeline.utils import eval as eval_utils
 from nemo_skills.pipeline.utils.scripts import BaseJobScript, EvalClientScript
 
@@ -311,3 +312,26 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
     assert data[0]["symbolic_correct"] is True
     assert data[0]["model_0_exact_match"] is True
     assert data[0]["model_1_exact_match"] is True
+
+
+def test_eval_backend_enum_values():
+    """Sanity: --backend accepts only skills/gym, defaults to skills."""
+    assert EvalBackend.skills.value == "skills"
+    assert EvalBackend.gym.value == "gym"
+
+
+def test_eval_backend_gym_not_yet_wired(monkeypatch):
+    """--backend=gym should raise NotImplementedError until Tier 1 step 3 lands.
+
+    Sentinel test: when the GymEvalClientScript is implemented, this test will
+    fail and should be replaced with a real wiring check.
+    """
+    ctx = SimpleNamespace(args=[])
+    with pytest.raises(NotImplementedError, match="backend=gym"):
+        eval_pipeline.eval(
+            ctx=ctx,
+            output_dir="/tmp/unused",
+            benchmarks="gsm8k",
+            server_type=["openai"],
+            backend=EvalBackend.gym,
+        )

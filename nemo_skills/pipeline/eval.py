@@ -46,6 +46,11 @@ class SingleNodeMode(str, enum.Enum):
     parallel = "parallel"
 
 
+class EvalBackend(str, enum.Enum):
+    skills = "skills"
+    gym = "gym"
+
+
 def _resolve_child_sbatch_kwargs(sbatch_kwargs, child_sbatch_kwargs):
     if child_sbatch_kwargs is None:
         return sbatch_kwargs
@@ -272,6 +277,12 @@ def eval(
         "If running in parallel, ++max_concurrent_requests parameter is respected per "
         "benchmark, but not globally across benchmarks.",
     ),
+    backend: EvalBackend = typer.Option(
+        EvalBackend.skills,
+        help="Which generation backend to use. 'skills' is the legacy nemo_skills.inference.generate "
+        "path; 'gym' runs through NeMo-Gym (ng_run + ng_collect_rollouts) and is gated on the "
+        "benchmark having a Gym counterpart. See convert-eval-to-gym/TIERED_PLAN.md.",
+    ),
     run_after: List[str] = typer.Option(
         None, help="Can specify a list of expnames that need to be completed before this one starts"
     ),
@@ -384,6 +395,21 @@ def eval(
         single_node_mode = single_node_mode.value
     except AttributeError:
         pass
+
+    try:
+        backend = backend.value
+    except AttributeError:
+        pass
+
+    if backend == EvalBackend.gym.value:
+        # Tier 1 step 3 (TIERED_PLAN.md): GymEvalClientScript is not yet built.
+        # The flag exists so the migration can land in small, reviewable PRs
+        # without changing the default user-facing behavior.
+        raise NotImplementedError(
+            "--backend=gym is not yet wired up. The flag is reserved while "
+            "GymEvalClientScript and the metrics adapter are being built. "
+            "Use --backend=skills (default)."
+        )
 
     if log_samples:
         wandb_parameters = {
