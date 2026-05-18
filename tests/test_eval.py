@@ -344,3 +344,255 @@ def test_eval_backend_gym_rejects_multi_benchmark_with_unported():
             server_type=["openai"],
             backend=EvalBackend.gym,
         )
+
+
+def test_gym_backend_picks_gym_container_falls_back_to_nemo_rl(monkeypatch):
+    """The Gym client task can't run in the nemo-skills container — it needs
+    ng_run / ng_collect_rollouts. Same precedence as nemo_gym_rollouts uses:
+    explicit --main_container > containers['nemo-gym'] > containers['nemo-rl'].
+    """
+    captured = {}
+
+    def fake_command_init(self, *, script, container, name, **kwargs):
+        # The first Command we capture is the client (after server + optional
+        # sandbox). For this test the cluster_config has no server/sandbox so
+        # the client is the only Command in group0.
+        captured.setdefault("client_container", container)
+
+    monkeypatch.setattr(eval_pipeline.Command, "__init__", fake_command_init)
+
+    cluster_config = {
+        "executor": "local",
+        "containers": {
+            "nemo-skills": "skills-img.sqsh",
+            "nemo-rl": "rl-img.sqsh",
+            # No 'nemo-gym' key -> falls back to nemo-rl.
+        },
+    }
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_cluster_config", lambda *a, **k: cluster_config)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "resolve_mount_paths", lambda c, *a, **k: c)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_env_variables", lambda c: {})
+    monkeypatch.setattr(
+        eval_pipeline.pipeline_utils,
+        "check_mounts",
+        lambda config, log_dir, mount_map, check_mounted_paths: (
+            list(mount_map.keys())[0],
+            list(mount_map.keys())[1] if len(mount_map) > 1 else None,
+            log_dir,
+        ),
+    )
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_exp", lambda *a, **k: FakeExp())
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "run_exp", lambda *a, **k: None)
+
+    # Stub prepare_eval_commands to return one unit for gsm8k.
+    benchmark_args = eval_utils.BenchmarkArgs(
+        name="gsm8k",
+        input_file="/tmp/in.jsonl",
+        generation_args="",
+        judge_args="",
+        judge_pipeline_args={},
+        requires_sandbox=False,
+        keep_mounts_for_sandbox=False,
+        generation_module="nemo_skills.inference.generate",
+        num_samples=0,
+        num_chunks=None,
+        eval_subfolder="eval-results/gsm8k",
+        metrics_type="math",
+    )
+    unit = eval_utils.EvalGenerationUnit(
+        output_dir="/out",
+        input_file="/tmp/in.jsonl",
+        extra_arguments="",
+        random_seed=None,
+        chunk_id=None,
+        num_chunks=None,
+        script="nemo_skills.inference.generate",
+        requirements=None,
+        wandb_parameters=None,
+        with_sandbox=False,
+    )
+    monkeypatch.setattr(
+        eval_pipeline,
+        "prepare_eval_commands",
+        lambda **kwargs: ({"gsm8k": benchmark_args}, [([unit], {"gsm8k"}, False, False, [])]),
+    )
+    # Stub Pipeline.run so we don't try to actually execute anything.
+    monkeypatch.setattr(eval_pipeline.Pipeline, "run", lambda self, **kwargs: [object()])
+
+    ctx = SimpleNamespace(args=[])
+    eval_pipeline.eval(
+        ctx=ctx,
+        output_dir="/out",
+        benchmarks="gsm8k",
+        server_type=["openai"],
+        server_address=["http://policy.example/v1"],
+        model=["nvidia/test-model"],
+        backend=EvalBackend.gym,
+        skip_hf_home_check=True,
+        auto_summarize_results=False,
+    )
+
+    # The client Command should land in the rl-img container, not skills-img.
+    assert captured.get("client_container") == "rl-img.sqsh"
+
+
+def test_gym_backend_prefers_nemo_gym_container_when_present(monkeypatch):
+    """When cluster_config has a `nemo-gym` key, prefer it over `nemo-rl`."""
+    captured = {}
+
+    def fake_command_init(self, *, script, container, name, **kwargs):
+        captured.setdefault("client_container", container)
+
+    monkeypatch.setattr(eval_pipeline.Command, "__init__", fake_command_init)
+
+    cluster_config = {
+        "executor": "local",
+        "containers": {
+            "nemo-skills": "skills-img.sqsh",
+            "nemo-rl": "rl-img.sqsh",
+            "nemo-gym": "gym-img.sqsh",
+        },
+    }
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_cluster_config", lambda *a, **k: cluster_config)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "resolve_mount_paths", lambda c, *a, **k: c)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_env_variables", lambda c: {})
+    monkeypatch.setattr(
+        eval_pipeline.pipeline_utils,
+        "check_mounts",
+        lambda config, log_dir, mount_map, check_mounted_paths: (
+            list(mount_map.keys())[0],
+            list(mount_map.keys())[1] if len(mount_map) > 1 else None,
+            log_dir,
+        ),
+    )
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_exp", lambda *a, **k: FakeExp())
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "run_exp", lambda *a, **k: None)
+
+    benchmark_args = eval_utils.BenchmarkArgs(
+        name="gsm8k",
+        input_file="/tmp/in.jsonl",
+        generation_args="",
+        judge_args="",
+        judge_pipeline_args={},
+        requires_sandbox=False,
+        keep_mounts_for_sandbox=False,
+        generation_module="nemo_skills.inference.generate",
+        num_samples=0,
+        num_chunks=None,
+        eval_subfolder="eval-results/gsm8k",
+        metrics_type="math",
+    )
+    unit = eval_utils.EvalGenerationUnit(
+        output_dir="/out",
+        input_file="/tmp/in.jsonl",
+        extra_arguments="",
+        random_seed=None,
+        chunk_id=None,
+        num_chunks=None,
+        script="nemo_skills.inference.generate",
+        requirements=None,
+        wandb_parameters=None,
+        with_sandbox=False,
+    )
+    monkeypatch.setattr(
+        eval_pipeline,
+        "prepare_eval_commands",
+        lambda **kwargs: ({"gsm8k": benchmark_args}, [([unit], {"gsm8k"}, False, False, [])]),
+    )
+    monkeypatch.setattr(eval_pipeline.Pipeline, "run", lambda self, **kwargs: [object()])
+
+    ctx = SimpleNamespace(args=[])
+    eval_pipeline.eval(
+        ctx=ctx,
+        output_dir="/out",
+        benchmarks="gsm8k",
+        server_type=["openai"],
+        server_address=["http://policy.example/v1"],
+        model=["nvidia/test-model"],
+        backend=EvalBackend.gym,
+        skip_hf_home_check=True,
+        auto_summarize_results=False,
+    )
+
+    assert captured.get("client_container") == "gym-img.sqsh"
+
+
+def test_skills_backend_keeps_using_nemo_skills_container(monkeypatch):
+    """Regression guard: the dispatcher tweak must not affect --backend=skills."""
+    captured = {}
+
+    def fake_command_init(self, *, script, container, name, **kwargs):
+        captured.setdefault("client_container", container)
+
+    monkeypatch.setattr(eval_pipeline.Command, "__init__", fake_command_init)
+
+    cluster_config = {
+        "executor": "local",
+        "containers": {
+            "nemo-skills": "skills-img.sqsh",
+            "nemo-rl": "rl-img.sqsh",
+            "nemo-gym": "gym-img.sqsh",
+        },
+    }
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_cluster_config", lambda *a, **k: cluster_config)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "resolve_mount_paths", lambda c, *a, **k: c)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_env_variables", lambda c: {})
+    monkeypatch.setattr(
+        eval_pipeline.pipeline_utils,
+        "check_mounts",
+        lambda config, log_dir, mount_map, check_mounted_paths: (
+            list(mount_map.keys())[0],
+            list(mount_map.keys())[1] if len(mount_map) > 1 else None,
+            log_dir,
+        ),
+    )
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_exp", lambda *a, **k: FakeExp())
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "run_exp", lambda *a, **k: None)
+
+    benchmark_args = eval_utils.BenchmarkArgs(
+        name="gsm8k",
+        input_file="/tmp/in.jsonl",
+        generation_args="",
+        judge_args="",
+        judge_pipeline_args={},
+        requires_sandbox=False,
+        keep_mounts_for_sandbox=False,
+        generation_module="nemo_skills.inference.generate",
+        num_samples=0,
+        num_chunks=None,
+        eval_subfolder="eval-results/gsm8k",
+        metrics_type="math",
+    )
+    unit = eval_utils.EvalGenerationUnit(
+        output_dir="/out",
+        input_file="/tmp/in.jsonl",
+        extra_arguments="",
+        random_seed=None,
+        chunk_id=None,
+        num_chunks=None,
+        script="nemo_skills.inference.generate",
+        requirements=None,
+        wandb_parameters=None,
+        with_sandbox=False,
+    )
+    monkeypatch.setattr(
+        eval_pipeline,
+        "prepare_eval_commands",
+        lambda **kwargs: ({"gsm8k": benchmark_args}, [([unit], {"gsm8k"}, False, False, [])]),
+    )
+    monkeypatch.setattr(eval_pipeline.Pipeline, "run", lambda self, **kwargs: [object()])
+
+    ctx = SimpleNamespace(args=[])
+    eval_pipeline.eval(
+        ctx=ctx,
+        output_dir="/out",
+        benchmarks="gsm8k",
+        server_type=["openai"],
+        server_address=["http://policy.example/v1"],
+        model=["nvidia/test-model"],
+        backend=EvalBackend.skills,
+        skip_hf_home_check=True,
+        auto_summarize_results=False,
+    )
+
+    assert captured.get("client_container") == "skills-img.sqsh"

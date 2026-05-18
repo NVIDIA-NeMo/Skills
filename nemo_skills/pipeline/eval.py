@@ -690,10 +690,23 @@ def eval(
                     )
                 )
 
+            # Pick the right container for the client task. The Skills client
+            # uses `nemo-skills`; the Gym client needs `ng_run`/ng_collect_rollouts`
+            # which live in the gym container (falls back to nemo-rl per
+            # nemo_gym_rollouts' convention when `nemo-gym` is absent).
+            if backend == EvalBackend.gym.value:
+                client_container = (
+                    main_container
+                    or cluster_config["containers"].get("nemo-gym")
+                    or cluster_config["containers"]["nemo-rl"]
+                )
+            else:
+                client_container = main_container or cluster_config["containers"]["nemo-skills"]
+
             group0_components.append(
                 Command(
                     script=client_script,
-                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    container=client_container,
                     name=f"{task_name}",
                 )
             )
