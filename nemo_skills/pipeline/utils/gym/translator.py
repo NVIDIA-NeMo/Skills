@@ -82,6 +82,12 @@ _SILENTLY_DROPPED: Dict[str, str] = {
     "examples_type": "Decision §1a: drop",
     "eval_type": "Decision §1a: replaced by which Gym resource server is mounted",
     "enable_litellm_cache": "Decision §1a: drop (pending Igor user-check)",
+    # Skills uses prompt_config as a path under nemo_skills/prompt/config/. Gym
+    # owns its own prompt_config inside the agent yaml's `datasets[]` entry; a
+    # Skills-style value like `generic/math` would otherwise be interpreted by
+    # ng_collect_rollouts as a literal file path under /opt/Gym and 404.
+    "prompt_config": "Skills' prompt path; Gym agent yaml owns prompt_config",
+    "prompt_template": "Skills' prompt path; Gym agent yaml owns prompt_config",
 }
 
 # Prefix-based drops (any key starting with these). Keep this list narrow;

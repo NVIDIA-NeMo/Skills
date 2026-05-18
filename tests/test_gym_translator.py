@@ -117,6 +117,8 @@ class TestSilentDrops:
             "++eval_type=math",
             "++eval_config.split=test",
             "++eval_config.foo=bar",
+            "++prompt_config=generic/math",
+            "++prompt_template=judge/math",
             "++inference.timeout=300",
             "++inference.stream=false",
             "++enable_litellm_cache=true",
@@ -179,14 +181,21 @@ class TestEdgeCases:
         assert "+responses_create_params.temperature=0.5" in result
 
     def test_gsm8k_realistic_combo(self):
-        """End-to-end check against the worked-example invocation in FEASIBILITY_STUDY.md."""
+        """End-to-end check against what prepare_eval_commands builds for gsm8k.
+
+        Mirrors `nemo_skills/dataset/gsm8k/__init__.py:GENERATION_ARGS` plus
+        a representative user override. Regression guard: if a value here
+        ever leaks through to ng_collect_rollouts it'll be interpreted as
+        a Gym CLI override and likely crash the rollout job.
+        """
         skills_args = (
+            "++prompt_config=generic/math "  # from GENERATION_ARGS
+            "++eval_type=math "  # from GENERATION_ARGS
+            "++eval_config.split=test "  # added by prepare_eval_commands
             "++inference.temperature=0.7 "
             "++inference.tokens_to_generate=2048 "
             "++max_concurrent_requests=256 "
-            "++inference.random_seed=0 "
-            "++eval_type=math "
-            "++eval_config.split=test"
+            "++inference.random_seed=0"
         )
         result = translate_skills_overrides_to_gym(skills_args)
         parts = _split(result)
@@ -196,6 +205,8 @@ class TestEdgeCases:
         # eval_type + eval_config.split are dropped — both replaced by Gym config.
         assert not any("eval_type" in p for p in parts)
         assert not any("eval_config" in p for p in parts)
+        # prompt_config is dropped — Gym agent yaml owns it.
+        assert not any("prompt_config" in p for p in parts)
         # Random seed goes into extra_body.
         assert "+responses_create_params.extra_body={seed:" in result
 
