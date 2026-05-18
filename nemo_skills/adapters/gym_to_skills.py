@@ -124,7 +124,7 @@ def convert_rollouts(
         raise NotImplementedError(
             f"gym_to_skills: no converter for metric_type={metric_type!r}. "
             f"Supported: {supported_metric_types()}. "
-            f"Add a converter to nemo_skills/pipeline/adapters/gym_to_skills.py."
+            f"Add a converter to nemo_skills/adapters/gym_to_skills.py."
         ) from e
     for rollout in rollouts:
         yield converter(rollout)
@@ -159,7 +159,7 @@ def convert_file(
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="python -m nemo_skills.pipeline.adapters.gym_to_skills",
+        prog="python -m nemo_skills.adapters.gym_to_skills",
         description="Convert Gym rollouts.jsonl into Skills-shape output.jsonl.",
     )
     p.add_argument("rollouts", help="Path to the Gym rollouts JSONL file.")

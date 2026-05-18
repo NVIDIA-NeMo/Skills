@@ -11,4 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Pipeline-level adapters bridging external backends to NeMo-Skills' on-disk schemas."""
+"""Schema adapters bridging external backends to NeMo-Skills' on-disk formats.
+
+Lives outside ``nemo_skills.pipeline`` on purpose: the adapter runs *inside*
+the backend's container (e.g. the Gym container) after each rollout, so it
+has to be importable from ``nemo-skills-core`` alone. The pipeline package
+gates on ``nemo_run`` and would fail to import there.
+"""

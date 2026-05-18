@@ -277,7 +277,7 @@ class GymEvalClientScript(BaseJobScript):
         rollouts = _output_jsonl_for_unit(unit)
         skills_out = _skills_output_jsonl_for_unit(unit)
         return (
-            f"python -m nemo_skills.pipeline.adapters.gym_to_skills "
+            f"python -m nemo_skills.adapters.gym_to_skills "
             f'"{rollouts}" "{skills_out}" --metric_type={shlex.quote(self.metric_type)}'
         )
 

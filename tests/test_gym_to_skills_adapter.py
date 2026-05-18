@@ -16,7 +16,7 @@ import json
 
 import pytest
 
-from nemo_skills.pipeline.adapters.gym_to_skills import (
+from nemo_skills.adapters.gym_to_skills import (
     convert_file,
     convert_math_rollout,
     convert_rollouts,
