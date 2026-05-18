@@ -54,14 +54,21 @@ _DIRECT_RENAMES: Dict[str, str] = {
     "skip_filled": "resume_from_cache",
 }
 
-# Skills keys that go inside `responses_create_params.extra_body={...}`.
-# Value is the key name to use inside the extra_body dict.
-# (Skills `random_seed` becomes vLLM `seed`.)
-_EXTRA_BODY_KEYS: Dict[str, str] = {
-    "inference.min_p": "min_p",
-    "inference.top_k": "top_k",
-    "inference.repetition_penalty": "repetition_penalty",
-    "inference.random_seed": "seed",
+# Skills keys that would naturally map to vLLM-specific knobs (`top_k`,
+# `min_p`, `repetition_penalty`, per-request `seed`). These have no slot
+# inside `NeMoGymResponseCreateParamsNonStreaming` — which is `extra="forbid"`
+# — and the per-server `vllm_model.extra_body` config is global, not per-call.
+# Gym's per-rollout seeding goes via `+num_repeats_add_seed=true`, which is a
+# different mechanism than Skills' per-job random_seed.
+#
+# Silently drop with a clear pointer; if a benchmark genuinely needs one,
+# the right fix is plumbing through `<server_instance>.responses_api_models.
+# vllm_model.extra_body={…}` at ng_run time, not ng_collect_rollouts.
+_VLLM_ONLY_DROPPED: Dict[str, str] = {
+    "inference.min_p": "vLLM-only knob; no per-call slot in Gym's Responses-API schema",
+    "inference.top_k": "vLLM-only knob; no per-call slot in Gym's Responses-API schema",
+    "inference.repetition_penalty": "vLLM-only knob; no per-call slot in Gym's Responses-API schema",
+    "inference.random_seed": "Gym seeds via +num_repeats_add_seed, not per-call seed",
 }
 
 # Skills keys we silently drop. Each entry has a one-line reason from
@@ -140,7 +147,6 @@ def translate_skills_overrides_to_gym(
 
     gym_parts: List[str] = []
     passthrough_parts: List[str] = []
-    extra_body: Dict[str, str] = {}
 
     for token in shlex.split(extra_arguments):
         key, value, prefix = _parse_token(token)
@@ -162,18 +168,30 @@ def translate_skills_overrides_to_gym(
             LOG.debug("Dropping Skills override %s (%s)", key, _DROPPED_PREFIXES[matched_prefix])
             continue
 
-        if key in _EXTRA_BODY_KEYS:
-            extra_body[_EXTRA_BODY_KEYS[key]] = value
+        if key in _VLLM_ONLY_DROPPED:
+            LOG.warning(
+                "Skills override `++%s` has no per-call Gym equivalent (%s). Dropping.",
+                key,
+                _VLLM_ONLY_DROPPED[key],
+            )
             continue
 
         if key in _DIRECT_RENAMES:
             gym_parts.append(f"+{_DIRECT_RENAMES[key]}={value}")
             continue
 
-        # `++inference.extra_body.foo=bar` → merge into extra_body dict.
+        # `++inference.extra_body.foo=bar` would have to ride on the model-server
+        # config (vllm_model.extra_body), not on responses_create_params. The
+        # responses_create_params schema is `extra="forbid"`. Drop with a warning;
+        # if a benchmark needs this knob, wire it through ng_run's model-server
+        # override, not here.
         if key.startswith("inference.extra_body."):
-            sub_key = key[len("inference.extra_body.") :]
-            extra_body[sub_key] = value
+            LOG.warning(
+                "Skills override `++%s` cannot ride on Gym's responses_create_params "
+                "(schema is extra='forbid'). Drop or wire through the model-server "
+                "config (vllm_model.extra_body).",
+                key,
+            )
             continue
 
         # Server / sandbox overrides are handled by the pipeline layer
@@ -191,15 +209,6 @@ def translate_skills_overrides_to_gym(
             )
         LOG.warning("Unmapped Skills override `++%s` passed through unchanged", key)
         passthrough_parts.append(token)
-
-    if extra_body:
-        # Dict-literal syntax to dodge the `extra_body: null` Hydra gotcha
-        # (vllm_model.yaml ships extra_body: null, which silently no-ops
-        # `++…extra_body.foo=bar`). See memory/feedback_hydra_extra_body_override.md.
-        # Wrap in double quotes so the shell doesn't word-split at the spaces
-        # inside `{key: value, …}` before Hydra parses it.
-        body_str = ", ".join(f"{k}: {v}" for k, v in sorted(extra_body.items()))
-        gym_parts.append(f'"+responses_create_params.extra_body={{{body_str}}}"')
 
     return " ".join(passthrough_parts + gym_parts).strip()
 

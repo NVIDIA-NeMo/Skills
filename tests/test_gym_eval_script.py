@@ -157,27 +157,16 @@ class TestShellOutput:
         assert "+responses_create_params.max_output_tokens=2048" in cmd
         assert "+num_samples_in_parallel=256" in cmd
 
-    def test_random_seed_surfaces_as_extra_body_seed_when_not_set_by_user(self):
+    def test_per_seed_seed_is_NOT_injected(self):
+        """Gym's responses_create_params is schema-locked (extra='forbid'); per-call
+        seeding would have to go via the model-server's vllm_model.extra_body
+        at ng_run time, not on ng_collect_rollouts. The pipeline intentionally
+        doesn't inject `extra_body={seed: N}` per unit anymore — this is a
+        regression guard for the aws-iad 422 failure."""
         script = _script(units=[_gsm8k_unit(seed=7)])
         cmd, _ = script.inline()
-        assert "extra_body={seed: 7}" in cmd
-
-    def test_per_seed_extra_body_is_shell_quoted(self):
-        """Hydra `{key: value}` overrides must arrive as a single shell token;
-        without quotes, bash splits on the space and Hydra parses `0}` as a
-        separate arg. Regression guard for the live aws-iad failure."""
-        script = _script(units=[_gsm8k_unit(seed=3)])
-        cmd, _ = script.inline()
-        assert '"+responses_create_params.extra_body={seed: 3}"' in cmd
-
-    def test_user_extra_body_takes_precedence_over_per_seed_seed(self):
-        # When the user already specified an extra_body (via random_seed
-        # translation), we don't append another one.
-        script = _script(units=[_gsm8k_unit(seed=7, extra_arguments="++inference.random_seed=99")])
-        cmd, _ = script.inline()
-        assert "extra_body={seed: 99}" in cmd
-        # No double-append:
-        assert cmd.count("extra_body={") == 1
+        assert "extra_body" not in cmd
+        assert "seed:" not in cmd
 
     def test_self_hosted_server_uses_hostname_ref(self):
         # Stand-in for ServerScript: GymEvalClientScript just calls hostname_ref()

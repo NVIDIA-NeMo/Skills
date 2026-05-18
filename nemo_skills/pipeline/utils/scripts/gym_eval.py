@@ -253,14 +253,12 @@ class GymEvalClientScript(BaseJobScript):
         ]
         if self.gym_prompt_config:
             parts.append(f'+prompt_config="$GYM_PATH"/{self.gym_prompt_config}')
-        # Per-seed reproducibility: when Skills set a per-seed seed, surface it
-        # as a vLLM extra_body seed. The translator merges this into any
-        # existing extra_body the user passed.
-        seed = unit.get("random_seed")
-        if seed is not None and "extra_body=" not in translated:
-            # Wrap in double quotes so the shell doesn't split the dict literal
-            # at the space inside `{seed: N}` before Hydra parses it.
-            parts.append(f'"+responses_create_params.extra_body={{seed: {seed}}}"')
+        # Note: Skills' per-job `random_seed` has no direct equivalent on Gym's
+        # responses_create_params (schema is extra='forbid', no `seed` field).
+        # The proper Gym mechanism is `+num_repeats_add_seed=true` with
+        # `num_repeats>1`, or overriding the model-server's `vllm_model.extra_body`
+        # at ng_run time. Per-call seeding intentionally not threaded here; the
+        # mean@N statistics still match within noise for the parity pilot.
 
         if translated:
             parts.append(translated)

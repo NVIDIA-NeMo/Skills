@@ -66,38 +66,44 @@ class TestDirectRenames:
         )
 
 
-class TestExtraBodyKeys:
-    """Keys not in NeMoGymResponseCreateParamsNonStreaming must ride in extra_body."""
+class TestVLLMOnlyKnobsDropped:
+    """Skills' vLLM-only knobs don't have a per-call slot in Gym's Responses API.
 
-    def test_top_k_goes_to_extra_body(self):
-        result = translate_skills_overrides_to_gym("++inference.top_k=20")
-        # Wrapped in double quotes so the shell doesn't split on the space inside `{…}`.
-        assert result == '"+responses_create_params.extra_body={top_k: 20}"'
+    NeMoGymResponseCreateParamsNonStreaming has `extra="forbid"`; `extra_body`
+    isn't a per-request field. The proper home for these is the model-server's
+    static `vllm_model.extra_body` config, set at ng_run time — not on
+    ng_collect_rollouts. The translator silently drops them with a warning.
+    """
 
-    def test_min_p_goes_to_extra_body(self):
-        result = translate_skills_overrides_to_gym("++inference.min_p=0.05")
-        assert result == '"+responses_create_params.extra_body={min_p: 0.05}"'
+    def test_top_k_dropped(self):
+        assert translate_skills_overrides_to_gym("++inference.top_k=20") == ""
 
-    def test_repetition_penalty_goes_to_extra_body(self):
-        result = translate_skills_overrides_to_gym("++inference.repetition_penalty=1.1")
-        assert result == '"+responses_create_params.extra_body={repetition_penalty: 1.1}"'
+    def test_min_p_dropped(self):
+        assert translate_skills_overrides_to_gym("++inference.min_p=0.05") == ""
 
-    def test_random_seed_becomes_seed(self):
-        # vLLM names it `seed`, not `random_seed`.
-        result = translate_skills_overrides_to_gym("++inference.random_seed=42")
-        assert result == '"+responses_create_params.extra_body={seed: 42}"'
+    def test_repetition_penalty_dropped(self):
+        assert translate_skills_overrides_to_gym("++inference.repetition_penalty=1.1") == ""
 
-    def test_multiple_extra_body_keys_merge_into_single_dict(self):
+    def test_random_seed_dropped(self):
+        assert translate_skills_overrides_to_gym("++inference.random_seed=42") == ""
+
+    def test_vllm_only_drops_dont_emit_extra_body_arg(self):
+        """Regression: an earlier version put these in
+        `+responses_create_params.extra_body={…}`, which Gym then rejected
+        with a 422 (`extra_forbidden`). The translator must emit nothing for
+        these keys."""
         result = translate_skills_overrides_to_gym(
             "++inference.top_k=20 ++inference.min_p=0.05 ++inference.random_seed=42"
         )
-        # Keys sorted alphabetically for determinism.
-        assert result == '"+responses_create_params.extra_body={min_p: 0.05, seed: 42, top_k: 20}"'
+        assert "extra_body" not in result
 
-    def test_inference_extra_body_subkeys_also_merge(self):
-        result = translate_skills_overrides_to_gym("++inference.top_k=20 ++inference.extra_body.guided_grammar=foo")
-        # Both end up in the same extra_body dict.
-        assert "extra_body={guided_grammar: foo, top_k: 20}" in result
+    def test_inference_extra_body_subkeys_dropped(self):
+        # Same family — Gym's responses_create_params has no extra_body field.
+        result = translate_skills_overrides_to_gym(
+            "++inference.temperature=0.7 ++inference.extra_body.guided_grammar=foo"
+        )
+        assert "extra_body" not in result
+        assert "+responses_create_params.temperature=0.7" in result
 
 
 class TestSilentDrops:
@@ -208,8 +214,10 @@ class TestEdgeCases:
         assert not any("eval_config" in p for p in parts)
         # prompt_config is dropped — Gym agent yaml owns it.
         assert not any("prompt_config" in p for p in parts)
-        # Random seed goes into extra_body.
-        assert "+responses_create_params.extra_body={seed:" in result
+        # random_seed is dropped on the responses_create_params side (no schema
+        # slot); per-seed reproducibility is a known gap.
+        assert "extra_body" not in result
+        assert not any("random_seed" in p for p in parts)
 
     def test_quoted_values_survive(self):
         # shlex.split handles the quoting, so a quoted value with spaces
