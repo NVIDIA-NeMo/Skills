@@ -206,6 +206,14 @@ class TestShellOutput:
         # The Gym-shape input file should be resolved against $GYM_PATH at runtime.
         assert '+input_jsonl_fpath="$GYM_PATH"/benchmarks/gsm8k/data/gsm8k_benchmark.jsonl' in cmd
 
+    def test_ng_collect_creates_output_dir_first(self):
+        """ng_collect_rollouts writes <stem>_materialized_inputs.jsonl too;
+        the parent dir must exist before it runs."""
+        script = _script()
+        cmd, _ = script.inline()
+        # Should mkdir the parent dir before invoking ng_collect_rollouts.
+        assert 'mkdir -p "$(dirname "/out/eval-results/gsm8k/rollouts.jsonl")"' in cmd
+
     def test_gym_prompt_config_injects_runtime_resolved_path(self):
         """Gym needs +prompt_config to render responses_create_params from raw rows."""
         script = _script(gym_prompt_config="benchmarks/prompts/generic_math.yaml")

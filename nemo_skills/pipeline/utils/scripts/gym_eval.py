@@ -262,7 +262,10 @@ class GymEvalClientScript(BaseJobScript):
 
         if translated:
             parts.append(translated)
-        return " ".join(parts)
+        ng_collect = " ".join(parts)
+        # ng_collect_rollouts writes `<stem>_materialized_inputs.jsonl` alongside
+        # the output JSONL; the parent dir must exist before it runs.
+        return f'mkdir -p "$(dirname "{output_file}")" && {ng_collect}'
 
     def _convert_cmd(self, unit: Dict) -> Optional[str]:
         """Adapter step: write a Skills-shape output.jsonl alongside the Gym rollouts.
