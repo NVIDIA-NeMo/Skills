@@ -61,7 +61,8 @@ class OpenAIModel(BaseModel):
     def _is_reasoning_model(self, model_name: str) -> bool:
         if "gpt-5" in model_name:
             return True
-        return re.match(r"^o\d", model_name)
+        model_basename = model_name.split("/")[-1]
+        return re.match(r"^o\d", model_basename)
 
     def _build_completion_request_params(self, **kwargs) -> dict:
         kwargs = copy.deepcopy(kwargs)
@@ -121,6 +122,10 @@ class OpenAIModel(BaseModel):
                 "`repetition_penalty` is not supported by OpenAI API, please set it to default value `1.0`."
             )
 
+        allowed_openai_params = []
+        if tools is not None:
+            allowed_openai_params.append("tools")
+
         params = {
             "messages": messages,
             "seed": random_seed,
@@ -150,18 +155,22 @@ class OpenAIModel(BaseModel):
             ]
             if reasoning_effort:
                 params["reasoning_effort"] = reasoning_effort
-                params["allowed_openai_params"] = ["reasoning_effort"]
+                allowed_openai_params.append("reasoning_effort")
         else:
             # Standard model parameters
             if reasoning_effort is not None:
                 raise ValueError("`reasoning_effort` is only supported by reasoning models.")
-            params["logprobs"] = top_logprobs is not None
-            params["top_logprobs"] = top_logprobs
+            if top_logprobs is not None:
+                params["logprobs"] = True
+                params["top_logprobs"] = top_logprobs
             params["max_completion_tokens"] = tokens_to_generate
             if temperature is not None:
                 params["temperature"] = temperature
             if top_p is not None:
                 params["top_p"] = top_p
+
+        if allowed_openai_params:
+            params["allowed_openai_params"] = allowed_openai_params
 
         return params
 
