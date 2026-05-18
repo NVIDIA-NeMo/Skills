@@ -31,7 +31,18 @@ from nemo_skills.pipeline.utils.eval import (
     EvalGenerationUnit,
     prepare_eval_commands,
 )
-from nemo_skills.pipeline.utils.scripts import EvalClientScript, SandboxScript, ServerScript
+from nemo_skills.pipeline.utils.gym import (
+    GymBenchmarkConfig,
+    get_gym_config,
+    is_registered,
+    registered_benchmarks,
+)
+from nemo_skills.pipeline.utils.scripts import (
+    EvalClientScript,
+    GymEvalClientScript,
+    SandboxScript,
+    ServerScript,
+)
 from nemo_skills.utils import (
     get_logger_name,
     setup_logging,
@@ -402,14 +413,18 @@ def eval(
         pass
 
     if backend == EvalBackend.gym.value:
-        # Tier 1 step 3 (TIERED_PLAN.md): GymEvalClientScript is not yet built.
-        # The flag exists so the migration can land in small, reviewable PRs
-        # without changing the default user-facing behavior.
-        raise NotImplementedError(
-            "--backend=gym is not yet wired up. The flag is reserved while "
-            "GymEvalClientScript and the metrics adapter are being built. "
-            "Use --backend=skills (default)."
-        )
+        # Validate every requested benchmark has a Gym wiring. Strip the optional
+        # `:N` (num-samples) suffix before lookup. Fail early with a clear pointer
+        # to the Skills fallback for benchmarks not yet ported.
+        requested_names = [b.split(":", 1)[0] for b in benchmarks.split(",")]
+        missing = [name for name in requested_names if not is_registered(name)]
+        if missing:
+            raise ValueError(
+                f"--backend=gym does not yet support benchmark(s): {missing}. "
+                f"Registered benchmarks: {registered_benchmarks()}. "
+                f"Use --backend=skills for unported benchmarks, or extend "
+                f"nemo_skills/pipeline/utils/gym/registry.py."
+            )
 
     if log_samples:
         wandb_parameters = {
@@ -601,17 +616,43 @@ def eval(
                 else:
                     unit_dicts.append(dict(u))
 
-            client_script = EvalClientScript(
-                units=unit_dicts,
-                single_node_mode=single_node_mode,
-                with_sandbox=sandbox_enabled,
-                servers=server_scripts,
-                server_addresses_prehosted=server_addresses_list,
-                model_names=models_list,
-                server_types=server_types_list,
-                sandbox=sandbox_script,
-                installation_command=installation_command,
-            )
+            if backend == EvalBackend.gym.value:
+                # Gym runs one shared `ng_run` mesh per SLURM job, so all units
+                # in a job must share the same Gym wiring. Enforce one benchmark
+                # per job rather than per-unit mesh-switching.
+                if len(job_benchmarks) > 1:
+                    raise ValueError(
+                        f"--backend=gym requires one benchmark per SLURM job; this job "
+                        f"would mix {sorted(job_benchmarks)}. Re-run with --num_jobs=-1 "
+                        f"(or large enough that each benchmark gets its own job)."
+                    )
+                (gym_benchmark,) = job_benchmarks
+                gym_cfg: GymBenchmarkConfig = get_gym_config(gym_benchmark)
+                client_script = GymEvalClientScript(
+                    units=unit_dicts,
+                    config_paths=list(gym_cfg.config_paths),
+                    agent_name=gym_cfg.agent_name,
+                    single_node_mode=single_node_mode,
+                    with_sandbox=sandbox_enabled,
+                    servers=server_scripts,
+                    server_addresses_prehosted=server_addresses_list,
+                    model_names=models_list,
+                    server_types=server_types_list,
+                    sandbox=sandbox_script,
+                    installation_command=installation_command,
+                )
+            else:
+                client_script = EvalClientScript(
+                    units=unit_dicts,
+                    single_node_mode=single_node_mode,
+                    with_sandbox=sandbox_enabled,
+                    servers=server_scripts,
+                    server_addresses_prehosted=server_addresses_list,
+                    model_names=models_list,
+                    server_types=server_types_list,
+                    sandbox=sandbox_script,
+                    installation_command=installation_command,
+                )
 
             # Build groups: group0 = (optional server0) + (optional sandbox) + client
             groups = []

@@ -1,0 +1,67 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Per-benchmark Gym wiring: maps Skills benchmark names to Gym configs.
+
+This is a temporary registry kept deliberately small. The longer-term plan
+(Q1 in `convert-eval-to-gym/DECISIONS_AND_ACTIONS.md`) is to use an auto-
+resolution mechanism from upstream Gym (open PR) so a benchmark named
+`gsm8k` resolves to `Gym/benchmarks/gsm8k/config.yaml` by convention. Until
+that lands, the v1 pilot only needs gsm8k, so we register it explicitly.
+
+When the upstream Gym resolver merges, this module should be replaced by a
+thin wrapper around that resolver.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, List
+
+
+@dataclass(frozen=True)
+class GymBenchmarkConfig:
+    """How to invoke `ng_collect_rollouts` for a given Skills benchmark."""
+
+    config_paths: List[str]
+    agent_name: str
+
+
+_BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
+    "gsm8k": GymBenchmarkConfig(
+        config_paths=[
+            "benchmarks/gsm8k/config.yaml",
+            "responses_api_models/vllm_model/configs/vllm_model.yaml",
+        ],
+        agent_name="gsm8k_math_with_judge_simple_agent",
+    ),
+}
+
+
+def get_gym_config(benchmark: str) -> GymBenchmarkConfig:
+    """Look up the Gym wiring for a benchmark.
+
+    Raises:
+        KeyError: if the benchmark is not registered. Caller is responsible
+            for surfacing a clear error message that points users at
+            `--backend=skills` as the fallback.
+    """
+    return _BENCHMARK_GYM_CONFIGS[benchmark]
+
+
+def is_registered(benchmark: str) -> bool:
+    return benchmark in _BENCHMARK_GYM_CONFIGS
+
+
+def registered_benchmarks() -> List[str]:
+    return sorted(_BENCHMARK_GYM_CONFIGS.keys())

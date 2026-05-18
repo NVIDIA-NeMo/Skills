@@ -320,18 +320,27 @@ def test_eval_backend_enum_values():
     assert EvalBackend.gym.value == "gym"
 
 
-def test_eval_backend_gym_not_yet_wired(monkeypatch):
-    """--backend=gym should raise NotImplementedError until Tier 1 step 3 lands.
-
-    Sentinel test: when the GymEvalClientScript is implemented, this test will
-    fail and should be replaced with a real wiring check.
-    """
+def test_eval_backend_gym_rejects_unregistered_benchmark():
+    """`--backend=gym --benchmarks=<unported>` should fail fast with a clear message."""
     ctx = SimpleNamespace(args=[])
-    with pytest.raises(NotImplementedError, match="backend=gym"):
+    with pytest.raises(ValueError, match="does not yet support"):
         eval_pipeline.eval(
             ctx=ctx,
             output_dir="/tmp/unused",
-            benchmarks="gsm8k",
+            benchmarks="some_unported_benchmark",
+            server_type=["openai"],
+            backend=EvalBackend.gym,
+        )
+
+
+def test_eval_backend_gym_rejects_multi_benchmark_with_unported():
+    """One unported benchmark in a comma-separated list should fail the whole job."""
+    ctx = SimpleNamespace(args=[])
+    with pytest.raises(ValueError, match="does not yet support"):
+        eval_pipeline.eval(
+            ctx=ctx,
+            output_dir="/tmp/unused",
+            benchmarks="gsm8k,some_unported_benchmark",
             server_type=["openai"],
             backend=EvalBackend.gym,
         )

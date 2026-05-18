@@ -13,12 +13,22 @@
 # limitations under the License.
 """Pipeline utilities for the Gym eval/generate backend."""
 
+from nemo_skills.pipeline.utils.gym.registry import (
+    GymBenchmarkConfig,
+    get_gym_config,
+    is_registered,
+    registered_benchmarks,
+)
 from nemo_skills.pipeline.utils.gym.translator import (
     UnsupportedSkillsOverrideError,
     translate_skills_overrides_to_gym,
 )
 
 __all__ = [
+    "GymBenchmarkConfig",
     "UnsupportedSkillsOverrideError",
+    "get_gym_config",
+    "is_registered",
+    "registered_benchmarks",
     "translate_skills_overrides_to_gym",
 ]
