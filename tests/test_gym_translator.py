@@ -71,27 +71,28 @@ class TestExtraBodyKeys:
 
     def test_top_k_goes_to_extra_body(self):
         result = translate_skills_overrides_to_gym("++inference.top_k=20")
-        assert result == "+responses_create_params.extra_body={top_k: 20}"
+        # Wrapped in double quotes so the shell doesn't split on the space inside `{…}`.
+        assert result == '"+responses_create_params.extra_body={top_k: 20}"'
 
     def test_min_p_goes_to_extra_body(self):
         result = translate_skills_overrides_to_gym("++inference.min_p=0.05")
-        assert result == "+responses_create_params.extra_body={min_p: 0.05}"
+        assert result == '"+responses_create_params.extra_body={min_p: 0.05}"'
 
     def test_repetition_penalty_goes_to_extra_body(self):
         result = translate_skills_overrides_to_gym("++inference.repetition_penalty=1.1")
-        assert result == "+responses_create_params.extra_body={repetition_penalty: 1.1}"
+        assert result == '"+responses_create_params.extra_body={repetition_penalty: 1.1}"'
 
     def test_random_seed_becomes_seed(self):
         # vLLM names it `seed`, not `random_seed`.
         result = translate_skills_overrides_to_gym("++inference.random_seed=42")
-        assert result == "+responses_create_params.extra_body={seed: 42}"
+        assert result == '"+responses_create_params.extra_body={seed: 42}"'
 
     def test_multiple_extra_body_keys_merge_into_single_dict(self):
         result = translate_skills_overrides_to_gym(
             "++inference.top_k=20 ++inference.min_p=0.05 ++inference.random_seed=42"
         )
         # Keys sorted alphabetically for determinism.
-        assert result == "+responses_create_params.extra_body={min_p: 0.05, seed: 42, top_k: 20}"
+        assert result == '"+responses_create_params.extra_body={min_p: 0.05, seed: 42, top_k: 20}"'
 
     def test_inference_extra_body_subkeys_also_merge(self):
         result = translate_skills_overrides_to_gym("++inference.top_k=20 ++inference.extra_body.guided_grammar=foo")

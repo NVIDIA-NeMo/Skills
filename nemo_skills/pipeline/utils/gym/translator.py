@@ -196,8 +196,10 @@ def translate_skills_overrides_to_gym(
         # Dict-literal syntax to dodge the `extra_body: null` Hydra gotcha
         # (vllm_model.yaml ships extra_body: null, which silently no-ops
         # `++…extra_body.foo=bar`). See memory/feedback_hydra_extra_body_override.md.
+        # Wrap in double quotes so the shell doesn't word-split at the spaces
+        # inside `{key: value, …}` before Hydra parses it.
         body_str = ", ".join(f"{k}: {v}" for k, v in sorted(extra_body.items()))
-        gym_parts.append(f"+responses_create_params.extra_body={{{body_str}}}")
+        gym_parts.append(f'"+responses_create_params.extra_body={{{body_str}}}"')
 
     return " ".join(passthrough_parts + gym_parts).strip()
 

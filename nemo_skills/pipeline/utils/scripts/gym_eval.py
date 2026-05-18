@@ -258,7 +258,9 @@ class GymEvalClientScript(BaseJobScript):
         # existing extra_body the user passed.
         seed = unit.get("random_seed")
         if seed is not None and "extra_body=" not in translated:
-            parts.append(f"+responses_create_params.extra_body={{seed: {seed}}}")
+            # Wrap in double quotes so the shell doesn't split the dict literal
+            # at the space inside `{seed: N}` before Hydra parses it.
+            parts.append(f'"+responses_create_params.extra_body={{seed: {seed}}}"')
 
         if translated:
             parts.append(translated)

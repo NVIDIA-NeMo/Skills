@@ -162,6 +162,14 @@ class TestShellOutput:
         cmd, _ = script.inline()
         assert "extra_body={seed: 7}" in cmd
 
+    def test_per_seed_extra_body_is_shell_quoted(self):
+        """Hydra `{key: value}` overrides must arrive as a single shell token;
+        without quotes, bash splits on the space and Hydra parses `0}` as a
+        separate arg. Regression guard for the live aws-iad failure."""
+        script = _script(units=[_gsm8k_unit(seed=3)])
+        cmd, _ = script.inline()
+        assert '"+responses_create_params.extra_body={seed: 3}"' in cmd
+
     def test_user_extra_body_takes_precedence_over_per_seed_seed(self):
         # When the user already specified an extra_body (via random_seed
         # translation), we don't append another one.
