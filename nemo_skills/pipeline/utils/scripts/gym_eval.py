@@ -84,23 +84,6 @@ def _output_jsonl_for_unit(unit: Dict) -> str:
     return f"{output_dir}/{'-'.join(parts)}.jsonl"
 
 
-def _skills_output_jsonl_for_unit(unit: Dict) -> str:
-    """Derive the matching Skills-shape output file for a unit.
-
-    Skills' summarize_results expects `output.jsonl` for greedy / single-seed
-    runs and `output-rs{seed}.jsonl` / chunked variants for multi-seed.
-    """
-    output_dir = unit["output_dir"]
-    seed = unit.get("random_seed")
-    chunk_id = unit.get("chunk_id")
-    parts = ["output"]
-    if seed is not None:
-        parts.append(f"rs{seed}")
-    if chunk_id is not None:
-        parts.append(f"chunk{chunk_id}")
-    return f"{output_dir}/{'-'.join(parts)}.jsonl"
-
-
 @dataclass(kw_only=True)
 class GymEvalClientScript(BaseJobScript):
     """Client script for `ns eval --backend=gym`.
@@ -132,12 +115,6 @@ class GymEvalClientScript(BaseJobScript):
     # Required for the Skills-derived input JSONLs (which carry raw fields
     # like `question`/`expected_answer`, not pre-built responses_create_params).
     gym_prompt_config: Optional[str] = None
-
-    # `metric_type` selects the gym→skills row converter (math/code/...). When
-    # set, each unit's rollouts.jsonl is also written out as a Skills-shape
-    # output.jsonl so `summarize_results` produces the right metrics.json
-    # without changes. None disables the post-rollout conversion step.
-    metric_type: Optional[str] = None
 
     servers: Optional[List[Optional["ServerScript"]]] = None
     server_addresses_prehosted: Optional[List[str]] = None
@@ -174,16 +151,11 @@ class GymEvalClientScript(BaseJobScript):
             policy_model_name = self.policy_model_name or (self.model_names[0] if self.model_names else None)
 
             ng_run_cmd = self._ng_run_cmd(policy_base_url)
-            # Each "unit step" runs ng_collect_rollouts and, if a metric_type is
-            # configured, converts the resulting rollouts to a Skills-shape
-            # output.jsonl so summarize_results can produce metrics.json unchanged.
-            per_unit_steps: List[List[str]] = []
-            for unit in self.units:
-                steps = [self._ng_collect_cmd(unit, policy_model_name)]
-                convert = self._convert_cmd(unit)
-                if convert:
-                    steps.append(convert)
-                per_unit_steps.append(steps)
+            # One ng_collect_rollouts per unit. Gym writes `rollouts.jsonl` +
+            # `rollouts_aggregate_metrics.json` natively — no post-rollout
+            # conversion to Skills schema (we intentionally break the Skills
+            # output contract as part of this migration).
+            per_unit_steps: List[List[str]] = [[self._ng_collect_cmd(unit, policy_model_name)] for unit in self.units]
 
             wait_cmd = get_server_wait_cmd(f"{policy_base_url}/models") if policy_base_url else ""
             gym_path_snippet = _resolve_gym_path_snippet(self.gym_path)
@@ -267,20 +239,6 @@ class GymEvalClientScript(BaseJobScript):
         # the output JSONL; the parent dir must exist before it runs.
         return f'mkdir -p "$(dirname "{output_file}")" && {ng_collect}'
 
-    def _convert_cmd(self, unit: Dict) -> Optional[str]:
-        """Adapter step: write a Skills-shape output.jsonl alongside the Gym rollouts.
-
-        Returns None when `metric_type` isn't set (caller skips the step).
-        """
-        if not self.metric_type:
-            return None
-        rollouts = _output_jsonl_for_unit(unit)
-        skills_out = _skills_output_jsonl_for_unit(unit)
-        return (
-            f"python -m nemo_skills.adapters.gym_to_skills "
-            f'"{rollouts}" "{skills_out}" --metric_type={shlex.quote(self.metric_type)}'
-        )
-
     def _shell_scaffold(
         self,
         *,
@@ -293,11 +251,9 @@ class GymEvalClientScript(BaseJobScript):
         unit_blocks: List[str] = []
         for i, steps in enumerate(per_unit_steps):
             step_lines = [f'echo "--- unit {i + 1}/{len(per_unit_steps)} ---"']
-            for j, step in enumerate(steps):
-                # Step 0 is always ng_collect_rollouts; later steps are post-processing.
-                err_label = "ng_collect_rollouts" if j == 0 else f"post-step {j}"
+            for step in steps:
                 step_lines.append(
-                    f'{step} || {{ echo "ERROR: {err_label} failed (unit {i + 1})"; '
+                    f'{step} || {{ echo "ERROR: ng_collect_rollouts failed (unit {i + 1})"; '
                     f"kill $NG_RUN_PID 2>/dev/null || true; exit 1; }}"
                 )
             unit_blocks.append("\n".join(step_lines))

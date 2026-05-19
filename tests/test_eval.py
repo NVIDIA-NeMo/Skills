@@ -517,6 +517,96 @@ def test_gym_backend_prefers_nemo_gym_container_when_present(monkeypatch):
     assert captured.get("client_container") == "gym-img.sqsh"
 
 
+def test_gym_backend_skips_summarize_results_task(monkeypatch):
+    """Gym writes its own rollouts_aggregate_metrics.json next to rollouts.jsonl;
+    Skills' summarize_results expects an output.jsonl in the Skills schema that
+    we no longer produce. Don't schedule the summarize task on the gym path."""
+    summarize_task_added = []
+
+    real_add_task = eval_pipeline.pipeline_utils.add_task
+
+    def spy_add_task(*args, **kwargs):
+        task_name = kwargs.get("task_name") or (args[2] if len(args) > 2 else "")
+        if "summarize-results" in str(task_name):
+            summarize_task_added.append(task_name)
+        return real_add_task(*args, **kwargs)
+
+    monkeypatch.setattr(eval_pipeline.Command, "__init__", lambda self, **kwargs: None)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "add_task", spy_add_task)
+
+    cluster_config = {
+        "executor": "local",
+        "containers": {
+            "nemo-skills": "skills-img.sqsh",
+            "nemo-rl": "rl-img.sqsh",
+        },
+    }
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_cluster_config", lambda *a, **k: cluster_config)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "resolve_mount_paths", lambda c, *a, **k: c)
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_env_variables", lambda c: {})
+    monkeypatch.setattr(
+        eval_pipeline.pipeline_utils,
+        "check_mounts",
+        lambda config, log_dir, mount_map, check_mounted_paths: (
+            list(mount_map.keys())[0],
+            list(mount_map.keys())[1] if len(mount_map) > 1 else None,
+            log_dir,
+        ),
+    )
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_exp", lambda *a, **k: FakeExp())
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "run_exp", lambda *a, **k: None)
+
+    benchmark_args = eval_utils.BenchmarkArgs(
+        name="gsm8k",
+        input_file="/tmp/in.jsonl",
+        generation_args="",
+        judge_args="",
+        judge_pipeline_args={},
+        requires_sandbox=False,
+        keep_mounts_for_sandbox=False,
+        generation_module="nemo_skills.inference.generate",
+        num_samples=0,
+        num_chunks=None,
+        eval_subfolder="eval-results/gsm8k",
+        metrics_type="math",
+    )
+    unit = eval_utils.EvalGenerationUnit(
+        output_dir="/out",
+        input_file="/tmp/in.jsonl",
+        extra_arguments="",
+        random_seed=None,
+        chunk_id=None,
+        num_chunks=None,
+        script="nemo_skills.inference.generate",
+        requirements=None,
+        wandb_parameters=None,
+        with_sandbox=False,
+    )
+    monkeypatch.setattr(
+        eval_pipeline,
+        "prepare_eval_commands",
+        lambda **kwargs: ({"gsm8k": benchmark_args}, [([unit], {"gsm8k"}, False, False, [])]),
+    )
+    monkeypatch.setattr(eval_pipeline.Pipeline, "run", lambda self, **kwargs: [object()])
+
+    ctx = SimpleNamespace(args=[])
+    eval_pipeline.eval(
+        ctx=ctx,
+        output_dir="/out",
+        benchmarks="gsm8k",
+        server_type=["openai"],
+        server_address=["http://policy.example/v1"],
+        model=["nvidia/test-model"],
+        backend=EvalBackend.gym,
+        skip_hf_home_check=True,
+        # auto_summarize_results defaults to True — should still be skipped on gym.
+    )
+
+    assert summarize_task_added == [], (
+        f"summarize-results task should not be scheduled on gym path; got {summarize_task_added}"
+    )
+
+
 def test_skills_backend_keeps_using_nemo_skills_container(monkeypatch):
     """Regression guard: the dispatcher tweak must not affect --backend=skills."""
     captured = {}

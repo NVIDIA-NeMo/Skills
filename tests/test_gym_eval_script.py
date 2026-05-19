@@ -228,32 +228,14 @@ class TestShellOutput:
         cmd, _ = script.inline()
         assert '+input_jsonl_fpath="/data/gsm8k_benchmark.jsonl"' in cmd
 
-    def test_no_metric_type_means_no_conversion_step(self):
+    def test_no_skills_schema_conversion_is_emitted(self):
+        """The migration intentionally breaks the Skills output contract — Gym
+        writes rollouts.jsonl + rollouts_aggregate_metrics.json natively. Make
+        sure we don't accidentally bring the old adapter back."""
         script = _script()
         cmd, _ = script.inline()
-        assert "nemo_skills.adapters.gym_to_skills" not in cmd
-
-    def test_metric_type_math_appends_converter_after_each_unit(self):
-        script = _script(metric_type="math")
-        cmd, _ = script.inline()
-        assert "nemo_skills.adapters.gym_to_skills" in cmd
-        assert "--metric_type=math" in cmd
-        # Converter writes to the matching Skills-shape output.jsonl.
-        assert "/out/eval-results/gsm8k/output.jsonl" in cmd
-
-    def test_metric_type_with_seeded_units_uses_seeded_output_filenames(self):
-        script = _script(
-            metric_type="math",
-            units=[_gsm8k_unit(seed=0), _gsm8k_unit(seed=1)],
-        )
-        cmd, _ = script.inline()
-        # One converter call per unit, each pointing at its own Skills output.
-        assert cmd.count("nemo_skills.adapters.gym_to_skills") == 2
-        assert "output-rs0.jsonl" in cmd
-        assert "output-rs1.jsonl" in cmd
-        # Rollouts files retain their distinct names too.
-        assert "rollouts-rs0.jsonl" in cmd
-        assert "rollouts-rs1.jsonl" in cmd
+        assert "gym_to_skills" not in cmd
+        assert "output.jsonl" not in cmd  # Skills schema artifact
 
     def test_multiple_units_run_sequentially_against_one_ng_run(self):
         script = _script(units=[_gsm8k_unit(seed=0), _gsm8k_unit(seed=1)])

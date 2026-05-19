@@ -628,17 +628,12 @@ def eval(
                     )
                 (gym_benchmark,) = job_benchmarks
                 gym_cfg: GymBenchmarkConfig = get_gym_config(gym_benchmark)
-                # Effective metric_type for the gym→skills converter: prefer
-                # the CLI override, else the benchmark's METRICS_TYPE module
-                # constant. Same precedence summarize_results uses.
-                gym_metric_type = metric_type or benchmarks_dict[gym_benchmark].metrics_type
                 client_script = GymEvalClientScript(
                     units=unit_dicts,
                     config_paths=list(gym_cfg.config_paths),
                     agent_name=gym_cfg.agent_name,
                     gym_input_jsonl_fpath=gym_cfg.input_jsonl_fpath,
                     gym_prompt_config=gym_cfg.prompt_config,
-                    metric_type=gym_metric_type,
                     single_node_mode=single_node_mode,
                     with_sandbox=sandbox_enabled,
                     servers=server_scripts,
@@ -908,7 +903,11 @@ def eval(
         group_module = {}
 
         # setting summarize results tasks
-        if auto_summarize_results:
+        # Skip on the Gym backend: ng_collect_rollouts writes its own
+        # rollouts_aggregate_metrics.json next to rollouts.jsonl, and we
+        # intentionally don't preserve the Skills `output.jsonl` schema
+        # that summarize_results consumes.
+        if auto_summarize_results and backend != EvalBackend.gym.value:
             for benchmark, benchmark_args in benchmarks_dict.items():
                 # TODO: add logic if metrics.json exists, we don't run this!
                 has_tasks = True
