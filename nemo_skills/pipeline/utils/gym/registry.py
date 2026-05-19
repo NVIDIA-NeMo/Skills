@@ -51,16 +51,33 @@ class GymBenchmarkConfig:
     prompt_config: str
 
 
-_BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
-    "gsm8k": GymBenchmarkConfig(
+def _math_with_judge_entry(
+    name: str,
+    *,
+    prompt_config: str = "benchmarks/prompts/generic_math.yaml",
+) -> GymBenchmarkConfig:
+    """Boilerplate for benchmarks that wrap `math_with_judge` with a single
+    same-named agent. Most Skills math benchmarks (gsm8k, aime24/25,
+    hmmt_feb25, hendrycks_math) follow this exact shape.
+    """
+    return GymBenchmarkConfig(
         config_paths=[
-            "benchmarks/gsm8k/config.yaml",
+            f"benchmarks/{name}/config.yaml",
             "responses_api_models/vllm_model/configs/vllm_model.yaml",
         ],
-        agent_name="gsm8k_math_with_judge_simple_agent",
-        input_jsonl_fpath="benchmarks/gsm8k/data/gsm8k_benchmark.jsonl",
-        prompt_config="benchmarks/prompts/generic_math.yaml",
-    ),
+        agent_name=f"{name}_math_with_judge_simple_agent",
+        input_jsonl_fpath=f"benchmarks/{name}/data/{name}_benchmark.jsonl",
+        prompt_config=prompt_config,
+    )
+
+
+_BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
+    "gsm8k": _math_with_judge_entry("gsm8k"),
+    # aime24 / aime25 / hmmt_feb25 ship their own per-benchmark prompt YAML.
+    "aime24": _math_with_judge_entry("aime24", prompt_config="benchmarks/aime24/prompts/default.yaml"),
+    "aime25": _math_with_judge_entry("aime25", prompt_config="benchmarks/aime25/prompts/default.yaml"),
+    "hmmt_feb25": _math_with_judge_entry("hmmt_feb25", prompt_config="benchmarks/hmmt_feb25/prompts/default.yaml"),
+    "hendrycks_math": _math_with_judge_entry("hendrycks_math"),
 }
 
 

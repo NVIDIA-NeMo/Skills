@@ -44,6 +44,31 @@ class TestRegistry:
         assert names == sorted(names)
         assert "gsm8k" in names
 
+    @pytest.mark.parametrize(
+        "benchmark,expected_prompt_config",
+        [
+            ("gsm8k", "benchmarks/prompts/generic_math.yaml"),
+            ("aime24", "benchmarks/aime24/prompts/default.yaml"),
+            ("aime25", "benchmarks/aime25/prompts/default.yaml"),
+            ("hmmt_feb25", "benchmarks/hmmt_feb25/prompts/default.yaml"),
+            ("hendrycks_math", "benchmarks/prompts/generic_math.yaml"),
+        ],
+    )
+    def test_math_cluster_entries_are_consistent(self, benchmark, expected_prompt_config):
+        """Every math_with_judge benchmark uses the same shape: a per-benchmark
+        config.yaml + the vllm_model policy, a `<name>_math_with_judge_simple_agent`
+        agent, and a `<name>_benchmark.jsonl` data file under
+        benchmarks/<name>/data/. Prompt YAML is per-benchmark for aime/hmmt and
+        shared for gsm8k/hendrycks_math (mirrors how Gym ships them)."""
+        cfg = get_gym_config(benchmark)
+        assert cfg.config_paths == [
+            f"benchmarks/{benchmark}/config.yaml",
+            "responses_api_models/vllm_model/configs/vllm_model.yaml",
+        ]
+        assert cfg.agent_name == f"{benchmark}_math_with_judge_simple_agent"
+        assert cfg.input_jsonl_fpath == f"benchmarks/{benchmark}/data/{benchmark}_benchmark.jsonl"
+        assert cfg.prompt_config == expected_prompt_config
+
 
 # ----------------------------------------------------------------------
 # GymEvalClientScript
