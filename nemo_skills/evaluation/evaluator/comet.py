@@ -36,9 +36,13 @@ import torch.distributed as dist
 # refuses to unpickle COMET's `Prediction` (an OrderedDict subclass) and
 # raises `_pickle.UnpicklingError: Weights only load failed ...
 _orig_torch_load = torch.load
+
+
 def _torch_load_compat(*args, **kwargs):
     kwargs.setdefault("weights_only", False)
     return _orig_torch_load(*args, **kwargs)
+
+
 torch.load = _torch_load_compat
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -159,7 +163,7 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=64,
+        default=16,
         help="Batch size for xCOMET-XXL inference",
     )
     parser.add_argument(

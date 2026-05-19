@@ -122,22 +122,25 @@ def create_judge_tasks(
     # atomic mkdir lock + ready-file, mirroring the pattern in
     # nemo_skills/pipeline/utils/generation.py.
     install_cmd = (
-        'mkdir -p /tmp/nemo_skills && '
-        'READY_FILE=/tmp/nemo_skills/unbabel_comet.ready && '
-        'LOCK_DIR=/tmp/nemo_skills/unbabel_comet.lock && '
+        "mkdir -p /tmp/nemo_skills && "
+        "READY_FILE=/tmp/nemo_skills/unbabel_comet.ready && "
+        "LOCK_DIR=/tmp/nemo_skills/unbabel_comet.lock && "
         'if [ ! -f "$READY_FILE" ]; then '
         '  if mkdir "$LOCK_DIR" 2>/dev/null; then '
-        '    if ! pip install unbabel-comet; then rmdir "$LOCK_DIR"; exit 1; fi; '
-        '    touch "$READY_FILE"; '
-        '    rmdir "$LOCK_DIR"; '
-        '  else '
+        "    ( "
+        "      trap 'rc=$?; rmdir \"$LOCK_DIR\" 2>/dev/null; exit $rc' EXIT HUP INT TERM; "
+        "      pip install unbabel-comet || exit 1; "
+        '      touch "$READY_FILE"; '
+        '      rmdir "$LOCK_DIR"; '
+        "      trap - EXIT HUP INT TERM; "
+        "    ) || exit 1; "
+        "  else "
         '    while [ ! -f "$READY_FILE" ]; do sleep 1; done; '
-        '  fi; '
-        'fi'
+        "  fi; "
+        "fi"
     )
     run_cmd = (
-        f"{install_cmd} && "
-        f"python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
+        f"{install_cmd} && python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
     )
 
     # Create task with GPU support for Comet
