@@ -288,8 +288,6 @@ class BaseModel:
         # TODO: remove this after we no longer use gpt-oss or it's fixed in vllm
         max_retries = 2
         retry_count = 0
-        max_retries_404 = 5
-        retry_count_404 = 0
 
         async with self.concurrent_semaphore:
             while retry_count <= max_retries:
@@ -330,13 +328,6 @@ class BaseModel:
                         self._maybe_apply_stop_phrase_removal(result, remove_stop_phrases, stop_phrases)
                     return result
 
-                except litellm.exceptions.BadRequestError as e:
-                    if "prompt is too long" in str(e):
-                        LOG.error(f"Prompt is too long, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
-                    else:
-                        raise e
-
                 except openai.BadRequestError as e:
                     if "output messages (reasoning and final)" in str(e):
                         if retry_count < max_retries:
@@ -345,83 +336,13 @@ class BaseModel:
                             continue
 
                         LOG.error(f"BadRequestError after {max_retries} retries, returning empty response: {e}")
-                        return {"generation": "", "reasoning_content": "", "num_generated_tokens": 0}
-                    elif "Requested token count exceeds the model's maximum context length" in str(e):
-                        LOG.error(
-                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
-                        )
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
-                    elif "is longer than the model's context length" in str(e):
-                        LOG.error(f"Input is longer than the model's context length, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
-                    elif "'max_tokens' or 'max_completion_tokens' is too large:" in str(e):
-                        LOG.error(
-                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
-                        )
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
-                    elif "Please reduce the length of the input messages." in str(e):
-                        LOG.error(f"Please reduce the length of the input messages, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
+                        return {
+                            "generation": "",
+                            "reasoning_content": "",
+                            "num_generated_tokens": 0,
+                            "serialized_output": [],
+                        }
                     else:
-                        raise e
-
-                except litellm.exceptions.RateLimitError as e:
-                    if "Requested token count exceeds the model's maximum context length" in str(e):
-                        LOG.error(
-                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
-                        )
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
-                    elif "is longer than the model's context length" in str(e):
-                        LOG.error(f"Input is longer than the model's context length, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
-                    else:
-                        raise e
-
-                except litellm.exceptions.ContextWindowExceededError as e:
-                    if "Requested token count exceeds the model's maximum context length" in str(e):
-                        LOG.error(
-                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
-                        )
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
-                    elif "is longer than the model's context length" in str(e):
-                        LOG.error(f"Input is longer than the model's context length, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
-                    elif "'max_tokens' or 'max_completion_tokens' is too large:" in str(e):
-                        LOG.error(
-                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
-                        )
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
-                    elif "Please reduce the length of the input message" in str(e):
-                        LOG.error(f"Please reduce the length of the input message, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
-
-                    elif "prompt is too long:" in str(e):
-                        LOG.error(f"Prompt is too long, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
-
-                    else:
-                        raise e
-
-                except litellm.exceptions.InternalServerError as e:
-                    if "TextEncodeInput" in str(e):
-                        LOG.error(f"TextEncodeInput, returning empty response: {e}")
-                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "text_encode_input"}
-                    else:
-                        raise e
-
-                except litellm.exceptions.NotFoundError as e:
-                    # 404 errors often happen when server is not fully ready yet
-                    if retry_count_404 < max_retries_404:
-                        retry_count_404 += 1
-                        # Exponential backoff: 2, 4, 8, 16, 32 seconds
-                        wait_time = min(2**retry_count_404, 32)  # Cap at 32 seconds
-                        LOG.warning(
-                            f"NotFoundError (404), retrying {retry_count_404}/{max_retries_404} after {wait_time}s: {e}"
-                        )
-                        await asyncio.sleep(wait_time)
-                        continue
-                    else:
-                        LOG.error(f"NotFoundError (404) after {max_retries_404} retries, giving up: {e}")
                         raise e
 
         return result

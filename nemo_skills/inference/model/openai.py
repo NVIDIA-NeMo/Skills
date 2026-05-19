@@ -121,7 +121,7 @@ class OpenAIModel(BaseModel):
             "messages": messages,
             "seed": random_seed,
             "stop": stop_phrases or None,
-            "timeout": 1200,
+            "timeout": timeout,
             "stream": stream,
             "tools": tools,
             "response_format": response_format,
@@ -129,14 +129,14 @@ class OpenAIModel(BaseModel):
 
         if self._is_reasoning_model(self.model):
             # Reasoning model specific validations and parameters
-            # if temperature != 0.0:
-            #     raise ValueError(
-            #         "`temperature` is not supported by reasoning models, please set it to default value `0.0`."
-            #     )
-            # if top_p != 0.95:
-            #     raise ValueError(
-            #         "`top_p` is not supported by reasoning models, please set it to default value `0.95`."
-            #     )
+            if temperature != 0.0:
+                raise ValueError(
+                    "`temperature` is not supported by reasoning models, please set it to default value `0.0`."
+                )
+            if top_p != 0.95:
+                raise ValueError(
+                    "`top_p` is not supported by reasoning models, please set it to default value `0.95`."
+                )
             if top_logprobs is not None:
                 raise ValueError("`top_logprobs` is not supported by reasoning models, please set it to `None`.")
 
@@ -154,8 +154,8 @@ class OpenAIModel(BaseModel):
             params["logprobs"] = top_logprobs is not None
             params["top_logprobs"] = top_logprobs
             params["max_completion_tokens"] = tokens_to_generate
-            # params["temperature"] = temperature
-            # params["top_p"] = top_p
+            params["temperature"] = temperature
+            params["top_p"] = top_p
 
         return params
 
