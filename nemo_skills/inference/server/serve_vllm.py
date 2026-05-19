@@ -37,7 +37,6 @@ def main():
         logging_args = ""
 
     cmd = (
-        f"curl -O https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16/raw/main/super_v3_reasoning_parser.py && "
         f"python3 -m vllm.entrypoints.openai.api_server "
         f'    --model="{args.model}" '
         f'    --served-model-name="{args.model}"'
