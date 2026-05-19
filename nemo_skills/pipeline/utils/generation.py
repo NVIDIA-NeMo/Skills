@@ -625,7 +625,6 @@ def configure_client(
         }
         if server_container:
             server_config["container"] = server_container
-
         extra_arguments = (
             f"++server.host=127.0.0.1 ++server.port={server_port} ++server.model={model} {extra_arguments}"
         )
