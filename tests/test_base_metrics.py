@@ -192,3 +192,14 @@ def test_base_metrics_update(predictions, expected_all_scores):
     metrics = MockMetrics()
     metrics.update(predictions)
     assert metrics.all_scores == expected_all_scores
+
+
+def test_base_metrics_avg_tool_calls():
+    metrics = MockMetrics()
+    metrics.update([{"num_tool_calls": 2}, {"num_tool_calls": 4}])
+    metrics.update([{"num_tool_calls": 1}, {"num_tool_calls": 3}])
+
+    common_metrics = {}
+    metrics.update_common_metrics(common_metrics)
+
+    assert common_metrics["avg_tool_calls"] == 2.5

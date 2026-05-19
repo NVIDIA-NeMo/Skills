@@ -29,6 +29,8 @@ class BaseMetrics(abc.ABC):
         agg_dict["num_entries"] = self.total
         if self.avg_tokens > 0:
             agg_dict["avg_tokens"] = int(self.avg_tokens / self.total)
+        if self.avg_tool_calls > 0:
+            agg_dict["avg_tool_calls"] = self.avg_tool_calls / self.total
         if self.max_end_time > float("-inf") and self.min_start_time < float("inf"):
             agg_dict["gen_seconds"] = int(self.max_end_time - self.min_start_time)
 
@@ -154,6 +156,9 @@ class BaseMetrics(abc.ABC):
         self.avg_tokens += sum(
             pred["num_generated_tokens"] for pred in predictions if "num_generated_tokens" in pred
         ) / len(predictions)
+        self.avg_tool_calls += sum(pred["num_tool_calls"] for pred in predictions if "num_tool_calls" in pred) / len(
+            predictions
+        )
 
         # Handle token data
         reasoning_tokens = []
@@ -192,6 +197,7 @@ class BaseMetrics(abc.ABC):
         self.total = 0
         self.max_k = 0
         self.avg_tokens = 0
+        self.avg_tool_calls = 0
         self.min_start_time = float("inf")
         self.max_end_time = float("-inf")
         self.eval_dict = defaultdict(lambda: defaultdict(float))
