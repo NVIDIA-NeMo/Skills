@@ -14,161 +14,124 @@
 
 """Prepare ASR Leaderboard datasets for evaluation.
 
-Downloads and formats datasets from the HuggingFace Open ASR Leaderboard.
+Downloads and formats datasets from the official HF Open ASR Leaderboard ESB
+test-only sorted dataset (hf-audio/esb-datasets-test-only-sorted). This is the
+same data source used by the official leaderboard, ensuring apples-to-apples
+WER comparison.
+
 Audio paths in JSONL: /dataset/asr-leaderboard/data/{dataset}/{sample_id}.flac
 
 Usage:
     ns prepare_data asr-leaderboard
     ns prepare_data asr-leaderboard --datasets librispeech_clean ami
-    ns prepare_data asr-leaderboard --no-audio  # skip saving audio files
+    ns prepare_data asr-leaderboard --no-audio
 """
 
 import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
-from datasets import load_dataset
+from datasets import Audio, load_dataset
 from tqdm import tqdm
 
+HF_REPO = "hf-audio/esb-datasets-test-only-sorted"
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
-USER_MESSAGE = "Transcribe the audio file into English text."
-MIN_AUDIO_DURATION = 0.1  # Skip audio shorter than this
+AUDIO_SAMPLE_RATE = 16000
 
-# Speaker IDs to skip in Tedlium dataset
-SKIP_SPEAKER_IDS = {"inter_segment_gap"}
-
-# Non-speech tokens to skip in GigaSpeech dataset
-NONSPEECH_TOKENS = {"<SIL>", "<MUSIC>", "<NOISE>", "<OTHER>"}
-
-
-def is_nonspeech_only(text):
-    """Check if text contains only non-speech tokens."""
-    tokens = set(text.strip().split())
-    return tokens and tokens.issubset(NONSPEECH_TOKENS)
-
-
-# (hf_dataset, hf_config, hf_split, streaming)
+# (config, split, text_field, id_field)
 DATASET_CONFIGS = {
-    "librispeech_clean": ("librispeech_asr", "clean", "test", False),
-    "librispeech_other": ("librispeech_asr", "other", "test", False),
-    "voxpopuli": ("facebook/voxpopuli", "en", "test", False),
-    "tedlium": ("LIUM/tedlium", "release3", "test", False),
-    "gigaspeech": ("speechcolab/gigaspeech", "xs", "test", False),
-    "spgispeech": ("kensho/spgispeech", "test", "test", True),  # streaming to avoid timeout due to large metadata
-    "earnings22": ("distil-whisper/earnings22", "chunked", "test", False),
-    "ami": ("edinburghcstr/ami", "ihm", "test", False),
+    "librispeech_clean": ("librispeech", "test.clean", "text", "id"),
+    "librispeech_other": ("librispeech", "test.other", "text", "id"),
+    "voxpopuli": ("voxpopuli", "test", "text", "id"),
+    "tedlium": ("tedlium", "test", "text", "id"),
+    "gigaspeech": ("gigaspeech", "test", "text", "id"),
+    "spgispeech": ("spgispeech", "test", "text", "id"),
+    "earnings22": ("earnings22", "test", "text", "id"),
+    "ami": ("ami", "test", "text", "id"),
 }
 
 
-def save_audio_and_format_entry(entry, dataset_name, audio_dir, sample_idx, with_audio=True):
-    """Format a dataset entry and optionally save audio file."""
-    # Different datasets use different field names for transcription
-    text = (
-        entry.get("text", "")  # ami, LS, gigaspeech, tedlium
-        or entry.get("normalized_text", "")  # voxpopuli
-        or entry.get("transcript", "")  # spgispeech
-        or entry.get("transcription", "")  # earnings22
-    )
-    text = text.strip() if text else ""
+def extract_audio(audio_info):
+    """Extract audio array and sampling rate from a HF dataset audio entry.
 
-    system_message = {"role": "system", "content": SYSTEM_MESSAGE}
-    user_message = {"role": "user", "content": USER_MESSAGE}
+    Handles both the legacy dict format ({"array": ..., "sampling_rate": ...})
+    and the newer AudioDecoder object from torchcodec-based datasets library.
+    """
+    if audio_info is None:
+        return None, None
+    try:
+        audio_array = np.array(audio_info["array"])
+        sampling_rate = int(audio_info["sampling_rate"])
+        return audio_array, sampling_rate
+    except (KeyError, TypeError, IndexError):
+        return None, None
 
-    audio_info = entry.get("audio", {})
-    if isinstance(audio_info, dict) and "array" in audio_info and "sampling_rate" in audio_info:
-        audio_array = audio_info["array"]
-        sampling_rate = audio_info["sampling_rate"]
 
-        # Skip if audio array is empty or invalid
-        if audio_array is None or len(audio_array) == 0:
-            return None
+def format_entry(entry, dataset_name, audio_dir, text_field, id_field, with_audio):
+    """Format a dataset entry into JSONL and optionally save the audio file."""
+    text = entry[text_field].strip()
+    if not text:
+        return None
 
+    sample_id = str(entry[id_field]).replace("/", "_")
+    audio_filename = f"{Path(sample_id).stem}.flac"
+
+    audio_array, sampling_rate = extract_audio(entry.get("audio"))
+    duration = None
+
+    if audio_array is not None and sampling_rate is not None:
         duration = len(audio_array) / sampling_rate
-
-        if duration < MIN_AUDIO_DURATION:
-            return None
-
-        sample_id = entry.get("id", str(sample_idx))
-        audio_filename = f"{sample_id}.flac"
-
         if with_audio:
             sf.write(str(audio_dir / audio_filename), audio_array, sampling_rate)
 
-        audio_filepath = f"/dataset/asr-leaderboard/data/{dataset_name}/{audio_filename}"
-        user_message["audio"] = {
-            "path": audio_filepath,
-            "duration": float(duration),
-        }
+    user_message = {"role": "user", "content": "Transcribe the following audio."}
+    audio_meta = {"path": f"/dataset/asr-leaderboard/data/{dataset_name}/{audio_filename}"}
+    if duration is not None:
+        audio_meta["duration"] = float(duration)
+    user_message["audio"] = audio_meta
 
-    formatted_entry = {
+    formatted = {
         "task_type": "ASR",
         "expected_answer": text,
-        "messages": [system_message, user_message],
+        "messages": [{"role": "system", "content": SYSTEM_MESSAGE}, user_message],
         "subset_for_metrics": dataset_name,
+        "id": entry[id_field],
     }
-
-    # Add audio_filepath and duration as top-level fields
-    if "audio" in user_message:
-        formatted_entry["audio_filepath"] = user_message["audio"]["path"]
-        formatted_entry["duration"] = user_message["audio"]["duration"]
-
-    if "id" in entry:
-        formatted_entry["id"] = entry["id"]
     if "speaker_id" in entry:
-        formatted_entry["speaker_id"] = entry["speaker_id"]
+        formatted["speaker_id"] = entry["speaker_id"]
 
-    return formatted_entry
+    return formatted
 
 
 def prepare_dataset(dataset_name, output_dir, with_audio=True):
-    """Prepare a single ASR dataset."""
+    """Download, decode, and write a single ASR dataset to JSONL + audio files."""
     if dataset_name not in DATASET_CONFIGS:
         raise ValueError(f"Unknown dataset: {dataset_name}. Available: {list(DATASET_CONFIGS.keys())}")
 
-    hf_dataset, hf_config, hf_split, streaming = DATASET_CONFIGS[dataset_name]
+    hf_config, hf_split, text_field, id_field = DATASET_CONFIGS[dataset_name]
 
-    print(f"Loading {dataset_name} from {hf_dataset} (streaming={streaming})...")
-    try:
-        if hf_config:
-            dataset = load_dataset(hf_dataset, hf_config, split=hf_split, trust_remote_code=True, streaming=streaming)
-        else:
-            dataset = load_dataset(hf_dataset, split=hf_split, trust_remote_code=True, streaming=streaming)
-    except Exception as e:
-        print(f"Warning: Failed to load {dataset_name}: {e}")
-        return 0
+    print(f"Loading {dataset_name} from {HF_REPO} (config={hf_config}, split={hf_split})...")
+    dataset = load_dataset(HF_REPO, hf_config, split=hf_split)
+    if with_audio and "audio" in dataset.column_names:
+        dataset = dataset.cast_column("audio", Audio(sampling_rate=AUDIO_SAMPLE_RATE))
 
     output_file = output_dir / f"{dataset_name}.jsonl"
     audio_dir = output_dir / "data" / dataset_name
 
     if with_audio:
         audio_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Saving audio files to {audio_dir}")
 
-    if streaming:
-        print(f"Processing {dataset_name} (streaming)...")
-    else:
-        print(f"Processing {len(dataset)} samples from {dataset_name}...")
-
+    print(f"Processing {len(dataset)} samples from {dataset_name}...")
     count = 0
-    skipped = 0
     with open(output_file, "w", encoding="utf-8") as fout:
-        for idx, entry in enumerate(tqdm(dataset, desc=dataset_name)):
-            formatted = save_audio_and_format_entry(entry, dataset_name, audio_dir, idx, with_audio=with_audio)
+        for entry in tqdm(dataset, desc=dataset_name):
+            formatted = format_entry(entry, dataset_name, audio_dir, text_field, id_field, with_audio)
             if formatted is None:
-                skipped += 1
                 continue
-            # Skip empty answers, non-speech segments, and non-speech-only samples
-            speaker_id = entry.get("speaker_id", "")
-            expected = formatted["expected_answer"]
-            if expected and speaker_id not in SKIP_SPEAKER_IDS and not is_nonspeech_only(expected):
-                fout.write(json.dumps(formatted) + "\n")
-                count += 1
-            else:
-                skipped += 1
-
-    if skipped > 0:
-        print(f"Skipped {skipped} samples (short audio, non-speech, or invalid)")
+            fout.write(json.dumps(formatted) + "\n")
+            count += 1
 
     print(f"Saved {count} samples to {output_file}")
     return count
@@ -190,15 +153,13 @@ def main():
     )
     args = parser.parse_args()
 
-    output_dir = Path(__file__).parent
+    data_dir = Path("/dataset/asr-leaderboard")
+    output_dir = data_dir if data_dir.exists() else Path(__file__).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with_audio = not args.no_audio
-
-    if args.no_audio:
+    if not with_audio:
         print("Running without saving audio files.")
-    else:
-        print("Running with audio. Saving to data/{dataset}/")
 
     datasets_to_prepare = list(DATASET_CONFIGS.keys()) if "all" in args.datasets else args.datasets
 
@@ -206,13 +167,10 @@ def main():
     for dataset_name in datasets_to_prepare:
         total_samples += prepare_dataset(dataset_name, output_dir, with_audio=with_audio)
 
-    # Combine all dataset JSONLs into test.jsonl
     combined_file = output_dir / "test.jsonl"
     print(f"\nCreating combined file: {combined_file}")
 
-    all_jsonl_files = sorted(output_dir.glob("*.jsonl"))
-    dataset_files = [f for f in all_jsonl_files if f.name != "test.jsonl"]
-
+    dataset_files = sorted(f for f in output_dir.glob("*.jsonl") if f.name != "test.jsonl")
     combined_count = 0
     with open(combined_file, "w", encoding="utf-8") as fout:
         for dataset_file in dataset_files:

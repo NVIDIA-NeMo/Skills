@@ -345,6 +345,7 @@ def create_app(
             seed = request.get("seed")
 
             # Create generation request
+            extra_body = request.get("extra_body", {})
             gen_request = GenerationRequest(
                 text=text if text else None,
                 system_prompt=system_prompt,
@@ -355,8 +356,12 @@ def create_app(
                 top_p=top_p,
                 seed=seed,
                 request_id=hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8],
-                extra_params=request.get("extra_body", {}),
+                extra_params=extra_body,
             )
+
+            # If no base64 audio was found but extra_body has an audio_filepath, pass it through.
+            if not audio_bytes_list and extra_body.get("audio_filepath"):
+                gen_request.audio_path = extra_body["audio_filepath"]
 
             # Validate request
             error = backend_instance.validate_request(gen_request)

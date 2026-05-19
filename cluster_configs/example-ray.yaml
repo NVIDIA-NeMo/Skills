@@ -1,0 +1,80 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Ray executor cluster config — initial Ray support for SFT (and eventually GRPO).
+#
+# Use this for either:
+#   (a) standalone Ray clusters (e.g., an existing self-managed Ray deployment), or
+#   (b) Ray-on-Slurm setups where Slurm allocates the nodes and Ray runs the
+#       job-submission layer inside the allocation.
+#
+# This is DISTINCT from the existing `with_ray=True` flag (Ray inside a
+# heterogeneous Slurm allocation) and from `nemo_run.core.execution.kuberay`
+# (Kubernetes-managed Ray clusters via the KubeRay operator).
+#
+# Supported in this release:
+#   - Single-command Ray jobs (SFT, eventually GRPO)
+#   - Dependency chaining via Ray submission IDs
+#   - Shared-FS runtime/code visibility (head + workers see the same paths)
+#
+# Out of scope (raises NotImplementedError):
+#   - Sandbox judge containers
+#   - Server co-scheduling (vLLM/SGLang/TRT-LLM alongside the main job)
+#   - Heterogeneous tasks
+#   - Multi-command task groups
+
+executor: ray
+
+# Ray cluster connection.
+ray:
+  # "auto" attaches to a Ray cluster started in the current environment
+  # (e.g., `ray start --head` in a Ray-on-Slurm setup, or RAY_ADDRESS env var).
+  # Use a "ray://host:10001" URI for a remote Ray client connection.
+  address: auto
+  # Namespace for job isolation across users/jobs on a shared cluster.
+  namespace: nemo
+  # Default *per-node* CPU allocation. NeMo-Skills multiplies this by the
+  # workflow's `num_nodes` to compute the per-job total CPU request, and Ray's
+  # `entrypoint_num_cpus` is then derived as total / num_nodes (= this value).
+  # GPU count is derived separately from the workflow's `num_gpus` parameter.
+  default_num_cpus: 8
+
+# Where Ray submission metadata + per-job logs are written. Should be on a
+# shared filesystem visible to head + workers so both sides see the same paths.
+jobs:
+  log_dir: /workspace/ray_jobs
+
+containers:
+  # Ray jobs typically use the same NeMo-RL / NeMo-Skills container as Slurm —
+  # specify the image refs here. For air-gapped deployments, use locally-built
+  # .sqsh / pre-staged images; runtime pulls are not required for the Ray path.
+  # Example (uncomment and fill in):
+  # nemo-rl: <local-path-or-registry-ref>
+  # nemo-skills: <local-path-or-registry-ref>
+  # vllm: <local-path-or-registry-ref>
+
+# Mounts visible to Ray workers. Code is auto-mounted at /nemo_run/code by
+# nemo-run for the Slurm path; for Ray, packaging happens via Ray's runtime_env
+# `working_dir`. If your shared FS already has the code staged, you do not need
+# to define a code mount here.
+#
+# mounts:
+#   - <shared-fs-path>/data:/data
+#   - <shared-fs-path>/models:/models
+
+# Environment variables for Ray jobs. HF_HOME is required by default — must be a
+# mounted path (or a path on the shared FS visible to Ray workers).
+# env_vars:
+#   - HF_HOME=/models/hf-cache
+#   - TOKENIZERS_PARALLELISM=false

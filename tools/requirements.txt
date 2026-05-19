@@ -1,0 +1,12 @@
+# Tools dependencies for the existing MCP/tool runtime.
+#
+# Phase 1 intentionally keeps the current module layout as-is. That means this
+# package includes a few structural transitive dependencies that are pulled in at
+# import time by the current implementation, but it excludes model-client
+# dependencies such as litellm and openai.
+
+httpx
+math-verify[antlr4_9_3]
+mcp
+omegaconf
+rich

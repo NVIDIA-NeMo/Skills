@@ -1,0 +1,28 @@
+# LongBench-v2 chain-of-thought prompt for 4-choice multiple-choice questions.
+# Adapted from https://github.com/THUDM/LongBench/blob/main/prompts/0shot_cot_ans.txt
+#
+# Template variables map to dataset fields:
+#   $DOC$  -> {context}   (long context text)
+#   $Q$    -> {question}  (question text)
+#   $C_A$  -> {choice_A}  (choice A text)
+#   $C_B$  -> {choice_B}  (choice B text)
+#   $C_C$  -> {choice_C}  (choice C text)
+#   $C_D$  -> {choice_D}  (choice D text)
+
+user: |-
+  Please read the following text and answer the questions below.
+
+  <text>
+  {context}
+  </text>
+
+  What is the correct answer to this question: {question}
+  Choices:
+  (A) {choice_A}
+  (B) {choice_B}
+  (C) {choice_C}
+  (D) {choice_D}
+
+  Let's think step by step.
+
+  Based on your thoughts, what is the single, most likely answer choice? The last line of your response should be in the following format: 'Answer: \boxed{{A/B/C/D}}' (e.g. 'Answer: \boxed{{A}}').

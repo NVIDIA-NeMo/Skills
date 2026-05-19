@@ -296,6 +296,10 @@ def ppo_verl(
         False,
         help="If True, will use the sandbox to run the training job",
     ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     script_module: str = typer.Option("verl.trainer.main_ppo", help="The script module to run. "),
     verl_config_dir: str = typer.Option(None, help="The directory containing the Verl config files. "),
     verl_config_name: str = typer.Option(None, help="The name of the Verl config file to use. "),
@@ -430,6 +434,7 @@ def ppo_verl(
                 sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
                 heterogeneous=True if server_config is not None else False,
                 with_sandbox=with_sandbox,
+                sandbox_mounts=sandbox_mounts,
                 installation_command=installation_command,
                 skip_hf_home_check=skip_hf_home_check,
             )

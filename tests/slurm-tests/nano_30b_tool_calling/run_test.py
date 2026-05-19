@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SLURM test for PythonTool (MCP tool calling) with nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.
+"""SLURM test for DirectPythonTool with nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.
 
-Validates the MCP-based tool calling pipeline on a real cluster:
-  - PythonTool spawns python_tool server (stdio or HTTP depending on branch)
-  - Model generates tool calls, PythonTool executes them in sandbox
+Sub-tests:
+  - Non-streaming: full eval (aime24:16, aime25:16) with metric ranges, timeouts, tool usage
+  - Streaming: quick smoke test (aime24:1) to verify streaming token counting works
+
+Validates the DirectPythonTool path on a real cluster:
+  - DirectPythonTool calls sandbox.execute_code() directly (no MCP subprocess/JSON-RPC)
+  - Model generates tool calls, DirectPythonTool executes them in sandbox
   - Results are evaluated for correctness and tool usage
 
 This test exercises a different code path than gpt_oss_python_aime25
 (which uses code_execution=true / CodeExecutionWrapper). Here we use
-tool_modules / ToolCallingWrapper / PythonTool.
+tool_modules / ToolCallingWrapper / DirectPythonTool.
 """
 
 import argparse
@@ -36,12 +40,13 @@ COMMON_PARAMS = (
     "++inference.tokens_to_generate=65536 "
     "++inference.temperature=1 "
     "++inference.top_p=0.95 "
-    "++tool_modules=[nemo_skills.mcp.servers.python_tool::PythonTool] "
+    "++tool_modules=[nemo_skills.mcp.servers.python_tool::DirectPythonTool] "
     "++max_tool_calls=100 "
 )
 
 
 def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, partition, num_jobs):
+    """Full rigorous non-streaming eval."""
     eval(
         ctx=wrap_arguments(COMMON_PARAMS),
         cluster=cluster,
@@ -60,6 +65,30 @@ def eval_math_tool_calling(workspace, cluster, expname_prefix, wandb_project, pa
     )
 
     return expname_prefix
+
+
+def eval_math_tool_calling_streaming(workspace, cluster, expname_prefix, wandb_project, partition, num_jobs):
+    """Quick streaming smoke test — verifies streaming token counting works."""
+    streaming_params = COMMON_PARAMS + "++inference.stream=true "
+    expname = f"{expname_prefix}-streaming"
+    eval(
+        ctx=wrap_arguments(streaming_params),
+        cluster=cluster,
+        model=MODEL,
+        server_type="vllm",
+        server_gpus=8,
+        server_args=SERVER_ARGS,
+        output_dir=f"{workspace}/streaming",
+        benchmarks="aime24:1",
+        with_sandbox=True,
+        num_jobs=num_jobs,
+        partition=partition,
+        expname=expname,
+        wandb_project=wandb_project,
+        wandb_name=expname,
+    )
+
+    return expname
 
 
 def main():
@@ -84,6 +113,15 @@ def main():
         num_jobs=args.num_jobs,
     )
 
+    streaming_expname = eval_math_tool_calling_streaming(
+        workspace=args.workspace,
+        cluster=args.cluster,
+        expname_prefix=args.expname_prefix,
+        wandb_project=args.wandb_project,
+        partition=args.partition,
+        num_jobs=args.num_jobs,
+    )
+
     # schedule a dependent check job on the cluster
     checker_cmd = f"python tests/slurm-tests/nano_30b_tool_calling/check_results.py --workspace {args.workspace}"
 
@@ -92,7 +130,7 @@ def main():
         cluster=args.cluster,
         expname=args.expname_prefix + "-check-results",
         log_dir=f"{args.workspace}/check-results-logs",
-        run_after=eval_expname,
+        run_after=[eval_expname, streaming_expname],
     )
 
 

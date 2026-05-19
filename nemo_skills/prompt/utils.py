@@ -153,7 +153,10 @@ class Prompt:
 
     def build_examples_dict(self, input_dict):
         if self.config.few_shot_examples.examples_type:
-            return examples_map[self.config.few_shot_examples.examples_type.format(**input_dict)]
+            key = self.config.few_shot_examples.examples_type.format(**input_dict)
+            if key in (None, "", "None"):
+                return []
+            return examples_map[key]
 
         if self.config.few_shot_examples.retriever is None:
             return []
@@ -338,7 +341,7 @@ class Prompt:
                     if isinstance(user_content, list):
                         text_parts = [item["text"] for item in user_content if item.get("type") == "text"]
                         user_content = " ".join(text_parts)
-                    if hasattr(self.tokenizer, "bos_token"):
+                    if hasattr(self.tokenizer, "bos_token") and self.tokenizer.bos_token:
                         messages_string = self.tokenizer.bos_token + user_content
                     else:
                         messages_string = user_content

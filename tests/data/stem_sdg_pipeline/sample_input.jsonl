@@ -1,0 +1,10 @@
+{"id": "sdg-1", "problem": "What is 1 + 1?", "expected_answer": "2", "subject": "mathematics", "difficulty": "easy", "source": "unit-test", "metadata": {}}
+{"id": "sdg-2", "problem": "Compute the integral of x dx.", "expected_answer": "0.5 x^2 + C", "subject": "mathematics", "difficulty": "medium", "source": "unit-test", "metadata": {}}
+{"id": "sdg-3", "problem": "Find the limit: lim_{x->0} sin(x)/x.", "expected_answer": "1", "subject": "calculus", "difficulty": "easy", "source": "unit-test", "metadata": {}}
+{"id": "sdg-4", "problem": "What is the derivative of sin(x)?", "expected_answer": "cos(x)", "subject": "calculus", "difficulty": "easy", "source": "unit-test", "metadata": {}}
+{"id": "sdg-5", "problem": "Solve for x: 2x - 5 = 9.", "expected_answer": "7", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "metadata": {}}
+{"id": "sdg-6", "problem": "Simplify: (x + 3)(x - 3).", "expected_answer": "x^2 - 9", "subject": "algebra", "difficulty": "easy", "source": "unit-test", "metadata": {}}
+{"id": "sdg-7", "problem": "Integrate: ∫ 3x^2 dx.", "expected_answer": "x^3 + C", "subject": "calculus", "difficulty": "medium", "source": "unit-test", "metadata": {}}
+{"id": "sdg-8", "problem": "Evaluate: 5!.", "expected_answer": "120", "subject": "combinatorics", "difficulty": "medium", "source": "unit-test", "metadata": {}}
+{"id": "sdg-9", "problem": "What is the value of π to 2 decimal places?", "expected_answer": "3.14", "subject": "geometry", "difficulty": "easy", "source": "unit-test", "metadata": {}}
+{"id": "sdg-10", "problem": "What is Newtons Law of Universal Gravitation?", "expected_answer": "Any two masses pull on each other with a force proportional to their masses and inversely proportional to the square of their distance", "subject": "mathematics", "difficulty": "easy", "source": "unit-test", "metadata": {}}
