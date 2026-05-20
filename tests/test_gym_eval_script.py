@@ -44,6 +44,19 @@ class TestRegistry:
         assert names == sorted(names)
         assert "gsm8k" in names
 
+    def test_gpqa_registered(self):
+        """gpqa uses Gym's `mcqa` resource server, not math_with_judge."""
+        cfg = get_gym_config("gpqa")
+        assert cfg.agent_name == "gpqa_mcqa_simple_agent"
+        assert cfg.input_jsonl_fpath == "benchmarks/gpqa/data/gpqa_diamond_benchmark.jsonl"
+        assert cfg.prompt_config == "benchmarks/gpqa/prompts/default.yaml"
+
+    def test_ifbench_registered(self):
+        cfg = get_gym_config("ifbench")
+        assert cfg.agent_name == "ifbench_benchmark_simple_agent"
+        assert cfg.input_jsonl_fpath == "benchmarks/ifbench/data/ifbench_benchmark.jsonl"
+        assert cfg.prompt_config == "benchmarks/ifbench/prompts/default.yaml"
+
     @pytest.mark.parametrize("benchmark", ["gsm8k", "aime24", "aime25", "hmmt_feb25", "hendrycks_math"])
     def test_math_cluster_entries_are_consistent(self, benchmark):
         """Every math_with_judge benchmark in current Gym main shares the same

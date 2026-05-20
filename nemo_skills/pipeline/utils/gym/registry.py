@@ -73,11 +73,35 @@ def _math_with_judge_entry(
 
 
 _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
+    # Math cluster — all wrap math_with_judge.
     "gsm8k": _math_with_judge_entry("gsm8k"),
     "aime24": _math_with_judge_entry("aime24"),
     "aime25": _math_with_judge_entry("aime25"),
     "hmmt_feb25": _math_with_judge_entry("hmmt_feb25"),
     "hendrycks_math": _math_with_judge_entry("hendrycks_math"),
+    # Multichoice via Gym's `mcqa` resource server. Note: Gym ships the
+    # gpqa diamond split as the default; the input file is named
+    # `gpqa_diamond_benchmark.jsonl` even though the registry key is `gpqa`
+    # (matches Skills' `--benchmarks=gpqa`).
+    "gpqa": GymBenchmarkConfig(
+        config_paths=[
+            "benchmarks/gpqa/config.yaml",
+            "responses_api_models/vllm_model/configs/vllm_model.yaml",
+        ],
+        agent_name="gpqa_mcqa_simple_agent",
+        input_jsonl_fpath="benchmarks/gpqa/data/gpqa_diamond_benchmark.jsonl",
+        prompt_config="benchmarks/gpqa/prompts/default.yaml",
+    ),
+    # Instruction-following via Gym's `ifbench` resource server.
+    "ifbench": GymBenchmarkConfig(
+        config_paths=[
+            "benchmarks/ifbench/config.yaml",
+            "responses_api_models/vllm_model/configs/vllm_model.yaml",
+        ],
+        agent_name="ifbench_benchmark_simple_agent",
+        input_jsonl_fpath="benchmarks/ifbench/data/ifbench_benchmark.jsonl",
+        prompt_config="benchmarks/ifbench/prompts/default.yaml",
+    ),
 }
 
 
