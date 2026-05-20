@@ -67,7 +67,9 @@ def eval_graphwalks(cfg):
             except (json.JSONDecodeError, TypeError):
                 expected_nodes = set()
 
-            if not expected_nodes and not predicted_nodes:
+            if parse_failed:
+                f1 = 0.0
+            elif not expected_nodes and not predicted_nodes:
                 f1 = 1.0
             elif not predicted_nodes or not expected_nodes:
                 f1 = 0.0
