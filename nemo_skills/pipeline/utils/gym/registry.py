@@ -90,7 +90,10 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
         ],
         agent_name="gpqa_mcqa_simple_agent",
         input_jsonl_fpath="benchmarks/gpqa/data/gpqa_diamond_benchmark.jsonl",
-        prompt_config="benchmarks/gpqa/prompts/default.yaml",
+        # Upstream Gym moved benchmarks/<bench>/prompts/default.yaml → shared
+        # benchmarks/prompts/eval/aai/mcq-4choices.yaml. Skills uses the same
+        # `eval/aai/mcq-4choices` path internally so both ends now agree.
+        prompt_config="benchmarks/prompts/eval/aai/mcq-4choices.yaml",
     ),
     # Instruction-following via Gym's `ifbench` resource server.
     "ifbench": GymBenchmarkConfig(
@@ -101,6 +104,20 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
         agent_name="ifbench_benchmark_simple_agent",
         input_jsonl_fpath="benchmarks/ifbench/data/ifbench_benchmark.jsonl",
         prompt_config="benchmarks/ifbench/prompts/default.yaml",
+    ),
+    # Code execution via Gym's `code_gen` resource server. Skills' default split
+    # is `EVAL_SPLIT="test_v6_2408_2505"` (LCB v6, contests 2024-08 through
+    # 2025-05); Gym ships the same split under `benchmarks/livecodebench/v6_2408_2505/`.
+    # code_gen runs candidate code in its own subprocess pool, so we DON'T set
+    # Skills' --with-sandbox (different mechanism).
+    "livecodebench": GymBenchmarkConfig(
+        config_paths=[
+            "benchmarks/livecodebench/v6_2408_2505/config.yaml",
+            "responses_api_models/vllm_model/configs/vllm_model.yaml",
+        ],
+        agent_name="livecodebench_v6_code_gen_simple_agent",
+        input_jsonl_fpath="benchmarks/livecodebench/v6_2408_2505/data/livecodebench_v6_validation.jsonl",
+        prompt_config="benchmarks/livecodebench/prompts/default.yaml",
     ),
 }
 

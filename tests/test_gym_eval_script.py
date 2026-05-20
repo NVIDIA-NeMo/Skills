@@ -49,7 +49,8 @@ class TestRegistry:
         cfg = get_gym_config("gpqa")
         assert cfg.agent_name == "gpqa_mcqa_simple_agent"
         assert cfg.input_jsonl_fpath == "benchmarks/gpqa/data/gpqa_diamond_benchmark.jsonl"
-        assert cfg.prompt_config == "benchmarks/gpqa/prompts/default.yaml"
+        # Upstream Gym moved the gpqa prompt to a shared mcq path.
+        assert cfg.prompt_config == "benchmarks/prompts/eval/aai/mcq-4choices.yaml"
 
     def test_ifbench_registered(self):
         cfg = get_gym_config("ifbench")
