@@ -26,7 +26,6 @@ import soundfile as sf
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
-
 FLEURS_LANG_TO_ID = OrderedDict(
     [
         ("Afrikaans", "af"),
