@@ -140,8 +140,7 @@ def download_and_extract_audio(data_dir: Path) -> int:
             sr = int(audio["sampling_rate"])
             if sr != SAMPLING_RATE:
                 raise ValueError(
-                    f"Unexpected sampling rate {sr} for sample {idx} (file_id={file_id}); "
-                    f"expected {SAMPLING_RATE}."
+                    f"Unexpected sampling rate {sr} for sample {idx} (file_id={file_id}); expected {SAMPLING_RATE}."
                 )
             _write_wav(wav_path, arr, sr)
             written += 1
@@ -287,6 +286,10 @@ def main() -> None:
     print(f"\nReading sample metadata from {metadata_path}")
     samples = load_samples(data_dir)
     print(f"Loaded {len(samples)} samples")
+    if not samples:
+        raise ValueError(
+            f"No samples found in {metadata_path}. Re-run without --no-audio to regenerate dataset metadata."
+        )
 
     if not args.no_audio:
         sample_audio = Path(audio_prefix) / "audio" / samples[0]["audio_filename"]

@@ -670,7 +670,7 @@ ns eval --benchmarks=contextual-earnings22.local ...
 
 ### Understanding Contextual Earnings-22 Results
 
-```
+```text
 <output_dir>/
 └── eval-results/
     └── contextual-earnings22/
@@ -685,7 +685,7 @@ ns eval --benchmarks=contextual-earnings22.local ...
 
 Example output:
 
-```
+```text
 ------------------ contextual-earnings22.contextless ------------------
 evaluation_mode | avg_tokens | gen_seconds | success_rate | wer   | keyword_precision | keyword_recall | keyword_f1 | num_entries
 pass@1          | 64         | 1100        | 99.10%       | 8.20% | 75.30%            | 71.80%         | 73.50%     | 772

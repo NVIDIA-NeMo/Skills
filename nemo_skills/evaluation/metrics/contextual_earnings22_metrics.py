@@ -29,9 +29,21 @@ class ContextualEarnings22Metrics(BaseMetrics):
     """Corpus-level WER + keyword Precision / Recall / F1 for Contextual Earnings-22."""
 
     def __init__(self, compute_no_answer: bool = True, max_k: int = 1):
-        """Initialize accumulators for corpus-level WER and keyword P/R/F1."""
+        """Initialize accumulators for corpus-level WER and keyword P/R/F1.
+
+        Only ``max_k == 1`` is supported: corpus-level WER and keyword
+        precision/recall/F1 are not well-defined across multiple hypotheses
+        per sample, so ``ContextualEarnings22Metrics`` rejects multi-generation
+        configurations up front rather than partially mutating state on the
+        first ``update()`` call.
+        """
         super().__init__(compute_no_answer=compute_no_answer)
-        self.max_k = max_k
+        if max_k != 1:
+            raise ValueError(
+                f"ContextualEarnings22Metrics supports only max_k=1, got {max_k}. "
+                f"Run with a single greedy generation (num_random_seeds=1) for Contextual Earnings-22."
+            )
+        self.max_k = 1
 
         self.wer_total_errors = 0
         self.wer_total_ref_words = 0
@@ -73,16 +85,17 @@ class ContextualEarnings22Metrics(BaseMetrics):
         per single hypothesis: there is no canonical way to combine these
         metrics across k hypotheses without reference comparison (which would
         defeat pass@k). Multi-generation aggregation is therefore not supported
-        here -- run with a single greedy generation.
+        here -- run with a single greedy generation. Validation happens before
+        ``super().update()`` so an invalid call cannot partially mutate state.
         """
-        super().update(predictions)
-
         if len(predictions) != 1:
             raise ValueError(
                 f"ContextualEarnings22Metrics expects exactly 1 generation per sample, "
                 f"got {len(predictions)}. Run with a single greedy generation "
                 f"(num_random_seeds=1) for Contextual Earnings-22."
             )
+
+        super().update(predictions)
 
         pred = predictions[0]
         predicted_answers = [pred["generation"].strip() or None]
@@ -131,11 +144,12 @@ class ContextualEarnings22Metrics(BaseMetrics):
         return metrics_dict
 
     def evaluations_to_print(self):
-        """Return the list of evaluation mode names to display."""
-        evals = [f"pass@{self.max_k}"]
-        if self.max_k > 1:
-            evals.extend([f"majority@{self.max_k}", f"pass@1[avg-of-{self.max_k}]"])
-        return evals
+        """Return the list of evaluation mode names to display.
+
+        Always returns ``["pass@1"]`` since this metric class enforces
+        ``max_k == 1`` in ``__init__``.
+        """
+        return ["pass@1"]
 
     def metrics_to_print(self):
         """Return ordered dict of metric names to formatters for display."""
