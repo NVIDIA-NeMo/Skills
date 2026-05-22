@@ -126,10 +126,6 @@ agent:
     enable_bash_tool: true
     parse_function:
       type: xml_function_calling
-    str_replace_editor:
-      arguments:
-      - name: view_range
-        argument_format: "--view_range {{value}}"
   history_processors: []
   model:
     # The following parameters are overridden by Nemo-Skills:
