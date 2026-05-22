@@ -1,0 +1,178 @@
+# Based on the multilingual config from the SWE-agent repo:
+# https://github.com/SWE-agent/SWE-agent/blob/3ff833d957973f9483fb012371432662c8b33269/config/benchmarks/anthropic_filemap_multilingual.yaml
+# but adds language-specific reproduction instructions from the Multi-SWE-bench team:
+# https://github.com/OpenHands/OpenHands/blob/a40f7bda210cefb3a34758308662a88bc01b20db/evaluation/benchmarks/multi_swe_bench/run_infer.py#L74
+# and uses the XML function calling parser and adds tool descriptions to the system prompt.
+
+# note that this doesn't use nemo-skills prompt logic and instead is passed directly to swe-agent
+
+agent:
+  type: default
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks.
+
+      You have access to the following functions:
+
+      ---- BEGIN FUNCTION #1: bash ----
+      Description: Execute a bash command in the terminal.
+
+      Parameters:
+        (1) command (string, required): The bash command to execute. Can be empty to view additional logs when previous exit code is `-1`. Can be `ctrl+c` to interrupt the currently running process.
+      ---- END FUNCTION #1 ----
+
+      ---- BEGIN FUNCTION #2: submit ----
+      Description: Finish the interaction when the task is complete OR if the assistant cannot proceed further with the task.
+      No parameters are required for this function.
+      ---- END FUNCTION #2 ----
+
+      ---- BEGIN FUNCTION #3: str_replace_editor ----
+      Description: Custom editing tool for viewing, creating and editing files
+      * State is persistent across command calls and discussions with the user
+      * If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep
+      * The `create` command cannot be used if the specified `path` already exists as a file
+      * If a `command` generates a long output, it will be truncated and marked with `<response clipped>`
+      * The `undo_edit` command will revert the last edit made to the file at `path`
+
+      Notes for using the `str_replace` command:
+      * The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
+      * If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique
+      * The `new_str` parameter should contain the edited lines that should replace the `old_str`
+
+      Parameters:
+        (1) command (string, required): The commands to run. Allowed options are: `view`, `create`, `str_replace`, `insert`, `undo_edit`.
+      Allowed values: [`view`, `create`, `str_replace`, `insert`, `undo_edit`]
+        (2) path (string, required): Absolute path to file or directory, e.g. `/repo/file` or `/repo`.
+        (3) file_text (string, optional): Required parameter of `create` command, with the content of the file to be created.
+        (4) old_str (string, optional): Required parameter of `str_replace` command containing the string in `path` to replace.
+        (5) new_str (string, optional): Optional parameter of `str_replace` command containing the new string (if not given, no string will be added). Required parameter of `insert` command containing the string to insert.
+        (6) insert_line (integer, optional): Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`.
+        (7) view_range (array, optional): Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.
+      ---- END FUNCTION #3 ----
+
+
+      If you choose to call a function ONLY reply in the following format with NO suffix:
+
+      Provide any reasoning for the function call here.
+      <function=example_function_name>
+      <parameter=example_parameter_1>value_1</parameter>
+      <parameter=example_parameter_2>
+      This is the value for the second parameter
+      that can span
+      multiple lines
+      </parameter>
+      </function>
+
+      <IMPORTANT>
+      Reminder:
+      - Function calls MUST follow the specified format, start with <function= and end with </function>
+      - Required parameters MUST be specified
+      - Only call one function at a time
+      - Always provide reasoning for your function call in natural language BEFORE the function call (not after)
+      </IMPORTANT>
+    instance_template: |-
+      {%-
+        set language_names = {
+          "c": "C",
+          "cpp": "C++",
+          "java": "Java",
+          "javascript": "JavaScript",
+          "go": "Go",
+          "php": "PHP",
+          "python": "Python",
+          "ruby": "Ruby",
+          "rust": "Rust",
+          "typescript": "TypeScript",
+        }
+      -%}
+      {%- set language_name = language_names.get(language, "") -%}
+      {%-
+        set repr_instructions = {
+          "c": "Create a script to reproduce the error by compiling your C code (for example, using `gcc <filename.c> -o <executable>`) and then running the executable using the bash tool, to confirm the error",
+          "cpp": "Create or adapt a small executable (e.g., a main file or a test driver) to reproduce the issue. Build and run it (for example, by using `g++ -o reproduce reproduce.cpp && ./reproduce` via the bash tool) to confirm the error",
+          "java": "Create a Java class to reproduce the error and execute it by first compiling with `javac <classname>.java` and then running with `java <classname>` using the bash tool, to confirm the error",
+          "javascript": "Create a script to reproduce the error and execute it with `node <filename.js>` using the bash tool, to confirm the error",
+          "go": "Create a script or a function to reproduce the error and execute it with `go run <filename.go>` using the bash tool, to confirm the error",
+          "php": "Create a script to reproduce the error and execute it with `php <filename.php>` using the bash tool, to confirm the error",
+          "python": "Create a script to reproduce the error and execute it with `python <filename.py>` using the bash tool, to confirm the error",
+          "ruby": "Create a script to reproduce the error and execute it with `ruby <filename.rb>` using the bash tool, to confirm the error",
+          "rust": "Create a reproduction script (or binary) that triggers the error and execute it with `cargo run --bin <filename>` using the bash tool, to confirm the error",
+          "typescript": "Create a script to reproduce the error and execute it with `ts-node <filename.ts>` using the bash tool, to confirm the error",
+        }
+      -%}
+      {%- set repr_instruction = repr_instructions.get(language, "Create a script to reproduce the error and execute it using the bash tool, to confirm the error") -%}
+
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+      I've uploaded a {{language_name}} code repository in the directory {{working_dir}}. Consider the following PR description:
+
+      <pr_description>
+      {{problem_statement}}
+      </pr_description>
+
+      Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?
+      I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!
+      Your task is to make the minimal changes to non-tests files in the {{working_dir}} directory to ensure the <pr_description> is satisfied.
+      Follow these steps to resolve the issue:
+      1. As a first step, it might be a good idea to find and read code relevant to the <pr_description>
+      2. {{repr_instruction}}
+      3. Edit the sourcecode of the repo to resolve the issue
+      4. Rerun your reproduce script and confirm that the error is fixed!
+      5. Think about edgecases and make sure your fix handles them as well
+      Your thinking should be thorough and so it's fine if it's very long.
+    next_step_template: |-
+      OBSERVATION:
+      {{observation}}
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output.
+  tools:
+    execution_timeout: 300
+    env_variables:
+      PAGER: cat
+      MANPAGER: cat
+      LESS: -R
+      PIP_PROGRESS_BAR: 'off'
+      TQDM_DISABLE: '1'
+      GIT_PAGER: cat
+    bundles:
+      - path: tools/multilingual_setup
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/review_on_submit_m
+      - path: tools/diff_state
+    registry_variables:
+      USE_FILEMAP: 'true'
+      SUBMIT_REVIEW_MESSAGES:
+        - |
+          Thank you for your work on this issue. Please carefully follow the steps below to help review your changes.
+
+          1. If you made any changes to your code after running the reproduction script, please run the reproduction script again.
+            If the reproduction script is failing, please revisit your changes and make sure they are correct.
+            If you have already removed your reproduction script, please ignore this step.
+          2. Remove your reproduction script (if you haven't done so already).
+          3. If you have modified any TEST files, please revert them to the state they had before you started fixing the issue.
+            You can do this with `git checkout -- /path/to/test/file`. Use below <diff> to find the files you need to revert.
+          4. Run the submit command again to confirm.
+
+          Here is a list of all of your changes:
+
+          <diff>
+          {{diff}}
+          </diff>
+    enable_bash_tool: true
+    parse_function:
+      type: xml_function_calling
+    str_replace_editor:
+      arguments:
+      - name: view_range
+        argument_format: "--view_range {{value}}"
+  history_processors: []
+  model:
+    # The following parameters are overridden by Nemo-Skills:
+    # name, api_base, temperature, top_p, completion_kwargs, per_instance_call_limit.
+    # Specifying them here will have no effect! Use Nemo-Skills options instead.
+    per_instance_cost_limit: 0
+    total_cost_limit: 0
+    max_input_tokens: 0
+    max_output_tokens: 0
