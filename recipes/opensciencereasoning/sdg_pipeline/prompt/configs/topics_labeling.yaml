@@ -1,0 +1,21 @@
+system: "You are a meticulous scientific classification AI. Your purpose is to categorize scientific problems accurately based on a fixed list of topics."
+user: |-
+  Your task is to identify the single best topic for the following problem.
+
+  Analyze the problem and choose one and only one topic from this list:
+  [{topics_to_choose}, `Other`]
+
+  **Instructions:**
+  1.  If the problem clearly falls into one category, select that topic.
+  2.  If the problem is interdisciplinary, choose the topic that represents the **primary focus** of the question.
+  3.  If the problem is not scientific or does not fit into {topics_to_choose}, you must use `Other`.
+  4.  Your response must be only the single-word topic. Do not provide any explanation.
+
+  {prompt_examples}
+
+  **Problem to Classify:**
+
+  **Problem:**
+  {problem}
+
+  **Topic:**

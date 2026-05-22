@@ -82,6 +82,9 @@ class GenerationRequest:
     # Multi-turn audio inputs (list of raw audio bytes)
     audio_bytes_list: Optional[List[bytes]] = None
 
+    # Audio path reference (file path, tar member, or datastore URI)
+    audio_path: Optional[str] = None
+
     # Generation parameters (override backend defaults)
     max_new_tokens: Optional[int] = None
     temperature: Optional[float] = None

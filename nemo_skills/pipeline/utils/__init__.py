@@ -63,6 +63,7 @@ from nemo_skills.pipeline.utils.mounts import (
     get_mounts_from_config,
     get_unmounted_path,
     is_mounted_filepath,
+    normalize_mounts_list,
     resolve_mount_paths,
 )
 from nemo_skills.pipeline.utils.packager import (
@@ -71,6 +72,13 @@ from nemo_skills.pipeline.utils.packager import (
     get_registered_external_repo,
     register_external_repo,
     resolve_external_data_path,
+)
+from nemo_skills.pipeline.utils.scripts import (
+    BaseJobScript,
+    GenerationClientScript,
+    NemoGymRolloutsScript,
+    SandboxScript,
+    ServerScript,
 )
 from nemo_skills.pipeline.utils.server import (
     SupportedServers,

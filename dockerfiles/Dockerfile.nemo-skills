@@ -14,7 +14,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools uv
+RUN pip install --upgrade pip setuptools "uv>=0.11.10"
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -24,6 +24,16 @@ RUN apt update && \
     apt update && apt -y install apptainer && \
     add-apt-repository -y ppa:apptainer/ppa && \
     apt update && apt install -y apptainer-suid && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
+
+# Apply security patches for PackageKit, pulled in transitively by software-properties-common.
+# Ubuntu 22.04 has published 1.2.5-2ubuntu3.1 with the fix for the local privilege escalation CVE.
+RUN apt-get update && \
+    apt-get install --only-upgrade -y \
+        packagekit \
+        packagekit-tools \
+        libpackagekit-glib2-18 \
+        gir1.2-packagekitglib-1.0 && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 # for ifeval benchmark
@@ -62,6 +72,10 @@ COPY core/requirements.txt /opt/NeMo-Skills/core/requirements.txt
 # installing sdp in container only
 RUN pip install git+https://github.com/NVIDIA/NeMo-speech-data-processor@29b9b1ec0ceaf3ffa441c1d01297371b3f8e11d2
 ARG CACHEBUST=4
-RUN pip install --no-cache-dir -r /opt/NeMo-Skills/core/requirements.txt -r /opt/NeMo-Skills/requirements/pipeline.txt
+# Install via `uv pip` from the project directory so [tool.uv].override-dependencies
+# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x
+# can be installed) is picked up. Plain pip ignores [tool.uv] and the resolver fails.
+RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
+    -r core/requirements.txt -r requirements/pipeline.txt
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs

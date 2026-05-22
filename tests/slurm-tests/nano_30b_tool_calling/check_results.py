@@ -14,10 +14,14 @@
 
 """Check results for nano_30b_tool_calling SLURM test.
 
-Validates:
+Validates (non-streaming, full eval):
   1. Tool calls were actually made (num_tool_calls > 0)
   2. Accuracy is within expected range
   3. Code execution timeouts are within acceptable limits
+
+Validates (streaming, smoke test):
+  4. Output files exist with correct count
+  5. num_generated_tokens > 0 (tokenizer-based counting works)
 """
 
 import argparse
@@ -149,6 +153,58 @@ def check_math_tool_calling(eval_dir: str):
             soft_assert(lo <= val <= hi, f"{benchmark}: {metric} {val}% out of range [{lo}%, {hi}%]")
 
 
+def check_streaming(workspace: str):
+    """Smoke-test the streaming tool-calling path.
+
+    Verifies that the streaming pipeline produced output with tokenizer-counted tokens.
+    This is not a full accuracy check — just confirms the streaming code path works.
+    """
+    streaming_dir = Path(workspace) / "streaming" / "eval-results" / "aime24"
+    output_files = sorted(streaming_dir.glob("output-rs*.jsonl"))
+    soft_assert(len(output_files) > 0, f"streaming: no output files found in {streaming_dir}")
+
+    total_samples = 0
+    samples_with_tools = 0
+    samples_with_tool_responses = 0
+    for output_path in output_files:
+        with output_path.open("rt", encoding="utf-8") as fin:
+            for line in fin:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                total_samples += 1
+                num_tokens = row.get("num_generated_tokens", 0)
+                soft_assert(
+                    num_tokens > 0,
+                    f"streaming sample {total_samples}: num_generated_tokens={num_tokens}, expected > 0",
+                )
+                soft_assert(
+                    "generation" in row,
+                    f"streaming sample {total_samples}: missing 'generation' field",
+                )
+                if row.get("num_tool_calls", 0) > 0:
+                    samples_with_tools += 1
+                # Check that tool responses exist in the conversation
+                for msg in row.get("conversation", []):
+                    if msg.get("role") == "tool":
+                        samples_with_tool_responses += 1
+                        break
+
+    soft_assert(total_samples > 0, "streaming: no samples found in output files")
+    soft_assert(
+        samples_with_tools > 0,
+        f"streaming: no samples made tool calls ({samples_with_tools}/{total_samples})",
+    )
+    soft_assert(
+        samples_with_tool_responses > 0,
+        f"streaming: no samples have tool responses in conversation ({samples_with_tool_responses}/{total_samples})",
+    )
+    print(
+        f"Streaming: {total_samples} samples, {samples_with_tools} with tool calls, "
+        f"{samples_with_tool_responses} with tool responses, all with num_generated_tokens > 0"
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", required=True, help="Workspace directory containing results")
@@ -156,9 +212,13 @@ def main():
 
     eval_root = Path(args.workspace)
 
+    print("=== Non-streaming (full eval) ===")
     check_tool_usage(eval_root)
     check_timeouts(eval_root)
     check_math_tool_calling(eval_root)
+
+    print("\n=== Streaming (smoke test) ===")
+    check_streaming(args.workspace)
 
     assert_all()
 

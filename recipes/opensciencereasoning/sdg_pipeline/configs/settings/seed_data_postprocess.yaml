@@ -1,0 +1,25 @@
+# Limit the pipeline to generation, filtering, and SFT preparation. Should be applied after the seed data is generated.
+
+stages:
+  filter_problems:
+    enabled: False
+  decontaminate:
+    enabled: False
+  topics_labeling:
+    enabled: False
+  difficulty_estimation:
+    enabled: False
+  generate_solutions:
+    generation_kwargs:
+      args:
+        input_file: ${input_file}
+    chat_template_kwargs:
+      reasoning_effort: low
+  aggregate:
+    metadata_files:
+      - ${input_file}
+  filter_solutions:
+    only_correct_solutions: True
+    is_ground_truth_answer_present: True
+    difficulty_model_pass_rate_range: null
+    metadata_values: null

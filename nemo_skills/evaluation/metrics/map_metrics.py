@@ -20,6 +20,7 @@ from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
 from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
 from nemo_skills.evaluation.metrics.bird_metrics import BirdMetrics
+from nemo_skills.evaluation.metrics.ccc_metrics import CCCMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
     ComputeEvalMetrics,
@@ -29,8 +30,10 @@ from nemo_skills.evaluation.metrics.code_metrics import (
     SciCodeMetrics,
     SweBenchMetrics,
 )
+from nemo_skills.evaluation.metrics.contextasr_metrics import ContextASRMetrics
 from nemo_skills.evaluation.metrics.critpt_metrics import CritPtMetrics
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
+from nemo_skills.evaluation.metrics.graphwalks_metrics import GraphWalksMetrics
 from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
 from nemo_skills.evaluation.metrics.hotpotqa_metrics import HotpotQAMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
@@ -38,15 +41,18 @@ from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
 from nemo_skills.evaluation.metrics.lean4_metrics import Lean4Metrics
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
+from nemo_skills.evaluation.metrics.mcq_multilingual_metrics import MCQMultilingualMetrics
 from nemo_skills.evaluation.metrics.mmau_pro_metrics import MMAUProMetrics
 from nemo_skills.evaluation.metrics.mrcr_metrics import MRCRMetrics
 from nemo_skills.evaluation.metrics.omni_metrics import OmniMetrics
 from nemo_skills.evaluation.metrics.physics_metrics import PhysicsMetrics
+from nemo_skills.evaluation.metrics.ruler2_metrics import Ruler2Metrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
+from nemo_skills.evaluation.metrics.weighted_math_metrics import WeightedMathMetrics
 
 METRICS_MAP = {
     "math": MathMetrics,
@@ -70,9 +76,12 @@ METRICS_MAP = {
     "if": IFMetrics,
     "ioi": IOIMetrics,
     "icpc": ICPCMetrics,
+    "ccc": CCCMetrics,
     "multichoice": MathMetrics,
+    "multichoice_multilingual": MCQMultilingualMetrics,
+    "math_multilingual": MCQMultilingualMetrics,
     "ruler": RulerMetrics,
-    "ruler2": RulerMetrics,
+    "ruler2": Ruler2Metrics,
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
@@ -91,8 +100,11 @@ METRICS_MAP = {
     "gradingbench": GradingBenchMetrics,
     "critpt": CritPtMetrics,
     "specdec": SpecdecMetrics,
+    "contextasr": ContextASRMetrics,
     "hotpotqa": HotpotQAMetrics,
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
+    "graphwalks": GraphWalksMetrics,
+    "weighted-math": WeightedMathMetrics,
 }
 
 
