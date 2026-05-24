@@ -463,9 +463,7 @@ class Pipeline:
                 # otherwise nemo-run's Experiment.add asserts on missing membership.
                 # Compute the set once per pipeline.run() call to avoid the cost
                 # of rebuilding it per dep.
-                reuse_exp_job_ids = (
-                    {job.id for job in _reuse_exp.jobs} if _reuse_exp else set()
-                )
+                reuse_exp_job_ids = {job.id for job in _reuse_exp.jobs} if _reuse_exp else set()
                 for dep in job_dependencies:
                     if isinstance(dep, str):
                         # String dependency = external experiment name
