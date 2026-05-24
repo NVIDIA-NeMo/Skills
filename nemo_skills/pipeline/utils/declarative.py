@@ -479,9 +479,24 @@ class Pipeline:
                                     f"Job '{job_name}' depends on external experiment '{dep}' ({len(exp_handles)} tasks)"
                                 )
                         elif _reuse_exp:
-                            # For non-SLURM executors with _reuse_exp, string deps are internal task handles
-                            internal_deps.append(dep)
-                            LOG.info(f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)")
+                            # For non-SLURM executors with _reuse_exp, string deps are
+                            # internal task handles ONLY if they reference a job already
+                            # in the reused experiment. Cross-experiment string deps
+                            # (orchestrator chains multiple nemo-skills CLI calls across
+                            # separate Experiment contexts) cannot be enforced via
+                            # exp.add() — nemo-run asserts dep in self.jobs. Skip with
+                            # a warning so the caller (who has already ensured upstream
+                            # completion) can proceed.
+                            reuse_exp_job_ids = {job.id for job in _reuse_exp.jobs}
+                            if dep in reuse_exp_job_ids:
+                                internal_deps.append(dep)
+                                LOG.info(f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)")
+                            else:
+                                LOG.warning(
+                                    f"Job '{job_name}' references external task handle '{dep}' "
+                                    f"not present in reused experiment; skipping dependency "
+                                    f"declaration. Caller must ensure '{dep}' has completed."
+                                )
                     elif isinstance(dep, dict):
                         # Dict dependency = internal job reference (by job spec object)
                         dep_name = dep.get("name")
