@@ -458,6 +458,14 @@ class Pipeline:
                     run_after_list = self.run_after if isinstance(self.run_after, list) else [self.run_after]
                     job_dependencies = run_after_list
 
+                # String deps with _reuse_exp must be checked against the reused
+                # experiment's jobs list before being appended to internal_deps,
+                # otherwise nemo-run's Experiment.add asserts on missing membership.
+                # Compute the set once per pipeline.run() call to avoid the cost
+                # of rebuilding it per dep.
+                reuse_exp_job_ids = (
+                    {job.id for job in _reuse_exp.jobs} if _reuse_exp else set()
+                )
                 for dep in job_dependencies:
                     if isinstance(dep, str):
                         # String dependency = external experiment name
@@ -468,11 +476,21 @@ class Pipeline:
                                     f"No pending or running tasks found for experiment {dep}, cannot set dependencies."
                                 )
                                 # If no experiment found, treat as direct task handle (for _reuse_exp case)
+                                # — but only if it's actually a job in the reused experiment.
+                                # Cross-experiment refs that didn't resolve via get_exp_handles
+                                # cannot be enforced via exp.add() either; warn and skip.
                                 if _reuse_exp:
-                                    internal_deps.append(dep)
-                                    LOG.info(
-                                        f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)"
-                                    )
+                                    if dep in reuse_exp_job_ids:
+                                        internal_deps.append(dep)
+                                        LOG.info(
+                                            f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)"
+                                        )
+                                    else:
+                                        LOG.warning(
+                                            f"Job '{job_name}' references external task handle '{dep}' "
+                                            f"not present in reused experiment; skipping dependency "
+                                            f"declaration. Caller must ensure '{dep}' has completed."
+                                        )
                             else:
                                 external_deps.extend(exp_handles)
                                 LOG.info(
@@ -487,7 +505,6 @@ class Pipeline:
                             # exp.add() — nemo-run asserts dep in self.jobs. Skip with
                             # a warning so the caller (who has already ensured upstream
                             # completion) can proceed.
-                            reuse_exp_job_ids = {job.id for job in _reuse_exp.jobs}
                             if dep in reuse_exp_job_ids:
                                 internal_deps.append(dep)
                                 LOG.info(f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)")
@@ -497,6 +514,16 @@ class Pipeline:
                                     f"not present in reused experiment; skipping dependency "
                                     f"declaration. Caller must ensure '{dep}' has completed."
                                 )
+                        else:
+                            # Non-SLURM, no _reuse_exp: no way to resolve a string dep.
+                            # Don't silently drop it — surface it so callers can debug.
+                            LOG.warning(
+                                f"Job '{job_name}' references string dependency '{dep}', "
+                                f"but executor '{self.cluster_config['executor']}' has no "
+                                f"reused experiment context to resolve it against; "
+                                f"skipping dependency declaration. Caller must ensure "
+                                f"'{dep}' has completed before this job runs."
+                            )
                     elif isinstance(dep, dict):
                         # Dict dependency = internal job reference (by job spec object)
                         dep_name = dep.get("name")
