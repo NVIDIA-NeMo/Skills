@@ -437,6 +437,13 @@ class Pipeline:
         job_name_to_handle = {}
 
         with get_exp(self.name, self.cluster_config, _reuse_exp) as exp:
+            # String deps with _reuse_exp must be checked against the reused
+            # experiment's jobs list before being appended to internal_deps,
+            # otherwise nemo-run's Experiment.add asserts on missing membership.
+            # Computed once per Pipeline.run() call (the reused experiment's
+            # jobs list does not change across the per-job loop below).
+            reuse_exp_job_ids = {job.id for job in _reuse_exp.jobs} if _reuse_exp else set()
+
             # Process each job in order
             for job_spec in self.jobs:
                 job_name = job_spec["name"]  # Already validated in _validate()
@@ -458,12 +465,6 @@ class Pipeline:
                     run_after_list = self.run_after if isinstance(self.run_after, list) else [self.run_after]
                     job_dependencies = run_after_list
 
-                # String deps with _reuse_exp must be checked against the reused
-                # experiment's jobs list before being appended to internal_deps,
-                # otherwise nemo-run's Experiment.add asserts on missing membership.
-                # Compute the set once per pipeline.run() call to avoid the cost
-                # of rebuilding it per dep.
-                reuse_exp_job_ids = {job.id for job in _reuse_exp.jobs} if _reuse_exp else set()
                 for dep in job_dependencies:
                     if isinstance(dep, str):
                         # String dependency = external experiment name
