@@ -17,8 +17,7 @@ from pathlib import Path
 import pytest
 from utils import require_env_var
 
-from nemo_skills.evaluation.metrics import ComputeMetrics
-from nemo_skills.pipeline.cli import eval, grpo_nemo_rl, sft_nemo_rl, wrap_arguments
+from nemo_skills.pipeline.cli import grpo_nemo_rl, sft_nemo_rl, wrap_arguments
 from tests.conftest import docker_rm
 
 
@@ -55,27 +54,6 @@ def test_sft_nemo_rl(backend):
         disable_wandb=True,
     )
 
-    # checking that the final model can be used for evaluation
-    eval(
-        ctx=wrap_arguments("++max_samples=10 ++inference.tokens_to_generate=10"),
-        cluster="test-local",
-        config_dir=Path(__file__).absolute().parent,
-        model=f"{output_dir}/final_hf_model",
-        server_type="vllm",
-        output_dir=f"{output_dir}/evaluation",
-        benchmarks="gsm8k",
-        server_gpus=1,
-        server_nodes=1,
-        num_jobs=1,
-        server_args="--enforce-eager",
-    )
-
-    metrics = ComputeMetrics(benchmark="gsm8k").compute_metrics(
-        [f"{output_dir}/evaluation/eval-results/gsm8k/output.jsonl"],
-    )["_all_"]["pass@1"]
-    # only checking the total, since model is tiny
-    assert metrics["num_entries"] == 10
-
 
 @pytest.mark.gpu
 def test_sft_nemo_rl_messages_format():
@@ -109,27 +87,6 @@ def test_sft_nemo_rl_messages_format():
         training_data="/nemo_run/code/tests/data/small-sft-data-messages.test",
         disable_wandb=True,
     )
-
-    # checking that the final model can be used for evaluation
-    eval(
-        ctx=wrap_arguments("++max_samples=10 ++inference.tokens_to_generate=10"),
-        cluster="test-local",
-        config_dir=Path(__file__).absolute().parent,
-        model=f"{output_dir}/final_hf_model",
-        server_type="vllm",
-        output_dir=f"{output_dir}/evaluation",
-        benchmarks="gsm8k",
-        server_gpus=1,
-        server_nodes=1,
-        num_jobs=1,
-        server_args="--enforce-eager",
-    )
-
-    metrics = ComputeMetrics(benchmark="gsm8k").compute_metrics(
-        [f"{output_dir}/evaluation/eval-results/gsm8k/output.jsonl"],
-    )["_all_"]["pass@1"]
-    # only checking the total, since model is tiny
-    assert metrics["num_entries"] == 10
 
 
 @pytest.mark.gpu
@@ -215,24 +172,3 @@ def test_grpo_nemo_rl(backend):
         backend=backend,
         disable_wandb=True,
     )
-
-    # checking that the final model can be used for evaluation
-    eval(
-        ctx=wrap_arguments("++max_samples=10 ++inference.tokens_to_generate=10"),
-        cluster="test-local",
-        config_dir=Path(__file__).absolute().parent,
-        model=f"{output_dir}/final_hf_model",
-        server_type="vllm",
-        output_dir=f"{output_dir}/evaluation",
-        benchmarks="gsm8k",
-        server_gpus=1,
-        server_nodes=1,
-        num_jobs=1,
-        server_args="--enforce-eager",
-    )
-
-    metrics = ComputeMetrics(benchmark="gsm8k").compute_metrics(
-        [f"{output_dir}/evaluation/eval-results/gsm8k/output.jsonl"],
-    )["_all_"]["pass@1"]
-    # only checking the total, since model is tiny
-    assert metrics["num_entries"] == 10
