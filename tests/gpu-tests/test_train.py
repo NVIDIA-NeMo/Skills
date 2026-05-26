@@ -128,6 +128,7 @@ def test_grpo_nemo_rl(backend):
         "++grpo.num_prompts_per_step=1 "
         "++grpo.num_generations_per_prompt=2 "
         "++grpo.num_val_generations_per_prompt=1 "
+        "++grpo.overlong_filtering=False "
         "++grpo.use_leave_one_out_baseline=False "
         "++checkpointing.save_period=1 "
         "++checkpointing.save_optimizer=False "
