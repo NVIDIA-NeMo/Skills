@@ -36,9 +36,6 @@ We directly use official `lmsysorg/sglang:v0.5.10.post1` image.
 
 ## NeMo-RL image default
 
-The sample local cluster config currently defaults `containers.nemo-rl` to the pinned private image
-`nvcr.io/nvidian/nemo-rl:733c7d6-48669320`. This image is accessible to NVIDIA employees who already have access
-to the corresponding internal registry.
-
-If you do not have access to that registry, build the NeMo-RL image yourself from the matching commit in the
-upstream NeMo-RL repository and point your cluster config at that locally built image instead.
+The sample local cluster config currently defaults `containers.nemo-rl` to the upstream NeMo-RL release image
+`nvcr.io/nvidia/nemo-rl:v0.6.0`. If you need a custom NeMo-RL image, build it from the upstream NeMo-RL repository
+and point your cluster config at that locally built image instead.
