@@ -103,7 +103,7 @@ def format_entry(entry: dict, language: str, lang_libs: dict, lang_subjects: dic
             **options_dict,
         }
 
-    extract_regex = lang_libs[language][5].replace("({})", r"\(?([ABCDEFGHIJ])\)?")
+    extract_regex = lang_libs[language][5].replace("({})", r"\(?([ABCDEFGHIJ])\)?\s*")
     if language == "en":
         extract_regex = extract_regex.lstrip("the").strip()
         extract_regex = extract_regex.replace("\\(", "\\**\\(")
