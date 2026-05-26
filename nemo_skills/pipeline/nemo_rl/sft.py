@@ -95,12 +95,20 @@ class NemoRLTask:
             " ++data.default.dataset_name=ResponseDataset "
             " ++data.default.input_key=input "
             " ++data.default.output_key=output "
+            " ++data.train.dataset_name=ResponseDataset "
+            " ++data.train.input_key=input "
+            " ++data.train.output_key=output "
             f" ++data.train.data_path={self.prompt_data} "
         )
         if self.eval_data is not None:
-            cmd += f" ++data.validation.data_path={self.eval_data} "
+            cmd += (
+                " ++data.validation.dataset_name=ResponseDataset "
+                " ++data.validation.input_key=input "
+                " ++data.validation.output_key=output "
+                f" ++data.validation.data_path={self.eval_data} "
+            )
         else:
-            cmd += " ++data.validation=null "
+            cmd += " ++data.validation=null ++sft.val_period=0 ++sft.val_at_start=False ++sft.val_at_end=False "
         return cmd
 
     def format_wandb_args(self):
