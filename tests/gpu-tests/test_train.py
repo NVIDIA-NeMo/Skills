@@ -21,6 +21,20 @@ from nemo_skills.pipeline.cli import grpo_nemo_rl, sft_nemo_rl, wrap_arguments
 from tests.conftest import docker_rm
 
 
+def _copy_test_data_to_tmp(filename: str, model_type: str) -> str:
+    test_data_dir = Path(__file__).absolute().parents[1] / "data"
+    output_data_dir = Path("/tmp/nemo-skills-tests") / model_type / "training-data"
+    output_data_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = output_data_dir / f"{Path(filename).stem}.jsonl"
+    output_file.write_text((test_data_dir / filename).read_text())
+    return str(output_file)
+
+
+def _assert_final_hf_model_exists(output_dir: str) -> None:
+    assert (Path(output_dir) / "final_hf_model" / "config.json").exists()
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("backend", ["fsdp", "megatron"])
 def test_sft_nemo_rl(backend):
@@ -28,6 +42,7 @@ def test_sft_nemo_rl(backend):
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/test-sft-nemo-rl/{backend}"
+    training_data = _copy_test_data_to_tmp("small-sft-data.test", model_type)
 
     # need to clean up current cluster configuration as we mount /tmp and it causes problems
     # need to clean up cache folder as otherwise megatron backend might fail when checkpoint format changes
@@ -50,9 +65,10 @@ def test_sft_nemo_rl(backend):
         hf_model=model_path,
         num_nodes=1,
         num_gpus=1,
-        training_data="/nemo_run/code/tests/data/small-sft-data.test",
+        training_data=training_data,
         disable_wandb=True,
     )
+    _assert_final_hf_model_exists(output_dir)
 
 
 @pytest.mark.gpu
@@ -62,6 +78,7 @@ def test_sft_nemo_rl_messages_format():
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/test-sft-nemo-rl-messages/megatron"
+    training_data = _copy_test_data_to_tmp("small-sft-data-messages.test", model_type)
 
     # need to clean up current cluster configuration as we mount /tmp and it causes problems
     # need to clean up cache folder as otherwise megatron backend might fail when checkpoint format changes
@@ -84,9 +101,10 @@ def test_sft_nemo_rl_messages_format():
         hf_model=model_path,
         num_nodes=1,
         num_gpus=1,
-        training_data="/nemo_run/code/tests/data/small-sft-data-messages.test",
+        training_data=training_data,
         disable_wandb=True,
     )
+    _assert_final_hf_model_exists(output_dir)
 
 
 @pytest.mark.gpu
@@ -96,7 +114,7 @@ def test_grpo_nemo_rl(backend):
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 
     output_dir = f"/tmp/nemo-skills-tests/{model_type}/test-grpo-nemo-rl/{backend}"
-    training_data = "/nemo_run/code/tests/data/small-nemo-gym-grpo-data.test"
+    training_data = _copy_test_data_to_tmp("small-nemo-gym-grpo-data.test", model_type)
 
     # need to clean up current cluster configuration as we mount /tmp and it causes problems
     # need to clean up cache folder as otherwise megatron backend might fail when checkpoint format changes
@@ -172,3 +190,4 @@ def test_grpo_nemo_rl(backend):
         backend=backend,
         disable_wandb=True,
     )
+    _assert_final_hf_model_exists(output_dir)
