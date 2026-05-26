@@ -142,6 +142,10 @@ def test_grpo_nemo_rl(backend):
         "++policy.generation.vllm_cfg.tensor_parallel_size=1 "
         "++policy.generation.vllm_cfg.max_model_len=256 "
         "++policy.generation.vllm_cfg.gpu_memory_utilization=0.3 "
+        "++policy.generation.vllm_cfg.http_server_serving_chat_kwargs.enable_auto_tools=False "
+        "++policy.generation.vllm_cfg.http_server_serving_chat_kwargs.tool_parser=null "
+        "++policy.generation.vllm_cfg.http_server_serving_chat_kwargs.reasoning_parser=null "
+        "++env.nemo_gym.config_paths=[responses_api_models/vllm_model/configs/vllm_model_for_training.yaml,resources_servers/math_with_judge/configs/math_with_judge.yaml] "
     )
     backend_overrides = {
         "fsdp": (
