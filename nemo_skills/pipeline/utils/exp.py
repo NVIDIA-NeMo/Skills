@@ -614,6 +614,23 @@ def add_task(
                     f"add_task() call under cluster_config.executor='ray'."
                 )
             ray_dependencies.append(dep)
+        # Also honor run_after on the Ray path. In this codepath
+        # expname == task_name == submission_id by construction
+        # (this function returns submission_id and downstream callers
+        # pass it back as run_after), so each entry maps directly to
+        # a Ray submission_id without needing get_exp_handles().
+        if run_after is not None:
+            if isinstance(run_after, (str, run.Experiment)):
+                run_after = [run_after]
+            for dep_expname in run_after:
+                if not isinstance(dep_expname, str):
+                    raise NotImplementedError(
+                        f"Ray executor run_after entries must be Ray submission IDs (str); "
+                        f"got {type(dep_expname).__name__}. nemo-run Experiment objects "
+                        f"are valid on the slurm path but not under cluster_config.executor='ray'."
+                    )
+                if dep_expname not in ray_dependencies:
+                    ray_dependencies.append(dep_expname)
         ray_cluster_config = cluster_config.get("ray", {})
         # default_num_cpus is per-node; multiply by num_nodes to get the per-job total.
         ray_default_cpus_per_node = ray_cluster_config.get("default_num_cpus", 8)

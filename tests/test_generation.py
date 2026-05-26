@@ -317,13 +317,15 @@ def test_generation_task_keeps_text_endpoint_tokenizer(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "server_nodes,expected_host",
+    "server_nodes,expected_host,expected_server_address",
     [
-        (1, "127.0.0.1"),
-        (2, "$SLURM_MASTER_NODE"),
+        (1, "127.0.0.1", "127.0.0.1:5000"),
+        (2, "${SLURM_MASTER_NODE:-127.0.0.1}", "${SLURM_MASTER_NODE:-127.0.0.1}:5000"),
     ],
 )
-def test_configure_client_hosted_server_host_depends_on_num_nodes(server_nodes, expected_host):
+def test_configure_client_hosted_server_host_depends_on_num_nodes(
+    server_nodes, expected_host, expected_server_address
+):
     server_config, server_address, extra_arguments = configure_client(
         model="/models/test-model",
         server_type="vllm",
@@ -337,7 +339,7 @@ def test_configure_client_hosted_server_host_depends_on_num_nodes(server_nodes, 
     )
 
     assert server_config["server_port"] == 5000
-    assert server_address == "localhost:5000"
+    assert server_address == expected_server_address
     assert f"++server.host={expected_host}" in extra_arguments
     assert "++server.port=5000" in extra_arguments
     assert "++server.model=/models/test-model" in extra_arguments
@@ -360,7 +362,7 @@ def test_configure_client_preserves_explicit_server_type_override():
 
     assert extra_arguments.count("++server.server_type=") == 1
     assert "++server.server_type=vllm_multimodal" in extra_arguments
-    assert "++server.host=$SLURM_MASTER_NODE" in extra_arguments
+    assert "++server.host=${SLURM_MASTER_NODE:-127.0.0.1}" in extra_arguments
 
 
 @pytest.mark.timeout(300)

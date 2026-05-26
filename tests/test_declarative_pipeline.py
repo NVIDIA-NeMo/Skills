@@ -41,7 +41,7 @@ class DummyScript:
 
     def hostname_ref(self) -> str:
         if self.het_group_index is None:
-            return "127.0.0.1"
+            return "${SLURM_MASTER_NODE:-127.0.0.1}"
         return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
 
 
@@ -94,7 +94,7 @@ class TestCommand:
         script = DummyScript()
         cmd = make_command(name="test", script=script)
 
-        assert script.hostname_ref() == "127.0.0.1"
+        assert script.hostname_ref() == "${SLURM_MASTER_NODE:-127.0.0.1}"
         assert cmd.get_name() == "test"
 
     def test_command_hostname_ref_heterogeneous(self):
@@ -398,11 +398,11 @@ class TestHetGroupIndices:
         )
         pipeline.run(dry_run=True)
 
-        # Both commands should have None het_group_index (localhost communication)
+        # Both commands should have None het_group_index (same Slurm allocation communication)
         assert cmd1.script.het_group_index is None
         assert cmd2.script.het_group_index is None
-        assert cmd1.script.hostname_ref() == "127.0.0.1"
-        assert cmd2.script.hostname_ref() == "127.0.0.1"
+        assert cmd1.script.hostname_ref() == "${SLURM_MASTER_NODE:-127.0.0.1}"
+        assert cmd2.script.hostname_ref() == "${SLURM_MASTER_NODE:-127.0.0.1}"
 
     @patch("nemo_skills.pipeline.utils.declarative.get_exp")
     @patch("nemo_skills.pipeline.utils.declarative.get_env_variables")

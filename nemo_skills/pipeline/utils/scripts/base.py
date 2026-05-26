@@ -75,17 +75,19 @@ class BaseJobScript(run.Script):
         object.__setattr__(self, "inline", command)
 
     def hostname_ref(self) -> str:
-        """Get hostname reference for hetjob cross-component communication.
+        """Get hostname reference for cross-component communication.
 
-        Returns a shell variable reference that resolves to the master node hostname
-        for this het group. Uses environment variables automatically exported by nemo-run:
+        Returns a shell variable reference that resolves to the master node hostname.
+        For non-heterogeneous Slurm jobs, this uses the allocation master node with
+        a local fallback. For heterogeneous jobs, this uses the master node for the
+        target het group. The group-specific variables are exported by nemo-run:
             SLURM_MASTER_NODE_HET_GROUP_0, SLURM_MASTER_NODE_HET_GROUP_1, etc.
 
         These are set via:
             export SLURM_MASTER_NODE_HET_GROUP_N=$(scontrol show hostnames $SLURM_JOB_NODELIST_HET_GROUP_N | head -n1)
         """
         if self.het_group_index is None:
-            return "127.0.0.1"  # Local fallback for non-heterogeneous jobs
+            return "${SLURM_MASTER_NODE:-127.0.0.1}"
 
         # Use the environment variable exported by nemo-run
         return f"${{SLURM_MASTER_NODE_HET_GROUP_{self.het_group_index}:-localhost}}"
