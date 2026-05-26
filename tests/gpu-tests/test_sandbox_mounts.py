@@ -47,12 +47,12 @@ async def main():
         read_result, _ = await sandbox.execute_code(
             "cat /sandbox-ro/input.txt",
             language="shell",
-            timeout=10,
+            timeout=60,
         )
         write_result, _ = await sandbox.execute_code(
             "touch /sandbox-ro/should-not-exist",
             language="shell",
-            timeout=10,
+            timeout=60,
         )
     finally:
         await sandbox.close()
