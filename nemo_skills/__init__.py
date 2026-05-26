@@ -24,4 +24,5 @@ _containers = {
     "nemo-skills": "dockerfile:dockerfiles/Dockerfile.nemo-skills",
     "verl": "dockerfile:dockerfiles/Dockerfile.verl",
     "nemo-rl": "nvcr.io/nvidian/nemo-rl:733c7d6-48669320",
+    "nemo-gym": "dockerfile:dockerfiles/Dockerfile.nemo-gym",
 }

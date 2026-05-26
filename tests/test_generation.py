@@ -21,9 +21,10 @@ from types import SimpleNamespace
 import pytest
 
 from nemo_skills.evaluation.metrics import ComputeMetrics
-from nemo_skills.inference.model.base import BaseModel
+from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig, InferenceConfig
+from nemo_skills.inference.model.base import BaseModel, EndpointType
 from nemo_skills.pipeline.generate import _create_job_unified
-from nemo_skills.pipeline.utils import eval as eval_utils
+from nemo_skills.pipeline.utils.generation import configure_client
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
@@ -215,6 +216,155 @@ def test_server_metadata_from_num_tasks(tmp_path):
     assert groups[0].hardware.num_tasks == server_cmd.script.num_tasks
 
 
+class TokenizerProbeModel(BaseModel):
+    def __init__(self, **kwargs):
+        self.tokenizer_requests = []
+        super().__init__(model="dummy-model", base_url="", **kwargs)
+
+    def _get_tokenizer(self, tokenizer):
+        self.tokenizer_requests.append(tokenizer)
+        return "tokenizer"
+
+    def _build_chat_request_params(self, **kwargs):
+        return {}
+
+    def _build_completion_request_params(self, **kwargs):
+        return {}
+
+
+@pytest.mark.parametrize(
+    "enable_soft_fail,context_limit_retry_strategy,require_tokenizer,expected_requests",
+    [
+        (False, None, False, 0),
+        (True, None, False, 0),
+        (True, "reduce_generation", False, 0),
+        (False, "reduce_prompt_from_start", False, 0),
+        (True, "reduce_prompt_from_start", False, 1),
+        (True, "reduce_prompt_from_end", False, 1),
+        (False, None, True, 1),
+    ],
+)
+def test_base_model_initializes_tokenizer_only_when_needed(
+    enable_soft_fail,
+    context_limit_retry_strategy,
+    require_tokenizer,
+    expected_requests,
+):
+    model = TokenizerProbeModel(
+        tokenizer="explicit-tokenizer",
+        enable_soft_fail=enable_soft_fail,
+        context_limit_retry_strategy=context_limit_retry_strategy,
+        require_tokenizer=require_tokenizer,
+    )
+
+    assert len(model.tokenizer_requests) == expected_requests
+    assert (model.tokenizer == "tokenizer") == (expected_requests == 1)
+
+
+@pytest.mark.parametrize(
+    "server_overrides,expected_tokenizer",
+    [
+        ({}, None),
+        ({"enable_soft_fail": True}, None),
+        ({"enable_soft_fail": True, "context_limit_retry_strategy": "reduce_generation"}, None),
+        ({"enable_soft_fail": False, "context_limit_retry_strategy": "reduce_prompt_from_start"}, None),
+        (
+            {"enable_soft_fail": True, "context_limit_retry_strategy": "reduce_prompt_from_start"},
+            "explicit-tokenizer",
+        ),
+        ({"enable_soft_fail": True, "context_limit_retry_strategy": "reduce_prompt_from_end"}, "explicit-tokenizer"),
+    ],
+)
+def test_generation_task_sets_tokenizer_only_for_prompt_retry_strategies(
+    monkeypatch,
+    server_overrides,
+    expected_tokenizer,
+):
+    monkeypatch.setattr(GenerationTask, "setup_litellm_cache", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_prompt", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_llm", lambda self: object())
+
+    cfg = GenerationTaskConfig(
+        input_file="input.jsonl",
+        output_file="output.jsonl",
+        prompt_format="openai",
+        tokenizer="explicit-tokenizer",
+        server={"server_type": "openai", "model": "server-model", **server_overrides},
+    )
+
+    task = GenerationTask(cfg)
+
+    assert task.tokenizer == expected_tokenizer
+
+
+def test_generation_task_keeps_text_endpoint_tokenizer(monkeypatch):
+    monkeypatch.setattr(GenerationTask, "setup_litellm_cache", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_prompt", lambda self: None)
+    monkeypatch.setattr(GenerationTask, "setup_llm", lambda self: object())
+
+    cfg = GenerationTaskConfig(
+        input_file="input.jsonl",
+        output_file="output.jsonl",
+        prompt_format="openai",
+        tokenizer="explicit-tokenizer",
+        server={"server_type": "openai", "model": "server-model"},
+        inference=InferenceConfig(endpoint_type=EndpointType.text, tokens_to_generate=1),
+    )
+
+    task = GenerationTask(cfg)
+
+    assert task.tokenizer == "explicit-tokenizer"
+
+
+@pytest.mark.parametrize(
+    "server_nodes,expected_host,expected_server_address",
+    [
+        (1, "127.0.0.1", "127.0.0.1:5000"),
+        (2, "${SLURM_MASTER_NODE:-127.0.0.1}", "${SLURM_MASTER_NODE:-127.0.0.1}:5000"),
+    ],
+)
+def test_configure_client_hosted_server_host_depends_on_num_nodes(
+    server_nodes, expected_host, expected_server_address
+):
+    server_config, server_address, extra_arguments = configure_client(
+        model="/models/test-model",
+        server_type="vllm",
+        server_address=None,
+        server_gpus=8,
+        server_nodes=server_nodes,
+        server_args="",
+        server_entrypoint=None,
+        get_random_port=False,
+        extra_arguments="++foo=bar",
+    )
+
+    assert server_config["server_port"] == 5000
+    assert server_address == expected_server_address
+    assert f"++server.host={expected_host}" in extra_arguments
+    assert "++server.port=5000" in extra_arguments
+    assert "++server.model=/models/test-model" in extra_arguments
+    assert extra_arguments.count("++server.server_type=") == 1
+    assert "++server.server_type=vllm" in extra_arguments
+
+
+def test_configure_client_preserves_explicit_server_type_override():
+    _, _, extra_arguments = configure_client(
+        model="/models/test-model",
+        server_type="vllm",
+        server_address=None,
+        server_gpus=8,
+        server_nodes=2,
+        server_args="",
+        server_entrypoint=None,
+        get_random_port=False,
+        extra_arguments="++server.server_type=vllm_multimodal",
+    )
+
+    assert extra_arguments.count("++server.server_type=") == 1
+    assert "++server.server_type=vllm_multimodal" in extra_arguments
+    assert "++server.host=${SLURM_MASTER_NODE:-127.0.0.1}" in extra_arguments
+
+
 @pytest.mark.timeout(300)
 def test_judge_generations_with_structured_output(tmp_path):
     cmd = (
@@ -313,77 +463,3 @@ def test_parse_completion_response_token_counts(usage_kwargs, expected_input):
     result = model._parse_completion_response(response)
     assert result["num_generated_tokens"] == 10
     assert result.get("num_input_tokens") == expected_input
-
-
-def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(monkeypatch):
-    """Ensure `--with-sandbox` is treated as an override when building eval commands.
-
-    Previously, if a benchmark had `REQUIRES_SANDBOX` unset and the user passed
-    `--with-sandbox`, the sandbox sidecar was still launched because `add_task()`
-    ORed the two flags together. But the generation command only used the
-    benchmark flag, so it would not wait for the sandbox to be ready.
-
-    This checks that eval command construction now applies the same OR logic
-    throughout and passes `with_sandbox=True` into the generation command.
-    """
-    benchmark_args = eval_utils.BenchmarkArgs(
-        name="aime25",
-        input_file="/tmp/aime25.jsonl",
-        generation_args="",
-        judge_args="",
-        judge_pipeline_args={},
-        requires_sandbox=False,
-        keep_mounts_for_sandbox=False,
-        generation_module="nemo_skills.inference.generate",
-        num_samples=0,
-        num_chunks=None,
-        eval_subfolder="eval-results/aime25",
-    )
-
-    monkeypatch.setattr(eval_utils, "add_default_args", lambda *args, **kwargs: [benchmark_args])
-    monkeypatch.setattr(eval_utils.pipeline_utils, "get_remaining_jobs", lambda **kwargs: {None: [None]})
-    monkeypatch.setattr(eval_utils.pipeline_utils, "should_get_random_port", lambda *args, **kwargs: False)
-    monkeypatch.setattr(
-        eval_utils.pipeline_utils,
-        "configure_client",
-        lambda **kwargs: ({}, "http://localhost:8000", ""),
-    )
-
-    captured = {}
-
-    def fake_get_generation_cmd(*args, **kwargs):
-        captured["with_sandbox"] = kwargs["with_sandbox"]
-        return "echo generation"
-
-    monkeypatch.setattr(eval_utils.pipeline_utils, "get_generation_cmd", fake_get_generation_cmd)
-
-    eval_utils.prepare_eval_commands(
-        cluster_config={"executor": "none"},
-        benchmarks_or_groups="aime25",
-        split=None,
-        num_jobs=1,
-        starting_seed=0,
-        output_dir="/tmp/out",
-        num_chunks=None,
-        chunk_ids=None,
-        rerun_done=False,
-        server_parameters={
-            "model": "test-model",
-            "server_type": "openai",
-            "server_address": "http://localhost:8000",
-            "server_gpus": 0,
-            "server_nodes": 1,
-            "server_args": "",
-            "server_entrypoint": None,
-            "server_container": None,
-        },
-        extra_arguments="",
-        data_dir=None,
-        exclusive=False,
-        with_sandbox=True,
-        keep_mounts_for_sandbox=False,
-        wandb_parameters=None,
-        eval_requires_judge=False,
-    )
-
-    assert captured["with_sandbox"] is True

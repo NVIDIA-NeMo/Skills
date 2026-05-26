@@ -59,6 +59,7 @@ def _create_job_unified(
     keep_mounts_for_sandbox: bool,
     task_name: str,
     log_dir: str,
+    sandbox_mounts: Optional[List[str]] = None,
     sbatch_kwargs: Optional[Dict] = None,
     sandbox_env_overrides: Optional[List[str]] = None,
     main_container: Optional[str] = None,
@@ -86,6 +87,7 @@ def _create_job_unified(
         keep_mounts_for_sandbox: Whether to keep mounts for sandbox
         task_name: Name for the task
         log_dir: Directory for logs
+        sandbox_mounts: Mounts to pass only to the sandbox container
         sbatch_kwargs: Additional sbatch kwargs
 
     Returns:
@@ -152,6 +154,7 @@ def _create_job_unified(
                     script=sandbox_script,
                     container=sandbox_container or cluster_config["containers"]["sandbox"],
                     name=f"{task_name}_sandbox",
+                    mounts=sandbox_mounts,
                 )
                 components.append(sandbox_cmd)
 
@@ -212,15 +215,15 @@ def _create_job_unified(
 @typer_unpacker
 def generate(
     ctx: typer.Context,
-    cluster: str = typer.Option(
+    cluster: str | None = typer.Option(
         None,
         help="One of the configs inside config_dir or NEMO_SKILLS_CONFIG_DIR or ./cluster_configs. "
         "Can also use NEMO_SKILLS_CONFIG instead of specifying as argument.",
     ),
-    input_file: str = typer.Option(
+    input_file: str | None = typer.Option(
         None, help="Path to the input data file. Can either specify input_file or input_dir, but not both. "
     ),
-    input_dir: str = typer.Option(
+    input_dir: str | None = typer.Option(
         None,
         help="Path to the input data directory. Can either specify input_file or input_dir, but not both. "
         "If input_file is not provided, will use output-rs{{seed}}.jsonl inside input_dir as input_files. "
@@ -230,18 +233,18 @@ def generate(
     output_dir: str = typer.Option(..., help="Where to put results"),
     expname: str = typer.Option("generate", help="Nemo run experiment name"),
     generation_type: GenerationType | None = typer.Option(None, help="Type of generation to perform"),
-    generation_module: str = typer.Option(
+    generation_module: str | None = typer.Option(
         None,
         help="Path to the generation module to use. "
         "If not specified, will use the registered generation module for the "
         "generation type (which is required in this case).",
     ),
-    model: List[str] = typer.Option(
+    model: List[str] | None = typer.Option(
         None,
         help="Path to the model(s). CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models for multi-model generation.",
     ),
-    server_address: List[str] = typer.Option(
+    server_address: List[str] | None = typer.Option(
         None,
         help="Server address(es). CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models.",
@@ -251,7 +254,7 @@ def generate(
         help="Server type(s). CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models.",
     ),
-    server_gpus: List[int] = typer.Option(
+    server_gpus: List[int] | None = typer.Option(
         None,
         help="Number of GPUs per model. CLI: space-separated ints. Python API: int or list. "
         "Single value broadcasts to all models.",
@@ -266,47 +269,47 @@ def generate(
         help="Server arguments per model. CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models.",
     ),
-    server_entrypoint: List[str] = typer.Option(
+    server_entrypoint: List[str] | None = typer.Option(
         None,
         help="Server entrypoint(s). CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models.",
     ),
-    server_container: List[str] = typer.Option(
+    server_container: List[str] | None = typer.Option(
         None,
         help="Container image(s). CLI: space-separated. Python API: string or list. "
         "Single value broadcasts to all models.",
     ),
-    main_container: str = typer.Option(None, help="Override container image for the main generation client"),
-    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
+    main_container: str | None = typer.Option(None, help="Override container image for the main generation client"),
+    sandbox_container: str | None = typer.Option(None, help="Override container image for the sandbox"),
     dependent_jobs: int = typer.Option(0, help="Specify this to launch that number of dependent jobs"),
-    mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
-    num_random_seeds: int = typer.Option(
+    mount_paths: str | None = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
+    num_random_seeds: int | None = typer.Option(
         None, help="Specify if want to run many generations with high temperature for the same input"
     ),
-    random_seeds: str = typer.Option(
+    random_seeds: str | None = typer.Option(
         None,
         help="List of random seeds to use for generation. Separate with , or .. to specify range. "
         "Can provide a list directly when using through Python",
     ),
     starting_seed: int = typer.Option(0, help="Starting seed for random sampling"),
-    num_chunks: int = typer.Option(
+    num_chunks: int | None = typer.Option(
         None,
         help="Number of chunks to split the dataset into. If None, will not chunk the dataset.",
     ),
-    chunk_ids: str = typer.Option(
+    chunk_ids: str | None = typer.Option(
         None,
         help="List of explicit chunk ids to run. Separate with , or .. to specify range. "
         "Can provide a list directly when using through Python",
     ),
-    preprocess_cmd: str = typer.Option(None, help="Command to run before generation"),
-    postprocess_cmd: str = typer.Option(None, help="Command to run after generation"),
-    partition: str = typer.Option(
+    preprocess_cmd: str | None = typer.Option(None, help="Command to run before generation"),
+    postprocess_cmd: str | None = typer.Option(None, help="Command to run after generation"),
+    partition: str | None = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
-    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
-    qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
-    time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
-    run_after: List[str] = typer.Option(
+    account: str | None = typer.Option(None, help="Can specify a non-default Slurm account"),
+    qos: str | None = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
+    time_min: str | None = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
+    run_after: List[str] | None = typer.Option(
         None, help="Can specify a list of expnames that need to be completed before this one starts"
     ),
     reuse_code: bool = typer.Option(
@@ -316,19 +319,19 @@ def generate(
         "the last submitted experiment in the current Python session, so set to False to disable "
         "(or provide reuse_code_exp to override).",
     ),
-    reuse_code_exp: str = typer.Option(
+    reuse_code_exp: str | None = typer.Option(
         None,
         help="If specified, will reuse the code from this experiment. "
         "Can provide an experiment name or an experiment object if running from code.",
     ),
-    config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
-    log_dir: str = typer.Option(None, help="Can specify a custom location for slurm logs."),
+    config_dir: str | None = typer.Option(None, help="Can customize where we search for cluster configs"),
+    log_dir: str | None = typer.Option(None, help="Can specify a custom location for slurm logs."),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
-    rerun_done: bool = typer.Option(
+    rerun_done: bool | None = typer.Option(
         False, help="If True, will re-run jobs even if a corresponding '.done' file already exists"
     ),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
-    sandbox_env_overrides: List[str] = typer.Option(
+    sandbox_env_overrides: List[str] | None = typer.Option(
         None,
         help="Extra environment variables for the sandbox container in KEY=VALUE format. "
         "E.g., --sandbox-env-overrides NEMO_SKILLS_SANDBOX_BLOCK_NETWORK=1 to enable network blocking.",
@@ -337,6 +340,10 @@ def generate(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
     ),
+    sandbox_mounts: List[str] | None = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
     log_samples: bool = typer.Option(
         False,
@@ -344,11 +351,11 @@ def generate(
         "Requires WANDB_API_KEY to be set in the environment. "
         "Use wandb_name/wandb_group/wandb_project to specify where to log.",
     ),
-    wandb_name: str = typer.Option(
+    wandb_name: str | None = typer.Option(
         None,
         help="Name of the wandb group to sync samples to. If not specified, but log_samples=True, will use expname.",
     ),
-    wandb_group: str = typer.Option(None, help="Name of the wandb group to sync samples to."),
+    wandb_group: str | None = typer.Option(None, help="Name of the wandb group to sync samples to."),
     wandb_project: str = typer.Option(
         "nemo-skills",
         help="Name of the wandb project to sync samples to.",
@@ -368,8 +375,8 @@ def generate(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
     ),
-    _reuse_exp: str = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
-    _task_dependencies: List[str] = typer.Option(
+    _reuse_exp: str | None = typer.Option(None, help="Internal option to reuse an experiment object.", hidden=True),
+    _task_dependencies: List[str] | None = typer.Option(
         None, help="Internal option to specify task dependencies.", hidden=True
     ),
 ):
@@ -393,7 +400,8 @@ def generate(
     extra_arguments = f"{' '.join(ctx.args)}"
     LOG.info("Starting generation job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
-
+    if (sandbox_mounts or keep_mounts_for_sandbox) and not with_sandbox:
+        raise ValueError("`sandbox_mounts` or `keep_mounts_for_sandbox` requires `with_sandbox=True`.")
     # Normalize model configuration to list
     models_list = pipeline_utils.normalize_models_config(model)
     num_models = len(models_list)
@@ -598,6 +606,7 @@ def generate(
                     partition=partition,
                     account=account,
                     keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+                    sandbox_mounts=sandbox_mounts,
                     task_name=task_name,
                     log_dir=log_dir,
                     sbatch_kwargs=sbatch_kwargs,

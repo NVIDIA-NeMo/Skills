@@ -343,6 +343,10 @@ def grpo_nemo_rl(
         None,
         help="Override the Ray template for training tasks. Can be a template name or a local .j2 path. Only applies to slurm-based jobs; local executor ignores it.",
     ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
+    ),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(
         None,
@@ -516,6 +520,7 @@ def grpo_nemo_rl(
                     heterogeneous=True if server_config is not None else False,
                     with_sandbox=with_sandbox,
                     sandbox_container=sandbox_container,
+                    sandbox_mounts=sandbox_mounts,
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,

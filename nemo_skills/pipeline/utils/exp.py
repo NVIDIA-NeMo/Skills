@@ -41,10 +41,16 @@ from nemo_skills.pipeline.utils.mounts import (
     get_mounts_from_config,
     get_unmounted_path,
     is_mounted_filepath,
+    normalize_mounts_list,
 )
 from nemo_skills.pipeline.utils.packager import (
     get_packager,
     get_registered_external_repo,
+)
+from nemo_skills.pipeline.utils.ray_executor import (
+    RayExecutor,
+    RayJobConfig,
+    get_ray_client,
 )
 from nemo_skills.pipeline.utils.server import get_free_port, get_server_command
 from nemo_skills.utils import get_logger_name, remove_handlers
@@ -269,6 +275,35 @@ def get_executor(
             additional_kwargs={"entrypoint": ""},
         )
 
+    if cluster_config["executor"] == "ray":
+        # Ray top-level scheduler executor (standalone Ray clusters or Ray-on-Slurm).
+        # Distinct from the existing `with_ray=True` flag, which is "Ray inside a Slurm
+        # allocation" via heterogeneous Slurm jobs. Here, Ray IS the scheduler.
+        # Actual job submission is performed in `add_task()` via `RayJobClient`; this
+        # branch returns a `RayExecutor` config object for callers that introspect the
+        # executor type (e.g., `Pipeline._create_executor`).
+        ray_config = cluster_config.get("ray", {})
+        # gpus_per_node convention (per get_executor docstring): 0 or None for
+        # CPU-only jobs. Treat None as "caller didn't say" → default 1, but
+        # respect an explicit 0 so CPU-only Ray jobs don't silently get a GPU.
+        if gpus_per_node is None:
+            ray_num_gpus = 1
+        else:
+            ray_num_gpus = int(gpus_per_node) * num_nodes
+        return RayExecutor(
+            ray_address=ray_config.get("address", "auto"),
+            ray_namespace=ray_config.get("namespace", "nemo"),
+            num_gpus=ray_num_gpus,
+            # cluster_config.ray.default_num_cpus is per-node; multiply by
+            # num_nodes to get the per-job total RayExecutor expects.
+            num_cpus=ray_config.get("default_num_cpus", 8) * num_nodes,
+            num_nodes=num_nodes,
+            ntasks_per_node=tasks_per_node,
+            log_dir=cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs"),
+            env_vars=env_vars,
+            packager=packager,
+        )
+
     if not heterogeneous:
         env_vars["SLURM_MASTER_NODE"] = "$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n1)"
     else:
@@ -446,6 +481,7 @@ def add_task(
     with_sandbox=False,
     sandbox_container=None,
     keep_mounts_for_sandbox=False,
+    sandbox_mounts: list[str] | None = None,
     sandbox_port: int | None = None,
     server_config=None,
     n_servers: int = 1,
@@ -531,6 +567,98 @@ def add_task(
         if not is_mounted_filepath(cluster_config, env_vars["HF_HOME"]):
             raise RuntimeError(f"Invalid cluster_config: HF_HOME={env_vars['HF_HOME']} is not a mounted path.")
 
+    # Ray executor path: bypass nemo_run.Experiment.add() and submit directly via
+    # RayJobClient. Scoped to single-command Ray jobs; unsupported modes raise
+    # NotImplementedError to fail fast. Distinct from `with_ray=True`, which runs
+    # Ray inside a Slurm allocation rather than as the top-level scheduler.
+    if cluster_config["executor"] == "ray":
+        if with_sandbox:
+            raise NotImplementedError(
+                "Ray executor does not support sandbox containers in this release. "
+                "Sandbox judge containers are out of scope for the initial Ray support. "
+                "Use cluster_config.executor='slurm' for sandbox workflows."
+            )
+        if server_config is not None:
+            raise NotImplementedError(
+                "Ray executor does not support co-scheduled servers (vLLM/SGLang/TRT-LLM) "
+                "alongside the main job in this release. For Ray-based workflows that "
+                "require an inference endpoint, use a separately-deployed external endpoint "
+                "and call it via server_type='openai' (OpenAI-compatible)."
+            )
+        if heterogeneous:
+            raise NotImplementedError("Ray executor does not support heterogeneous tasks in this release.")
+        if isinstance(cmd, list) and len(cmd) > 1:
+            raise NotImplementedError(
+                f"Ray executor only supports single-command tasks in this release. Got {len(cmd)} commands."
+            )
+        if with_ray:
+            raise NotImplementedError(
+                "with_ray=True (Ray-inside-Slurm-allocation, heterogeneous Slurm jobs) is "
+                "not compatible with cluster_config.executor='ray' (Ray-as-top-level-scheduler). "
+                "Use exactly one path per task."
+            )
+
+        # Validate task_name length already happened above. Build the Ray submission.
+        ray_cmd = cmd if isinstance(cmd, str) else cmd[0]
+        ray_dependencies = []
+        for dep in task_dependencies or []:
+            # task_dependencies for the Ray path must be Ray submission IDs (strings).
+            # Slurm callers commonly pass nemo-run task handles; silently dropping those
+            # would cause the new job to run without waiting for its dependency, defeating
+            # the contract without any signal. Fail fast instead.
+            if not isinstance(dep, str):
+                raise NotImplementedError(
+                    f"Ray executor task_dependencies must be Ray submission IDs (str); "
+                    f"got {type(dep).__name__}. If you copied a slurm pattern, replace the "
+                    f"nemo-run task handle with the string returned by the prior "
+                    f"add_task() call under cluster_config.executor='ray'."
+                )
+            ray_dependencies.append(dep)
+        # Also honor run_after on the Ray path. In this codepath
+        # expname == task_name == submission_id by construction
+        # (this function returns submission_id and downstream callers
+        # pass it back as run_after), so each entry maps directly to
+        # a Ray submission_id without needing get_exp_handles().
+        if run_after is not None:
+            if isinstance(run_after, (str, run.Experiment)):
+                run_after = [run_after]
+            for dep_expname in run_after:
+                if not isinstance(dep_expname, str):
+                    raise NotImplementedError(
+                        f"Ray executor run_after entries must be Ray submission IDs (str); "
+                        f"got {type(dep_expname).__name__}. nemo-run Experiment objects "
+                        f"are valid on the slurm path but not under cluster_config.executor='ray'."
+                    )
+                if dep_expname not in ray_dependencies:
+                    ray_dependencies.append(dep_expname)
+        ray_cluster_config = cluster_config.get("ray", {})
+        # default_num_cpus is per-node; multiply by num_nodes to get the per-job total.
+        ray_default_cpus_per_node = ray_cluster_config.get("default_num_cpus", 8)
+        ray_log_dir = log_dir or cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs")
+
+        # num_gpus arg is per-node (matches get_executor's `int(gpus_per_node) * num_nodes`);
+        # RayJobConfig.num_gpus is per-job total (ray_executor.py divides by num_nodes).
+        ray_num_gpus_per_node = num_gpus if num_gpus is not None else 1
+        ray_job_config = RayJobConfig(
+            name=task_name,
+            command=ray_cmd,
+            num_gpus=ray_num_gpus_per_node * num_nodes,
+            num_cpus=ray_default_cpus_per_node * num_nodes,
+            num_nodes=num_nodes,
+            env_vars=env_vars,
+            log_dir=ray_log_dir,
+            dependencies=ray_dependencies if ray_dependencies else None,
+        )
+
+        if dry_run:
+            LOG.info("Dry run mode: would submit Ray job %s with command: %s", task_name, ray_cmd)
+            return f"<dry-run-ray:{task_name}>"
+
+        ray_client = get_ray_client(cluster_config)
+        submission_id = ray_client.submit_job(ray_job_config)
+        LOG.info("Ray job submitted: task=%s submission_id=%s", task_name, submission_id)
+        return submission_id
+
     # Check if we need to add server first to ensure SLURM allocates GPU partition.
     # This happens when the client doesn't need GPUs but the server does.
     server_needs_gpus = server_config is not None and int(server_config.get("num_gpus", 0)) > 0
@@ -557,7 +685,13 @@ def add_task(
         # NOTE: avoid evaluating default (which would index cluster_config) unless needed
         server_container = _server_config.pop("container", None)
         if server_container is None:
-            server_container = cluster_config["containers"][_server_config["server_type"]]
+            # Server-type variants that share a container image with a base
+            # server type (e.g. vllm_dp_ray uses the vllm container). Keep
+            # this dict small and local — it's a minor convenience, not a
+            # general extension point.
+            _container_aliases = {"vllm_dp_ray": "vllm", "vllm_multimodal": "vllm"}
+            container_key = _container_aliases.get(_server_config["server_type"], _server_config["server_type"])
+            server_container = cluster_config["containers"][container_key]
 
         for server_idx in range(n_servers):
             server_cmd, num_server_tasks = get_server_command(**_server_config, cluster_config=cluster_config)
@@ -671,6 +805,10 @@ def add_task(
 
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
+            if sandbox_mounts is not None:
+                sandbox_exec_mounts = normalize_mounts_list(sandbox_mounts, allow_rw_mode=True)
+            else:
+                sandbox_exec_mounts = None if keep_mounts_for_sandbox else []
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
                 container=sandbox_container or cluster_config["containers"]["sandbox"],
@@ -679,7 +817,7 @@ def add_task(
                 gpus_per_node=0,
                 partition=partition,
                 account=account,
-                mounts=None if keep_mounts_for_sandbox else [],
+                mounts=sandbox_exec_mounts,
                 dependencies=dependencies,
                 job_name=task_name,
                 log_dir=log_dir,
@@ -709,7 +847,9 @@ def add_task(
             het_group_indices.append(het_group)
         het_group += 1
         LOG.info("Sandbox command: %s", commands[-1])
-
+    else:
+        if sandbox_mounts or keep_mounts_for_sandbox:
+            raise ValueError("`sandbox_mounts` or `keep_mounts_for_sandbox` requires `with_sandbox=True`.")
     # If server wasn't added first (because client needs GPUs or server doesn't need GPUs), add it now
     if server_config is not None and not server_goes_first:
         add_server_tasks()
