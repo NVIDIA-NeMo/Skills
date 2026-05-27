@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,7 @@ from tests.conftest import docker_rm
 
 def _copy_test_data_to_tmp(filename: str, model_type: str) -> str:
     test_data_dir = Path(__file__).absolute().parents[1] / "data"
-    output_data_dir = Path("/tmp/nemo-skills-tests") / model_type / "training-data"
+    output_data_dir = Path("/tmp") / f"nemo-skills-training-data-{os.getuid()}" / model_type
     output_data_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_data_dir / f"{Path(filename).stem}.jsonl"
