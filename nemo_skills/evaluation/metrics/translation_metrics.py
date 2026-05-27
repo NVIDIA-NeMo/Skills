@@ -117,7 +117,7 @@ class TranslationMetrics(BaseMetrics):
                 generation = ""
 
             generations.append(generation)
-            ground_truths.append(pred["translation"])
+            ground_truths.append(pred["reference"])
             if "comet" in pred:
                 comets.append(pred["comet"] * 100)
 

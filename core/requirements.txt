@@ -5,6 +5,7 @@
 
 bs4
 compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@e01a5d2
+contractions
 datasets
 editdistance
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f
@@ -18,9 +19,11 @@ huggingface_hub
 hydra-core
 ipython
 iso639-lang
+koifeval @ git+https://github.com/bzantium/koifeval.git@7a27889c0cf285e60b1a7b4795211846dc328aaf
 langcodes
+langdetect
 language-data
-litellm[caching]==1.82.6
+litellm[caching]==1.83.14
 math-verify[antlr4_9_3]
 mcp
 numpy

@@ -164,6 +164,16 @@ def get_git_repo_path(path: str | Path = None):
 def get_packager(extra_package_dirs: tuple[str] | None = None):
     """Will check if we are running from a git repo and use git packager or default packager otherwise."""
     nemo_skills_dir = get_registered_external_repo("nemo_skills").path
+    # Controls for deterministic packaging behavior across different launch directories.
+    #
+    # By default, if we are running inside a git repo, we use GitArchivePackager (committed files only).
+    # If the current repo does not contain `nemo_skills/`, we additionally include the *installed*
+    # nemo_skills package directory to ensure remote tasks can import it.
+    #
+    # This can be surprising when users rely on a venv editable install / uncommitted changes.
+    # These flags let you force using the installed package tree (PatternPackager) regardless of CWD.
+    force_installed_nemo_skills = bool(int(os.getenv("NEMO_SKILLS_FORCE_INSTALLED_PACKAGE", "0")))
+    force_pattern_packager = bool(int(os.getenv("NEMO_SKILLS_FORCE_PATTERN_PACKAGER", "0")))
 
     if extra_package_dirs:
         include_patterns = [str(Path(d) / "*") for d in extra_package_dirs]
@@ -174,15 +184,18 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
 
     check_uncommited_changes = not bool(int(os.getenv("NEMO_SKILLS_DISABLE_UNCOMMITTED_CHANGES_CHECK", 0)))
 
-    # are we in a git repo? If yes, we are uploading the current code
-    repo_path = get_git_repo_path(path=None)  # check if we are in a git repo in pwd
+    # Are we in a git repo? If yes, we *normally* upload committed code from the current repo.
+    # force_pattern_packager overrides this and forces packaging from the installed package tree.
+    repo_path = None if force_pattern_packager else get_git_repo_path(path=None)
 
     if repo_path:
-        # Do we have nemo_skills package in this repo? If no, we need to pick it up from installed location
-        if not (Path(repo_path) / "nemo_skills").is_dir():
+        # Do we have nemo_skills package in this repo? If no, we need to pick it up from installed location.
+        # If force_installed_nemo_skills is set, we always pick up the installed package.
+        if force_installed_nemo_skills or not (Path(repo_path) / "nemo_skills").is_dir():
             LOG.info(
-                "Not running from Nemo-Skills repo, trying to upload installed package. "
+                "Using installed Nemo-Skills package for packaging (force_installed=%s). "
                 "Make sure there are no extra files in %s",
+                force_installed_nemo_skills,
                 str(nemo_skills_dir / "*"),
             )
             include_patterns.append(str(nemo_skills_dir / "*"))
@@ -207,7 +220,9 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
         )
     else:
         LOG.info(
-            "Not running from a git repo, trying to upload installed package. Make sure there are no extra files in %s",
+            "Using PatternPackager for installed Nemo-Skills package (force_pattern=%s). "
+            "Make sure there are no extra files in %s",
+            force_pattern_packager,
             str(nemo_skills_dir / "*"),
         )
         include_patterns.append(str(nemo_skills_dir / "*"))

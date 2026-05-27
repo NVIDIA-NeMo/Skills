@@ -43,7 +43,7 @@ ephem
 ete3
 feedparser
 filetype
-fiona
+fiona; platform_machine == "x86_64"
 fishpy
 fontTools
 galois
@@ -102,7 +102,7 @@ ocl
 open_tamil
 opencv-python
 openmc_data
-openpyxl>=3.1.0 
+openpyxl>=3.1.0
 optopy
 ortools
 osmnx
@@ -153,7 +153,7 @@ pyxlsb>=1.0.10
 qiskit
 quote
 quotes
-qutip
+qutip; platform_machine == "x86_64"
 ragas
 rdflib
 rdkit
