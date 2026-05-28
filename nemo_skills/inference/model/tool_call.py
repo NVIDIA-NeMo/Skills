@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import copy
+import inspect
 import json
 import logging
 import uuid
@@ -63,6 +64,16 @@ class ToolCallingWrapper:
         self.schema_overrides = load_schema_overrides(schema_overrides)
         self.schema_mappings = {}  # Built when tools are listed
         self.max_tool_calls = max_tool_calls
+
+    async def shutdown(self) -> None:
+        try:
+            await self.tool_manager.shutdown()
+        finally:
+            shutdown = getattr(self.model, "shutdown", None)
+            if shutdown is not None:
+                result = shutdown()
+                if inspect.isawaitable(result):
+                    await result
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
