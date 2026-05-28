@@ -208,9 +208,10 @@ ns nemo_rl sft \
     --final_hf_path=/workspace/training/qwen2.5-14b-improved-hf \
     ++policy.max_total_sequence_length=8192 \
     ++policy.train_global_batch_size=32 \
-    ++policy.tensor_model_parallel_size=4 \
-    ++policy.context_parallel_size=2 \
-    ++policy.lr=1e-5 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=4 \
+    ++policy.megatron_cfg.context_parallel_size=2 \
+    ++policy.megatron_cfg.optimizer.lr=1e-5 \
+    ++policy.megatron_cfg.optimizer.min_lr=1e-5 \
     ++sft.max_num_epochs=2
 ```
 

@@ -46,14 +46,13 @@ sft_nemo_rl(
     ctx=wrap_arguments(
         '++sft.max_num_epochs=2000 '
         f'++sft.max_num_steps={max_steps} '
-        '++data.force_reprocess=false '
         '++data.num_workers=10 '
         f'++policy.megatron_cfg.tensor_model_parallel_size={tp} '
         f'++policy.megatron_cfg.context_parallel_size={cp} '
         f'++policy.megatron_cfg.expert_model_parallel_size={emp} '
         f'++policy.megatron_cfg.expert_tensor_parallel_size={etp} '
         f'++policy.megatron_cfg.pipeline_model_parallel_size={pp} '
-        f'++policy.sequence_parallel=True '
+        f'++policy.megatron_cfg.sequence_parallel=True '
         f'++policy.megatron_cfg.bias_activation_fusion=True '
         f'++policy.megatron_cfg.apply_rope_fusion=True '
         f'++checkpointing.save_period={save_period} '
@@ -96,6 +95,5 @@ sft_nemo_rl(
 | Qwen3-8B      | 32k            | 2  | 4  | 1  | -   | -   |
 | Qwen3-8B      | 64k            | 4  | 4  | 1  | -   | -   |
 | Qwen3-8B      | 128k           | 8  | 8  | 1  | -   | -   |
-
 
 

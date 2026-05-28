@@ -400,10 +400,10 @@ ns nemo_rl sft \
     ++policy.model_name=Qwen/Qwen3-32B \
     ++policy.max_total_sequence_length=16384 \
     ++policy.train_global_batch_size=32 \
-    ++policy.optimizer.kwargs.lr=1e-5 \
+    ++policy.megatron_cfg.optimizer.lr=1e-5 \
+    ++policy.megatron_cfg.optimizer.min_lr=1e-5 \
     ++checkpointing.save_weights_only=true \
-    ++checkpointing.keep_top_k=1 \
-    ++policy.lr=1e-5
+    ++checkpointing.keep_top_k=1
 ```
 
 Key training parameters:

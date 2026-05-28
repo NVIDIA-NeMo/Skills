@@ -400,8 +400,11 @@ def sft_nemo_rl(
         if validation_data is not None:
             validation_data = get_mounted_path(cluster_config, validation_data)
     training_config = config or UPSTREAM_SFT_CONFIG
-    if training_config.startswith("/") and not training_config.startswith(UPSTREAM_NEMO_RL_ROOT):
-        training_config = get_mounted_path(cluster_config, training_config)
+    if training_config.startswith("/"):
+        if not training_config.startswith(UPSTREAM_NEMO_RL_ROOT):
+            training_config = get_mounted_path(cluster_config, training_config)
+    elif config is not None:
+        training_config = f"/nemo_run/code/{training_config}"
 
     train_cmd = get_training_cmd(
         cluster_config=cluster_config,

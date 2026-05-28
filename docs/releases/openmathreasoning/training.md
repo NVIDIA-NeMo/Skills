@@ -102,10 +102,10 @@ ns nemo_rl sft \
     ++policy.max_total_sequence_length=32768 \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=1024 \
-    ++policy.tensor_model_parallel_size=1 \
-    ++policy.context_parallel_size=2 \
-    ++policy.lr=3e-4 \
-    ++policy.min_lr=3e-7 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=1 \
+    ++policy.megatron_cfg.context_parallel_size=2 \
+    ++policy.megatron_cfg.optimizer.lr=3e-4 \
+    ++policy.megatron_cfg.optimizer.min_lr=3e-7 \
     ++policy.megatron_cfg.scheduler.lr_warmup_iters=3000 \
     ++policy.megatron_cfg.scheduler.lr_warmup_init=0 \
     ++checkpointing.save_period=7500 \

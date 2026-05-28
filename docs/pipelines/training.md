@@ -71,7 +71,7 @@ For dense models (e.g., Qwen3-8B), adjusting these settings can significantly im
 ```bash
     ++policy.train_global_batch_size=32 \
     ++policy.train_micro_batch_size=1 \
-    ++policy.tensor_model_parallel_size=4 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=4 \
 ```
 
 For MoE models (e.g., Qwen3-30B-A3B), you can also adjust additional MoE-specific parameters to further optimize performance.
@@ -86,7 +86,7 @@ We also support sequence packing and context parallel, especially for training s
 By default, our sft config set sequence_packing as True.
 ```bash
    ++policy.sequence_packing.enabled=True \
-   ++policy.context_parallel_size=4
+   ++policy.megatron_cfg.context_parallel_size=4
 ```
 
 
@@ -132,4 +132,3 @@ eval(
     run_after=expname,
 )
 ```
-

@@ -68,9 +68,10 @@ ns nemo_rl sft \
     --training_data=/workspace/openmathinstruct2-sft.jsonl \
     ++policy.train_micro_batch_size=8 \
     ++policy.train_global_batch_size=512 \
-    ++policy.tensor_model_parallel_size=4 \
-    ++policy.pipeline_model_parallel_size=1 \
-    ++policy.lr=2e-5 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=4 \
+    ++policy.megatron_cfg.pipeline_model_parallel_size=1 \
+    ++policy.megatron_cfg.optimizer.lr=2e-5 \
+    ++policy.megatron_cfg.optimizer.min_lr=2e-5 \
     ++checkpointing.save_period=10000 \
     ++sft.max_num_steps=60000 \
     ++sft.max_num_epochs=100 \
@@ -94,9 +95,10 @@ ns nemo_rl sft \
     --training_data=/workspace/openmathinstruct2-sft-5M.jsonl \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=512 \
-    ++policy.tensor_model_parallel_size=8 \
-    ++policy.pipeline_model_parallel_size=2 \
-    ++policy.lr=1e-5 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=8 \
+    ++policy.megatron_cfg.pipeline_model_parallel_size=2 \
+    ++policy.megatron_cfg.optimizer.lr=1e-5 \
+    ++policy.megatron_cfg.optimizer.min_lr=1e-5 \
     ++checkpointing.save_period=3330 \
     ++sft.max_num_steps=20000 \
     ++sft.max_num_epochs=100 \
@@ -110,4 +112,3 @@ add `++checkpointing.checkpoint_must_save_by=00:03:20:00`
 
 
 If you want to follow up with evaluation, see [training docs](../../pipelines/training.md#chaining-pipelines-with-python) for an example of how to do it through a convenient Python API.
-
