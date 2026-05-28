@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import fields
+from dataclasses import fields, replace
 from typing import Any
 
 from nemo_skills.evaluation.evaluator.audio import (
@@ -35,10 +35,41 @@ from nemo_skills.evaluation.evaluator.contextasr import (
 )
 
 
+_FLEURS_TO_NORMALIZER_LANG = {
+    "cmn_hans_cn": "zh",
+    "en_us": "en",
+    "es_419": "es",
+    "pt_br": "pt",
+    "sv_se": "sv",
+}
+
+
 def _audio_config(config: dict[str, Any]) -> AudioEvaluatorConfig:
     """Build AudioEvaluatorConfig while ignoring NTT-specific config keys."""
     field_names = {field.name for field in fields(AudioEvaluatorConfig)}
     return AudioEvaluatorConfig(**{key: value for key, value in config.items() if key in field_names})
+
+
+def _normalizer_lang(sample: dict[str, Any]) -> str | None:
+    extra_fields = sample.get("extra_fields") or {}
+    lang = extra_fields.get("src_lang") or sample.get("lang") or sample.get("language")
+    if not isinstance(lang, str) or not lang:
+        return None
+    lang = _FLEURS_TO_NORMALIZER_LANG.get(lang, lang)
+    if "_" in lang:
+        lang = lang.split("_", 1)[0]
+    if "-" in lang:
+        lang = lang.split("-", 1)[0]
+    return lang or None
+
+
+def _as_multilingual_asr_sample(sample: dict[str, Any]) -> dict[str, Any]:
+    sample = dict(sample)
+    sample["task_type"] = "Multilingual-ASR"
+    extra_fields = dict(sample.get("extra_fields") or {})
+    extra_fields.setdefault("src_lang", _normalizer_lang(sample) or "en")
+    sample["extra_fields"] = extra_fields
+    return sample
 
 
 def _clean_generation(generation: str, config: AudioEvaluatorConfig) -> str:
@@ -99,8 +130,9 @@ def _evaluate_contextasr_sample(sample: dict[str, Any], generation: str) -> dict
     for entity in ref_entities:
         entity2count[entity] = entity2count.get(entity, 0) + 1
 
-    hyp_exact_entities = extract_entities(norm_hyp, norm_entities, entity2count)
-    hyp_fuzzy_entities = extract_entities_fuzzy(norm_hyp, norm_entities)
+    counted_entities = list(entity2count)
+    hyp_exact_entities = extract_entities(norm_hyp, counted_entities, entity2count)
+    hyp_fuzzy_entities = extract_entities_fuzzy(norm_hyp, counted_entities)
 
     ref_entity_tokens = " ".join(ref_entities).split()
     hyp_fuzzy_tokens = " ".join(hyp_fuzzy_entities).split()
@@ -190,6 +222,13 @@ class NTTSmokeEvaluator(BaseEvaluator):
 
         if task_type == "Text-MCQ":
             return _evaluate_text_mcq(data_point)
+
+        if task_type == "ASR" and self.audio_config.normalization_mode == "multilingual":
+            return evaluate_audio_sample(_as_multilingual_asr_sample(data_point), self.audio_config)
+
+        if task_type == "ASR-PC" and self.audio_config.normalization_mode == "multilingual":
+            audio_config = replace(self.audio_config, normalization_mode="hf_leaderboard")
+            return evaluate_audio_sample(data_point, audio_config)
 
         updates = evaluate_audio_sample(data_point, self.audio_config)
         if task_type == "Hallucination":

@@ -14,6 +14,8 @@
 
 import importlib.util
 import json
+import sys
+import types
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +28,26 @@ def _load_prepare_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_eval_module():
+    latex = types.ModuleType("latex2sympy2_extended")
+    latex.NormalizationConfig = object
+    latex.normalize_latex = lambda text, *args, **kwargs: text
+    sys.modules.setdefault("latex2sympy2_extended", latex)
+
+    math_verify = types.ModuleType("math_verify")
+    math_verify.LatexExtractionConfig = object
+    math_verify.StringExtractionConfig = object
+    math_verify.parse = lambda *args, **kwargs: []
+    math_verify.verify = lambda *args, **kwargs: False
+    sys.modules.setdefault("math_verify", math_verify)
+
+    contractions = types.ModuleType("contractions")
+    contractions.fix = lambda text, *args, **kwargs: text
+    sys.modules.setdefault("contractions", contractions)
+
+    return __import__("importlib").import_module("nemo_skills.dataset.ntt-smoke.ntt_smoke_eval")
 
 
 def _write_jsonl(path: Path, rows):
@@ -189,6 +211,7 @@ def test_ntt_smoke_prepare_english_manifest(tmp_path):
     assert "text.superficial" in subtasks
     assert all(row["origin_dataset"] for row in rows)
     assert (output_root / "data" / "noisy" / "en").exists()
+    assert all(row.get("lang") for row in rows)
 
 
 def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
@@ -248,3 +271,25 @@ def test_ntt_smoke_prepare_spreads_long_rows():
     assert long_positions[0] > 0
     assert long_positions[-1] < len(balanced) - 1
     assert min(b - a for a, b in zip(long_positions, long_positions[1:])) > 1
+
+
+def test_ntt_smoke_eval_normalizes_multilingual_language_metadata():
+    evaluator = _load_eval_module()
+
+    sample = evaluator._as_multilingual_asr_sample({"task_type": "ASR", "language": "cmn_hans_cn"})
+
+    assert sample["task_type"] == "Multilingual-ASR"
+    assert sample["extra_fields"]["src_lang"] == "zh"
+
+
+def test_ntt_smoke_context_entity_scoring_ignores_unmatched_reference_entities():
+    evaluator = _load_eval_module()
+    sample = {
+        "expected_answer": "The FDA reviewed a GDP contractionary forecast.",
+        "entity_list": ["FDA", "GDP contraction"],
+    }
+
+    result = evaluator._evaluate_contextasr_sample(sample, "FDA approved the GDP contraction forecast.")
+
+    assert result["ne_fnr_total"] == 1
+    assert result["ne_fnr_hits"] == 1

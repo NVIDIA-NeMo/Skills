@@ -93,6 +93,14 @@ COVOST2_BY_FLEURS = {
     "sv_se": "sv-SE",
 }
 
+NORMALIZER_LANG_BY_DATASET_LANG = {
+    "cmn_hans_cn": "zh",
+    "en_us": "en",
+    "es_419": "es",
+    "pt_br": "pt",
+    "sv_se": "sv",
+}
+
 ASR_PROMPTS = {
     "canonical": "Transcribe the following audio.",
     "terse": "Transcribe this audio.",
@@ -238,6 +246,17 @@ def _origin_id(row: dict[str, Any]) -> str:
     return _stable_key(row)[:16]
 
 
+def _normalizer_lang(language: str | None) -> str:
+    if not language:
+        return "en"
+    language = NORMALIZER_LANG_BY_DATASET_LANG.get(language, language)
+    if "_" in language:
+        language = language.split("_", 1)[0]
+    if "-" in language:
+        language = language.split("-", 1)[0]
+    return language or "en"
+
+
 def _with_metadata(
     row: dict[str, Any],
     *,
@@ -267,6 +286,7 @@ def _with_metadata(
     out["origin_manifest"] = origin_manifest
     out["origin_id"] = _origin_id(row)
     out["language"] = language
+    out["lang"] = _normalizer_lang(language)
     out["prompt_variant"] = prompt_variant
     if prompt_group_id is not None:
         out["prompt_group_id"] = prompt_group_id
