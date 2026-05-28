@@ -541,7 +541,17 @@ def generate(
 
             for model_idx in range(num_models):
                 get_random_port_for_server = pipeline_utils.should_get_random_port(
-                    server_gpus_list[model_idx], exclusive
+                    server_gpus_list[model_idx],
+                    exclusive,
+                    pipeline_utils.get_cluster_gpus_per_node(cluster_config),
+                )
+                pipeline_utils.warn_hosted_server_allocation(
+                    server_gpus=server_gpus_list[model_idx],
+                    exclusive=exclusive,
+                    gpus_per_node=pipeline_utils.get_cluster_gpus_per_node(cluster_config),
+                    get_random_port=get_random_port_for_server,
+                    server_port=None,
+                    context="ns generate",
                 )
 
                 srv_config, srv_address, srv_extra_args = pipeline_utils.configure_client(

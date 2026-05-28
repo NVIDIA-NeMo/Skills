@@ -28,11 +28,14 @@ from nemo_skills.pipeline.utils import (
     add_task,
     check_mounts,
     get_cluster_config,
+    get_cluster_gpus_per_node,
     get_exp,
     get_free_port,
     parse_kwargs,
     resolve_mount_paths,
     set_python_path_and_wait_for_server,
+    should_get_random_port,
+    warn_hosted_server_allocation,
 )
 from nemo_skills.utils import get_logger_name, setup_logging
 
@@ -121,7 +124,7 @@ def launch_server(
     config_dir=None,
     log_dir=None,
     mount_paths=None,
-    get_random_port=False,
+    get_random_port=None,
     check_mounted_paths=False,
     tail_logs=False,
     cmd="",
@@ -151,6 +154,22 @@ def launch_server(
         pass
 
     log_dir = check_mounts(cluster_config, log_dir, check_mounted_paths=check_mounted_paths)
+
+    gpus_per_node = get_cluster_gpus_per_node(cluster_config)
+    if get_random_port is None:
+        get_random_port = should_get_random_port(
+            server_gpus=server_gpus,
+            exclusive=(sbatch_kwargs or {}).get("exclusive") if isinstance(sbatch_kwargs, dict) else None,
+            gpus_per_node=gpus_per_node,
+        )
+    warn_hosted_server_allocation(
+        server_gpus=server_gpus,
+        exclusive=(sbatch_kwargs or {}).get("exclusive") if isinstance(sbatch_kwargs, dict) else None,
+        gpus_per_node=gpus_per_node,
+        get_random_port=get_random_port,
+        server_port=server_port,
+        context="ns start_server",
+    )
 
     if server_port is None:
         server_port = get_free_port(strategy="random") if get_random_port else 5000
@@ -251,7 +270,7 @@ def start_server(
     ),
     exclusive: bool | None = typer.Option(None, help="If set will add exclusive flag to the slurm job."),
     check_mounted_paths: bool = typer.Option(False, help="Check if mounted paths are available on the remote machine"),
-    get_random_port: bool = typer.Option(False, help="If True, will get a random port for the server"),
+    get_random_port: bool | None = typer.Option(None, help="If unset, partial-node servers use a random port"),
     sbatch_kwargs: str = typer.Option(
         "",
         help="Additional sbatch kwargs to pass to the job scheduler. Values should be provided as a JSON string or as a `dict` if invoking from code.",
@@ -263,6 +282,23 @@ def start_server(
     sandbox_tunnel_port: int = typer.Option(6000, help="Local tunnel port for the sandbox server."),
 ):
     """Self-host a model server."""
+    cluster_config = get_cluster_config(cluster, config_dir)
+    gpus_per_node = get_cluster_gpus_per_node(cluster_config)
+    if get_random_port is None:
+        get_random_port = should_get_random_port(
+            server_gpus=server_gpus,
+            exclusive=exclusive,
+            gpus_per_node=gpus_per_node,
+        )
+    warn_hosted_server_allocation(
+        server_gpus=server_gpus,
+        exclusive=exclusive,
+        gpus_per_node=gpus_per_node,
+        get_random_port=get_random_port,
+        server_port=None,
+        context="ns start_server",
+    )
+
     server_port = get_free_port(strategy="random") if get_random_port else 5000
     sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
 

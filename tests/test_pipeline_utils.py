@@ -25,6 +25,11 @@ from nemo_skills.pipeline.utils.generation import (
     get_remaining_jobs,
     separate_hydra_args,
 )
+from nemo_skills.pipeline.utils.server import (
+    get_cluster_gpus_per_node,
+    should_get_random_port,
+    warn_hosted_server_allocation,
+)
 
 
 def create_done_files(output_dir, seed_chunk_pairs):
@@ -35,6 +40,59 @@ def create_done_files(output_dir, seed_chunk_pairs):
         os.makedirs(os.path.dirname(done_file), exist_ok=True)
         with open(done_file, "w") as f:
             f.write("")
+
+
+def test_should_get_random_port_respects_cluster_gpu_count():
+    assert should_get_random_port(server_gpus=4, exclusive=None, gpus_per_node=8)
+    assert not should_get_random_port(server_gpus=8, exclusive=None, gpus_per_node=8)
+    assert not should_get_random_port(server_gpus=4, exclusive=None, gpus_per_node=4)
+    assert not should_get_random_port(server_gpus=4, exclusive=True, gpus_per_node=8)
+
+
+def test_get_cluster_gpus_per_node_known_clusters_and_override():
+    assert get_cluster_gpus_per_node({"_cluster_yaml_name": "aws-cmh-science"}) == 4
+    assert get_cluster_gpus_per_node({"_cluster_yaml_name": "aws-dfw-science"}) == 4
+    assert get_cluster_gpus_per_node({"_cluster_yaml_name": "aws-iad-science"}) == 8
+    assert get_cluster_gpus_per_node({"gpus_per_node": 4, "_cluster_yaml_name": "aws-iad-science"}) == 4
+
+
+def test_warn_hosted_server_allocation_partial_fixed_port(caplog):
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=False,
+        gpus_per_node=8,
+        get_random_port=False,
+        context="test",
+    )
+
+    assert "fixed server port" in caplog.text
+    assert "get_random_port=True" in caplog.text
+
+
+def test_warn_hosted_server_allocation_partial_exclusive(caplog):
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=True,
+        gpus_per_node=8,
+        get_random_port=False,
+        context="test",
+    )
+
+    assert "exclusive=True" in caplog.text
+    assert "server_gpus=8" in caplog.text
+
+
+def test_warn_hosted_server_allocation_random_partial_has_no_port_warning(caplog):
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=False,
+        gpus_per_node=8,
+        get_random_port=True,
+        server_port=23456,
+        context="test",
+    )
+
+    assert "fixed server port" not in caplog.text
 
 
 def test_get_chunked_rs_filename():

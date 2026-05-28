@@ -64,8 +64,74 @@ def get_free_port(exclude: list[int] | None = None, strategy: int | str = 5000) 
         raise ValueError(f"Strategy {strategy} not supported.")
 
 
-def should_get_random_port(server_gpus, exclusive):
-    return server_gpus != 8 and not exclusive
+def get_cluster_gpus_per_node(cluster_config: dict | None, default: int = 8) -> int:
+    """Best-effort physical GPU count per node for hosted-server port policy.
+
+    Slurm GPU allocations isolate CUDA visibility, but jobs on the same
+    physical node still share the localhost network namespace. Fixed ports are
+    only safe by default when the hosted server consumes the whole GPU node.
+    """
+    if not cluster_config:
+        return default
+
+    for key in ("gpus_per_node", "num_gpus_per_node"):
+        value = cluster_config.get(key)
+        if value is not None:
+            return int(value)
+
+    cluster_name = str(cluster_config.get("_cluster_yaml_name") or cluster_config.get("name") or "").lower()
+    if any(token in cluster_name for token in ("aws-cmh", "aws-dfw")):
+        return 4
+    return default
+
+
+def should_get_random_port(server_gpus, exclusive, gpus_per_node: int | None = None):
+    if not server_gpus or exclusive:
+        return False
+    return int(server_gpus) != int(gpus_per_node or 8)
+
+
+def warn_hosted_server_allocation(
+    *,
+    server_gpus,
+    exclusive,
+    gpus_per_node: int | None = None,
+    get_random_port: bool | None = None,
+    server_port: int | None = None,
+    context: str = "hosted server",
+) -> None:
+    """Warn about hosted-server configurations that can waste GPU allocations."""
+    if not server_gpus:
+        return
+
+    server_gpus = int(server_gpus)
+    gpus_per_node = int(gpus_per_node or 8)
+    is_partial_node = server_gpus != gpus_per_node
+
+    if is_partial_node and exclusive:
+        LOG.warning(
+            "%s requests server_gpus=%d on a %d-GPU node with exclusive=True. "
+            "This can reserve idle GPUs. Prefer full-node serving with "
+            "server_gpus=%d and matching server_args='--tensor-parallel-size %d', "
+            "or remove exclusive=True for partial-node serving.",
+            context,
+            server_gpus,
+            gpus_per_node,
+            gpus_per_node,
+            gpus_per_node,
+        )
+
+    fixed_port = get_random_port is False or (server_port is not None and get_random_port is not True)
+    if is_partial_node and fixed_port:
+        LOG.warning(
+            "%s uses a fixed server port on a partial-node allocation "
+            "(server_gpus=%d, gpus_per_node=%d). Jobs sharing the node can "
+            "collide on localhost ports. Prefer get_random_port=True or omit "
+            "the fixed server port and propagate the resolved port to clients.",
+            context,
+            server_gpus,
+            gpus_per_node,
+        )
 
 
 def wrap_python_path(cmd):
