@@ -399,6 +399,24 @@ class BaseModel:
         if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
             result["reasoning_content"] = choice.message.reasoning_content
 
+        # Dump the full usage object verbatim into the output. Keeping
+        # None-valued fields (rather than excluding them) preserves the
+        # distinction between "server explicitly sent null" and "field
+        # was absent" — both can be meaningful (e.g. some providers
+        # send prompt_tokens_details=null when there's no cache hit).
+        try:
+            result["usage"] = response.usage.model_dump()
+        except AttributeError:
+            # Older or non-pydantic usage objects: fall back to dict().
+            try:
+                result["usage"] = dict(response.usage)
+            except Exception:
+                result["usage"] = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", None),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", None),
+                    "total_tokens": getattr(response.usage, "total_tokens", None),
+                }
+
         # Extract detailed token breakdown for reasoning models if available
         if hasattr(response.usage, "completion_tokens_details") and response.usage.completion_tokens_details:
             details = response.usage.completion_tokens_details
