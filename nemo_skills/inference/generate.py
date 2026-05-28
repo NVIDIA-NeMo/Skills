@@ -202,6 +202,7 @@ class GenerationTaskConfig:
     schema_overrides: dict | None = field(default_factory=dict)
 
     max_tool_calls: int = -1  # If >= 0, will limit the number of tool calls executed during generation to this number
+    tool_call_timeout_s: float | None = 300.0  # Wall-clock timeout for each individual tool call
 
     # if True, will move full generation to _full_generation key and keep cfg.generation_key without thinking tokens
     # IMPORTANT: do not set this for non-reasoning models as it will make the generations empty!
@@ -482,6 +483,7 @@ class GenerationTask:
                 tool_overrides=self.cfg.tool_overrides,
                 schema_overrides=self.cfg.schema_overrides,
                 max_tool_calls=self.cfg.max_tool_calls,
+                tool_call_timeout_s=self.cfg.tool_call_timeout_s,
                 tokenizer=self.tokenizer,
                 require_tokenizer=self.cfg.inference.tokens_to_generate is not None,
                 additional_config={"sandbox": self.cfg.sandbox},

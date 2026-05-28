@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import types
 
 import pytest
 
 # Dummy client to exercise MCPClientMeta behavior without real I/O
+from nemo_skills.inference.model.base import EndpointType
+from nemo_skills.inference.model.tool_call import ToolCallingWrapper
 from nemo_skills.mcp.clients import MCPClient, MCPStdioClient, MCPStreamableHttpClient
 from nemo_skills.mcp.tool_manager import Tool, ToolManager
 
@@ -219,6 +222,27 @@ class DummyTool(Tool):
         return {"unknown": tool_name, "args": arguments}
 
 
+class SlowTool(Tool):
+    def default_config(self):
+        return {}
+
+    def configure(self, overrides=None, context=None):
+        return None
+
+    async def list_tools(self):
+        return [
+            {
+                "name": "sleep",
+                "description": "Sleep long enough to exercise timeout handling",
+                "input_schema": {"type": "object", "properties": {}},
+            }
+        ]
+
+    async def execute(self, tool_name: str, arguments: dict, extra_args: dict | None = None):
+        await asyncio.sleep(10)
+        return "too late"
+
+
 # Helper class for test_tool_manager_cache_and_duplicate_detection
 # Defined at module level so it can be imported via locate()
 class CountingTool(DummyTool):
@@ -253,6 +277,24 @@ async def test_tool_manager_list_and_execute_with_class_locator():
 
     result = await tm.execute_tool("execute", {"code": "x=1"})
     assert result == {"ran": True, "code": "x=1"}
+
+
+@pytest.mark.asyncio
+async def test_tool_calling_wrapper_times_out_slow_tool_call():
+    wrapper = ToolCallingWrapper(
+        model=object(),
+        tool_modules=[f"{__name__}::SlowTool"],
+        tool_call_timeout_s=0.01,
+    )
+    await wrapper.tool_manager.list_all_tools(use_cache=False)
+
+    result = await wrapper._execute_tool_call(
+        {"id": "call-1", "function": {"name": "sleep", "arguments": "{}"}},
+        request_id="req-1",
+        endpoint_type=EndpointType.chat,
+    )
+
+    assert result["error"].startswith("Tool execution timed out")
 
 
 @pytest.mark.asyncio
