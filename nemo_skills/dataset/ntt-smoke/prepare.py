@@ -134,6 +134,34 @@ def _write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> int:
     return count
 
 
+def _balance_manifest_order(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = list(rows)
+    long_rows = [row for row in rows if row.get("ntt_subtask") == "asr.long"]
+    if len(long_rows) <= 1:
+        return rows
+
+    regular_rows = [row for row in rows if row.get("ntt_subtask") != "asr.long"]
+    total = len(rows)
+    targets = [round((idx + 1) * total / (len(long_rows) + 1)) for idx in range(len(long_rows))]
+
+    # Spread hour-scale examples so contiguous eval chunking does not assign all
+    # long recordings to one worker.
+    balanced: list[dict[str, Any]] = []
+    regular_idx = 0
+    long_idx = 0
+    while len(balanced) < total:
+        if long_idx < len(long_rows) and len(balanced) >= targets[long_idx]:
+            balanced.append(long_rows[long_idx])
+            long_idx += 1
+        elif regular_idx < len(regular_rows):
+            balanced.append(regular_rows[regular_idx])
+            regular_idx += 1
+        else:
+            balanced.append(long_rows[long_idx])
+            long_idx += 1
+    return balanced
+
+
 def _sample(rows: list[dict[str, Any]], count: int, salt: str) -> list[dict[str, Any]]:
     if count <= 0 or not rows:
         return []
@@ -834,14 +862,14 @@ def main() -> None:
     output_dir = Path(args.output_dir) if args.output_dir else Path(__file__).parent
     (output_dir / "data").mkdir(parents=True, exist_ok=True)
 
-    en_rows = _english_rows(source_root, output_dir, args)
+    en_rows = _balance_manifest_order(_english_rows(source_root, output_dir, args))
     en_count = _write_jsonl(output_dir / "en" / "test.jsonl", en_rows)
 
     summaries = {"en": _summarize(en_rows)}
     print(f"Wrote ntt-smoke.en: {en_count} samples")
 
     if not args.skip_multi:
-        multi_rows = _multilingual_rows(source_root, output_dir, args)
+        multi_rows = _balance_manifest_order(_multilingual_rows(source_root, output_dir, args))
         multi_count = _write_jsonl(output_dir / "multi" / "test.jsonl", multi_rows)
         summaries["multi"] = _summarize(multi_rows)
         print(f"Wrote ntt-smoke.multi: {multi_count} samples")

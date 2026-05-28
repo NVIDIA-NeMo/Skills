@@ -234,3 +234,17 @@ def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
     preference_rows = [row for row in rows if row["origin_dataset"] == "preference-asr-bench"]
     assert len(preference_rows) == 1
     assert preference_rows[0]["ntt_subtask"] == "audio_instruction_following.preference_asr"
+
+
+def test_ntt_smoke_prepare_spreads_long_rows():
+    prepare = _load_prepare_module()
+    rows = [{"ntt_subtask": "regular", "idx": idx} for idx in range(12)]
+    rows.extend({"ntt_subtask": "asr.long", "idx": idx} for idx in range(3))
+
+    balanced = prepare._balance_manifest_order(rows)
+
+    long_positions = [idx for idx, row in enumerate(balanced) if row["ntt_subtask"] == "asr.long"]
+    assert len(long_positions) == 3
+    assert long_positions[0] > 0
+    assert long_positions[-1] < len(balanced) - 1
+    assert min(b - a for a, b in zip(long_positions, long_positions[1:])) > 1
