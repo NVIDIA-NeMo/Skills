@@ -15,6 +15,7 @@
 import copy
 import os
 import re
+import uuid
 
 from .base import BaseModel
 
@@ -129,6 +130,15 @@ class OpenAIModel(BaseModel):
             "stream": stream,
             "tools": tools,
             "response_format": response_format,
+            # Per-call idempotency hint. The OpenAI SDK reuses the same
+            # request body across its internal retry loop, so this UUID
+            # stays stable across attempts of one logical request.
+            # Downstream services that dedup by prompt_cache_key see the
+            # same value across SDK-internal retries and can re-attach
+            # to the in-flight request instead of starting a duplicate.
+            # On real OpenAI this is just a prompt-cache lookup hint —
+            # a unique UUID means no cache hit, a minor perf cost.
+            "prompt_cache_key": str(uuid.uuid4()),
         }
 
         if self._is_reasoning_model(self.model):
