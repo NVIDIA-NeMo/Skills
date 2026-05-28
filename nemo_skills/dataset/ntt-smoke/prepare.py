@@ -805,7 +805,12 @@ def main() -> None:
     )
     parser.add_argument("--audio-samples", type=int, default=200, help="Target sample count per regular audio subtest.")
     parser.add_argument("--text-samples", type=int, default=5000, help="Target sample count for superficial text.")
-    parser.add_argument("--long-samples", type=int, default=6, help="Number of stitched long-form English samples.")
+    parser.add_argument(
+        "--long-samples",
+        type=int,
+        default=3,
+        help="Number of stitched long-form samples per variant; default covers 20, 40, and 60 minute targets.",
+    )
     parser.add_argument("--multi-multiplier", type=int, default=2, help="Multilingual size multiplier.")
     parser.add_argument("--short-max-seconds", type=float, default=3.0, help="Maximum duration for very short ASR.")
     parser.add_argument("--languages", default=",".join(DEFAULT_LANGUAGES), help="Comma-separated multilingual locales.")

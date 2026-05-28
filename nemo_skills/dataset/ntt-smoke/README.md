@@ -45,4 +45,5 @@ If preference-ASR data is absent, the audio-instruction subtest falls back to
 Generated noisy and long-form audio is written under `ntt-smoke/data/`.
 Original-source samples preserve their original `/data/<source>/...` paths and
 therefore expect the source datasets to remain under the same prepared data
-root used at evaluation time.
+root used at evaluation time. The default long-form setting generates one
+20-minute, one 40-minute, and one 60-minute stitched sample per variant.
