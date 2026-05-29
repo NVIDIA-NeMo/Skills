@@ -132,13 +132,22 @@ class GenerationTaskConfig:
     # simultaneously -- the kernel accept queue on the receiving end
     # (typically capped at net.core.somaxconn=4096) can briefly
     # overflow and SYN-drop the excess. Limiting the ramp rate so
-    # each ~250-connection burst is followed by a short pause keeps
-    # the accept queue draining cleanly.
+    # each ~ramp_rate/4-connection burst is followed by a short pause
+    # keeps the accept queue draining cleanly.
+    #
+    # Default 4000/sec accounts for ns generate's per-task pre-work
+    # (format_prompt, build litellm request, semaphore acquires) --
+    # the time from asyncio.create_task to "TCP request fired" is
+    # significant, so the configured task-creation rate has to be
+    # higher than the SYN rate you actually want at the kernel.
+    # Each burst is still ramp_rate/4 SYNs (1000 at default), well
+    # under net.core.somaxconn=4096.
+    #
     # Set to 0 (or negative) to disable ramping and prime
     # instantaneously. The transient-retry logic in
-    # BaseModel.generate_async would still cover the resulting SYN
+    # BaseModel.generate_async would still cover any resulting SYN
     # drops; the ramp just makes them not happen in the first place.
-    ramp_rate_per_sec: int = 1000
+    ramp_rate_per_sec: int = 4000
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
     chunk_id: int | None = None  # if specified, will index the specified chunk only
