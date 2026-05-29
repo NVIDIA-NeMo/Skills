@@ -120,6 +120,21 @@ def _load_preference_normalizer(normalizer_dir: str):
 def _wer_counts(ref: str, hyp: str) -> dict[str, Any]:
     import jiwer
 
+    ref = str(ref).strip()
+    hyp = str(hyp).strip()
+    if not ref:
+        hyp_words = hyp.split()
+        insertions = len(hyp_words)
+        return {
+            "wer": 1.0 if insertions else 0.0,
+            "wer_errors": insertions,
+            "wer_ref_words": 0,
+            "wer_substitutions": 0,
+            "wer_insertions": insertions,
+            "wer_deletions": 0,
+            "wer_correct_words": 0,
+        }
+
     measures = jiwer.process_words(ref, hyp)
     substitutions = measures.substitutions
     insertions = measures.insertions
@@ -156,6 +171,8 @@ def _evaluate_preference_asr_sample(
     reference = str(sample.get("expected_answer") or sample.get("preference_text") or "")
     norm_ref = normalizer.normalize_entry(reference, sample)
     norm_hyp = normalizer.normalize_entry(cleaned_generation, sample)
+    if not str(norm_ref).strip() and reference.strip():
+        norm_ref = reference.strip()
     updates = _wer_counts(norm_ref, norm_hyp)
     updates.update(
         {

@@ -310,6 +310,17 @@ def test_ntt_smoke_context_entity_scoring_ignores_unmatched_reference_entities()
     assert result["wer_correct_words"] >= 0
 
 
+def test_ntt_smoke_eval_handles_empty_preference_reference():
+    evaluator = _load_eval_module()
+
+    result = evaluator._wer_counts("", "unexpected words")
+
+    assert result["wer"] == 1.0
+    assert result["wer_ref_words"] == 0
+    assert result["wer_insertions"] == 2
+    assert result["wer_correct_words"] == 0
+
+
 def test_ntt_smoke_metrics_track_correct_words():
     iso639 = types.ModuleType("iso639")
     iso639.__path__ = []
