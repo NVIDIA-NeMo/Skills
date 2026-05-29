@@ -121,8 +121,22 @@ STATUS_CODE_ERRORS = {
 }
 
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
-GYM_TOOL_ERROR_PREFIXES = ("URL ", "Query ", "Search ")
-GYM_NO_CONTENT_RESULT = "No content found."
+DIRECT_TAVILY_ERROR_PREFIXES = (
+    "Error:",
+    "Invalid ",
+    "No search result",
+    "Query ",
+    "Search authentication",
+    "Search request",
+    "Search response",
+    "Search rate",
+    "Unsupported ",
+    "URL ",
+)
+DIRECT_TAVILY_ERROR_MESSAGES = {
+    "No content found.",
+    "Start index is beyond page length.",
+}
 
 # These errors should stop the process - no point continuing with bad credentials
 FATAL_STATUS_CODES = {401, 403}
@@ -282,8 +296,20 @@ def _unsupported_args_error(arguments: dict[str, Any], allowed_args: set[str]) -
     return f"Unsupported {arg_word}: {', '.join(unsupported)}"
 
 
-def _is_gym_tool_error_result(result: Any) -> bool:
-    return isinstance(result, str) and (result.startswith(GYM_TOOL_ERROR_PREFIXES) or result == GYM_NO_CONTENT_RESULT)
+def _tool_error(message: str) -> dict[str, str]:
+    return {"error": message}
+
+
+def _is_direct_tavily_error_result(result: Any) -> bool:
+    return isinstance(result, str) and (
+        result.startswith(DIRECT_TAVILY_ERROR_PREFIXES) or result in DIRECT_TAVILY_ERROR_MESSAGES
+    )
+
+
+def _standardize_tool_result(result: Any) -> Any:
+    if _is_direct_tavily_error_result(result):
+        return _tool_error(result)
+    return result
 
 
 def _remember_lru(cache: OrderedDict[str, Any], key: str, value: Any, max_items: int) -> None:
@@ -556,22 +582,22 @@ class DirectTavilySearchTool(_DirectTavilyBase):
         self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None
     ) -> Any:
         if tool_name not in {"web-search", "web_search"}:
-            return {"error": f"unknown tool '{tool_name}'"}
+            return _tool_error(f"unknown tool '{tool_name}'")
 
         arguments, error = self._sanitize_and_validate_arguments(tool_name, arguments, {"query"})
         if error:
-            return {"error": error}
+            return _tool_error(error)
         query = arguments.get("query")
         if not isinstance(query, str):
-            return {"error": "Missing required argument 'query'"}
+            return _tool_error("Missing required argument 'query'")
 
         num_results = int(self._config["num_results"])
         if num_results > int(self._config["max_num_results"]):
-            return {"error": f"Number of results must be less than or equal to {self._config['max_num_results']}."}
+            return _tool_error(f"Number of results must be less than or equal to {self._config['max_num_results']}.")
 
         answer_type = self._config["answer_type"]
         if answer_type not in ["answer", "results"]:
-            return {"error": "Invalid answer type. Choose 'answer' or 'results'."}
+            return _tool_error("Invalid answer type. Choose 'answer' or 'results'.")
 
         extra_args = dict(extra_args or {})
         request_id = extra_args.get("request_id")
@@ -588,7 +614,7 @@ class DirectTavilySearchTool(_DirectTavilyBase):
 
         extracted = result.get(answer_type)
         if extracted is None:
-            return {"error": "Search response is missing required field"}
+            return _tool_error("Search response is missing required field")
         return extracted
 
 
@@ -679,20 +705,20 @@ class DirectTavilyGymTool(_DirectTavilyBase):
             "scroll_page": {"url", "start_index", "n"},
         }
         if tool_name not in allowed_args_by_tool:
-            return f"Error: unknown tool '{tool_name}'"
+            return _tool_error(f"Error: unknown tool '{tool_name}'")
 
         arguments, error = self._sanitize_and_validate_arguments(tool_name, arguments, allowed_args_by_tool[tool_name])
         if error:
-            return error
+            return _tool_error(error)
 
         request_id = (extra_args or {}).get("request_id")
         if tool_name == "web_search":
-            return await self._web_search(arguments, request_id=request_id)
+            return _standardize_tool_result(await self._web_search(arguments, request_id=request_id))
         elif tool_name == "find_in_page":
-            return await self._find_in_page(arguments, request_id=request_id)
+            return _standardize_tool_result(await self._find_in_page(arguments, request_id=request_id))
         elif tool_name == "scroll_page":
-            return await self._scroll_page(arguments, request_id=request_id)
-        return f"Error: unknown tool '{tool_name}'"
+            return _standardize_tool_result(await self._scroll_page(arguments, request_id=request_id))
+        return _tool_error(f"Error: unknown tool '{tool_name}'")
 
     async def _web_search(self, arguments: dict[str, Any], *, request_id: str | None) -> str:
         query = arguments.get("query")
@@ -904,24 +930,24 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
         }
         if tool_name not in allowed_args_by_tool:
             self._increment_stat((extra_args or {}).get("request_id"), "tool_errors")
-            return f"Error: unknown tool '{tool_name}'"
+            return _tool_error(f"Error: unknown tool '{tool_name}'")
 
         arguments, error = self._sanitize_and_validate_arguments(tool_name, arguments, allowed_args_by_tool[tool_name])
         request_id = (extra_args or {}).get("request_id")
         if error:
             self._increment_stat(request_id, "tool_errors")
-            return error
+            return _tool_error(error)
 
         if tool_name == "web_search":
-            return await self._web_search(arguments, request_id=request_id)
+            return _standardize_tool_result(await self._web_search(arguments, request_id=request_id))
         elif tool_name == "open_result":
-            return await self._open_result(arguments, request_id=request_id)
+            return _standardize_tool_result(await self._open_result(arguments, request_id=request_id))
         elif tool_name == "find_in_page":
-            return await self._find_in_page(arguments, request_id=request_id)
+            return _standardize_tool_result(await self._find_in_page(arguments, request_id=request_id))
         elif tool_name == "scroll_page":
-            return await self._scroll_page(arguments, request_id=request_id)
+            return _standardize_tool_result(await self._scroll_page(arguments, request_id=request_id))
         self._increment_stat(request_id, "tool_errors")
-        return f"Error: unknown tool '{tool_name}'"
+        return _tool_error(f"Error: unknown tool '{tool_name}'")
 
     def _stats_for_request(self, request_id: str | None) -> defaultdict[str, int]:
         if request_id is None:
@@ -1021,7 +1047,7 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
     async def _find_in_page(self, arguments: dict[str, Any], *, request_id: str | None) -> str:
         self._increment_stat(request_id, "find_in_page_calls")
         result = await super()._find_in_page(arguments, request_id=request_id)
-        if _is_gym_tool_error_result(result):
+        if _is_direct_tavily_error_result(result):
             self._increment_stat(request_id, "tool_errors")
         return result
 

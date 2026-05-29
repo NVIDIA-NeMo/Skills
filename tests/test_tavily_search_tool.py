@@ -102,7 +102,7 @@ def test_direct_tavily_gym_tool_web_search_formats_results_and_hides_internal_ar
         assert all(t["input_schema"]["additionalProperties"] is False for t in tools)
 
         invalid = await tool.execute("web_search", {"query": "NVIDIA GPU programming", "typo": True})
-        assert invalid == "Unsupported argument: typo"
+        assert invalid == {"error": "Unsupported argument: typo"}
 
         result = await tool.execute(
             "web_search",
@@ -144,17 +144,14 @@ def test_direct_tavily_gym_tool_find_in_page_and_scroll_page():
             }
         )
 
-        assert await tool.execute("find_in_page", {"url": None, "query": "x"}) == "URL is none"
+        assert await tool.execute("find_in_page", {"url": None, "query": "x"}) == {"error": "URL is none"}
         assert await tool.execute("find_in_page", {"url": "https://sub.blocked.example/a", "query": "x"}) == (
-            "URL is in excluded domains"
+            {"error": "URL is in excluded domains"}
         )
-        assert (
-            await tool.execute(
-                "scroll_page",
-                {"url": "https://example.com/page", "start_index": 0, "n": "many"},
-            )
-            == "Invalid n: n must be an integer"
-        )
+        assert await tool.execute(
+            "scroll_page",
+            {"url": "https://example.com/page", "start_index": 0, "n": "many"},
+        ) == {"error": "Invalid n: n must be an integer"}
 
         calls = []
 
@@ -356,7 +353,7 @@ def test_direct_tavily_browser_scroll_page_is_bounded_and_request_cached():
             {"url": "https://example.com/page", "start_index": 0, "n": "many"},
             extra_args={"request_id": "req-scroll"},
         )
-        assert invalid == "Invalid n: n must be an integer"
+        assert invalid == {"error": "Invalid n: n must be an integer"}
 
         first = await tool.execute(
             "scroll_page",
