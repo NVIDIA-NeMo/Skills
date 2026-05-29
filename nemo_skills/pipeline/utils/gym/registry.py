@@ -55,6 +55,12 @@ class GymBenchmarkConfig:
     agent_name: str
     input_jsonl_fpath: str
     prompt_config: Optional[str]
+    # Optional list of Hydra-style overrides appended verbatim to the
+    # `ng_collect_rollouts` command line. Use for benchmark-specific config
+    # tweaks that don't fit the Skills→Gym translator (which only covers the
+    # `inference.*` namespace) — e.g. `wmt24pp` needs the COMET-XXL GPU actor
+    # disabled when the SLURM allocation has no spare GPUs to give Ray.
+    extra_overrides: tuple = ()
 
 
 _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
@@ -165,6 +171,9 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
         agent_name="flores200_wmt_translation_simple_agent",
         input_jsonl_fpath="benchmarks/flores200/data/flores200_devtest_benchmark.jsonl",
         prompt_config="benchmarks/flores200/prompts/default.yaml",
+        extra_overrides=(
+            "++flores200_wmt_translation_resources_server.resources_servers.wmt_translation.compute_comet=false",
+        ),
     ),
     "frontierscience_olympiad": GymBenchmarkConfig(
         config_paths=[
@@ -572,23 +581,44 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
         agent_name="wmt24pp_wmt_translation_simple_agent",
         input_jsonl_fpath="benchmarks/wmt24pp/data/wmt24pp_benchmark.jsonl",
         prompt_config="benchmarks/wmt24pp/prompts/default.yaml",
+        # COMET-XXL eval requires extra GPUs for Ray actors; our SLURM
+        # allocation only has the policy-model GPU. Disable for parity
+        # (BLEU is the headline; COMET is a parallel signal that doesn't
+        # affect the Skills comparison since Skills doesn't compute it
+        # by default either).
+        extra_overrides=(
+            "++wmt24pp_wmt_translation_resources_server.resources_servers.wmt_translation.compute_comet=false",
+        ),
     ),
 }
 
 
+def _normalize_benchmark(name: str) -> str:
+    """Skills' dataset dirs and Gym's registry use different separator
+    conventions for the same benchmark (e.g. Skills `math-500` vs Gym
+    `math_500`). Normalize both forms to the registry's underscore form so
+    `--benchmarks=math-500` (the form Skills' `get_dataset_module` needs)
+    still resolves to the right Gym wiring.
+    """
+    return name.replace("-", "_")
+
+
 def get_gym_config(benchmark: str) -> GymBenchmarkConfig:
     """Look up the Gym wiring for a benchmark.
+
+    Accepts either hyphenated (Skills dir form) or underscored (Gym registry
+    form) names; both resolve to the same entry.
 
     Raises:
         KeyError: if the benchmark is not registered. Caller is responsible
             for surfacing a clear error message that points users at
             `--backend=skills` as the fallback.
     """
-    return _BENCHMARK_GYM_CONFIGS[benchmark]
+    return _BENCHMARK_GYM_CONFIGS[_normalize_benchmark(benchmark)]
 
 
 def is_registered(benchmark: str) -> bool:
-    return benchmark in _BENCHMARK_GYM_CONFIGS
+    return _normalize_benchmark(benchmark) in _BENCHMARK_GYM_CONFIGS
 
 
 def registered_benchmarks() -> List[str]:

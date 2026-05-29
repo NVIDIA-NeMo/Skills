@@ -634,6 +634,7 @@ def eval(
                     agent_name=gym_cfg.agent_name,
                     gym_input_jsonl_fpath=gym_cfg.input_jsonl_fpath,
                     gym_prompt_config=gym_cfg.prompt_config,
+                    extra_overrides=tuple(gym_cfg.extra_overrides),
                     single_node_mode=single_node_mode,
                     with_sandbox=sandbox_enabled,
                     servers=server_scripts,
@@ -792,6 +793,14 @@ def eval(
                 all_tasks.append(job_name_to_handle[last_job_name])
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
+            # Skip Skills' judge step for the Gym backend — Gym's agent +
+            # resource_server already handles judging (e.g. math_with_judge,
+            # mcqa, hle_equivalence_llm_judge). Running Skills' judge on top
+            # would (a) require duplicate config, (b) double-evaluate the
+            # rollouts, and (c) hit `_generate(server_type=…)` requiring
+            # judge kwargs we never plumbed through for the gym path.
+            if backend == EvalBackend.gym.value:
+                continue
             if not eval_requires_judge and not benchmark_args.requires_judge:
                 continue
             dependent_job_ids = benchmark_args.job_ids

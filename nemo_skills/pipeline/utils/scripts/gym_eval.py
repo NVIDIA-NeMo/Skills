@@ -116,6 +116,12 @@ class GymEvalClientScript(BaseJobScript):
     # like `question`/`expected_answer`, not pre-built responses_create_params).
     gym_prompt_config: Optional[str] = None
 
+    # Optional benchmark-specific Hydra overrides appended verbatim to each
+    # `ng_collect_rollouts` call. Populated from `GymBenchmarkConfig.extra_overrides`
+    # in the dispatcher; used for things the translator can't express (e.g.
+    # `++…compute_comet=false` for wmt24pp's no-extra-GPU smoke topology).
+    extra_overrides: tuple = ()
+
     servers: Optional[List[Optional["ServerScript"]]] = None
     server_addresses_prehosted: Optional[List[str]] = None
     model_names: Optional[List[str]] = None
@@ -234,6 +240,8 @@ class GymEvalClientScript(BaseJobScript):
 
         if translated:
             parts.append(translated)
+        if self.extra_overrides:
+            parts.extend(self.extra_overrides)
         ng_collect = " ".join(parts)
         # ng_collect_rollouts writes `<stem>_materialized_inputs.jsonl` alongside
         # the output JSONL; the parent dir must exist before it runs.

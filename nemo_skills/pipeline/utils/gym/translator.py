@@ -177,7 +177,11 @@ def translate_skills_overrides_to_gym(
             continue
 
         if key in _DIRECT_RENAMES:
-            gym_parts.append(f"+{_DIRECT_RENAMES[key]}={value}")
+            # Use `++` (force-set) rather than `+` (add-or-fail). Skills' `++`
+            # convention is override-semantics; benchmarks like birdbench set
+            # `responses_create_params.temperature` in their config, and `+`
+            # would clash with "An item is already at …".
+            gym_parts.append(f"++{_DIRECT_RENAMES[key]}={value}")
             continue
 
         # `++inference.extra_body.foo=bar` would have to ride on the model-server
