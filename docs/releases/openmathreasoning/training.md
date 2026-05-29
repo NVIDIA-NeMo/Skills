@@ -86,6 +86,8 @@ sed -i 's/"rope_theta": 10000,/"rope_theta": 500000.0,/g' Qwen2.5-Math-1.5B/conf
 
 Run the training (assuming slurm configuration here with the same folder structure). If your cluster has strict
 timeout policy, you can run multiple dependent jobs with `--dependent_jobs=N`.
+The command below explicitly lists the NeMo-RL overrides that previously came from the NeMo-Skills
+SFT config, since this pipeline now calls the upstream NeMo-RL SFT entrypoint directly.
 
 
 ```bash
@@ -102,13 +104,70 @@ ns nemo_rl sft \
     ++policy.max_total_sequence_length=32768 \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=1024 \
+    ++policy.precision=bfloat16 \
+    ++policy.max_grad_norm=0.0 \
+    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.sequence_packing.enabled=True \
+    ++policy.sequence_packing.sequence_length_round=64 \
+    ++policy.make_sequence_length_divisible_by=4 \
     ++policy.megatron_cfg.tensor_model_parallel_size=1 \
+    ++policy.megatron_cfg.pipeline_model_parallel_size=1 \
     ++policy.megatron_cfg.context_parallel_size=2 \
+    ++policy.megatron_cfg.sequence_parallel=false \
+    ++policy.megatron_cfg.activation_checkpointing=false \
+    ++policy.megatron_cfg.empty_unused_memory_level=1 \
+    ++policy.megatron_cfg.expert_tensor_parallel_size=1 \
+    ++policy.megatron_cfg.expert_model_parallel_size=1 \
+    ++policy.megatron_cfg.freeze_moe_router=false \
+    ++policy.megatron_cfg.moe_router_dtype=null \
+    ++policy.megatron_cfg.apply_rope_fusion=True \
+    ++policy.megatron_cfg.bias_activation_fusion=True \
+    ++policy.megatron_cfg.moe_permute_fusion=false \
+    ++policy.megatron_cfg.moe_router_load_balancing_type=aux_loss \
+    ++policy.megatron_cfg.moe_router_bias_update_rate=1e-3 \
+    ++policy.megatron_cfg.moe_token_dispatcher_type=alltoall \
+    ++policy.megatron_cfg.moe_shared_expert_overlap=true \
+    ++policy.megatron_cfg.layernorm_epsilon=1e-6 \
+    ++policy.megatron_cfg.defer_fp32_logits=False \
+    ++policy.megatron_cfg.moe_per_layer_logging=False \
+    ++policy.megatron_cfg.optimizer.optimizer=adam \
     ++policy.megatron_cfg.optimizer.lr=3e-4 \
     ++policy.megatron_cfg.optimizer.min_lr=3e-7 \
+    ++policy.megatron_cfg.optimizer.weight_decay=0.01 \
+    ++policy.megatron_cfg.optimizer.bf16=true \
+    ++policy.megatron_cfg.optimizer.fp16=false \
+    ++policy.megatron_cfg.optimizer.params_dtype=float32 \
+    ++policy.megatron_cfg.optimizer.adam_beta1=0.9 \
+    ++policy.megatron_cfg.optimizer.adam_beta2=0.98 \
+    ++policy.megatron_cfg.optimizer.adam_eps=1e-8 \
+    ++policy.megatron_cfg.optimizer.use_distributed_optimizer=true \
+    ++policy.megatron_cfg.optimizer.use_precision_aware_optimizer=true \
+    ++policy.megatron_cfg.optimizer.clip_grad=0.0 \
+    ++policy.megatron_cfg.scheduler.lr_decay_style=cosine \
+    ++policy.megatron_cfg.scheduler.lr_decay_iters=30000 \
     ++policy.megatron_cfg.scheduler.lr_warmup_iters=3000 \
     ++policy.megatron_cfg.scheduler.lr_warmup_init=0 \
+    ++policy.megatron_cfg.distributed_data_parallel_config.grad_reduce_in_fp32=false \
+    ++policy.megatron_cfg.distributed_data_parallel_config.overlap_grad_reduce=true \
+    ++policy.megatron_cfg.distributed_data_parallel_config.overlap_param_gather=true \
+    ++policy.megatron_cfg.distributed_data_parallel_config.data_parallel_sharding_strategy=optim_grads_params \
+    ++data.add_bos=false \
+    ++data.add_eos=false \
+    ++data.add_generation_prompt=false \
+    ++data.num_workers=10 \
     ++checkpointing.save_period=7500 \
+    ++checkpointing.keep_top_k=50 \
+    ++checkpointing.metric_name=val:val_loss \
+    ++checkpointing.higher_is_better=false \
+    ++logger.tensorboard_enabled=true \
+    ++logger.swanlab_enabled=false \
+    ++logger.monitor_gpus=true \
+    ++sft.val_period=0 \
+    ++sft.val_batches=1 \
+    ++sft.val_global_batch_size=32 \
+    ++sft.val_micro_batch_size=1 \
+    ++sft.val_at_start=false \
+    ++sft.seed=42 \
     ++sft.max_num_steps=30000 \
     ++sft.max_num_epochs=100
 ```

@@ -394,6 +394,11 @@ ns nemo_rl sft \
     --backend=megatron \
     --final_hf_path=/models/training/qwen3-32b-improved-hf \
     ++sft.max_num_epochs=1 \
+    ++sft.val_period=0 \
+    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.sequence_packing.enabled=True \
+    ++policy.sequence_packing.sequence_length_round=64 \
+    ++policy.make_sequence_length_divisible_by=8 \
     ++policy.megatron_cfg.tensor_model_parallel_size=8 \
     ++policy.megatron_cfg.activation_checkpointing=True \
     ++policy.megatron_cfg.sequence_parallel=True \
@@ -402,6 +407,9 @@ ns nemo_rl sft \
     ++policy.train_global_batch_size=32 \
     ++policy.megatron_cfg.optimizer.lr=1e-5 \
     ++policy.megatron_cfg.optimizer.min_lr=1e-5 \
+    ++data.add_bos=false \
+    ++data.add_eos=false \
+    ++data.add_generation_prompt=false \
     ++checkpointing.save_weights_only=true \
     ++checkpointing.keep_top_k=1
 ```
