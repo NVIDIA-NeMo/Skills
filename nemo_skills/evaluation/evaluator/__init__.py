@@ -39,6 +39,7 @@ _EVALUATOR_MAP_PATHS = {
     "livecodebench_pro": "nemo_skills.evaluation.evaluator.code:eval_livecodebench_pro",
     "scicode": "nemo_skills.evaluation.evaluator.scicode:eval_scicode",
     "mrcr": "nemo_skills.evaluation.evaluator.mrcr:eval_mrcr",
+    "graphwalks": "nemo_skills.evaluation.evaluator.graphwalks:eval_graphwalks",
     "bigcodebench": "nemo_skills.evaluation.evaluator.code:eval_bigcodebench",
     "human_eval_infilling": "nemo_skills.evaluation.evaluator.code:eval_human_eval_infilling",
     "mmau-pro": "nemo_skills.evaluation.evaluator.mmau_pro:eval_mmau_pro",
