@@ -19,4 +19,4 @@ METRICS_TYPE = "scicode"
 GENERATION_ARGS = "++prompt_config=eval/scicode/background ++eval_type=scicode"
 GENERATION_MODULE = "nemo_skills.inference.eval.scicode"
 REQUIRES_SANDBOX = True
-EVAL_SPLIT = "test"  # 65-problem test split (288 subproblems), matching Artificial Analysis' current SciCode methodology
+EVAL_SPLIT = "test"  # 65 problems / 288 subproblems, matching AA's SciCode methodology
