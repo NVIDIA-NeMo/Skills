@@ -423,6 +423,11 @@ class GenerationTask:
 
         # output_lock will be initialized when async_loop is called
         self.output_lock = None
+        # Dedicated writer queue. Set when async_loop enters; tasks
+        # enqueue here instead of acquiring output_lock per
+        # completion. None when not in async_loop (the old path is
+        # used as fallback by other entrypoints like prover.py).
+        self._output_queue = None
 
     def setup_prompt(self):
         if self.cfg.prompt_config is None:
@@ -869,10 +874,24 @@ class GenerationTask:
         if self.should_run_evaluation and self.evaluator:
             output = await self.evaluate_single_datapoint({**data_point, **output})
 
-        # Thread-safe output writing
-        async with self.output_lock:
-            self.dump_outputs([output], [data_point], fout)
-            pbar.update(1)
+        # Hand the completion off to the writer task. This is a
+        # cheap asyncio.Queue.put -- no file I/O, no lock-protected
+        # critical section per task. Previously this was an
+        # output_lock + dump_outputs + pbar.update inside the lock,
+        # which serialized one fout.write + flush per completion.
+        # At line-buffered I/O (buffering=1, set on `open`) every
+        # write was a flush syscall, capping throughput at the lock-
+        # hold time (~12-16ms) regardless of concurrency. The new
+        # writer task batches and flushes periodically; per-completion
+        # cost on the hot path is a queue put.
+        if self._output_queue is not None:
+            await self._output_queue.put((output, data_point))
+        else:
+            # Fallback (e.g. async_loop wasn't entered through the
+            # writer-task path): old lock-protected write.
+            async with self.output_lock:
+                self.dump_outputs([output], [data_point], fout)
+                pbar.update(1)
 
     async def async_loop(self, data):
         """Async loop to generate generations using asyncio."""
@@ -895,7 +914,15 @@ class GenerationTask:
 
         pbar = tqdm(total=len(remaining_data_points), desc="Remaining generations")
 
-        with open(self.cfg.output_file + "-async", "at", encoding="utf-8", buffering=1) as fout:
+        # Default Python buffering (8KB on most platforms). The
+        # previous `buffering=1` forced a kernel flush on every
+        # newline -- combined with the per-completion output_lock,
+        # that flush became the throughput bottleneck (~60-80/sec
+        # cap regardless of client concurrency). The writer task
+        # below issues an explicit fout.flush() after every batch
+        # drained from the queue, so durability is preserved without
+        # paying for a syscall per record.
+        with open(self.cfg.output_file + "-async", "at", encoding="utf-8") as fout:
             # Dump prefilled data first
             if len(prefilled_data_points) > 0:
                 for output, data_point in zip(prefilled_outputs, prefilled_data_points):
@@ -906,6 +933,48 @@ class GenerationTask:
                         output = await self.evaluate_single_datapoint({**data_point, **output})
                 async with self.output_lock:
                     self.dump_outputs(prefilled_outputs, prefilled_data_points, fout)
+
+            # Dedicated writer coroutine. Drains completed records
+            # from self._output_queue, writes them to fout (one
+            # json.dumps per record), and flushes after each batch.
+            # The per-task hot path is now a single
+            # asyncio.Queue.put -- no lock contention, no per-record
+            # flush.
+            #
+            # The queue is sized comfortably above max_in_flight so
+            # producer puts never block in steady state. A `None`
+            # sentinel signals shutdown.
+            self._output_queue = asyncio.Queue(maxsize=max(self.cfg.max_concurrent_requests * 2, 1024))
+
+            async def _writer():
+                # Drain in batches: pull one item (blocking), then
+                # opportunistically drain any others already in the
+                # queue without blocking, write them all, and flush
+                # once at the end. Throughput scales with completion
+                # rate, not per-record syscall cost.
+                while True:
+                    item = await self._output_queue.get()
+                    if item is None:
+                        return
+                    batch = [item]
+                    # Drain anything that's already enqueued.
+                    while not self._output_queue.empty():
+                        nxt = self._output_queue.get_nowait()
+                        if nxt is None:
+                            # Sentinel mid-batch: write what we have
+                            # and exit after.
+                            for o, _dp in batch:
+                                fout.write(json.dumps(o) + "\n")
+                            pbar.update(len(batch))
+                            fout.flush()
+                            return
+                        batch.append(nxt)
+                    for o, _dp in batch:
+                        fout.write(json.dumps(o) + "\n")
+                    pbar.update(len(batch))
+                    fout.flush()
+
+            writer_task = asyncio.create_task(_writer())
 
             # Bounded worker pool. At most `max_in_flight` tasks
             # exist at any moment; as each one completes we spawn the
@@ -978,6 +1047,14 @@ class GenerationTask:
                     except StopIteration:
                         continue
                     in_flight.add(asyncio.create_task(_safe_one(dp)))
+
+            # Signal writer to drain remaining items and exit, then
+            # wait for it. The sentinel is consumed mid-batch by the
+            # writer's drain loop, which guarantees all already-
+            # enqueued items are flushed before return.
+            await self._output_queue.put(None)
+            await writer_task
+            self._output_queue = None
 
             pbar.close()
 
