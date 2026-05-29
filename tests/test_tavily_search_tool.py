@@ -42,6 +42,10 @@ def test_direct_tavily_search_tool_uses_configured_hidden_args():
         tools = await tool.list_tools()
         assert tools[0]["name"] == "web_search"
         assert set(tools[0]["input_schema"]["properties"]) == {"query"}
+        assert tools[0]["input_schema"]["additionalProperties"] is False
+
+        invalid = await tool.execute("web_search", {"query": "capital of France", "typo": True})
+        assert invalid == {"error": "Unsupported argument: typo"}
 
         result = await tool.execute(
             "web_search",
@@ -95,6 +99,10 @@ def test_direct_tavily_gym_tool_web_search_formats_results_and_hides_internal_ar
 
         tools = await tool.list_tools()
         assert {t["name"] for t in tools} == {"web_search", "find_in_page", "scroll_page"}
+        assert all(t["input_schema"]["additionalProperties"] is False for t in tools)
+
+        invalid = await tool.execute("web_search", {"query": "NVIDIA GPU programming", "typo": True})
+        assert invalid == "Unsupported argument: typo"
 
         result = await tool.execute(
             "web_search",
@@ -140,6 +148,13 @@ def test_direct_tavily_gym_tool_find_in_page_and_scroll_page():
         assert await tool.execute("find_in_page", {"url": "https://sub.blocked.example/a", "query": "x"}) == (
             "URL is in excluded domains"
         )
+        assert (
+            await tool.execute(
+                "scroll_page",
+                {"url": "https://example.com/page", "start_index": 0, "n": "many"},
+            )
+            == "Invalid n: n must be an integer"
+        )
 
         calls = []
 
@@ -182,6 +197,35 @@ def test_direct_tavily_gym_tool_find_in_page_and_scroll_page():
 
         extract_calls = [call for call in calls if call[0] == "/extract"]
         assert len(extract_calls) == 2
+
+    asyncio.run(run_test())
+
+
+def test_direct_tavily_gym_tool_scroll_cache_is_bounded():
+    async def run_test():
+        from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
+
+        tool = DirectTavilyGymTool()
+        tool.configure({"tavily_api_key": "test-key", "max_cached_pages": 1})
+
+        calls = []
+
+        async def fake_post_json(endpoint, payload):
+            calls.append((endpoint, payload["urls"]))
+            return {"results": [{"url": payload["urls"], "raw_content": f"{payload['urls']} content"}]}
+
+        tool._post_json = fake_post_json
+
+        await tool.execute("scroll_page", {"url": "https://example.com/a"})
+        await tool.execute("scroll_page", {"url": "https://example.com/b"})
+        await tool.execute("scroll_page", {"url": "https://example.com/a"})
+
+        assert calls == [
+            ("/extract", "https://example.com/a"),
+            ("/extract", "https://example.com/b"),
+            ("/extract", "https://example.com/a"),
+        ]
+        assert list(tool._page_cache) == ["https://example.com/a"]
 
     asyncio.run(run_test())
 

@@ -98,6 +98,7 @@ DEFAULT_API_BASE_URL = "https://api.tavily.com"
 DEFAULT_HTTP_TIMEOUT_S = 30.0
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_BACKOFF_S = 0.5
+DEFAULT_MAX_RETRY_DELAY_S = 30.0
 DEFAULT_GYM_MAX_RESULTS = 10
 DEFAULT_GYM_MAX_RESULT_CHARS = 2000
 DEFAULT_GYM_MAX_QUERY_CHARS = 400
@@ -120,6 +121,8 @@ STATUS_CODE_ERRORS = {
 }
 
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+GYM_TOOL_ERROR_PREFIXES = ("URL ", "Query ", "Search ")
+GYM_NO_CONTENT_RESULT = "No content found."
 
 # These errors should stop the process - no point continuing with bad credentials
 FATAL_STATUS_CODES = {401, 403}
@@ -164,59 +167,62 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
 
 async def _post_tavily_json(
     *,
-    api_base_url: str,
     api_key: str,
     endpoint: str,
     payload: dict[str, Any],
-    timeout_s: float,
-    max_retries: int,
-    retry_backoff_s: float,
+    api_base_url: str = DEFAULT_API_BASE_URL,
+    timeout_s: float = DEFAULT_HTTP_TIMEOUT_S,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    retry_backoff_s: float = DEFAULT_RETRY_BACKOFF_S,
+    max_retry_delay_s: float = DEFAULT_MAX_RETRY_DELAY_S,
 ) -> dict[str, Any]:
     url = f"{api_base_url.rstrip('/')}/{endpoint.lstrip('/')}"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    delay = retry_backoff_s
+    max_retry_delay_s = max(0.0, max_retry_delay_s)
+    delay = min(max(0.0, retry_backoff_s), max_retry_delay_s)
     last_error = "Search request failed"
 
-    for attempt in range(max_retries + 1):
-        try:
-            async with httpx.AsyncClient(timeout=timeout_s) as client:
-                response = await client.post(url, headers=headers, json=payload)
-        except httpx.TimeoutException:
-            last_error = "Search request timed out"
-            if attempt < max_retries:
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
-            return {"error": last_error}
-        except httpx.RequestError:
-            last_error = "Search request failed due to network error"
-            if attempt < max_retries:
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
-            return {"error": last_error}
-
-        if response.status_code in FATAL_STATUS_CODES:
-            raise FatalToolError("Search authentication failed")
-
-        if response.status_code == 200:
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        for attempt in range(max_retries + 1):
             try:
-                return response.json()
-            except json.JSONDecodeError:
-                return {"error": "Search returned invalid response"}
+                response = await client.post(url, headers=headers, json=payload)
+            except httpx.TimeoutException:
+                last_error = "Search request timed out"
+                if attempt < max_retries:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, max_retry_delay_s)
+                    continue
+                return {"error": last_error}
+            except httpx.RequestError:
+                last_error = "Search request failed due to network error"
+                if attempt < max_retries:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, max_retry_delay_s)
+                    continue
+                return {"error": last_error}
 
-        last_error = STATUS_CODE_ERRORS.get(
-            response.status_code,
-            f"Search request failed with status {response.status_code}",
-        )
-        if response.status_code in RETRY_STATUS_CODES and attempt < max_retries:
-            await asyncio.sleep(_retry_after_seconds(response) or delay)
-            delay *= 2
-            continue
-        return {"error": last_error}
+            if response.status_code in FATAL_STATUS_CODES:
+                raise FatalToolError("Search authentication failed")
+
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except json.JSONDecodeError:
+                    return {"error": "Search returned invalid response"}
+
+            last_error = STATUS_CODE_ERRORS.get(
+                response.status_code,
+                f"Search request failed with status {response.status_code}",
+            )
+            if response.status_code in RETRY_STATUS_CODES and attempt < max_retries:
+                response_delay = _retry_after_seconds(response)
+                await asyncio.sleep(min(response_delay if response_delay is not None else delay, max_retry_delay_s))
+                delay = min(delay * 2, max_retry_delay_s)
+                continue
+            return {"error": last_error}
 
     return {"error": last_error}
 
@@ -268,6 +274,18 @@ def _coerce_int_arg(value: Any, default: int | None, arg_name: str) -> tuple[int
         return None, f"{arg_name} must be an integer"
 
 
+def _unsupported_args_error(arguments: dict[str, Any], allowed_args: set[str]) -> str | None:
+    unsupported = sorted(set(arguments) - allowed_args)
+    if not unsupported:
+        return None
+    arg_word = "argument" if len(unsupported) == 1 else "arguments"
+    return f"Unsupported {arg_word}: {', '.join(unsupported)}"
+
+
+def _is_gym_tool_error_result(result: Any) -> bool:
+    return isinstance(result, str) and (result.startswith(GYM_TOOL_ERROR_PREFIXES) or result == GYM_NO_CONTENT_RESULT)
+
+
 def _remember_lru(cache: OrderedDict[str, Any], key: str, value: Any, max_items: int) -> None:
     if key in cache:
         cache.move_to_end(key)
@@ -310,6 +328,7 @@ class _DirectTavilyBase(Tool):
             "timeout_s": DEFAULT_HTTP_TIMEOUT_S,
             "max_retries": DEFAULT_MAX_RETRIES,
             "retry_backoff_s": DEFAULT_RETRY_BACKOFF_S,
+            "max_retry_delay_s": DEFAULT_MAX_RETRY_DELAY_S,
             "hide_args": {},
         }
         self._api_keys: list[str] = []
@@ -363,11 +382,18 @@ class _DirectTavilyBase(Tool):
             timeout_s=float(self._config["timeout_s"]),
             max_retries=int(self._config["max_retries"]),
             retry_backoff_s=float(self._config["retry_backoff_s"]),
+            max_retry_delay_s=float(self._config["max_retry_delay_s"]),
         )
 
     def _sanitize_arguments(self, tool_name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         hidden = self._sanitize_keys.get(tool_name, set())
         return {k: v for k, v in dict(arguments or {}).items() if k not in hidden}
+
+    def _sanitize_and_validate_arguments(
+        self, tool_name: str, arguments: dict[str, Any] | None, allowed_args: set[str]
+    ) -> tuple[dict[str, Any], str | None]:
+        sanitized = self._sanitize_arguments(tool_name, arguments)
+        return sanitized, _unsupported_args_error(sanitized, allowed_args)
 
     async def _tracked_post_json(
         self,
@@ -435,13 +461,9 @@ async def answer(
 
     try:
         result = await _post_tavily_json(
-            api_base_url=DEFAULT_API_BASE_URL,
             api_key=TAVILY_API_KEY or "",
             endpoint="/search",
             payload=payload,
-            timeout_s=DEFAULT_HTTP_TIMEOUT_S,
-            max_retries=DEFAULT_MAX_RETRIES,
-            retry_backoff_s=DEFAULT_RETRY_BACKOFF_S,
         )
     except FatalToolError:
         return {"error": "Search authentication failed", "fatal": True}
@@ -525,6 +547,7 @@ class DirectTavilySearchTool(_DirectTavilyBase):
                     "type": "object",
                     "properties": {"query": {"type": "string", "description": "Search query."}},
                     "required": ["query"],
+                    "additionalProperties": False,
                 },
             }
         ]
@@ -535,7 +558,9 @@ class DirectTavilySearchTool(_DirectTavilyBase):
         if tool_name not in {"web-search", "web_search"}:
             return {"error": f"unknown tool '{tool_name}'"}
 
-        arguments = self._sanitize_arguments(tool_name, arguments)
+        arguments, error = self._sanitize_and_validate_arguments(tool_name, arguments, {"query"})
+        if error:
+            return {"error": error}
         query = arguments.get("query")
         if not isinstance(query, str):
             return {"error": "Missing required argument 'query'"}
@@ -592,13 +617,14 @@ class DirectTavilyGymTool(_DirectTavilyBase):
                 "extract_depth": "basic",
                 "extract_format": "markdown",
                 "scroll_words": DEFAULT_SCROLL_WORDS,
+                "max_cached_pages": DEFAULT_BROWSER_MAX_CACHED_PAGES,
             }
         )
-        self._page_cache: dict[str, str] = {}
+        self._page_cache: OrderedDict[str, str] = OrderedDict()
 
     def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
         super().configure(overrides, context)
-        self._page_cache = {}
+        self._page_cache = OrderedDict()
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return [
@@ -609,6 +635,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
                     "type": "object",
                     "properties": {"query": {"type": "string", "description": "Search query."}},
                     "required": ["query"],
+                    "additionalProperties": False,
                 },
             },
             {
@@ -621,6 +648,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
                         "query": {"type": "string", "description": "Term or question to locate within the page."},
                     },
                     "required": ["url", "query"],
+                    "additionalProperties": False,
                 },
             },
             {
@@ -637,6 +665,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
                         "n": {"type": "integer", "description": "Number of words to return."},
                     },
                     "required": ["url"],
+                    "additionalProperties": False,
                 },
             },
         ]
@@ -644,13 +673,24 @@ class DirectTavilyGymTool(_DirectTavilyBase):
     async def execute(
         self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None
     ) -> str | dict[str, Any]:
-        arguments = self._sanitize_arguments(tool_name, arguments)
+        allowed_args_by_tool = {
+            "web_search": {"query"},
+            "find_in_page": {"url", "query"},
+            "scroll_page": {"url", "start_index", "n"},
+        }
+        if tool_name not in allowed_args_by_tool:
+            return f"Error: unknown tool '{tool_name}'"
+
+        arguments, error = self._sanitize_and_validate_arguments(tool_name, arguments, allowed_args_by_tool[tool_name])
+        if error:
+            return error
+
         request_id = (extra_args or {}).get("request_id")
         if tool_name == "web_search":
             return await self._web_search(arguments, request_id=request_id)
-        if tool_name == "find_in_page":
+        elif tool_name == "find_in_page":
             return await self._find_in_page(arguments, request_id=request_id)
-        if tool_name == "scroll_page":
+        elif tool_name == "scroll_page":
             return await self._scroll_page(arguments, request_id=request_id)
         return f"Error: unknown tool '{tool_name}'"
 
@@ -719,12 +759,17 @@ class DirectTavilyGymTool(_DirectTavilyBase):
         if _is_url_excluded(url, self._exclude_domains):
             return "URL is in excluded domains"
 
-        start_index = int(arguments.get("start_index", 0) or 0)
-        n = int(arguments.get("n", self._config["scroll_words"]) or self._config["scroll_words"])
+        start_index, error = _coerce_int_arg(arguments.get("start_index"), 0, "start_index")
+        if error or start_index is None:
+            return "Invalid start_index: start_index must be an integer"
+        n, error = _coerce_int_arg(arguments.get("n"), int(self._config["scroll_words"]), "n")
+        if error or n is None:
+            return "Invalid n: n must be an integer"
         start_index = max(0, start_index)
         n = max(1, n)
 
         if url in self._page_cache:
+            self._page_cache.move_to_end(url)
             page_content = self._page_cache[url]
         else:
             payload = {
@@ -736,7 +781,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
             if results.get("error"):
                 return results["error"]
             page_content = _first_raw_content(results)
-            self._page_cache[url] = page_content
+            _remember_lru(self._page_cache, url, page_content, max(1, int(self._config["max_cached_pages"])))
 
         words = page_content.split()
         total_words = len(words)
@@ -758,9 +803,8 @@ class DirectTavilyGymTool(_DirectTavilyBase):
 class DirectTavilyBrowserTool(DirectTavilyGymTool):
     """Tavily browser tool with request-local memory, bounded cache, and metrics.
 
-    This intentionally leaves DirectTavilySearchTool and DirectTavilyGymTool
-    unchanged. The browser tool keeps the Gym surface and adds
-    ``open_result(index)`` for opening a result from the most recent search.
+    The browser tool keeps the Gym surface and adds ``open_result(index)`` for
+    opening a result from the most recent search.
     """
 
     def __init__(self) -> None:
@@ -852,15 +896,29 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
     async def execute(
         self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None
     ) -> str | dict[str, Any]:
-        arguments = self._sanitize_arguments(tool_name, arguments)
+        allowed_args_by_tool = {
+            "web_search": {"query"},
+            "open_result": {"index"},
+            "find_in_page": {"url", "query"},
+            "scroll_page": {"url", "start_index", "n"},
+        }
+        if tool_name not in allowed_args_by_tool:
+            self._increment_stat((extra_args or {}).get("request_id"), "tool_errors")
+            return f"Error: unknown tool '{tool_name}'"
+
+        arguments, error = self._sanitize_and_validate_arguments(tool_name, arguments, allowed_args_by_tool[tool_name])
         request_id = (extra_args or {}).get("request_id")
+        if error:
+            self._increment_stat(request_id, "tool_errors")
+            return error
+
         if tool_name == "web_search":
             return await self._web_search(arguments, request_id=request_id)
-        if tool_name == "open_result":
+        elif tool_name == "open_result":
             return await self._open_result(arguments, request_id=request_id)
-        if tool_name == "find_in_page":
+        elif tool_name == "find_in_page":
             return await self._find_in_page(arguments, request_id=request_id)
-        if tool_name == "scroll_page":
+        elif tool_name == "scroll_page":
             return await self._scroll_page(arguments, request_id=request_id)
         self._increment_stat(request_id, "tool_errors")
         return f"Error: unknown tool '{tool_name}'"
@@ -963,12 +1021,7 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
     async def _find_in_page(self, arguments: dict[str, Any], *, request_id: str | None) -> str:
         self._increment_stat(request_id, "find_in_page_calls")
         result = await super()._find_in_page(arguments, request_id=request_id)
-        if isinstance(result, str) and (
-            result.startswith("URL ")
-            or result.startswith("Query ")
-            or result.startswith("Search ")
-            or result == "No content found."
-        ):
+        if _is_gym_tool_error_result(result):
             self._increment_stat(request_id, "tool_errors")
         return result
 
