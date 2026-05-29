@@ -47,7 +47,7 @@ sft_nemo_rl(
         '++sft.max_num_epochs=2000 '
         f'++sft.max_num_steps={max_steps} '
         '++sft.val_period=0 '
-        '++policy.tokenizer.chat_template=infer_from_data '
+        '++policy.tokenizer.chat_template=null '
         '++policy.sequence_packing.enabled=True '
         '++policy.sequence_packing.sequence_length_round=64 '
         '++policy.make_sequence_length_divisible_by=128 '

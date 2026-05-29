@@ -104,7 +104,7 @@ ns nemo_rl sft \
     ++policy.max_total_sequence_length=32768 \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=1024 \
-    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.tokenizer.chat_template=null \
     ++policy.sequence_packing.enabled=True \
     ++policy.sequence_packing.sequence_length_round=64 \
     ++policy.make_sequence_length_divisible_by=4 \

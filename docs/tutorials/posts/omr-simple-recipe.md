@@ -208,7 +208,7 @@ ns nemo_rl sft \
     --final_hf_path=/workspace/training/qwen2.5-14b-improved-hf \
     ++policy.max_total_sequence_length=8192 \
     ++policy.train_global_batch_size=32 \
-    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.tokenizer.chat_template=null \
     ++policy.sequence_packing.enabled=True \
     ++policy.sequence_packing.sequence_length_round=64 \
     ++policy.make_sequence_length_divisible_by=4 \

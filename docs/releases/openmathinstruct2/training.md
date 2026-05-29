@@ -69,7 +69,7 @@ ns nemo_rl sft \
     --average_steps=10000,20000,30000,40000,50000,60000 \
     --training_data=/workspace/openmathinstruct2-sft.jsonl \
     ++sft.val_period=0 \
-    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.tokenizer.chat_template=null \
     ++policy.train_micro_batch_size=8 \
     ++policy.train_global_batch_size=512 \
     ++policy.megatron_cfg.tensor_model_parallel_size=4 \
@@ -102,7 +102,7 @@ ns nemo_rl sft \
     --average_steps=3330,6660,9990,13320,16650,20000 \
     --training_data=/workspace/openmathinstruct2-sft-5M.jsonl \
     ++sft.val_period=0 \
-    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.tokenizer.chat_template=null \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=512 \
     ++policy.megatron_cfg.tensor_model_parallel_size=8 \

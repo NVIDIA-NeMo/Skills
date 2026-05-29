@@ -74,7 +74,7 @@ def test_sft_nemo_rl(backend):
 
 @pytest.mark.gpu
 def test_sft_nemo_rl_messages_format():
-    """Test SFT training with messages format data and infer_from_data chat template."""
+    """Test SFT training with messages format data."""
     model_path = require_env_var("NEMO_SKILLS_TEST_HF_MODEL")
     model_type = require_env_var("NEMO_SKILLS_TEST_MODEL_TYPE")
 

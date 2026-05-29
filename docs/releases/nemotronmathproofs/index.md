@@ -226,7 +226,7 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
         ++sft.max_num_epochs=2000 \
         ++sft.max_num_steps=1000 \
         ++sft.val_period=0 \
-        ++policy.tokenizer.chat_template=infer_from_data \
+        ++policy.tokenizer.chat_template=null \
         ++policy.sequence_packing.enabled=True \
         ++policy.sequence_packing.sequence_length_round=64 \
         ++policy.make_sequence_length_divisible_by=8 \
@@ -255,7 +255,7 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
             "++sft.max_num_epochs=2000 "
             "++sft.max_num_steps=1000 "
             "++sft.val_period=0 "
-            "++policy.tokenizer.chat_template=infer_from_data "
+            "++policy.tokenizer.chat_template=null "
             "++policy.sequence_packing.enabled=True "
             "++policy.sequence_packing.sequence_length_round=64 "
             "++policy.make_sequence_length_divisible_by=8 "

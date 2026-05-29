@@ -395,7 +395,7 @@ ns nemo_rl sft \
     --final_hf_path=/models/training/qwen3-32b-improved-hf \
     ++sft.max_num_epochs=1 \
     ++sft.val_period=0 \
-    ++policy.tokenizer.chat_template=infer_from_data \
+    ++policy.tokenizer.chat_template=null \
     ++policy.sequence_packing.enabled=True \
     ++policy.sequence_packing.sequence_length_round=64 \
     ++policy.make_sequence_length_divisible_by=8 \
