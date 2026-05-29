@@ -95,6 +95,17 @@ class BaseModel:
         output_dir: str | None = None,
         # Request tokenizer initialization independent of soft_fail
         require_tokenizer: bool = False,
+        # Max in-flight HTTP requests gated by an internal semaphore.
+        # The semaphore was originally added because earlier
+        # combinations of httpx + litellm would hang under truly
+        # unbounded concurrency. Modern httpx (>=0.27) handles this
+        # fine, so the default is now high enough to effectively be
+        # "no internal limit" -- the script-level concurrency knob
+        # (generate.py `max_concurrent_requests`) is the single
+        # user-facing cap. Override via $NEMO_SKILLS_MODEL_CONCURRENCY
+        # only if you have a specific reason to throttle BELOW the
+        # script-level cap.
+        concurrent_requests_limit: int = int(os.environ.get("NEMO_SKILLS_MODEL_CONCURRENCY", "65536")),
     ):
         self._tunnel = None
         self.model_name_or_path = model
@@ -169,7 +180,7 @@ class BaseModel:
         litellm.aclient_session = httpx.AsyncClient(limits=httpx_limits)
         # Controlling concurrent requests using semaphore since large
         # concurrent requests result into httpx hanging
-        self.concurrent_semaphore = asyncio.Semaphore(2048)
+        self.concurrent_semaphore = asyncio.Semaphore(concurrent_requests_limit)
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         if api_key:  # explicit cmd argument always takes precedence
@@ -289,9 +300,23 @@ class BaseModel:
             "response_format": response_format,
         }
 
-        # TODO: remove this after we no longer use gpt-oss or it's fixed in vllm
+        # Two separate retry budgets:
+        # - bad_request_count is for the gpt-oss "output messages"
+        #   bug; small, app-level. Kept as-is until we drop that
+        #   model (or vLLM fixes it upstream).
+        # - transient_count handles socket-level failures that the
+        #   raw HTTP path can hit under burst load (kernel SYN-drops
+        #   when the accept queue overflows, brief upstream
+        #   unavailability during worker turnover, etc). litellm's
+        #   own max_retries covers HTTP 429/5xx but NOT these
+        #   connection-class exceptions, so a single ramp-up burst
+        #   into the upstream could otherwise hard-fail individual
+        #   datapoints. Retries here turn those into invisible
+        #   ~50-200ms re-tries.
         max_retries = 2
         retry_count = 0
+        max_transient_retries = int(os.environ.get("NEMO_SKILLS_TRANSIENT_RETRIES", "3"))
+        transient_count = 0
 
         async with self.concurrent_semaphore:
             while retry_count <= max_retries:
@@ -348,6 +373,41 @@ class BaseModel:
                         }
                     else:
                         raise e
+                except (
+                    httpx.ConnectError,
+                    httpx.ReadError,
+                    httpx.RemoteProtocolError,
+                    httpx.PoolTimeout,
+                    httpx.NetworkError,
+                    openai.APIConnectionError,
+                    ConnectionError,
+                    ConnectionResetError,
+                ) as e:
+                    # Transient socket-level failure. Common cause at
+                    # high concurrency: kernel SYN-drop during ramp-up
+                    # when the upstream accept queue briefly overflows.
+                    # Backoff doubles each retry (50ms, 100ms, 200ms)
+                    # to let the accept queue drain.
+                    if transient_count < max_transient_retries:
+                        transient_count += 1
+                        backoff = 0.05 * (2 ** (transient_count - 1))
+                        LOG.warning(
+                            "transient connect error, retry %d/%d after %.0fms: %s: %s",
+                            transient_count,
+                            max_transient_retries,
+                            backoff * 1000,
+                            type(e).__name__,
+                            e,
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
+                    LOG.error(
+                        "transient connect error after %d retries, propagating: %s: %s",
+                        max_transient_retries,
+                        type(e).__name__,
+                        e,
+                    )
+                    raise
 
         return result
 

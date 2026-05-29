@@ -893,15 +893,58 @@ class GenerationTask:
                 async with self.output_lock:
                     self.dump_outputs(prefilled_outputs, prefilled_data_points, fout)
 
-            # Create tasks for all remaining data points
-            tasks = []
-            for data_point in remaining_data_points:
-                task = asyncio.create_task(self._generate_and_save_datapoint(data_point, data, fout, pbar))
-                tasks.append(task)
+            # Bounded worker pool. At most `max_in_flight` tasks
+            # exist at any moment; as each one completes we spawn the
+            # next datapoint's task. Memory is O(in_flight), not
+            # O(total inputs), so the loop runs cleanly on 100k/1M+
+            # input files without preallocating a coroutine frame
+            # for each.
+            #
+            # Was: tasks = [asyncio.create_task(...) for dp in data]
+            # That created ALL coroutines upfront. At a 100k input
+            # file and ~1-5 KB per coroutine frame (closure + Task
+            # bookkeeping) the upfront allocation was 100-500 MB --
+            # avoidable memory pressure when co-located with other
+            # services. The outer semaphore inside each task bounded
+            # in-flight requests but didn't help that upfront cost.
+            #
+            # Each task is wrapped in a try/except so a single
+            # exception doesn't crash the whole gather (the old
+            # default behavior was first-exception-wins, killing
+            # all other in-flight datapoints).
+            max_in_flight = self.cfg.max_concurrent_requests
 
-            # Wait for all tasks to complete
-            if tasks:
-                await asyncio.gather(*tasks)
+            async def _safe_one(dp):
+                try:
+                    await self._generate_and_save_datapoint(dp, data, fout, pbar)
+                except Exception:
+                    pos = dp.get(self.cfg.async_position_key, "?")
+                    LOG.exception("datapoint async_pos=%s crashed", pos)
+
+            data_iter = iter(remaining_data_points)
+            in_flight: set = set()
+
+            # Prime the pool up to the concurrency cap.
+            for dp in data_iter:
+                in_flight.add(asyncio.create_task(_safe_one(dp)))
+                if len(in_flight) >= max_in_flight:
+                    break
+
+            # Refill as tasks complete. asyncio.wait with
+            # FIRST_COMPLETED returns as soon as ANY task finishes,
+            # which lets us start a fresh task immediately rather
+            # than waiting for the whole batch.
+            while in_flight:
+                done, in_flight = await asyncio.wait(
+                    in_flight,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for _ in done:
+                    try:
+                        dp = next(data_iter)
+                    except StopIteration:
+                        continue
+                    in_flight.add(asyncio.create_task(_safe_one(dp)))
 
             pbar.close()
 
