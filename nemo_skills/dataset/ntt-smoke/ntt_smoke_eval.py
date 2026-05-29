@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from dataclasses import fields, replace
+from pathlib import Path
 from typing import Any
 
 from nemo_skills.evaluation.evaluator.audio import (
@@ -42,6 +44,8 @@ _FLEURS_TO_NORMALIZER_LANG = {
     "pt_br": "pt",
     "sv_se": "sv",
 }
+
+_PREFERENCE_NORMALIZERS: dict[str, Any] = {}
 
 
 def _audio_config(config: dict[str, Any]) -> AudioEvaluatorConfig:
@@ -79,6 +83,91 @@ def _clean_generation(generation: str, config: AudioEvaluatorConfig) -> str:
     return generation.strip()
 
 
+def _add_wer_correct_words(updates: dict[str, Any]) -> dict[str, Any]:
+    if (
+        "wer_ref_words" in updates
+        and "wer_substitutions" in updates
+        and "wer_deletions" in updates
+    ):
+        updates["wer_correct_words"] = max(
+            0,
+            int(updates["wer_ref_words"]) - int(updates["wer_substitutions"]) - int(updates["wer_deletions"]),
+        )
+    return updates
+
+
+def _load_preference_normalizer(normalizer_dir: str):
+    normalizer_dir = str(Path(normalizer_dir))
+    if normalizer_dir in _PREFERENCE_NORMALIZERS:
+        return _PREFERENCE_NORMALIZERS[normalizer_dir]
+
+    module_path = Path(normalizer_dir) / "preference_normalizer.py"
+    if not module_path.exists():
+        raise FileNotFoundError(f"Preference-ASR normalizer not found: {module_path}")
+
+    spec = importlib.util.spec_from_file_location(
+        f"ntt_smoke_preference_normalizer_{abs(hash(normalizer_dir))}",
+        module_path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    normalizer = module.PreferenceAwareNormalizer()
+    _PREFERENCE_NORMALIZERS[normalizer_dir] = normalizer
+    return normalizer
+
+
+def _wer_counts(ref: str, hyp: str) -> dict[str, Any]:
+    import jiwer
+
+    measures = jiwer.process_words(ref, hyp)
+    substitutions = measures.substitutions
+    insertions = measures.insertions
+    deletions = measures.deletions
+    correct_words = measures.hits
+    ref_words = substitutions + deletions + correct_words
+    errors = substitutions + insertions + deletions
+    wer = errors / ref_words if ref_words else 0.0
+    return {
+        "wer": wer,
+        "wer_errors": errors,
+        "wer_ref_words": ref_words,
+        "wer_substitutions": substitutions,
+        "wer_insertions": insertions,
+        "wer_deletions": deletions,
+        "wer_correct_words": correct_words,
+    }
+
+
+def _evaluate_preference_asr_sample(
+    sample: dict[str, Any],
+    generation: str,
+    config: AudioEvaluatorConfig,
+) -> dict[str, Any]:
+    normalizer_dir = (
+        sample.get("preference_asr_normalizer_dir")
+        or (str(Path(sample["preference_asr_dir"]) / "normalizer") if sample.get("preference_asr_dir") else None)
+    )
+    if not normalizer_dir:
+        raise ValueError("PreferenceASR sample is missing preference_asr_normalizer_dir")
+
+    normalizer = _load_preference_normalizer(str(normalizer_dir))
+    cleaned_generation = _clean_generation(generation, config)
+    reference = str(sample.get("expected_answer") or sample.get("preference_text") or "")
+    norm_ref = normalizer.normalize_entry(reference, sample)
+    norm_hyp = normalizer.normalize_entry(cleaned_generation, sample)
+    updates = _wer_counts(norm_ref, norm_hyp)
+    updates.update(
+        {
+            "is_correct": updates["wer"] < 0.5,
+            "text": norm_ref,
+            "pred_text": norm_hyp,
+            "predicted_answer": cleaned_generation,
+        }
+    )
+    return updates
+
+
 def _evaluate_contextasr_sample(sample: dict[str, Any], generation: str) -> dict[str, Any]:
     """Evaluate one ContextASR sample and retain edit-operation counts."""
     reference = sample["expected_answer"]
@@ -100,6 +189,7 @@ def _evaluate_contextasr_sample(sample: dict[str, Any], generation: str) -> dict
         "wer_insertions": wer_i,
         "wer_deletions": wer_d,
         "wer_substitutions": wer_s,
+        "wer_correct_words": max(0, wer_ref_words - wer_s - wer_d),
         "is_correct": wer < 0.5,
         "text": norm_ref,
         "pred_text": norm_hyp,
@@ -223,14 +313,17 @@ class NTTSmokeEvaluator(BaseEvaluator):
         if task_type == "Text-MCQ":
             return _evaluate_text_mcq(data_point)
 
+        if task_type == "PreferenceASR":
+            return _evaluate_preference_asr_sample(data_point, data_point.get("generation", ""), self.audio_config)
+
         if task_type == "ASR" and self.audio_config.normalization_mode == "multilingual":
-            return evaluate_audio_sample(_as_multilingual_asr_sample(data_point), self.audio_config)
+            return _add_wer_correct_words(evaluate_audio_sample(_as_multilingual_asr_sample(data_point), self.audio_config))
 
         if task_type == "ASR-PC" and self.audio_config.normalization_mode == "multilingual":
             audio_config = replace(self.audio_config, normalization_mode="hf_leaderboard")
-            return evaluate_audio_sample(data_point, audio_config)
+            return _add_wer_correct_words(evaluate_audio_sample(data_point, audio_config))
 
-        updates = evaluate_audio_sample(data_point, self.audio_config)
+        updates = _add_wer_correct_words(evaluate_audio_sample(data_point, self.audio_config))
         if task_type == "Hallucination":
             generation = _clean_generation(data_point.get("generation", ""), self.audio_config)
             _add_strict_hallucination(updates, generation)

@@ -74,6 +74,8 @@ DEFAULT_LANGUAGES = [
     "th_th",
     "uk_ua",
 ]
+DEFAULT_PREFERENCE_ASR_GROUPS = ["normalization", "entities", "disfluencies", "case", "standard"]
+DEFAULT_PREFERENCE_ASR_PROMPT_VARIANTS = ["original", "direct"]
 
 COVOST2_BY_FLEURS = {
     "ar_eg": "ar",
@@ -182,6 +184,13 @@ def _sample(rows: list[dict[str, Any]], count: int, salt: str) -> list[dict[str,
     return keyed[: min(count, len(keyed))]
 
 
+def _sample_pairs(rows: list[tuple[Path, dict[str, Any]]], count: int, salt: str) -> list[tuple[Path, dict[str, Any]]]:
+    if count <= 0 or not rows:
+        return []
+    keyed = sorted(rows, key=lambda item: _stable_key([salt, str(item[0]), _origin_id(item[1]), item[1]]))
+    return keyed[: min(count, len(keyed))]
+
+
 def _duration(row: dict[str, Any]) -> float | None:
     duration = row.get("duration") or row.get("audio_duration")
     if duration is not None:
@@ -255,6 +264,14 @@ def _normalizer_lang(language: str | None) -> str:
     if "-" in language:
         language = language.split("-", 1)[0]
     return language or "en"
+
+
+def _as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
 
 
 def _with_metadata(
@@ -540,7 +557,9 @@ def _context_rows(source_root: Path, variant: str, samples_per_mode: int) -> lis
 
 
 def _text_rows(source_root: Path, variant: str, count: int) -> list[dict[str, Any]]:
-    gpqa = _load_source(source_root, "gpqa", "diamond.jsonl")
+    gpqa = []
+    for filename in ("main.jsonl", "extended.jsonl", "diamond.jsonl"):
+        gpqa.extend(_load_source(source_root, "gpqa", filename))
     out = []
     for row in _sample(gpqa, count, f"{variant}:text"):
         prompt = row.get("problem") or row.get("question")
@@ -558,8 +577,8 @@ def _text_rows(source_root: Path, variant: str, count: int) -> list[dict[str, An
                 variant=variant,
                 subtask="text.superficial",
                 origin_dataset="gpqa",
-                origin_split="diamond",
-                origin_manifest="gpqa/diamond.jsonl",
+                origin_split=row.get("subset_for_metrics", "main+extended+diamond"),
+                origin_manifest="gpqa/main.jsonl+extended.jsonl+diamond.jsonl",
                 language="en",
             )
         )
@@ -588,46 +607,101 @@ def _iter_preference_asr_rows(preference_dir: Path, max_rows: int) -> Iterable[t
                     return
 
 
-def _preference_audio_instruction_rows(preference_dir: Path, variant: str, count: int) -> list[dict[str, Any]]:
+def _preference_prompt(row: dict[str, Any], prompt_variant: str) -> str:
+    instruction = str(row.get("instruction") or "Transcribe the audio according to the requested preference.").strip()
+    if prompt_variant == "original":
+        return instruction
+    if prompt_variant == "direct":
+        return f"Follow this transcription preference exactly: {instruction}"
+    if prompt_variant == "terse":
+        return f"Transcribe the audio. Preference: {instruction}"
+    return instruction
+
+
+def _preference_audio_path(preference_dir: Path, row: dict[str, Any]) -> str | None:
+    audio_path = _audio_path(row) or row.get("audio_filepath")
+    if not audio_path:
+        return None
+    if Path(str(audio_path)).is_absolute():
+        return str(audio_path)
+    return str(preference_dir / str(audio_path))
+
+
+def _preference_subtask(preference_type: str) -> str:
+    safe_type = preference_type or "other"
+    return f"audio_instruction_following.preference_asr.{safe_type}"
+
+
+def _preference_audio_instruction_rows(
+    preference_dir: Path,
+    variant: str,
+    samples_per_group: int,
+    groups: list[str],
+    prompt_variants: list[str],
+) -> list[dict[str, Any]]:
     if not preference_dir.exists():
         return []
-    candidates = list(_iter_preference_asr_rows(preference_dir, max(count * 20, 200)))
+    candidates = list(_iter_preference_asr_rows(preference_dir, 0))
+    by_group: dict[str, list[tuple[Path, dict[str, Any]]]] = {group: [] for group in groups}
+    for manifest, row in candidates:
+        preference_type = str(row.get("preference_type") or "other")
+        if preference_type in by_group:
+            by_group[preference_type].append((manifest, row))
+
     out = []
-    for manifest, row in _sample(candidates, count, f"{variant}:preference_asr"):
-        source_row = copy.deepcopy(row)
-        expected = (
-            source_row.get("expected_answer")
-            or source_row.get("text")
-            or source_row.get("transcript")
-            or source_row.get("answer")
-        )
-        source_row["expected_answer"] = expected
-        source_row.setdefault("task_type", "ASR-PC")
-        audio_path = _audio_path(source_row) or source_row.get("audio_filepath")
-        if not source_row.get("messages"):
-            source_row["messages"] = [
-                {"role": "system", "content": SYSTEM_MESSAGE},
-                {
-                    "role": "user",
-                    "content": "Transcribe the audio and preserve the requested punctuation, capitalization, and formatting.",
-                    "audio": {"path": audio_path},
-                },
-            ]
-        out.append(
-            _with_metadata(
-                source_row,
-                variant=variant,
-                subtask="audio_instruction_following.preference_asr",
-                origin_dataset="preference-asr-bench",
-                origin_split=manifest.parent.name,
-                origin_manifest=str(manifest),
-                prompt=(
-                    "Transcribe the audio and preserve the requested punctuation, capitalization, and formatting."
-                ),
-                prompt_variant="preference_asr",
-                task_type=source_row.get("task_type") or "ASR-PC",
-            )
-        )
+    for group in groups:
+        group_rows = _sample_pairs(by_group.get(group, []), samples_per_group, f"{variant}:preference_asr:{group}")
+        for manifest, row in group_rows:
+            source_row = copy.deepcopy(row)
+            expected = source_row.get("preference_text") or source_row.get("expected_answer") or source_row.get("text")
+            audio_path = _preference_audio_path(preference_dir, source_row)
+            if not expected or not audio_path:
+                continue
+            source_row["expected_answer"] = expected
+            source_row["audio_filepath"] = audio_path
+            source_row["audio_path"] = audio_path
+            preference_type = str(source_row.get("preference_type") or group)
+            sub_categories = _as_list(source_row.get("sub_category"))
+            direction = source_row.get("direction")
+            source_row["task_type"] = "PreferenceASR"
+            source_row["preference_asr_dir"] = str(preference_dir)
+            source_row["preference_asr_normalizer_dir"] = str(preference_dir / "normalizer")
+
+            for prompt_variant in prompt_variants:
+                row_for_prompt = copy.deepcopy(source_row)
+                row_for_prompt["messages"] = [
+                    {"role": "system", "content": SYSTEM_MESSAGE},
+                    {
+                        "role": "user",
+                        "content": _preference_prompt(source_row, prompt_variant),
+                        "audio": {"path": audio_path, "duration": source_row.get("duration")},
+                    },
+                ]
+                prompt_group_id = (
+                    f"preference:{variant}:{preference_type}:{direction or 'none'}:"
+                    f"{','.join(sub_categories)}:{_origin_id(source_row)}"
+                )
+                out.append(
+                    _with_metadata(
+                        row_for_prompt,
+                        variant=variant,
+                        subtask=_preference_subtask(preference_type),
+                        origin_dataset="preference-asr-bench",
+                        origin_split=preference_type,
+                        origin_manifest=str(manifest),
+                        prompt_variant=f"preference_asr.{prompt_variant}",
+                        prompt_group_id=prompt_group_id,
+                        task_type="PreferenceASR",
+                        extra={
+                            "preference_type": preference_type,
+                            "preference_sub_category": sub_categories,
+                            "preference_direction": direction,
+                            "preference_asr_dir": str(preference_dir),
+                            "preference_asr_normalizer_dir": str(preference_dir / "normalizer"),
+                            "preference_prompt_variant": prompt_variant,
+                        },
+                    )
+                )
     return out
 
 
@@ -683,8 +757,10 @@ def _audio_instruction_rows(
     preference_dir: Path,
     variant: str,
     count: int,
+    groups: list[str],
+    prompt_variants: list[str],
 ) -> list[dict[str, Any]]:
-    preference_rows = _preference_audio_instruction_rows(preference_dir, variant, count)
+    preference_rows = _preference_audio_instruction_rows(preference_dir, variant, count, groups, prompt_variants)
     if preference_rows:
         return preference_rows
 
@@ -726,9 +802,9 @@ def _english_rows(source_root: Path, output_dir: Path, args: argparse.Namespace,
 
     rows: list[dict[str, Any]] = []
     for subtask, source_rows, manifest, count in [
-        ("asr.clean_read", clean_read, "asr-leaderboard/librispeech_clean.jsonl", n // 3),
-        ("asr.clean_conversational", clean_conv, "asr-leaderboard/ami.jsonl", n // 3),
-        ("asr.clean_media", clean_media, "asr-leaderboard/tedlium.jsonl+gigaspeech.jsonl", n - 2 * (n // 3)),
+        ("asr.clean_read", clean_read, "asr-leaderboard/librispeech_clean.jsonl", n),
+        ("asr.clean_conversational", clean_conv, "asr-leaderboard/ami.jsonl", n),
+        ("asr.clean_media", clean_media, "asr-leaderboard/tedlium.jsonl+gigaspeech.jsonl", n),
         ("asr.short", short_pool, "asr-leaderboard/*", n),
     ]:
         for row in _sample(source_rows, count, f"{variant}:{subtask}"):
@@ -785,9 +861,18 @@ def _english_rows(source_root: Path, output_dir: Path, args: argparse.Namespace,
         )
     )
     rows.extend(_hallucination_rows(source_root, variant, n))
-    rows.extend(_prompt_robustness_rows(rows, variant, max(1, n // len(ASR_PROMPTS)), f"{variant}:prompt"))
-    rows.extend(_audio_instruction_rows(source_root, Path(args.preference_asr_dir), variant, n))
-    rows.extend(_context_rows(source_root, variant, max(1, n // 3)))
+    rows.extend(_prompt_robustness_rows(rows, variant, max(1, args.prompt_groups), f"{variant}:prompt"))
+    rows.extend(
+        _audio_instruction_rows(
+            source_root,
+            Path(args.preference_asr_dir),
+            variant,
+            args.preference_asr_samples_per_group,
+            [group.strip() for group in args.preference_asr_groups.split(",") if group.strip()],
+            [prompt.strip() for prompt in args.preference_asr_prompt_variants.split(",") if prompt.strip()],
+        )
+    )
+    rows.extend(_context_rows(source_root, variant, n))
     rows.extend(_text_rows(source_root, variant, args.text_samples))
     return rows
 
@@ -820,7 +905,7 @@ def _multilingual_rows(source_root: Path, output_dir: Path, args: argparse.Names
         _prompt_robustness_rows(
             multilingual_rows,
             "multi",
-            max(1, min(len(multilingual_rows), n // len(ASR_PROMPTS))),
+            max(1, min(len(multilingual_rows), args.prompt_groups * args.multi_multiplier)),
             "multi:prompt",
         )
     )
@@ -852,16 +937,33 @@ def main() -> None:
         help="Optional preference-ASR benchmark root. Currently recorded when present; LibriSpeech-PC is the fallback.",
     )
     parser.add_argument("--audio-samples", type=int, default=200, help="Target sample count per regular audio subtest.")
-    parser.add_argument("--text-samples", type=int, default=5000, help="Target sample count for superficial text.")
+    parser.add_argument("--text-samples", type=int, default=200, help="Target sample count for superficial text.")
+    parser.add_argument("--prompt-groups", type=int, default=200, help="Base sample count for prompt robustness groups.")
+    parser.add_argument(
+        "--preference-asr-samples-per-group",
+        type=int,
+        default=200,
+        help="Base Preference-ASR rows per preference_type before prompt variants are expanded.",
+    )
     parser.add_argument(
         "--long-samples",
         type=int,
-        default=3,
-        help="Number of stitched long-form samples per variant; default covers 20, 40, and 60 minute targets.",
+        default=200,
+        help="Number of stitched long-form samples per variant; cycles through 20, 40, and 60 minute targets.",
     )
     parser.add_argument("--multi-multiplier", type=int, default=2, help="Multilingual size multiplier.")
     parser.add_argument("--short-max-seconds", type=float, default=3.0, help="Maximum duration for very short ASR.")
     parser.add_argument("--languages", default=",".join(DEFAULT_LANGUAGES), help="Comma-separated multilingual locales.")
+    parser.add_argument(
+        "--preference-asr-groups",
+        default=",".join(DEFAULT_PREFERENCE_ASR_GROUPS),
+        help="Comma-separated Preference-ASR preference_type groups to include.",
+    )
+    parser.add_argument(
+        "--preference-asr-prompt-variants",
+        default=",".join(DEFAULT_PREFERENCE_ASR_PROMPT_VARIANTS),
+        help="Comma-separated prompt variants for each selected Preference-ASR row.",
+    )
     parser.add_argument("--output-dir", default=None, help="Override output directory. Defaults to this dataset package.")
     parser.add_argument(
         "--source-read-limit",

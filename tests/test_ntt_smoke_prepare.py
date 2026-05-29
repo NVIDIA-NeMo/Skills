@@ -225,7 +225,11 @@ def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
         [
             {
                 "audio_filepath": "/tmp/pref.wav",
+                "preference_text": "Use Preference Punctuation.",
                 "text": "Use preference punctuation.",
+                "instruction": "Use title case.",
+                "preference_type": "case",
+                "sub_category": ["proper_punctuated_capitalized_format"],
                 "messages": [{"role": "user", "content": "Transcribe with punctuation.", "audio": {"path": "/tmp/pref.wav"}}],
             }
         ],
@@ -243,6 +247,10 @@ def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
             str(output_root),
             "--audio-samples",
             "1",
+            "--preference-asr-groups",
+            "case",
+            "--preference-asr-prompt-variants",
+            "original,direct",
             "--text-samples",
             "1",
             "--long-samples",
@@ -255,8 +263,14 @@ def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
 
     rows = [json.loads(line) for line in (output_root / "en" / "test.jsonl").read_text(encoding="utf-8").splitlines()]
     preference_rows = [row for row in rows if row["origin_dataset"] == "preference-asr-bench"]
-    assert len(preference_rows) == 1
-    assert preference_rows[0]["ntt_subtask"] == "audio_instruction_following.preference_asr"
+    assert len(preference_rows) == 2
+    assert {row["prompt_variant"] for row in preference_rows} == {
+        "preference_asr.original",
+        "preference_asr.direct",
+    }
+    assert preference_rows[0]["ntt_subtask"] == "audio_instruction_following.preference_asr.case"
+    assert preference_rows[0]["expected_answer"] == "Use Preference Punctuation."
+    assert preference_rows[0]["task_type"] == "PreferenceASR"
 
 
 def test_ntt_smoke_prepare_spreads_long_rows():
@@ -293,3 +307,52 @@ def test_ntt_smoke_context_entity_scoring_ignores_unmatched_reference_entities()
 
     assert result["ne_fnr_total"] == 1
     assert result["ne_fnr_hits"] == 1
+    assert result["wer_correct_words"] >= 0
+
+
+def test_ntt_smoke_metrics_track_correct_words():
+    iso639 = types.ModuleType("iso639")
+    iso639.__path__ = []
+    iso639_exceptions = types.ModuleType("iso639.exceptions")
+    iso639_exceptions.InvalidLanguageValue = ValueError
+    iso639_iso639 = types.ModuleType("iso639.iso639")
+    iso639_iso639.Lang = lambda value: types.SimpleNamespace(pt1=value)
+    sys.modules.setdefault("iso639", iso639)
+    sys.modules.setdefault("iso639.exceptions", iso639_exceptions)
+    sys.modules.setdefault("iso639.iso639", iso639_iso639)
+
+    langdetect = types.ModuleType("langdetect")
+    langdetect.__path__ = []
+    langdetect.DetectorFactory = types.SimpleNamespace(seed=0)
+    langdetect.LangDetectException = ValueError
+    langdetect.detect = lambda text: "en"
+    langdetect_detector_factory = types.ModuleType("langdetect.detector_factory")
+    langdetect_detector_factory.PROFILES_DIRECTORY = "/tmp"
+    sys.modules.setdefault("langdetect", langdetect)
+    sys.modules.setdefault("langdetect.detector_factory", langdetect_detector_factory)
+
+    metrics_mod = __import__(
+        "importlib"
+    ).import_module("nemo_skills.dataset.ntt-smoke.ntt_smoke_metrics")
+    metrics = metrics_mod.NTTSmokeMetrics()
+
+    metrics.update(
+        [
+            {
+                "generation": "hello there",
+                "is_correct": True,
+                "wer": 0.25,
+                "wer_errors": 1,
+                "wer_ref_words": 4,
+                "wer_substitutions": 1,
+                "wer_insertions": 0,
+                "wer_deletions": 0,
+            }
+        ]
+    )
+
+    pass_metrics = metrics.get_metrics()["pass@1"]
+    assert pass_metrics["correct_words"] == 3
+    assert pass_metrics["substitutions"] == 1
+    assert pass_metrics["insertions"] == 0
+    assert pass_metrics["deletions"] == 0

@@ -101,6 +101,17 @@ class NTTSmokeMetrics(AudioMetrics):
         metrics_dict = super().get_metrics()
 
         for _agg_mode, agg_metrics in metrics_dict.items():
+            if (
+                "ref_words" in agg_metrics
+                and "substitutions" in agg_metrics
+                and "deletions" in agg_metrics
+                and "correct_words" not in agg_metrics
+            ):
+                agg_metrics["correct_words"] = max(
+                    0,
+                    int(agg_metrics["ref_words"]) - int(agg_metrics["substitutions"]) - int(agg_metrics["deletions"]),
+                )
+
             if self.strict_hallucination_total > 0:
                 agg_metrics["strict_hallucination_rate"] = round(
                     100.0 * self.strict_hallucinations / self.strict_hallucination_total, 2
@@ -137,6 +148,8 @@ class NTTSmokeMetrics(AudioMetrics):
         if self.language_wers:
             metrics["language_count"] = as_int
             metrics["language_wer_macro"] = as_percentage
+        if self.wer_total_ref_words > 0:
+            metrics["correct_words"] = as_int
         return metrics
 
 
@@ -166,7 +179,17 @@ def compute_score(combined_metrics: dict) -> dict:
     for eval_mode in sorted(eval_modes):
         total_entries = 0
         weighted: dict[str, float] = defaultdict(float)
-        integer_like = {"avg_tokens", "gen_seconds", "prompt_groups", "language_count"}
+        sum_like = {
+            "gen_seconds",
+            "substitutions",
+            "insertions",
+            "deletions",
+            "ref_words",
+            "correct_words",
+            "prompt_groups",
+            "language_count",
+        }
+        integer_like = {"avg_tokens", *sum_like}
 
         for benchmark_metrics in benchmarks.values():
             metrics = _metrics_for_eval_mode(benchmark_metrics, eval_mode)
@@ -179,7 +202,7 @@ def compute_score(combined_metrics: dict) -> dict:
             for key, value in metrics.items():
                 if key == "num_entries" or not isinstance(value, (int, float)):
                     continue
-                weight = 1 if key in integer_like else entries
+                weight = 1 if key in sum_like else entries
                 weighted[key] += float(value) * weight
 
         if total_entries <= 0:
@@ -187,7 +210,11 @@ def compute_score(combined_metrics: dict) -> dict:
 
         mode_metrics = {"num_entries": total_entries}
         for key, value in weighted.items():
-            if key in integer_like:
+            if key in sum_like:
+                mode_metrics[key] = int(value)
+            elif key == "avg_tokens":
+                mode_metrics[key] = int(value / total_entries)
+            elif key in integer_like:
                 mode_metrics[key] = int(value)
             else:
                 mode_metrics[key] = round(value / total_entries, 2)
