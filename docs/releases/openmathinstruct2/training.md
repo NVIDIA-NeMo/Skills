@@ -54,8 +54,8 @@ python -m nemo_skills.training.prepare_data \
 
 Run the training (assuming slurm configuration here with the same folder structure). If your cluster has strict
 timeout policy, you can run multiple dependent jobs with `--dependent_jobs=N`.
-The commands below explicitly list the NeMo-RL overrides that previously came from the
-NeMo-Skills SFT config, since this pipeline now calls the upstream NeMo-RL SFT entrypoint directly.
+The commands below include the minimal overrides needed when using upstream NeMo-RL defaults
+without a validation dataset and with NeMo-Skills-prepared SFT data.
 
 ```bash
 ns nemo_rl sft \
@@ -70,31 +70,17 @@ ns nemo_rl sft \
     --training_data=/workspace/openmathinstruct2-sft.jsonl \
     ++sft.val_period=0 \
     ++policy.tokenizer.chat_template=infer_from_data \
-    ++policy.max_grad_norm=0.0 \
     ++policy.train_micro_batch_size=8 \
     ++policy.train_global_batch_size=512 \
     ++policy.megatron_cfg.tensor_model_parallel_size=4 \
     ++policy.megatron_cfg.pipeline_model_parallel_size=1 \
     ++policy.megatron_cfg.optimizer.lr=2e-5 \
     ++policy.megatron_cfg.optimizer.min_lr=2e-5 \
-    ++policy.megatron_cfg.optimizer.weight_decay=0.01 \
-    ++policy.megatron_cfg.optimizer.adam_eps=1e-8 \
-    ++policy.megatron_cfg.optimizer.clip_grad=0.0 \
-    ++policy.megatron_cfg.scheduler.lr_decay_style=cosine \
-    ++policy.megatron_cfg.scheduler.lr_decay_iters=60000 \
-    ++policy.megatron_cfg.scheduler.lr_warmup_iters=0 \
-    ++policy.megatron_cfg.scheduler.lr_warmup_init=1e-6 \
-    ++policy.megatron_cfg.distributed_data_parallel_config.grad_reduce_in_fp32=false \
-    ++policy.megatron_cfg.distributed_data_parallel_config.data_parallel_sharding_strategy=optim_grads_params \
     ++data.add_bos=false \
     ++data.add_eos=false \
     ++data.add_generation_prompt=false \
     ++data.num_workers=10 \
     ++checkpointing.save_period=10000 \
-    ++checkpointing.keep_top_k=50 \
-    ++checkpointing.metric_name=val:val_loss \
-    ++checkpointing.higher_is_better=false \
-    ++logger.swanlab_enabled=false \
     ++sft.max_num_steps=60000 \
     ++sft.max_num_epochs=100 \
     ++policy.sequence_packing.enabled=False
@@ -117,31 +103,17 @@ ns nemo_rl sft \
     --training_data=/workspace/openmathinstruct2-sft-5M.jsonl \
     ++sft.val_period=0 \
     ++policy.tokenizer.chat_template=infer_from_data \
-    ++policy.max_grad_norm=0.0 \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=512 \
     ++policy.megatron_cfg.tensor_model_parallel_size=8 \
     ++policy.megatron_cfg.pipeline_model_parallel_size=2 \
     ++policy.megatron_cfg.optimizer.lr=1e-5 \
     ++policy.megatron_cfg.optimizer.min_lr=1e-5 \
-    ++policy.megatron_cfg.optimizer.weight_decay=0.01 \
-    ++policy.megatron_cfg.optimizer.adam_eps=1e-8 \
-    ++policy.megatron_cfg.optimizer.clip_grad=0.0 \
-    ++policy.megatron_cfg.scheduler.lr_decay_style=cosine \
-    ++policy.megatron_cfg.scheduler.lr_decay_iters=20000 \
-    ++policy.megatron_cfg.scheduler.lr_warmup_iters=0 \
-    ++policy.megatron_cfg.scheduler.lr_warmup_init=1e-6 \
-    ++policy.megatron_cfg.distributed_data_parallel_config.grad_reduce_in_fp32=false \
-    ++policy.megatron_cfg.distributed_data_parallel_config.data_parallel_sharding_strategy=optim_grads_params \
     ++data.add_bos=false \
     ++data.add_eos=false \
     ++data.add_generation_prompt=false \
     ++data.num_workers=10 \
     ++checkpointing.save_period=3330 \
-    ++checkpointing.keep_top_k=50 \
-    ++checkpointing.metric_name=val:val_loss \
-    ++checkpointing.higher_is_better=false \
-    ++logger.swanlab_enabled=false \
     ++sft.max_num_steps=20000 \
     ++sft.max_num_epochs=100 \
     ++policy.sequence_packing.enabled=False

@@ -223,21 +223,13 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
         --num_gpus=<NUM_GPUS> \
         --backend=megatron \
         ++checkpointing.save_period=250 \
-        ++checkpointing.keep_top_k=50 \
-        ++checkpointing.metric_name=val:val_loss \
-        ++checkpointing.higher_is_better=false \
         ++sft.max_num_epochs=2000 \
         ++sft.max_num_steps=1000 \
         ++sft.val_period=0 \
-        ++sft.val_batches=1 \
-        ++sft.val_global_batch_size=32 \
-        ++sft.val_micro_batch_size=1 \
-        ++sft.val_at_start=false \
         ++policy.tokenizer.chat_template=infer_from_data \
         ++policy.sequence_packing.enabled=True \
         ++policy.sequence_packing.sequence_length_round=64 \
         ++policy.make_sequence_length_divisible_by=8 \
-        ++policy.max_grad_norm=0.0 \
         ++policy.megatron_cfg.tensor_model_parallel_size=4 \
         ++policy.megatron_cfg.pipeline_model_parallel_size=1 \
         ++policy.megatron_cfg.context_parallel_size=4 \
@@ -247,21 +239,9 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
         ++data.add_eos=false \
         ++data.add_generation_prompt=false \
         ++data.num_workers=10 \
-        ++policy.megatron_cfg.optimizer.optimizer=adam \
         ++policy.megatron_cfg.optimizer.lr=1e-4 \
         ++policy.megatron_cfg.optimizer.min_lr=1e-4 \
-        ++policy.megatron_cfg.optimizer.weight_decay=0.01 \
-        ++policy.megatron_cfg.optimizer.adam_eps=1e-8 \
-        ++policy.megatron_cfg.optimizer.clip_grad=0.0 \
-        ++policy.megatron_cfg.scheduler.lr_decay_style=cosine \
-        ++policy.megatron_cfg.scheduler.lr_decay_iters=1000 \
-        ++policy.megatron_cfg.scheduler.lr_warmup_iters=0 \
-        ++policy.megatron_cfg.scheduler.lr_warmup_init=1e-6 \
-        ++policy.megatron_cfg.distributed_data_parallel_config.grad_reduce_in_fp32=false \
-        ++policy.megatron_cfg.distributed_data_parallel_config.overlap_grad_reduce=true \
-        ++policy.megatron_cfg.distributed_data_parallel_config.overlap_param_gather=true \
-        ++policy.megatron_cfg.distributed_data_parallel_config.data_parallel_sharding_strategy=optim_grads_params \
-        ++logger.swanlab_enabled=false
+        ++policy.megatron_cfg.scheduler.lr_warmup_iters=0
     ```
 
 === "Python"
@@ -272,21 +252,13 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
     sft_nemo_rl(
         ctx=wrap_arguments(
             "++checkpointing.save_period=250 "
-            "++checkpointing.keep_top_k=50 "
-            "++checkpointing.metric_name=val:val_loss "
-            "++checkpointing.higher_is_better=false "
             "++sft.max_num_epochs=2000 "
             "++sft.max_num_steps=1000 "
             "++sft.val_period=0 "
-            "++sft.val_batches=1 "
-            "++sft.val_global_batch_size=32 "
-            "++sft.val_micro_batch_size=1 "
-            "++sft.val_at_start=false "
             "++policy.tokenizer.chat_template=infer_from_data "
             "++policy.sequence_packing.enabled=True "
             "++policy.sequence_packing.sequence_length_round=64 "
             "++policy.make_sequence_length_divisible_by=8 "
-            "++policy.max_grad_norm=0.0 "
             "++policy.megatron_cfg.tensor_model_parallel_size=4 "
             "++policy.megatron_cfg.pipeline_model_parallel_size=1 "
             "++policy.megatron_cfg.context_parallel_size=4 "
@@ -296,21 +268,9 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
             "++data.add_eos=false "
             "++data.add_generation_prompt=false "
             "++data.num_workers=10 "
-            "++policy.megatron_cfg.optimizer.optimizer=adam "
             "++policy.megatron_cfg.optimizer.lr=1e-4 "
             "++policy.megatron_cfg.optimizer.min_lr=1e-4 "
-            "++policy.megatron_cfg.optimizer.weight_decay=0.01 "
-            "++policy.megatron_cfg.optimizer.adam_eps=1e-8 "
-            "++policy.megatron_cfg.optimizer.clip_grad=0.0 "
-            "++policy.megatron_cfg.scheduler.lr_decay_style=cosine "
-            "++policy.megatron_cfg.scheduler.lr_decay_iters=1000 "
             "++policy.megatron_cfg.scheduler.lr_warmup_iters=0 "
-            "++policy.megatron_cfg.scheduler.lr_warmup_init=1e-6 "
-            "++policy.megatron_cfg.distributed_data_parallel_config.grad_reduce_in_fp32=false "
-            "++policy.megatron_cfg.distributed_data_parallel_config.overlap_grad_reduce=true "
-            "++policy.megatron_cfg.distributed_data_parallel_config.overlap_param_gather=true "
-            "++policy.megatron_cfg.distributed_data_parallel_config.data_parallel_sharding_strategy=optim_grads_params "
-            "++logger.swanlab_enabled=false "
         ),
         cluster="slurm",
         expname="qwen3-8b-lean-sft",
