@@ -67,10 +67,11 @@ mounted at evaluation time. The default long-form setting cycles through
 ## Metrics
 
 NTT-SMOKE reports WER macro, corpus WER, substitutions, insertions, deletions,
-reference words, and correct words for ASR-style groups. Preference-ASR rows
-use the Preference-ASR preference-aware normalizer when scoring, so the WER
-reflects whether the requested formatting or transcription preference was
-followed rather than erased by generic normalization.
+reference words, correct words, and normal-approximation 95% CI half-widths
+for subset-level macro WER and rate metrics when there are at least two rows.
+Preference-ASR rows use the Preference-ASR preference-aware normalizer when
+scoring, so the WER reflects whether the requested formatting or transcription
+preference was followed rather than erased by generic normalization.
 
 See `MEMO.md` for the benchmark rationale, group definitions, and
 reproducibility notes.

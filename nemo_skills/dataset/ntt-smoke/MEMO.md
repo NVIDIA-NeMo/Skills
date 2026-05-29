@@ -81,6 +81,8 @@ ASR-style groups report:
 - `ref_words`: reference word count.
 - `correct_words`: aligned hit count.
 - `success_rate`: fraction of rows with WER below the evaluator threshold.
+- `*_ci95`: normal-approximation 95% confidence-interval half-widths for
+  subset macro WER and rate metrics with at least two observations.
 
 Specialized groups also report hallucination rate, strict non-empty output
 rate, context-biasing named-entity WER/FNR, prompt WER delta, prompt text-match

@@ -350,9 +350,25 @@ def test_ntt_smoke_metrics_track_correct_words():
             }
         ]
     )
+    metrics.update(
+        [
+            {
+                "generation": "goodbye now",
+                "is_correct": False,
+                "wer": 0.0,
+                "wer_errors": 0,
+                "wer_ref_words": 2,
+                "wer_substitutions": 0,
+                "wer_insertions": 0,
+                "wer_deletions": 0,
+            }
+        ]
+    )
 
     pass_metrics = metrics.get_metrics()["pass@1"]
-    assert pass_metrics["correct_words"] == 3
+    assert pass_metrics["correct_words"] == 5
     assert pass_metrics["substitutions"] == 1
     assert pass_metrics["insertions"] == 0
     assert pass_metrics["deletions"] == 0
+    assert pass_metrics["wer_macro_ci95"] > 0
+    assert pass_metrics["success_rate_ci95"] > 0

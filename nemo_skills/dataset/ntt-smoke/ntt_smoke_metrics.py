@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from math import sqrt
 from statistics import mean
 from typing import Any
 
@@ -41,13 +42,29 @@ class NTTSmokeMetrics(AudioMetrics):
         self.prompt_group_wers: dict[str, list[float]] = defaultdict(list)
         self.prompt_group_texts: dict[str, set[str]] = defaultdict(set)
         self.language_wers: dict[str, list[float]] = defaultdict(list)
+        self.strict_hallucination_scores: list[float] = []
+        self.correct_scores: list[float] = []
+
+    @staticmethod
+    def _ci95(values: list[float], scale: float = 100.0) -> float | None:
+        """Return a normal-approximation 95% CI half-width."""
+        if len(values) < 2:
+            return None
+        avg = mean(values)
+        variance = sum((value - avg) ** 2 for value in values) / (len(values) - 1)
+        return round(1.96 * sqrt(variance / len(values)) * scale, 2)
 
     def update(self, predictions):
         for pred in predictions:
             if "strict_hallucination_rate" in pred:
-                self.strict_hallucinations += float(pred["strict_hallucination_rate"])
+                strict_score = float(pred["strict_hallucination_rate"])
+                self.strict_hallucinations += strict_score
                 self.strict_hallucination_total += 1
                 self.total_nonempty_chars += int(pred.get("nonempty_chars") or 0)
+                self.strict_hallucination_scores.append(strict_score)
+
+            if pred.get("is_correct") is not None:
+                self.correct_scores.append(1.0 if pred.get("is_correct") else 0.0)
 
             if "ne_wer_errors" in pred and "ne_wer_ref_words" in pred:
                 self.ne_wer_total_errors += int(pred["ne_wer_errors"])
@@ -84,6 +101,8 @@ class NTTSmokeMetrics(AudioMetrics):
             "prompt_groups": len(groups),
             "prompt_wer_delta": round(100.0 * mean(deltas), 2),
             "prompt_text_match_rate": round(100.0 * mean(text_match), 2),
+            "prompt_wer_delta_ci95": self._ci95(deltas) or 0.0,
+            "prompt_text_match_rate_ci95": self._ci95(text_match) or 0.0,
         }
 
     def _language_metrics(self) -> dict[str, float | int]:
@@ -95,6 +114,7 @@ class NTTSmokeMetrics(AudioMetrics):
         return {
             "language_count": len(per_language),
             "language_wer_macro": round(mean(per_language), 2),
+            "language_wer_macro_ci95": self._ci95([value / 100.0 for value in per_language]) or 0.0,
         }
 
     def get_metrics(self):
@@ -116,6 +136,9 @@ class NTTSmokeMetrics(AudioMetrics):
                 agg_metrics["strict_hallucination_rate"] = round(
                     100.0 * self.strict_hallucinations / self.strict_hallucination_total, 2
                 )
+                strict_ci95 = self._ci95(self.strict_hallucination_scores)
+                if strict_ci95 is not None:
+                    agg_metrics["strict_hallucination_rate_ci95"] = strict_ci95
                 agg_metrics["avg_nonempty_chars"] = round(
                     self.total_nonempty_chars / self.strict_hallucination_total, 2
                 )
@@ -129,6 +152,18 @@ class NTTSmokeMetrics(AudioMetrics):
 
             agg_metrics.update(self._prompt_metrics())
             agg_metrics.update(self._language_metrics())
+            if self.wer_scores:
+                wer_macro_ci95 = self._ci95([float(value) for value in self.wer_scores])
+                if wer_macro_ci95 is not None:
+                    agg_metrics["wer_macro_ci95"] = wer_macro_ci95
+            if self.hallucination_scores:
+                hallucination_ci95 = self._ci95([float(value) for value in self.hallucination_scores])
+                if hallucination_ci95 is not None:
+                    agg_metrics["hallucination_rate_ci95"] = hallucination_ci95
+            if self.correct_scores:
+                success_ci95 = self._ci95(self.correct_scores)
+                if success_ci95 is not None:
+                    agg_metrics["success_rate_ci95"] = success_ci95
 
         return metrics_dict
 
@@ -136,6 +171,7 @@ class NTTSmokeMetrics(AudioMetrics):
         metrics = super().metrics_to_print()
         if self.strict_hallucination_total > 0:
             metrics["strict_hallucination_rate"] = as_percentage
+            metrics["strict_hallucination_rate_ci95"] = as_percentage
             metrics["avg_nonempty_chars"] = as_float
         if self.ne_wer_total_ref_words > 0:
             metrics["ne_wer"] = as_percentage
@@ -144,12 +180,21 @@ class NTTSmokeMetrics(AudioMetrics):
         if self.prompt_group_wers:
             metrics["prompt_groups"] = as_int
             metrics["prompt_wer_delta"] = as_percentage
+            metrics["prompt_wer_delta_ci95"] = as_percentage
             metrics["prompt_text_match_rate"] = as_percentage
+            metrics["prompt_text_match_rate_ci95"] = as_percentage
         if self.language_wers:
             metrics["language_count"] = as_int
             metrics["language_wer_macro"] = as_percentage
+            metrics["language_wer_macro_ci95"] = as_percentage
         if self.wer_total_ref_words > 0:
             metrics["correct_words"] = as_int
+        if self.wer_scores:
+            metrics["wer_macro_ci95"] = as_percentage
+        if self.hallucination_scores:
+            metrics["hallucination_rate_ci95"] = as_percentage
+        if self.correct_scores:
+            metrics["success_rate_ci95"] = as_percentage
         return metrics
 
 
@@ -200,7 +245,7 @@ def compute_score(combined_metrics: dict) -> dict:
                 continue
             total_entries += entries
             for key, value in metrics.items():
-                if key == "num_entries" or not isinstance(value, (int, float)):
+                if key == "num_entries" or key.endswith("_ci95") or not isinstance(value, (int, float)):
                     continue
                 weight = 1 if key in sum_like else entries
                 weighted[key] += float(value) * weight
