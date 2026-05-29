@@ -213,7 +213,7 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
 === "CLI"
 
     ```bash
-    ns sft_nemo_rl \
+    ns nemo_rl sft \
         --cluster=slurm \
         --expname=qwen3-8b-lean-sft \
         --output_dir=/workspace/training/qwen3-8b-lean-sft \
@@ -226,7 +226,7 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
         ++sft.max_num_epochs=2000 \
         ++sft.max_num_steps=1000 \
         ++sft.val_period=0 \
-        ++policy.tokenizer.chat_template=null \
+        ++policy.tokenizer.chat_template=default \
         ++policy.sequence_packing.enabled=True \
         ++policy.sequence_packing.sequence_length_round=64 \
         ++policy.make_sequence_length_divisible_by=8 \
@@ -255,7 +255,7 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
             "++sft.max_num_epochs=2000 "
             "++sft.max_num_steps=1000 "
             "++sft.val_period=0 "
-            "++policy.tokenizer.chat_template=null "
+            "++policy.tokenizer.chat_template=default "
             "++policy.sequence_packing.enabled=True "
             "++policy.sequence_packing.sequence_length_round=64 "
             "++policy.make_sequence_length_divisible_by=8 "
