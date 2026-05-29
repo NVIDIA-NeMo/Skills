@@ -125,6 +125,20 @@ class GenerationTaskConfig:
     # maximum number of concurrent requests to the server for the async loop
     # if sync loop is used, this is the batch size
     max_concurrent_requests: int = 512
+    # Rate at which the async loop opens NEW HTTP connections during
+    # initial prime (target connections per second). The bounded
+    # worker pool would otherwise spawn `max_concurrent_requests`
+    # tasks in a tight loop, each opening a TCP connection nearly
+    # simultaneously -- the kernel accept queue on the receiving end
+    # (typically capped at net.core.somaxconn=4096) can briefly
+    # overflow and SYN-drop the excess. Limiting the ramp rate so
+    # each ~250-connection burst is followed by a short pause keeps
+    # the accept queue draining cleanly.
+    # Set to 0 (or negative) to disable ramping and prime
+    # instantaneously. The transient-retry logic in
+    # BaseModel.generate_async would still cover the resulting SYN
+    # drops; the ramp just makes them not happen in the first place.
+    ramp_rate_per_sec: int = 1000
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
     chunk_id: int | None = None  # if specified, will index the specified chunk only
@@ -924,11 +938,30 @@ class GenerationTask:
             data_iter = iter(remaining_data_points)
             in_flight: set = set()
 
-            # Prime the pool up to the concurrency cap.
+            # Prime the pool up to the concurrency cap, with rate-
+            # limited ramp so we don't open all max_in_flight TCP
+            # connections in a microsecond burst.
+            ramp_rate = self.cfg.ramp_rate_per_sec
+            if ramp_rate > 0:
+                # Spawn in batches sized so the implied pause is
+                # ~250ms -- short enough not to extend wall-time
+                # noticeably (target_depth=20k at 1000/s = 20s
+                # ramp), long enough for the kernel accept queue
+                # to drain between bursts.
+                ramp_batch = max(50, ramp_rate // 4)
+                ramp_interval = ramp_batch / ramp_rate
+            else:
+                ramp_batch = max_in_flight  # instant prime
+                ramp_interval = 0.0
+
+            primed = 0
             for dp in data_iter:
                 in_flight.add(asyncio.create_task(_safe_one(dp)))
-                if len(in_flight) >= max_in_flight:
+                primed += 1
+                if primed >= max_in_flight:
                     break
+                if ramp_interval > 0 and primed % ramp_batch == 0:
+                    await asyncio.sleep(ramp_interval)
 
             # Refill as tasks complete. asyncio.wait with
             # FIRST_COMPLETED returns as soon as ANY task finishes,
