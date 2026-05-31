@@ -332,6 +332,26 @@ class BaseModel:
                         self._maybe_apply_stop_phrase_removal(result, remove_stop_phrases, stop_phrases)
                     return result
 
+                except litellm.exceptions.ContextWindowExceededError as e:
+                    if "Requested token count exceeds the model's maximum context length" in str(e):
+                        LOG.error(
+                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
+                        )
+                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
+                    elif "is longer than the model's context length" in str(e):
+                        LOG.error(f"Input is longer than the model's context length, returning empty response: {e}")
+                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
+                    elif "'max_tokens' or 'max_completion_tokens' is too large:" in str(e):
+                        LOG.error(
+                            f"Requested token count exceeds the model's maximum context length, returning empty response: {e}"
+                        )
+                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "output_exceeded"}
+                    elif "Please reduce the length of the input message" in str(e):
+                        LOG.error(f"Please reduce the length of the input message, returning empty response: {e}")
+                        return {"generation": "", "num_generated_tokens": 0, "finish_reason": "input_exceeded"}
+                    else:
+                        raise e
+
                 except openai.BadRequestError as e:
                     if "output messages (reasoning and final)" in str(e):
                         if retry_count < max_retries:
