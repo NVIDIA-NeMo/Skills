@@ -496,4 +496,10 @@ def eval_gym(
             reuse_code_exp=reuse_code_exp,
             skip_hf_home_check=skip_hf_home_check,
         )
-        return pipeline.run(dry_run=dry_run, _reuse_exp=exp, sequential=sequential)
+        # Pipeline.run with `_reuse_exp` only registers tasks on the
+        # experiment; the caller is responsible for the actual SLURM submit.
+        # Matches the pattern in `eval.py` line 1086 (`pipeline_utils.run_exp`
+        # at end of `with get_exp(...)` block).
+        handles = pipeline.run(dry_run=dry_run, _reuse_exp=exp, sequential=sequential)
+        pipeline_utils.run_exp(exp, cluster_config, dry_run=dry_run)
+        return handles if _reuse_exp else None
