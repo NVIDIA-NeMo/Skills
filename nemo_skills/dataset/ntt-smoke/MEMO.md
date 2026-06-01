@@ -2,12 +2,11 @@
 
 ## Purpose
 
-NTT-SMOKE is a compact NemotronTranscribe evaluation suite intended to catch
-regressions across the major speech-model behaviors before larger benchmark
-runs. It has English and multilingual variants:
+NTT-SMOKE is a compact English NemotronTranscribe evaluation suite intended to
+catch regressions across the major speech-model behaviors before larger
+benchmark runs:
 
 - `ntt-smoke.en`
-- `ntt-smoke.multi`
 
 The suite is a mixed manifest. Every row records `ntt_subtask`,
 `subset_for_metrics`, `origin_dataset`, `origin_manifest`, `origin_id`, and
@@ -16,10 +15,12 @@ and subtask.
 
 ## Group Sizing
 
-The default configuration targets a minimum metric-group size of 200 rows.
-Groups that are expanded by prompt variants have at least 200 underlying
-prompt groups and at least 400 rows when the default `original,direct`
-Preference-ASR prompt variants are used.
+The default configuration targets a minimum metric-group size of 200 rows for
+regular subtests. AppTek long-form ASR defaults to 75 calls because each call
+contains many words and produces more stable corpus WER than the row count alone
+would suggest. Groups that are expanded by prompt variants have at least 200
+underlying prompt groups. English Preference-ASR groups have at least 400 rows
+when the default `original,direct` Preference-ASR prompt variants are used.
 
 Default preparation knobs:
 
@@ -28,9 +29,8 @@ Default preparation knobs:
 --prompt-groups 200
 --preference-asr-samples-per-group 200
 --preference-asr-prompt-variants original,direct
---long-samples 200
+--long-samples 75
 --text-samples 200
---multi-multiplier 2
 ```
 
 ## Subtests
@@ -41,7 +41,8 @@ Default preparation knobs:
 - `asr.short`: very short speech, capped by `--short-max-seconds`.
 - `asr.noisy_conversational`: AMI mixed with MUSAN noise at fixed SNRs.
 - `asr.noisy_media`: media-style speech mixed with MUSAN noise at fixed SNRs.
-- `asr.long`: stitched 20, 40, and 60 minute recordings.
+- `asr.long`: real long-form customer-support calls from AppTek
+  Call-Center Dialogues, preserving accent/domain/gender metadata.
 - `hallucination.nonspeech`: MUSAN non-speech audio with production and
   explicit-abstention prompts.
 - `prompt_robustness`: the same ASR examples with multiple text prompts.
@@ -55,13 +56,9 @@ Default preparation knobs:
 - `context_biasing.fine`
 - `text.superficial`: small GPQA multiple-choice checks.
 
-The multilingual suite includes the English-style groups plus
-`asr.clean_multilingual` from FLEURS/Covost2 and extra multilingual prompt
-robustness rows.
-
 ## Preference-ASR
 
-Preference-ASR is the intended source for the audio-instruction-following
+Preference-ASR is the intended source for the English audio-instruction-following
 groups. NTT-SMOKE samples each `preference_type` separately and expands each
 selected row into prompt variants. The original Preference-ASR instruction is
 preserved, and the direct variant wraps it as an explicit preference command.
@@ -80,7 +77,10 @@ ASR-style groups report:
 - `substitutions`, `insertions`, `deletions`: raw corpus edit operations.
 - `ref_words`: reference word count.
 - `correct_words`: aligned hit count.
-- `success_rate`: fraction of rows with WER below the evaluator threshold.
+- `success_rate`: fraction of ASR-style rows with WER strictly below
+  `eval_config.success_wer_threshold`, which defaults to 5%; text rows use
+  exact task-specific correctness. The effective threshold is emitted as
+  `success_wer_threshold` and `success_wer_threshold_percent`.
 - `*_ci95`: normal-approximation 95% confidence-interval half-widths for
   subset macro WER and rate metrics with at least two observations.
 
@@ -96,6 +96,7 @@ Prepare source datasets first, then run:
 ```bash
 export NTT_SMOKE_SOURCE_DATA_DIR=/path/to/skills_data
 export NTT_SMOKE_PREFERENCE_ASR_DIR=/path/to/preference-asr-bench
+export NTT_SMOKE_APPTEK_DIR=/path/to/skills_data/apptek-callcenter-dialogues
 
 ns prepare_data ntt-smoke --data_dir "$NTT_SMOKE_SOURCE_DATA_DIR"
 ```
@@ -110,7 +111,9 @@ Omni is served from an audio-capable vLLM/OpenAI-compatible server using
 API/backend provenance is not mixed with self-hosted results.
 
 The prepare script uses stable SHA-based sampling, so the same source manifests
-and options produce the same rows. Generated noisy and long-form audio is
-written under `ntt-smoke/data`. Preference-ASR rows preserve absolute paths
-under `NTT_SMOKE_PREFERENCE_ASR_DIR`, so that directory must be readable or
-mounted during evaluation.
+and options produce the same rows. Generated noisy audio is written under
+`ntt-smoke/data`. Long-form rows are sampled from
+`apptek-callcenter-dialogues/test.jsonl`; prepare that benchmark under the same
+source data root or pass `--apptek-dir`. Preference-ASR rows preserve absolute
+paths under `NTT_SMOKE_PREFERENCE_ASR_DIR`, so that directory must be readable
+or mounted during evaluation.

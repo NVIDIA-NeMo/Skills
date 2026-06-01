@@ -25,6 +25,9 @@ from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
 from nemo_skills.evaluation.metrics.base import as_float, as_int, as_percentage
 
 
+SUCCESS_WER_THRESHOLD = 0.05
+
+
 class NTTSmokeMetrics(AudioMetrics):
     """AudioMetrics extension with NTT-SMOKE subtest signals."""
 
@@ -44,6 +47,7 @@ class NTTSmokeMetrics(AudioMetrics):
         self.language_wers: dict[str, list[float]] = defaultdict(list)
         self.strict_hallucination_scores: list[float] = []
         self.correct_scores: list[float] = []
+        self.success_wer_thresholds: list[float] = []
 
     @staticmethod
     def _ci95(values: list[float], scale: float = 100.0) -> float | None:
@@ -55,7 +59,20 @@ class NTTSmokeMetrics(AudioMetrics):
         return round(1.96 * sqrt(variance / len(values)) * scale, 2)
 
     def update(self, predictions):
+        thresholded_predictions = []
         for pred in predictions:
+            pred = dict(pred)
+            if pred.get("wer") is not None:
+                threshold = float(pred.get("success_wer_threshold", SUCCESS_WER_THRESHOLD))
+                pred["success_wer_threshold"] = threshold
+                pred["success_wer_threshold_percent"] = round(100.0 * threshold, 6)
+                pred["is_correct"] = float(pred["wer"]) < threshold
+                self.success_wer_thresholds.append(threshold)
+
+            base_pred = dict(pred)
+            base_pred.pop("wer_correct_words", None)
+            thresholded_predictions.append(base_pred)
+
             if "strict_hallucination_rate" in pred:
                 strict_score = float(pred["strict_hallucination_rate"])
                 self.strict_hallucinations += strict_score
@@ -84,7 +101,7 @@ class NTTSmokeMetrics(AudioMetrics):
             if language and pred.get("wer") is not None:
                 self.language_wers[str(language)].append(float(pred["wer"]))
 
-        super().update(predictions)
+        super().update(thresholded_predictions)
 
     def _prompt_metrics(self) -> dict[str, float | int]:
         groups = [values for values in self.prompt_group_wers.values() if len(values) > 1]
@@ -117,10 +134,24 @@ class NTTSmokeMetrics(AudioMetrics):
             "language_wer_macro_ci95": self._ci95([value / 100.0 for value in per_language]) or 0.0,
         }
 
+    def _success_threshold_metrics(self) -> dict[str, float | int]:
+        if not self.success_wer_thresholds:
+            return {}
+        unique_thresholds = sorted({round(value, 10) for value in self.success_wer_thresholds})
+        metrics = {
+            "success_wer_threshold": unique_thresholds[0],
+            "success_wer_threshold_percent": round(100.0 * unique_thresholds[0], 6),
+        }
+        if len(unique_thresholds) > 1:
+            metrics["success_wer_threshold_mixed"] = 1
+        return metrics
+
     def get_metrics(self):
         metrics_dict = super().get_metrics()
 
         for _agg_mode, agg_metrics in metrics_dict.items():
+            agg_metrics.update(self._success_threshold_metrics())
+
             if (
                 "ref_words" in agg_metrics
                 and "substitutions" in agg_metrics
@@ -195,6 +226,11 @@ class NTTSmokeMetrics(AudioMetrics):
             metrics["hallucination_rate_ci95"] = as_percentage
         if self.correct_scores:
             metrics["success_rate_ci95"] = as_percentage
+        if self.success_wer_thresholds:
+            metrics["success_wer_threshold"] = as_float
+            metrics["success_wer_threshold_percent"] = as_percentage
+            if len({round(value, 10) for value in self.success_wer_thresholds}) > 1:
+                metrics["success_wer_threshold_mixed"] = as_int
         return metrics
 
 
@@ -208,8 +244,8 @@ def _metrics_for_eval_mode(benchmark_metrics: dict[str, Any], eval_mode: str) ->
 
 
 def compute_score(combined_metrics: dict) -> dict:
-    """Aggregate `ntt-smoke.en` and `ntt-smoke.multi` group results."""
-    benchmarks = {key: value for key, value in combined_metrics.items() if key in {"ntt-smoke.en", "ntt-smoke.multi"}}
+    """Aggregate NTT-SMOKE English group results."""
+    benchmarks = {key: value for key, value in combined_metrics.items() if key == "ntt-smoke.en"}
     if not benchmarks:
         return {}
 
@@ -234,6 +270,7 @@ def compute_score(combined_metrics: dict) -> dict:
             "prompt_groups",
             "language_count",
         }
+        config_like = {"success_wer_threshold", "success_wer_threshold_percent", "success_wer_threshold_mixed"}
         integer_like = {"avg_tokens", *sum_like}
 
         for benchmark_metrics in benchmarks.values():
@@ -245,10 +282,25 @@ def compute_score(combined_metrics: dict) -> dict:
                 continue
             total_entries += entries
             for key, value in metrics.items():
-                if key == "num_entries" or key.endswith("_ci95") or not isinstance(value, (int, float)):
+                if (
+                    key == "num_entries"
+                    or key.endswith("_ci95")
+                    or key in config_like
+                    or not isinstance(value, (int, float))
+                ):
                     continue
                 weight = 1 if key in sum_like else entries
                 weighted[key] += float(value) * weight
+
+        config_values: dict[str, set[float]] = defaultdict(set)
+        for benchmark_metrics in benchmarks.values():
+            metrics = _metrics_for_eval_mode(benchmark_metrics, eval_mode)
+            if not metrics:
+                continue
+            for key in config_like:
+                value = metrics.get(key)
+                if isinstance(value, (int, float)):
+                    config_values[key].add(round(float(value), 10))
 
         if total_entries <= 0:
             continue
@@ -263,6 +315,10 @@ def compute_score(combined_metrics: dict) -> dict:
                 mode_metrics[key] = int(value)
             else:
                 mode_metrics[key] = round(value / total_entries, 2)
+        for key, values in config_values.items():
+            if values:
+                value = sorted(values)[0]
+                mode_metrics[key] = int(value) if key.endswith("_mixed") else value
         aggregated[eval_mode] = mode_metrics
 
     return aggregated

@@ -16,7 +16,7 @@
 
 NTT-SMOKE intentionally reuses small, representative slices from existing
 prepared benchmarks. Source samples keep origin metadata, while generated noisy
-and long-form samples are written under ``ntt-smoke/data``.
+samples are written under ``ntt-smoke/data``.
 """
 
 from __future__ import annotations
@@ -40,60 +40,9 @@ DEFAULT_SOURCE_DATA_DIR = (
 DEFAULT_PREFERENCE_ASR_DIR = (
     "/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_speechlm/data/ASR/preference-asr-bench"
 )
-DEFAULT_LANGUAGES = [
-    "ar_eg",
-    "bg_bg",
-    "cmn_hans_cn",
-    "hr_hr",
-    "cs_cz",
-    "da_dk",
-    "nl_nl",
-    "en_us",
-    "et_ee",
-    "fi_fi",
-    "fr_fr",
-    "de_de",
-    "el_gr",
-    "he_il",
-    "hi_in",
-    "hu_hu",
-    "it_it",
-    "ja_jp",
-    "ko_kr",
-    "lv_lv",
-    "lt_lt",
-    "mt_mt",
-    "pl_pl",
-    "pt_br",
-    "ro_ro",
-    "ru_ru",
-    "sk_sk",
-    "sl_si",
-    "es_419",
-    "sv_se",
-    "th_th",
-    "uk_ua",
-]
+APPTEK_BENCHMARK_NAME = "apptek-callcenter-dialogues"
 DEFAULT_PREFERENCE_ASR_GROUPS = ["normalization", "entities", "disfluencies", "case", "standard"]
 DEFAULT_PREFERENCE_ASR_PROMPT_VARIANTS = ["original", "direct"]
-
-COVOST2_BY_FLEURS = {
-    "ar_eg": "ar",
-    "cmn_hans_cn": "zh-CN",
-    "nl_nl": "nl",
-    "en_us": "en",
-    "et_ee": "et",
-    "fr_fr": "fr",
-    "de_de": "de",
-    "it_it": "it",
-    "ja_jp": "ja",
-    "lv_lv": "lv",
-    "pt_br": "pt",
-    "ru_ru": "ru",
-    "sl_si": "sl",
-    "es_419": "es",
-    "sv_se": "sv-SE",
-}
 
 NORMALIZER_LANG_BY_DATASET_LANG = {
     "cmn_hans_cn": "zh",
@@ -111,7 +60,6 @@ ASR_PROMPTS = {
 }
 
 NOISE_SNRS = [5.0, 10.0, 15.0]
-LONG_TARGET_SECONDS = [20 * 60, 40 * 60, 60 * 60]
 SOURCE_READ_LIMIT = 0
 
 
@@ -320,34 +268,6 @@ def _load_source(source_root: Path, dataset: str, filename: str) -> list[dict[st
     return _read_jsonl(source_root / _source_rel(dataset, filename))
 
 
-def _rows_by_language(rows: list[dict[str, Any]], languages: list[str]) -> dict[str, list[dict[str, Any]]]:
-    wanted = set(languages)
-    wanted.update(COVOST2_BY_FLEURS.get(language, language) for language in languages)
-    grouped: dict[str, list[dict[str, Any]]] = {language: [] for language in languages}
-    for row in rows:
-        extra_fields = row.get("extra_fields") or {}
-        language = extra_fields.get("src_lang") or row.get("language")
-        if language not in wanted:
-            continue
-        group_key = language
-        for fleurs_locale, covost2_lang in COVOST2_BY_FLEURS.items():
-            if language == covost2_lang and fleurs_locale in grouped:
-                group_key = fleurs_locale
-                break
-        if group_key in grouped:
-            grouped[group_key].append(row)
-    return grouped
-
-
-def _sample_by_language(rows: list[dict[str, Any]], count: int, languages: list[str], salt: str) -> list[dict[str, Any]]:
-    grouped = _rows_by_language(rows, languages)
-    sampled = []
-    per_language = max(1, count // max(1, len(languages)))
-    for language in languages:
-        sampled.extend(_sample(grouped.get(language, []), per_language, f"{salt}:{language}"))
-    return _sample(sampled, count, f"{salt}:trim")
-
-
 def _read_audio(row: dict[str, Any], source_root: Path) -> tuple[np.ndarray, int] | None:
     audio_path = _audio_path(row)
     if not audio_path:
@@ -444,83 +364,67 @@ def _create_noisy_rows(
     return generated
 
 
-def _create_long_rows(
-    rows: list[dict[str, Any]],
+def _resolve_apptek_dir(source_root: Path, arg_apptek_dir: str | None) -> Path:
+    if arg_apptek_dir:
+        return Path(arg_apptek_dir).expanduser()
+    return source_root / APPTEK_BENCHMARK_NAME
+
+
+def _apptek_manifest_path(apptek_dir: Path) -> Path:
+    return apptek_dir / "test.jsonl"
+
+
+def _apptek_long_rows(
+    apptek_dir: Path,
     *,
-    source_root: Path,
-    output_dir: Path,
     variant: str,
     count: int,
     salt: str,
 ) -> list[dict[str, Any]]:
-    source_rows = _sample([row for row in rows if _duration(row)], max(len(rows), count * 20), salt)
-    if not source_rows:
+    if count <= 0:
         return []
-    long_rows = []
-    cursor = 0
-    for idx in range(count):
-        target_seconds = LONG_TARGET_SECONDS[idx % len(LONG_TARGET_SECONDS)]
-        chunks = []
-        texts = []
-        origins = []
-        sample_rate = None
-        total = 0.0
-        attempts = 0
-        while total < target_seconds and attempts < len(source_rows) * 3:
-            row = source_rows[cursor % len(source_rows)]
-            cursor += 1
-            attempts += 1
-            audio = _read_audio(row, source_root)
-            if audio is None:
-                continue
-            samples, sr = audio
-            if sample_rate is None:
-                sample_rate = sr
-            if sr != sample_rate:
-                continue
-            chunks.append(samples)
-            chunks.append(np.zeros(int(0.5 * sr), dtype=np.float32))
-            texts.append(str(row.get("expected_answer", "")).strip())
-            origins.append(_origin_id(row))
-            total += len(samples) / sr + 0.5
-        if not chunks or sample_rate is None:
-            continue
-        stitched = np.concatenate(chunks)
-        audio_rel = Path("data") / "long" / variant / f"ntt_smoke_long_{idx:03d}.wav"
-        audio_path = output_dir / audio_rel
-        audio_path.parent.mkdir(parents=True, exist_ok=True)
-        sf.write(str(audio_path), stitched, sample_rate)
-        container_path = f"/data/ntt-smoke/{audio_rel.as_posix()}"
-        duration = len(stitched) / sample_rate
-        expected_answer = " ".join(text for text in texts if text)
-        row = {
-            "task_type": "ASR",
-            "expected_answer": expected_answer,
-            "audio_filepath": container_path,
-            "audio_path": container_path,
-            "audio_duration": duration,
-            "messages": [
-                {"role": "system", "content": SYSTEM_MESSAGE},
-                {
-                    "role": "user",
-                    "content": ASR_PROMPTS["canonical"],
-                    "audio": {"path": container_path, "duration": duration},
-                },
-            ],
-            "stitched_origin_ids": origins,
+
+    manifest = _apptek_manifest_path(apptek_dir)
+    if not manifest.exists():
+        raise FileNotFoundError(
+            f"AppTek long-form manifest not found: {manifest}. "
+            "Run `ns prepare_data apptek-callcenter-dialogues` into the source data root, "
+            "pass --apptek-dir, or set --long-samples 0."
+        )
+
+    candidates = [
+        row
+        for row in _read_jsonl(manifest)
+        if (row.get("expected_answer") or row.get("text")) and _audio_path(row) is not None
+    ]
+    out = []
+    for row in _sample(candidates, count, salt):
+        apptek_row = copy.deepcopy(row)
+        if not apptek_row.get("expected_answer") and apptek_row.get("text"):
+            apptek_row["expected_answer"] = apptek_row["text"]
+        extra_fields = row.get("extra_fields") or {}
+        duration = _duration(row)
+        extra = {
+            "apptek_accent": extra_fields.get("accent_code") or row.get("subset_for_metrics"),
+            "apptek_domain": extra_fields.get("domain"),
+            "apptek_gender": extra_fields.get("gender"),
         }
-        long_rows.append(
+        if duration is not None:
+            extra["audio_duration"] = duration
+        out.append(
             _with_metadata(
-                row,
+                apptek_row,
                 variant=variant,
                 subtask="asr.long",
-                origin_dataset="asr-leaderboard",
-                origin_split="stitched",
-                origin_manifest="asr-leaderboard/earnings22.jsonl+tedlium.jsonl",
-                extra={"stitched_target_seconds": target_seconds},
+                origin_dataset=APPTEK_BENCHMARK_NAME,
+                origin_split=str(extra["apptek_accent"] or "test"),
+                origin_manifest=f"{APPTEK_BENCHMARK_NAME}/test.jsonl",
+                task_type="ASR",
+                prompt=ASR_PROMPTS["canonical"],
+                extra=extra,
             )
         )
-    return long_rows
+    return out
 
 
 def _context_rows(source_root: Path, variant: str, samples_per_mode: int) -> list[dict[str, Any]]:
@@ -782,7 +686,12 @@ def _audio_instruction_rows(
     return out
 
 
-def _english_rows(source_root: Path, output_dir: Path, args: argparse.Namespace, variant: str = "en") -> list[dict[str, Any]]:
+def _english_rows(
+    source_root: Path,
+    output_dir: Path,
+    args: argparse.Namespace,
+    variant: str = "en",
+) -> list[dict[str, Any]]:
     n = args.audio_samples
     clean_read = _load_source(source_root, "asr-leaderboard", "librispeech_clean.jsonl")
     clean_conv = _load_source(source_root, "asr-leaderboard", "ami.jsonl")
@@ -795,9 +704,6 @@ def _english_rows(source_root: Path, output_dir: Path, args: argparse.Namespace,
         for row in clean_read + clean_conv + clean_media + _load_source(source_root, "asr-leaderboard", "librispeech_other.jsonl")
         if (_duration(row) or 999.0) <= args.short_max_seconds
     ]
-    long_pool = _load_source(source_root, "asr-leaderboard", "earnings22.jsonl") + _load_source(
-        source_root, "asr-leaderboard", "tedlium.jsonl"
-    )
     noise_rows = _load_source(source_root, "musan", "test.jsonl")
 
     rows: list[dict[str, Any]] = []
@@ -851,17 +757,16 @@ def _english_rows(source_root: Path, output_dir: Path, args: argparse.Namespace,
         )
     )
     rows.extend(
-        _create_long_rows(
-            long_pool,
-            source_root=source_root,
-            output_dir=output_dir,
+        _apptek_long_rows(
+            _resolve_apptek_dir(source_root, args.apptek_dir),
             variant=variant,
             count=args.long_samples,
-            salt=f"{variant}:long",
+            salt=f"{variant}:apptek-long",
         )
     )
     rows.extend(_hallucination_rows(source_root, variant, n))
-    rows.extend(_prompt_robustness_rows(rows, variant, max(1, args.prompt_groups), f"{variant}:prompt"))
+    prompt_rows = [row for row in rows if row.get("ntt_subtask") != "asr.long"]
+    rows.extend(_prompt_robustness_rows(prompt_rows, variant, max(1, args.prompt_groups), f"{variant}:prompt"))
     rows.extend(
         _audio_instruction_rows(
             source_root,
@@ -874,41 +779,6 @@ def _english_rows(source_root: Path, output_dir: Path, args: argparse.Namespace,
     )
     rows.extend(_context_rows(source_root, variant, n))
     rows.extend(_text_rows(source_root, variant, args.text_samples))
-    return rows
-
-
-def _multilingual_rows(source_root: Path, output_dir: Path, args: argparse.Namespace) -> list[dict[str, Any]]:
-    rows = _english_rows(source_root, output_dir, args, variant="multi")
-
-    n = args.audio_samples * args.multi_multiplier
-    languages = [lang.strip() for lang in args.languages.split(",") if lang.strip()]
-    fleurs = _load_source(source_root, "fleurs", "asr/test.jsonl")
-    covost2 = _load_source(source_root, "covost2", "asr/test.jsonl")
-    multilingual_pool = _sample_by_language(fleurs + covost2, n, languages, "multi:clean")
-
-    multilingual_rows = []
-    for row in multilingual_pool:
-        language = (row.get("extra_fields") or {}).get("src_lang") or "unknown"
-        multilingual_rows.append(
-            _with_metadata(
-                row,
-                variant="multi",
-                subtask="asr.clean_multilingual",
-                origin_dataset="fleurs/covost2",
-                origin_split="test",
-                origin_manifest="fleurs/asr/test.jsonl+covost2/asr/test.jsonl",
-                language=language,
-            )
-        )
-    rows.extend(multilingual_rows)
-    rows.extend(
-        _prompt_robustness_rows(
-            multilingual_rows,
-            "multi",
-            max(1, min(len(multilingual_rows), args.prompt_groups * args.multi_multiplier)),
-            "multi:prompt",
-        )
-    )
     return rows
 
 
@@ -948,12 +818,18 @@ def main() -> None:
     parser.add_argument(
         "--long-samples",
         type=int,
-        default=200,
-        help="Number of stitched long-form samples per variant; cycles through 20, 40, and 60 minute targets.",
+        default=75,
+        help="Number of AppTek Call-Center Dialogues long-form samples per variant.",
     )
-    parser.add_argument("--multi-multiplier", type=int, default=2, help="Multilingual size multiplier.")
+    parser.add_argument(
+        "--apptek-dir",
+        default=os.getenv("NTT_SMOKE_APPTEK_DIR"),
+        help=(
+            "Prepared apptek-callcenter-dialogues directory containing test.jsonl. "
+            "Defaults to <source-data-dir>/apptek-callcenter-dialogues."
+        ),
+    )
     parser.add_argument("--short-max-seconds", type=float, default=3.0, help="Maximum duration for very short ASR.")
-    parser.add_argument("--languages", default=",".join(DEFAULT_LANGUAGES), help="Comma-separated multilingual locales.")
     parser.add_argument(
         "--preference-asr-groups",
         default=",".join(DEFAULT_PREFERENCE_ASR_GROUPS),
@@ -971,7 +847,6 @@ def main() -> None:
         default=0,
         help="Read at most this many lines per source manifest. Intended for local smoke tests; default reads all.",
     )
-    parser.add_argument("--skip-multi", action="store_true", help="Only write the English variant.")
     args = parser.parse_args()
 
     global SOURCE_READ_LIMIT
@@ -989,12 +864,6 @@ def main() -> None:
 
     summaries = {"en": _summarize(en_rows)}
     print(f"Wrote ntt-smoke.en: {en_count} samples")
-
-    if not args.skip_multi:
-        multi_rows = _balance_manifest_order(_multilingual_rows(source_root, output_dir, args))
-        multi_count = _write_jsonl(output_dir / "multi" / "test.jsonl", multi_rows)
-        summaries["multi"] = _summarize(multi_rows)
-        print(f"Wrote ntt-smoke.multi: {multi_count} samples")
 
     pref_dir = Path(args.preference_asr_dir)
     summaries["preference_asr_dir"] = str(pref_dir)

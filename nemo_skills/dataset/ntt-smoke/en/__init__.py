@@ -16,6 +16,7 @@ METRICS_TYPE = "nemo_skills.dataset.ntt-smoke.ntt_smoke_metrics::NTTSmokeMetrics
 EVAL_ARGS = (
     "++eval_type=nemo_skills.dataset.ntt-smoke.ntt_smoke_eval::NTTSmokeEvaluator "
     "++eval_config.normalization_mode=hf_leaderboard "
-    "++eval_config.strip_helpful_prefixes=true"
+    "++eval_config.strip_helpful_prefixes=true "
+    "++eval_config.success_wer_threshold=0.05"
 )
 GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"

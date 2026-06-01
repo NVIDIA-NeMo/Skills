@@ -188,7 +188,6 @@ def test_ntt_smoke_prepare_english_manifest(tmp_path):
         "1",
         "--long-samples",
         "0",
-        "--skip-multi",
     ]
 
     old_argv = __import__("sys").argv
@@ -212,6 +211,73 @@ def test_ntt_smoke_prepare_english_manifest(tmp_path):
     assert all(row["origin_dataset"] for row in rows)
     assert (output_root / "data" / "noisy" / "en").exists()
     assert all(row.get("lang") for row in rows)
+
+
+def test_ntt_smoke_prepare_uses_apptek_for_long_rows(tmp_path):
+    prepare = _load_prepare_module()
+    source_root = tmp_path / "source"
+    output_root = tmp_path / "out"
+    _make_source_root(source_root)
+    _write_jsonl(
+        source_root / "apptek-callcenter-dialogues" / "test.jsonl",
+        [
+            {
+                "task_type": "ASR",
+                "expected_answer": "Thank you for calling customer support.",
+                "audio_filepath": "/data/apptek-callcenter-dialogues/test/en-US_General/audio/call.wav",
+                "duration": 615.0,
+                "subset_for_metrics": "en-US_General",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Transcribe the following audio.",
+                        "audio": {
+                            "path": "/data/apptek-callcenter-dialogues/test/en-US_General/audio/call.wav",
+                            "duration": 615.0,
+                        },
+                    }
+                ],
+                "extra_fields": {
+                    "accent_code": "en-US_General",
+                    "domain": "banking",
+                    "gender": "female",
+                },
+            }
+        ],
+    )
+
+    old_argv = __import__("sys").argv
+    try:
+        __import__("sys").argv = [
+            "prepare.py",
+            "--source-data-dir",
+            str(source_root),
+            "--output-dir",
+            str(output_root),
+            "--audio-samples",
+            "1",
+            "--text-samples",
+            "1",
+            "--prompt-groups",
+            "1",
+            "--long-samples",
+            "1",
+        ]
+        prepare.main()
+    finally:
+        __import__("sys").argv = old_argv
+
+    rows = [json.loads(line) for line in (output_root / "en" / "test.jsonl").read_text(encoding="utf-8").splitlines()]
+    long_rows = [row for row in rows if row["ntt_subtask"] == "asr.long"]
+    prompt_rows = [row for row in rows if row["ntt_subtask"] == "prompt_robustness"]
+
+    assert len(long_rows) == 1
+    assert long_rows[0]["origin_dataset"] == "apptek-callcenter-dialogues"
+    assert long_rows[0]["origin_split"] == "en-US_General"
+    assert long_rows[0]["apptek_domain"] == "banking"
+    assert long_rows[0]["audio_duration"] == 615.0
+    assert all(row["origin_dataset"] != "apptek-callcenter-dialogues" for row in prompt_rows)
+    assert not (output_root / "data" / "long").exists()
 
 
 def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
@@ -255,7 +321,6 @@ def test_ntt_smoke_prepare_prefers_preference_asr(tmp_path):
             "1",
             "--long-samples",
             "0",
-            "--skip-multi",
         ]
         prepare.main()
     finally:
@@ -287,15 +352,6 @@ def test_ntt_smoke_prepare_spreads_long_rows():
     assert min(b - a for a, b in zip(long_positions, long_positions[1:])) > 1
 
 
-def test_ntt_smoke_eval_normalizes_multilingual_language_metadata():
-    evaluator = _load_eval_module()
-
-    sample = evaluator._as_multilingual_asr_sample({"task_type": "ASR", "language": "cmn_hans_cn"})
-
-    assert sample["task_type"] == "Multilingual-ASR"
-    assert sample["extra_fields"]["src_lang"] == "zh"
-
-
 def test_ntt_smoke_context_entity_scoring_ignores_unmatched_reference_entities():
     evaluator = _load_eval_module()
     sample = {
@@ -319,6 +375,22 @@ def test_ntt_smoke_eval_handles_empty_preference_reference():
     assert result["wer_ref_words"] == 0
     assert result["wer_insertions"] == 2
     assert result["wer_correct_words"] == 0
+
+
+def test_ntt_smoke_wer_success_threshold_is_five_percent():
+    evaluator = _load_eval_module()
+
+    passing = evaluator._apply_wer_success_threshold({"wer": 0.049})
+    failing = evaluator._apply_wer_success_threshold({"wer": 0.05})
+    configured = evaluator._apply_wer_success_threshold({"wer": 0.08}, threshold=0.1)
+
+    assert passing["is_correct"] is True
+    assert failing["is_correct"] is False
+    assert passing["success_wer_threshold"] == 0.05
+    assert passing["success_wer_threshold_percent"] == 5.0
+    assert configured["is_correct"] is True
+    assert configured["success_wer_threshold"] == 0.1
+    assert configured["success_wer_threshold_percent"] == 10.0
 
 
 def test_ntt_smoke_metrics_track_correct_words():
@@ -358,6 +430,7 @@ def test_ntt_smoke_metrics_track_correct_words():
                 "wer_substitutions": 1,
                 "wer_insertions": 0,
                 "wer_deletions": 0,
+                "success_wer_threshold": 0.05,
             }
         ]
     )
@@ -372,6 +445,7 @@ def test_ntt_smoke_metrics_track_correct_words():
                 "wer_substitutions": 0,
                 "wer_insertions": 0,
                 "wer_deletions": 0,
+                "success_wer_threshold": 0.05,
             }
         ]
     )
@@ -381,5 +455,9 @@ def test_ntt_smoke_metrics_track_correct_words():
     assert pass_metrics["substitutions"] == 1
     assert pass_metrics["insertions"] == 0
     assert pass_metrics["deletions"] == 0
+    assert pass_metrics["success_rate"] == 50.0
+    assert pass_metrics["success_wer_threshold"] == 0.05
+    assert pass_metrics["success_wer_threshold_percent"] == 5.0
+    assert "wer_correct_words" not in pass_metrics
     assert pass_metrics["wer_macro_ci95"] > 0
     assert pass_metrics["success_rate_ci95"] > 0

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
-from dataclasses import fields, replace
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
@@ -37,43 +37,14 @@ from nemo_skills.evaluation.evaluator.contextasr import (
 )
 
 
-_FLEURS_TO_NORMALIZER_LANG = {
-    "cmn_hans_cn": "zh",
-    "en_us": "en",
-    "es_419": "es",
-    "pt_br": "pt",
-    "sv_se": "sv",
-}
-
 _PREFERENCE_NORMALIZERS: dict[str, Any] = {}
+SUCCESS_WER_THRESHOLD = 0.05
 
 
 def _audio_config(config: dict[str, Any]) -> AudioEvaluatorConfig:
     """Build AudioEvaluatorConfig while ignoring NTT-specific config keys."""
     field_names = {field.name for field in fields(AudioEvaluatorConfig)}
     return AudioEvaluatorConfig(**{key: value for key, value in config.items() if key in field_names})
-
-
-def _normalizer_lang(sample: dict[str, Any]) -> str | None:
-    extra_fields = sample.get("extra_fields") or {}
-    lang = extra_fields.get("src_lang") or sample.get("lang") or sample.get("language")
-    if not isinstance(lang, str) or not lang:
-        return None
-    lang = _FLEURS_TO_NORMALIZER_LANG.get(lang, lang)
-    if "_" in lang:
-        lang = lang.split("_", 1)[0]
-    if "-" in lang:
-        lang = lang.split("-", 1)[0]
-    return lang or None
-
-
-def _as_multilingual_asr_sample(sample: dict[str, Any]) -> dict[str, Any]:
-    sample = dict(sample)
-    sample["task_type"] = "Multilingual-ASR"
-    extra_fields = dict(sample.get("extra_fields") or {})
-    extra_fields.setdefault("src_lang", _normalizer_lang(sample) or "en")
-    sample["extra_fields"] = extra_fields
-    return sample
 
 
 def _clean_generation(generation: str, config: AudioEvaluatorConfig) -> str:
@@ -93,6 +64,19 @@ def _add_wer_correct_words(updates: dict[str, Any]) -> dict[str, Any]:
             0,
             int(updates["wer_ref_words"]) - int(updates["wer_substitutions"]) - int(updates["wer_deletions"]),
         )
+    return updates
+
+
+def _apply_wer_success_threshold(
+    updates: dict[str, Any],
+    threshold: float = SUCCESS_WER_THRESHOLD,
+) -> dict[str, Any]:
+    """Use NTT-SMOKE's stricter row-success threshold for WER tasks."""
+    if updates.get("wer") is not None:
+        threshold = float(threshold)
+        updates["success_wer_threshold"] = threshold
+        updates["success_wer_threshold_percent"] = round(100.0 * threshold, 6)
+        updates["is_correct"] = float(updates["wer"]) < threshold
     return updates
 
 
@@ -158,6 +142,7 @@ def _evaluate_preference_asr_sample(
     sample: dict[str, Any],
     generation: str,
     config: AudioEvaluatorConfig,
+    success_wer_threshold: float = SUCCESS_WER_THRESHOLD,
 ) -> dict[str, Any]:
     normalizer_dir = (
         sample.get("preference_asr_normalizer_dir")
@@ -176,16 +161,19 @@ def _evaluate_preference_asr_sample(
     updates = _wer_counts(norm_ref, norm_hyp)
     updates.update(
         {
-            "is_correct": updates["wer"] < 0.5,
             "text": norm_ref,
             "pred_text": norm_hyp,
             "predicted_answer": cleaned_generation,
         }
     )
-    return updates
+    return _apply_wer_success_threshold(updates, success_wer_threshold)
 
 
-def _evaluate_contextasr_sample(sample: dict[str, Any], generation: str) -> dict[str, Any]:
+def _evaluate_contextasr_sample(
+    sample: dict[str, Any],
+    generation: str,
+    success_wer_threshold: float = SUCCESS_WER_THRESHOLD,
+) -> dict[str, Any]:
     """Evaluate one ContextASR sample and retain edit-operation counts."""
     reference = sample["expected_answer"]
     entity_list = sample.get("entity_list") or []
@@ -207,11 +195,11 @@ def _evaluate_contextasr_sample(sample: dict[str, Any], generation: str) -> dict
         "wer_deletions": wer_d,
         "wer_substitutions": wer_s,
         "wer_correct_words": max(0, wer_ref_words - wer_s - wer_d),
-        "is_correct": wer < 0.5,
         "text": norm_ref,
         "pred_text": norm_hyp,
         "predicted_answer": generation,
     }
+    _apply_wer_success_threshold(updates, success_wer_threshold)
 
     norm_entities = []
     for entity in entity_list:
@@ -319,28 +307,28 @@ class NTTSmokeEvaluator(BaseEvaluator):
     def __init__(self, config: dict[str, Any], num_parallel_requests=10):
         super().__init__(config, num_parallel_requests)
         self.audio_config = _audio_config(config)
+        self.success_wer_threshold = float(config.get("success_wer_threshold", SUCCESS_WER_THRESHOLD))
 
     async def eval_single(self, data_point: dict[str, Any]) -> dict[str, Any]:
         task_type = data_point.get("task_type")
 
         if task_type == "ContextASR":
             generation = _clean_generation(data_point.get("generation", ""), self.audio_config)
-            return _evaluate_contextasr_sample(data_point, generation)
+            return _evaluate_contextasr_sample(data_point, generation, self.success_wer_threshold)
 
         if task_type == "Text-MCQ":
             return _evaluate_text_mcq(data_point)
 
         if task_type == "PreferenceASR":
-            return _evaluate_preference_asr_sample(data_point, data_point.get("generation", ""), self.audio_config)
-
-        if task_type == "ASR" and self.audio_config.normalization_mode == "multilingual":
-            return _add_wer_correct_words(evaluate_audio_sample(_as_multilingual_asr_sample(data_point), self.audio_config))
-
-        if task_type == "ASR-PC" and self.audio_config.normalization_mode == "multilingual":
-            audio_config = replace(self.audio_config, normalization_mode="hf_leaderboard")
-            return _add_wer_correct_words(evaluate_audio_sample(data_point, audio_config))
+            return _evaluate_preference_asr_sample(
+                data_point,
+                data_point.get("generation", ""),
+                self.audio_config,
+                self.success_wer_threshold,
+            )
 
         updates = _add_wer_correct_words(evaluate_audio_sample(data_point, self.audio_config))
+        _apply_wer_success_threshold(updates, self.success_wer_threshold)
         if task_type == "Hallucination":
             generation = _clean_generation(data_point.get("generation", ""), self.audio_config)
             _add_strict_hallucination(updates, generation)
