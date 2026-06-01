@@ -22,6 +22,31 @@ Usage:
     ++tool_modules=[nemo_skills.mcp.servers.tavily_search_tool::DirectTavilySearchTool]
     ++tool_modules=[nemo_skills.mcp.servers.tavily_search_tool::DirectTavilyGymTool]
     ++tool_modules=[nemo_skills.mcp.servers.tavily_search_tool::DirectTavilyBrowserTool]
+
+Configuration:
+    All Tavily tools require ``exclude_domains_config`` and intentionally do not
+    provide a default. Example override:
+
+        ++tool_overrides.DirectTavilyBrowserTool.exclude_domains_config=/path/to/exclude_domains.json
+
+    The config file is expected to contain domain-valued notice properties:
+
+        {
+          "notices": [
+            {
+              "properties": [
+                {"type": "domain", "value": "example.com"},
+                {"type": "domain", "value": "restricted.example.org"}
+              ]
+            }
+          ]
+        }
+
+    If these tools are used for training data curation, use an
+    organization-approved exclusion registry. This reduces the risk of collecting
+    content from domains that must be excluded for legal, license, policy, or
+    contractual reasons. Do not use an intentionally empty allow-all config for
+    training data curation without review.
 """
 
 from __future__ import annotations
@@ -364,13 +389,13 @@ def _postprocess_gym_search_results(results: dict[str, Any], max_result_chars: i
 
 
 class _DirectTavilyBase(Tool):
+    _required_config_keys = {"exclude_domains_config"}
+
     def __init__(self) -> None:
         self._config: dict[str, Any] = {
             "tavily_api_key": None,
             "api_base_url": DEFAULT_API_BASE_URL,
             "exclude_domains": [],
-            "exclude_domains_config": None,
-            "require_exclude_domains_config": False,
             "timeout_s": DEFAULT_HTTP_TIMEOUT_S,
             "max_retries": DEFAULT_MAX_RETRIES,
             "retry_backoff_s": DEFAULT_RETRY_BACKOFF_S,
@@ -389,18 +414,19 @@ class _DirectTavilyBase(Tool):
     def configure(self, overrides: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> None:
         cfg = dict(self._config)
         if overrides:
-            unknown = set(overrides) - set(cfg)
+            allowed_keys = set(cfg) | self._required_config_keys
+            unknown = set(overrides) - allowed_keys
             if unknown:
                 raise ValueError(f"Unknown {self.__class__.__name__} override(s): {sorted(unknown)}")
             cfg.update(overrides)
 
+        if not cfg.get("exclude_domains_config"):
+            raise ValueError("exclude_domains_config is required. Provide a path to an exclude-domain config file.")
+
         self._config = cfg
         self._api_keys = _normalize_api_keys(cfg.get("tavily_api_key"))
         self._exclude_domains = list(cfg.get("exclude_domains") or [])
-        if cfg.get("exclude_domains_config"):
-            self._exclude_domains.extend(_load_exclude_domains_from_file(cfg["exclude_domains_config"]))
-        if cfg.get("require_exclude_domains_config") and not self._exclude_domains:
-            raise ValueError("exclude_domains_config is not set")
+        self._exclude_domains.extend(_load_exclude_domains_from_file(cfg["exclude_domains_config"]))
         self._exclude_domains = sorted(set(self._exclude_domains))
         self._sanitize_keys = {tool: set(keys) for tool, keys in cfg.get("hide_args", {}).items()}
 
@@ -536,22 +562,20 @@ class TavilySearchTool(MCPClientTool):
                 "hide_args": {
                     "web-search": ["exclude_domains", "num_results", "answer_type"],
                 },
-                "exclude_domains_config": None,
             }
         )
 
     def post_configure(self) -> None:
-        # Require excluded domains for the legacy MCP path to preserve existing behavior.
-        if (conf := self._config.get("exclude_domains_config")) is not None:
-            self.exclude_domains = _load_exclude_domains_from_file(conf)
-        else:
-            raise ValueError("exclude_domains_config is not set")
+        conf = self._config.get("exclude_domains_config")
+        if not conf:
+            raise ValueError("exclude_domains_config is required. Provide a path to an exclude-domain config file.")
+        self.exclude_domains = _load_exclude_domains_from_file(conf)
 
     async def execute(self, tool_name: str, arguments: dict[str, Any], extra_args: dict[str, Any] | None = None):
         arguments = dict(arguments)
         merged_extra = dict(extra_args or {})
         if not hasattr(self, "exclude_domains"):
-            raise ValueError("exclude_domains_config is not set")
+            raise ValueError("exclude_domains_config is required. Provide a path to an exclude-domain config file.")
         merged_extra["exclude_domains"] = self.exclude_domains
         for key in ["num_results", "answer_type"]:
             if key in self._config:

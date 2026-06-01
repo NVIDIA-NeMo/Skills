@@ -17,8 +17,20 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
 
-def test_direct_tavily_search_tool_uses_configured_hidden_args():
+
+@pytest.fixture
+def exclude_domains_config(tmp_path):
+    exclude_file = tmp_path / "exclude.json"
+    exclude_file.write_text(
+        json.dumps({"notices": [{"properties": [{"type": "domain", "value": "blocked.example"}]}]}),
+        encoding="utf-8",
+    )
+    return str(exclude_file)
+
+
+def test_direct_tavily_search_tool_uses_configured_hidden_args(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilySearchTool
 
@@ -26,7 +38,7 @@ def test_direct_tavily_search_tool_uses_configured_hidden_args():
         tool.configure(
             {
                 "tavily_api_key": "test-key",
-                "exclude_domains": ["blocked.example"],
+                "exclude_domains_config": exclude_domains_config,
                 "num_results": 3,
             }
         )
@@ -72,12 +84,12 @@ def test_direct_tavily_search_tool_uses_configured_hidden_args():
     asyncio.run(run_test())
 
 
-def test_direct_tavily_gym_tool_web_search_formats_results_and_hides_internal_args():
+def test_direct_tavily_gym_tool_web_search_formats_results_and_hides_internal_args(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
 
         tool = DirectTavilyGymTool()
-        tool.configure({"tavily_api_key": "test-key", "exclude_domains": ["blocked.example"]})
+        tool.configure({"tavily_api_key": "test-key", "exclude_domains_config": exclude_domains_config})
 
         calls = []
 
@@ -131,7 +143,7 @@ def test_direct_tavily_gym_tool_web_search_formats_results_and_hides_internal_ar
     asyncio.run(run_test())
 
 
-def test_direct_tavily_gym_tool_find_in_page_and_scroll_page():
+def test_direct_tavily_gym_tool_find_in_page_and_scroll_page(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
 
@@ -139,7 +151,7 @@ def test_direct_tavily_gym_tool_find_in_page_and_scroll_page():
         tool.configure(
             {
                 "tavily_api_key": "test-key",
-                "exclude_domains": ["blocked.example"],
+                "exclude_domains_config": exclude_domains_config,
                 "max_result_chars": 35,
             }
         )
@@ -198,12 +210,14 @@ def test_direct_tavily_gym_tool_find_in_page_and_scroll_page():
     asyncio.run(run_test())
 
 
-def test_direct_tavily_gym_tool_scroll_cache_is_bounded():
+def test_direct_tavily_gym_tool_scroll_cache_is_bounded(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
 
         tool = DirectTavilyGymTool()
-        tool.configure({"tavily_api_key": "test-key", "max_cached_pages": 1})
+        tool.configure(
+            {"tavily_api_key": "test-key", "exclude_domains_config": exclude_domains_config, "max_cached_pages": 1}
+        )
 
         calls = []
 
@@ -227,12 +241,12 @@ def test_direct_tavily_gym_tool_scroll_cache_is_bounded():
     asyncio.run(run_test())
 
 
-def test_direct_tavily_gym_tool_scroll_cache_ignores_tracking_params():
+def test_direct_tavily_gym_tool_scroll_cache_ignores_tracking_params(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
 
         tool = DirectTavilyGymTool()
-        tool.configure({"tavily_api_key": "test-key"})
+        tool.configure({"tavily_api_key": "test-key", "exclude_domains_config": exclude_domains_config})
 
         calls = []
 
@@ -270,16 +284,30 @@ def test_direct_tavily_tool_loads_exclude_domains_config(tmp_path):
     assert tool._exclude_domains == ["blocked.example"]
 
 
-def test_direct_tavily_tool_rotates_api_keys():
+def test_direct_tavily_tool_requires_exclude_domains_config():
+    from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilySearchTool, TavilySearchTool
+
+    tool = DirectTavilySearchTool()
+    assert "exclude_domains_config" not in tool.default_config()
+    assert "exclude_domains_config" not in TavilySearchTool().default_config()
+
+    with pytest.raises(ValueError, match="exclude_domains_config is required"):
+        tool.configure({"tavily_api_key": "test-key", "exclude_domains": ["blocked.example"]})
+
+    with pytest.raises(ValueError, match="Unknown DirectTavilySearchTool override"):
+        tool.configure({"tavily_api_key": "test-key", "require_exclude_domains_config": False})
+
+
+def test_direct_tavily_tool_rotates_api_keys(exclude_domains_config):
     from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
 
     tool = DirectTavilyGymTool()
-    tool.configure({"tavily_api_key": ["key-a", "key-b"]})
+    tool.configure({"tavily_api_key": ["key-a", "key-b"], "exclude_domains_config": exclude_domains_config})
 
     assert [tool._select_api_key(), tool._select_api_key(), tool._select_api_key()] == ["key-a", "key-b", "key-a"]
 
 
-def test_direct_tavily_browser_search_memory_open_result_and_metrics():
+def test_direct_tavily_browser_search_memory_open_result_and_metrics(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyBrowserTool
 
@@ -287,7 +315,7 @@ def test_direct_tavily_browser_search_memory_open_result_and_metrics():
         tool.configure(
             {
                 "tavily_api_key": "test-key",
-                "exclude_domains": ["blocked.example"],
+                "exclude_domains_config": exclude_domains_config,
                 "max_open_result_chars": 80,
             }
         )
@@ -348,7 +376,7 @@ def test_direct_tavily_browser_search_memory_open_result_and_metrics():
     asyncio.run(run_test())
 
 
-def test_direct_tavily_browser_scroll_page_is_bounded_and_request_cached():
+def test_direct_tavily_browser_scroll_page_is_bounded_and_request_cached(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyBrowserTool
 
@@ -356,6 +384,7 @@ def test_direct_tavily_browser_scroll_page_is_bounded_and_request_cached():
         tool.configure(
             {
                 "tavily_api_key": "test-key",
+                "exclude_domains_config": exclude_domains_config,
                 "max_scroll_words": 3,
                 "max_scroll_chars": 100,
             }
@@ -419,12 +448,12 @@ def test_direct_tavily_browser_scroll_page_is_bounded_and_request_cached():
     asyncio.run(run_test())
 
 
-def test_direct_tavily_browser_scroll_cache_ignores_tracking_params():
+def test_direct_tavily_browser_scroll_cache_ignores_tracking_params(exclude_domains_config):
     async def run_test():
         from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyBrowserTool
 
         tool = DirectTavilyBrowserTool()
-        tool.configure({"tavily_api_key": "test-key"})
+        tool.configure({"tavily_api_key": "test-key", "exclude_domains_config": exclude_domains_config})
 
         calls = []
 
