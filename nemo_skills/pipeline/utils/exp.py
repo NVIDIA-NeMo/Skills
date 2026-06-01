@@ -28,6 +28,7 @@ from nemo_run.core.execution.local import LocalExecutor
 from nemo_run.core.execution.slurm import SlurmJobDetails, get_packaging_job_key
 from torchx.specs.api import AppState
 
+from nemo_skills.pipeline.utils.backends import BackendRunOptions, get_execution_backend
 from nemo_skills.pipeline.utils.cluster import (
     get_env_variables,
     get_slurm_timeout_str,
@@ -241,6 +242,9 @@ def get_executor(
         Raised if a non-SLURM executor is requested with `num_nodes > 1`.
     """
     env_vars = get_env_variables(cluster_config)
+    backend_env = get_execution_backend(cluster_config, with_ray=with_ray).get_env_overrides()
+    if backend_env:
+        env_vars.update(backend_env)
     config_mounts = get_mounts_from_config(cluster_config)
 
     if mounts is None:
@@ -249,9 +253,23 @@ def get_executor(
         extra_package_dirs = tuple(extra_package_dirs)
     packager = get_packager(extra_package_dirs=extra_package_dirs)
 
+    # Ray backend with a precreated cluster allows multi-node without SLURM.
+    backend_config = cluster_config.get("backend") or cluster_config.get("execution_backend") or {}
+    if isinstance(backend_config, str):
+        backend_config = {"name": backend_config}
+    backend_name = str(backend_config.get("name", "")).strip().lower()
+    is_ray_precreated = backend_name == "ray" and bool(backend_config.get("precreated_cluster", False))
+    if is_ray_precreated and not backend_config.get("endpoint"):
+        raise ValueError(
+            "Invalid cluster_config: backend.precreated_cluster=true requires backend.endpoint to be set."
+        )
+
     if cluster_config["executor"] != "slurm":
-        if num_nodes > 1:
-            raise ValueError("Local executor does not support multi-node execution")
+        if num_nodes > 1 and not is_ray_precreated:
+            raise ValueError(
+                "Local executor does not support multi-node execution. "
+                "Use executor: slurm or backend: ray with precreated_cluster: true"
+            )
 
     if cluster_config["executor"] == "none":
         return LocalExecutor()
@@ -666,6 +684,7 @@ def add_task(
     LOG.info("Adding a task with commands:")
 
     commands = []
+    command_images = []
     executors = []
 
     # Check if we need to add server first to ensure SLURM allocates GPU partition
@@ -719,6 +738,7 @@ def add_task(
             if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
                 cmd_to_add = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
             commands.append(cmd_to_add)
+            command_images.append(resolve_container_image(server_container, cluster_config))
             executors.append(server_executor)
             het_group_indices.append(het_group)
             het_group += 1
@@ -744,6 +764,7 @@ def add_task(
             with temporary_env_update(cluster_config, {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
                 commands.append(cur_cmd)
+                command_images.append(resolve_container_image(cur_container, cluster_config))
                 client_num_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
                 executors.append(
                     get_executor(
@@ -791,13 +812,15 @@ def add_task(
 
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
+            sandbox_image = sandbox_container or cluster_config["containers"]["sandbox"]
+            command_images.append(resolve_container_image(sandbox_image, cluster_config))
             if sandbox_mounts is not None:
                 sandbox_exec_mounts = normalize_mounts_list(sandbox_mounts, allow_rw_mode=True)
             else:
                 sandbox_exec_mounts = None if keep_mounts_for_sandbox else []
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
-                container=sandbox_container or cluster_config["containers"]["sandbox"],
+                container=sandbox_image,
                 num_nodes=executors[0].nodes if cluster_config["executor"] == "slurm" else 1,
                 tasks_per_node=1,
                 gpus_per_node=0,
@@ -876,10 +899,31 @@ def add_task(
             )
             commands[idx] = commands[idx].replace("/nemo_run/code", "./")
 
-    if with_ray and cluster_config["executor"] == "slurm":
-        metadata = {"use_with_ray_cluster": True}
-    else:
-        metadata = None
+    backend = get_execution_backend(cluster_config, with_ray=with_ray)
+    first_command_image = command_images[0] if command_images else None
+    should_use_with_ray_cluster = bool(with_ray or getattr(backend, "name", "") == "ray")
+    metadata = backend.stage_metadata(
+        use_with_ray_cluster=should_use_with_ray_cluster,
+        container_image=first_command_image,
+    )
+    LOG.info(
+        "Execution backend resolved to '%s' (dashboard_url=%s).",
+        getattr(backend, "name", "unknown"),
+        getattr(backend, "dashboard_url", None),
+    )
+
+    # For Ray Jobs API mode, queue commands on the experiment and let the backend
+    # submit/track/cancel them centrally in start_experiment().
+    queue_ray_job_commands(
+        exp=exp,
+        backend=backend,
+        commands=commands,
+        command_images=command_images,
+        task_name=task_name,
+        log_dir=log_dir,
+        task_dependencies=task_dependencies,
+        should_use_with_ray_cluster=should_use_with_ray_cluster,
+    )
 
     if not task_dependencies:  # empty list
         task_dependencies = None
@@ -906,15 +950,66 @@ def add_task(
         )
 
 
+def queue_ray_job_commands(
+    *,
+    exp,
+    backend,
+    commands: list[str],
+    command_images: list[str | None] | None,
+    task_name: str,
+    log_dir: str | None,
+    task_dependencies,
+    should_use_with_ray_cluster: bool,
+) -> int:
+    """Queue commands for Ray Jobs API submission when the Ray backend is active."""
+    if getattr(backend, "name", "") != "ray" or not getattr(backend, "dashboard_url", None):
+        return 0
+
+    queued_jobs = list(getattr(exp, "_ns_ray_jobs_queue", []))
+    before_count = len(queued_jobs)
+    dep_names = [
+        (dep if isinstance(dep, str) else getattr(dep, "name", str(dep)))
+        for dep in (task_dependencies or [])
+    ]
+
+    for idx, command in enumerate(commands):
+        img = command_images[idx] if command_images and idx < len(command_images) else None
+        cmd_meta = backend.stage_metadata(
+            use_with_ray_cluster=should_use_with_ray_cluster,
+            container_image=img,
+        ) or {}
+        queued_task_name = task_name if len(commands) == 1 else f"{task_name}-{idx}"
+        selector = cmd_meta.get("entrypoint_label_selector") or cmd_meta.get("ray_entrypoint_label_selector")
+        job_log_file = f"{log_dir}/ray-jobs/{queued_task_name}.log" if log_dir else None
+        stage_manifest_file = f"{log_dir}/ray-jobs/manifest.jsonl" if log_dir else None
+        queued_jobs.append(
+            {
+                "task_name": queued_task_name,
+                "command": command,
+                "submission_id": queued_task_name,
+                "entrypoint_label_selector": selector,
+                "dep_task_names": dep_names,
+                "job_log_file": job_log_file,
+                "stage_run_id": task_name,
+                "stage_manifest_file": stage_manifest_file,
+            }
+        )
+
+    setattr(exp, "_ns_ray_jobs_queue", queued_jobs)
+    queued_count = len(queued_jobs) - before_count
+    LOG.info(
+        "Queued %d Ray Job command(s) for submission via %s.",
+        queued_count,
+        backend.dashboard_url,
+    )
+    return queued_count
+
+
 def run_exp(exp, cluster_config, sequential=False, dry_run=False):
     """If sequential is not specified, using True locally and False otherwise.
 
     If it is specified, it will be used as is.
     """
-    if dry_run:
-        LOG.info("Dry run mode is enabled, not running the experiment.")
-        return
-
     if "mounts" in cluster_config:
         # Can only check cluster mounts here, not those added to add_task
         mounts = get_mounts_from_config(cluster_config)
@@ -928,11 +1023,12 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
         )
         check_remote_mount_directories(mount_sources, cluster_config, exit_on_failure=exit_if_failure)
 
-    if cluster_config["executor"] != "slurm":
-        exp.run(detach=False, tail_logs=True, sequential=sequential)
-    else:
+    backend = get_execution_backend(cluster_config)
+    run_options = BackendRunOptions(sequential=sequential, dry_run=dry_run)
+
+    if cluster_config["executor"] == "slurm":
         try:
-            exp.run(detach=True, sequential=sequential)
+            backend.start_experiment(exp, cluster_config, run_options)
         except RuntimeError as e:
             if "Your repo has uncommitted changes." in str(e):
                 raise RuntimeError(
@@ -946,8 +1042,14 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
                 )
             else:
                 raise
+    else:
+        backend.start_experiment(exp, cluster_config, run_options)
 
-        # caching the experiment code for reuse
+    if dry_run:
+        return
+
+    # caching the experiment code for reuse
+    if cluster_config["executor"] == "slurm":
         tunnel = get_tunnel(cluster_config)
         cur_tunnel_hash = tunnel_hash(tunnel)
         if cur_tunnel_hash not in REUSE_CODE_EXP:

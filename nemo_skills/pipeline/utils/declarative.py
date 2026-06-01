@@ -31,9 +31,11 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     temporary_env_update,
 )
+from nemo_skills.pipeline.utils.backends import get_execution_backend
 from nemo_skills.pipeline.utils.exp import (
     REUSE_CODE_EXP,
     get_packaging_job_key,
+    queue_ray_job_commands,
     tunnel_hash,
 )
 from nemo_skills.pipeline.utils.mounts import get_mounts_from_config, is_mounted_filepath, normalize_mounts_list
@@ -812,6 +814,7 @@ class Pipeline:
         shared_packager = None
 
         # Build commands and executors using prepared data
+        metadata_container_image: Optional[str] = None
         for entry_idx, entry in enumerate(prepared_commands):
             het_idx = entry["het_idx"]
             comp_idx = entry["comp_idx"]
@@ -830,6 +833,8 @@ class Pipeline:
 
             # Resolve container and create executor
             container_image = self._resolve_container(exec_config, command, cluster_config)
+            if metadata_container_image is None:
+                metadata_container_image = container_image
             # Pass external dependencies only to the first executor in iteration order.
             # We use entry_idx rather than het_idx/comp_idx because prepared_commands may
             # have been reordered (e.g., to put spanning components first for allocation).
@@ -902,10 +907,31 @@ class Pipeline:
         # Note: Path replacements for executor="none" are no longer needed with Script interface
 
         # Ray metadata handling
-        if self.with_ray and cluster_config["executor"] == "slurm":
-            metadata = {"use_with_ray_cluster": True}
-        else:
-            metadata = None
+        backend = get_execution_backend(cluster_config, with_ray=self.with_ray)
+        should_use_with_ray_cluster = bool(self.with_ray or getattr(backend, "name", "") == "ray")
+        metadata = backend.stage_metadata(
+            use_with_ray_cluster=should_use_with_ray_cluster,
+            container_image=metadata_container_image,
+        )
+
+        ray_queue_commands = []
+        ray_queue_images = []
+        for script, executor in zip(scripts, executors):
+            if not isinstance(script.inline, str):
+                continue
+            ray_queue_commands.append(script.inline)
+            ray_queue_images.append(getattr(executor, "container_image", None))
+
+        queue_ray_job_commands(
+            exp=exp,
+            backend=backend,
+            commands=ray_queue_commands,
+            command_images=ray_queue_images,
+            task_name=groups[0].name,
+            log_dir=log_dir,
+            task_dependencies=internal_deps,
+            should_use_with_ray_cluster=should_use_with_ray_cluster,
+        )
 
         # Add to experiment and return task ID
         # Note: Internal dependencies (task handles from same experiment) go to exp.add()
