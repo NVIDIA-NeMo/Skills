@@ -61,6 +61,19 @@ class GymBenchmarkConfig:
     # `inference.*` namespace) — e.g. `wmt24pp` needs the COMET-XXL GPU actor
     # disabled when the SLURM allocation has no spare GPUs to give Ray.
     extra_overrides: tuple = ()
+    # When True, the benchmark has no NeMo Skills counterpart and can ONLY be
+    # run via `ns eval --backend=gym`. The Gym dispatcher (`eval_gym.py`)
+    # skips Skills' dataset-module lookup entirely for these entries; the
+    # main eval CLI raises a clear "use --backend=gym" error if backend=skills.
+    skills_optional: bool = False
+    # When True, the SLURM job for this benchmark gets a sandbox container
+    # alongside the policy server. For Skills↔shared benchmarks we read this
+    # from Skills' dataset module's `REQUIRES_SANDBOX`; Gym-only benchmarks
+    # must declare it explicitly here.
+    requires_sandbox: bool = False
+    # Extra env vars exported into the sandbox container at runtime. Mirrors
+    # Skills' dataset-module `SANDBOX_ENV_VARS`. Strings of the form `KEY=val`.
+    sandbox_env_vars: tuple = ()
 
 
 _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
@@ -589,6 +602,20 @@ _BENCHMARK_GYM_CONFIGS: Dict[str, GymBenchmarkConfig] = {
         extra_overrides=(
             "++wmt24pp_wmt_translation_resources_server.resources_servers.wmt_translation.compute_comet=false",
         ),
+    ),
+    # Synthetic arithmetic — a deliberately Gym-only smoke benchmark used to
+    # exercise `ns eval --backend=gym` end-to-end without a Skills counterpart.
+    # Lives in `benchmarks/simple_arithmetic/` on the Gym side; reuses the
+    # `math_with_judge` resource server unchanged.
+    "simple_arithmetic": GymBenchmarkConfig(
+        config_paths=[
+            "benchmarks/simple_arithmetic/config.yaml",
+            "responses_api_models/vllm_model/configs/vllm_model.yaml",
+        ],
+        agent_name="simple_arithmetic_math_with_judge_simple_agent",
+        input_jsonl_fpath="benchmarks/simple_arithmetic/data/simple_arithmetic_benchmark.jsonl",
+        prompt_config="benchmarks/prompts/generic/math.yaml",
+        skills_optional=True,
     ),
 }
 

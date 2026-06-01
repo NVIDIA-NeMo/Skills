@@ -24,6 +24,7 @@ import typer
 import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
+from nemo_skills.pipeline.eval_gym import eval_gym as _eval_gym
 from nemo_skills.pipeline.generate import generate as _generate
 from nemo_skills.pipeline.utils import kwargs_to_string, parse_kwargs
 from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
@@ -33,9 +34,7 @@ from nemo_skills.pipeline.utils.eval import (
 )
 from nemo_skills.pipeline.utils.gym import (
     GymBenchmarkConfig,
-    get_gym_config,
     is_registered,
-    registered_benchmarks,
 )
 from nemo_skills.pipeline.utils.scripts import (
     EvalClientScript,
@@ -412,19 +411,92 @@ def eval(
     except AttributeError:
         pass
 
-    if backend == EvalBackend.gym.value:
-        # Validate every requested benchmark has a Gym wiring. Strip the optional
-        # `:N` (num-samples) suffix before lookup. Fail early with a clear pointer
-        # to the Skills fallback for benchmarks not yet ported.
+    # If any requested benchmark is registered Gym-only (`skills_optional=True`)
+    # and the caller picked the Skills backend, fail fast with a clear pointer
+    # rather than letting Skills' dataset-module lookup raise a confusing
+    # "Init file not found on the cluster" later.
+    if backend == EvalBackend.skills.value:
         requested_names = [b.split(":", 1)[0] for b in benchmarks.split(",")]
-        missing = [name for name in requested_names if not is_registered(name)]
-        if missing:
-            raise ValueError(
-                f"--backend=gym does not yet support benchmark(s): {missing}. "
-                f"Registered benchmarks: {registered_benchmarks()}. "
-                f"Use --backend=skills for unported benchmarks, or extend "
-                f"nemo_skills/pipeline/utils/gym/registry.py."
+        for name in requested_names:
+            if is_registered(name):
+                from nemo_skills.pipeline.utils.gym import get_gym_config
+
+                if get_gym_config(name).skills_optional:
+                    raise ValueError(
+                        f"Benchmark '{name}' has no NeMo Skills dataset module. "
+                        f"This benchmark is only available via the Gym backend. "
+                        f"Re-run with --backend=gym."
+                    )
+
+    if backend == EvalBackend.gym.value:
+        # All Gym-backend submissions go through the dedicated dispatcher.
+        # It keeps the Skills-shaped command-prep helpers entirely out of
+        # the Gym path so (a) Skills code paths stay unmodified during the
+        # dual-backend window and (b) Skills can be sunset wholesale later.
+        # The dispatcher does its own registry validation, mount-resolution,
+        # and preflight; we hand off after the typer args are coerced.
+        if " " in str(benchmarks):
+            raise ValueError("benchmarks should be separated with commas")
+        # Translate generator-task-specific Skills args into Gym wandb dict
+        # for the small overlap the Gym path uses.
+        if log_samples:
+            wandb_parameters = {
+                "name": wandb_name or expname,
+                "project": wandb_project,
+                "group": wandb_group,
+            }
+            validate_wandb_project_name(
+                wandb_project=wandb_project,
+                wandb_name=wandb_name or expname,
+                wandb_group=wandb_group,
             )
+        else:
+            wandb_parameters = None
+        return _eval_gym(
+            ctx=ctx,
+            cluster=cluster,
+            output_dir=output_dir,
+            expname=expname,
+            benchmarks=benchmarks,
+            model=model,
+            server_type=server_type,
+            server_address=server_address,
+            server_gpus=server_gpus,
+            server_nodes=server_nodes,
+            server_args=server_args,
+            server_entrypoint=server_entrypoint,
+            server_container=server_container,
+            partition=partition,
+            account=account,
+            log_dir=log_dir,
+            starting_seed=starting_seed,
+            # Gym's native multi-sample knob is `+num_repeats=N` on the
+            # `ng_collect_rollouts` CLI — pass via `++` Hydra overrides if
+            # multi-seed is needed. The dispatcher emits one SLURM job per
+            # benchmark with a single seed unit by default.
+            num_random_seeds=1,
+            extra_arguments=extra_arguments,
+            wandb_parameters=wandb_parameters,
+            single_node_mode=single_node_mode,
+            with_sandbox=with_sandbox,
+            keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+            sandbox_container=sandbox_container,
+            sandbox_mounts=sandbox_mounts,
+            main_container=main_container,
+            mount_paths=mount_paths,
+            check_mounted_paths=check_mounted_paths,
+            config_dir=config_dir,
+            run_after=run_after,
+            dependent_jobs=dependent_jobs,
+            sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
+            installation_command=installation_command,
+            reuse_code=reuse_code,
+            reuse_code_exp=reuse_code_exp,
+            skip_hf_home_check=skip_hf_home_check,
+            dry_run=dry_run,
+            _reuse_exp=_reuse_exp,
+            _task_dependencies=_task_dependencies,
+        )
 
     if log_samples:
         wandb_parameters = {
