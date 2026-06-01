@@ -128,7 +128,11 @@ def run_test_case(task_args: dict, worker_id: int) -> dict:
         sandbox = _get_thread_test_sandbox()
         compile_result = _test_exec_sync(sandbox, f"cd {unique_dir} && ./compile.sh", language="shell", timeout=120)
         result = {
-            "compile_success": not compile_result.get("stderr"),
+            # compile.sh exits non-zero only on a real compile failure (it checks
+            # $? after each g++), so key off the shell exit status, not stderr --
+            # otherwise harmless compiler *warnings* (which g++ writes to stderr
+            # while still exiting 0) would be misread as compile failures.
+            "compile_success": compile_result.get("process_status") == "completed",
             "compile_stdout": compile_result.get("stdout", ""),
             "compile_stderr": compile_result.get("stderr", ""),
             "run_stdout": "",
