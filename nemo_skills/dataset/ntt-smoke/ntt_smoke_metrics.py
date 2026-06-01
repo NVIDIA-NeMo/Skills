@@ -58,10 +58,49 @@ class NTTSmokeMetrics(AudioMetrics):
         variance = sum((value - avg) ** 2 for value in values) / (len(values) - 1)
         return round(1.96 * sqrt(variance / len(values)) * scale, 2)
 
+    @staticmethod
+    def _score_missing_fields(pred: dict[str, Any]) -> dict[str, Any]:
+        """Compute NTT row metrics for generation-only baseline outputs."""
+        if pred.get("wer") is not None or pred.get("is_correct") is not None:
+            return pred
+        if "generation" not in pred:
+            return pred
+
+        from importlib import import_module
+
+        evaluator = import_module("nemo_skills.dataset.ntt-smoke.ntt_smoke_eval")
+        audio_config = evaluator._audio_config({})
+        task_type = pred.get("task_type")
+        generation = str(pred.get("generation") or "")
+
+        if task_type == "ContextASR":
+            updates = evaluator._evaluate_contextasr_sample(
+                pred,
+                evaluator._clean_generation(generation, audio_config),
+                SUCCESS_WER_THRESHOLD,
+            )
+        elif task_type == "Text-MCQ":
+            updates = evaluator._evaluate_text_mcq(pred)
+        elif task_type == "PreferenceASR":
+            updates = evaluator._evaluate_preference_asr_sample(
+                pred,
+                generation,
+                audio_config,
+                SUCCESS_WER_THRESHOLD,
+            )
+        else:
+            updates = evaluator._add_wer_correct_words(evaluator.evaluate_audio_sample(pred, audio_config))
+            evaluator._apply_wer_success_threshold(updates, SUCCESS_WER_THRESHOLD)
+            if task_type == "Hallucination":
+                evaluator._add_strict_hallucination(updates, evaluator._clean_generation(generation, audio_config))
+
+        pred.update(updates)
+        return pred
+
     def update(self, predictions):
         thresholded_predictions = []
         for pred in predictions:
-            pred = dict(pred)
+            pred = self._score_missing_fields(dict(pred))
             if pred.get("wer") is not None:
                 threshold = float(pred.get("success_wer_threshold", SUCCESS_WER_THRESHOLD))
                 pred["success_wer_threshold"] = threshold

@@ -461,3 +461,32 @@ def test_ntt_smoke_metrics_track_correct_words():
     assert "wer_correct_words" not in pass_metrics
     assert pass_metrics["wer_macro_ci95"] > 0
     assert pass_metrics["success_rate_ci95"] > 0
+
+
+def test_ntt_smoke_metrics_scores_generation_only_asr_rows():
+    metrics_mod = __import__(
+        "importlib"
+    ).import_module("nemo_skills.dataset.ntt-smoke.ntt_smoke_metrics")
+    metrics = metrics_mod.NTTSmokeMetrics()
+
+    metrics.update(
+        [
+            {
+                "generation": "hello there",
+                "expected_answer": "hello world",
+                "task_type": "ASR",
+                "ntt_subtask": "asr.clean_read",
+            }
+        ]
+    )
+
+    pass_metrics = metrics.get_metrics()["pass@1"]
+    assert pass_metrics["wer"] == 50.0
+    assert pass_metrics["wer_macro"] == 50.0
+    assert pass_metrics["substitutions"] == 1
+    assert pass_metrics["insertions"] == 0
+    assert pass_metrics["deletions"] == 0
+    assert pass_metrics["ref_words"] == 2
+    assert pass_metrics["correct_words"] == 1
+    assert pass_metrics["success_rate"] == 0.0
+    assert pass_metrics["success_wer_threshold"] == 0.05
