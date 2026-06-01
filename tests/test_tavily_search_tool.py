@@ -227,6 +227,34 @@ def test_direct_tavily_gym_tool_scroll_cache_is_bounded():
     asyncio.run(run_test())
 
 
+def test_direct_tavily_gym_tool_scroll_cache_ignores_tracking_params():
+    async def run_test():
+        from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
+
+        tool = DirectTavilyGymTool()
+        tool.configure({"tavily_api_key": "test-key"})
+
+        calls = []
+
+        async def fake_post_json(endpoint, payload):
+            calls.append((endpoint, payload["urls"]))
+            return {"results": [{"url": payload["urls"], "raw_content": "same page content"}]}
+
+        tool._post_json = fake_post_json
+
+        await tool.execute("scroll_page", {"url": "https://example.com/page?id=1&utm_source=a#section"})
+        await tool.execute("scroll_page", {"url": "https://example.com/page?utm_campaign=b&id=1"})
+        await tool.execute("scroll_page", {"url": "https://example.com/page?id=2&utm_source=a"})
+
+        assert calls == [
+            ("/extract", "https://example.com/page?id=1&utm_source=a#section"),
+            ("/extract", "https://example.com/page?id=2&utm_source=a"),
+        ]
+        assert list(tool._page_cache) == ["https://example.com/page?id=1", "https://example.com/page?id=2"]
+
+    asyncio.run(run_test())
+
+
 def test_direct_tavily_tool_loads_exclude_domains_config(tmp_path):
     from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilySearchTool
 
@@ -387,6 +415,44 @@ def test_direct_tavily_browser_scroll_page_is_bounded_and_request_cached():
         assert metrics["tool_errors"] == 1
         assert metrics["cache_misses"] == 1
         assert metrics["cache_hits"] == 2
+
+    asyncio.run(run_test())
+
+
+def test_direct_tavily_browser_scroll_cache_ignores_tracking_params():
+    async def run_test():
+        from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyBrowserTool
+
+        tool = DirectTavilyBrowserTool()
+        tool.configure({"tavily_api_key": "test-key"})
+
+        calls = []
+
+        async def fake_post_json(endpoint, payload):
+            calls.append((endpoint, payload["urls"]))
+            return {"results": [{"url": payload["urls"], "raw_content": "zero one two"}]}
+
+        tool._post_json = fake_post_json
+
+        first = await tool.execute(
+            "scroll_page",
+            {"url": "https://example.com/page?id=1&utm_source=newsletter#intro"},
+            extra_args={"request_id": "req-tracking"},
+        )
+        second = await tool.execute(
+            "scroll_page",
+            {"url": "https://example.com/page?utm_medium=email&id=1"},
+            extra_args={"request_id": "req-tracking"},
+        )
+
+        assert "L0: zero one two" in first
+        assert "L0: zero one two" in second
+        assert calls == [("/extract", "https://example.com/page?id=1&utm_source=newsletter#intro")]
+
+        metrics = await tool.get_request_metrics("req-tracking")
+        assert metrics["cache_misses"] == 1
+        assert metrics["cache_hits"] == 1
+        assert metrics["cached_pages"] == 1
 
     asyncio.run(run_test())
 

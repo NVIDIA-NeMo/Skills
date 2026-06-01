@@ -36,7 +36,7 @@ from collections import OrderedDict, defaultdict
 from dataclasses import dataclass, field
 from time import time
 from typing import Annotated, Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -137,6 +137,15 @@ DIRECT_TAVILY_ERROR_MESSAGES = {
     "No content found.",
     "Start index is beyond page length.",
 }
+TRACKING_QUERY_PARAM_NAMES = {
+    "fbclid",
+    "gclid",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "msclkid",
+}
+TRACKING_QUERY_PARAM_PREFIXES = ("utm_",)
 
 # These errors should stop the process - no point continuing with bad credentials
 FATAL_STATUS_CODES = {401, 403}
@@ -248,6 +257,17 @@ def _extract_domain(url: str) -> str:
 def _is_url_excluded(url: str, exclude_domains: list[str]) -> bool:
     hostname = urlparse(url).hostname or ""
     return any(hostname == domain or hostname.endswith("." + domain) for domain in exclude_domains)
+
+
+def _cache_key_for_url(url: str) -> str:
+    parsed = urlparse(url)
+    filtered_query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key.lower() not in TRACKING_QUERY_PARAM_NAMES and not key.lower().startswith(TRACKING_QUERY_PARAM_PREFIXES)
+    ]
+    query = urlencode(sorted(filtered_query), doseq=True)
+    return urlunparse(parsed._replace(query=query, fragment=""))
 
 
 def _clean_text(text: str) -> str:
@@ -794,9 +814,10 @@ class DirectTavilyGymTool(_DirectTavilyBase):
         start_index = max(0, start_index)
         n = max(1, n)
 
-        if url in self._page_cache:
-            self._page_cache.move_to_end(url)
-            page_content = self._page_cache[url]
+        cache_key = _cache_key_for_url(url)
+        if cache_key in self._page_cache:
+            self._page_cache.move_to_end(cache_key)
+            page_content = self._page_cache[cache_key]
         else:
             payload = {
                 "urls": url,
@@ -807,7 +828,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
             if results.get("error"):
                 return results["error"]
             page_content = _first_raw_content(results)
-            _remember_lru(self._page_cache, url, page_content, max(1, int(self._config["max_cached_pages"])))
+            _remember_lru(self._page_cache, cache_key, page_content, max(1, int(self._config["max_cached_pages"])))
 
         words = page_content.split()
         total_words = len(words)
@@ -1059,11 +1080,12 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
             self._increment_stat(request_id, "excluded_url_attempts")
             return None, "URL is in excluded domains"
 
+        cache_key = _cache_key_for_url(url)
         cache = self._page_cache_for_request(request_id)
-        if url in cache:
-            cache.move_to_end(url)
+        if cache_key in cache:
+            cache.move_to_end(cache_key)
             self._increment_stat(request_id, "cache_hits")
-            return cache[url], None
+            return cache[cache_key], None
 
         self._increment_stat(request_id, "cache_misses")
         payload = {
@@ -1084,7 +1106,7 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
         raw_content, was_truncated = _truncate_text(raw_content, max_cached_page_chars)
         cleaned = _clean_text(raw_content)
         page = TavilyBrowserCachedPage(content=cleaned, words=cleaned.split(), truncated=was_truncated)
-        _remember_lru(cache, url, page, max(1, int(self._config["max_cached_pages"])))
+        _remember_lru(cache, cache_key, page, max(1, int(self._config["max_cached_pages"])))
         return page, None
 
     async def _open_result(self, arguments: dict[str, Any], *, request_id: str | None) -> str:
