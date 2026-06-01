@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 import typer
@@ -55,6 +57,28 @@ class SupportedBackends(str, Enum):
     megatron = "megatron"
 
 
+def detect_data_format(data_path: str) -> str:
+    """Detect SFT JSONL format to preserve the old chat_template=infer_from_data behavior."""
+    with open(data_path, "r", encoding="utf-8") as f:
+        first_line = f.readline().strip()
+    if not first_line:
+        raise ValueError(f"Dataset at {data_path} is empty")
+
+    sample = json.loads(first_line)
+    has_input_output = "input" in sample and "output" in sample
+    has_messages = "messages" in sample
+    if has_input_output and has_messages:
+        return "mixed"
+    if has_input_output:
+        return "input_output"
+    if has_messages:
+        return "messages"
+    raise ValueError(
+        f"Dataset at {data_path} has neither 'input'/'output' keys nor 'messages' key. "
+        f"Available keys: {list(sample.keys())}"
+    )
+
+
 @dataclass
 class NemoRLTask:
     model: str
@@ -72,6 +96,7 @@ class NemoRLTask:
     log_dir: str
     env_variables: dict
     backend: str
+    data_format: str
     profile_step_range: str
     extra_arguments: str = ""
 
@@ -89,6 +114,46 @@ class NemoRLTask:
         else:
             cmd += " ++policy.dtensor_cfg.enabled=true ++policy.megatron_cfg.enabled=false "
         return cmd
+
+    def format_nemo_skills_default_args(self):
+        # Preserve the behavioral defaults from the former NeMo-Skills SFT config while using
+        # the upstream NeMo-RL entrypoint/config as the base. User-provided extra args are
+        # appended after these defaults, so recipes can still override any of them.
+        return (
+            " ++sft.max_num_epochs=100000000 "
+            " ++sft.max_num_steps=100000000 "
+            " ++sft.val_period=0 "
+            " ++sft.val_batches=1 "
+            " ++sft.val_at_start=False "
+            " ++checkpointing.keep_top_k=50 "
+            " ++checkpointing.save_period=100 "
+            f" ++policy.tokenizer.chat_template={self.get_chat_template()} "
+            " ++policy.max_total_sequence_length=4096 "
+            " ++policy.max_grad_norm=0.0 "
+            " ++policy.sequence_packing.enabled=True "
+            " ++policy.megatron_cfg.layernorm_epsilon=1e-6 "
+            " ++policy.megatron_cfg.moe_permute_fusion=false "
+            " ++policy.megatron_cfg.optimizer.lr=1e-6 "
+            " ++policy.megatron_cfg.optimizer.min_lr=1e-6 "
+            " ++policy.megatron_cfg.optimizer.weight_decay=0.01 "
+            " ++policy.megatron_cfg.optimizer.adam_eps=1e-8 "
+            " ++policy.megatron_cfg.scheduler.lr_decay_style=cosine "
+            " ++policy.megatron_cfg.scheduler.lr_decay_iters=\\${sft.max_num_steps} "
+            " ++policy.megatron_cfg.scheduler.lr_warmup_iters=0 "
+            " ++policy.megatron_cfg.scheduler.lr_warmup_init=1.0e-6 "
+            " ++policy.optimizer.kwargs.lr=1e-6 "
+            " ++policy.optimizer.kwargs.weight_decay=0.01 "
+            " ++policy.optimizer.kwargs.eps=1e-8 "
+            " ++data.add_bos=false "
+            " ++data.add_eos=false "
+            " ++data.add_generation_prompt=false "
+            " ++data.num_workers=10 "
+        )
+
+    def get_chat_template(self):
+        if self.data_format == "messages":
+            return "default"
+        return "null"
 
     def format_data_args(self):
         cmd = (
@@ -142,7 +207,7 @@ class NemoRLTask:
             "echo 'Starting training' && "
             "NRL_FORCE_REBUILD_VENVS=true uv run --active "
             f"python {UPSTREAM_SFT_SCRIPT} --config {self.config_path} "
-            f"{self.format_train_args()} {self.format_data_args()} "
+            f"{self.format_train_args()} {self.format_nemo_skills_default_args()} {self.format_data_args()} "
             f"{self.logging_params} {self.extra_arguments}"
         )
         return cmd
@@ -166,6 +231,7 @@ def get_training_cmd(
     log_dir,
     env_variables,
     backend,
+    data_format,
     profile_step_range,
 ):
     timeout = get_timeout_str(cluster_config, partition)
@@ -187,6 +253,7 @@ def get_training_cmd(
         log_dir=log_dir,
         env_variables=env_variables,
         backend=backend,
+        data_format=data_format,
         profile_step_range=profile_step_range,
     )
 
@@ -392,9 +459,24 @@ def sft_nemo_rl(
             )
     if run_conversion_only:
         dependent_jobs = -1
+    data_format = "input_output"
     if dependent_jobs >= 0:
         if training_data is None:
             raise ValueError("training_data is required when dependent_jobs >= 0")
+        if Path(training_data).is_file():
+            data_format = detect_data_format(training_data)
+            if data_format == "mixed":
+                raise ValueError(
+                    "Training data contains both 'input'/'output' and 'messages' keys. "
+                    "Please use a consistent data format or explicitly override the data/tokenizer config."
+                )
+            if validation_data is not None and Path(validation_data).is_file():
+                validation_data_format = detect_data_format(validation_data)
+                if validation_data_format != data_format:
+                    raise ValueError(
+                        f"Training data format ({data_format}) does not match validation data format "
+                        f"({validation_data_format})."
+                    )
         if training_data.startswith("/"):  # could ask to download from HF
             training_data = get_mounted_path(cluster_config, training_data)
         if validation_data is not None:
@@ -424,6 +506,7 @@ def sft_nemo_rl(
         log_dir=f"{log_dir}/training-logs",
         env_variables=env_variables,
         backend=backend,
+        data_format=data_format,
         profile_step_range=profile_step_range,
     )
 
