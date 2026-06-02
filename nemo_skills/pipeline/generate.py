@@ -649,6 +649,11 @@ def generate(
     if not jobs:
         return None
 
+    backend_config = cluster_config.get("backend") or cluster_config.get("execution_backend") or {}
+    if isinstance(backend_config, str):
+        backend_config = {"name": backend_config}
+    with_ray_pipeline = str(backend_config.get("name", "")).strip().lower() == "ray"
+
     # Create and run pipeline
     pipeline = Pipeline(
         name=expname,
@@ -657,10 +662,11 @@ def generate(
         reuse_code=reuse_code,
         reuse_code_exp=reuse_code_exp,
         skip_hf_home_check=skip_hf_home_check,
+        with_ray=with_ray_pipeline,
     )
 
     # TODO: remove after https://github.com/NVIDIA-NeMo/Skills/issues/578 is resolved as default will be single job
-    sequential = True if cluster_config["executor"] in ["local", "none"] else False
+    sequential = True if cluster_config["executor"] in ["local", "none"] and not with_ray_pipeline else False
 
     # Pass _reuse_exp to pipeline.run() to add jobs to existing experiment
     result = pipeline.run(dry_run=dry_run, _reuse_exp=_reuse_exp, sequential=sequential)
