@@ -612,7 +612,8 @@ def configure_client(
     if server_gpus:  # we need to host the model
         server_port = get_free_port(strategy="random") if get_random_port else 5000
         assert server_gpus is not None, "Need to specify server_gpus if hosting the model"
-        server_address = f"localhost:{server_port}"
+        server_host = "${SLURM_MASTER_NODE:-127.0.0.1}" if server_nodes > 1 else "127.0.0.1"
+        server_address = f"{server_host}:{server_port}"
 
         server_config = {
             "model_path": model,
@@ -625,8 +626,6 @@ def configure_client(
         }
         if server_container:
             server_config["container"] = server_container
-        # Use SLURM_MASTER_NODE for multi-node, localhost for single-node.
-        server_host = "$SLURM_MASTER_NODE" if server_nodes > 1 else "127.0.0.1"
         extra_arguments = (
             f"{extra_arguments} ++server.host={server_host} ++server.port={server_port} ++server.model={model} "
         )

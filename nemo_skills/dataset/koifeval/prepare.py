@@ -12,11 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# settings that define how evaluation should be done by default (all can be changed from cmdline)
-METRICS_TYPE = "scicode"
-# Use the multistep ("scientist-annotated background is provided, write code directly")
-# prompt to match the prompt Artificial Analysis actually sends to the endpoint.
-GENERATION_ARGS = "++prompt_config=eval/scicode/background ++eval_type=scicode"
-GENERATION_MODULE = "nemo_skills.inference.eval.scicode"
-REQUIRES_SANDBOX = True
-EVAL_SPLIT = "test"  # 65 problems / 288 subproblems, matching AA's SciCode methodology
+import json
+from pathlib import Path
+
+from datasets import load_dataset
+
+if __name__ == "__main__":
+    data_dir = Path(__file__).absolute().parent
+    data_dir.mkdir(exist_ok=True)
+    output_file = str(data_dir / "test.jsonl")
+
+    data = []
+    ds = load_dataset("allganize/IFEval-Ko", split="train")
+
+    for entry in ds:
+        new_entry = entry
+        new_entry["question"] = entry["prompt"]
+        data.append(new_entry)
+
+    with open(output_file, "wt", encoding="utf-8") as fout:
+        for entry in data:
+            fout.write(json.dumps(entry, ensure_ascii=False) + "\n")

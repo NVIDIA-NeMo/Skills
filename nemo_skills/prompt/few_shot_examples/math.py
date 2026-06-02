@@ -549,7 +549,7 @@ So the answer is $\\boxed{\\frac{1}{50}}$.
         "problem": "Find the domain of the rational function $g(x) = \\frac{x^3-2x^2+4x+3}{x^2-4x+3}$. Express your answer as a union of intervals.",
         "solution": """
 To find the domain of the rational function
-$g(x) = \frac{x^3 - 2x^2 + 4x + 3}{x^2 - 4x + 3}$,
+$g(x) = \\frac{x^3 - 2x^2 + 4x + 3}{x^2 - 4x + 3}$,
 we need to identify the values of $x$ for which the denominator is not equal to zero,
 since division by zero is undefined.
 Let's use sympy to find the values of $x$ that make the denominator zero and then determine the domain:
@@ -565,7 +565,7 @@ domain
 {code_end}{code_output_begin}
 Union(Interval.open(-oo, 1), Interval.open(1, 3), Interval.open(3, oo))
 {code_output_end}
-So the domain is: $\\boxed{ (-\infty, 1) \cup (1, 3) \cup (3, \infty) }$.
+So the domain is: $\\boxed{ (-\\infty, 1) \\cup (1, 3) \\cup (3, \\infty) }$.
 """.strip(),
     },
     {

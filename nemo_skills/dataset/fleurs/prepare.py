@@ -25,32 +25,12 @@ import soundfile as sf
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
-
-def load_fleurs_module():
-    """Download and dynamically import google/fleurs/fleurs.py from HuggingFace."""
-    import importlib.util
-
-    path = hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
-    spec = importlib.util.spec_from_file_location("fleurs", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod._FLEURS_LANG, mod._FLEURS_LANG_TO_LONG, mod._FLEURS_LANG_TO_GROUP
-
-
-FLEURS_LANGS, FLEURS_LANG_TO_LONG, FLEURS_LANG_TO_GROUP = load_fleurs_module()
-LOCALES = set(FLEURS_LANGS)
-
-CER_LOCALES = {
-    "cmn_hans_cn",  # Mandarin Chinese (Simplified)
-    "yue_hant_hk",  # Cantonese Chinese (Traditional)
-    "ja_jp",  # Japanese
-    "th_th",  # Thai
-    "lo_la",  # Lao
-    "my_mm",  # Burmese
-    "km_kh",  # Khmer
-    "ko_kr",  # Korean
-    "vi_vn",  # Vietnamese
-}
+from nemo_skills.dataset.fleurs.languages import (
+    CER_LOCALES,
+    LOCALES,
+    get_lang_group,
+    get_lang_name,
+)
 
 
 def parse_tsv(tsv_path: str) -> dict[str, dict]:
@@ -135,7 +115,7 @@ def save_audio(y: np.ndarray, sr: int, wav_path: Path) -> None:
 
 
 def get_st_instruction(target_locale: str) -> str:
-    tgt_lang_name = FLEURS_LANG_TO_LONG[target_locale]
+    tgt_lang_name = get_lang_name(target_locale)
     return f"Please translate the given speech to {tgt_lang_name}."
 
 
@@ -178,9 +158,9 @@ def _src_extra_fields(source_row: dict, src_locale: str) -> dict:
     return {
         "src_text": source_row["transcription"],
         "src_raw_text": source_row["raw_transcription"],
-        "src_lang_name": FLEURS_LANG_TO_LONG[src_locale],
+        "src_lang_name": get_lang_name(src_locale),
         "src_lang": src_locale,
-        "src_lang_group": FLEURS_LANG_TO_GROUP[src_locale],
+        "src_lang_group": get_lang_group(src_locale),
         "use_cer": src_locale in CER_LOCALES,
     }
 
@@ -255,9 +235,9 @@ def _collect_st_records(
                 {
                     "tgt_text": target_row["transcription"],
                     "tgt_raw_text": target_row["raw_transcription"],
-                    "tgt_lang_name": FLEURS_LANG_TO_LONG[tgt_locale],
+                    "tgt_lang_name": get_lang_name(tgt_locale),
                     "tgt_lang": tgt_locale,
-                    "tgt_lang_group": FLEURS_LANG_TO_GROUP[tgt_locale],
+                    "tgt_lang_group": get_lang_group(tgt_locale),
                 }
             )
             records.append(

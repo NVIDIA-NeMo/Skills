@@ -12,14 +12,17 @@ in debug_info for downstream mapping.
 
 from __future__ import annotations
 
+import glob
 import logging
 import os
+import tarfile
 import tempfile
 import time
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from .base import BackendConfig, GenerationRequest, GenerationResult, InferenceBackend, Modality
 
@@ -39,6 +42,10 @@ class NeMoASRConfig(BackendConfig):
     return_hypotheses: bool = True
     warmup: bool = True
 
+    # Tarred audio / datastore support.
+    tarred_audio_filepaths: Optional[str] = None
+    data_dir: str = ""
+
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "NeMoASRConfig":
         # Allow --model_name to override empty model_path.
@@ -57,6 +64,8 @@ class NeMoASRConfig(BackendConfig):
             "num_workers",
             "return_hypotheses",
             "warmup",
+            "tarred_audio_filepaths",
+            "data_dir",
         }
         return cls(
             **{k: v for k, v in d.items() if k in known},
@@ -84,6 +93,12 @@ class NeMoASRBackend(InferenceBackend):
         super().__init__(self.asr_config)
         self._model_name = self.asr_config.model_path or self.asr_config.model_name
         self._model = None
+
+        # Tarred audio / datastore resolution state.
+        self._data_dir = self.asr_config.data_dir
+        self._tarred_audio_files = self._resolve_tarred_audio_files(self.asr_config.tarred_audio_filepaths)
+        self._tar_member_index: Dict[str, Path] = {}
+        self._tar_local_cache: Dict[str, Path] = {}
 
     def load_model(self) -> None:
         if not self._model_name:
@@ -251,20 +266,239 @@ class NeMoASRBackend(InferenceBackend):
                 words = ts["word"]
         return text, self._normalize_words(words)
 
-    def _get_request_audio_bytes(self, request: GenerationRequest) -> bytes:
+    # ------------------------------------------------------------------
+    # Tarred audio / datastore resolution methods
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_datastore_path(path: str) -> bool:
+        """Check if *path* is a datastore URI (e.g. ``ais://`` or ``s3://``)."""
+        try:
+            from nemo.utils.data_utils import is_datastore_path
+
+            return is_datastore_path(path)
+        except ImportError:
+            pass
+        # Fallback when NeMo is not installed: simple scheme+netloc check.
+        parsed = urlparse(path)
+        return parsed.scheme in ("ais", "s3", "gs", "hdfs") and bool(parsed.netloc)
+
+    @staticmethod
+    def _download_datastore_object(store_path: str) -> Path:
+        """Download a datastore object to local cache and return the local path."""
+        scheme = urlparse(store_path).scheme
+        try:
+            from nemo.utils.data_utils import DataStoreObject, open_best, resolve_cache_dir
+        except ImportError as e:
+            raise RuntimeError(
+                "Datastore path support requires nemo_toolkit installation. "
+                "Install nemo_toolkit to use ais:// or other datastore URIs."
+            ) from e
+
+        if scheme == "ais":
+            local_path = DataStoreObject(store_path).get()
+            if local_path is None:
+                raise RuntimeError(f"Failed to download datastore object: {store_path}")
+            return Path(local_path)
+
+        parsed = urlparse(store_path)
+        if not parsed.netloc or not parsed.path:
+            raise ValueError(f"Invalid datastore path format: {store_path}")
+        rel_path = Path(parsed.netloc + parsed.path)
+        local_path = resolve_cache_dir() / "datastore" / scheme / rel_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        with open_best(store_path, mode="rb") as stream:
+            data = stream.read()
+        with open(local_path, "wb") as fout:
+            fout.write(data)
+        return local_path
+
+    def _resolve_tarred_audio_files(self, tarred_audio_filepaths: Optional[str]) -> List[str]:
+        """Resolve configured tar paths (comma-sep, globs, datastore) into an explicit list."""
+        if tarred_audio_filepaths is None:
+            return []
+
+        candidates = [x.strip() for x in tarred_audio_filepaths.split(",") if x.strip()]
+
+        tar_files: List[str] = []
+        for candidate in candidates:
+            if self._is_datastore_path(candidate):
+                if not candidate.endswith(".tar"):
+                    raise ValueError(f"Datastore tar path must end with .tar: {candidate}")
+                tar_files.append(candidate)
+                continue
+
+            candidate_path = Path(candidate).expanduser()
+            if not candidate_path.is_absolute():
+                candidate_path = (Path(self._data_dir) / candidate_path).expanduser()
+            matches = glob.glob(str(candidate_path))
+            if len(matches) == 0:
+                if candidate_path.is_file():
+                    matches = [str(candidate_path)]
+                else:
+                    raise FileNotFoundError(f"Tarred audio path not found: {candidate}")
+            for path_str in sorted(matches):
+                path = Path(path_str).expanduser()
+                if path.suffix == ".tar":
+                    tar_files.append(str(path.absolute()))
+
+        tar_files = list(dict.fromkeys(tar_files))
+        if tar_files:
+            logger.info("Configured %d tarred audio shard(s) for NeMoASRBackend", len(tar_files))
+        return tar_files
+
+    def _materialize_tar_path(self, tar_ref: str) -> Path:
+        """Resolve a tar reference (local path or datastore URI) to a local filesystem path."""
+        if tar_ref in self._tar_local_cache:
+            return self._tar_local_cache[tar_ref]
+
+        if self._is_datastore_path(tar_ref):
+            local_tar_path = self._download_datastore_object(tar_ref)
+        else:
+            local_tar_path = Path(tar_ref).expanduser()
+            if not local_tar_path.is_absolute():
+                local_tar_path = (Path(self._data_dir) / local_tar_path).expanduser()
+            if not local_tar_path.is_file():
+                raise FileNotFoundError(f"Tar file not found: {local_tar_path}")
+
+        self._tar_local_cache[tar_ref] = local_tar_path
+        return local_tar_path
+
+    def _resolve_tar_member(self, member_name: str) -> Path:
+        """Find the tar file containing *member_name* by scanning configured shards."""
+        if member_name in self._tar_member_index:
+            return self._tar_member_index[member_name]
+
+        for tar_ref in self._tarred_audio_files:
+            tar_path = self._materialize_tar_path(tar_ref)
+            with tarfile.open(tar_path, "r") as tar:
+                try:
+                    member = tar.getmember(member_name)
+                except KeyError:
+                    continue
+                if member.isfile():
+                    self._tar_member_index[member_name] = tar_path
+                    return tar_path
+
+        raise FileNotFoundError(
+            f"Audio member '{member_name}' was not found in configured tarred_audio_filepaths: "
+            f"{[str(p) for p in self._tarred_audio_files]}"
+        )
+
+    @staticmethod
+    def _extract_audio_member(tar_path: Path, member_name: str) -> Path:
+        """Extract a single audio member from a tar archive to a temporary file."""
+        suffix = Path(member_name).suffix or ".wav"
+        with tarfile.open(tar_path, "r") as tar:
+            file_obj = tar.extractfile(member_name)
+            if file_obj is None:
+                raise FileNotFoundError(f"Audio member '{member_name}' not found in tar file '{tar_path}'")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                tmp_file.write(file_obj.read())
+                return Path(tmp_file.name)
+
+    def _resolve_tar_path_from_shard_id(self, shard_id: int) -> Optional[Path]:
+        """Resolve *shard_id* to matching ``audio_{shard_id}.tar`` from configured shards."""
+        expected_name = f"audio_{shard_id}.tar"
+        for tar_ref in self._tarred_audio_files:
+            if tar_ref.endswith(expected_name):
+                return self._materialize_tar_path(tar_ref)
+        return None
+
+    def _resolve_audio_path(self, audio_ref: str) -> Tuple[Path, Optional[Path]]:
+        """Main resolver: datastore → local → ``tar::member`` → implicit tar lookup.
+
+        Returns ``(local_path, cleanup_path_or_None)``.  When *cleanup_path* is not
+        ``None`` the caller is responsible for deleting it after use.
+        """
+        # Non-tar datastore object (e.g. ais://bucket/audio.wav).
+        if (
+            self._is_datastore_path(audio_ref)
+            and "::" not in audio_ref
+            and ".tar:" not in audio_ref
+            and not audio_ref.endswith(".tar")
+        ):
+            return self._download_datastore_object(audio_ref), None
+
+        # Plain local file.
+        audio_path = Path(audio_ref).expanduser()
+        if not audio_path.is_absolute():
+            audio_path = (Path(self._data_dir) / audio_path).expanduser()
+        if audio_path.is_file():
+            return audio_path, None
+
+        # Explicit tar member reference: ``tar_path::member`` or ``tar_path.tar:member``.
+        tar_part, member_name = None, None
+        if "::" in audio_ref:
+            tar_part, member_name = audio_ref.split("::", 1)
+        elif ".tar:" in audio_ref:
+            tar_part, member_name = audio_ref.rsplit(":", 1)
+        if tar_part is not None and member_name is not None:
+            tar_path = self._materialize_tar_path(tar_part)
+            extracted_path = self._extract_audio_member(tar_path, member_name)
+            return extracted_path, extracted_path
+
+        # Implicit tar member lookup across configured shards.
+        if self._tarred_audio_files:
+            tar_path = self._resolve_tar_member(audio_ref)
+            extracted_path = self._extract_audio_member(tar_path, audio_ref)
+            return extracted_path, extracted_path
+
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+    # ------------------------------------------------------------------
+    # Request audio resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_request_audio(self, request: GenerationRequest) -> Tuple[bytes, Optional[Path]]:
+        """Return ``(audio_bytes, cleanup_path_or_None)`` for *request*.
+
+        Handles base64 audio bytes, audio_path, ``extra_params["audio_filepath"]``,
+        and optional ``shard_id`` optimisation.
+        """
+        # 1. Direct audio bytes – fast path.
         if request.audio_bytes:
-            return request.audio_bytes
+            return request.audio_bytes, None
         if request.audio_bytes_list:
             if len(request.audio_bytes_list) > 1:
                 raise ValueError("nemo_asr backend currently supports one audio input per request.")
-            return request.audio_bytes_list[0]
-        raise ValueError("Request must contain audio_bytes/audio_bytes_list")
+            return request.audio_bytes_list[0], None
+
+        # 2. Determine audio reference from request fields.
+        audio_ref = request.audio_path
+        extra = request.extra_params or {}
+        if not audio_ref:
+            audio_ref = extra.get("audio_filepath")
+        if not audio_ref:
+            raise ValueError(
+                "Request must contain audio_bytes, audio_bytes_list, audio_path, or extra_params.audio_filepath"
+            )
+
+        # 3. Shard-id optimisation: jump straight to audio_{shard_id}.tar.
+        shard_id = extra.get("shard_id")
+        if shard_id is not None and self._tarred_audio_files:
+            if isinstance(shard_id, str) and shard_id.isdigit():
+                shard_id = int(shard_id)
+            if isinstance(shard_id, int):
+                is_explicit = "::" in audio_ref or ".tar:" in audio_ref
+                if not is_explicit:
+                    shard_tar_path = self._resolve_tar_path_from_shard_id(shard_id)
+                    if shard_tar_path is not None:
+                        extracted = self._extract_audio_member(shard_tar_path, audio_ref)
+                        return extracted.read_bytes(), extracted
+
+        # 4. General resolution.
+        resolved_path, cleanup_path = self._resolve_audio_path(audio_ref)
+        return resolved_path.read_bytes(), cleanup_path
+
+    # ------------------------------------------------------------------
 
     def validate_request(self, request: GenerationRequest) -> Optional[str]:
         has_audio = request.audio_bytes is not None or (
             request.audio_bytes_list is not None and len(request.audio_bytes_list) > 0
         )
-        if not has_audio:
+        has_audio_path = bool(request.audio_path) or bool((request.extra_params or {}).get("audio_filepath"))
+        if not has_audio and not has_audio_path:
             return "nemo_asr backend requires audio input"
         return None
 
@@ -279,11 +513,14 @@ class NeMoASRBackend(InferenceBackend):
         temp_paths: List[str] = []
         valid_indices: List[int] = []
         results: List[Optional[GenerationResult]] = [None] * len(requests)
+        cleanup_paths: List[Path] = []
 
         try:
             for idx, req in enumerate(requests):
                 try:
-                    audio_bytes = self._get_request_audio_bytes(req)
+                    audio_bytes, cleanup = self._resolve_request_audio(req)
+                    if cleanup is not None:
+                        cleanup_paths.append(cleanup)
                     p = tmp_dir / f"req_{idx:04d}.wav"
                     p.write_bytes(audio_bytes)
                     temp_paths.append(str(p))
@@ -334,6 +571,8 @@ class NeMoASRBackend(InferenceBackend):
         except Exception as e:
             return [GenerationResult(error=str(e), request_id=r.request_id) for r in requests]
         finally:
+            for cp in cleanup_paths:
+                cp.unlink(missing_ok=True)
             for p in temp_paths:
                 Path(p).unlink(missing_ok=True)
             try:

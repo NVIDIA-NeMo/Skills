@@ -383,6 +383,413 @@ Some reference numbers for reference and commands for reproduction:
     ```
 
 
+### kmmlu
+
+- Benchmark is defined in [`nemo_skills/dataset/kmmlu/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kmmlu/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/HAERAE-HUB/KMMLU).
+
+Korean-only 4-choice MCQ across 45 professional-license subjects. `subset_for_metrics` rolls the 45 subjects up into the four HUMSS / STEM / Applied Science / Other groupings from the KMMLU paper.
+
+Some reference numbers (symbolic_correct, %) and commands for reproduction:
+
+|                Model                |   Avg    | HUMSS | STEM  | Applied Science | Other |
+| :---------------------------------- | :------: | :---: | :---: | :-------------: | :---: |
+| Nemotron-Cascade-2-30B-A3B          | **68.52** | 63.20 | 72.54 |      70.03      | 64.96 |
+| kanana-2-30b-a3b-thinking-2601      | **65.82** | 62.94 | 69.40 |      66.71      | 62.12 |
+| gemma-4-26B-A4B-it                  | **79.36** | 80.70 | 82.17 |      78.72      | 76.12 |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks kmmlu \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks kmmlu \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks kmmlu \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+### kmmlu-pro
+
+- Benchmark is defined in [`nemo_skills/dataset/kmmlu-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kmmlu-pro/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/LGAI-EXAONE/KMMLU-Pro).
+
+Korean-only 5-choice MCQ, sibling to `kmmlu` with a harder professional-exam focus. `subset_for_metrics` is the per-license breakdown (14 Korean National Professional Licenses).
+
+Some reference numbers (symbolic_correct, %) and commands for reproduction:
+
+|                Model                | symbolic_correct |
+| :---------------------------------- | :--------------: |
+| Nemotron-Cascade-2-30B-A3B          |    **52.16**     |
+| kanana-2-30b-a3b-thinking-2601      |    **53.30**     |
+| gemma-4-26B-A4B-it                  |    **72.79**     |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks kmmlu-pro \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks kmmlu-pro \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks kmmlu-pro \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+### kmmlu-redux
+
+- Benchmark is defined in [`nemo_skills/dataset/kmmlu-redux/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kmmlu-redux/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/LGAI-EXAONE/KMMLU-Redux).
+
+Korean-only 4-choice MCQ, a cleaner / smaller redux of `kmmlu`. `subset_for_metrics` is the per-category breakdown (14 industry / professional categories).
+
+Some reference numbers (symbolic_correct, %) and commands for reproduction:
+
+|                Model                | symbolic_correct |
+| :---------------------------------- | :--------------: |
+| Nemotron-Cascade-2-30B-A3B          |    **62.43**     |
+| kanana-2-30b-a3b-thinking-2601      |    **57.60**     |
+| gemma-4-26B-A4B-it                  |    **77.35**     |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks kmmlu-redux \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks kmmlu-redux \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks kmmlu-redux \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+### koifeval
+
+- Benchmark is defined in [`nemo_skills/dataset/koifeval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/koifeval/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/allganize/IFEval-Ko).
+
+Korean instruction-following benchmark with 342 prompts and Korean-specific `Instruction` subclasses. The evaluator is a thin subprocess wrapper around the [bzantium/koifeval](https://github.com/bzantium/koifeval) pip package (pinned in `core/requirements.txt`).
+
+Some reference numbers (%) and commands for reproduction:
+
+|                Model                | prompt_strict | inst_strict | prompt_loose | inst_loose |
+| :---------------------------------- | :-----------: | :---------: | :----------: | :--------: |
+| Nemotron-Cascade-2-30B-A3B          |   **69.59**   |  **64.45**  |  **69.59**   | **64.45**  |
+| kanana-2-30b-a3b-thinking-2601      |   **65.20**   |  **72.14**  |  **65.79**   | **73.39**  |
+| gemma-4-26B-A4B-it                  |   **90.06**   |  **92.93**  |  **92.40**   | **94.59**  |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks koifeval \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks koifeval \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks koifeval \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+### kormedmcqa
+
+- Benchmark is defined in [`nemo_skills/dataset/kormedmcqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kormedmcqa/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/sean0042/KorMedMCQA).
+
+Korean medical licensing exam MCQ (5-choice) across five subjects: dentist, doctor, nurse, pharm, pharmacy. `subset_for_metrics` is the per-subject field.
+
+Some reference numbers (symbolic_correct, %) and commands for reproduction:
+
+|                Model                |    Avg    | dentist | doctor | nurse | pharm | pharmacy |
+| :---------------------------------- | :-------: | :-----: | :----: | :---: | :---: | :------: |
+| Nemotron-Cascade-2-30B-A3B          | **80.79** |  65.97  | 83.68  | 86.45 | 86.64 |  88.93   |
+| kanana-2-30b-a3b-thinking-2601      | **75.07** |  61.04  | 80.00  | 81.09 | 79.48 |  79.70   |
+| gemma-4-26B-A4B-it                  | **90.86** |  82.86  | 94.48  | 94.31 | 93.00 |  92.99   |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks kormedmcqa \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks kormedmcqa \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks kormedmcqa \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+### kosimpleqa
+
+- Benchmark is defined in [`nemo_skills/dataset/kosimpleqa/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kosimpleqa/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/bzantium/KoSimpleQA).
+
+Korean factual QA, mirrors the English SimpleQA setup (same metrics, same `judge/simpleqa` prompt, same `o3-mini-2025-01-31` judge). `subset_for_metrics` is the per-topic field (10 topics). Set `OPENAI_API_KEY` before running.
+
+Some reference numbers (%) and commands for reproduction:
+
+|                Model                |    F1     | correct | incorrect | not_attempted |
+| :---------------------------------- | :-------: | :-----: | :-------: | :-----------: |
+| Nemotron-Cascade-2-30B-A3B          | **21.38** |  19.40  |   62.10   |    18.50      |
+| kanana-2-30b-a3b-thinking-2601      | **21.41** |  21.10  |   76.00   |     2.90      |
+| gemma-4-26B-A4B-it                  | **41.93** |  40.80  |   53.80   |     5.40      |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    export OPENAI_API_KEY=<>
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks kosimpleqa \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    export OPENAI_API_KEY=<>
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks kosimpleqa \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    export OPENAI_API_KEY=<>
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks kosimpleqa \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+The four MCQ benchmarks (`kmmlu`, `kmmlu-pro`, `kmmlu-redux`, `kormedmcqa`) all use the existing `eval_type=multichoice`; each entry sets a per-sample `extract_regex` that matches the prompt's `정답: A/B/C/D[/E]` answer line. Unlike the other benchmarks on this page, the Korean benchmarks are single-language and do not take a `--languages` flag.
+
 ## Supported translation metrics
 
 By default, we compute [BLEU score](https://github.com/mjpost/sacrebleu) to evaluate machine translation. However, we also support COMET, a popular neural metric for machine translation. Computing COMET requires a separate evaluation run that uses [xCOMET-XXL](https://huggingface.co/Unbabel/XCOMET-XXL) model as a judge. This run can be scheduled by adding the following parameters to the evaluation command:
