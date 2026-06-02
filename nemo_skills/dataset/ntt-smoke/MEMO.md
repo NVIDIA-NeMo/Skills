@@ -102,8 +102,8 @@ ns prepare_data ntt-smoke --data_dir "$NTT_SMOKE_SOURCE_DATA_DIR"
 ```
 
 Baseline reports should record the inference path used to produce the numbers.
-The initial Qwen ASR and Nemotron Omni baselines are self-hosted cluster runs,
-not hosted `inference.nvidia.com` calls: Qwen ASR loads
+The initial Qwen ASR and Nemotron Omni baselines are self-hosted runs, not
+hosted `inference.nvidia.com` calls: Qwen ASR loads
 `Qwen/Qwen3-ASR-1.7B` from a local Hugging Face snapshot/cache, and Nemotron
 Omni is served from an audio-capable vLLM/OpenAI-compatible server using
 `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`. Hosted
@@ -114,6 +114,6 @@ The prepare script uses stable SHA-based sampling, so the same source manifests
 and options produce the same rows. Generated noisy audio is written under
 `ntt-smoke/data`. Long-form rows are sampled from
 `apptek-callcenter-dialogues/test.jsonl`; prepare that benchmark under the same
-source data root or pass `--apptek-dir`. Preference-ASR rows preserve absolute
-paths under `NTT_SMOKE_PREFERENCE_ASR_DIR`, so that directory must be readable
-or mounted during evaluation.
+source data root or pass `--apptek-dir`. Preference-ASR rows are resolved from
+`NTT_SMOKE_PREFERENCE_ASR_DIR`, so that directory must be readable during
+evaluation.

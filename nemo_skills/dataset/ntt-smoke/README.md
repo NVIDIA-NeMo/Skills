@@ -56,11 +56,11 @@ not the intended full NTT-SMOKE configuration.
 - superficial text multiple-choice checks.
 
 Generated noisy audio is written under `ntt-smoke/data/`.
-Original-source samples preserve their original `/data/<source>/...` paths and
-therefore expect the source datasets to remain under the same prepared data
-root used at evaluation time. Preference-ASR samples preserve absolute paths
-under `NTT_SMOKE_PREFERENCE_ASR_DIR`, so that directory must be readable or
-mounted at evaluation time. `asr.long` expects a prepared
+Original-source samples preserve paths relative to the configured prepared data
+root and therefore expect the source datasets to remain available under that
+root at evaluation time. Preference-ASR samples are resolved from
+`NTT_SMOKE_PREFERENCE_ASR_DIR`, so that directory must be readable at
+evaluation time. `asr.long` expects a prepared
 `apptek-callcenter-dialogues/test.jsonl` under the source data root, or a
 directory provided with `NTT_SMOKE_APPTEK_DIR` / `--apptek-dir`.
 
