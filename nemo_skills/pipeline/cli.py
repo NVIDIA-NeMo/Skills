@@ -25,7 +25,6 @@ from nemo_skills.pipeline.convert import convert
 from nemo_skills.pipeline.eval import eval
 from nemo_skills.pipeline.generate import generate
 from nemo_skills.pipeline.megatron_lm.train import train_megatron_lm
-from nemo_skills.pipeline.nemo_evaluator import nemo_evaluator
 from nemo_skills.pipeline.nemo_gym_rollouts import nemo_gym_rollouts
 from nemo_skills.pipeline.nemo_rl.grpo import grpo_nemo_rl
 from nemo_skills.pipeline.nemo_rl.sft import sft_nemo_rl
@@ -37,6 +36,13 @@ from nemo_skills.pipeline.start_server import start_server
 from nemo_skills.pipeline.summarize_results import summarize_results
 from nemo_skills.pipeline.summarize_robustness import summarize_robustness
 from nemo_skills.pipeline.verl.ppo import ppo_verl
+
+try:
+    from nemo_skills.pipeline.nemo_evaluator import nemo_evaluator
+except ModuleNotFoundError as e:
+    # Keep non-evaluator commands usable when optional launcher deps are absent.
+    if e.name != "nemo_evaluator_launcher":
+        raise
 
 typer.main.get_command_name = lambda name: name
 
