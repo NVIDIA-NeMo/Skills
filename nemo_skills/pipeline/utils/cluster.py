@@ -215,6 +215,16 @@ def get_env_variables(cluster_config):
         "HF_TOKEN",
         "NGC_API_KEY",
     }
+    # Auto-passthrough for NEMO_SKILLS_* runtime tuning vars set in
+    # the user's shell. Without this, opt-in env knobs like
+    # NEMO_SKILLS_OPENAI_AIOHTTP, NEMO_SKILLS_DISABLE_UVLOOP, and
+    # NEMO_SKILLS_TRANSIENT_RETRIES are stripped when the launcher
+    # spawns the inner python -- they only live in the wrapper
+    # shell. Scoping by prefix keeps the surface tight (no risk of
+    # accidentally exporting unrelated user env).
+    for name in os.environ:
+        if name.startswith("NEMO_SKILLS_") and name not in optional_env_vars_to_add:
+            optional_env_vars_to_add.add(name)
     default_factories = {
         "HF_TOKEN": lambda: str(token) if (token := get_token()) else "",
     }
