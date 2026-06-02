@@ -182,6 +182,57 @@ class BaseModel:
         # concurrent requests result into httpx hanging
         self.concurrent_semaphore = asyncio.Semaphore(concurrent_requests_limit)
 
+        # Optional aiohttp fast-path. The default litellm.acompletion
+        # path goes through httpx, which is a pure-Python HTTP
+        # implementation -- at 5k+ concurrent connections it becomes
+        # the GIL-bound bottleneck (~95% of single-core CPU in the
+        # async loop, per py-spy). The OpenAI SDK natively supports
+        # an aiohttp transport via DefaultAioHttpClient. aiohttp's
+        # request/response parsing is C-extension backed, so the
+        # same workload runs at <5% CPU on the same hardware.
+        #
+        # Set NEMO_SKILLS_OPENAI_AIOHTTP=1 to enable. Only the
+        # non-streaming chat endpoint goes through this path; text
+        # completions, streaming, the responses API, and
+        # non-OpenAI-shaped providers (gemini, azure, etc.) still
+        # use litellm -- since this transport assumes an
+        # OpenAI-compatible HTTP API at self.base_url.
+        self._async_openai_client = None
+        if os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP") == "1":
+            try:
+                from openai import AsyncOpenAI, DefaultAioHttpClient
+
+                # openai SDK defaults the aiohttp connector to
+                # max_connections=1000, max_keepalive_connections=100,
+                # which silently caps the lane count at high
+                # concurrency (8k lanes see only ~1000 open TCP
+                # connections; the rest stall in the aiohttp connector
+                # queue). Also, httpx-aiohttp's transport translates
+                # httpx.Limits(max_connections=None) to "omit the
+                # `limit` kwarg," which makes aiohttp fall back to ITS
+                # default of 100 -- worse than the openai SDK
+                # default. We therefore pass an explicit large
+                # integer (NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT, default
+                # 65536) instead of None.
+                aiohttp_limit = int(os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT", "65536"))
+                self._async_openai_client = AsyncOpenAI(
+                    api_key=api_key,
+                    base_url=self.base_url,
+                    http_client=DefaultAioHttpClient(
+                        limits=httpx.Limits(
+                            max_connections=aiohttp_limit,
+                            max_keepalive_connections=aiohttp_limit,
+                        ),
+                    ),
+                    max_retries=0,  # we own retries; SDK's retry would
+                    # rebuild the request and double-count
+                    # concurrent_semaphore holds.
+                )
+            except ImportError:
+                LOG.warning(
+                    "NEMO_SKILLS_OPENAI_AIOHTTP=1 but openai[aiohttp] is not installed; falling back to litellm/httpx."
+                )
+
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         if api_key:  # explicit cmd argument always takes precedence
             return api_key
@@ -324,7 +375,38 @@ class BaseModel:
                     if endpoint_type == EndpointType.chat:
                         assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
-                        response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
+                        # Fast path: native AsyncOpenAI + aiohttp transport,
+                        # set up in __init__ when NEMO_SKILLS_OPENAI_AIOHTTP=1.
+                        # Skips litellm's httpx-based dispatch which is the
+                        # dominant single-core CPU consumer at high
+                        # concurrency. Only the non-streaming chat endpoint
+                        # is routed here; everything else falls through to
+                        # litellm so we don't have to reimplement the full
+                        # transport surface for streaming, responses API,
+                        # text completions, or non-OpenAI providers.
+                        use_native = self._async_openai_client is not None and not stream
+                        if use_native:
+                            native_params = {
+                                k: v
+                                for k, v in request_params.items()
+                                # litellm-only knobs we strip before
+                                # handing the body to AsyncOpenAI. The
+                                # SDK validates against the OpenAI
+                                # schema and rejects unknown top-level
+                                # fields.
+                                if k not in ("allowed_openai_params",)
+                            }
+                            # AsyncOpenAI needs `model` as a top-level
+                            # kwarg; litellm consumes it via
+                            # self.litellm_kwargs (with the `openai/`
+                            # provider prefix). Use the raw model name
+                            # here.
+                            native_params.setdefault("model", self.model_name_or_path)
+                            response = await self._async_openai_client.chat.completions.create(
+                                **native_params,
+                            )
+                        else:
+                            response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
                         if stream:
                             result = self._stream_chat_chunks_async(response)
                         else:
