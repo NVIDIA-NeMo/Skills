@@ -353,9 +353,10 @@ class RayBackend(ExecutionBackend):
         if container_image:
             image_specific_selector = self._labels_for_image(container_image)
             if image_specific_selector:
-                # Per-image/per-container selectors are intended to override
-                # defaults from entrypoint_label_selector when keys overlap.
-                selector.update(image_specific_selector)
+                # Image-derived selectors only fill gaps; explicit
+                # entrypoint_label_selector keys win (like image_label_key below).
+                for key, value in image_specific_selector.items():
+                    selector.setdefault(key, value)
             elif self.image_label_key:
                 selector.setdefault(
                     self.image_label_key, self._normalize_label_value(container_image)
