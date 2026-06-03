@@ -750,6 +750,9 @@ def eval(
                 if judge_model:
                     judge_pipeline_args.setdefault("judge_model", judge_model)
 
+                if judge_pipeline_kwargs:
+                    judge_pipeline_args.update(parse_kwargs(judge_pipeline_kwargs))
+
                 # Call with standardized parameters
                 judge_tasks = judge_step_fn(
                     exp=exp,

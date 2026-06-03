@@ -120,6 +120,32 @@ def test_generate_async_duplicates_reasoning_key_in_conversation():
     assert assistant_message["reasoning"] == "internal trace"
 
 
+def test_generate_async_includes_tool_metrics_when_available():
+    """Tool providers can expose structured per-request metrics before cleanup."""
+    wrapper = _make_wrapper()
+    wrapper.tool_manager.get_request_metrics = AsyncMock(
+        return_value={"DirectTavilyBrowserTool": {"web_search_calls": 1, "tavily_http_calls": 1}}
+    )
+    wrapper.model.generate_async = AsyncMock(
+        return_value={
+            "generation": "Hello world",
+            "num_generated_tokens": 2,
+            "finish_reason": "stop",
+            "serialized_output": [{"role": "assistant", "content": "Hello world"}],
+        }
+    )
+
+    with _PATCH_TOOLS:
+        result = asyncio.run(
+            wrapper.generate_async(
+                prompt=[{"role": "user", "content": "hi"}],
+                endpoint_type=EndpointType.chat,
+            )
+        )
+
+    assert result["tool_metrics"] == {"DirectTavilyBrowserTool": {"web_search_calls": 1, "tavily_http_calls": 1}}
+
+
 def test_stream_final_conversation_duplicates_reasoning_key():
     """Streaming conversation entries mirror reasoning_content to reasoning."""
     wrapper = _make_wrapper()

@@ -80,6 +80,9 @@ def create_judge_tasks(
     input_file = judge_pipeline_args.get("input_file")
     comet_model_path = judge_pipeline_args.get("judge_model")
 
+    precision = judge_pipeline_args.get("precision", "bf16")
+    batch_size = judge_pipeline_args.get("batch_size", 16)
+
     # Determine seeds to check
     if input_file is None:
         num_seeds = judge_pipeline_args.get("num_random_seeds", 1)
@@ -111,7 +114,34 @@ def create_judge_tasks(
     else:
         script_args.append(f"--input-file {input_file}")
 
-    run_cmd = f"pip install unbabel-comet && python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
+    script_args.append(f"--precision {precision}")
+    script_args.append(f"--batch-size {batch_size}")
+
+    # Install unbabel-comet exactly once per node to avoid races between the
+    # N srun tasks (one per GPU) writing to the same site-packages. Uses an
+    # atomic mkdir lock + ready-file, mirroring the pattern in
+    # nemo_skills/pipeline/utils/generation.py.
+    install_cmd = (
+        "mkdir -p /tmp/nemo_skills && "
+        "READY_FILE=/tmp/nemo_skills/unbabel_comet.ready && "
+        "LOCK_DIR=/tmp/nemo_skills/unbabel_comet.lock && "
+        'if [ ! -f "$READY_FILE" ]; then '
+        '  if mkdir "$LOCK_DIR" 2>/dev/null; then '
+        "    ( "
+        "      trap 'rc=$?; rmdir \"$LOCK_DIR\" 2>/dev/null; exit $rc' EXIT HUP INT TERM; "
+        "      pip install unbabel-comet || exit 1; "
+        '      touch "$READY_FILE"; '
+        '      rmdir "$LOCK_DIR"; '
+        "      trap - EXIT HUP INT TERM; "
+        "    ) || exit 1; "
+        "  else "
+        '    while [ ! -f "$READY_FILE" ]; do sleep 1; done; '
+        "  fi; "
+        "fi"
+    )
+    run_cmd = (
+        f"{install_cmd} && python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/comet.py {' '.join(script_args)}"
+    )
 
     # Create task with GPU support for Comet
     judge_task = add_task(
@@ -122,6 +152,7 @@ def create_judge_tasks(
         container=cluster_config["containers"]["vllm"],
         cluster_config=cluster_config,
         num_gpus=judge_server_gpus or 1,
+        num_tasks=judge_server_gpus or 1,
         num_nodes=judge_server_nodes or 1,
         partition=partition,
         run_after=run_after,
