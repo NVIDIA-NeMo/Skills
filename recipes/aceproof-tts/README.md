@@ -18,6 +18,11 @@ Each model profile supports `system_prompt` (inline text) or `system_prompt_path
 which is prepended as a system message to the model input. If you need different system
 prompts per stage, define multiple model profiles and point each stage to the desired profile.
 
+## Configs and examples
+
+Runnable experiment configs live in `configs/`. `configs/examples/` contains server
+argument snippets for Ultra FP8 vLLM, BF16/MTP vLLM, and FP4/NVFP4 vLLM profiles.
+
 ## Outputs
 
 All outputs are under:

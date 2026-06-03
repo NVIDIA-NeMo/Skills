@@ -1,0 +1,28 @@
+# BF16/MTP Step-2402 vLLM server arguments.
+model_profile: ultra_bf16_mtp
+model_profiles:
+  ultra_bf16_mtp:
+    model: ${MODEL}
+    server_type: vllm
+    server_gpus: 4
+    server_nodes: 2
+    server_container: ${CONTAINER}
+    server_args: >-
+      --trust-remote-code
+      --dtype bfloat16
+      --kv-cache-dtype fp8
+      --tensor-parallel-size 8
+      --max-num-seqs 256
+      --gpu-memory-utilization 0.95
+      --distributed-executor-backend ray
+      --enable-expert-parallel
+      --reasoning-parser-plugin ${PLUGIN}
+      --reasoning-parser ultra_v3
+      --speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":5}'
+      --mamba-cache-mode align
+      --mamba_ssm_cache_dtype float32
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --max-model-len 262144
+      --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":96}'
+      --compilation-config '{\"pass_config\":{\"fuse_allreduce_rms\":false}}'

@@ -1,0 +1,26 @@
+# FP4/NVFP4 Step-2402 long-context vLLM server arguments.
+model_profile: ultra_fp4_nvfp4
+model_profiles:
+  ultra_fp4_nvfp4:
+    model: ${MODEL}
+    server_type: vllm
+    server_gpus: 4
+    server_nodes: 1
+    server_container: ${CONTAINER}
+    server_args: >-
+      --trust-remote-code
+      --dtype auto
+      --tensor-parallel-size 4
+      --distributed-executor-backend ray
+      --enable-expert-parallel
+      --kv-cache-dtype fp8
+      --gpu-memory-utilization 0.95
+      --mamba_ssm_cache_dtype float32
+      --max-num-seqs 64
+      --max-model-len 524288
+      --reasoning-parser-plugin ${PLUGIN}
+      --reasoning-parser ultra_v3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":96}'
+      --compilation-config '{\"pass_config\":{\"fuse_allreduce_rms\":false}}'
