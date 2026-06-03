@@ -47,18 +47,12 @@ class CCCMetrics(BaseMetrics):
 
         for pred in predictions:
             if "num_generated_tokens" in pred:
-                try:
-                    self.token_counts.append(int(pred["num_generated_tokens"]))
-                except (TypeError, ValueError):
-                    pass
+                self.token_counts.append(int(pred["num_generated_tokens"]))
             finish_reason = pred.get("finish_reason")
             if finish_reason is not None:
                 self.finish_reasons[str(finish_reason)] += 1
             if "eval_time_seconds" in pred:
-                try:
-                    self.eval_times.append(float(pred["eval_time_seconds"]))
-                except (TypeError, ValueError):
-                    pass
+                self.eval_times.append(float(pred["eval_time_seconds"]))
 
         annotated_predictions = []
         for idx, prediction in enumerate(predictions):
@@ -202,10 +196,7 @@ class CCCMetrics(BaseMetrics):
             problem_eval_times = []
             for submission in submissions:
                 if "eval_time_seconds" in submission:
-                    try:
-                        problem_eval_times.append(float(submission["eval_time_seconds"]))
-                    except (TypeError, ValueError):
-                        pass
+                    problem_eval_times.append(float(submission["eval_time_seconds"]))
             grouped_rows = defaultdict(list)
             for idx, submission in enumerate(submissions):
                 row_key = submission.get("id", f"__row_{idx}")
@@ -399,12 +390,7 @@ class CCCMetrics(BaseMetrics):
             mask = 0
             for subtask in ordered_subtasks:
                 subtask_result = test_case_results.get(subtask, {})
-                score = 0.0
-                if isinstance(subtask_result, dict):
-                    try:
-                        score = float(subtask_result.get("score", 0.0))
-                    except Exception:
-                        score = 0.0
+                score = float(subtask_result.get("score", 0.0)) if isinstance(subtask_result, dict) else 0.0
                 achieved_subtask_scores[subtask] = score
                 if subtask in subtask_to_bit:
                     achieved_total_score += score

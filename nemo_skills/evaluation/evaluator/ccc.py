@@ -102,7 +102,7 @@ def _precompile_problem(problem_id: str, grader_files, compile_code: str, run_co
 
 def run_test_case(task_args: dict, worker_id: int) -> dict:
     """Compile and run one generated solution against one CCC test case."""
-    start = time.monotonic() if task_args.get("time_eval") else None
+    start = time.monotonic() if task_args["time_eval"] else None
     unique_dir = f"/nemo_run/ccc_run_{worker_id}_{os.getpid()}_{time.time_ns()}"
     result: dict | None = None
     try:
