@@ -1,0 +1,38 @@
+pipeline:
+  cluster: slurm
+  output_dir: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/aceproof-tts/math-sft-v2/IMO-ProofBench-Adv/full_result/proof_final_R4/juge_results
+  proof_final_dir: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/aceproof-tts/math-sft-v2/IMO-ProofBench-Adv/full_result/proof_final_R4/IMO-ProofBench
+  reference_solutions: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/recipes/aceproof-tts/inputs/IMO-ProofBench-solution.jsonl
+  prompt_config_path: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/recipes/aceproof-tts/prompts/proof_autograder.yaml
+  partition: batch_short
+  cpu_partition: cpu
+  data_job_gpus: 1
+  data_job_partition: batch
+  dependent_jobs: 0
+  judge_dependent_jobs: 0
+  num_trials: 16
+  judge_chunks: 1
+  rerun_done: false
+
+inference:
+  judge:
+    tokens_to_generate: 120000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+
+model_profile: deepseek_v32
+model_profile_by_stage:
+  judge: deepseek_v32
+model_profiles:
+  deepseek_v32:
+    model: /scratch/fsw/portfolios/llmservice/users/yachen/cache/DeepSeek-V3.2-Speciale
+    server_type: sglang
+    server_gpus: 8
+    server_nodes: 1
+    server_container: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/container/nemo-skills-sglang-v32.sqsh
+    server_args: "--ep-size 8 --dp 8 --enable-dp-attention --reasoning-parser deepseek-v3 --log-requests --mem-fraction-static=0.8"
+    server_address: null
+    inline_args: "++inference.endpoint_type=chat ++chat_template_kwargs.thinking=true"
+    system_prompt: null
+    system_prompt_path: null

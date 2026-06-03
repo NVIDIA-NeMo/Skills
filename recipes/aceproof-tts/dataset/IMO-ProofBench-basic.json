@@ -1,0 +1,212 @@
+[
+    {
+        "id": 1,
+        "question": "Determine all functions $f: \\mathbb{Z} \\rightarrow \\mathbb{Z}$ such that, for all $x, y \\in \\mathbb{Z}$, we have \\[ f(2x)+2f(y)=f(f(x+y)).\\]",
+        "answer": "$f(x) = 0$ and $f(x) = 2x + c$ for all integer $x$ and some constant $c$.",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-001"
+    },
+    {
+        "id": 2,
+        "question": "Show that $x^2 + y^2 + z^2 + t^2 \\ge xyzt$ for any positive real numbers $x, y, z, t$ that satisfy $2(x + y + z + t) \\ge xyzt$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-002"
+    },
+    {
+        "id": 3,
+        "question": "Find all functions $f\\colon \\mathbb{R} \\rightarrow \\mathbb{R}$ such that for all $a,b \\in \\mathbb{R}$,\n \\[ (b - a)f(f(a)) = a f(a + f(b)). \\]\"",
+        "answer": "$f(x)=0, f(x)=-x+k$ where $k$ is a constant",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-003"
+    },
+    {
+        "id": 4,
+        "question": "Find all strictly increasing functions $g:\\mathbb{R} \\to \\mathbb{R}$ such that:\n (a) $g$ is surjective\n (b) $g(g(x))=g(x)+20x.$",
+        "answer": "$g(x) = 5x$ for all x",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-004"
+    },
+    {
+        "id": 5,
+        "question": "Let $P$ be a polynomial with real coefficients whose leading coefficient is $1$. Suppose that for all nonzero real numbers $x$, we have $P(x) + P(1/x) = \\frac{P(x + 1/x) + P(x - 1/x)}{2}$. Determine all possibilities for $P$.",
+        "answer": "$P(x)= x^4 +ax^2 +6$, $P(x)=x^2$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-005"
+    },
+    {
+        "id": 6,
+        "question": "Consider any infinite sequence of integers $c_0, c_1, c_2, \\ldots $ such that $c_0 \\neq 0$. Prove that for some integer $k \\geq 0$, the polynomial $P(x) = \\sum_{i = 0}^k c_i x^i$ has fewer than $k$ distinct real roots.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-006"
+    },
+    {
+        "id": 7,
+        "question": "Determine all positive integers $n$ and integer sequences $a_0, a_1,\\ldots, a_n$ such that $a_n = 3$ and\n \\[f(a_{i-1}) = a_i\\]\n for all $i = 1,2,\\ldots,n$, where $f(x) = a_n x^n + a_{n-1} x^{n-1} + \\cdots + a_1 x + a_0$.",
+        "answer": "$n=2$ with $\\left(a_{0}, a_{1}, a_{2}\\right)=(-1,1,3)$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-007"
+    },
+    {
+        "id": 8,
+        "question": "Let $a,b,c$ be positive reals such that $a+b+c = 1$, prove that $\\sqrt{a}+\\sqrt{b}+\\sqrt{c} \\geq 3\\sqrt{3}(ab+bc+ca)$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-008"
+    },
+    {
+        "id": 9,
+        "question": "Let $a_1,a_2,...,a_{18}$ be 18 real numbers, not necessarily distinct, with average $m$. Let $A$ denote the number of triples $1 \\le i < j < k \\le 18$ for which $a_i + a_j + a_k \\ge 3m$. What is the minimum possible value of $A$?",
+        "answer": "$136$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-009"
+    },
+    {
+        "id": 10,
+        "question": "The numbers $\\{ 1, 2, 3, \\ldots , 2022 \\}$ are partitioned into two sets $A$ and $B$ of size $1011$ each. Let $S_{AB}$ denote the set of all pairs $(a, b) \\in A \\times B$ where $a < b$, and let $S_{BA}$ denote the set of all pairs $(a, b) \\in A \\times B$ where $b < a$.\n\n Prove that $\\sum_{(a, b) \\in S_{AB}} (b - a) \\neq \\sum_{(a, b) \\in S_{BA}} (a - b)$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-010"
+    },
+    {
+        "id": 11,
+        "question": "Let $A\\subset \\{1,2,\\ldots,2000\\}$, $|A|=1000$, such that $a$ does not divide $b$ for all distinct elements $a,b\\in A$. For a set $X$ as above let us denote with $m_{X}$ the smallest element in $X$. Find $\\min m_{A}$ (for all $A$ with the above properties).",
+        "answer": "$64$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-011"
+    },
+    {
+        "id": 12,
+        "question": "Consider a positive integer $n$. We define $f(n)$ as the number of pairs of paths on an $n \\times n$ grid that:\n\n (1) Both paths start at $(0, 0)$ (bottom left corner) and end at $(n, n)$ (top right corner).\n\n (2) Both paths allow only right or up movements (one unit each).\n\n (3) The $y$ coordinate of the first path never exceeds the y coordinate of the second path at any timestep.\n\n For example, when $n = 2$, consider the following pair of paths:\n\n The first path: $(0,0) \\rightarrow (1,0) \\rightarrow (1,1) \\rightarrow (2,1) \\rightarrow (2,2)$\n The second path: $(0,0) \\rightarrow (1,0) \\rightarrow (2,0) \\rightarrow (2,1) \\rightarrow(2,2)$\n The example is invalid because after 2 steps, the y coordinate of the first path (1) is larger than the y coordinate of the second path (0).\n\n However, the following example is valid,\n\n The first path: $(0,0) \\rightarrow (1,0) \\rightarrow (2,0) \\rightarrow (2,1) \\rightarrow (2,2)$\n The second path: $(0,0) \\rightarrow (1,0) \\rightarrow (1,1) \\rightarrow (2,1) \\rightarrow (2,2)$\n\n since the y coordinate of the first path is never larger than the second path. Find $f(10)$.",
+        "answer": "$\\binom{20}{10}^2 - \\binom{20}{9}^2$ ",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-012"
+    },
+    {
+        "id": 13,
+        "question": "Each of 8 boxes contains 6 balls. Each ball has been colored with one of 22 colors. If no two balls in the same box are the same color, prove that there are two colors that occur together in more than one box.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-013"
+    },
+    {
+        "id": 14,
+        "question": "In Shoreline Amphitheatre, 2024 Googlers each hold up to five flags of various colors. Any group of three Googlers will always have at least two people holding flags of the same color. Prove that one specific flag color is held by at least 200 Googlers.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-014"
+    },
+    {
+        "id": 15,
+        "question": "Adrian is lining up $n \\geq 2$ toy cars in a row. Each car has a width and length, and no two cars have the same width or length. Initially, the cars are arranged in increasing order of length from left to right. Adrian repeatedly does the following: he chooses some two adjacent cars where the left car is shorter in length and greater in width than the right car, and he swaps them. He keeps doing this until no further moves are possible. Prove that no matter how Adrian chooses his swaps, the procedure will eventually terminate, and in the end, the cars will be sorted in increasing order of width from left to right.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-015"
+    },
+    {
+        "id": 16,
+        "question": "101 stones are arranged in a circle, numbered 1 through 101 in order (so that stone 1 is next to stone 101). Each stone is painted either red, white, or blue. Initially, stone 101 is the only blue stone. Among the remaining stones, even-numbered stones are red, and odd-numbered stones are white.\n\nWe perform a sequence of modifications to the coloring, where in each step, we may choose a stone and repaint it a different color, as long as we ensure that no two adjacent stones are ever the same color. Prove that it is not possible to eventually reach a state where again stone 101 is the only blue stone, but among the remaining stones, all even-numbered stones are white and all odd-numbered stones are red.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-016"
+    },
+    {
+        "id": 17,
+        "question": "Find all non-negative integer $n$ such that $A_n = 1 + 3^{20(n^2+n+1)} + 9^{14(n^2+n+1)}$ is a prime number.",
+        "answer": "There is no such $n$.",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-017"
+    },
+    {
+        "id": 18,
+        "question": "Let $x$ and $y$ be positive integers satisfying $2x^2 + x = 3y^2 + y$. Prove that $2x+2y+1$ is a perfect square.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-018"
+    },
+    {
+        "id": 19,
+        "question": "For any positive integer $n$, let $\\delta(n)$ be the largest odd divisor of $n$. Prove for any $N>0$ that we have\n \\[\n \\left| \\sum_{n=1}^N \\frac{\\delta(n)}{n}- \\frac{2}{3}N \\right| <1.\n \\]",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-019"
+    },
+    {
+        "id": 20,
+        "question": "Find all pairs of primes $(a, b)$ such that $a^2 - ab - b^3 = 1$.",
+        "answer": "$(p,q) = (7,3)$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-020"
+    },
+    {
+        "id": 21,
+        "question": "Define the sequence $x_1 = 6$ and $x_n = 2^{x_{n-1}} + 2$ for all integers $n \\ge 2$. Prove that $x_{n-1}$ divides $x_n$ for all integers $n \\ge 2$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-021"
+    },
+    {
+        "id": 22,
+        "question": "Let $S=\\{0,1,2^{2024},3^{2024},\\ldots\\}$ be the set of all perfect\n 2024-th powers. Find all polynomials $P$ with integer coefficients\n such that $P(x)=s$ has an integer solution $x$ for every $s\\in S$.",
+        "answer": "$P(x) = (x - a)^d or P(x) = (-x - a)^d$, where $d | 2024$.",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-022"
+    },
+    {
+        "id": 23,
+        "question": "Suppose $a,b,c$ are positive integers such that $2^{a}+1=7^{b}+2^{c}$.\n Find all possible values of $(a,b,c)$.",
+        "answer": "$(a,b,c) =( 3,1,1) ,( 6,2,4)$.",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-023"
+    },
+    {
+        "id": 24,
+        "question": "Find all non-negative integers $a,b,c$ such that $20^{a}+b^{4}=2024^{c}$",
+        "answer": "$(a,b,c) = (0,0,0)$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-024"
+    },
+    {
+        "id": 25,
+        "question": "Given a triangle $XYZ$ with circumcenter $O$, the incircle of triangle\n $XYZ$ has center $I$. Let $M,N$ on the sides $XY,XZ$\n respectively such that $YM=ZN=YZ$. If $\\gamma$ is the angle created\n by two lines $MN,OI$, what is $\\frac{\\gamma}{2}$ in terms of degree?",
+        "answer": "45",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-025"
+    },
+    {
+        "id": 26,
+        "question": "Let $\\triangle ABC$ be an inscribed triangle in $(O)$ and circumscribed\n around $(I)$. The incircle $(I)$ touches $BC,CA,AB$ at $D,E,F$,\n respectively. Construct the circle $(W_{a})$ passing through $B,C$\n and tangent to $(I)$ at $X$, and let $D'$ be the reflection of\n $D$ across $AI$. Define $Y,Z,E',F'$ similarly. Prove that the lines\n $D'X,E'Y,F'Z$ are concurrent on the line $OI$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-026"
+    },
+    {
+        "id": 27,
+        "question": "Given an acute triangle $ABC$, let $D$ and $E$ be the feet of\n the altitudes from $B$ to $AC$ and $C$ to $AB$, respectively.\n Let $E_{1}$ and $E_{2}$ be the reflections of $E$ with respect\n to $AC$ and $BC$, respectively. If $X$ (not equal to $C$) is an\n intersection point of the circumcircle of $\\triangle CE_{1}E_{2}$\n and $AC$, and $O$ is the circumcenter of $\\triangle CE_{1}E_{2}$,\n prove that $XO$ is perpendicular to $DE$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-027"
+    },
+    {
+        "id": 28,
+        "question": "In $\\triangle ABC$ the altitudes $BE$ and $CF$ intersect at $H$. A circle $(W)$ is\n externally tangent to the Euler circle $(E)$ of $\\triangle ABC$ and also tangent\n to the sides $AB$ and $AC$ at $X$ and $Y$, respectively, with\n $(W)$ being closer to $A$ than the Euler circle. Let $I'$ be the\n incenter of $\\triangle AEF$. Prove that $AXI'Y$ is a rhombus.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-028"
+    },
+    {
+        "id": 29,
+        "question": "Let $p$ and $n$ be integers with $0\\le p\\le n-2$. Consider a set\n $S$ of $n$ lines in the plane such that no two of them are parallel\n and no three have a common point. Denote by $I$ the set of intersections\n of lines in $S$. Let $O$ be a point in the plane not lying on any\n line of $S$. A point $X\\in I$ is colored red if the open line segment\n $OX$ intersects at most $p$ lines in $S$. What is the minimum number\n of red points that is contained in $I$?",
+        "answer": "$\\frac{(p + 1)(p + 2)}{2}$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-029"
+    },
+    {
+        "id": 30,
+        "question": "Given a trapezoid $ABCD$ with $AB,CD$ as the two legs. Circle $(W_{1})$ passes through $A,B$, and $(W_{2})$ passes through $C,D$ so that they are tangent to each other. The inscribed angle on circle $W_1$ corresponding to the arc AB on the side opposite to C and D is alpha, and the inscribed angle on circle $W_2$ corresponding to the arc CD on the side opposite to  A and B is beta. Construct $(W_{3})$ passing through $A,B$, $(W_{4})$ passing through $C,D$ such that the inscribed angle on circle W3 corresponding to the arc AB on the side opposite to C and D is $\\beta$, and the inscribed angle on circle $W_4$ corresponding to the arc CD on the side opposite to  A and B is b $\\alpha$. Prove that $(W_{3}),(W_{4})$ are tangent to each other.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Basic-030"
+    }
+]

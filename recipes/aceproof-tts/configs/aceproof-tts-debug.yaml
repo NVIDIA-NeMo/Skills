@@ -1,0 +1,63 @@
+pipeline:
+  cluster: slurm
+  output_dir: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/aceproof-tts/output_wenliang_sft_011225_sft_011626_48500/IMO2025
+  input_paths: /scratch/fsw/portfolios/llmservice/users/yachen/cache/dataset/IMO2025.json
+  partition: batch
+  cpu_partition: cpu
+  data_job_gpus: 1
+  data_job_partition: batch
+  start_round: 1
+  max_rounds: 2
+  dependent_jobs: 0
+  proof_gen_dependent_jobs: 0
+  refine_dependent_jobs: 0
+  verify_dependent_jobs: 1
+  rerun_done: false
+
+scaling:
+  n_parallel_proof_gen: 64
+  n_verification_per_proof: 32
+  n_agg_trials: 16
+  n_best_proofs_to_sample: 16
+  n_proofs_to_refine: 1
+  max_rating_per_score: 4
+  solved_threshold: 0.99999
+  proof_gen_chunks: 4
+  proof_refine_chunks: 4
+  verification_chunks: 16
+
+inference:
+  proof_gen:
+    tokens_to_generate: 90000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+  proof_refine:
+    tokens_to_generate: 90000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+  verification:
+    tokens_to_generate: 90000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+
+model_profile: nano_v3
+model_profile_by_stage:
+  proof_gen: nano_v3
+  verify: nano_v3
+  refine: nano_v3
+model_profiles:
+  nano_v3:
+      model: /scratch/fsw/portfolios/llmservice/users/yachen/cache/checkpoint/wenliang_sft_011225_sft_011626_48500/safetensors-checkpoint-0048500
+      server_type: vllm
+      server_gpus: 1
+      server_nodes: 1
+      server_container: null
+      server_args: "--mamba_ssm_cache_dtype float32 --no-enable-prefix-caching"
+      server_address: null
+      inline_args: ""
+      system_prompt: |
+        You are a helpful and harmless assistant.\n\nYou are not allowed to use any tools.
+      system_prompt_path: null

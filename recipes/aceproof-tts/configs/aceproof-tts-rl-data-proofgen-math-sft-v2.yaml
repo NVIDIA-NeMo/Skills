@@ -1,0 +1,37 @@
+pipeline:
+  cluster: slurm
+  output_dir: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/aceproof-tts/math-sft-v2/rl_data
+  input_paths: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/aceproof/data_processing_proof_rl/dataset/full.jsonl
+  partition: batch
+  cpu_partition: cpu
+  data_job_gpus: 1
+  data_job_partition: batch
+  rerun_done: false
+
+scaling:
+  n_parallel_proof_gen: 4
+  proof_gen_chunks: 4
+
+inference:
+  proof_gen:
+    tokens_to_generate: 120000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 128
+
+model_profile: nano_v3
+model_profile_by_stage:
+  proof_gen: nano_v3
+model_profiles:
+  nano_v3:
+    model: /scratch/fsw/portfolios/llmservice/users/yachen/cache/checkpoint/wenliang_sft_011225_sft_011626_48500/safetensors-checkpoint-0048500
+    server_type: vllm
+    server_gpus: 8
+    server_nodes: 1
+    server_container: null
+    server_args: "--mamba_ssm_cache_dtype float32 --no-enable-prefix-caching --max-num-seqs 512 --tensor-parallel-size 8"
+    server_address: null
+    inline_args: ""
+    system_prompt: |
+        You are a helpful and harmless assistant.\n\nYou are not allowed to use any tools.
+    system_prompt_path: null

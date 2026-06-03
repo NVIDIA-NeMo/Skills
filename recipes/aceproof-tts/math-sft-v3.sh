@@ -1,0 +1,5 @@
+#!/bin/bash
+
+base_dir=/scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills
+python $base_dir/recipes/aceproof-tts/pipeline/run_pipeline.py   \
+    --config $base_dir/recipes/aceproof-tts/configs/aceproof-tts-imo2025-math-sft-v3.yaml

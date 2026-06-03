@@ -1,0 +1,82 @@
+pipeline:
+  cluster: slurm
+  output_dir: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/Skills/aceproof-tts/math-sft-v3/IMO2025
+  input_paths: /scratch/fsw/portfolios/llmservice/users/yachen/cache/dataset/IMO2025.json
+  partition: batch_short
+  cpu_partition: cpu
+  data_job_gpus: 1
+  data_job_partition: batch
+  start_round: 1
+  max_rounds: 4
+  dependent_jobs: 0
+  proof_gen_dependent_jobs: 0
+  refine_dependent_jobs: 0
+  verify_dependent_jobs: 2
+  proof_for_verify_max_tokens: 8192
+  tokenize_batch_size: 1024
+  interleave_rows: true
+  use_pool_best_for_refine: false
+  save_round_proof_final: true
+  rerun_done: false
+  single_experiment: false
+  unique_experiment_name: false
+  experiment_name: ace_pipeline_ipbd   # optional
+
+scaling:
+  n_parallel_proof_gen: 128
+  n_verification_per_proof: 64
+  n_agg_trials: 32
+  n_best_proofs_to_sample: 32
+  n_proofs_to_refine: 1
+  max_rating_per_score: 4
+  solved_threshold: 0.99999
+  proof_gen_chunks: 8
+  proof_refine_chunks: 8
+  verification_chunks: 16
+
+inference:
+  proof_gen:
+    tokens_to_generate: 120000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 128
+  proof_refine:
+    tokens_to_generate: 120000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 128
+  verification:
+    tokens_to_generate: 90000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 128
+
+model_profile: nano_v3
+model_profile_by_stage:
+  proof_gen: nano_v3
+  verify: nano_v3
+  refine: nano_v3
+model_profiles:
+  deepseek_v32:
+    model: /scratch/fsw/portfolios/llmservice/users/yachen/cache/DeepSeek-V3.2-Speciale
+    server_type: sglang
+    server_gpus: 8
+    server_nodes: 1
+    server_container: /scratch/fsw/portfolios/llmservice/users/yachen/AceMath/container/nemo-skills-sglang-v32.sqsh
+    server_args: "--ep-size 8 --dp 8 --enable-dp-attention --reasoning-parser deepseek-v3 --log-requests --mem-fraction-static=0.8"
+    server_address: null
+    inline_args: "++inference.endpoint_type=chat ++chat_template_kwargs.thinking=true"
+    system_prompt: null
+    system_prompt_path: null
+  nano_v3:
+    model: /scratch/fsw/portfolios/llmservice/users/yachen/cache/checkpoint/safetensors-checkpoint-0033000
+    server_type: vllm
+    server_gpus: 8
+    server_nodes: 1
+    server_container: null
+    server_args: "--mamba_ssm_cache_dtype float32 --no-enable-prefix-caching --tensor-parallel-size 8"
+    server_address: null
+    inline_args: ""
+    system_prompt: |
+        You are a helpful and harmless assistant.\n\nYou are not allowed to use any tools.
+    system_prompt_path: null

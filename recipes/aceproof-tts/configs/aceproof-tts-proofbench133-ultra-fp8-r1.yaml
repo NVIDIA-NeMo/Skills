@@ -1,0 +1,154 @@
+pipeline:
+  cluster: aws-dfw2
+  output_dir: /workspace/aceproof-tts/ultra-fp8/proofbench133-r1
+  input_paths: /workspace/aceproof-tts/inputs/proofbench133/test.jsonl
+  partition: batch_long
+  qos: normal
+  cpu_partition: cpu
+  data_qos: null
+  data_job_gpus: 0
+  data_job_partition: cpu
+  start_round: 1
+  max_rounds: 1
+  dependent_jobs: 2
+  proof_gen_dependent_jobs: 2
+  refine_dependent_jobs: 2
+  verify_dependent_jobs: 2
+  interleave_rows: true
+  rerun_done: false
+  sbatch_kwargs:
+    segment: 4
+    exclude: nvl72d003-T01,nvl72d004-T[01,03],nvl72d005-T[01-02],nvl72d006-T05,nvl72d008-T07,nvl72d013-T02,nvl72d016-T[01-05,09],nvl72d017-T[04-05,07-08],nvl72d019-T15,nvl72d023-T02,nvl72d024-T05,nvl72d026-T[02,06,09-10],nvl72d027-T[01-18],nvl72d028-T[01,06,09-10],nvl72d029-T01,nvl72d032-T[01-18],nvl72d039-T[14-17],nvl72d046-T01,nvl72d052-T[02,04,10-15,17]
+  data_sbatch_kwargs: {}
+
+scaling:
+  n_parallel_proof_gen: 128
+  n_verification_per_proof: 64
+  n_agg_trials: 32
+  n_best_proofs_to_sample: 32
+  n_proofs_to_refine: 1
+  max_rating_per_score: 4
+  solved_threshold: 0.99999
+  proof_gen_chunks: 16
+  proof_refine_chunks: 16
+  verification_chunks: 16
+
+inference:
+  proof_gen:
+    tokens_to_generate: 120000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+  proof_refine:
+    tokens_to_generate: 120000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+  verification:
+    tokens_to_generate: 64000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+
+model_profile: ultra_fp8
+model_profile_by_stage:
+  proof_gen: ultra_fp8
+  verify: ultra_fp8_verify_384
+  refine: ultra_fp8_refine_256
+model_profiles:
+  ultra_fp8:
+    model: /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/sft-16000-fp8
+    server_type: vllm
+    server_gpus: 4
+    server_nodes: 4
+    server_container: /lustre/fsw/portfolios/llmservice/users/igitman/super-models/vllm-hsg-03-16.sqsh
+    server_args: >-
+      --trust-remote-code
+      --load-format auto
+      --tensor-parallel-size 4
+      --data-parallel-size 4
+      --data-parallel-backend ray
+      --data-parallel-address $(getent hosts $SLURM_MASTER_NODE | awk '{print $1}')
+      --data-parallel-size-local 1
+      --distributed-executor-backend ray
+      --enable-expert-parallel
+      --kv-cache-dtype auto
+      --gpu-memory-utilization 0.85
+      --max-num-seqs 128
+      --max-cudagraph-capture-size 128
+      --max-num-batched-tokens 8480
+      --max-model-len 262144
+      --mamba-cache-mode align
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --reasoning-parser-plugin /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/reasoning_parser.py
+      --reasoning-parser ultra_v3
+      --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":96}'
+    server_address: null
+    inline_args: ""
+    system_prompt: null
+    system_prompt_path: null
+  ultra_fp8_refine_256:
+    model: /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/sft-16000-fp8
+    server_type: vllm
+    server_gpus: 4
+    server_nodes: 4
+    server_container: /lustre/fsw/portfolios/llmservice/users/igitman/super-models/vllm-hsg-03-16.sqsh
+    server_args: >-
+      --trust-remote-code
+      --load-format auto
+      --tensor-parallel-size 4
+      --data-parallel-size 4
+      --data-parallel-backend ray
+      --data-parallel-address $(getent hosts $SLURM_MASTER_NODE | awk '{print $1}')
+      --data-parallel-size-local 1
+      --distributed-executor-backend ray
+      --enable-expert-parallel
+      --kv-cache-dtype auto
+      --gpu-memory-utilization 0.85
+      --max-num-seqs 256
+      --max-cudagraph-capture-size 256
+      --max-num-batched-tokens 8480
+      --max-model-len 262144
+      --mamba-cache-mode align
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --reasoning-parser-plugin /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/reasoning_parser.py
+      --reasoning-parser ultra_v3
+      --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":96}'
+    server_address: null
+    inline_args: ""
+    system_prompt: null
+    system_prompt_path: null
+  ultra_fp8_verify_384:
+    model: /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/sft-16000-fp8
+    server_type: vllm
+    server_gpus: 4
+    server_nodes: 4
+    server_container: /lustre/fsw/portfolios/llmservice/users/igitman/super-models/vllm-hsg-03-16.sqsh
+    server_args: >-
+      --trust-remote-code
+      --load-format auto
+      --tensor-parallel-size 4
+      --data-parallel-size 4
+      --data-parallel-backend ray
+      --data-parallel-address $(getent hosts $SLURM_MASTER_NODE | awk '{print $1}')
+      --data-parallel-size-local 1
+      --distributed-executor-backend ray
+      --enable-expert-parallel
+      --kv-cache-dtype auto
+      --gpu-memory-utilization 0.85
+      --max-num-seqs 384
+      --max-cudagraph-capture-size 384
+      --max-num-batched-tokens 8480
+      --max-model-len 262144
+      --mamba-cache-mode align
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --reasoning-parser-plugin /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/reasoning_parser.py
+      --reasoning-parser ultra_v3
+      --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":96}'
+    server_address: null
+    inline_args: ""
+    system_prompt: null
+    system_prompt_path: null

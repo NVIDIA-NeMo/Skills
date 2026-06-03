@@ -1,0 +1,212 @@
+[
+    {
+        "id": 31,
+        "question": "For a positive integer $n$, let $A_{n}$ be the number of perfect powers less than or equal to $n$. Here, a perfect power is a number that can be expressed in the form $a^{b}$, where $a$ is a positive integer and $b$ is an integer greater than or equal to 2. Prove that there are infinitely many $n$ such that $A_{n}$ divides $n+2024$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-001"
+    },
+    {
+        "id": 32,
+        "question": "There are 120 students in DeepMind highschool, and each student `loves' some of the students. Here `love' is not always a mutual relationship; a student A may love B while B may not love A, and it is also possible that a student loves oneself. For the set $F$ of all $2^{120}$ subsets of the students, define the function $f: F \\rightarrow F$ as the function that maps each $X \\in F$ to the set of students loved by one or more students in $X$. For $A, B \\in F$, $A$ and $B$ are said to have a 'lovely relationship' iff there exists a natural number $k$ such that $f^{k}(A)=B$. Now we want to select distinct elements $A_{1}, A_{2}, \\cdots A_{t}$ from $F$ such that for any $1 \\leq i<j \\leq t$, $A_{i}$ and $A_{j}$ have a lovely relationship. Let $M(f)$ be the maximum possible value of $t$.  Show that $M(f) \\leq 2^{70}$. ",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-002"
+    },
+    {
+        "id": 33,
+        "question": "Let $ ABC $ be an acute triangle which is not an isosceles.Let $ I $ be the incenter and let $ \\omega $ be the circumcircle of $ABC$. Let the intersections of lines $ AI $, $ BI $, and $ CI $ with $ BC $, $ CA $, and $ AB $ be $ D $, $ E $, and $ F $ respectively. Also, let $ \\omega_A $ be the circle that lies inside $\\angle BAC$, tangent to lines $ AB $ and $ AC $, and internally tangent to the circumcircle $ \\omega $ at $ T_A $. Similarly, define $ T_B $ and $ T_C $ for points $ B $ and $ C $ respectively. Prove that there exist two points $ X $ and $ Y $ such that the circumcircles of triangles $ ADT_A $, $ BET_B $, and $ CFT_C $ all pass through $ X $ and $ Y $.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-003"
+    },
+    {
+        "id": 34,
+        "question": "For a positive integer $n$, a convex $18n+2$-gon $P$ is divided into $18n$ triangles by drawing $18n-1$ diagonals. Prove that we can choose two of these diagonals such that the three parts of $P$ divided by these two diagonals each contain at least $3n$ and at most $9n$ triangles.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-004"
+    },
+    {
+        "id": 35,
+        "question": "Let $\\angle XYZ$ be an acute angle with $\\angle XYZ \\ne 60^\\circ$, and let $A$ be a point inside $\\angle XYZ$. Prove that there exists $D\\ne A$ inside $\\angle XYZ$ and $\\theta\\in (0,2\\pi )$ satisfying the following condition:\n\n For points $B$ and $C$ on the rays $\\overrightarrow{YX}$ and $\\overrightarrow{YZ}$ respectively, then\n \\[\n \\angle BAC = \\angle XYZ \\quad \\implies \\quad \\angle BDC = \\theta.\n \\]",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-005"
+    },
+    {
+        "id": 36,
+        "question": "Find all functions$f:\\mathbb{Z}\\rightarrow\\mathbb{Z}$\n such that the equation\n \\[\n f(x-f(xy))=f(x)f(1-y)\n \\]\n holds for all $x,y\\in\\mathbb{Z}$.",
+        "answer": "$f_{1}(x)\\equiv0$, $f_{2}(x)\\equiv1$,\n$f_{3}(x)\\equiv x$, $f_{4}(x)=\\begin{cases}\n0, & x=2n\\\\\n1, & x=2n+1\n\\end{cases}$, where $n\\in\\mathbb{Z}$, $f_{5}(x)=\\begin{cases}\n0, & x=3n\\\\\n1, & x=3n+1\\\\\n-1, & x=3n+2\n\\end{cases}$, where $n\\in\\mathbb{Z}$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-006"
+    },
+    {
+        "id": 37,
+        "question": "Prove that there exist two real-coefficient polynomials $P(x)$ and $Q(x)$ satisfying the following condition:\n\n (Condition) The degree of the polynomial $P(x)$ is at least 2024, the degree of $Q(x)$ is at least 2, and for any real number $x$, the following holds:\n\n \\[\n P(Q(x)-x-1)=Q(P(x))\n \\]",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-007"
+    },
+    {
+        "id": 38,
+        "question": "Let $\\left\\{F_{n}\\right\\}_{n \\geq 1}$ be a sequence of integers satisfying $F_{1}=1$ and for $n \\geq 2$,\n \\[\n F_{n}=n^{F_{n-1}}.\n \\]\n For example, $F_3 = 3^2= 9$ and $F_4 = 4^9$.\n\n Prove that for any positive integers $a, c$ and integer $b$, there exists a positive integer $n$ such that the following expression is an integer:\n\n \\[\n \\frac{a^{F_{n}}+n-b}{c}.\n \\]",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-008"
+    },
+    {
+        "id": 39,
+        "question": "Let $H$ be the orthocenter of an acute-angled triangle $A B C$, and let $D, E, F$ be the feet of the altitudes from vertices $A, B, C$ to the opposite sides, respectively. Let $G$ be the midpoint of $B C$. Let $I, J$ be the feet of the perpendiculars from $B, C$ to $AG$, respectively. Let $K (\\neq D)$ be the second intersection of the circumcircles of triangle $D I F$ and triangle $D J E$. Let $M$ be the midpoint of segment $A H$. Let $L$ be the foot of the perpendicular from $M$ to $A G$. Let $R (\\neq G)$ be the second intersection of the circumcircle of triangle $A H G$ with $B C$. Let $S$ be the intersection of line $A H$ and $E F$. Let $N$ be the foot of the perpendicular from point $D$ to $R S$. Let $O$ be the midpoint of segment $D N$. Let line $D N$ intersect the circumcircle of triangle $D K L$ again at point $P (\\neq D)$. Let $Q (\\neq C)$ be the second intersection of the circumcircle of triangle $O C P$ and line $B C$. Prove that $A B=A Q$. ",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-009"
+    },
+    {
+        "id": 40,
+        "question": "Let $O$ and $G$ be the circumcenter and centroid of a non-isosceles triangle $ABC$, respectively. Let $H$ be the foot of the perpendicular from $A$ to $BC$, and let $M$ be the midpoint of $BC$. For a point $X$ on the line $OG$, let the line $BX$ intersect $AC$ at $P$, and let the line $CX$ intersect $AB$ at $Q$. Let $H_1$ be the foot of the perpendicular from $P$ to the line $AB$, and let $K$ be the reflection of $A$ about $H_1$. Let $T$ be the intersection of the circumcircle of triangle $KPQ$ and the circumcircle of triangle $PHM$. Prove that as $X$ moves along the line $OG$, $T$ moves along a fixed circle.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-010"
+    },
+    {
+        "id": 41,
+        "question": "Find all functions $f: \\mathbb{R}^+ \\to \\mathbb{R}^+$ such that $$yf(yf(x)+1) = f(\\frac{1}{x} + f(y))$$ for all $x, y \\in \\mathbb{R}^+$",
+        "answer": "$f(x) = \\frac{1}{x}$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-011"
+    },
+    {
+        "id": 42,
+        "question": "Let $p$ be a prime number and $a, b$ be positive integers such that\n\n \\[\n p^{n}=a^{4}+b^{4}\n \\]\n\n for some integer $n \\geq 2$. Prove that $n \\geq 5$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-012"
+    },
+    {
+        "id": 43,
+        "question": "For an integer $n \\geq 2$, let $a_{1} \\leq a_{2} \\leq \\cdots \\leq a_{n}$ be positive real numbers satisfying $a_{1} a_{2} \\cdots a_{n}=1$. For each $k=1,2, \\cdots, n$, define $b_{k}=2^{k}\\left(1+a_{k}^{2^{k}}\\right)$. Prove that the following inequality holds:\n\n \\[\n \\frac{1}{2}-\\frac{1}{2^{n+1}} \\leq \\frac{1}{b_{1}}+\\frac{1}{b_{2}}+\\cdots+\\frac{1}{b_{n}}\n \\]",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-013"
+    },
+    {
+        "id": 44,
+        "question": "Two distinct positive integers \\( a \\) and \\( b \\) are written on a blackboard. At each step, you must choose one of the two operations — either adding 2 or multiplying by 3 — for each number separately, and apply the chosen operation to both numbers (possibly using different operations). You must apply an operation to both numbers every step. Find all pairs $(a, b)$ such that we can make the two numbers on the blackboard equal after a finite number of steps.",
+        "answer": "$a$ and $b$ are both even, or $a$ and $b$ are both odd and have the same remainder when divided by 4.",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-014"
+    },
+    {
+        "id": 45,
+        "question": "Consider an acute triangle $ABC$ that is not isosceles. Let $H_0$, $E$, and $F$ be the feet of the perpendiculars dropped from vertices $A$, $B$, and $C$ to their opposite sides, respectively. Let $D$ be the point where the incircle of $\\triangle ABC$ is tangent to side $ BC $. Denote the incenter and circumcenter of $\\triangle ABC$ as $I$ and $O$, respectively. Let $K$ be the intersection of line $IO$ and line $BC$. Let $Q$ be the point where the ray $IH_0$ intersects the circumcircle of $\\triangle ABC$ again. Let $X$ be the point where the line $ QD $ intersects the circumcircle of $\\triangle ABC$ at a point other than $Q$.\n Let $Y$ be the point where the circle that touches rays $AB$, $AC$, and is also externally tangent to the circumcircle of $\\triangle ABC$, touches the circumcircle of $ \\triangle ABC$. Prove that if segment $EF$ is tangent to the incircle of $ \\triangle ABC$, then $X$, $Y$, and $K$ are collinear.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-015"
+    },
+    {
+        "id": 46,
+        "question": "Let $ABC$ be a non-isosceles triangle with incenter $I$. Let line $BI$ intersect $AC$ at $E$, and line $CI$ intersect $AB$ at $F$. Two Points $U$ and $V$ are on segments $AB$ and $AC$ respectively, such that $AU = AE$ and $AV = AF$. Let the line passing through $I$ and perpendicular to $AI$ intersect line $BC$ at $L$. The circumcircle of $\\triangle ILC$ intersects line $LU$ at $X$ (other than $L$), and the circumcircle of triangle $\\triangle ILB$ intersects line $LV$ at $Y$ (other than $L$). Prove that if $P$ is the intersection of lines $YB$ and $XC$, then line $IP$ is parallel to line $XY$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-016"
+    },
+    {
+        "id": 47,
+        "question": "Let $n$ be a positive integer that has a remainder of 6 when divided by 7. Let $d$ be any divisor of $n$.\n\nDefine $c$ such that when the expression $\\left(d+\\frac{n}{d}\\right)^{2}$ is divided by $n$, the remainder is $n-c$.\n\nWhat is the smallest possible value of $c$ among all $d$ and $n$ satisfying the conditions above?\n\n(Note that the remainder when a positive integer $a$ is divided by a positive integer $b$ is the value of $r$ in the expression $a=b q+r, 0 \\leq r \\leq b-1$.)",
+        "answer": "3",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-017"
+    },
+    {
+        "id": 48,
+        "question": "For given integers $n \\ge 5$ and $k \\ge 1$, we color each of the $n^2$ cells of an $n \\times n$ grid using one of $k$ colors. If $q$ is the largest integer which is not larger than $\\frac{n^2}{k}$, then, each of the $k$ colors must be used to color exactly $q$ or $q+1$ cells. A sequence of $n$ different cells $c_1, c_2, \\ldots, c_n$ in the grid is called a \\textit{snake} if it satisfies the following conditions simultaneously:\n\n \\begin{enumerate}\n \\item[(a)] For each $1 \\le i \\le n-1$, two cells $c_i$ and $c_{i+1}$ are adjacent to their sides,\n \\item[(b)] For each $1 \\le i \\le n-1$, cell $c_i$ and cell $c_{i+1}$ are colored with different colors.\n \\end{enumerate}\n Let $a(n)$ be the minimum $k$ such that a snake exists regardless of the method of coloring. Find a constant $L$ that satisfies the following inequality and prove it:\n\n \\[\n |La(n)- n^2 | \\le n +2 \\sqrt n + 3 \\;.\n \\]",
+        "answer": "3",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-018"
+    },
+    {
+        "id": 49,
+        "question": "For a real number $r$, let $A(r)$ denote the fractional part of $2r$ in its decimal representation. For a real number $r$ and a positive integer $n$, define $B(n,r)$ as\n $$\n B(n,r)=\\sum_{k=1}^n A(kr).\n $$\n Find all positive real numbers $r$ such that $n(n+1)r - B(n,r)$ is a multiple of $n$ for all positive integers $n$.",
+        "answer": "all integers",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-019"
+    },
+    {
+        "id": 50,
+        "question": "For given positive integers $x$ and $y$, we define a sequence $(a_n)_{n \\ge 1}$ as\n $$\n a_n = \\gcd \\left( x^n +y , \\, (y-x)\\left(\\sum_{i=0}^{n-1} y^i x^{n-i-1} - 1\\right) \\right)\n $$\n for all $n\\in \\mathbb{N}$. Find all pairs $(x,y)$ of positive integers such that the limit of the sequence $(a_n)$ exists.",
+        "answer": "(1,1)",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-020"
+    },
+    {
+        "id": 51,
+        "question": "Infinitely many boys and girls stand in a line alternatingly. For\n a given positive integer $N$, they choose positive integers according\n to the following rules:\n\n (1) The first $N$ people in the line choose any positive integers\n they want.\n\n (2) For each $m>N$, the $m$-th person chooses the number that is\n one more than the number of appearances of the number chosen by the\n $(m-1)$-th person appears among the numbers chosen by the first $m-2$\n people.\n\n Let $b_{i}$ be the number chosen by the $i$-th boy, and $g_{i}$\n be the number chosen by the $i$-th girl. Prove that at least one\n of the following holds:\n\n (i) There exists a sufficiently large integer $M$ such that $\\{b_{n}\\}_{n\\ge M}$\n is a periodic sequence.\n\n (ii) There exists a sufficiently large integer $M$ such that $\\{g_{n}\\}_{n\\ge M}$\n is a periodic sequence.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-021"
+    },
+    {
+        "id": 52,
+        "question": "Given a triangle $ABC$ with $AB<AC<BC$, let $I$ be the incenter\n of triangle $ABC$, and let $M$ and $N$ be the midpoints of sides\n $CA$ and $AB$, respectively. Let $K$ be the midpoint of the arc\n $BC$ of the circumcircle of triangle $ABC$ which does not contain\n $A$. Let $B'\\neq B$ be the point where the line parallel to $AC$\n and tangent to the incircle of triangle $ABC$ intersects side $BC$,\n and similarly, let $C'\\neq C$ be the point where the line parallel\n to $AB$ and tangent to the incircle of triangle $ABC$ intersects\n side $BC$. Find the value of $\\angle NIM+\\angle B'KC'$ in terms\n of degree.",
+        "answer": "180",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-022"
+    },
+    {
+        "id": 53,
+        "question": "On a table of size $3002\\times3001$, a stone is placed on the leftmost cell of the first row. James and Peter play a game on this table. Peter selects $3000$ cells, under the rule that he must choose one from each row except the first and last rows (i.e., the $1$st and $3002$th row), and there must be at most one selected cell in each column. James knows this rule too, but he doesn't know which cells Peter selected. The goal of James is to move the stone to the last row, avoiding the cells selected by Peter. The stone can only move to adjacent cells on the table. If the stone enters a cell selected by Peter, James receives a penalty of 1 point, and the stone returns to its initial position (i.e., the leftmost cell). Find the smallest positive integer $n$ such that there exists a method for James to achieve his goal before receiving a penalty of $n$ points.",
+        "answer": "3",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-023"
+    },
+    {
+        "id": 54,
+        "question": "Let $P$ be a function from the set $\\mathbb{Q}$ of rational numbers\n to itself, and suppose that $P$ satisfies\n \\[\n (P(b-P(a))+a-P(b))(P(a+P(b-P(a)))-b)=0\n \\]\n for all rational numbers $a,b$. Prove that the set $\\{P(a)+P(-a):a\\in\\mathbb{Q}\\}$\n is a finite set, and find the maximum possible number of elements\n in this set.",
+        "answer": "2",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-024"
+    },
+    {
+        "id": 55,
+        "question": "Let $k$ and $d$ be positive integers. Prove that there exists a\n positive integer $N$ such that for every odd integer $n>N$, the\n digits in the base-$2n$ representation of $n^{k}$ are all greater\n than $d$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-025"
+    },
+    {
+        "id": 56,
+        "question": "Let $n$ and $k$ be positive integers with $k<n$. Let $P(x)$ be\n a polynomial of degree $n$ with real coefficients, nonzero constant\n term, and no repeated roots. Suppose that for any real numbers $a_{0},a_{1},\\dots,a_{k}$\n such that the polynomial $a_{k}x^{k}+\\dots+a_{1}x+a_{0}$ divides\n $P(x)$, the product $a_{0}a_{1}\\dots a_{k}$ is zero. Prove that\n $P(x)$ has a non-real root.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-026"
+    },
+    {
+        "id": 57,
+        "question": "Alice the architect and Bob the builder play a game. First, Alice\n chooses two points $P$ and $Q$ in the plane and a subset $S$ of\n the plane, which are announced to Bob. Next, Bob marks infinitely\n many points in the plane, designating each a city. He may not place\n two cities within distance at most one unit of each other, and no\n three cities he places may be collinear. Finally, roads are constructed\n between the cities as follows: for each pair $A,B$ of cities, they\n are connected with a road along the line segment $AB$ if and only\n if the following condition holds: For every city $C$ distinct from\n $A$ and $B$, there exists $R\\in S$ such that $\\triangle PQR$ is\n directly similar to either $\\triangle ABC$ or $\\triangle BAC$. Alice\n wins the game if\n\n \\noindent (i) the resulting roads allow for travel between any pair\n of cities via a finite sequence of roads and\n\n \\noindent (ii) no two roads cross.\n\n \\noindent Otherwise, Bob wins. Determine, with proof, which player\n has a winning strategy. (Note: $\\triangle UVW$ is directly similar\n to $\\triangle XYZ$ if there exists a sequence of rotations, translations,\n and dilations sending $U$ to $X$, $V$ to $Y$, and $W$ to $Z$.)",
+        "answer": "Alice",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-027"
+    },
+    {
+        "id": 58,
+        "question": "Let $H$ be the orthocenter of acute triangle $ABC$, let $F$ be\n the foot of the altitude from $C$ to $AB$, and let $P$ be the reflection\n of $H$ across $BC$. Suppose that the circumcircle of triangle $AFP$\n intersects line $BC$ at two distinct points $X$ and $Y$. Prove\n that $C$ is the midpoint of $XY$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-028"
+    },
+    {
+        "id": 59,
+        "question": "Determine, with proof, all positive integers $k$ such that\n \\[\n \\frac{1}{n+1}\\sum_{i=0}^{n}\\binom{n}{i}^{k}\n \\]\n is an integer for every positive integer $n$.",
+        "answer": "All even integer $k$",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-029"
+    },
+    {
+        "id": 60,
+        "question": "Let $m$ and $n$ be positive integers with $m\\ge n$. There are\n $m$ cupcakes of different flavors arranged around a circle and $n$\n people who like cupcakes. Each person assigns a non-negative real\n number score to each cupcake, depending on how much they like the\n cupcake. Suppose that for each person $P$, it is possible to partition\n the circle of $m$ cupcakes into $n$ groups of consecutive cupcakes\n so that the sum of $P$'s scores of the cupcakes in each group is\n at least $1$. Prove that it is possible to distribute the $m$ cupcakes\n to the $n$ people so that each person $P$ receives cupcakes of total\n score at least $1$ with respect to $P$.",
+        "answer": "null",
+        "contest": "imo_proofbench",
+        "problem_idx": "PB-Advanced-030"
+    }
+]

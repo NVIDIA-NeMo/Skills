@@ -1,0 +1,67 @@
+pipeline:
+  cluster: aws-dfw2
+  output_dir: /workspace/aceproof-tts/ultra-fp8/imo2025-p6-proofgen2048
+  input_paths: /workspace/aceproof-tts/inputs/IMO2025-p6.json
+  partition: batch_long
+  qos: normal
+  cpu_partition: cpu
+  data_qos: null
+  data_job_gpus: 0
+  data_job_partition: cpu
+  dependent_jobs: 2
+  proof_gen_dependent_jobs: 2
+  interleave_rows: true
+  rerun_done: false
+  sbatch_kwargs:
+    segment: 4
+    exclude: nvl72d026-T[02,06,09-10],nvl72d016-T[01,04],nvl72d005-T[01-02],nvl72d006-T05,nvl72d046-T01,nvl72d004-T[01,03],nvl72d024-T05,nvl72d013-T02,nvl72d029-T01,nvl72d003-T01,nvl72d023-T02,nvl72d027-T[01-18]
+  data_sbatch_kwargs: {}
+
+scaling:
+  n_parallel_proof_gen: 2048
+  n_agg_trials: 32
+  proof_gen_chunks: 16
+
+inference:
+  proof_gen:
+    tokens_to_generate: 240000
+    temperature: 1.0
+    top_p: 0.95
+    max_concurrent_requests: 1024
+
+model_profile: ultra_fp8
+model_profile_by_stage:
+  proof_gen: ultra_fp8
+model_profiles:
+  ultra_fp8:
+    model: /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/sft-16000-fp8
+    server_type: vllm
+    server_gpus: 4
+    server_nodes: 4
+    server_container: /lustre/fsw/portfolios/llmservice/users/igitman/super-models/vllm-hsg-03-16.sqsh
+    server_args: >-
+      --trust-remote-code
+      --load-format auto
+      --tensor-parallel-size 4
+      --data-parallel-size 4
+      --data-parallel-backend ray
+      --data-parallel-address $(getent hosts $SLURM_MASTER_NODE | awk '{print $1}')
+      --data-parallel-size-local 1
+      --distributed-executor-backend ray
+      --enable-expert-parallel
+      --kv-cache-dtype auto
+      --gpu-memory-utilization 0.85
+      --max-num-seqs 128
+      --max-cudagraph-capture-size 128
+      --max-num-batched-tokens 8480
+      --max-model-len 262144
+      --mamba-cache-mode align
+      --enable-prefix-caching
+      --enable-chunked-prefill
+      --reasoning-parser-plugin /lustre/fsw/portfolios/llmservice/users/igitman/ultra-models/reasoning_parser.py
+      --reasoning-parser ultra_v3
+      --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":96}'
+    server_address: null
+    inline_args: ""
+    system_prompt: null
+    system_prompt_path: null

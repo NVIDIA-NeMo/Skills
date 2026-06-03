@@ -1,0 +1,44 @@
+[
+    {
+        "id": 1,
+        "question": "A line in the plane is called \\emph{sunny} if it is not parallel to any of the $x$-axis, the $y$-axis, or the line $x + y = 0$.\n\nLet $n \\geq 3$ be a given integer. Determine all nonnegative integers $k$ such that there exist $n$ distinct lines in the plane satisfying both of the following:\n\\begin{itemize}\n    \\item for all positive integers $a$ and $b$ with $a + b \\leq n + 1$, the point $(a, b)$ lies on at least one of the lines; and\n    \\item exactly $k$ of the $n$ lines are sunny.\n\\end{itemize}",
+        "answer": "k = 0, 1, 3 for all n",
+        "contest": "IMO2025",
+        "problem_idx": "IMO2025-1"
+    },
+    {
+        "id": 2,
+        "question": "Let \\( \\Omega \\) and \\( \\Gamma \\) be circles with centres \\( M \\) and \\( N \\), respectively, such that the radius of \\( \\Omega \\) is less than the radius of \\( \\Gamma \\). Suppose \\( \\Omega \\) and \\( \\Gamma \\) intersect at two distinct points \\( A \\) and \\( B \\). Line \\( MN \\) intersects \\( \\Omega \\) at \\( C \\) and \\( \\Gamma \\) at \\( D \\), so that \\( C, M, N, D \\) lie on \\( MN \\) in that order. Let \\( P \\) be the circumcentre of triangle \\( ACD \\). Line \\( AP \\) meets \\( \\Omega \\) again at \\( E \\ne A \\) and meets \\( \\Gamma \\) again at \\( F \\ne A \\). Let \\( H \\) be the orthocentre of triangle \\( PMN \\).\n\nProve that the line through \\( H \\) parallel to \\( AP \\) is tangent to the circumcircle of triangle \\( BEF \\).",
+        "answer": "null",
+        "contest": "IMO2025",
+        "problem_idx": "IMO2025-2"
+    },
+    {
+        "id": 3,
+        "question": "Let \\mathbb{N} denote the set of positive integers. A function \\( f : \\mathbb{N} \\rightarrow \\mathbb{N} \\) is said to be bonza if  \n\\[\nf(a) \\text{ divides } b^a - f(b)^{f(a)}\n\\]  \nfor all positive integers \\( a \\) and \\( b \\).\n\nDetermine the smallest real constant \\( c \\) such that \\( f(n) \\leq cn \\) for all bonza functions \\( f \\) and all positive integers \\( n \\).",
+        "answer": "4",
+        "contest": "IMO2025",
+        "problem_idx": "IMO2025-3"
+    },
+    {
+        "id": 4,
+        "question": "A proper divisor of a positive integer \\( N \\) is a positive divisor of \\( N \\) other than \\( N \\) itself.  \nThe infinite sequence \\( a_1, a_2, \\cdots \\) consists of positive integers, each of which has at least three proper divisors.  \nFor each \\( n \\geq 1 \\), the integer \\( a_{n+1} \\) is the sum of the three largest proper divisors of \\( a_n \\).  \nDetermine all possible values of \\( a_1 \\).",
+        "answer": "The set of all possible values for $a_1$ are integers $a$ of the form $a = 2^x 3^y m$, where:\n1.  $x$ is a positive odd integer.\n2.  $y$ is a positive integer satisfying $y \\ge \\frac{x+1}{2}$.\n3.  $m$ is a positive integer whose prime factors are all greater than or equal to 7.",
+        "contest": "IMO2025",
+        "problem_idx": "IMO2025-4"
+    },
+    {
+        "id": 5,
+        "question": "Alice and Bazza are playing the inekoalaty game, a two-player game whose rules depend on a positive real number \\(\\lambda\\) which is known to both players. On the \\(n\\)th turn of the game (starting with \\(n = 1\\)) the following happens:\n\n- If \\(n\\) is odd, Alice chooses a nonnegative real number \\(x_n\\) such that  \n  \\[\n  x_1 + x_2 + \\cdots + x_n \\leq \\lambda n.\n  \\]\n\n- If \\(n\\) is even, Bazza chooses a nonnegative real number \\(x_n\\) such that  \n  \\[\n  x_1^2 + x_2^2 + \\cdots + x_n^2 \\leq n.\n  \\]\n\nIf a player cannot choose a suitable \\(x_n\\), the game ends and the other player wins. If the game goes on forever, neither player wins. All chosen numbers are known to both players.\n\nDetermine all values of \\(\\lambda\\) for which Alice has a winning strategy and all those for which Bazza has a winning strategy.",
+        "answer": "The outcome of the inekoalty game depends on the value of \\lambda as follows:\n\n- If \\lambda > \\frac{\\sqrt{2}}{2}, Alice has a winning strategy.\n- If \\lambda < \\frac{\\sqrt{2}}{2}, Bazza has a winning strategy.\n- If \\lambda = \\frac{\\sqrt{2}}{2}, neither player has a winning strategy, and the game can go on forever.",
+        "contest": "IMO2025",
+        "problem_idx": "IMO2025-5"
+    },
+    {
+        "id": 6,
+        "question": "Consider a 2025 \\times 2025 grid of unit squares. Matilda wishes to place on the grid some rectangular tiles, possibly of different sizes, such that each side of every tile lies on a grid line and every unit square is covered by at most one tile.  \nDetermine the minimum number of tiles Matilda needs to place so that each row and each column of the grid has exactly one unit square that is not covered by any tile.",
+        "answer": "2112",
+        "contest": "IMO2025",
+        "problem_idx": "IMO2025-6"
+    }
+]

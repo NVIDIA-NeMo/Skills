@@ -1,0 +1,10 @@
+user: |-
+  {instruction}
+
+  ## Candidate Solution(s) to Refine
+  Here are some solution sample(s) along with their correctness evaluation(s). You should provide a better solution by solving issues mentioned in the evaluation(s), or by re-using promising ideas mentioned in the solution sample(s), or by doing both.
+
+  {proofs_to_refine}
+
+  ## Final Instruction
+  Your final response should follow the format above, including a `## Solution` section followed by a `## Self Evaluation` section
