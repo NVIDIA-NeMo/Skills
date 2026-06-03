@@ -789,3 +789,40 @@ Output:
     st/test.jsonl    # one record per (src→tgt, audio) for translation
     audio/<locale>/...wav
 ```
+
+## CS-FLEURS
+
+[CS-FLEURS](https://huggingface.co/datasets/byan/cs-fleurs) ([paper](https://arxiv.org/abs/2509.14161)) is a massively multilingual *code-switched* extension of FLEURS, covering 52 languages and 113 code-switched language pairs. Each utterance is built with a Matrix language (grammatical frame) and an Embedded language (inserted words), so the reference transcription mixes two languages — and often two scripts — in one sentence.
+
+**Subtasks (ASR only):** one per test set — `cs-fleurs.read` (14 X-English pairs, human-read & human-validated; the paper's intended benchmark), `cs-fleurs.mms` (45 X-English pairs, concatenative MMS-TTS), `cs-fleurs.xtts-test1` (16 X-English pairs, generative XTTS-v2), `cs-fleurs.xtts-test2` (60 language pairs, generative XTTS-v2).
+
+**Splits:** `test`
+
+CER (rather than WER) is used when the **matrix** language is scriptio-continua: `cmn`, `yue`, `jpn`, `kor`, `tha`, `lao`, `mya`, `khm`, `vie`. All others use WER. Scoring uses the same multilingual normalization as `fleurs` (case-insensitive, punctuation/diacritics removed). `subset_for_metrics` is the code-switched pair (e.g. `ara-eng`), giving a per-pair WER/CER breakdown; the group score module adds a per-test-set and overall entry-weighted figure.
+
+### Dataset Location
+
+- Benchmark group is defined in [`nemo_skills/dataset/cs-fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/cs-fleurs/__init__.py); per-subtask config lives in `cs-fleurs/<test-set>/__init__.py`.
+- Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/byan/cs-fleurs) (CC-BY-NC-4.0).
+
+### Preparing CS-FLEURS Data
+
+Audio is downloaded automatically from HuggingFace. A single `prepare_data cs-fleurs` run produces all four test sets at once. Pass the parent group name (`cs-fleurs`), not the dotted subtask names. Use `--subsets` to prepare only some test sets.
+
+```bash
+ns prepare_data cs-fleurs \
+    --data_dir /path/to/data \
+    --cluster <cluster_name> \
+    --subsets read mms xtts-test1 xtts-test2
+```
+
+Output:
+
+```
+<data_dir>/cs-fleurs/
+    read/test.jsonl         # one ASR record per (pair, audio)
+    mms/test.jsonl
+    xtts-test1/test.jsonl
+    xtts-test2/test.jsonl
+    raw/<read|mms|xtts>/<split>/audio/<lang3>/...wav
+```
