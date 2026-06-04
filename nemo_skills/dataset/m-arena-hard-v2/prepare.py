@@ -45,7 +45,9 @@ def main(args):
     languages = args.languages if args.languages is not None else supported_languages
     invalid_langs = set(languages) - set(supported_languages)
     if invalid_langs:
-        raise ValueError(f"Unsupported languages: {invalid_langs}. Supported: {supported_languages}")
+        raise ValueError(
+            f"Unsupported languages: {sorted(invalid_langs)}. Supported: {sorted(supported_languages)}"
+        )
 
     data_dir = Path(__file__).absolute().parent
     output_file = data_dir / "test.jsonl"
