@@ -56,6 +56,7 @@ DATASETS = [
     ("comp-math-24-25", ["test"]),
     ("mmau-pro", ["test"]),
     ("contextasr-bench", ["test"]),
+    ("apptek-callcenter-dialogues", ["test"]),
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),
