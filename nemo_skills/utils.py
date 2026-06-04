@@ -619,11 +619,21 @@ def maybe_get_env(value: Union[Any, List[Any]], env_name, default=None, cast: Ca
 
 
 def get_server_wait_cmd(server_address):
+    server_url = server_address.rstrip("/")
+    if not server_url.startswith(("http://", "https://")):
+        server_url = f"http://{server_url}"
+    if server_url.endswith("/v1"):
+        models_url = f"{server_url}/models"
+        health_url = f"{server_url[:-3]}/health"
+    else:
+        models_url = f"{server_url}/v1/models"
+        health_url = f"{server_url}/health"
     # might be required if we are not hosting server ourselves
-    # this will try to handshake in a loop and unblock when the server responds
+    # this will try to handshake in a loop and unblock when the server is ready
     return (
         f"echo 'Waiting for the server to start at {server_address}' && "
-        f"while [ $(curl -X PUT {server_address} >/dev/null 2>&1; echo $?) -ne 0 ]; do sleep 3; done "
+        f"while ! (curl -sS {models_url} >/dev/null 2>&1 || "
+        f"curl -sS {health_url} >/dev/null 2>&1); do sleep 3; done "
     )
 
 

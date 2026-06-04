@@ -13,13 +13,20 @@
 # limitations under the License.
 
 import logging
+import os
 import shlex
+import tempfile
+import time
 from enum import Enum
 
 from nemo_skills.pipeline.utils.mounts import check_if_mounted
 from nemo_skills.utils import get_logger_name, get_server_wait_cmd
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+_ALLOCATED_RANDOM_PORTS: set[int] = set()
+DEFAULT_PORT_RESERVATION_TTL = 3600
+_SLURM_JOB_PORT_OFFSET = 0
 
 
 class SupportedServersSelfHosted(str, Enum):
@@ -45,7 +52,7 @@ class SupportedServers(str, Enum):
     generic = "generic"
 
 
-def get_free_port(exclude: list[int] | None = None, strategy: int | str = 5000) -> int:
+def get_free_port(exclude: list[int] | None = None, strategy: int | str = 5000) -> int | str:
     """Will return a free port on the host."""
     exclude = exclude or []
     if isinstance(strategy, int):
@@ -54,12 +61,70 @@ def get_free_port(exclude: list[int] | None = None, strategy: int | str = 5000) 
             port += 1
         return port
     elif strategy == "random":
+        import fcntl
         import random
 
-        port = random.randint(1024, 65535)
-        while port in exclude:
-            port = random.randint(1024, 65535)
-        return port
+        if os.getenv("NEMO_SKILLS_USE_SLURM_JOB_ID_PORTS") == "1":
+            global _SLURM_JOB_PORT_OFFSET
+
+            offset = _SLURM_JOB_PORT_OFFSET
+            _SLURM_JOB_PORT_OFFSET += 1
+            # Expanded inside the SLURM job, not at submit time. This keeps
+            # ports stable between the co-scheduled server and client, while
+            # making concurrent jobs on the same node overwhelmingly unlikely
+            # to collide.
+            return f"$((20000+(${{SLURM_JOB_ID:-0}}+{offset})%45000))"
+
+        # These ports are embedded into SLURM scripts before the jobs land on
+        # worker nodes. A plain random draw can assign the same port to many
+        # concurrent single-GPU jobs, and then vLLM fails with EADDRINUSE when
+        # two such jobs share a node. Keep a small per-user reservation file so
+        # independent submitter processes don't reuse ports in the same burst.
+        uid = os.getuid() if hasattr(os, "getuid") else "nouid"
+        lock_path = os.path.join(tempfile.gettempdir(), f"nemo_skills_ports_{uid}.lock")
+        state_path = os.path.join(tempfile.gettempdir(), f"nemo_skills_ports_{uid}.txt")
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+
+        with open(lock_path, "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            now = time.time()
+            cutoff = now - DEFAULT_PORT_RESERVATION_TTL
+            reserved_entries: dict[int, float] = {}
+            try:
+                with open(state_path) as state:
+                    for line in state:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        port_value, _, timestamp_value = line.partition(",")
+                        try:
+                            port = int(port_value)
+                        except ValueError:
+                            continue
+                        try:
+                            timestamp = float(timestamp_value) if timestamp_value else 0.0
+                        except ValueError:
+                            timestamp = 0.0
+                        if timestamp >= cutoff:
+                            reserved_entries[port] = timestamp
+            except FileNotFoundError:
+                pass
+
+            for port in _ALLOCATED_RANDOM_PORTS:
+                reserved_entries.setdefault(port, now)
+
+            reserved: set[int] = set(reserved_entries)
+            for _ in range(10000):
+                port = random.randint(20000, 65000)
+                if port not in exclude and port not in reserved:
+                    reserved_entries[port] = now
+                    _ALLOCATED_RANDOM_PORTS.add(port)
+                    with open(state_path, "w") as state:
+                        for reserved_port, timestamp in sorted(reserved_entries.items()):
+                            state.write(f"{reserved_port},{timestamp}\n")
+                    return port
+
+        raise RuntimeError("Unable to allocate a unique random port")
     else:
         raise ValueError(f"Strategy {strategy} not supported.")
 
@@ -232,7 +297,7 @@ def get_server_command(
     num_nodes: int,
     model_path: str,
     cluster_config: dict,
-    server_port: int,
+    server_port: int | str,
     server_args: str = "",
     server_entrypoint: str | None = None,
 ):

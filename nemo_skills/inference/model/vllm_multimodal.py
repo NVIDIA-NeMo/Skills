@@ -321,6 +321,12 @@ class VLLMMultimodalModel(VLLMModel):
         content = result["content"]
         if isinstance(content, str):
             result["content"] = [{"type": "text", "text": content}]
+        elif isinstance(content, dict):
+            if set(content) == {"type", "text"} and content["type"] == "text":
+                text = content["text"]
+                result["content"] = [] if text is None else [{"type": "text", "text": str(text)}]
+            else:
+                raise TypeError(f"Unexpected content dict: {content}")
         elif not isinstance(content, list):
             raise TypeError(f"Unexpected content type: {type(content)}")
 
@@ -433,8 +439,16 @@ class VLLMMultimodalModel(VLLMModel):
                     content = msg_copy["content"]
                     if isinstance(content, str):
                         text_content = [{"type": "text", "text": content}]
-                    else:
+                    elif isinstance(content, dict):
+                        if set(content) == {"type", "text"} and content["type"] == "text":
+                            text = content["text"]
+                            text_content = [] if text is None else [{"type": "text", "text": str(text)}]
+                        else:
+                            raise TypeError(f"Unexpected content dict: {content}")
+                    elif isinstance(content, list):
                         text_content = content
+                    else:
+                        raise TypeError(f"Unexpected content type: {type(content)}")
 
                     # Add audio chunk at the beginning (before text)
                     msg_copy["content"] = [make_audio_content_block(chunk_base64, self.audio_format)] + text_content

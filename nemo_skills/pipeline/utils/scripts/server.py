@@ -66,7 +66,7 @@ class ServerScript(BaseJobScript):
     num_nodes: int = 1
     server_args: str = ""
     server_entrypoint: Optional[str] = None
-    port: Optional[int] = None
+    port: Optional[int | str] = None
     allocate_port: bool = True
 
     # Server spans all group nodes (e.g., for distributed inference)
@@ -115,7 +115,7 @@ class SandboxScript(BaseJobScript):
     """
 
     cluster_config: Dict
-    port: Optional[int] = None
+    port: Optional[int | str] = None
     keep_mounts: bool = False
     allocate_port: bool = True
     env_overrides: Optional[List[str]] = None

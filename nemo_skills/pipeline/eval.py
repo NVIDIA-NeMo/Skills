@@ -479,9 +479,20 @@ def eval(
         extra_benchmark_map=extra_benchmark_map,
     )
 
+    summarize_sbatch_kwargs_raw = summarize_sbatch_kwargs
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
     judge_sbatch_kwargs = _resolve_child_sbatch_kwargs(sbatch_kwargs, judge_sbatch_kwargs)
     summarize_sbatch_kwargs = _resolve_child_sbatch_kwargs(sbatch_kwargs, summarize_sbatch_kwargs)
+    summarize_sbatch_kwargs = dict(summarize_sbatch_kwargs or {})
+    summarize_sbatch_kwargs.setdefault("exclusive", False)
+    summarize_sbatch_kwargs.setdefault("mem", "16G")
+    if summarize_sbatch_kwargs_raw is None:
+        # Summaries only parse already-written jsonl files; do not inherit long GPU eval limits.
+        summarize_sbatch_kwargs["time"] = "0-01:00:00"
+        summarize_sbatch_kwargs["time_min"] = "00:15:00"
+    else:
+        summarize_sbatch_kwargs.setdefault("time", "0-01:00:00")
+        summarize_sbatch_kwargs.setdefault("time_min", "00:15:00")
 
     has_tasks = False
     job_id_to_tasks = {}
