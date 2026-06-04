@@ -42,7 +42,18 @@ def install_packages():
     """Install required packages for NVEmbed evaluation."""
     LOG.info("Installing required packages...")
     subprocess.run(
-        ["pip", "install", "-q", "datasets", "einops", "transformers==4.42.4", "tqdm"],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "numpy<2",
+            "datasets",
+            "einops",
+            "transformers==4.42.4",
+            "tqdm",
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -120,15 +131,23 @@ def evaluate_sample_with_nvembed(sample: dict[str, Any], model_name: str = "nvid
     if "nvembed_confidence" in sample:
         return sample
 
-    generation = sample.get("generation", "").strip()
+    generation_value = sample.get("generation", "")
+    generation = generation_value.strip() if isinstance(generation_value, str) else ""
     choices = sample.get("choices", [])
     expected_answer = sample.get("expected_answer", "")
 
-    # Fail fast if data is malformed - this indicates a pipeline error
+    # Empty model outputs are valid failed predictions. Keep malformed-data
+    # checks strict, but do not let one blank generation abort the whole eval.
     if not generation:
-        raise ValueError(
-            f"Sample missing generation field or has empty generation. Sample ID: {sample.get('id', 'unknown')}"
+        sample.update(
+            {
+                "nvembed_matched_choice": "",
+                "nvembed_confidence": 0.0,
+                "is_correct": False,
+                "nvembed_error": "empty_generation",
+            }
         )
+        return sample
 
     if not choices:
         raise ValueError(
