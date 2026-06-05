@@ -66,6 +66,17 @@ ASR_INSTRUCTION = "Transcribe the following audio."
 
 def _download_subset(local_dir: Path, hf_dir: str, split: str, no_audio: bool) -> Path:
     """Snapshot-download one CS-FLEURS subset; return its split directory on disk."""
+    split_dir = local_dir / hf_dir / split
+    metadata_path = split_dir / "metadata.jsonl"
+    audio_dir = split_dir / "audio"
+    if metadata_path.exists() and (no_audio or audio_dir.exists()):
+        n_meta = sum(1 for line in metadata_path.open(encoding="utf-8") if line.strip())
+        n_audio = sum(1 for _ in audio_dir.rglob("*.wav")) if not no_audio else n_meta
+        if n_audio == n_meta:
+            print(f"  (already downloaded {n_meta} files, skipping HF snapshot)")
+            return split_dir
+        print(f"  (incomplete: {n_audio}/{n_meta} audio files, re-downloading)")
+
     from huggingface_hub import snapshot_download
 
     patterns = [f"{hf_dir}/{split}/metadata.jsonl"]
@@ -78,7 +89,7 @@ def _download_subset(local_dir: Path, hf_dir: str, split: str, no_audio: bool) -
         local_dir=str(local_dir),
         allow_patterns=patterns,
     )
-    return local_dir / hf_dir / split
+    return split_dir
 
 
 def _read_metadata(split_dir: Path) -> list[dict]:
