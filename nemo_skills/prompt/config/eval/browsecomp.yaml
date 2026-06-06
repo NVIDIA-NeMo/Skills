@@ -1,0 +1,5 @@
+# BrowseComp generation prompt.
+# The `prompt` field of each data sample already contains the question together with
+# the expected response format, so the user turn only needs to pass it through.
+
+user: "{prompt}"

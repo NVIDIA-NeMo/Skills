@@ -20,6 +20,7 @@ from nemo_skills.evaluation.metrics.arena_metrics import ArenaMetrics
 from nemo_skills.evaluation.metrics.audio_metrics import AudioMetrics
 from nemo_skills.evaluation.metrics.bfcl_metrics import BFCLMetrics
 from nemo_skills.evaluation.metrics.bird_metrics import BirdMetrics
+from nemo_skills.evaluation.metrics.browsecomp_metrics import BrowseCompMetrics
 from nemo_skills.evaluation.metrics.ccc_metrics import CCCMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
@@ -64,6 +65,7 @@ METRICS_MAP = {
         MathMetrics, compute_no_answer=False, question_key="question", answer_key="generation"
     ),
     "simpleqa": SimpleQAMetrics,
+    "browsecomp": BrowseCompMetrics,
     "lean4-proof": Lean4Metrics,
     "lean4-statement": Lean4Metrics,
     "answer-judgement": AnswerJudgementMetrics,
