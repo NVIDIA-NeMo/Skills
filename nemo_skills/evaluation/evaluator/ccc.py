@@ -22,6 +22,7 @@ class CCCEvaluatorConfig(BaseEvaluatorConfig):
     test_file: str = "test_metadata.json"
     test_batch_size: int = 16
     time_scale: float = 1.0
+    time_eval: bool = False
 
 
 _precompile_loop_tls = threading.local()
@@ -101,7 +102,9 @@ def _precompile_problem(problem_id: str, grader_files, compile_code: str, run_co
 
 def run_test_case(task_args: dict, worker_id: int) -> dict:
     """Compile and run one generated solution against one CCC test case."""
+    start = time.monotonic() if task_args["time_eval"] else None
     unique_dir = f"/nemo_run/ccc_run_{worker_id}_{os.getpid()}_{time.time_ns()}"
+    result: dict | None = None
     try:
         precompiled_dir = task_args.get("precompiled_dir")
         os.makedirs(unique_dir, exist_ok=True)
@@ -125,7 +128,11 @@ def run_test_case(task_args: dict, worker_id: int) -> dict:
         sandbox = _get_thread_test_sandbox()
         compile_result = _test_exec_sync(sandbox, f"cd {unique_dir} && ./compile.sh", language="shell", timeout=120)
         result = {
-            "compile_success": not compile_result.get("stderr"),
+            # compile.sh exits non-zero only on a real compile failure (it checks
+            # $? after each g++), so key off the shell exit status, not stderr --
+            # otherwise harmless compiler *warnings* (which g++ writes to stderr
+            # while still exiting 0) would be misread as compile failures.
+            "compile_success": compile_result.get("process_status") == "completed",
             "compile_stdout": compile_result.get("stdout", ""),
             "compile_stderr": compile_result.get("stderr", ""),
             "run_stdout": "",
@@ -151,8 +158,11 @@ def run_test_case(task_args: dict, worker_id: int) -> dict:
             result["score"] = 0.0
         return result
     except Exception as e:
-        return {"score": 0.0, "output": "", "error": str(e)}
+        result = {"score": 0.0, "output": "", "error": str(e)}
+        return result
     finally:
+        if start is not None and result is not None:
+            result["eval_time_seconds"] = time.monotonic() - start
         try:
             shutil.rmtree(unique_dir, ignore_errors=True)
         except Exception:
@@ -265,6 +275,7 @@ class CCCEvaluator(BaseEvaluator):
             "test_input": test_data["input"],
             "test_output": test_data["output"],
             "time_scale": self.eval_cfg.time_scale,
+            "time_eval": self.eval_cfg.time_eval,
         }
 
     def _aggregate_subtask_score(self, subtask_meta: dict, outputs: list[dict], failed: bool = False) -> float:
@@ -287,6 +298,7 @@ class CCCEvaluator(BaseEvaluator):
         """Evaluate one generation entry and return computed test-case results."""
         await self._initialize_runtime()
 
+        total_runtime = 0.0 if self.eval_cfg.time_eval else None
         problem_id = entry["problem_id"]
         problem_metadata = self.metadata[problem_id]
         task_config = extract_task_config(problem_metadata)
@@ -344,6 +356,8 @@ class CCCEvaluator(BaseEvaluator):
                 test_group = problem_metadata["all_tests"][test_name].get("group")
                 if test_group is not None:
                     result["test_group"] = test_group
+                if total_runtime is not None:
+                    total_runtime += float(result.get("eval_time_seconds", 0.0))
                 for subtask_name in test_to_subtasks.get(test_name, []):
                     state = subtask_state[subtask_name]
                     if state["aggregation"] == "min" and state["failed"]:
@@ -357,14 +371,18 @@ class CCCEvaluator(BaseEvaluator):
             state = subtask_state[subtask_name]
             test_case_results[subtask_name] = {
                 "score": self._aggregate_subtask_score(subtask_meta, state["outputs"], failed=state["failed"]),
+                "max_score": float(subtask_meta.get("score", 0.0)),
                 "outputs": state["outputs"],
             }
 
-        return {
+        output = {
             "name": entry["name"],
             "subtask": entry["subtask"],
             "test_case_results": test_case_results,
         }
+        if total_runtime is not None:
+            output["eval_time_seconds"] = total_runtime
+        return output
 
     async def eval_full(self):  # type: ignore[override]
         """Evaluate all configured input files and write results in place."""
@@ -390,6 +408,8 @@ class CCCEvaluator(BaseEvaluator):
             outputs = await asyncio.gather(*tasks)
             for sample, output in zip(all_samples, outputs):
                 sample["test_case_results"] = output["test_case_results"]
+                if "eval_time_seconds" in output:
+                    sample["eval_time_seconds"] = output["eval_time_seconds"]
             jdump(all_samples, jsonl_file, mode="wt")
 
         if self.pool is not None:
