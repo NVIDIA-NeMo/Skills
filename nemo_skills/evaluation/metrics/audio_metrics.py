@@ -430,11 +430,17 @@ class AudioMetrics(BaseMetrics):
         if self.judge_ratings:
             base_metrics["judge_score"] = lambda _k, v, _all: f"{v:.2f}"
 
-        # Add existing metrics if they were computed
+        # Error rates grouped side by side: WER (macro/micro) then CER (macro/micro)
         if self.wer_scores:
             base_metrics["wer_macro"] = as_percentage
         if self.wer_total_ref_words > 0:
             base_metrics["wer"] = as_percentage
+        if self.cer_scores:
+            base_metrics["cer_macro"] = as_percentage
+        if self.cer_total_ref_chars > 0:
+            base_metrics["cer"] = as_percentage
+        # WER error breakdown (kept in get_metrics; printed after the error rates)
+        if self.wer_total_ref_words > 0:
             base_metrics["substitutions"] = as_int
             base_metrics["insertions"] = as_int
             base_metrics["deletions"] = as_int
@@ -449,13 +455,6 @@ class AudioMetrics(BaseMetrics):
             base_metrics["bleu"] = as_percentage
         if self.comet_scores:
             base_metrics["comet"] = as_percentage
-
-        # Add extended metrics if they were computed (only cer and cer_macro are printed;
-        # the cer_substitutions/insertions/deletions/ref_chars counts stay in get_metrics output)
-        if self.cer_total_ref_chars > 0:
-            base_metrics["cer"] = as_percentage
-        if self.cer_scores:
-            base_metrics["cer_macro"] = as_percentage
         if self.hallucination_scores:
             base_metrics["hallucination_rate"] = as_percentage
         if self.pc_rate_scores:
