@@ -1,0 +1,56 @@
+# Tiny smoke variant of aceproof-tts-gems-remarkable-ultra-nvfp4-streaming.yaml.
+#
+# Goal: validate the live streaming path end-to-end against a minimal cmh fleet
+# (1 proofgen replica + 1 verify replica) on a single committed problem, R1 only.
+# The driver runs locally on the dev box (cluster: none) and hits the local
+# multiplexer gateway; the fleet does the GPU work remotely.
+#
+# Prereqs:
+#   nmux-scale-fleet add aceproof-ultra-nvfp4-proofgen --n 1 --clusters aws-cmh --wait
+#   nmux-scale-fleet add aceproof-ultra-nvfp4-verify   --n 1 --clusters aws-cmh --wait
+# Launch:
+#   OPENAI_API_KEY=dummy NEMO_SKILLS_OPENAI_AIOHTTP=1 \
+#   /home/imoshkov/prog/NeMo-Skills/.venv/bin/python \
+#     recipes/aceproof-tts/pipeline/run_streaming.py \
+#     --config recipes/aceproof-tts/configs/aceproof-tts-smoke-cmh-streaming.yaml
+
+pipeline:
+  cluster: none
+  output_dir: /home/imoshkov/prog/_smoke/aceproof-streaming-cmh
+  input_paths: /home/imoshkov/prog/NeMo-Skills/nemo_skills/dataset/gems-remarkable/test_sample1.jsonl
+  gateway_address: http://127.0.0.1:8000/v1
+  partition: null
+  qos: null
+  rerun_done: false
+
+scaling:
+  n_parallel_proof_gen: 4
+  n_verification_per_proof: 4
+  n_agg_trials: 1
+  n_best_proofs_to_sample: 4
+  n_proofs_to_refine: 1
+  max_rating_per_score: 4
+  solved_threshold: 0.99999
+  # R1 only for the first smoke (skip refinement) to keep it fast.
+  max_rounds: 1
+  num_chunks: 1
+
+streaming:
+  min_verifications_per_proof: 2
+  early_stop_only_if_score_lt_1: true
+  cancel_remaining: true
+  max_concurrent_requests: 64
+
+inference:
+  temperature: 1.0
+  top_p: 0.95
+  timeout: 14400
+  # bounded budgets so a single smoke gen can't run away to 500k tokens
+  gen_tokens_to_generate: 200000
+  verify_tokens_to_generate: 120000
+  refine_tokens_to_generate: 200000
+
+profiles:
+  proof_gen: aceproof-ultra-nvfp4-proofgen
+  verify: aceproof-ultra-nvfp4-verify
+  refine: aceproof-ultra-nvfp4-proofgen
