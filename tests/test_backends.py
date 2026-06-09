@@ -144,3 +144,33 @@ def test_image_label_selectors_prefer_static_selector_keys():
     metadata = backend.stage_metadata(container_image="/containers/nemo-skills.sqsh")
 
     assert metadata["entrypoint_label_selector"]["nemo/workload"] == "static"
+
+
+def test_ray_backend_forwards_required_env_vars_to_runtime_env():
+    cluster_config = {
+        "executor": "slurm",
+        "required_env_vars": ["MY_JUDGE_KEY=secret-123"],
+        "backend": {"name": "ray", "dashboard_url": "http://ray-head:8265"},
+    }
+
+    backend = get_execution_backend(cluster_config)
+    runtime_env = backend._build_runtime_env()
+
+    assert runtime_env is not None
+    assert runtime_env["env_vars"]["MY_JUDGE_KEY"] == "secret-123"
+
+
+def test_ray_backend_runtime_env_normalizes_and_filters_values():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265", env_vars={"A": "1", "B": None, "C": 2})
+
+    assert backend._build_runtime_env() == {"env_vars": {"A": "1", "C": "2"}}
+
+
+def test_ray_backend_runtime_env_none_when_no_env():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265", env_vars={})
+
+    assert backend._build_runtime_env() is None
