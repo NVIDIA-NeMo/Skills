@@ -697,6 +697,7 @@ def add_task(
     executors = []
 
     def add_server_tasks():
+        """Append the server (and its executor) for each requested server replica."""
         nonlocal het_group
         # avoid mutating server_config, as it may be used again later in dependent jobs
         _server_config = copy.deepcopy(server_config)
@@ -992,6 +993,7 @@ def queue_ray_job_commands(
     before_count = len(queued_jobs)
 
     def _dep_name(dep):
+        """Return a dependency's name, accepting either a string or a handle object."""
         return dep if isinstance(dep, str) else getattr(dep, "name", str(dep))
 
     all_deps = list(task_dependencies or []) + list(external_dependencies or [])

@@ -80,14 +80,17 @@ class ExecutionBackend:
         use_with_ray_cluster: bool = False,
         container_image: str | None = None,
     ) -> Dict[str, Any] | None:
+        """Return per-stage script metadata, or None when no metadata applies."""
         if use_with_ray_cluster:
             return {"use_with_ray_cluster": True}
         return None
 
     def get_env_overrides(self) -> Dict[str, str]:
+        """Return environment variable overrides to inject into stage commands."""
         return {}
 
     def start_experiment(self, exp: run.Experiment, cluster_config: Dict[str, Any], options: BackendRunOptions):
+        """Run the experiment, detaching for Slurm and tailing logs otherwise."""
         if options.dry_run:
             LOG.info("Dry run mode is enabled, not running the experiment.")
             return
@@ -98,6 +101,7 @@ class ExecutionBackend:
             exp.run(detach=True, sequential=options.sequential)
 
     def track_experiment(self, exp: run.Experiment, include_finished: bool = True) -> Dict[str, Any]:
+        """Return a task-name to status map, optionally filtering to active tasks."""
         status_dict = exp.status(return_dict=True)
         if include_finished:
             return status_dict
@@ -115,6 +119,7 @@ class ExecutionBackend:
         }
 
     def stop_experiment(self, exp: run.Experiment, only_active: bool = True) -> list[str]:
+        """Cancel experiment tasks and return the names of the cancelled tasks."""
         cancelled_jobs = []
         active_states = {
             "RUNNING",
@@ -275,16 +280,22 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
 
 
 def _with_exp(exp_or_name: run.Experiment | str):
+    """Return a context manager yielding an Experiment from an instance, title, or id."""
     if isinstance(exp_or_name, run.Experiment):
 
         class _ExperimentCtx:
+            """Context manager that yields an already-instantiated experiment unchanged."""
+
             def __init__(self, exp):
+                """Store the experiment to yield from the context."""
                 self.exp = exp
 
             def __enter__(self):
+                """Return the wrapped experiment."""
                 return self.exp
 
             def __exit__(self, exc_type, exc, tb):
+                """Leave the context without suppressing exceptions."""
                 return False
 
         return _ExperimentCtx(exp_or_name)
