@@ -273,6 +273,79 @@ cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_generation_config", node=GenerationTaskConfig)
 
 
+def _patch_httpcore_connection_pool_assignment() -> None:
+    """Patch httpcore's async connection assignment hot path.
+
+    httpcore 1.0.9 repeatedly materializes connection-state lists while
+    assigning queued requests to connections. At high OpenAI-compatible
+    concurrency this can dominate the client asyncio loop. Keep the same
+    request-assignment order, but use scalar checks/generators instead of
+    rebuilding lists on every pass.
+    """
+    try:
+        import httpcore._async.connection_pool as async_connection_pool
+    except ImportError:
+        LOG.debug("httpcore is not installed; skipping async connection-pool patch")
+        return
+
+    assign = async_connection_pool.AsyncConnectionPool._assign_requests_to_connections
+    if getattr(assign, "_nemo_skills_fast_assign", False):
+        return
+
+    def _fast_assign_requests_to_connections(self):
+        closing_connections = []
+
+        # First clean up closed/expired/surplus-idle connections. The original
+        # implementation builds an N-element list for every idle connection just
+        # to take its len(); len(self._connections) is behavior-equivalent.
+        for connection in list(self._connections):
+            if connection.is_closed():
+                self._connections.remove(connection)
+            elif connection.has_expired():
+                self._connections.remove(connection)
+                closing_connections.append(connection)
+            elif connection.is_idle() and len(self._connections) > self._max_keepalive_connections:
+                self._connections.remove(connection)
+                closing_connections.append(connection)
+
+        # Assign queued requests while preserving httpcore's first-match order.
+        queued_requests = [request for request in self._requests if request.is_queued()]
+        for pool_request in queued_requests:
+            origin = pool_request.request.url.origin
+            connection = next(
+                (
+                    connection
+                    for connection in self._connections
+                    if connection.can_handle_request(origin) and connection.is_available()
+                ),
+                None,
+            )
+
+            if connection is not None:
+                pool_request.assign_to_connection(connection)
+            elif len(self._connections) < self._max_connections:
+                connection = self.create_connection(origin)
+                self._connections.append(connection)
+                pool_request.assign_to_connection(connection)
+            else:
+                connection = next(
+                    (connection for connection in self._connections if connection.is_idle()),
+                    None,
+                )
+                if connection is not None:
+                    self._connections.remove(connection)
+                    closing_connections.append(connection)
+                    connection = self.create_connection(origin)
+                    self._connections.append(connection)
+                    pool_request.assign_to_connection(connection)
+
+        return closing_connections
+
+    _fast_assign_requests_to_connections._nemo_skills_fast_assign = True
+    async_connection_pool.AsyncConnectionPool._assign_requests_to_connections = _fast_assign_requests_to_connections
+    LOG.debug("Patched httpcore AsyncConnectionPool._assign_requests_to_connections")
+
+
 class GenerationTask:
     @classmethod
     def get_generation_default_args(cls) -> str:
@@ -862,6 +935,7 @@ class GenerationTask:
 
     async def async_loop(self, data):
         """Async loop to generate generations using asyncio."""
+        _patch_httpcore_connection_pool_assignment()
 
         # Initialize output lock for thread-safe writing
         if self.output_lock is None:
