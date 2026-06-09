@@ -178,6 +178,17 @@ def test_dashboard_only_ray_config_is_precreated_not_embedded():
     assert not (metadata or {}).get("use_with_ray_cluster")
 
 
+def test_non_precreated_ray_honors_use_with_ray_cluster_flag():
+    # Without a precreated cluster (no endpoint/dashboard_url), stage_metadata must
+    # honor the caller's use_with_ray_cluster flag rather than force it on.
+    cluster_config = {"executor": "slurm", "backend": {"name": "ray"}}
+    backend = get_execution_backend(cluster_config)
+    assert backend.precreated_cluster is False
+
+    assert backend.stage_metadata(use_with_ray_cluster=True).get("use_with_ray_cluster") is True
+    assert not (backend.stage_metadata(use_with_ray_cluster=False) or {}).get("use_with_ray_cluster")
+
+
 def test_ray_backend_runtime_env_normalizes_and_filters_values():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 

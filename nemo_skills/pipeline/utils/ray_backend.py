@@ -389,7 +389,7 @@ class RayBackend(ExecutionBackend):
         if self.precreated_cluster and (self.endpoint or self.dashboard_url):
             should_use_embedded_ray_cluster = False
         else:
-            should_use_embedded_ray_cluster = True
+            should_use_embedded_ray_cluster = use_with_ray_cluster
 
         metadata = super().stage_metadata(use_with_ray_cluster=should_use_embedded_ray_cluster)
         metadata = dict(metadata or {})
