@@ -972,6 +972,12 @@ def queue_ray_job_commands(
         for dep in (task_dependencies or [])
     ]
 
+    # Predict the nemo-run handle exp.add() will assign this stage ("nemo-run",
+    # then "nemo-run_<n>") so dep resolution can match deps named by handle.
+    base_handle_name = "nemo-run"
+    existing_jobs = len(getattr(exp, "jobs", []) or [])
+    task_handle = base_handle_name if existing_jobs == 0 else f"{base_handle_name}_{existing_jobs}"
+
     for idx, command in enumerate(commands):
         img = command_images[idx] if command_images and idx < len(command_images) else None
         cmd_meta = backend.stage_metadata(
@@ -989,6 +995,7 @@ def queue_ray_job_commands(
                 "submission_id": queued_task_name,
                 "entrypoint_label_selector": selector,
                 "dep_task_names": dep_names,
+                "task_handle": task_handle,
                 "job_log_file": job_log_file,
                 "stage_run_id": task_name,
                 "stage_manifest_file": stage_manifest_file,
