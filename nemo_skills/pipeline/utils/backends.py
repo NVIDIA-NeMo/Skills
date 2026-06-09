@@ -196,7 +196,13 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             or backend_config.get("jobs_api_url")
             or (backend_config.get("kubernetes") or {}).get("dashboard_url")
         )
-        precreated_cluster = bool(backend_config.get("precreated_cluster", False)) or bool(endpoint)
+        # A dashboard_url (Jobs API) targets an existing cluster just like an
+        # explicit precreated_cluster flag or a Ray Client endpoint. Treat any of
+        # them as the precreated signal, and never downgrade an explicit
+        # precreated_cluster: true.
+        precreated_cluster = (
+            bool(backend_config.get("precreated_cluster", False)) or bool(endpoint) or bool(dashboard_url)
+        )
         control_plane = str(backend_config.get("control_plane") or "").strip().lower()
         k8s_cfg = backend_config.get("kubernetes") or {}
         selector = backend_config.get("entrypoint_label_selector") or k8s_cfg.get("entrypoint_label_selector")
@@ -210,7 +216,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             endpoint = endpoint or k8s_cfg.get("endpoint")
             return RayBackend(
                 endpoint=endpoint,
-                precreated_cluster=bool(endpoint),
+                precreated_cluster=precreated_cluster,
                 control_plane="kubernetes",
                 kubernetes_mode=mode,
                 dashboard_url=dashboard_url,
@@ -247,9 +253,13 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
         dashboard_url = (
             backend_config.get("dashboard_url") or backend_config.get("jobs_api_url") or k8s_cfg.get("dashboard_url")
         )
+        # endpoint, dashboard_url, or an explicit flag all signal a precreated cluster.
+        precreated_cluster = (
+            bool(backend_config.get("precreated_cluster", False)) or bool(endpoint) or bool(dashboard_url)
+        )
         return RayBackend(
             endpoint=endpoint,
-            precreated_cluster=bool(endpoint),
+            precreated_cluster=precreated_cluster,
             control_plane="kubernetes",
             kubernetes_mode=mode,
             dashboard_url=dashboard_url,
@@ -281,7 +291,9 @@ def _with_exp(exp_or_name: run.Experiment | str):
 
     try:
         return run.Experiment.from_title(exp_or_name)
-    except Exception:
+    except FileNotFoundError:
+        # Title not found; fall back to treating the argument as an experiment id.
+        # Any other error from from_title is a real failure and must propagate.
         return run.Experiment.from_id(exp_or_name)
 
 
