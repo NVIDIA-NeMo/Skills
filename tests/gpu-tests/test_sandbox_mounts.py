@@ -44,6 +44,7 @@ from nemo_skills.code_execution.sandbox import get_sandbox
 async def main():
     sandbox = get_sandbox("local")
     try:
+        sandbox.wait_for_sandbox(wait_timeout=120)
         read_result, _ = await sandbox.execute_code(
             "cat /sandbox-ro/input.txt",
             language="shell",

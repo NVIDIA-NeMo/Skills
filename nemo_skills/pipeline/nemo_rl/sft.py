@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 import typer
@@ -44,6 +46,10 @@ from nemo_skills.utils import (
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+UPSTREAM_NEMO_RL_ROOT = "/opt/nemo-rl"
+UPSTREAM_SFT_SCRIPT = f"{UPSTREAM_NEMO_RL_ROOT}/examples/run_sft.py"
+UPSTREAM_SFT_CONFIG = f"{UPSTREAM_NEMO_RL_ROOT}/examples/configs/sft.yaml"
+
 
 # Define supported backend options using Enum
 class SupportedBackends(str, Enum):
@@ -51,9 +57,32 @@ class SupportedBackends(str, Enum):
     megatron = "megatron"
 
 
+def detect_data_format(data_path: str) -> str:
+    """Detect SFT JSONL format to preserve the old chat_template=infer_from_data behavior."""
+    with open(data_path, "r", encoding="utf-8") as f:
+        first_line = f.readline().strip()
+    if not first_line:
+        raise ValueError(f"Dataset at {data_path} is empty")
+
+    sample = json.loads(first_line)
+    has_input_output = "input" in sample and "output" in sample
+    has_messages = "messages" in sample
+    if has_input_output and has_messages:
+        return "mixed"
+    if has_input_output:
+        return "input_output"
+    if has_messages:
+        return "messages"
+    raise ValueError(
+        f"Dataset at {data_path} has neither 'input'/'output' keys nor 'messages' key. "
+        f"Available keys: {list(sample.keys())}"
+    )
+
+
 @dataclass
 class NemoRLTask:
     model: str
+    config_path: str
     output_dir: str
     prompt_data: str
     eval_data: str
@@ -67,6 +96,7 @@ class NemoRLTask:
     log_dir: str
     env_variables: dict
     backend: str
+    data_format: str
     profile_step_range: str
     extra_arguments: str = ""
 
@@ -85,10 +115,65 @@ class NemoRLTask:
             cmd += " ++policy.dtensor_cfg.enabled=true ++policy.megatron_cfg.enabled=false "
         return cmd
 
+    def format_nemo_skills_default_args(self):
+        # Preserve the behavioral defaults from the former NeMo-Skills SFT config while using
+        # the upstream NeMo-RL entrypoint/config as the base. User-provided extra args are
+        # appended after these defaults, so recipes can still override any of them.
+        return (
+            " ++sft.max_num_epochs=100000000 "
+            " ++sft.max_num_steps=100000000 "
+            " ++sft.val_period=0 "
+            " ++sft.val_batches=1 "
+            " ++sft.val_at_start=False "
+            " ++checkpointing.keep_top_k=50 "
+            " ++checkpointing.save_period=100 "
+            f" ++policy.tokenizer.chat_template={self.get_chat_template()} "
+            " ++policy.max_total_sequence_length=4096 "
+            " ++policy.max_grad_norm=0.0 "
+            " ++policy.sequence_packing.enabled=True "
+            " ++policy.megatron_cfg.layernorm_epsilon=1e-6 "
+            " ++policy.megatron_cfg.moe_permute_fusion=false "
+            " ++policy.megatron_cfg.optimizer.lr=1e-6 "
+            " ++policy.megatron_cfg.optimizer.min_lr=1e-6 "
+            " ++policy.megatron_cfg.optimizer.weight_decay=0.01 "
+            " ++policy.megatron_cfg.optimizer.adam_eps=1e-8 "
+            " ++policy.megatron_cfg.scheduler.lr_decay_style=cosine "
+            " ++policy.megatron_cfg.scheduler.lr_decay_iters=\\${sft.max_num_steps} "
+            " ++policy.megatron_cfg.scheduler.lr_warmup_iters=0 "
+            " ++policy.megatron_cfg.scheduler.lr_warmup_init=1.0e-6 "
+            " ++policy.optimizer.kwargs.lr=1e-6 "
+            " ++policy.optimizer.kwargs.weight_decay=0.01 "
+            " ++policy.optimizer.kwargs.eps=1e-8 "
+            " ++data.add_bos=false "
+            " ++data.add_eos=false "
+            " ++data.add_generation_prompt=false "
+            " ++data.num_workers=10 "
+        )
+
+    def get_chat_template(self):
+        if self.data_format == "messages":
+            return "default"
+        return "null"
+
     def format_data_args(self):
-        cmd = f"+data.train_data_path={self.prompt_data} "
+        cmd = (
+            " ++data.default.dataset_name=ResponseDataset "
+            " ++data.default.input_key=input "
+            " ++data.default.output_key=output "
+            " ++data.train.dataset_name=ResponseDataset "
+            " ++data.train.input_key=input "
+            " ++data.train.output_key=output "
+            f" ++data.train.data_path={self.prompt_data} "
+        )
         if self.eval_data is not None:
-            cmd += f"+data.val_data_path={self.eval_data} "
+            cmd += (
+                " ++data.validation.dataset_name=ResponseDataset "
+                " ++data.validation.input_key=input "
+                " ++data.validation.output_key=output "
+                f" ++data.validation.data_path={self.eval_data} "
+            )
+        else:
+            cmd += " ++data.validation=null ++sft.val_period=0 ++sft.val_at_start=False ++sft.val_at_end=False "
         return cmd
 
     def format_wandb_args(self):
@@ -116,13 +201,13 @@ class NemoRLTask:
 
         nsight_cmd = get_nsight_cmd(self.profile_step_range)
         cmd = (
-            "export PYTHONPATH=$PYTHONPATH:/nemo_run/code:/opt/NeMo-RL && "
-            "export UV_PROJECT=/opt/NeMo-RL && "
+            f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:{UPSTREAM_NEMO_RL_ROOT} && "
+            f"export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && "
             f"{nsight_cmd}"
             "echo 'Starting training' && "
             "NRL_FORCE_REBUILD_VENVS=true uv run --active "
-            "python /nemo_run/code/nemo_skills/training/nemo_rl/start_sft.py "
-            f"{self.format_train_args()} {self.format_data_args()} "
+            f"python {UPSTREAM_SFT_SCRIPT} --config {self.config_path} "
+            f"{self.format_train_args()} {self.format_nemo_skills_default_args()} {self.format_data_args()} "
             f"{self.logging_params} {self.extra_arguments}"
         )
         return cmd
@@ -132,6 +217,7 @@ def get_training_cmd(
     cluster_config,
     partition,
     hf_model,
+    config_path,
     output_dir,
     prompt_data,
     eval_data,
@@ -145,12 +231,14 @@ def get_training_cmd(
     log_dir,
     env_variables,
     backend,
+    data_format,
     profile_step_range,
 ):
     timeout = get_timeout_str(cluster_config, partition)
 
     task = NemoRLTask(
         model=hf_model,
+        config_path=config_path,
         output_dir=output_dir,
         prompt_data=prompt_data,
         eval_data=eval_data,
@@ -165,6 +253,7 @@ def get_training_cmd(
         log_dir=log_dir,
         env_variables=env_variables,
         backend=backend,
+        data_format=data_format,
         profile_step_range=profile_step_range,
     )
 
@@ -172,7 +261,10 @@ def get_training_cmd(
 
 
 def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
-    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
+    cmd = (
+        f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:{UPSTREAM_NEMO_RL_ROOT} "
+        f"&& export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && cd /nemo_run/code && "
+    )
     if backend == "fsdp":
         cmd += "uv run --extra automodel python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
     elif backend == "megatron":
@@ -197,7 +289,10 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_pos
 
 
 def get_checkpoint_average_cmd(output_dir, average_steps, backend, remove_checkpoints_after_average):
-    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
+    cmd = (
+        f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:{UPSTREAM_NEMO_RL_ROOT} "
+        f"&& export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && cd /nemo_run/code && "
+    )
 
     if backend in ["fsdp", "megatron"]:
         cmd += "uv run python -m nemo_skills.pipeline.nemo_rl.average_checkpoints "
@@ -287,6 +382,8 @@ def sft_nemo_rl(
         help="If specified, will reuse the code from this experiment. "
         "Can provide an experiment name or an experiment object if running from code.",
     ),
+    config: str = typer.Option(None, help="Override training config YAML; defaults to the upstream container config"),
+    container: str = typer.Option(None, help="Override container image for NeMo-RL training/conversion jobs"),
     config_dir: str = typer.Option(None, help="Can customize where we search for cluster configs"),
     log_dir: str = typer.Option(
         None,
@@ -339,9 +436,6 @@ def sft_nemo_rl(
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
 
-    # Read ray_template from cluster config
-    ray_template = cluster_config.get("ray_template", None)
-
     if log_dir is None:
         log_dir = output_dir
 
@@ -365,18 +459,40 @@ def sft_nemo_rl(
             )
     if run_conversion_only:
         dependent_jobs = -1
+    data_format = "input_output"
     if dependent_jobs >= 0:
         if training_data is None:
             raise ValueError("training_data is required when dependent_jobs >= 0")
+        if Path(training_data).is_file():
+            data_format = detect_data_format(training_data)
+            if data_format == "mixed":
+                raise ValueError(
+                    "Training data contains both 'input'/'output' and 'messages' keys. "
+                    "Please use a consistent data format or explicitly override the data/tokenizer config."
+                )
+            if validation_data is not None and Path(validation_data).is_file():
+                validation_data_format = detect_data_format(validation_data)
+                if validation_data_format != data_format:
+                    raise ValueError(
+                        f"Training data format ({data_format}) does not match validation data format "
+                        f"({validation_data_format})."
+                    )
         if training_data.startswith("/"):  # could ask to download from HF
             training_data = get_mounted_path(cluster_config, training_data)
         if validation_data is not None:
             validation_data = get_mounted_path(cluster_config, validation_data)
+    training_config = config or UPSTREAM_SFT_CONFIG
+    if training_config.startswith("/"):
+        if not training_config.startswith(UPSTREAM_NEMO_RL_ROOT):
+            training_config = get_mounted_path(cluster_config, training_config)
+    elif config is not None:
+        training_config = f"/nemo_run/code/{training_config}"
 
     train_cmd = get_training_cmd(
         cluster_config=cluster_config,
         partition=partition,
         hf_model=hf_model,
+        config_path=training_config,
         output_dir=output_dir,
         prompt_data=training_data,
         eval_data=validation_data,
@@ -390,12 +506,14 @@ def sft_nemo_rl(
         log_dir=f"{log_dir}/training-logs",
         env_variables=env_variables,
         backend=backend,
+        data_format=data_format,
         profile_step_range=profile_step_range,
     )
 
     server_config = None
     env_update = {"RAY_LOG_SYNC_FREQUENCY": 20} if profile_step_range else {}
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+    training_container = container or cluster_config["containers"]["nemo-rl"]
 
     with get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
@@ -406,7 +524,7 @@ def sft_nemo_rl(
                     cmd=train_cmd,
                     task_name=f"{expname}-sft-{job_id}",
                     log_dir=f"{log_dir}/training-logs",
-                    container=cluster_config["containers"]["nemo-rl"],
+                    container=training_container,
                     num_gpus=num_gpus,
                     num_nodes=num_nodes,
                     cluster_config=cluster_config,
@@ -422,7 +540,7 @@ def sft_nemo_rl(
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
-                    ray_template=ray_template,
+                    ray_template=cluster_config.get("ray_template", None),
                 )
         # if average_steps is not specified, we only save the final checkpoint
         if average_steps is None:
@@ -437,7 +555,7 @@ def sft_nemo_rl(
                 ),
                 task_name=f"{expname}-convert-final-ckpt",
                 log_dir=f"{log_dir}/convert-final-ckpt",
-                container=cluster_config["containers"]["nemo-rl"],
+                container=training_container,
                 cluster_config=cluster_config,
                 partition=partition,
                 num_nodes=1,
@@ -467,7 +585,7 @@ def sft_nemo_rl(
                     ),
                     task_name=f"{expname}-convert-ckpt-step_{step}",
                     log_dir=f"{log_dir}/convert-ckpt-step",
-                    container=cluster_config["containers"]["nemo-rl"],
+                    container=training_container,
                     cluster_config=cluster_config,
                     partition=partition,
                     num_nodes=1,
@@ -493,7 +611,7 @@ def sft_nemo_rl(
                 ),
                 task_name=f"{expname}-average-ckpt",
                 log_dir=f"{log_dir}/average-ckpt",
-                container=cluster_config["containers"]["nemo-rl"],
+                container=training_container,
                 cluster_config=cluster_config,
                 partition=partition,
                 num_nodes=1,

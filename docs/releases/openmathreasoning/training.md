@@ -86,6 +86,8 @@ sed -i 's/"rope_theta": 10000,/"rope_theta": 500000.0,/g' Qwen2.5-Math-1.5B/conf
 
 Run the training (assuming slurm configuration here with the same folder structure). If your cluster has strict
 timeout policy, you can run multiple dependent jobs with `--dependent_jobs=N`.
+The command below includes the minimal overrides needed when using upstream NeMo-RL defaults
+without a validation dataset and with NeMo-Skills-prepared SFT data.
 
 
 ```bash
@@ -102,13 +104,32 @@ ns nemo_rl sft \
     ++policy.max_total_sequence_length=32768 \
     ++policy.train_micro_batch_size=1 \
     ++policy.train_global_batch_size=1024 \
-    ++policy.tensor_model_parallel_size=1 \
-    ++policy.context_parallel_size=2 \
-    ++policy.lr=3e-4 \
-    ++policy.min_lr=3e-7 \
+    ++policy.tokenizer.chat_template=null \
+    ++policy.max_grad_norm=0.0 \
+    ++policy.sequence_packing.enabled=True \
+    ++policy.sequence_packing.sequence_length_round=64 \
+    ++policy.make_sequence_length_divisible_by=4 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=1 \
+    ++policy.megatron_cfg.context_parallel_size=2 \
+    ++policy.megatron_cfg.layernorm_epsilon=1e-6 \
+    ++policy.megatron_cfg.moe_permute_fusion=false \
+    ++policy.megatron_cfg.optimizer.lr=3e-4 \
+    ++policy.megatron_cfg.optimizer.min_lr=3e-7 \
+    ++policy.megatron_cfg.optimizer.weight_decay=0.01 \
+    ++policy.megatron_cfg.optimizer.adam_eps=1e-8 \
+    ++policy.megatron_cfg.scheduler.lr_decay_style=cosine \
+    ++policy.megatron_cfg.scheduler.lr_decay_iters=30000 \
     ++policy.megatron_cfg.scheduler.lr_warmup_iters=3000 \
     ++policy.megatron_cfg.scheduler.lr_warmup_init=0 \
+    ++data.add_bos=false \
+    ++data.add_eos=false \
+    ++data.add_generation_prompt=false \
+    ++data.num_workers=10 \
     ++checkpointing.save_period=7500 \
+    ++checkpointing.keep_top_k=50 \
+    ++sft.val_period=0 \
+    ++sft.val_at_start=false \
+    ++sft.val_batches=1 \
     ++sft.max_num_steps=30000 \
     ++sft.max_num_epochs=100
 ```
