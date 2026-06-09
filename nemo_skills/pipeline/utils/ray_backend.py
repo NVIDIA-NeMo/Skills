@@ -131,7 +131,7 @@ class RayBackend(ExecutionBackend):
         if ep.startswith("http://") or ep.startswith("https://"):
             return ep
         if ep.startswith("ray://"):
-            host_port = ep[len("ray://"):]
+            host_port = ep[len("ray://") :]
             host = host_port.split(":", 1)[0]
             return f"http://{host}:8265"
         return None
@@ -147,10 +147,7 @@ class RayBackend(ExecutionBackend):
 
     def _get_jobs_client(self):
         if not self.dashboard_url:
-            raise RuntimeError(
-                "Ray Jobs submission requires backend.dashboard_url "
-                "(e.g. http://<head-host>:8265)."
-            )
+            raise RuntimeError("Ray Jobs submission requires backend.dashboard_url (e.g. http://<head-host>:8265).")
         try:
             from ray.job_submission import JobSubmissionClient
         except Exception as exc:
@@ -208,8 +205,7 @@ class RayBackend(ExecutionBackend):
         if pending:
             summary = {jid: last_seen.get(jid, "UNKNOWN") for jid in sorted(pending)}
             LOG.warning(
-                "Timed out waiting for Ray job cleanup during %s after %ss; "
-                "jobs may still be running: %s",
+                "Timed out waiting for Ray job cleanup during %s after %ss; jobs may still be running: %s",
                 reason,
                 timeout_s,
                 summary,
@@ -299,15 +295,12 @@ class RayBackend(ExecutionBackend):
         if selectors is None:
             return {}
         if not isinstance(selectors, dict):
-            raise ValueError(
-                "image_label_selectors must be a dict[str, dict[str, str]] when provided"
-            )
+            raise ValueError("image_label_selectors must be a dict[str, dict[str, str]] when provided")
         normalized: Dict[str, Dict[str, str]] = {}
         for pattern, labels in selectors.items():
             if not isinstance(labels, dict):
                 raise ValueError(
-                    "image_label_selectors values must be dicts "
-                    "(either label dict or {'key': ..., 'value': ...})"
+                    "image_label_selectors values must be dicts (either label dict or {'key': ..., 'value': ...})"
                 )
             # Convenience form: {"key": "...", "value": "..."}
             if set(labels.keys()) == {"key", "value"}:
@@ -366,9 +359,7 @@ class RayBackend(ExecutionBackend):
                 for key, value in image_specific_selector.items():
                     selector.setdefault(key, value)
             elif self.image_label_key:
-                selector.setdefault(
-                    self.image_label_key, self._normalize_label_value(container_image)
-                )
+                selector.setdefault(self.image_label_key, self._normalize_label_value(container_image))
         if selector:
             metadata["ray_entrypoint_label_selector"] = selector
             metadata["entrypoint_label_selector"] = selector
@@ -427,9 +418,7 @@ class RayBackend(ExecutionBackend):
             return
 
         if self.precreated_cluster and not self.endpoint:
-            raise RuntimeError(
-                "Ray preflight failed: backend.precreated_cluster=true requires backend.endpoint."
-            )
+            raise RuntimeError("Ray preflight failed: backend.precreated_cluster=true requires backend.endpoint.")
 
         if options.dry_run:
             return
@@ -446,9 +435,7 @@ class RayBackend(ExecutionBackend):
             return
 
         if require_reachable and not self.endpoint:
-            raise RuntimeError(
-                "Ray preflight failed: backend.endpoint is required for connectivity checks."
-            )
+            raise RuntimeError("Ray preflight failed: backend.endpoint is required for connectivity checks.")
 
         try:
             import ray
@@ -465,9 +452,7 @@ class RayBackend(ExecutionBackend):
 
             live_nodes = [n for n in (ray.nodes() or []) if n.get("Alive", False)]
             if require_reachable and not live_nodes:
-                raise RuntimeError(
-                    "Ray preflight failed: endpoint reachable but no live nodes were found."
-                )
+                raise RuntimeError("Ray preflight failed: endpoint reachable but no live nodes were found.")
 
             resources_total: Dict[str, float] = {}
             for node in live_nodes:
@@ -479,17 +464,14 @@ class RayBackend(ExecutionBackend):
 
             if min_resources:
                 if not isinstance(min_resources, dict):
-                    raise RuntimeError(
-                        "Ray preflight failed: preflight.min_cluster_resources must be a dict."
-                    )
+                    raise RuntimeError("Ray preflight failed: preflight.min_cluster_resources must be a dict.")
                 for key, required_value in min_resources.items():
                     normalized_key = self._normalize_resource_key(str(key))
                     try:
                         required_float = float(required_value)
                     except Exception as exc:
                         raise RuntimeError(
-                            f"Ray preflight failed: invalid min_cluster_resources value "
-                            f"for '{key}': {required_value}"
+                            f"Ray preflight failed: invalid min_cluster_resources value for '{key}': {required_value}"
                         ) from exc
                     available = float(resources_total.get(normalized_key, 0.0))
                     if available < required_float:
@@ -500,12 +482,11 @@ class RayBackend(ExecutionBackend):
 
             if required_labels:
                 if not isinstance(required_labels, list):
-                    raise RuntimeError(
-                        "Ray preflight failed: preflight.required_node_labels must be a list."
-                    )
+                    raise RuntimeError("Ray preflight failed: preflight.required_node_labels must be a list.")
                 labels_by_node: list[Dict[str, str]] = []
                 try:
                     from ray.util.state import list_nodes
+
                     labels_by_node = self._extract_node_labels(list_nodes(detail=True) or [])
                 except Exception:
                     labels_by_node = []
@@ -522,22 +503,16 @@ class RayBackend(ExecutionBackend):
                     for label_req in required_labels:
                         if not isinstance(label_req, dict):
                             raise RuntimeError(
-                                "Ray preflight failed: each required_node_labels item "
-                                "must be a dict with key/value."
+                                "Ray preflight failed: each required_node_labels item must be a dict with key/value."
                             )
                         key = str(label_req.get("key", "")).strip()
                         value = str(label_req.get("value", "")).strip()
                         if not key:
                             raise RuntimeError(
-                                "Ray preflight failed: required_node_labels entries "
-                                "must include non-empty key."
+                                "Ray preflight failed: required_node_labels entries must include non-empty key."
                             )
-                        if not any(
-                            node_labels.get(key) == value for node_labels in labels_by_node
-                        ):
-                            raise RuntimeError(
-                                f"Ray preflight failed: no live node matched label '{key}={value}'."
-                            )
+                        if not any(node_labels.get(key) == value for node_labels in labels_by_node):
+                            raise RuntimeError(f"Ray preflight failed: no live node matched label '{key}={value}'.")
 
             self._preflight_done = True
         finally:
@@ -550,9 +525,7 @@ class RayBackend(ExecutionBackend):
     # Experiment lifecycle
     # ------------------------------------------------------------------
 
-    def start_experiment(
-        self, exp: run.Experiment, cluster_config: Dict[str, Any], options: BackendRunOptions
-    ):
+    def start_experiment(self, exp: run.Experiment, cluster_config: Dict[str, Any], options: BackendRunOptions):
         self._run_preflight(cluster_config, options)
         pending_jobs = getattr(exp, "_ns_ray_jobs_queue", None)
         if not pending_jobs:
@@ -596,9 +569,7 @@ class RayBackend(ExecutionBackend):
 
         # Deps naming a handle no job in this batch produces point at a prior
         # reused experiment that already finished SUCCEEDED, so treat as satisfied.
-        producible_dep_names = {
-            j.get("task_handle") for j in pending_jobs if j.get("task_handle")
-        }
+        producible_dep_names = {j.get("task_handle") for j in pending_jobs if j.get("task_handle")}
         # job_id -> nemo-run task_handle (for recording completion under the handle name).
         handle_by_job_id: Dict[str, str] = {}
 
@@ -622,7 +593,7 @@ class RayBackend(ExecutionBackend):
                 except Exception:
                     logs = ""
                 if logs and logs != last_logs:
-                    delta = logs[len(last_logs):] if logs.startswith(last_logs) else logs
+                    delta = logs[len(last_logs) :] if logs.startswith(last_logs) else logs
                     if delta.strip():
                         for line in delta.rstrip().splitlines():
                             LOG.info("ray-job/%s %s", job_id, line)
@@ -675,9 +646,7 @@ class RayBackend(ExecutionBackend):
             selector = job.get("entrypoint_label_selector")
             task_name = str(job.get("task_name", "nemo-run"))
             metadata = {"nemo_task_name": task_name}
-            base_id = self._sanitize_submission_id(
-                str(job.get("submission_id") or f"{exp_title}-{idx}")
-            )
+            base_id = self._sanitize_submission_id(str(job.get("submission_id") or f"{exp_title}-{idx}"))
             submission_id = f"{base_id}-{uuid.uuid4().hex[:8]}"
             LOG.info(
                 "Submitting Ray Job %s to %s (selector=%s)",
@@ -773,9 +742,7 @@ class RayBackend(ExecutionBackend):
                     break
 
                 # Find the job_id for this future.
-                done_job_id = next(
-                    (jid for jid, f in futures.items() if f is done_future), None
-                )
+                done_job_id = next((jid for jid, f in futures.items() if f is done_future), None)
                 if done_job_id is None:
                     continue
 
@@ -798,15 +765,11 @@ class RayBackend(ExecutionBackend):
                         list(futures.keys()),
                         reason=f"job-failure:{task_name}",
                     )
-                    raise RuntimeError(
-                        f"Ray job '{task_name}' (id={done_job_id}) ended with status {status}."
-                    )
+                    raise RuntimeError(f"Ray job '{task_name}' (id={done_job_id}) ended with status {status}.")
 
         setattr(exp, "_ns_ray_jobs_submitted", submitted_meta)
 
-    def track_experiment(
-        self, exp: run.Experiment, include_finished: bool = True
-    ) -> Dict[str, Any]:
+    def track_experiment(self, exp: run.Experiment, include_finished: bool = True) -> Dict[str, Any]:
         submitted = getattr(exp, "_ns_ray_jobs_submitted", None)
         if not submitted or not self.dashboard_url:
             return super().track_experiment(exp, include_finished=include_finished)
@@ -832,9 +795,7 @@ class RayBackend(ExecutionBackend):
                 }
         return tracked
 
-    def stop_experiment(
-        self, exp: run.Experiment, only_active: bool = True
-    ) -> list[str]:
+    def stop_experiment(self, exp: run.Experiment, only_active: bool = True) -> list[str]:
         submitted = getattr(exp, "_ns_ray_jobs_submitted", None)
         if not submitted or not self.dashboard_url:
             return super().stop_experiment(exp, only_active=only_active)
