@@ -578,12 +578,21 @@ class RayBackend(ExecutionBackend):
           then submitted the judge — meaning the judge never came up while
           training needed it, causing the wait-for-host-file loop to time out.
         """
-        # job_id -> status (populated as jobs complete)
+        # job_id -> status, keyed by both task_name and nemo-run handle
+        # so handle-named deps resolve against jobs in this batch.
         completed: Dict[str, str] = {}
         # job_id -> Future
         futures: Dict[str, Future] = {}
         # remaining jobs not yet submitted
         pending = list(pending_jobs)
+
+        # Deps naming a handle no job in this batch produces point at a prior
+        # reused experiment that already finished SUCCEEDED, so treat as satisfied.
+        producible_dep_names = {
+            j.get("task_handle") for j in pending_jobs if j.get("task_handle")
+        }
+        # job_id -> nemo-run task_handle (for recording completion under the handle name).
+        handle_by_job_id: Dict[str, str] = {}
 
         exp_title = getattr(exp, "_title", "exp")
         submitted_meta: list[Dict[str, Any]] = []
@@ -636,9 +645,17 @@ class RayBackend(ExecutionBackend):
                 time.sleep(_POLL_INTERVAL)
 
         def _deps_satisfied(job: Dict[str, Any]) -> bool:
-            """Return True if all named dependencies have SUCCEEDED."""
+            """True if every dep is SUCCEEDED, or names a handle this batch never
+            produces (a prior, already-SUCCEEDED experiment's job)."""
             deps = job.get("dep_task_names") or []
-            return all(completed.get(d) == _SUCCESS_STATE for d in deps)
+            for d in deps:
+                if completed.get(d) == _SUCCESS_STATE:
+                    continue
+                if d not in producible_dep_names:
+                    # Dependency on a prior/reused-experiment job: already SUCCEEDED.
+                    continue
+                return False
+            return True
 
         def _submit_one(job: Dict[str, Any], idx: int) -> Dict[str, Any]:
             """Prepare and submit a single job; return its metadata."""
@@ -668,6 +685,7 @@ class RayBackend(ExecutionBackend):
             )
             return {
                 "task_name": task_name,
+                "task_handle": job.get("task_handle"),
                 "job_id": job_id,
                 "submission_id": submission_id,
                 "job_log_file": job.get("job_log_file"),
@@ -722,6 +740,8 @@ class RayBackend(ExecutionBackend):
                             meta.get("submission_id"),
                         )
                         futures[meta["job_id"]] = future
+                        if meta.get("task_handle"):
+                            handle_by_job_id[meta["job_id"]] = meta["task_handle"]
                     else:
                         still_pending.append(job)
                 pending = still_pending
@@ -754,6 +774,11 @@ class RayBackend(ExecutionBackend):
                 status = result["status"]
                 task_name = result["task_name"]
                 completed[task_name] = status
+                # Also record completion under the nemo-run task_handle so that
+                # downstream jobs (whose dep_task_names are handles) can resolve.
+                done_handle = handle_by_job_id.get(done_job_id)
+                if done_handle:
+                    completed[done_handle] = status
                 del futures[done_job_id]
                 LOG.info("Ray job %s (%s) finished with status %s", done_job_id, task_name, status)
 
