@@ -32,9 +32,7 @@ def _normalize_backend_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(backend_config, str):
         return {"name": backend_config}
     if not isinstance(backend_config, dict):
-        raise ValueError(
-            f"cluster_config backend must be a dict or string, got {type(backend_config).__name__}"
-        )
+        raise ValueError(f"cluster_config backend must be a dict or string, got {type(backend_config).__name__}")
     return backend_config
 
 
@@ -162,6 +160,7 @@ __all__ = [
     "stop_stage_tasks",
 ]
 
+
 def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = False) -> ExecutionBackend:
     """Resolve execution backend from cluster config and compatibility flags.
 
@@ -177,10 +176,10 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
     if not backend_name:
         if with_ray:
             return RayBackend(
-            endpoint=legacy_ray_endpoint,
-            precreated_cluster=bool(legacy_ray_endpoint),
-            env_vars=get_env_variables(cluster_config),
-        )
+                endpoint=legacy_ray_endpoint,
+                precreated_cluster=bool(legacy_ray_endpoint),
+                env_vars=get_env_variables(cluster_config),
+            )
         return ExecutionBackend()
 
     if backend_name in {"default", "none"}:
@@ -246,9 +245,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             or legacy_ray_endpoint
         )
         dashboard_url = (
-            backend_config.get("dashboard_url")
-            or backend_config.get("jobs_api_url")
-            or k8s_cfg.get("dashboard_url")
+            backend_config.get("dashboard_url") or backend_config.get("jobs_api_url") or k8s_cfg.get("dashboard_url")
         )
         return RayBackend(
             endpoint=endpoint,
@@ -269,6 +266,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
 
 def _with_exp(exp_or_name: run.Experiment | str):
     if isinstance(exp_or_name, run.Experiment):
+
         class _ExperimentCtx:
             def __init__(self, exp):
                 self.exp = exp

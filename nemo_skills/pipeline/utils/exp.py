@@ -968,8 +968,7 @@ def queue_ray_job_commands(
     queued_jobs = list(getattr(exp, "_ns_ray_jobs_queue", []))
     before_count = len(queued_jobs)
     dep_names = [
-        (dep if isinstance(dep, str) else getattr(dep, "name", str(dep)))
-        for dep in (task_dependencies or [])
+        (dep if isinstance(dep, str) else getattr(dep, "name", str(dep))) for dep in (task_dependencies or [])
     ]
 
     # Predict the nemo-run handle exp.add() will assign this stage ("nemo-run",
@@ -980,10 +979,13 @@ def queue_ray_job_commands(
 
     for idx, command in enumerate(commands):
         img = command_images[idx] if command_images and idx < len(command_images) else None
-        cmd_meta = backend.stage_metadata(
-            use_with_ray_cluster=should_use_with_ray_cluster,
-            container_image=img,
-        ) or {}
+        cmd_meta = (
+            backend.stage_metadata(
+                use_with_ray_cluster=should_use_with_ray_cluster,
+                container_image=img,
+            )
+            or {}
+        )
         queued_task_name = task_name if len(commands) == 1 else f"{task_name}-{idx}"
         selector = cmd_meta.get("entrypoint_label_selector") or cmd_meta.get("ray_entrypoint_label_selector")
         job_log_file = f"{log_dir}/ray-jobs/{queued_task_name}.log" if log_dir else None
