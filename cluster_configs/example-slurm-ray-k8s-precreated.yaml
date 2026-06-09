@@ -84,26 +84,27 @@ backend:
     #     key: nemo/workload
     #     value: rl
 
-  # Optional preflight checks run before Ray-backed experiment start.
-  # These are useful for failing fast when endpoint, labels, or cluster capacity
-  # are not aligned with the job requirements.
-  # preflight:
-  #   enabled: true
-  #   # If true, require Ray endpoint connectivity and at least one live node.
-  #   require_ray_endpoint: true
-  #   # If true, fail if label inspection cannot be performed.
-  #   strict_label_check: true
-  #   # Require at least one live node matching each key/value pair.
-  #   required_node_labels:
-  #     - key: nemo/has-nemo-rl
-  #       value: "true"
-  #     - key: workload
-  #       value: "training"
-  #   # Require minimum total live-cluster resources before submission.
-  #   # Supported aliases: gpu|gpus -> GPU, cpu|cpus -> CPU, mem|memory -> memory.
-  #   min_cluster_resources:
-  #     gpu: 16
-  #     cpu: 64
+# Optional preflight checks run before Ray-backed experiment start.
+# Read from the TOP LEVEL of the cluster config (a sibling of `backend:`), not
+# from under `backend:`. Useful for failing fast when endpoint, labels, or
+# cluster capacity are not aligned with the job requirements.
+# preflight:
+#   enabled: true
+#   # If true, require Ray endpoint connectivity and at least one live node.
+#   require_ray_endpoint: true
+#   # If true, fail if label inspection cannot be performed.
+#   strict_label_check: true
+#   # Require at least one live node matching each key/value pair.
+#   required_node_labels:
+#     - key: nemo/has-nemo-rl
+#       value: "true"
+#     - key: workload
+#       value: "training"
+#   # Require minimum total live-cluster resources before submission.
+#   # Supported aliases: gpu|gpus -> GPU, cpu|cpus -> CPU, mem|memory -> memory.
+#   min_cluster_resources:
+#     gpu: 16
+#     cpu: 64
 
 # Required mounts for models/data/workspace.
 mounts:
