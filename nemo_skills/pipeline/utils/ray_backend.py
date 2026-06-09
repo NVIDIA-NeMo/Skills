@@ -93,6 +93,7 @@ class RayBackend(ExecutionBackend):
         image_label_selectors: Dict[str, Dict[str, str]] | None = None,
         env_vars: Dict[str, str] | None = None,
     ):
+        """Configure connection, placement, and env-forwarding options for the backend."""
         self.endpoint = endpoint.strip() if endpoint else None
         self.dashboard_url = self._normalize_dashboard_url(dashboard_url, self.endpoint)
         self.precreated_cluster = precreated_cluster
@@ -123,6 +124,7 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _normalize_dashboard_url(dashboard_url: str | None, endpoint: str | None) -> str | None:
+        """Return the Jobs API dashboard URL, deriving it from the endpoint if unset."""
         if dashboard_url:
             return str(dashboard_url).strip()
         if not endpoint:
@@ -138,11 +140,13 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _sanitize_submission_id(value: str) -> str:
+        """Return a submission id with unsupported characters replaced by hyphens."""
         sanitized = re.sub(r"[^a-zA-Z0-9_.-]", "-", value)
         return sanitized.strip("-._") or "job"
 
     @staticmethod
     def _to_status_str(status: Any) -> str:
+        """Normalize a Ray job status (enum or string) to an uppercase string."""
         return str(getattr(status, "value", status)).upper()
 
     @staticmethod
@@ -184,6 +188,7 @@ class RayBackend(ExecutionBackend):
         return True
 
     def _get_jobs_client(self):
+        """Return a JobSubmissionClient for the dashboard URL, raising if unavailable."""
         if not self.dashboard_url:
             raise RuntimeError("Ray Jobs submission requires backend.dashboard_url (e.g. http://<head-host>:8265).")
         try:
@@ -331,6 +336,7 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _prepare_job_entrypoint_command(command: str) -> str:
+        """Rewrite a command to use local cluster autodiscovery (RAY_ADDRESS=auto)."""
         # When running *inside* a Ray Job, the driver is already on the cluster.
         # Replace any forwarded Ray Client endpoint with local cluster autodiscovery.
         stripped = re.sub(r"export\s+RAY_ADDRESS=[^&;]+&&\s*", "", command)
@@ -340,6 +346,7 @@ class RayBackend(ExecutionBackend):
     def _normalize_image_label_selectors(
         selectors: Dict[str, Dict[str, str]] | None,
     ) -> Dict[str, Dict[str, str]]:
+        """Validate and normalize image-pattern label selectors into a uniform dict."""
         if selectors is None:
             return {}
         if not isinstance(selectors, dict):
@@ -358,6 +365,7 @@ class RayBackend(ExecutionBackend):
         return normalized
 
     def _labels_for_image(self, container_image: str) -> Dict[str, str]:
+        """Return placement labels for a container image by glob-matching selectors."""
         labels: Dict[str, str] = {}
         for pattern, selector in self.image_label_selectors.items():
             if fnmatch.fnmatch(container_image, pattern):
@@ -367,6 +375,7 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _normalize_label_value(value: str) -> str:
+        """Return a label value lowercased with unsupported characters collapsed to hyphens."""
         normalized = re.sub(r"[^a-z0-9_.-]", "-", value.lower())
         normalized = re.sub(r"-+", "-", normalized).strip("-._")
         return normalized or "unknown"
@@ -419,6 +428,7 @@ class RayBackend(ExecutionBackend):
         return metadata
 
     def get_env_overrides(self) -> Dict[str, str]:
+        """Return RAY_ADDRESS pointing at the endpoint, or nothing when unset."""
         if not self.endpoint:
             return {}
         return {"RAY_ADDRESS": self.endpoint}
@@ -429,6 +439,7 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _preflight_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the validated ``preflight`` section of the cluster config."""
         cfg = cluster_config.get("preflight") or {}
         if cfg is None:
             return {}
@@ -438,6 +449,7 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _normalize_resource_key(key: str) -> str:
+        """Map common resource aliases (gpu/cpu/mem) to canonical Ray resource keys."""
         k = str(key).strip().lower()
         if k in {"gpu", "gpus"}:
             return "GPU"
@@ -449,6 +461,7 @@ class RayBackend(ExecutionBackend):
 
     @staticmethod
     def _extract_node_labels(nodes_detail: list[Any]) -> list[Dict[str, str]]:
+        """Extract per-node label maps from Ray state API node-detail entries."""
         label_maps: list[Dict[str, str]] = []
         for node in nodes_detail:
             if hasattr(node, "model_dump"):
@@ -465,6 +478,7 @@ class RayBackend(ExecutionBackend):
         return label_maps
 
     def _run_preflight(self, cluster_config: Dict[str, Any], options: BackendRunOptions) -> None:
+        """Verify cluster reachability, resources, and node labels before submitting."""
         preflight_cfg = self._preflight_config(cluster_config)
         enabled = bool(preflight_cfg.get("enabled", True))
         if not enabled:
@@ -579,6 +593,7 @@ class RayBackend(ExecutionBackend):
     # ------------------------------------------------------------------
 
     def start_experiment(self, exp: run.Experiment, cluster_config: Dict[str, Any], options: BackendRunOptions):
+        """Run preflight, then submit queued Ray Jobs concurrently and wait for them."""
         self._run_preflight(cluster_config, options)
         pending_jobs = getattr(exp, "_ns_ray_jobs_queue", None)
         if not pending_jobs:
@@ -814,6 +829,7 @@ class RayBackend(ExecutionBackend):
         setattr(exp, "_ns_ray_jobs_submitted", submitted_meta)
 
     def track_experiment(self, exp: run.Experiment, include_finished: bool = True) -> Dict[str, Any]:
+        """Return current status for each submitted Ray Job, optionally active-only."""
         submitted = getattr(exp, "_ns_ray_jobs_submitted", None)
         if not submitted or not self.dashboard_url:
             return super().track_experiment(exp, include_finished=include_finished)
@@ -840,6 +856,7 @@ class RayBackend(ExecutionBackend):
         return tracked
 
     def stop_experiment(self, exp: run.Experiment, only_active: bool = True) -> list[str]:
+        """Stop submitted Ray Jobs and return the names of the stopped tasks."""
         submitted = getattr(exp, "_ns_ray_jobs_submitted", None)
         if not submitted or not self.dashboard_url:
             return super().stop_experiment(exp, only_active=only_active)
