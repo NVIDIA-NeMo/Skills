@@ -56,6 +56,9 @@ timeouts:
   CHANGE_ME_CPU_PARTITION: "1-00:00:00"
 
 # Backend config: pre-created Ray cluster on Kubernetes.
+# This sample targets ONE cluster. For NVFlow's 2-cluster (CPU + GPU) setup that
+# auto-routes each stage by its num_gpus, see NVFlow's
+# docs/recipes/finance/install-ray.md (backend.dashboard_url + cpu_dashboard_url).
 backend:
   name: ray
   control_plane: kubernetes
