@@ -34,6 +34,7 @@ from .audio_utils import (
     chunk_audio,
     load_audio_file,
     make_audio_content_block,
+    make_audio_url_content_block,
     save_audio_chunk_to_base64,
 )
 from .vllm import VLLMModel
@@ -77,6 +78,7 @@ class VLLMMultimodalModel(VLLMModel):
         audio_chunk_task_types: list[str] | None = None,
         chunk_audio_threshold_sec: int = 30,
         audio_format: str | None = None,
+        audio_as_path: bool | None = None,
         **kwargs,
     ):
         """Initialize VLLMMultimodalModel with audio I/O and external API support.
@@ -88,6 +90,8 @@ class VLLMMultimodalModel(VLLMModel):
             audio_chunk_task_types: If None, chunk all task types; if specified, only chunk these.
             chunk_audio_threshold_sec: Audio duration threshold for chunking (in seconds).
             audio_format: Format for audio content ("audio_url" or "input_audio"). If None, select by mode.
+            audio_as_path: If True, send local audio paths as file:// URLs instead of inlining base64.
+                If None, defaults to True for local vLLM audio_url mode and False for external APIs.
             **kwargs: Other parameters passed to VLLMModel/BaseModel.
         """
         super().__init__(model=model, base_url=base_url, **kwargs)
@@ -105,6 +109,11 @@ class VLLMMultimodalModel(VLLMModel):
         if audio_format not in ("audio_url", "input_audio"):
             raise ValueError(f"Unsupported audio_format '{audio_format}'. Use 'audio_url' or 'input_audio'.")
         self.audio_format = audio_format
+        if audio_as_path is None:
+            audio_as_path = not self._external_api_mode and self.audio_format == "audio_url"
+        if audio_as_path and (self._external_api_mode or self.audio_format != "audio_url"):
+            raise ValueError("audio_as_path is only supported for local vLLM audio_url requests.")
+        self.audio_as_path = audio_as_path
 
         # Audio OUTPUT config
         self.output_audio_dir = None
@@ -301,7 +310,7 @@ class VLLMMultimodalModel(VLLMModel):
         """Convert message content with audio to proper list format.
 
         Handles 'audio' or 'audios' keys in messages and converts them to
-        base64-encoded input_audio content items.
+        audio content items.
 
         CRITICAL: Audio must come BEFORE text for models to process correctly.
 
@@ -329,18 +338,24 @@ class VLLMMultimodalModel(VLLMModel):
         if "audio" in result:
             audio = result.pop("audio")
             audio_path = os.path.join(self.data_dir, audio["path"])
-            base64_audio = audio_file_to_base64(audio_path)
-            audio_items.append(make_audio_content_block(base64_audio, self.audio_format))
+            audio_items.append(self._make_audio_input_block(audio_path))
         elif "audios" in result:
             for audio in result.pop("audios"):
                 audio_path = os.path.join(self.data_dir, audio["path"])
-                base64_audio = audio_file_to_base64(audio_path)
-                audio_items.append(make_audio_content_block(base64_audio, self.audio_format))
+                audio_items.append(self._make_audio_input_block(audio_path))
 
         if audio_items:
             result["content"] = audio_items + result["content"]
 
         return result
+
+    def _make_audio_input_block(self, audio_path: str) -> dict:
+        """Create an audio input block for a local file path."""
+        if self.audio_as_path:
+            return make_audio_url_content_block(f"file://{os.path.abspath(audio_path)}")
+
+        base64_audio = audio_file_to_base64(audio_path)
+        return make_audio_content_block(base64_audio, self.audio_format)
 
     def _needs_audio_chunking(self, messages: list[dict], task_type: str = None) -> tuple[bool, str, float]:
         """Check if audio in messages needs chunking.

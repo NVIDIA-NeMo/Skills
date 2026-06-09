@@ -150,3 +150,8 @@ def make_audio_content_block(base64_audio: str, audio_format: str = "audio_url")
         return {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{base64_audio}"}}
     else:
         raise ValueError(f"Unsupported audio_format '{audio_format}'. Use 'audio_url' or 'input_audio'.")
+
+
+def make_audio_url_content_block(audio_url: str) -> dict:
+    """Create an audio_url content block from a URL."""
+    return {"type": "audio_url", "audio_url": {"url": audio_url}}

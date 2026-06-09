@@ -45,7 +45,8 @@ def test_audio_file_to_base64():
 def _is_valid_audio_content(content_item: dict) -> bool:
     """Check if content item is a valid audio block (either format)."""
     if content_item.get("type") == "audio_url":
-        return content_item.get("audio_url", {}).get("url", "").startswith("data:audio/wav;base64,")
+        url = content_item.get("audio_url", {}).get("url", "")
+        return url.startswith("data:audio/wav;base64,") or url.startswith("file://")
     elif content_item.get("type") == "input_audio":
         return "data" in content_item.get("input_audio", {})
     return False
@@ -63,6 +64,7 @@ def mock_vllm_multimodal_model(tmp_path):
         model.audio_chunk_task_types = None
         model.chunk_audio_threshold_sec = 30
         model.audio_format = "audio_url"  # Test audio_url format (for vLLM/Qwen)
+        model.audio_as_path = True
         model._tunnel = None
         return model
 
@@ -79,6 +81,7 @@ def mock_vllm_multimodal_model_input_audio(tmp_path):
         model.audio_chunk_task_types = None
         model.chunk_audio_threshold_sec = 30
         model.audio_format = "input_audio"
+        model.audio_as_path = False
         model._tunnel = None
         return model
 
@@ -99,6 +102,22 @@ def test_content_text_to_list_with_audio(mock_vllm_multimodal_model, tmp_path):
     assert isinstance(result["content"], list)
     assert len(result["content"]) == 2
     assert _is_valid_audio_content(result["content"][0])
+    assert result["content"][0]["audio_url"]["url"] == f"file://{audio_path}"
+    assert result["content"][1]["type"] == "text"
+
+
+def test_content_text_to_list_with_audio_url_base64_fallback(mock_vllm_multimodal_model, tmp_path):
+    """Test that local vLLM audio_url mode can still inline base64 when requested."""
+    mock_vllm_multimodal_model.audio_as_path = False
+    audio_path = tmp_path / "test.wav"
+    with open(audio_path, "wb") as f:
+        f.write(b"RIFF" + b"\x00" * 100)
+
+    message = {"role": "user", "content": "Describe this audio", "audio": {"path": "test.wav"}}
+    result = mock_vllm_multimodal_model.content_text_to_list(message)
+
+    assert result["content"][0]["type"] == "audio_url"
+    assert result["content"][0]["audio_url"]["url"].startswith("data:audio/wav;base64,")
     assert result["content"][1]["type"] == "text"
 
 
