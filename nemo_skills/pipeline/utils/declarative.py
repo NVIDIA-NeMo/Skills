@@ -922,6 +922,10 @@ class Pipeline:
             ray_queue_commands.append(script.inline)
             ray_queue_images.append(getattr(executor, "container_image", None))
 
+        # Forward both internal (same-experiment) and external (cross-experiment
+        # run_after) dependencies. Dropping external deps would let Ray jobs submit
+        # before their prerequisites finish, since Ray ordering is resolved from
+        # the queued dep names rather than the nemo-run executor.
         queue_ray_job_commands(
             exp=exp,
             backend=backend,
@@ -930,6 +934,7 @@ class Pipeline:
             task_name=groups[0].name,
             log_dir=log_dir,
             task_dependencies=internal_deps,
+            external_dependencies=external_deps,
             should_use_with_ray_cluster=should_use_with_ray_cluster,
         )
 
