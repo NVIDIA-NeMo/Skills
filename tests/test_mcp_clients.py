@@ -929,6 +929,108 @@ def _direct_tool_with_stub(stub):
     return tool
 
 
+def test_python_tools_accept_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import DEFAULT_EXEC_TIMEOUT_S, DirectPythonTool, PythonTool
+
+    assert PythonTool().default_config()["exec_timeout_s"] == DEFAULT_EXEC_TIMEOUT_S
+    assert DirectPythonTool().default_config()["exec_timeout_s"] == DEFAULT_EXEC_TIMEOUT_S
+    assert PythonTool(exec_timeout_s=42).default_config()["exec_timeout_s"] == 42
+    assert DirectPythonTool(exec_timeout_s=42).default_config()["exec_timeout_s"] == 42
+
+
+@pytest.mark.asyncio
+async def test_python_tool_description_uses_exec_timeout_override():
+    from nemo_skills.mcp.servers.python_tool import PythonTool
+
+    class FakeClient:
+        async def list_tools(self):
+            return [
+                {
+                    "name": "stateful_python_code_exec",
+                    "description": "stale server description",
+                    "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}},
+                }
+            ]
+
+    tool = PythonTool()
+    tool.configure(
+        overrides={"client": FakeClient, "client_params": {}, "exec_timeout_s": 37, "init_hook": None},
+        context={},
+    )
+
+    tools = await tool.list_tools()
+
+    assert "37.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_python_tool_uses_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import PythonTool
+
+    class FakeClient:
+        def __init__(self):
+            self.extra_args = None
+
+        async def list_tools(self):
+            return [
+                {
+                    "name": "stateful_python_code_exec",
+                    "description": "stale server description",
+                    "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}},
+                }
+            ]
+
+        async def call_tool(self, tool, args, extra_args=None):
+            self.extra_args = extra_args
+            return {"session_id": "session", "output_dict": {"stdout": "done\n", "stderr": ""}}
+
+    fake_client = FakeClient()
+    tool = PythonTool(exec_timeout_s=42)
+    tool._client = fake_client
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print('done')"},
+        extra_args={"request_id": "timeout-arg"},
+    )
+
+    assert result == "done"
+    assert fake_client.extra_args["timeout"] == 42
+
+    tools = await tool.list_tools()
+    assert "42.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_uses_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    seen = {}
+
+    async def record_execute(code, language, timeout, session_id):
+        seen["timeout"] = timeout
+        return {"process_status": "completed", "stdout": "done\n", "stderr": ""}, session_id
+
+    tool = DirectPythonTool(exec_timeout_s=42)
+    tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
+    tool._sandbox = _StubSandbox(execute_code=record_execute)
+
+    tools = await tool.list_tools()
+    assert "42.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print('done')"},
+        extra_args={"request_id": "timeout-arg"},
+    )
+
+    assert result == "done"
+    assert seen["timeout"] == 42
+
+
 @pytest.mark.asyncio
 async def test_direct_python_tool_missing_code_returns_error_not_raise():
     """A tool call without 'code' must return a sandbox-shaped error, not crash the run."""

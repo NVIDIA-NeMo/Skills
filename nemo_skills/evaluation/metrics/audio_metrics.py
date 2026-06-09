@@ -111,6 +111,14 @@ class AudioMetrics(BaseMetrics):
 
         # Extended metrics
         self.cer_scores = []
+
+        # Corpus-level CER accumulators (total errors / total ref chars)
+        self.cer_total_errors = 0
+        self.cer_total_ref_chars = 0
+        self.cer_total_substitutions = 0
+        self.cer_total_insertions = 0
+        self.cer_total_deletions = 0
+
         self.hallucination_scores = []
         self.pc_rate_scores = []
         self.punct_f1_scores = []
@@ -257,6 +265,12 @@ class AudioMetrics(BaseMetrics):
                 self.comet_scores.append(pred["comet"])
 
             # Collect extended metrics
+            if "cer_errors" in pred and "cer_ref_words" in pred:
+                self.cer_total_errors += pred["cer_errors"]
+                self.cer_total_ref_chars += pred["cer_ref_words"]
+                self.cer_total_substitutions += pred["cer_substitutions"]
+                self.cer_total_insertions += pred["cer_insertions"]
+                self.cer_total_deletions += pred["cer_deletions"]
             if "cer" in pred and pred["cer"] is not None:
                 self.cer_scores.append(pred["cer"])
             if "hallucination_rate" in pred and pred["hallucination_rate"] is not None:
@@ -352,8 +366,14 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["comet"] = round(100.0 * sum(self.comet_scores) / len(self.comet_scores), 2)
 
             # Add extended metrics if available
+            if self.cer_total_ref_chars > 0:
+                agg_metrics["cer_substitutions"] = self.cer_total_substitutions
+                agg_metrics["cer_insertions"] = self.cer_total_insertions
+                agg_metrics["cer_deletions"] = self.cer_total_deletions
+                agg_metrics["cer_ref_chars"] = self.cer_total_ref_chars
+                agg_metrics["cer"] = round(100.0 * self.cer_total_errors / self.cer_total_ref_chars, 2)
             if self.cer_scores:
-                agg_metrics["cer"] = round(100.0 * sum(self.cer_scores) / len(self.cer_scores), 2)
+                agg_metrics["cer_macro"] = round(100.0 * sum(self.cer_scores) / len(self.cer_scores), 2)
             if self.hallucination_scores:
                 agg_metrics["hallucination_rate"] = round(
                     100.0 * sum(self.hallucination_scores) / len(self.hallucination_scores), 2
@@ -410,11 +430,17 @@ class AudioMetrics(BaseMetrics):
         if self.judge_ratings:
             base_metrics["judge_score"] = lambda _k, v, _all: f"{v:.2f}"
 
-        # Add existing metrics if they were computed
+        # Error rates grouped side by side: WER (macro/micro) then CER (macro/micro)
         if self.wer_scores:
             base_metrics["wer_macro"] = as_percentage
         if self.wer_total_ref_words > 0:
             base_metrics["wer"] = as_percentage
+        if self.cer_scores:
+            base_metrics["cer_macro"] = as_percentage
+        if self.cer_total_ref_chars > 0:
+            base_metrics["cer"] = as_percentage
+        # WER error breakdown (kept in get_metrics; printed after the error rates)
+        if self.wer_total_ref_words > 0:
             base_metrics["substitutions"] = as_int
             base_metrics["insertions"] = as_int
             base_metrics["deletions"] = as_int
@@ -429,10 +455,6 @@ class AudioMetrics(BaseMetrics):
             base_metrics["bleu"] = as_percentage
         if self.comet_scores:
             base_metrics["comet"] = as_percentage
-
-        # Add extended metrics if they were computed
-        if self.cer_scores:
-            base_metrics["cer"] = as_percentage
         if self.hallucination_scores:
             base_metrics["hallucination_rate"] = as_percentage
         if self.pc_rate_scores:

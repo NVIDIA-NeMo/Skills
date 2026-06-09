@@ -47,6 +47,10 @@ from nemo_skills.utils import (
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+UPSTREAM_NEMO_RL_ROOT = "/opt/nemo-rl"
+UPSTREAM_GRPO_SCRIPT = f"{UPSTREAM_NEMO_RL_ROOT}/examples/nemo_gym/run_grpo_nemo_gym.py"
+UPSTREAM_GRPO_CONFIG = f"{UPSTREAM_NEMO_RL_ROOT}/examples/nemo_gym/grpo_nanov3.yaml"
+
 
 # Define supported backend options using Enum
 class SupportedBackends(str, Enum):
@@ -57,6 +61,7 @@ class SupportedBackends(str, Enum):
 @dataclass
 class NemoRLTask:
     model: str
+    config_path: str
     output_dir: str
     prompt_data: str
     eval_data: str
@@ -91,9 +96,10 @@ class NemoRLTask:
         return cmd
 
     def format_data_args(self):
-        cmd = f"+data.train_data_path={self.prompt_data} "
+        cmd = "++data.use_multiple_dataloader=False "
+        cmd += f"++data.train.data_path={self.prompt_data} "
         if self.eval_data is not None:
-            cmd += f"+data.val_data_path={self.eval_data} "
+            cmd += f"++data.validation.data_path={self.eval_data} "
         return cmd
 
     def format_wandb_args(self):
@@ -136,11 +142,11 @@ class NemoRLTask:
         self.logging_params = self.format_wandb_args()
         nsight_cmd = get_nsight_cmd(self.profile_step_range)
         cmd = (
-            f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:/opt/NeMo-RL && "
-            f"export UV_PROJECT=/opt/NeMo-RL && "
+            f"export PYTHONPATH=$PYTHONPATH:{UPSTREAM_NEMO_RL_ROOT} && "
+            f"export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && "
             f"{nsight_cmd}"
             f"echo 'Starting training' && "
-            f"uv run --active python /nemo_run/code/nemo_skills/training/nemo_rl/start_grpo.py "
+            f"uv run --active python {UPSTREAM_GRPO_SCRIPT} --config {self.config_path} "
             f"  {self.format_train_args()} "
             f"  {self.format_data_args()} "
             f"  {self.logging_params} "
@@ -153,6 +159,7 @@ def get_training_cmd(
     cluster_config,
     partition,
     hf_model,
+    config_path,
     output_dir,
     prompt_data,
     eval_data,
@@ -172,6 +179,7 @@ def get_training_cmd(
 
     task = NemoRLTask(
         model=hf_model,
+        config_path=config_path,
         output_dir=output_dir,
         prompt_data=prompt_data,
         eval_data=eval_data,
@@ -193,7 +201,10 @@ def get_training_cmd(
 
 
 def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
-    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
+    cmd = (
+        f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:{UPSTREAM_NEMO_RL_ROOT} "
+        f"&& export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && cd /nemo_run/code && "
+    )
     if backend == "fsdp":
         cmd += "uv run --extra automodel python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
     elif backend == "megatron":
@@ -218,7 +229,10 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_pos
 
 
 def get_checkpoint_average_cmd(output_dir, average_steps, backend, remove_checkpoints_after_average):
-    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
+    cmd = (
+        f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:{UPSTREAM_NEMO_RL_ROOT} "
+        f"&& export UV_PROJECT={UPSTREAM_NEMO_RL_ROOT} && cd /nemo_run/code && "
+    )
 
     if backend in ["fsdp", "megatron"]:
         cmd += "uv run python -m nemo_skills.pipeline.nemo_rl.average_checkpoints "
@@ -254,8 +268,8 @@ def grpo_nemo_rl(
     ),
     expname: str = typer.Option("openrlhf-ppo", help="Nemo run experiment name"),
     hf_model: str = typer.Option(..., help="Path to the HF model"),
-    training_data: str = typer.Option(None, help="Path to the training data"),
-    validation_data: Optional[str] = typer.Option(None, help="Path to the validation data"),
+    training_data: str = typer.Option(None, help="Path to the NeMo-Gym training JSONL"),
+    validation_data: Optional[str] = typer.Option(None, help="Path to the NeMo-Gym validation JSONL"),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
     dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
@@ -319,7 +333,16 @@ def grpo_nemo_rl(
         help="If specified, will reuse the code from this experiment. "
         "Can provide an experiment name or an experiment object if running from code.",
     ),
+    config: str = typer.Option(
+        None, help="Override training config YAML; defaults to the upstream container config for nano-v3"
+    ),
+    container: str = typer.Option(None, help="Override container image for NeMo-RL training/conversion jobs"),
     with_sandbox: bool = typer.Option(False, help="If True, will start a sandbox container alongside this job"),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox sidecar"),
+    ray_template: str = typer.Option(
+        None,
+        help="Override the Ray template for training tasks. Can be a template name or a local .j2 path. Only applies to slurm-based jobs; local executor ignores it.",
+    ),
     sandbox_mounts: List[str] = typer.Option(
         None,
         help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
@@ -361,7 +384,7 @@ def grpo_nemo_rl(
         help="Max position embeddings to use for conversion. If not specified, will be inferred from the model config.",
     ),
 ):
-    """Runs NeMo-RL GRPO training.
+    """Runs NeMo-RL GRPO training with the upstream NeMo-Gym entrypoint.
 
     All extra arguments are passed directly to the NeMo-RL GRPO script.
     """
@@ -373,8 +396,7 @@ def grpo_nemo_rl(
     cluster_config = get_cluster_config(cluster, config_dir)
     cluster_config = resolve_mount_paths(cluster_config, mount_paths)
 
-    # Read ray_template from cluster config
-    ray_template = cluster_config.get("ray_template", None)
+    selected_ray_template = ray_template if ray_template is not None else cluster_config.get("ray_template", None)
 
     if log_dir is None:
         log_dir = output_dir
@@ -396,15 +418,23 @@ def grpo_nemo_rl(
                 "You can set it in your cluster config like this:\n"
                 '  env_vars: ["HF_HOME=/your/path/to/hf_home"]'
             )
-    if run_conversion_only:
-        dependent_jobs = -1
-    if dependent_jobs > 0:
+    if not run_conversion_only:
         if training_data is None:
-            raise ValueError("training_data is required when dependent_jobs >= 0")
+            raise ValueError("training_data is required for NeMo-Gym GRPO training")
+        if validation_data is None:
+            raise ValueError("validation_data is required for NeMo-Gym GRPO training")
         if training_data.startswith("/"):  # could ask to download from HF
             training_data = get_mounted_path(cluster_config, training_data)
-        if validation_data is not None:
+        if validation_data.startswith("/"):
             validation_data = get_mounted_path(cluster_config, validation_data)
+    if run_conversion_only:
+        dependent_jobs = -1
+    if dependent_jobs >= 0:
+        if training_data is None:
+            raise ValueError("training_data is required when dependent_jobs >= 0")
+    training_config = config or UPSTREAM_GRPO_CONFIG
+    if training_config.startswith("/") and not training_config.startswith(UPSTREAM_NEMO_RL_ROOT):
+        training_config = get_mounted_path(cluster_config, training_config)
 
     # Server configuration for LLM-as-a-judge
     server_config = None
@@ -445,6 +475,7 @@ def grpo_nemo_rl(
         cluster_config=cluster_config,
         partition=partition,
         hf_model=hf_model,
+        config_path=training_config,
         output_dir=output_dir,
         prompt_data=training_data,
         eval_data=validation_data,
@@ -463,6 +494,7 @@ def grpo_nemo_rl(
 
     env_update = {"RAY_LOG_SYNC_FREQUENCY": 20} if profile_step_range else {}
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
+    training_container = container or cluster_config["containers"]["nemo-rl"]
 
     with get_exp(expname, cluster_config, _reuse_exp) as exp:
         prev_task = _task_dependencies
@@ -473,7 +505,7 @@ def grpo_nemo_rl(
                     cmd=train_cmd,
                     task_name=f"{expname}-grpo-{job_id}",
                     log_dir=f"{log_dir}/training-logs",
-                    container=cluster_config["containers"]["nemo-rl"],
+                    container=training_container,
                     num_gpus=num_gpus,
                     num_nodes=num_nodes,
                     cluster_config=cluster_config,
@@ -487,11 +519,12 @@ def grpo_nemo_rl(
                     sbatch_kwargs=sbatch_kwargs,
                     heterogeneous=True if server_config is not None else False,
                     with_sandbox=with_sandbox,
+                    sandbox_container=sandbox_container,
                     sandbox_mounts=sandbox_mounts,
                     with_ray=True,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
-                    ray_template=ray_template,
+                    ray_template=selected_ray_template,
                 )
         if average_steps is None:
             prev_task = add_task(
@@ -505,7 +538,7 @@ def grpo_nemo_rl(
                 ),
                 task_name=f"{expname}-convert-final-ckpt",
                 log_dir=f"{log_dir}/convert-final-ckpt",
-                container=cluster_config["containers"]["nemo-rl"],
+                container=training_container,
                 cluster_config=cluster_config,
                 partition=partition,
                 num_nodes=1,
@@ -534,7 +567,7 @@ def grpo_nemo_rl(
                     ),
                     task_name=f"{expname}-convert-ckpt-step_{step}",
                     log_dir=f"{log_dir}/convert-ckpt-step",
-                    container=cluster_config["containers"]["nemo-rl"],
+                    container=training_container,
                     cluster_config=cluster_config,
                     partition=partition,
                     num_nodes=1,
@@ -560,7 +593,7 @@ def grpo_nemo_rl(
                 ),
                 task_name=f"{expname}-average-ckpt",
                 log_dir=f"{log_dir}/average-ckpt",
-                container=cluster_config["containers"]["nemo-rl"],
+                container=training_container,
                 cluster_config=cluster_config,
                 partition=partition,
                 num_nodes=1,

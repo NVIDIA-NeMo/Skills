@@ -213,7 +213,7 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
 === "CLI"
 
     ```bash
-    ns sft_nemo_rl \
+    ns nemo_rl sft \
         --cluster=slurm \
         --expname=qwen3-8b-lean-sft \
         --output_dir=/workspace/training/qwen3-8b-lean-sft \
@@ -223,16 +223,36 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
         --num_gpus=<NUM_GPUS> \
         --backend=megatron \
         ++checkpointing.save_period=250 \
+        ++checkpointing.keep_top_k=50 \
         ++sft.max_num_epochs=2000 \
         ++sft.max_num_steps=1000 \
+        ++sft.val_period=0 \
+        ++sft.val_at_start=false \
+        ++sft.val_batches=1 \
+        ++policy.tokenizer.chat_template=default \
+        ++policy.sequence_packing.enabled=True \
+        ++policy.sequence_packing.sequence_length_round=64 \
+        ++policy.make_sequence_length_divisible_by=8 \
         ++policy.megatron_cfg.tensor_model_parallel_size=4 \
         ++policy.megatron_cfg.pipeline_model_parallel_size=1 \
         ++policy.megatron_cfg.context_parallel_size=4 \
+        ++policy.megatron_cfg.layernorm_epsilon=1e-6 \
+        ++policy.megatron_cfg.moe_permute_fusion=false \
         ++policy.train_global_batch_size=2048 \
         ++policy.max_total_sequence_length=49152 \
+        ++policy.max_grad_norm=0.0 \
+        ++data.add_bos=false \
+        ++data.add_eos=false \
+        ++data.add_generation_prompt=false \
+        ++data.num_workers=10 \
         ++policy.megatron_cfg.optimizer.lr=1e-4 \
         ++policy.megatron_cfg.optimizer.min_lr=1e-4 \
-        ++policy.megatron_cfg.scheduler.lr_warmup_iters=0
+        ++policy.megatron_cfg.optimizer.weight_decay=0.01 \
+        ++policy.megatron_cfg.optimizer.adam_eps=1e-8 \
+        ++policy.megatron_cfg.scheduler.lr_decay_style=cosine \
+        ++policy.megatron_cfg.scheduler.lr_decay_iters=1000 \
+        ++policy.megatron_cfg.scheduler.lr_warmup_iters=0 \
+        ++policy.megatron_cfg.scheduler.lr_warmup_init=1.0e-6
     ```
 
 === "Python"
@@ -243,16 +263,36 @@ Input: processed SFT data from the theorem proving step (the `messages` field fr
     sft_nemo_rl(
         ctx=wrap_arguments(
             "++checkpointing.save_period=250 "
+            "++checkpointing.keep_top_k=50 "
             "++sft.max_num_epochs=2000 "
             "++sft.max_num_steps=1000 "
+            "++sft.val_period=0 "
+            "++sft.val_at_start=false "
+            "++sft.val_batches=1 "
+            "++policy.tokenizer.chat_template=default "
+            "++policy.sequence_packing.enabled=True "
+            "++policy.sequence_packing.sequence_length_round=64 "
+            "++policy.make_sequence_length_divisible_by=8 "
             "++policy.megatron_cfg.tensor_model_parallel_size=4 "
             "++policy.megatron_cfg.pipeline_model_parallel_size=1 "
             "++policy.megatron_cfg.context_parallel_size=4 "
+            "++policy.megatron_cfg.layernorm_epsilon=1e-6 "
+            "++policy.megatron_cfg.moe_permute_fusion=false "
             "++policy.train_global_batch_size=2048 "
             "++policy.max_total_sequence_length=49152 "
+            "++policy.max_grad_norm=0.0 "
+            "++data.add_bos=false "
+            "++data.add_eos=false "
+            "++data.add_generation_prompt=false "
+            "++data.num_workers=10 "
             "++policy.megatron_cfg.optimizer.lr=1e-4 "
             "++policy.megatron_cfg.optimizer.min_lr=1e-4 "
+            "++policy.megatron_cfg.optimizer.weight_decay=0.01 "
+            "++policy.megatron_cfg.optimizer.adam_eps=1e-8 "
+            "++policy.megatron_cfg.scheduler.lr_decay_style=cosine "
+            "++policy.megatron_cfg.scheduler.lr_decay_iters=1000 "
             "++policy.megatron_cfg.scheduler.lr_warmup_iters=0 "
+            "++policy.megatron_cfg.scheduler.lr_warmup_init=1.0e-6 "
         ),
         cluster="slurm",
         expname="qwen3-8b-lean-sft",
