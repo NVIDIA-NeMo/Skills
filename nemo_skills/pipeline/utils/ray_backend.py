@@ -46,7 +46,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import Any, Dict
+from typing import Any, Dict, NoReturn
 
 import nemo_run as run
 
@@ -145,6 +145,44 @@ class RayBackend(ExecutionBackend):
     def _to_status_str(status: Any) -> str:
         return str(getattr(status, "value", status)).upper()
 
+    @staticmethod
+    def _compute_in_batch_dep_names(jobs: list[Dict[str, Any]]) -> set[str]:
+        """Dependency identifiers a batch can observe to completion.
+
+        The set is the nemo-run handle and the task_name of every queued job.
+        Jobs missing those keys contribute nothing. A dep matching this set is in
+        flight in the batch and must reach SUCCEEDED before its dependents start;
+        a dep matching none of it is gated upstream (see ``_deps_satisfied``).
+        """
+        names = {j.get("task_handle") for j in jobs if j.get("task_handle")}
+        names |= {j.get("task_name") for j in jobs if j.get("task_name")}
+        return names
+
+    @staticmethod
+    def _deps_satisfied(
+        dep_names: list[str] | None,
+        completed: Dict[str, str],
+        in_batch_dep_names: set[str],
+    ) -> bool:
+        """True only when every dependency is provably satisfied.
+
+        A dependency on a job submitted in this batch is satisfied only once that
+        job has reached SUCCEEDED (recorded under its task_name and its nemo-run
+        handle). It is never assumed done while still in flight, so a dependent
+        cannot start prematurely. A dependency that matches no job in this batch is
+        a prior or cross-experiment job already gated upstream and is treated as
+        satisfied so the resolver does not deadlock waiting on a job it can never
+        observe.
+        """
+        for d in dep_names or []:
+            if completed.get(d) == _SUCCESS_STATE:
+                continue
+            if d in in_batch_dep_names:
+                # In flight in this batch and not yet SUCCEEDED: keep waiting.
+                return False
+            # Not produced by this batch: gated upstream; treat as satisfied.
+        return True
+
     def _get_jobs_client(self):
         if not self.dashboard_url:
             raise RuntimeError("Ray Jobs submission requires backend.dashboard_url (e.g. http://<head-host>:8265).")
@@ -210,6 +248,16 @@ class RayBackend(ExecutionBackend):
                 timeout_s,
                 summary,
             )
+
+    def _handle_poll_failure(self, client, job_ids: list[str], exc: Exception) -> NoReturn:
+        """Stop every still-submitted job, then re-raise the polling error.
+
+        Called when polling the Jobs API fails; stops all jobs still in flight
+        (including the one whose poll failed) so none are orphaned on the cluster,
+        then raises a wrapped RuntimeError chained from the original exception.
+        """
+        self._stop_jobs_best_effort(client, job_ids, reason="poll-failure")
+        raise RuntimeError(f"Ray Jobs polling failed; submitted jobs were stopped: {exc}") from exc
 
     def _write_final_job_log(
         self,
@@ -567,15 +615,10 @@ class RayBackend(ExecutionBackend):
         # remaining jobs not yet submitted
         pending = list(pending_jobs)
 
-        # Dependency identifiers this batch can observe to completion: the nemo-run
-        # handle and the task_name of every queued job. A dep matching one of these
-        # MUST reach SUCCEEDED before its dependents start (it is in flight here). A
-        # dep matching none of them references a prior or cross-experiment job that
-        # is gated upstream (the prerequisite experiment's blocking start_experiment
-        # already returned before this one began), so it is treated as satisfied to
-        # avoid a cross-experiment deadlock the resolver cannot otherwise break.
-        in_batch_dep_names = {j.get("task_handle") for j in pending_jobs if j.get("task_handle")}
-        in_batch_dep_names |= {j.get("task_name") for j in pending_jobs if j.get("task_name")}
+        # Dependency identifiers this batch can observe to completion (handles and
+        # task_names of every queued job). A dep matching none of them is gated
+        # upstream and treated as satisfied; see _deps_satisfied / its helpers.
+        in_batch_dep_names = self._compute_in_batch_dep_names(pending_jobs)
         # job_id -> nemo-run task_handle (for recording completion under the handle name).
         handle_by_job_id: Dict[str, str] = {}
 
@@ -629,27 +672,6 @@ class RayBackend(ExecutionBackend):
                     return {"job_id": job_id, "task_name": task_name, "status": status_str}
                 time.sleep(_POLL_INTERVAL)
 
-        def _deps_satisfied(job: Dict[str, Any]) -> bool:
-            """True only when every dependency is provably satisfied.
-
-            A dependency on a job submitted in this batch is satisfied only once
-            that job has reached SUCCEEDED (recorded under its task_name and its
-            nemo-run handle). It is never assumed done while still in flight, so a
-            dependent cannot start prematurely. A dependency that matches no job in
-            this batch is a prior or cross-experiment job already gated upstream and
-            is treated as satisfied so the resolver does not deadlock waiting on a
-            job it can never observe.
-            """
-            deps = job.get("dep_task_names") or []
-            for d in deps:
-                if completed.get(d) == _SUCCESS_STATE:
-                    continue
-                if d in in_batch_dep_names:
-                    # In flight in this batch and not yet SUCCEEDED: keep waiting.
-                    return False
-                # Not produced by this batch: gated upstream; treat as satisfied.
-            return True
-
         def _submit_one(job: Dict[str, Any], idx: int) -> Dict[str, Any]:
             """Prepare and submit a single job; return its metadata."""
             command = str(job.get("command", "")).strip()
@@ -693,7 +715,7 @@ class RayBackend(ExecutionBackend):
                 # Submit any jobs whose dependencies are now satisfied.
                 still_pending = []
                 for job in pending:
-                    if _deps_satisfied(job):
+                    if self._deps_satisfied(job.get("dep_task_names"), completed, in_batch_dep_names):
                         try:
                             meta = _submit_one(job, idx)
                         except Exception as exc:
@@ -763,15 +785,7 @@ class RayBackend(ExecutionBackend):
                 try:
                     result = done_future.result()  # raises if _poll_until_done raised
                 except Exception as exc:
-                    # Polling the Jobs API failed; stop every still-submitted job
-                    # (including the one whose poll failed, still in `futures`) so we
-                    # do not leave orphaned jobs running on the cluster, then re-raise.
-                    self._stop_jobs_best_effort(
-                        client,
-                        list(futures.keys()),
-                        reason="poll-failure",
-                    )
-                    raise RuntimeError(f"Ray Jobs polling failed; submitted jobs were stopped: {exc}") from exc
+                    self._handle_poll_failure(client, list(futures.keys()), exc)
                 status = result["status"]
                 task_name = result["task_name"]
                 completed[task_name] = status

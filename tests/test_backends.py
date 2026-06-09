@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
+
 from nemo_skills.pipeline.utils.backends import get_execution_backend
 
 
@@ -174,3 +176,121 @@ def test_ray_backend_runtime_env_none_when_no_env():
     backend = RayBackend(dashboard_url="http://ray-head:8265", env_vars={})
 
     assert backend._build_runtime_env() is None
+
+
+# ---------------------------------------------------------------------------
+# Dependency resolver (in-batch vs cross-experiment deps)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_in_batch_dep_names_includes_handles_and_task_names():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    jobs = [
+        {"task_name": "train", "task_handle": "train-handle"},
+        {"task_name": "judge", "task_handle": "judge-handle"},
+        {"command": "echo no-names"},  # missing both keys -> contributes nothing
+    ]
+
+    names = RayBackend._compute_in_batch_dep_names(jobs)
+
+    assert names == {"train", "judge", "train-handle", "judge-handle"}
+
+
+def test_deps_satisfied_false_for_in_batch_dep_not_yet_completed():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    # Premature-start guard: dep is in flight in this batch and not SUCCEEDED.
+    in_batch = {"train", "train-handle"}
+    assert RayBackend._deps_satisfied(["train"], {}, in_batch) is False
+    # Recorded under a non-success terminal state still blocks.
+    assert RayBackend._deps_satisfied(["train"], {"train": "FAILED"}, in_batch) is False
+
+
+def test_deps_satisfied_true_when_in_batch_dep_succeeded_by_task_name_or_handle():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    in_batch = {"train", "train-handle"}
+    # Recorded SUCCEEDED under task_name.
+    assert RayBackend._deps_satisfied(["train"], {"train": "SUCCEEDED"}, in_batch) is True
+    # Recorded SUCCEEDED under the nemo-run handle.
+    assert RayBackend._deps_satisfied(["train-handle"], {"train-handle": "SUCCEEDED"}, in_batch) is True
+
+
+def test_deps_satisfied_true_for_cross_experiment_dep_gated_upstream():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    # Dep matches no job in this batch -> gated upstream -> treated satisfied.
+    in_batch = {"judge", "judge-handle"}
+    assert RayBackend._deps_satisfied(["prior-experiment-handle"], {}, in_batch) is True
+
+
+def test_deps_satisfied_mixed_in_batch_pending_and_cross_experiment():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    in_batch = {"train", "train-handle"}
+    deps = ["train", "prior-experiment-handle"]
+    # Blocked while the in-batch dep is still pending, even though the other is gated.
+    assert RayBackend._deps_satisfied(deps, {}, in_batch) is False
+    # Unblocks once the in-batch dep succeeds.
+    assert RayBackend._deps_satisfied(deps, {"train": "SUCCEEDED"}, in_batch) is True
+
+
+def test_deps_satisfied_true_for_empty_or_none_deps():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    assert RayBackend._deps_satisfied([], {}, set()) is True
+    assert RayBackend._deps_satisfied(None, {}, set()) is True
+
+
+# ---------------------------------------------------------------------------
+# Poll-failure cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_handle_poll_failure_stops_jobs_once_and_chains_exception():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265")
+
+    calls = []
+
+    def _record(client, job_ids, *, reason):
+        calls.append((client, list(job_ids), reason))
+
+    backend._stop_jobs_best_effort = _record  # type: ignore[method-assign]
+
+    client = object()
+    job_ids = ["job-1", "job-2"]
+    original = ValueError("poll boom")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        backend._handle_poll_failure(client, job_ids, original)
+
+    # Cleanup attempted exactly once for the given job ids with the poll-failure reason.
+    assert calls == [(client, ["job-1", "job-2"], "poll-failure")]
+    # Wrapped error is chained from the original via ``from exc``.
+    assert excinfo.value.__cause__ is original
+
+
+def test_stop_jobs_best_effort_continues_when_one_stop_raises():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265")
+
+    stopped = []
+
+    class FlakyClient:
+        def stop_job(self, job_id):
+            stopped.append(job_id)
+            if job_id == "job-1":
+                raise RuntimeError("stop failed")
+
+        def get_job_status(self, job_id):
+            # Report terminal immediately so verification does not block.
+            return "STOPPED"
+
+    # Should not propagate the per-job stop error and should attempt every job.
+    backend._stop_jobs_best_effort(FlakyClient(), ["job-1", "job-2"], reason="poll-failure")
+
+    assert sorted(stopped) == ["job-1", "job-2"]
