@@ -927,7 +927,9 @@ def add_task(
     )
 
     # For Ray Jobs API mode, queue commands on the experiment and let the backend
-    # submit/track/cancel them centrally in start_experiment().
+    # submit/track/cancel them centrally in start_experiment(). `dependencies`
+    # holds the resolved external run_after handles; forward them too so the Ray
+    # queue waits on cross-experiment prerequisites, not just same-experiment ones.
     queue_ray_job_commands(
         exp=exp,
         backend=backend,
@@ -936,6 +938,7 @@ def add_task(
         task_name=task_name,
         log_dir=log_dir,
         task_dependencies=task_dependencies,
+        external_dependencies=dependencies,
         should_use_with_ray_cluster=should_use_with_ray_cluster,
     )
 
@@ -974,16 +977,25 @@ def queue_ray_job_commands(
     log_dir: str | None,
     task_dependencies,
     should_use_with_ray_cluster: bool,
+    external_dependencies=None,
 ) -> int:
-    """Queue commands for Ray Jobs API submission when the Ray backend is active."""
+    """Queue commands for Ray Jobs API submission when the Ray backend is active.
+
+    Both within-experiment ``task_dependencies`` and cross-experiment
+    ``external_dependencies`` (resolved ``run_after`` handles) are forwarded so
+    the Ray queue can order submissions on all declared prerequisites.
+    """
     if getattr(backend, "name", "") != "ray" or not getattr(backend, "dashboard_url", None):
         return 0
 
     queued_jobs = list(getattr(exp, "_ns_ray_jobs_queue", []))
     before_count = len(queued_jobs)
-    dep_names = [
-        (dep if isinstance(dep, str) else getattr(dep, "name", str(dep))) for dep in (task_dependencies or [])
-    ]
+
+    def _dep_name(dep):
+        return dep if isinstance(dep, str) else getattr(dep, "name", str(dep))
+
+    all_deps = list(task_dependencies or []) + list(external_dependencies or [])
+    dep_names = [_dep_name(dep) for dep in all_deps]
 
     # Predict the nemo-run handle exp.add() will assign this stage ("nemo-run",
     # then "nemo-run_<n>") so dep resolution can match deps named by handle.

@@ -567,9 +567,15 @@ class RayBackend(ExecutionBackend):
         # remaining jobs not yet submitted
         pending = list(pending_jobs)
 
-        # Deps naming a handle no job in this batch produces point at a prior
-        # reused experiment that already finished SUCCEEDED, so treat as satisfied.
-        producible_dep_names = {j.get("task_handle") for j in pending_jobs if j.get("task_handle")}
+        # Dependency identifiers this batch can observe to completion: the nemo-run
+        # handle and the task_name of every queued job. A dep matching one of these
+        # MUST reach SUCCEEDED before its dependents start (it is in flight here). A
+        # dep matching none of them references a prior or cross-experiment job that
+        # is gated upstream (the prerequisite experiment's blocking start_experiment
+        # already returned before this one began), so it is treated as satisfied to
+        # avoid a cross-experiment deadlock the resolver cannot otherwise break.
+        in_batch_dep_names = {j.get("task_handle") for j in pending_jobs if j.get("task_handle")}
+        in_batch_dep_names |= {j.get("task_name") for j in pending_jobs if j.get("task_name")}
         # job_id -> nemo-run task_handle (for recording completion under the handle name).
         handle_by_job_id: Dict[str, str] = {}
 
@@ -624,16 +630,24 @@ class RayBackend(ExecutionBackend):
                 time.sleep(_POLL_INTERVAL)
 
         def _deps_satisfied(job: Dict[str, Any]) -> bool:
-            """True if every dep is SUCCEEDED, or names a handle this batch never
-            produces (a prior, already-SUCCEEDED experiment's job)."""
+            """True only when every dependency is provably satisfied.
+
+            A dependency on a job submitted in this batch is satisfied only once
+            that job has reached SUCCEEDED (recorded under its task_name and its
+            nemo-run handle). It is never assumed done while still in flight, so a
+            dependent cannot start prematurely. A dependency that matches no job in
+            this batch is a prior or cross-experiment job already gated upstream and
+            is treated as satisfied so the resolver does not deadlock waiting on a
+            job it can never observe.
+            """
             deps = job.get("dep_task_names") or []
             for d in deps:
                 if completed.get(d) == _SUCCESS_STATE:
                     continue
-                if d not in producible_dep_names:
-                    # Dependency on a prior/reused-experiment job: already SUCCEEDED.
-                    continue
-                return False
+                if d in in_batch_dep_names:
+                    # In flight in this batch and not yet SUCCEEDED: keep waiting.
+                    return False
+                # Not produced by this batch: gated upstream; treat as satisfied.
             return True
 
         def _submit_one(job: Dict[str, Any], idx: int) -> Dict[str, Any]:
@@ -746,7 +760,18 @@ class RayBackend(ExecutionBackend):
                 if done_job_id is None:
                     continue
 
-                result = done_future.result()  # raises if _poll_until_done raised
+                try:
+                    result = done_future.result()  # raises if _poll_until_done raised
+                except Exception as exc:
+                    # Polling the Jobs API failed; stop every still-submitted job
+                    # (including the one whose poll failed, still in `futures`) so we
+                    # do not leave orphaned jobs running on the cluster, then re-raise.
+                    self._stop_jobs_best_effort(
+                        client,
+                        list(futures.keys()),
+                        reason="poll-failure",
+                    )
+                    raise RuntimeError(f"Ray Jobs polling failed; submitted jobs were stopped: {exc}") from exc
                 status = result["status"]
                 task_name = result["task_name"]
                 completed[task_name] = status
