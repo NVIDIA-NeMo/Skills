@@ -381,7 +381,12 @@ class RayBackend(ExecutionBackend):
         use_with_ray_cluster: bool = False,
         container_image: str | None = None,
     ) -> Dict[str, Any] | None:
-        if self.precreated_cluster and self.endpoint:
+        """Build per-stage Ray metadata (cluster mode, address, placement labels).
+
+        A precreated cluster reachable by an endpoint (Ray Client) or a
+        dashboard_url (Jobs API) must not request an embedded Ray cluster.
+        """
+        if self.precreated_cluster and (self.endpoint or self.dashboard_url):
             should_use_embedded_ray_cluster = False
         else:
             should_use_embedded_ray_cluster = True

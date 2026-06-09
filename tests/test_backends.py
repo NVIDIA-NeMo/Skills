@@ -162,6 +162,22 @@ def test_ray_backend_forwards_required_env_vars_to_runtime_env():
     assert runtime_env["env_vars"]["MY_JUDGE_KEY"] == "secret-123"
 
 
+def test_dashboard_only_ray_config_is_precreated_not_embedded():
+    # backend.name: ray + dashboard_url (no endpoint) targets a pre-provisioned
+    # cluster via the Jobs API, so it must resolve as precreated and must not
+    # request an embedded Ray cluster.
+    cluster_config = {
+        "executor": "slurm",
+        "backend": {"name": "ray", "dashboard_url": "http://ray-head:8265"},
+    }
+
+    backend = get_execution_backend(cluster_config)
+    assert backend.precreated_cluster is True
+
+    metadata = backend.stage_metadata(container_image="nvcr.io/nvidia/pytorch:25.02-py3")
+    assert not (metadata or {}).get("use_with_ray_cluster")
+
+
 def test_ray_backend_runtime_env_normalizes_and_filters_values():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 

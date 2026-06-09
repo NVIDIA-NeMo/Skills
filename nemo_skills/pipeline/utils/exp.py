@@ -242,7 +242,8 @@ def get_executor(
         Raised if a non-SLURM executor is requested with `num_nodes > 1`.
     """
     env_vars = get_env_variables(cluster_config)
-    backend_env = get_execution_backend(cluster_config, with_ray=with_ray).get_env_overrides()
+    backend = get_execution_backend(cluster_config, with_ray=with_ray)
+    backend_env = backend.get_env_overrides()
     if backend_env:
         env_vars.update(backend_env)
     config_mounts = get_mounts_from_config(cluster_config)
@@ -253,15 +254,14 @@ def get_executor(
         extra_package_dirs = tuple(extra_package_dirs)
     packager = get_packager(extra_package_dirs=extra_package_dirs)
 
-    # Ray backend with a precreated cluster allows multi-node without SLURM.
-    backend_config = cluster_config.get("backend") or cluster_config.get("execution_backend") or {}
-    if isinstance(backend_config, str):
-        backend_config = {"name": backend_config}
-    backend_name = str(backend_config.get("name", "")).strip().lower()
-    is_ray_precreated = backend_name == "ray" and bool(backend_config.get("precreated_cluster", False))
-    if is_ray_precreated and not backend_config.get("endpoint"):
+    # Ray backend with a precreated cluster allows multi-node without SLURM. Use the
+    # resolved backend so precreated mode inferred from a dashboard_url, endpoint, or
+    # Kubernetes alias is honored, not just an explicit precreated_cluster flag.
+    is_ray_precreated = getattr(backend, "name", "") == "ray" and bool(getattr(backend, "precreated_cluster", False))
+    if is_ray_precreated and not (getattr(backend, "endpoint", None) or getattr(backend, "dashboard_url", None)):
         raise ValueError(
-            "Invalid cluster_config: backend.precreated_cluster=true requires backend.endpoint to be set."
+            "Invalid cluster_config: backend.precreated_cluster=true requires "
+            "backend.endpoint or backend.dashboard_url to be set."
         )
 
     if cluster_config["executor"] != "slurm":
