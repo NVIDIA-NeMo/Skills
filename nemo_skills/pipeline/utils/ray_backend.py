@@ -91,6 +91,7 @@ class RayBackend(ExecutionBackend):
         entrypoint_label_selector: Dict[str, str] | None = None,
         image_label_key: str | None = None,
         image_label_selectors: Dict[str, Dict[str, str]] | None = None,
+        env_vars: Dict[str, str] | None = None,
     ):
         self.endpoint = endpoint.strip() if endpoint else None
         self.dashboard_url = self._normalize_dashboard_url(dashboard_url, self.endpoint)
@@ -101,6 +102,9 @@ class RayBackend(ExecutionBackend):
         self.entrypoint_label_selector = {str(k): str(v) for k, v in (entrypoint_label_selector or {}).items()}
         self.image_label_key = (image_label_key or "").strip() or None
         self.image_label_selectors = self._normalize_image_label_selectors(image_label_selectors)
+        # Forwarded to each job's runtime_env so cluster env vars (API keys,
+        # HF_TOKEN, ...) reach the job regardless of the cluster head's env.
+        self.env_vars = {str(k): str(v) for k, v in (env_vars or {}).items() if v is not None}
         self.kubernetes_mode = None
         if self.control_plane == "kubernetes":
             normalized_mode = (kubernetes_mode or "offline").strip().lower()
@@ -154,6 +158,10 @@ class RayBackend(ExecutionBackend):
                 "Ray Jobs submission requires 'ray[jobs]' support in the submission environment."
             ) from exc
         return JobSubmissionClient(self.dashboard_url)
+
+    def _build_runtime_env(self) -> Dict[str, Any] | None:
+        """runtime_env that forwards cluster env vars (API keys, HF_TOKEN, ...) to a job."""
+        return {"env_vars": dict(self.env_vars)} if self.env_vars else None
 
     def _stop_jobs_best_effort(
         self,
@@ -682,6 +690,7 @@ class RayBackend(ExecutionBackend):
                 submission_id=submission_id,
                 metadata=metadata,
                 entrypoint_label_selector=selector or None,
+                runtime_env=self._build_runtime_env(),
             )
             return {
                 "task_name": task_name,

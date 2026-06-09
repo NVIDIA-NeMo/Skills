@@ -20,6 +20,7 @@ from typing import Any, Dict
 
 import nemo_run as run
 
+from nemo_skills.pipeline.utils.cluster import get_env_variables
 from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -175,7 +176,11 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
 
     if not backend_name:
         if with_ray:
-            return RayBackend(endpoint=legacy_ray_endpoint, precreated_cluster=bool(legacy_ray_endpoint))
+            return RayBackend(
+            endpoint=legacy_ray_endpoint,
+            precreated_cluster=bool(legacy_ray_endpoint),
+            env_vars=get_env_variables(cluster_config),
+        )
         return ExecutionBackend()
 
     if backend_name in {"default", "none"}:
@@ -213,6 +218,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
                 entrypoint_label_selector=selector,
                 image_label_key=image_label_key,
                 image_label_selectors=image_label_selectors,
+                env_vars=get_env_variables(cluster_config),
             )
         return RayBackend(
             endpoint=endpoint,
@@ -222,6 +228,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             entrypoint_label_selector=selector,
             image_label_key=image_label_key,
             image_label_selectors=image_label_selectors,
+            env_vars=get_env_variables(cluster_config),
         )
     if backend_name in {"kubernetes-ray", "ray-kubernetes", "ray_kubernetes"}:
         k8s_cfg = backend_config.get("kubernetes") or {}
@@ -252,6 +259,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             entrypoint_label_selector=selector,
             image_label_key=image_label_key,
             image_label_selectors=image_label_selectors,
+            env_vars=get_env_variables(cluster_config),
         )
 
     raise ValueError(
