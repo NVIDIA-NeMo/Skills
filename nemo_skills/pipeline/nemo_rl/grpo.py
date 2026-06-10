@@ -38,7 +38,6 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     should_get_random_port,
     temporary_env_update,
-    warn_hosted_server_allocation,
 )
 from nemo_skills.pipeline.utils.server import SupportedServers, get_free_port
 from nemo_skills.utils import (
@@ -443,14 +442,6 @@ def grpo_nemo_rl(
     if server_type is not None:
         gpus_per_node = get_cluster_gpus_per_node(cluster_config)
         get_random_port = should_get_random_port(server_gpus, exclusive, gpus_per_node)
-        warn_hosted_server_allocation(
-            server_gpus=server_gpus,
-            exclusive=exclusive,
-            gpus_per_node=gpus_per_node,
-            get_random_port=get_random_port,
-            server_port=None,
-            context="ns nemo-rl grpo",
-        )
         if server_address is None:  # we need to host the model
             assert server_gpus is not None, "Need to specify server_gpus if hosting the model"
             server_port = get_free_port(strategy="random") if get_random_port else 5000

@@ -70,6 +70,10 @@ def get_cluster_gpus_per_node(cluster_config: dict | None, default: int = 8) -> 
     Slurm GPU allocations isolate CUDA visibility, but jobs on the same
     physical node still share the localhost network namespace. Fixed ports are
     only safe by default when the hosted server consumes the whole GPU node.
+
+    Reads ``gpus_per_node`` / ``num_gpus_per_node`` from the cluster config when
+    present, otherwise falls back to ``default``. Set one of those keys in the
+    cluster config for nodes that do not have ``default`` GPUs.
     """
     if not cluster_config:
         return default
@@ -79,16 +83,31 @@ def get_cluster_gpus_per_node(cluster_config: dict | None, default: int = 8) -> 
         if value is not None:
             return int(value)
 
-    cluster_name = str(cluster_config.get("_cluster_yaml_name") or cluster_config.get("name") or "").lower()
-    if any(token in cluster_name for token in ("aws-cmh", "aws-dfw")):
-        return 4
     return default
 
 
-def should_get_random_port(server_gpus, exclusive, gpus_per_node: int | None = None):
+def should_get_random_port(server_gpus, exclusive, gpus_per_node: int | None = None, server_port: int | None = None):
+    """Whether a hosted server should bind a random port instead of a fixed one.
+
+    A server that uses fewer GPUs than the node has shares the node's localhost
+    namespace with other jobs, so it defaults to a random port to avoid
+    collisions. This is also the single choke point every server-hosting
+    pipeline passes through, so the allocation guardrail warnings are emitted
+    here (see ``warn_hosted_server_allocation``) instead of at each call site.
+    """
     if not server_gpus or exclusive:
-        return False
-    return int(server_gpus) != int(gpus_per_node or 8)
+        get_random_port = False
+    else:
+        get_random_port = int(server_gpus) != int(gpus_per_node or 8)
+
+    warn_hosted_server_allocation(
+        server_gpus=server_gpus,
+        exclusive=exclusive,
+        gpus_per_node=gpus_per_node,
+        get_random_port=get_random_port,
+        server_port=server_port,
+    )
+    return get_random_port
 
 
 def warn_hosted_server_allocation(
@@ -98,9 +117,8 @@ def warn_hosted_server_allocation(
     gpus_per_node: int | None = None,
     get_random_port: bool | None = None,
     server_port: int | None = None,
-    context: str = "hosted server",
 ) -> None:
-    """Warn about hosted-server configurations that can waste GPU allocations."""
+    """Warn about hosted-server configs that can waste GPUs or risk port collisions."""
     if not server_gpus:
         return
 
@@ -110,25 +128,24 @@ def warn_hosted_server_allocation(
 
     if is_partial_node and exclusive:
         LOG.warning(
-            "%s requests server_gpus=%d on a %d-GPU node with exclusive=True. "
-            "This can reserve idle GPUs. Prefer full-node serving with "
-            "server_gpus=%d and matching server_args='--tensor-parallel-size %d', "
-            "or remove exclusive=True for partial-node serving.",
-            context,
+            "Hosting server_gpus=%d on a %d-GPU node with exclusive=True reserves the whole "
+            "node and leaves %d GPU(s) idle. Prefer full-node serving (server_gpus=%d with a "
+            "matching '--tensor-parallel-size %d'), or drop exclusive=True for partial-node serving.",
             server_gpus,
             gpus_per_node,
+            gpus_per_node - server_gpus,
             gpus_per_node,
             gpus_per_node,
         )
 
-    fixed_port = get_random_port is False or (server_port is not None and get_random_port is not True)
-    if is_partial_node and fixed_port:
+    # A port is "fixed" only when the caller pinned one: an explicit server_port or
+    # get_random_port explicitly disabled. A resolved random port is not a fixed port.
+    fixed_port = (server_port is not None) or (get_random_port is False)
+    if is_partial_node and not exclusive and fixed_port:
         LOG.warning(
-            "%s uses a fixed server port on a partial-node allocation "
-            "(server_gpus=%d, gpus_per_node=%d). Jobs sharing the node can "
-            "collide on localhost ports. Prefer get_random_port=True or omit "
-            "the fixed server port and propagate the resolved port to clients.",
-            context,
+            "Hosting server_gpus=%d on a %d-GPU node with a fixed server port can collide with "
+            "other jobs sharing the node on localhost. Prefer get_random_port=True (or omit the "
+            "fixed server port) and propagate the resolved port to clients.",
             server_gpus,
             gpus_per_node,
         )

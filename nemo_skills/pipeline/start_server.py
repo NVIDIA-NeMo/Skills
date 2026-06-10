@@ -35,7 +35,6 @@ from nemo_skills.pipeline.utils import (
     resolve_mount_paths,
     set_python_path_and_wait_for_server,
     should_get_random_port,
-    warn_hosted_server_allocation,
 )
 from nemo_skills.utils import get_logger_name, setup_logging
 
@@ -156,20 +155,15 @@ def launch_server(
     log_dir = check_mounts(cluster_config, log_dir, check_mounted_paths=check_mounted_paths)
 
     gpus_per_node = get_cluster_gpus_per_node(cluster_config)
-    if get_random_port is None:
-        get_random_port = should_get_random_port(
-            server_gpus=server_gpus,
-            exclusive=(sbatch_kwargs or {}).get("exclusive") if isinstance(sbatch_kwargs, dict) else None,
-            gpus_per_node=gpus_per_node,
-        )
-    warn_hosted_server_allocation(
+    exclusive = (sbatch_kwargs or {}).get("exclusive")
+    resolved_random_port = should_get_random_port(
         server_gpus=server_gpus,
-        exclusive=(sbatch_kwargs or {}).get("exclusive") if isinstance(sbatch_kwargs, dict) else None,
+        exclusive=exclusive,
         gpus_per_node=gpus_per_node,
-        get_random_port=get_random_port,
         server_port=server_port,
-        context="ns start_server",
     )
+    if get_random_port is None:
+        get_random_port = resolved_random_port
 
     if server_port is None:
         server_port = get_free_port(strategy="random") if get_random_port else 5000
@@ -284,20 +278,13 @@ def start_server(
     """Self-host a model server."""
     cluster_config = get_cluster_config(cluster, config_dir)
     gpus_per_node = get_cluster_gpus_per_node(cluster_config)
-    if get_random_port is None:
-        get_random_port = should_get_random_port(
-            server_gpus=server_gpus,
-            exclusive=exclusive,
-            gpus_per_node=gpus_per_node,
-        )
-    warn_hosted_server_allocation(
+    resolved_random_port = should_get_random_port(
         server_gpus=server_gpus,
         exclusive=exclusive,
         gpus_per_node=gpus_per_node,
-        get_random_port=get_random_port,
-        server_port=None,
-        context="ns start_server",
     )
+    if get_random_port is None:
+        get_random_port = resolved_random_port
 
     server_port = get_free_port(strategy="random") if get_random_port else 5000
     sandbox_port = get_free_port(strategy="random") if get_random_port else 6000
