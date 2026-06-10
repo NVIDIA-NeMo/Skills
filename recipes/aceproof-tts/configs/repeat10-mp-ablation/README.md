@@ -243,3 +243,11 @@ It does not launch unless passed `--run`:
     invalid by local triage. It proves only set equality
     `{a_1,...,a_q}={1,...,q}` but then uses the stronger unsupported claim
     `a_i=i` for all `i<=q`; the later smooth-interval step is also asserted.
+
+
+- 2026-06-10 16:24 audit update:
+  - `proofbench133_109_39` (`temp10/proofonly`, verifier reached 4/4 ones) is
+    invalid. Independent audit found the same Gaussian unit/sign branch failure:
+    the proof eliminates all units except `u=1` by assuming signs of `pi^3` are
+    already positive, missing the unit-rotated branch where both coordinates can
+    become positive. This is another severe verifier false positive for 109.
