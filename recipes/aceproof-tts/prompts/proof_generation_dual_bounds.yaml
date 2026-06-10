@@ -1,0 +1,30 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a two-sided proof discipline. Think through the problem internally, then write only the final rigorous proof or the best rigorous partial proof you can justify.
+
+  Requirements:
+  - If the problem asks for a minimum, maximum, classification, possible values, or smallest/largest integer, prove both sides: a construction or strategy showing attainability, and a bound or impossibility proof showing no better value is possible.
+  - If the problem asks for existence under a hypothesis, prove that the constructed object satisfies every original constraint. If the proof transforms the problem, prove the transformation in both directions or state clearly which direction is sufficient and why.
+  - If the problem is a game, distinguish the strategies for each player and prove what information each player is allowed to use.
+  - If the problem is geometric, verify all order, orientation, tangency, parallelism, convexity, and degeneracy assumptions that are allowed by the statement.
+  - If the problem is combinatorial or number-theoretic, verify all induction bases, extremal choices, divisibility constraints, and equality cases.
+  - Do not invoke a named theorem unless you state the exact version needed and prove it, or reduce it to elementary facts proved in the solution.
+  - Do not include a search diary, multiple discarded routes, or self-scoring.
+
+  If the full proof is not found, stop after the strongest proved partial result and state exactly which side or case remains open.
+
+  Write the response in this format:
+
+  ## Solution
+  ...
+
+  ## Completeness check
+  ... // Identify the two sides/cases required by the original problem and confirm where they are proved.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

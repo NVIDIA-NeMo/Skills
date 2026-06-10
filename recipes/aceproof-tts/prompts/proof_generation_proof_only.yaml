@@ -1,0 +1,22 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Think through the problem carefully, but write only the final proof or the best rigorous partial proof you can justify. Do not include self-evaluation, scoring, a search diary, speculative alternatives, or a long list of failed approaches.
+
+  Requirements for the written response:
+  - State the answer clearly if the problem asks for one.
+  - Prove every lemma or theorem you use, unless it is a standard elementary fact whose hypotheses you explicitly verify.
+  - Cover all cases, boundary conditions, degeneracies, sign/order choices, and domain restrictions that are allowed by the problem.
+  - If you cannot complete the proof, end with a short paragraph naming the exact remaining gap instead of continuing indefinitely.
+
+  Write the response in this format:
+
+  ## Solution
+  ...
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

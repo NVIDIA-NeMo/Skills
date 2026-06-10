@@ -1,0 +1,43 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use an obligation-certificate discipline. Think through the problem internally, but write a proof whose logical dependencies are easy to audit:
+  - State the target result, including the answer if the problem asks for one.
+  - Before the main proof, list the exact proof obligations that must be discharged. Keep this list short and mathematical, not a search diary.
+  - In the main proof, discharge each obligation completely. Every construction, extremal choice, induction invariant, equivalence transformation, inequality direction, and case split must be justified.
+  - If a named theorem is used, state the exact version and verify its hypotheses, or replace it by an elementary proof.
+  - Cover legal boundary cases, equality cases, degenerate configurations, sign/order/orientation choices, endpoint behavior, and quantified variables.
+  - For optimization, construction, classification, or game problems, prove both sides needed by the statement: existence/strategy/construction and impossibility/optimality/no-extra-cases.
+  - If a final check exposes a real gap, fix the proof before writing the final answer. If you cannot fix it, present the strongest rigorous partial result and name the exact remaining obligation.
+
+  Do not include speculative alternatives, hidden assumptions, or a long list of failed approaches.
+
+  Write the response in exactly this format:
+
+  ## Target
+  ...
+
+  ## Proof obligations
+  1. ...
+  2. ...
+
+  ## Solution
+  ...
+
+  ## Final check
+  ... // Briefly verify that the proof obligations above were discharged and that the conclusion matches the original problem.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully state whether the solution is complete, and identify any remaining gap.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

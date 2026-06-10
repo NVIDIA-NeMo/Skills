@@ -1,0 +1,24 @@
+user: |-
+  Your task is to solve the original mathematical problem in the input. The input may include a previous candidate proof and audit notes. Treat that material only as non-authoritative scratch work: it may contain fatal gaps or false claims.
+
+  Requirements for the written response:
+  - Prove the original problem, not a meta-claim about the candidate proof.
+  - You may reuse a candidate idea only after independently proving every required lemma and case.
+  - Do not skip finite checks, divisibility cases, sign/order choices, edge cases, or hypotheses of named theorems.
+  - If you use Bertrand, Zsigmondy, Catalan/Mihailescu, LTE, or any named theorem, state the exact form needed and verify that its exceptional cases are covered.
+  - If a candidate proof asserted an exponential equation has only certain solutions, either prove that assertion or avoid relying on it.
+  - If you cannot complete the proof, end with a short paragraph naming the exact remaining gap instead of hiding it.
+
+  Write only this format:
+
+  ## Solution
+  ...
+
+  ## Sanity check
+  ...
+
+  ---
+
+  Here is your task input:
+
+  {question}

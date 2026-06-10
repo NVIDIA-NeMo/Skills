@@ -1,0 +1,29 @@
+user: |-
+  Your task is to solve a given problem. You are also given generated subproblem proof candidates from earlier model attempts. These subproblem proofs are not trusted facts; they are working material. Before relying on any subproblem result, check it carefully and either repair it or reprove the needed statement in your final solution.
+
+  Use the subproblem material to assemble a complete, self-contained proof of the original problem:
+  - Start by identifying the target theorem and the role of each usable subproblem result.
+  - If a subproblem proof has a gap, either fix the gap or avoid relying on that subproblem.
+  - The final solution must stand on its own. Do not merely cite the subproblem labels as black boxes.
+  - Check boundary cases, degenerate cases, quantified variables, and any equality/orientation/order assumptions.
+  - Do not use any external source solution or problem-specific hint beyond the generated subproblem material in the task input.
+
+  Write the response in exactly this format:
+
+  ## Solution
+  ... // A complete self-contained proof of the original problem.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully audit the proof above. Identify any remaining gaps if present.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem And Generated Subproblem Material
+  {question}

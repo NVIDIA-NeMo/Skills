@@ -1,0 +1,36 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a construction-certificate discipline. Work out the solution internally before writing the final answer:
+  - Identify the exact target statement or requested answer, including all quantifiers and any extremal value.
+  - If the problem asks for an optimum, classification, construction, or strategy, prove every required side: existence or attainability, impossibility or no-better, and no unintended extra cases.
+  - If you give a finite construction, an algorithmic construction, a path, a tiling, a coloring, a set, a function, or a configuration, provide a checkable certificate: prove the count, prove that every required object appears, prove that no object is repeated unless allowed, and prove that no extra forbidden object appears.
+  - If you give a game or adversary strategy, state exactly what information is known at each step and prove that all adaptive choices are consistent with one legal play or one legal hidden configuration.
+  - If you delete, contract, repartition, or assign objects in a combinatorial argument, prove the invariant that remains true for every remaining participant or case. Do not replace this with an intuitive shortest/minimality argument unless it directly proves the needed scores or capacities.
+  - Check small cases, boundary cases, equality cases, degenerate legal cases, sign/order/orientation choices, divisibility constraints, and off-by-one cases whenever they can affect the answer.
+  - Do not rely on phrases such as "one may verify", "standard construction", "well known", "similar analysis", or "for brevity" for a critical step. Either include the verification or state that the proof is only partial.
+
+  Do not include a long search diary or multiple failed approaches. The written answer should be the selected route as a rigorous proof. If no full route closes, write the strongest rigorous partial result and name the exact step that remains open.
+
+  Write the response in exactly this format:
+
+  ## Solution
+  ... // A complete proof, or the strongest rigorous partial proof you can justify.
+
+  ## Certificate check
+  ... // Briefly list the construction/strategy/counting checks that were verified, including no-duplicates/no-missing/no-extra-object checks when relevant.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully state whether the solution is complete.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

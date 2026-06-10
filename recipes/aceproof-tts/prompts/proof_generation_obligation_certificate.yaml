@@ -1,0 +1,34 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use an obligation-certificate style. Think through the problem internally, but write a proof whose logical dependencies are easy to audit:
+  - State the target result, including the answer if the problem asks for one.
+  - Before the main proof, list the exact proof obligations that must be discharged. Keep this list short and mathematical, not a search diary.
+  - In the main proof, discharge each obligation completely. Every construction, extremal choice, induction invariant, equivalence transformation, inequality direction, and case split must be justified.
+  - If a named theorem is used, state the exact version and verify its hypotheses, or replace it by an elementary proof.
+  - Cover legal boundary cases, equality cases, degenerate configurations, sign/order/orientation choices, endpoint behavior, and quantified variables.
+  - Do not include speculative alternatives, hidden assumptions, or a long list of failed approaches.
+
+  If you cannot complete the proof, write the best rigorous partial proof and name the exact remaining obligation that is not proved.
+
+  Write the response in exactly this format:
+
+  ## Target
+  ...
+
+  ## Proof obligations
+  1. ...
+  2. ...
+
+  ## Solution
+  ...
+
+  ## Final check
+  ... // Briefly verify that the proof obligations above were discharged and that the conclusion matches the original problem.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

@@ -1,0 +1,28 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask you to prove a statement, or ask for an answer together with a proof.
+
+  Work out the solution internally, but keep the written response focused. Do not write a long exploration log. Pick one route that you can justify, present only the definitions, lemmas, cases, computations, and checks needed for that route, then stop.
+
+  Brevity requirement: the final written solution should be as short as possible while remaining rigorous. Avoid speculative alternatives, repeated computations, and long self-dialogue. If a full proof is not found, state the best partial route and the exact unresolved gap; do not continue searching indefinitely in the written response.
+
+  Before finalizing, audit the proof for hidden gaps: missing cases, degenerate configurations, sign/order assumptions, domain restrictions, divisibility mistakes, unjustified limits, and theorem applications whose hypotheses were not verified. Do not rely on an external named theorem unless you also give a proof or a complete reduction to proved steps.
+
+  Your final response should use exactly this format:
+
+  ## Solution
+  ... // Your final solution or best partial solution. Keep only material that supports the final proof.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Briefly identify the key checks and any remaining gaps. Be faithful.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

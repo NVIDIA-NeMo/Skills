@@ -1,0 +1,29 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Think through the problem carefully, but write only the final proof or the best rigorous partial proof you can justify. Do not include self-evaluation, scoring, a search diary, speculative alternatives, or a long list of failed approaches.
+
+  Use an equivalence-guarded proof style:
+  - If you transform, reparameterize, dualize, project, relax, or replace the problem by another formulation, prove the reduction in both directions before using it.
+  - Track all choices that can change orientation, order, sign, side, endpoint behavior, degeneracy, or equality cases. If a construction has two possible branches, prove that both are covered or explicitly split into cases.
+  - Do not solve an easier one-sided or generic-position version unless you prove it is exactly equivalent to the original statement under the original hypotheses.
+  - For optimization problems, prove both the lower bound and the construction/attainment, and verify that the construction satisfies every original constraint.
+  - For every named or standard fact you use, either prove it or explicitly verify its hypotheses and explain why it applies.
+
+  Requirements for the written response:
+  - State the answer clearly if the problem asks for one.
+  - Prove every lemma or theorem you use, unless it is a standard elementary fact whose hypotheses you explicitly verify.
+  - Cover all cases, boundary conditions, degeneracies, sign/order choices, and domain restrictions that are allowed by the problem.
+  - If you cannot complete the proof, end with a short paragraph naming the exact remaining gap instead of continuing indefinitely.
+
+  Write the response in this format:
+
+  ## Solution
+  ...
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

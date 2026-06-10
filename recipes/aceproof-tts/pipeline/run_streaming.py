@@ -70,9 +70,21 @@ def main(args):
     rerun_done = bool(pipeline_cfg.get("rerun_done", False))
 
     prompts_dir = os.path.join(PACKAGE_RECIPE_ROOT, "prompts")
-    gen_prompt = os.path.join(prompts_dir, "proof_generation.yaml")
-    verify_prompt = os.path.join(prompts_dir, "proof_verification.yaml")
-    refine_prompt = os.path.join(prompts_dir, "proof_refinement.yaml")
+    gen_prompt = (
+        args.proof_gen_prompt_path
+        or pipeline_cfg.get("proof_gen_prompt_path")
+        or os.path.join(prompts_dir, "proof_generation.yaml")
+    )
+    verify_prompt = (
+        args.verify_prompt_path
+        or pipeline_cfg.get("verify_prompt_path")
+        or os.path.join(prompts_dir, "proof_verification.yaml")
+    )
+    refine_prompt = (
+        args.refine_prompt_path
+        or pipeline_cfg.get("refine_prompt_path")
+        or os.path.join(prompts_dir, "proof_refinement.yaml")
+    )
 
     input_file = _prepare_input(input_paths, output_dir)
 
@@ -83,9 +95,6 @@ def main(args):
         f"++refine_prompt_config_path={refine_prompt}",
         f"++verify_model={profiles.verify}",
         f"++refine_model={profiles.refine}",
-        f"++gen_tokens_to_generate={inference.gen_tokens_to_generate}",
-        f"++verify_tokens_to_generate={inference.verify_tokens_to_generate}",
-        f"++refine_tokens_to_generate={inference.refine_tokens_to_generate}",
         f"++inference.temperature={inference.temperature}",
         f"++inference.top_p={inference.top_p}",
         f"++inference.timeout={inference.get('timeout', 14400)}",
@@ -105,13 +114,33 @@ def main(args):
         f"++verify_max_concurrent={streaming.get('verify_max_concurrent', 1280)}",
         f"++refine_max_concurrent={streaming.get('refine_max_concurrent', 512)}",
     ]
+    if inference.get("gen_tokens_to_generate") is not None:
+        extra.append(f"++gen_tokens_to_generate={inference.gen_tokens_to_generate}")
+    if inference.get("verify_tokens_to_generate") is not None:
+        extra.append(f"++verify_tokens_to_generate={inference.verify_tokens_to_generate}")
+    if inference.get("refine_tokens_to_generate") is not None:
+        extra.append(f"++refine_tokens_to_generate={inference.refine_tokens_to_generate}")
+    for key in (
+        "gen_temperature",
+        "verify_temperature",
+        "refine_temperature",
+        "gen_top_p",
+        "verify_top_p",
+        "refine_top_p",
+    ):
+        if inference.get(key) is not None:
+            extra.append(f"++{key}={inference.get(key)}")
     extra_args = " ".join(extra)
+
+    output_parts = os.path.normpath(output_dir).split(os.sep)
+    default_exp_suffix = "_".join(output_parts[-2:]) if len(output_parts) >= 2 else output_parts[-1]
+    default_exp_suffix = default_exp_suffix.replace("-", "_").replace(".", "_")
 
     generate(
         ctx=wrap_arguments(extra_args),
         generation_module=STREAMING_GEN_MODULE,
         cluster=cluster,
-        expname=args.expname or f"aceproof_streaming_{os.path.basename(output_dir.rstrip(os.sep))}",
+        expname=args.expname or f"aceproof_streaming_{default_exp_suffix}",
         input_file=input_file,
         output_dir=os.path.join(output_dir, "streaming"),
         num_chunks=int(scaling.get("num_chunks", 1)),
@@ -136,4 +165,7 @@ if __name__ == "__main__":
     parser.add_argument("--cluster")
     parser.add_argument("--gateway_address")
     parser.add_argument("--expname")
+    parser.add_argument("--proof_gen_prompt_path")
+    parser.add_argument("--verify_prompt_path")
+    parser.add_argument("--refine_prompt_path")
     main(parser.parse_args())

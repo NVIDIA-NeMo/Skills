@@ -1,0 +1,43 @@
+user: |-
+  Your task is to decompose a hard math problem into a small set of standalone subproblems that could help prove the original problem. Do not solve the problem and do not use any external source solution or hidden hint.
+
+  Produce a decomposition that is useful for a later proof-generation system:
+  - Each subproblem must be a precise mathematical proposition, construction task, setup lemma, case analysis, or verification task.
+  - The subproblems should be substantially easier than the original problem when possible.
+  - Explain why the subproblems, if solved, would help assemble a proof of the original problem.
+  - Keep the decomposition short: use 2 to 5 subproblems.
+  - Do not add assumptions that are not present in the original problem.
+  - If the problem appears better handled directly, still provide the smallest useful setup/check subproblems instead of a full solution.
+  - Do not provide source-solution style hints, complete proof routes, or solved lemmas. The output is a work plan, not a proof.
+
+  Write the response in exactly this format:
+
+  ## Solution
+
+  ### Subproblem 1
+  Statement: ...
+  Role: ...
+  Dependencies: ...
+  Risk checks: ...
+
+  ### Subproblem 2
+  Statement: ...
+  Role: ...
+  Dependencies: ...
+  Risk checks: ...
+
+  ...
+
+  ## Self Evaluation
+
+  Here is my evaluation of the decomposition:
+  ... // Check whether the subproblems are precise, non-circular, and do not add assumptions.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is 0, 0.5, or 1
+
+  ---
+
+  Here is the original problem:
+
+  {question}

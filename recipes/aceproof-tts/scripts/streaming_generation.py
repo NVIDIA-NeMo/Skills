@@ -88,10 +88,19 @@ class StreamingGenerationConfig(_BaseGenConfig):
     # refine reuses the proof_gen profile by default (matches aceproof config)
     refine_model: str | None = None
 
-    # per-stage token budgets (proof_gen / verify are very different lengths)
-    gen_tokens_to_generate: int = 500000
-    verify_tokens_to_generate: int = 200000
-    refine_tokens_to_generate: int = 480000
+    # Optional per-stage token budgets. Leave unset to let the gateway/server
+    # use its available context window instead of sending max_completion_tokens.
+    gen_tokens_to_generate: int | None = None
+    verify_tokens_to_generate: int | None = None
+    refine_tokens_to_generate: int | None = None
+
+    # Optional per-stage sampling overrides. If unset, cfg.inference.* is used.
+    gen_temperature: float | None = None
+    verify_temperature: float | None = None
+    refine_temperature: float | None = None
+    gen_top_p: float | None = None
+    verify_top_p: float | None = None
+    refine_top_p: float | None = None
 
     # scaling knobs (mirror the aceproof scaling block)
     n_parallel_proof_gen: int = 128
@@ -216,19 +225,27 @@ class StreamingProofTask(GenerationTask):
     async def _request(self, role, messages, seed):
         if role == "verify":
             client, max_tokens, sem = self.verify_llm, self.cfg.verify_tokens_to_generate, self.verify_semaphore
+            temperature = self.cfg.verify_temperature
+            top_p = self.cfg.verify_top_p
         elif role == "refine":
             client, max_tokens, sem = self.refine_llm, self.cfg.refine_tokens_to_generate, self.refine_semaphore
+            temperature = self.cfg.refine_temperature
+            top_p = self.cfg.refine_top_p
         else:
             client, max_tokens, sem = self.llm, self.cfg.gen_tokens_to_generate, self.gen_semaphore
+            temperature = self.cfg.gen_temperature
+            top_p = self.cfg.gen_top_p
+        request_kwargs = {
+            "prompt": messages,
+            "temperature": self.cfg.inference.temperature if temperature is None else temperature,
+            "top_p": self.cfg.inference.top_p if top_p is None else top_p,
+            "random_seed": seed,
+            "timeout": self.cfg.inference.timeout,
+        }
+        if max_tokens is not None:
+            request_kwargs["tokens_to_generate"] = max_tokens
         async with sem:
-            return await client.generate_async(
-                prompt=messages,
-                tokens_to_generate=max_tokens,
-                temperature=self.cfg.inference.temperature,
-                top_p=self.cfg.inference.top_p,
-                random_seed=seed,
-                timeout=self.cfg.inference.timeout,
-            )
+            return await client.generate_async(**request_kwargs)
 
     async def _sink(self, stage, round_idx, row):
         path = os.path.join(self.streaming_output_dir, "rounds", f"R{round_idx}", stage, "output.jsonl")

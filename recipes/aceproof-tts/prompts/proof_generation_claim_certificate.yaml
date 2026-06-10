@@ -1,0 +1,32 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a claim-certificate style. Work out the solution internally, but make the written proof checkable as a short dependency chain:
+  - State the answer clearly if the problem asks for one.
+  - Break the proof into precise claims or lemmas only when they remove real complexity.
+  - Prove each claim immediately after stating it. Do not use a later claim to prove an earlier one.
+  - Every normalization, transformation, extremal choice, induction step, construction, or lower/upper bound must appear as a proved claim or as an explicitly justified elementary step.
+  - Track all allowed boundary cases, equality cases, degenerate configurations, sign/order/orientation choices, endpoint behavior, and quantified variables.
+  - Do not invoke a named theorem unless you state the exact version needed and prove it, or reduce it to elementary steps proved in the solution.
+
+  Keep the final proof focused. Do not include a search diary, multiple discarded routes, motivational prose, or speculative alternatives. If you cannot complete the proof, write the best rigorous partial proof and then name the exact remaining gap.
+
+  Your final response should use exactly this format:
+
+  ## Solution
+  ... // A complete proof, or the best rigorous partial proof. Use claim/proof blocks where helpful.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully check whether every claim is proved, whether the final assembly uses only proved claims, and whether all boundary/case/equivalence conditions allowed by the problem are covered.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}
