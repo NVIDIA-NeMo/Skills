@@ -65,6 +65,8 @@ class ToolCallingWrapper:
         self.schema_overrides = load_schema_overrides(schema_overrides)
         self.schema_mappings = {}  # Built when tools are listed
         self.max_tool_calls = max_tool_calls
+        if tool_call_timeout_s is not None and tool_call_timeout_s <= 0:
+            raise ValueError("tool_call_timeout_s must be a positive number of seconds, or None to disable.")
         self.tool_call_timeout_s = tool_call_timeout_s
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):

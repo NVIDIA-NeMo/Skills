@@ -239,6 +239,10 @@ class SlowTool(Tool):
         ]
 
     async def execute(self, tool_name: str, arguments: dict, extra_args: dict | None = None):
+        if tool_name != "sleep":
+            raise ValueError(f"Unsupported tool: {tool_name}")
+        if arguments:
+            raise ValueError(f"Unexpected arguments: {arguments}")
         await asyncio.sleep(10)
         return "too late"
 
@@ -295,6 +299,16 @@ async def test_tool_calling_wrapper_times_out_slow_tool_call():
     )
 
     assert result["error"].startswith("Tool execution timed out")
+
+
+@pytest.mark.parametrize("bad_timeout", [0, -1, -0.5])
+def test_tool_calling_wrapper_rejects_nonpositive_timeout(bad_timeout):
+    with pytest.raises(ValueError):
+        ToolCallingWrapper(
+            model=object(),
+            tool_modules=[f"{__name__}::SlowTool"],
+            tool_call_timeout_s=bad_timeout,
+        )
 
 
 @pytest.mark.asyncio
