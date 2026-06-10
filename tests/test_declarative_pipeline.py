@@ -722,6 +722,81 @@ class TestJobDependencies:
                         call2_kwargs = mock_exp.add.call_args_list[1][1]
                         assert call2_kwargs["dependencies"] == ["task_handle_1"]
 
+    def test_finished_cross_experiment_dep_filtered_from_exp_add(self):
+        """A run_after naming another experiment whose tasks already finished resolves to
+        empty handles and falls through as a bare experiment-name string in internal_deps
+        (the _reuse_exp path). It must be dropped from exp.add (nemo-run asserts every dep
+        is a job in THIS experiment) while same-experiment handles are kept. Reproduces the
+        bug the legacy cross-experiment dependency patch fixed, now handled natively.
+        """
+        import nemo_run as run
+
+        # Empty handles -> the upstream experiment already finished / does not exist.
+        with patch("nemo_skills.pipeline.utils.declarative.get_exp_handles") as mock_get_handles:
+            mock_get_handles.return_value = []
+
+            with patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp:
+                mock_exp = MagicMock(spec=run.Experiment)
+                mock_exp.__enter__ = MagicMock(return_value=mock_exp)
+                mock_exp.__exit__ = MagicMock(return_value=False)
+                # Simulate nemo-run: each add() appends a Job (id == handle) to exp.jobs.
+                mock_exp.jobs = []
+
+                def fake_add(*args, **kwargs):
+                    handle = f"task_handle_{len(mock_exp.jobs) + 1}"
+                    job = MagicMock()
+                    job.id = handle
+                    mock_exp.jobs.append(job)
+                    return handle
+
+                mock_exp.add = MagicMock(side_effect=fake_add)
+                mock_get_exp.return_value = mock_exp
+
+                def mock_get_executor(**kwargs):
+                    mock_executor = MagicMock()
+                    mock_executor.packager = MagicMock()
+                    return mock_executor
+
+                with patch("nemo_skills.pipeline.utils.declarative.get_executor", side_effect=mock_get_executor):
+                    with patch("nemo_skills.pipeline.utils.declarative.run_exp"):
+                        cluster_config = {
+                            "executor": "slurm",
+                            "containers": {"nemo-skills": "test/container"},
+                            "account": "test",
+                            "env_vars": {"HF_HOME": "/mounted/hf_home"},
+                            "mounts": ["/mounted/hf_home:/mounted/hf_home"],
+                        }
+
+                        cmd1 = make_command(inline="echo job1", name="job1")
+                        group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/tmp/logs")
+                        cmd2 = make_command(inline="echo job2", name="job2")
+                        group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/tmp/logs")
+
+                        job1_spec = {"name": "job1", "group": group1}
+                        # job2 depends on job1 (internal) AND a finished external experiment (string).
+                        job2_spec = {
+                            "name": "job2",
+                            "group": group2,
+                            "dependencies": [job1_spec, "finished_external_experiment"],
+                        }
+
+                        pipeline = Pipeline(
+                            name="test_pipeline",
+                            cluster_config=cluster_config,
+                            jobs=[job1_spec, job2_spec],
+                            skip_hf_home_check=True,
+                            reuse_code=False,
+                        )
+
+                        # _reuse_exp set -> empty-handle string deps take the internal path.
+                        pipeline.run(dry_run=True, _reuse_exp=mock_exp)
+
+                        assert mock_exp.add.call_count == 2
+                        # job1: no dependencies.
+                        assert mock_exp.add.call_args_list[0][1]["dependencies"] is None
+                        # job2: same-experiment handle kept, finished cross-exp string dropped.
+                        assert mock_exp.add.call_args_list[1][1]["dependencies"] == ["task_handle_1"]
+
     def test_run_after_dependencies_across_experiments(self, tmp_path):
         """Test that run_after dependencies work when chaining multiple generate/run_cmd calls.
 

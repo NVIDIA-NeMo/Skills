@@ -938,6 +938,30 @@ class Pipeline:
             should_use_with_ray_cluster=should_use_with_ray_cluster,
         )
 
+        # A run_after naming another experiment whose tasks have already finished
+        # resolves to empty handles and falls through as a bare experiment-name string
+        # in internal_deps. nemo-run's exp.add asserts every dependency is a job in THIS
+        # experiment, so drop deps that are not present here -- cross-experiment ordering
+        # is still honored via external_deps and (on Ray) the queued dep resolver. Only
+        # filters when exp.jobs is introspectable, so it never over-drops valid handles.
+        # Only filter when exp.jobs is a concrete list (a real nemo-run experiment); a
+        # mocked or duck-typed exp leaves deps untouched so valid handles are never dropped.
+        exp_jobs = getattr(exp, "jobs", None)
+        if internal_deps and isinstance(exp_jobs, (list, tuple)):
+            known_job_ids = {getattr(job, "id", None) for job in exp_jobs}
+            kept = []
+            for dep in internal_deps:
+                if not isinstance(dep, str) or dep in known_job_ids:
+                    kept.append(dep)
+                else:
+                    LOG.warning(
+                        "Dropping dependency '%s' from exp.add: not a job in this "
+                        "experiment (cross-experiment ordering preserved via external "
+                        "deps / Ray queue).",
+                        dep,
+                    )
+            internal_deps = kept or None
+
         # Add to experiment and return task ID
         # Note: Internal dependencies (task handles from same experiment) go to exp.add()
         #       External dependencies (SLURM job IDs from other experiments) go to executor
