@@ -152,6 +152,61 @@ class TestIHEvalMetricsReset:
         assert m.total == 2
         m.reset()
         assert m.total == 0
-        assert m._setting_totals == {}
-        assert m._variant_totals == {}
+        assert m._sample_scores == []
+        assert m._sample_settings == []
+        assert m._sample_variants == []
         assert len(m.eval_dict) == 0
+
+
+class TestIHEvalMetricsPerModeConsistency:
+    def test_pass_at_n_setting_matches_best_of_n(self):
+        # Codex review regression: pass@N.setting_* used to be avg-over-attempts even
+        # though pass@N.symbolic_correct is best-of-N, making the row inconsistent.
+        m = IHEvalMetrics()
+        # Two samples in 'aligned', each with 2 attempts (one pass / one fail).
+        m.update([_row(1.0, "aligned", "default"), _row(0.0, "aligned", "default")])
+        m.update([_row(0.0, "aligned", "default"), _row(1.0, "aligned", "default")])
+        out = m.get_metrics()
+        # pass@2.symbolic_correct = best-of-2 averaged across samples = (1 + 1) / 2 = 100%
+        assert out["pass@2"]["symbolic_correct"] == pytest.approx(100.0)
+        assert out["pass@2"]["setting_aligned"] == pytest.approx(100.0)
+        # pass@1[avg-of-2].symbolic_correct = mean-over-attempts = (0.5 + 0.5) / 2 = 50%
+        assert out["pass@1[avg-of-2]"]["symbolic_correct"] == pytest.approx(50.0)
+        assert out["pass@1[avg-of-2]"]["setting_aligned"] == pytest.approx(50.0)
+        # pass@1.symbolic_correct uses first attempt only -> (1 + 0) / 2 = 50%
+        assert out["pass@1"]["symbolic_correct"] == pytest.approx(50.0)
+        assert out["pass@1"]["setting_aligned"] == pytest.approx(50.0)
+
+    def test_pass_at_1_binary_matches_base_probabilistic(self):
+        # base's pass@1 for binary scores is the probabilistic estimate over N
+        # attempts (= correct/N), NOT the first attempt. setting_*/variant_* must
+        # follow the same definition or pass@1 becomes internally inconsistent.
+        m = IHEvalMetrics()
+        # One sample, 2 attempts, binary: [1, 0] -> base pass@1 = 0.5 (not scores[0]=1)
+        m.update([_row(1.0, "aligned", "default"), _row(0.0, "aligned", "default")])
+        out = m.get_metrics()
+        assert out["pass@1"]["symbolic_correct"] == pytest.approx(50.0)
+        assert out["pass@1"]["setting_aligned"] == pytest.approx(50.0)
+        assert out["pass@1"]["variant_default"] == pytest.approx(50.0)
+
+    def test_pass_at_1_fractional_uses_first_attempt(self):
+        # Non-binary: base's pass@1 = max(scores[:1]) = scores[0]. Generic _pass_at_k
+        # branch reproduces this.
+        m = IHEvalMetrics()
+        m.update([_row(0.3, "aligned", "default"), _row(0.9, "aligned", "default")])
+        out = m.get_metrics()
+        assert out["pass@1"]["symbolic_correct"] == pytest.approx(30.0)
+        assert out["pass@1"]["setting_aligned"] == pytest.approx(30.0)
+
+    def test_pass_at_n_variant_matches_best_of_n_fractional(self):
+        # Fractional scores: max-of-attempts per sample, then averaged across samples.
+        m = IHEvalMetrics()
+        m.update([_row(0.4, "aligned", "default"), _row(0.9, "aligned", "default")])
+        m.update([_row(0.6, "aligned", "default"), _row(0.2, "aligned", "default")])
+        out = m.get_metrics()
+        # pass@2 (fractional) = max per sample -> 0.9, 0.6 -> avg 0.75
+        assert out["pass@2"]["symbolic_correct"] == pytest.approx(75.0)
+        assert out["pass@2"]["variant_default"] == pytest.approx(75.0)
+        # pass@1[avg-of-2] = avg per sample -> 0.65, 0.4 -> avg 0.525
+        assert out["pass@1[avg-of-2]"]["symbolic_correct"] == pytest.approx(52.5)
+        assert out["pass@1[avg-of-2]"]["variant_default"] == pytest.approx(52.5)

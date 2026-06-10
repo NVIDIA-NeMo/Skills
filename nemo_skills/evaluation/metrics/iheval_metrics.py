@@ -12,22 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from collections import defaultdict
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics
 
 
 class IHEvalMetrics(BaseMetrics):
-    """Metrics for IHEval sub-benchmarks.
-
-    Uses the base ``_compute_pass_at_k`` machinery so that running ``iheval:N``
-    (N samples per question) yields proper ``pass@1[avg-of-N]`` / ``pass@N``
-    aggregates over the per-row ``symbolic_correct`` score (which may be
-    fractional, e.g. F1/ROUGE-L for the task-execution subs). On top of that it
-    tracks per-``setting`` (aligned/conflict/reference) and per-``variant``
-    breakdowns, averaged over attempts so they remain meaningful for pass@k runs
-    (and match pass@1 when N=1).
-    """
+    """Pass@k over symbolic_correct with per-setting / per-variant breakdowns."""
 
     def _get_score_dict(self, prediction: dict) -> dict[str, float]:
         return {"symbolic_correct": float(prediction.get("symbolic_correct", 0.0))}
@@ -40,36 +32,67 @@ class IHEvalMetrics(BaseMetrics):
     def update(self, predictions):
         super().update(predictions)
         self._compute_pass_at_k(predictions=predictions)
-
-        # Per-setting / per-variant tracking uses avg-over-attempts so it still
-        # works for pass@k-style sampling runs, while matching pass@1 when k=1.
-        scores = [float(p.get("symbolic_correct", 0.0)) for p in predictions]
-        avg = sum(scores) / len(scores)
-
-        setting = predictions[0].get("setting")
-        if setting:
-            self._setting_totals[setting] += 1
-            self._setting_correct[setting] += avg
-
-        variant = predictions[0].get("variant")
-        if variant:
-            self._variant_totals[variant] += 1
-            self._variant_correct[variant] += avg
+        self._sample_scores.append([float(p.get("symbolic_correct", 0.0)) for p in predictions])
+        self._sample_settings.append(predictions[0].get("setting"))
+        self._sample_variants.append(predictions[0].get("variant"))
 
     def get_metrics(self):
         metrics_dict = super().get_metrics()
-        for agg_dict in metrics_dict.values():
-            for setting, total in self._setting_totals.items():
-                if total > 0:
-                    agg_dict[f"setting_{setting}"] = 100.0 * self._setting_correct[setting] / total
-            for variant, total in self._variant_totals.items():
-                if total > 0:
-                    agg_dict[f"variant_{variant}"] = 100.0 * self._variant_correct[variant] / total
+        for mode_key, agg_dict in metrics_dict.items():
+            aggregator = self._mode_aggregator(mode_key)
+            if aggregator is None:
+                continue
+            setting_sums: dict[str, float] = defaultdict(float)
+            setting_counts: dict[str, int] = defaultdict(int)
+            variant_sums: dict[str, float] = defaultdict(float)
+            variant_counts: dict[str, int] = defaultdict(int)
+            for scores, setting, variant in zip(self._sample_scores, self._sample_settings, self._sample_variants):
+                value = aggregator(scores)
+                if setting:
+                    setting_sums[setting] += value
+                    setting_counts[setting] += 1
+                if variant:
+                    variant_sums[variant] += value
+                    variant_counts[variant] += 1
+            for setting, count in setting_counts.items():
+                agg_dict[f"setting_{setting}"] = 100.0 * setting_sums[setting] / count
+            for variant, count in variant_counts.items():
+                agg_dict[f"variant_{variant}"] = 100.0 * variant_sums[variant] / count
         return metrics_dict
+
+    @staticmethod
+    def _mode_aggregator(mode_key: str):
+        # Mirror base._compute_pass_at_k per mode so breakdowns stay consistent with
+        # symbolic_correct. pass@1 has no special case on purpose: base uses the same
+        # probabilistic formula at k=1 for binary scores, which _pass_at_k reproduces.
+        if mode_key.startswith("pass@1[avg-of-") and mode_key.endswith("]"):
+            try:
+                k = int(mode_key[len("pass@1[avg-of-") : -1])
+            except ValueError:
+                return None
+            return lambda scores: sum(scores[:k]) / k if scores else 0.0
+        if mode_key.startswith("pass@"):
+            try:
+                k = int(mode_key[len("pass@") :])
+            except ValueError:
+                return None
+            return lambda scores: _pass_at_k(scores, k)
+        return None
 
     def reset(self):
         super().reset()
-        self._setting_totals: dict[str, int] = defaultdict(int)
-        self._setting_correct: dict[str, float] = defaultdict(float)
-        self._variant_totals: dict[str, int] = defaultdict(int)
-        self._variant_correct: dict[str, float] = defaultdict(float)
+        self._sample_scores: list[list[float]] = []
+        self._sample_settings: list[str | None] = []
+        self._sample_variants: list[str | None] = []
+
+
+def _pass_at_k(scores: list[float], k: int) -> float:
+    if not scores:
+        return 0.0
+    if all(s in (0, 1, True, False) for s in scores):
+        total = len(scores)
+        total_incorrect = total - int(sum(scores))
+        if total_incorrect < k:
+            return 1.0
+        return 1.0 - math.comb(total_incorrect, k) / math.comb(total, k)
+    return max(scores[:k])
