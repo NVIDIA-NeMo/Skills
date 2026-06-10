@@ -15,6 +15,7 @@
 """Tests for audio utilities and VLLMMultimodalModel audio input handling."""
 
 import base64
+import contextlib
 import os
 import tempfile
 from unittest.mock import patch
@@ -22,6 +23,7 @@ from unittest.mock import patch
 import pytest
 
 from nemo_skills.inference.model.audio_utils import audio_file_to_base64
+from nemo_skills.inference.model.vllm import VLLMModel
 from nemo_skills.inference.model.vllm_multimodal import VLLMMultimodalModel
 
 
@@ -215,3 +217,78 @@ def test_needs_audio_chunking_task_type_filter(mock_vllm_multimodal_model):
     # Task type in filter but file doesn't exist - should return False gracefully
     needs_chunking, _, _ = mock_vllm_multimodal_model._needs_audio_chunking(messages, task_type="transcription")
     assert needs_chunking is False
+
+
+@contextlib.contextmanager
+def _stub_vllm_base():
+    """Run the real ``VLLMMultimodalModel.__init__`` while stubbing the heavy
+    ``VLLMModel`` base so no server / tokenizer / network setup is needed.
+
+    The base only needs to provide the attributes the audio-config logic reads
+    (``base_url`` and ``output_dir``); everything the assertions cover lives in
+    ``VLLMMultimodalModel.__init__`` itself.
+    """
+
+    def _init(self, model=None, base_url=None, **kwargs):
+        self.base_url = base_url
+        self.output_dir = kwargs.get("output_dir")
+        self._tunnel = None  # consumed by BaseModel.__del__
+
+    with patch.object(VLLMModel, "__init__", _init):
+        yield
+
+
+def test_audio_as_path_defaults_local_default_url():
+    """Local vLLM (no base_url) defaults to audio_url + audio_as_path=True."""
+    with _stub_vllm_base():
+        model = VLLMMultimodalModel(base_url=None)
+    assert model._external_api_mode is False
+    assert model.audio_format == "audio_url"
+    assert model.audio_as_path is True
+
+
+def test_audio_as_path_defaults_local_explicit_localhost():
+    """Explicit local URL is still treated as local (path default on)."""
+    with _stub_vllm_base():
+        model = VLLMMultimodalModel(base_url="http://127.0.0.1:5000/v1")
+    assert model._external_api_mode is False
+    assert model.audio_format == "audio_url"
+    assert model.audio_as_path is True
+
+
+def test_audio_as_path_defaults_external_api():
+    """External API defaults to input_audio + audio_as_path=False."""
+    with _stub_vllm_base():
+        model = VLLMMultimodalModel(base_url="https://inference-api.nvidia.com/v1")
+    assert model._external_api_mode is True
+    assert model.audio_format == "input_audio"
+    assert model.audio_as_path is False
+
+
+def test_audio_as_path_local_base64_opt_out():
+    """audio_as_path=False is allowed for local audio_url (base64 fallback)."""
+    with _stub_vllm_base():
+        model = VLLMMultimodalModel(base_url=None, audio_as_path=False)
+    assert model.audio_format == "audio_url"
+    assert model.audio_as_path is False
+
+
+def test_audio_as_path_rejected_for_external_api():
+    """audio_as_path=True against an external API must raise."""
+    with _stub_vllm_base():
+        with pytest.raises(ValueError, match="audio_as_path is only supported"):
+            VLLMMultimodalModel(base_url="https://inference-api.nvidia.com/v1", audio_as_path=True)
+
+
+def test_audio_as_path_rejected_for_input_audio_format():
+    """audio_as_path=True with input_audio format must raise even when local."""
+    with _stub_vllm_base():
+        with pytest.raises(ValueError, match="audio_as_path is only supported"):
+            VLLMMultimodalModel(base_url=None, audio_format="input_audio", audio_as_path=True)
+
+
+def test_unsupported_audio_format_raises():
+    """An unknown audio_format is rejected."""
+    with _stub_vllm_base():
+        with pytest.raises(ValueError, match="Unsupported audio_format"):
+            VLLMMultimodalModel(base_url=None, audio_format="bogus")
