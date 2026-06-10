@@ -178,6 +178,34 @@ def test_dashboard_only_ray_config_is_precreated_not_embedded():
     assert not (metadata or {}).get("use_with_ray_cluster")
 
 
+def test_dashboard_only_precreated_preflight_does_not_require_endpoint():
+    # A dashboard-only (Jobs API) precreated cluster has no Ray Client endpoint,
+    # so preflight must not require one: require_ray_endpoint now defaults to
+    # bool(endpoint)=False, so the checks short-circuit without touching ray.init.
+    from nemo_skills.pipeline.utils.backends import BackendRunOptions
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265", precreated_cluster=True)
+    assert backend.endpoint is None
+
+    # No preflight section -> defaults; dry_run=False to exercise the require_reachable default.
+    backend._run_preflight({}, BackendRunOptions(dry_run=False))
+
+
+def test_dashboard_only_explicit_require_endpoint_still_raises():
+    # An explicit preflight.require_ray_endpoint=true is still honored: a connectivity
+    # check needs a Ray Client endpoint, which a dashboard-only cluster lacks.
+    from nemo_skills.pipeline.utils.backends import BackendRunOptions
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265", precreated_cluster=True)
+    assert backend.endpoint is None
+
+    cluster_config = {"preflight": {"require_ray_endpoint": True}}
+    with pytest.raises(RuntimeError, match="endpoint"):
+        backend._run_preflight(cluster_config, BackendRunOptions(dry_run=False))
+
+
 def test_non_precreated_ray_honors_use_with_ray_cluster_flag():
     # Without a precreated cluster (no endpoint/dashboard_url), stage_metadata must
     # honor the caller's use_with_ray_cluster flag rather than force it on.

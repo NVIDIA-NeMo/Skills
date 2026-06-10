@@ -484,8 +484,11 @@ class RayBackend(ExecutionBackend):
         if not enabled:
             return
 
-        if self.precreated_cluster and not self.endpoint:
-            raise RuntimeError("Ray preflight failed: backend.precreated_cluster=true requires backend.endpoint.")
+        if self.precreated_cluster and not (self.endpoint or self.dashboard_url):
+            raise RuntimeError(
+                "Ray preflight failed: backend.precreated_cluster=true requires "
+                "backend.endpoint or backend.dashboard_url."
+            )
 
         if options.dry_run:
             return
@@ -495,14 +498,22 @@ class RayBackend(ExecutionBackend):
 
         required_labels = preflight_cfg.get("required_node_labels") or []
         min_resources = preflight_cfg.get("min_cluster_resources") or {}
-        require_reachable = bool(preflight_cfg.get("require_ray_endpoint", self.precreated_cluster))
+        require_reachable = bool(preflight_cfg.get("require_ray_endpoint", bool(self.endpoint)))
         strict_label_check = bool(preflight_cfg.get("strict_label_check", True))
 
         if not require_reachable and not required_labels and not min_resources:
             return
 
-        if require_reachable and not self.endpoint:
-            raise RuntimeError("Ray preflight failed: backend.endpoint is required for connectivity checks.")
+        # Reachability, resource, and label inspection all connect via ray.init(address=endpoint);
+        # a dashboard-only (Jobs API) precreated cluster has no Ray Client endpoint to inspect.
+        if not self.endpoint:
+            if require_reachable:
+                raise RuntimeError("Ray preflight failed: backend.endpoint is required for connectivity checks.")
+            LOG.warning(
+                "Ray preflight: skipping resource/label inspection because backend.endpoint is unset "
+                "(dashboard-only Jobs API cannot drive ray.nodes())."
+            )
+            return
 
         try:
             import ray
