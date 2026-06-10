@@ -58,6 +58,7 @@ _EVALUATOR_CLASS_MAP_PATHS = {
     "bird": "nemo_skills.evaluation.evaluator.bird:BirdEvaluator",
     "compute-eval": "nemo_skills.evaluation.evaluator.compute_eval:ComputeEvalEvaluator",
     "contextasr": "nemo_skills.evaluation.evaluator.contextasr:ContextASREvaluator",
+    "contextual_earnings22": ("nemo_skills.evaluation.evaluator.contextual_earnings22:ContextualEarnings22Evaluator"),
     "critpt": "nemo_skills.evaluation.evaluator.critpt:CritPtEvaluator",
     "dsbench": "nemo_skills.evaluation.evaluator.dsbench:DSBenchEvaluator",
 }
