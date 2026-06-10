@@ -34,6 +34,17 @@ We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8` image.
 
 We directly use official `lmsysorg/sglang:v0.5.10.post1` image.
 
+## Building vLLM image
+
+`dockerfiles/Dockerfile.vllm` builds from the official `vllm/vllm-openai:v0.22.1`
+image, installs pinned Ray for multi-node serving, and applies narrow CUDA 13
+compatibility guards needed for DeepSeek-V4-Pro. Build it from the repository
+root with:
+
+```shell
+docker build -t nemo-skills-vllm:v0.22.1 -f dockerfiles/Dockerfile.vllm .
+```
+
 ## NeMo-RL image default
 
 The sample local cluster config currently defaults `containers.nemo-rl` to the upstream NeMo-RL release image

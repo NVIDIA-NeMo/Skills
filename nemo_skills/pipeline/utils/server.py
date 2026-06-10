@@ -180,6 +180,24 @@ def get_ray_server_cmd(start_cmd, serving_nodes: int | None = None, num_gpus: in
     if serving_nodes is not None:
         if num_gpus is None:
             raise ValueError("get_ray_server_cmd: num_gpus must be set when serving_nodes is set")
+        expected_gpus = serving_nodes * num_gpus
+        wait_for_ray_resources = (
+            "    echo 'Waiting for Ray serving resources' && "
+            "    ray_ready=0 && "
+            "    for i in $(seq 1 150); do "
+            "        python3 -c 'import ray, sys; "
+            'ray.init(address="auto", log_to_driver=False); '
+            "resources = ray.cluster_resources(); "
+            'gpu = float(resources.get("GPU", 0)); '
+            'nodes = sum(1 for n in ray.nodes() if n.get("Alive") and float(n.get("Resources", {}).get("GPU", 0)) > 0); '
+            f'print("Ray ready check: GPU={{}}/{expected_gpus}, GPU nodes={{}}/{serving_nodes}".format(gpu, nodes)); '
+            "ray.shutdown(); "
+            f"sys.exit(0 if gpu >= {expected_gpus} and nodes >= {serving_nodes} else 1)' "
+            "        && ray_ready=1 && break; "
+            "        sleep 2; "
+            "    done && "
+            '    [ "$ray_ready" = 1 ] && '
+        )
         # Worker branch: split on whether this rank participates in vLLM serving.
         worker_branch = (
             'if [ "${SLURM_PROCID:-0}" -lt ' + str(serving_nodes) + " ]; then "
@@ -200,6 +218,7 @@ def get_ray_server_cmd(start_cmd, serving_nodes: int | None = None, num_gpus: in
             "fi"
         )
     else:
+        wait_for_ray_resources = ""
         worker_branch = (
             "    echo 'Starting worker node' && "
             '    echo "Connecting to head node at $SLURM_MASTER_NODE" && '
@@ -217,6 +236,7 @@ def get_ray_server_cmd(start_cmd, serving_nodes: int | None = None, num_gpus: in
         "        --head "
         "        --port=6379 "
         f"       {ports} && "
+        f"   {wait_for_ray_resources} "
         f"   {start_cmd} ; "
         "else "
         "    export RAY_raylet_start_wait_time_s=120 && "
@@ -285,7 +305,11 @@ def get_server_command(
             f"    {server_args} "
         )
         if num_nodes > 1:
-            server_start_cmd = get_ray_server_cmd(start_vllm_cmd)
+            server_start_cmd = get_ray_server_cmd(
+                start_vllm_cmd,
+                serving_nodes=num_nodes,
+                num_gpus=num_gpus,
+            )
         else:
             server_start_cmd = start_vllm_cmd
         num_tasks = 1
