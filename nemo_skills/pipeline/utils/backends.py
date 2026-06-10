@@ -146,16 +146,7 @@ class ExecutionBackend:
 # ---------------------------------------------------------------------------
 from nemo_skills.pipeline.utils.ray_backend import RayBackend  # noqa: E402  # re-exported
 
-
-class _RayBackendShim(RayBackend):
-    """Shim so that isinstance checks against the old import path still work."""
-
-
-# Keep the name RayBackend pointing at the canonical class.
-del _RayBackendShim  # only the alias is needed
-
-
-# Placeholder so linters don't complain about the import being "unused".
+# RayBackend is re-exported here (listed in __all__) for backwards-compatible imports.
 __all__ = [
     "BackendRunOptions",
     "ExecutionBackend",
