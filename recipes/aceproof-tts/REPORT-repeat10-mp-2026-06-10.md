@@ -1,6 +1,27 @@
 # Repeat10 Multiplexer/New-Checkpoint Report
 
-Status as of 2026-06-10 21:35 PDT. This report summarizes the completed local repeat10 workstream that reran previously successful AceProof harness variants against the `ultra` cloud multiplexer endpoint/new checkpoint, with no explicit token cap in requests.
+Status as of 2026-06-10 21:35 PDT, with live continuation notes added after 22:40 PDT. This report summarizes the completed local repeat10 workstream that reran previously successful AceProof harness variants against the `ultra` cloud multiplexer endpoint/new checkpoint, with no explicit token cap in requests.
+
+## Live Continuation After Initial Report
+
+Active follow-up work after the 21:35 PDT report focuses on the six still-unconfirmed rows:
+
+```text
+N1, proofbench133_028, proofbench133_109, C50, proofbench133_030, G25
+```
+
+New active runs:
+
+- `outputs/repeat10-ultra-mp-remaining6-r2/`: two-round streaming solve/verify/refine batch over the six remaining rows, 14 prompt/temperature arms, 64 first-round proof attempts per problem. This has so far produced many normal-verifier G25 promotions, all matching the known invalid Pitot-converse pattern, plus an early invalid `proofbench133_109` candidate with the known Gaussian-integer exponent-branch flaw.
+- `outputs/repeat10-ultra-mp-remaining6-genonly-wide/`: generation-only wide batch, 8 prompt families at temperature 1.0, 128 attempts per problem and prompt family. This avoids normal-verifier early stopping and is intended to create a larger candidate pool for fixed promotion sidecars.
+- `outputs/repeat10-ultra-mp-remaining6-repairseed-genonly/`: generation-only repair-seed batch, temperatures 1.0 and 0.8, 128 attempts per repair seed. It uses `recipes/aceproof-tts/dataset/repeat10-remaining6-repairseeds-20260610.jsonl`, which contains prior candidate proofs plus non-authoritative audit notes for `N1`, `proofbench133_109`, `proofbench133_030`, `G25`, and `proofbench133_028`.
+
+Verifier/promotion experiments:
+
+- `proof_verification_strict_audit.yaml` and `proof_verification_theorem_gate.yaml` were not reliable for G25; they continued to give score 1 to the false Pitot-converse candidates.
+- `proof_verification_false_converse_guard.yaml` partially reduced G25 false positives but remained inconsistent: it sometimes rejected the false side-sum sufficiency argument and sometimes still asserted the false Pitot iff.
+- `proof_verification_countermodel_audit.yaml` did not fix G25 in early rows; it still accepted the same false candidates.
+- `run_static_promotion_filters.py` is currently the most reliable fixed promotion gate for this specific failure mode. On the calibration set it rejected exactly the G25 false/uncertain Pitot-converse candidates and did not reject the known-valid C39/N14/N24/N39 examples. Applied to current live G25 final rows, it rejected all normal-verifier G25 promotions seen so far.
 
 ## Executive Summary
 
