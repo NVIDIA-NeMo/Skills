@@ -200,8 +200,18 @@ class RayBackend(ExecutionBackend):
         return JobSubmissionClient(self.dashboard_url)
 
     def _build_runtime_env(self) -> Dict[str, Any] | None:
-        """runtime_env that forwards cluster env vars (API keys, HF_TOKEN, ...) to a job."""
-        return {"env_vars": dict(self.env_vars)} if self.env_vars else None
+        """runtime_env that forwards cluster env vars (API keys, HF_TOKEN, ...) to a job.
+
+        Always sets RAY_OVERRIDE_JOB_RUNTIME_ENV=1. A job whose driver calls ray.init()
+        again with its own runtime_env (e.g. NeMo-RL GRPO/rollout) would otherwise hit
+        "Failed to merge the Job's runtime env ... because of a conflict" whenever a key
+        (OPENAI_API_KEY, HF_HOME, ...) appears in both this job-level runtime_env and the
+        driver's ray.init() runtime_env. The flag tells Ray to merge (driver wins) instead
+        of erroring. No effect on jobs that never re-init Ray.
+        """
+        env_vars = dict(self.env_vars)
+        env_vars["RAY_OVERRIDE_JOB_RUNTIME_ENV"] = "1"
+        return {"env_vars": env_vars}
 
     def _stop_jobs_best_effort(
         self,
