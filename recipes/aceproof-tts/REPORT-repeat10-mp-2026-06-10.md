@@ -120,7 +120,16 @@ N39 repair-stream structure:
 
 Common mux config values were `n_parallel_proof_gen: 64`, `n_verification_per_proof: 16`, solved threshold `0.99999`, `top_p: 0.95`, request timeout `14400`, and `max_rounds: 1`. The streaming verifier used `min_verifications_per_proof: 4`, `early_stop_only_if_score_lt_1: true`, and `cancel_remaining: true`; this allowed obviously non-perfect candidates to stop after enough evidence while still preserving candidate rows for later audit.
 
-For `temp08`, generation/refinement temperature was `0.8` and verifier temperature was `1.0`. For `temp10`, generation/refinement/verifier temperature was `1.0`. The small sample does not support a general conclusion that `0.8` or `1.0` is better.
+For `temp08`, generation/refinement temperature was `0.8` and verifier temperature was `1.0`. For `temp10`, generation/refinement/verifier temperature was `1.0`.
+
+Temperature-effect conclusion:
+
+| Temperature arm | Confirmed distinct solves | Confirmed proof rows | Notes |
+| --- | --- | --- | --- |
+| `temp08` | `N24`, `N39` | 3 | `N24` came from `temp08/proofonly`; `N39` had valid repairseed/audit-feedback variants. |
+| `temp10` | `N14`, `C39`, `N39` | 5 | `N14` came from `temp10/formalsanity`; `C39` came from `temp10/proofonly`; `N39` also had valid repairseed/audit-feedback variants. |
+
+This does not establish that either temperature is globally better. The sample is small, the prompt families differed, and `N39` contributes multiple rows for the same problem. The practical conclusion is to keep `temperature=1.0` as the default because it is the model-recommended setting and produced more of the repeat10 confirmed wins, while keeping `0.8` as a diversity arm for high-value prompt families. Prompt family choice and candidate-level audit were more important than temperature in this workstream.
 
 Prompt-family contracts:
 
@@ -391,7 +400,7 @@ Prompt family diversity helped, but only a subset was actually productive in thi
 - `formalsanity` produced the confirmed `N14` solve.
 - `proofonly` produced the confirmed `N24` and `C39` solves.
 - `repairseed` produced the confirmed `N39` solves.
-- Both `temp08` and `temp10` produced useful candidates. There is no clean evidence from this small sample that `0.8` dominates `1.0` or vice versa.
+- Both `temp08` and `temp10` produced useful candidates. There is no clean evidence from this small sample that `0.8` dominates `1.0` or vice versa; use `1.0` as the default and keep `0.8` as a diversity arm.
 
 Candidate-level auditing was essential:
 
