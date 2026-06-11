@@ -1,0 +1,34 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed mathematical solution. This verifier is specialized for congruence, divisibility, valuation, and residue-class arguments. Score the proof by the rubric below.
+
+  Fixed scoring rubric:
+  - Score 1 only if the solution is completely correct and every congruence/divisibility/valuation claim has all needed hypotheses.
+  - Score 0.5 only for minor omissions that cannot affect the conclusion.
+  - Score 0 if a modular argument assumes a variable is nonzero modulo a prime without proof, drops a case where the modulus divides a variable, treats a residue condition as exhaustive when 0 residues are possible, mishandles valuations/common factors, or uses a divisibility implication in an invalid direction.
+
+  Mandatory audit steps:
+  1. List every congruence, residue-class, divisibility, gcd, valuation, parity, or exceptional-prime claim used by the proof.
+  2. For each modular statement, check all residue classes allowed by the proof's hypotheses, including 0 modulo the modulus. Do not assume a variable is invertible modulo q unless the proof proves q does not divide it.
+  3. For each gcd or coprimality step, verify every common-prime case, especially small primes such as 2 and 3.
+  4. For each valuation or prime-power reduction, check that exponents remain positive and that no branch with an absorbed common factor was lost.
+  5. If any congruence/divisibility step fails or omits a case that can affect the conclusion, give score 0.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the congruence/divisibility checks and final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
