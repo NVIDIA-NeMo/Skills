@@ -788,3 +788,24 @@ outputs/repeat10-genonly-candidate-verification/current_decomp_planner_assembly_
 ```
 
 It was launched in tmux session `repeat10-current-decomp-fixed-verifiers` with x4 strict, theorem, congruence, self-contained theorem-use, Gaussian-sign, and substitution-integrity sidecars.
+
+## Continuation: Modular-Root False Positive, 2026-06-11 14:38 PDT
+
+The current-decomposition verifier batch produced one early fixed-gate promotion under the existing sidecars:
+
+```text
+problem: proofbench133_109
+candidate_uid: proofbench133_109:21:planner/rounds:4fbde754cbe373e7
+source: outputs/repeat10-ultra-mp-current5-decomp-planner/temp10/planner/rounds/R1/proof_gen/output_chunk_0.jsonl-async
+existing sidecar support at first check: strict 3/3, theorem 1/1, congruence 4/4, self-contained 3/3, Gaussian-sign 3/3, substitution 2/2 all score 1.0
+```
+
+Manual inspection found that this is not a valid solve. The candidate is a decomposition-planner output, and its odd-prime argument contains an invalid modular-root step: it goes from `a^4 == -b^4 (mod p)` to `a^2 == +/- b^2 (mod p)`. That implication is false; `(-b^2)^2 = b^4`, not `-b^4`. This is a concrete false-positive mode for the existing strict/congruence/Gaussian-sign sidecars.
+
+A new general verifier prompt was added:
+
+```text
+recipes/aceproof-tts/prompts/proof_verification_modular_root_integrity.yaml
+```
+
+This gate audits root extraction, sign changes, cancellation, units, associates, and branch choices in modular algebra. It is general harness logic and does not contain a problem-specific hint. A one-row smoke test on the false-positive candidate and a broader x4 current-decomposition root-integrity sidecar were launched. Early broader root-integrity rows are returning mostly `0.0`, but they have not yet reached the exact false-positive candidate. Re-running fixed promotion with root-integrity required currently gives `0/98` promoted because no candidate has complete support from all required families including root-integrity.

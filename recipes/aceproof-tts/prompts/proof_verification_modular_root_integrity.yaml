@@ -1,0 +1,53 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed mathematical solution. This verifier is
+  specialized for modular algebra transformations, especially extracting square
+  roots, fourth roots, signs, units, and factors from congruences.
+
+  Fixed scoring rubric:
+  - Score 1 only if every modular algebra transformation is valid under the
+    stated hypotheses and every branch/sign/unit/invertibility condition needed
+    for the conclusion is proved.
+  - Score 0.5 only for minor omissions that cannot affect the conclusion.
+  - Score 0 if the proof takes square roots or higher roots of a congruence in
+    an invalid way, changes a sign while taking roots, assumes X^2 == Y^2 from
+    X^2 == -Y^2, treats a nonzero or invertible condition as automatic, drops a
+    unit/sign/associate branch, or uses an implication between residue classes
+    in the wrong direction.
+
+  Mandatory audit steps:
+  1. List every modular equality or divisibility statement that is transformed
+     by factoring, cancelling, taking roots, changing signs, or passing to a
+     residue class.
+  2. For each transformation, write the exact algebraic implication being used.
+     For example, from U^2 == V^2 mod m one may infer U == +/- V mod m only
+     under appropriate hypotheses, but from U^2 == -V^2 mod m one may not infer
+     U == +/- V mod m unless an additional square root of -1 is explicitly
+     introduced and all branches are handled.
+  3. Check every cancellation and inversion step: the proof must have proved the
+     cancelled factor is invertible modulo the modulus.
+  4. Check every unit, sign, associate, conjugate, and root branch. If the proof
+     selects one branch, it must prove other branches are impossible or are
+     covered by symmetry without changing required positivity/sign/parity
+     conditions.
+  5. If any root/sign/cancellation/branch step is invalid or incomplete in a way
+     that can affect the conclusion, give score 0.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the modular-root and branch checks, then final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
