@@ -1,0 +1,40 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed mathematical solution. This is a verifier-only false-converse guard. Score the proof by the rubric below, and be especially strict about theorem converses and claimed characterizations.
+
+  Fixed scoring rubric:
+  - Score 1 only if the solution is completely correct and every theorem/characterization is true in the exact direction used.
+  - Score 0.5 only for minor omissions that do not threaten the conclusion.
+  - Score 0 if a necessary condition is used as sufficient, a false converse is invoked, a theorem's hypotheses are missing, a branch/sign/unit/invariant case is unproved, or an asserted characterization is false or unproved.
+
+  Common false-converse warnings for this verifier:
+  - Pitot's theorem: a tangential/circumscriptible convex quadrilateral has equal sums of opposite sides, but equal sums of opposite sides alone are NOT sufficient for a convex quadrilateral to be tangential unless additional hypotheses are proved. Reject any proof that uses only side-sum equality as an iff characterization of circumscriptibility.
+  - Ptolemy: for convex quadrilaterals, equality in Ptolemy is a cyclicity characterization; still check that the equality is exactly the product-of-diagonals equality with the correct side pairing.
+  - Ceva/Menelaus/power-of-point/similarity/equality-case/AM-GM style statements: do not accept converses or equality cases unless the exact hypotheses are verified.
+  - Algebraic number theory/factorization arguments: units, signs, conjugates, and exceptional branches must be handled explicitly.
+  - Game/invariant/strategy proofs: every legal move and boundary configuration must preserve the claimed invariant or strategy.
+
+  Mandatory audit steps:
+  1. List every theorem, characterization, equivalence, converse, invariant, or strategy claim used by the proof.
+  2. For each item, state whether the proof uses a necessary direction, sufficient direction, or iff direction, and whether that direction is actually valid.
+  3. If any item fails, explain the failure and give score 0.
+  4. If theorem-use passes, check the remaining algebra/cases and then assign the final score.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the theorem/converse checks and final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
