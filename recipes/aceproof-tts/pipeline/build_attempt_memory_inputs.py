@@ -20,6 +20,8 @@ def _iter_jsonl(patterns: list[str]):
                     if not line.strip():
                         continue
                     row = json.loads(line)
+                    if not isinstance(row, dict):
+                        continue
                     row["_source_file"] = file_path
                     yield row
 
@@ -29,6 +31,8 @@ def _proof_key(proof: str) -> str:
 
 
 def _candidate_uid(row: dict[str, Any], proof: str) -> str:
+    if row.get("candidate_uid"):
+        return str(row["candidate_uid"])
     problem_idx = row.get("problem_idx", "unknown")
     seed = row.get("generation_seed", row.get("row_id", "noseed"))
     source = row.get("_source_file") or row.get("candidate_source_file") or "unknown"
