@@ -623,3 +623,45 @@ Endpoint robustness note: the local multiplexer sidecar runs can die if a single
 The repeat10/new-checkpoint target set now has confirmed audited gains on `N14`, `N24`, `C39`, `N39`, and `N1`. The strongest new continuation update is `N1`: generic repairseed produced a valid route that a fixed high-precision verifier ensemble can also promote.
 
 The most reliable pattern is prompt-family diversity plus candidate-level audit, with repairseed as the most promising next-stage mechanism when a near-solve has a localized flaw. The biggest caution is verifier reliability: `G25`, `proofbench133_030`, and `proofbench133_109` show that normal verifier ratios can be confidently wrong on recurring proof-pattern failures. Fixed promotion should combine verifier unanimity with narrow static blockers for known false-positive proof families.
+
+
+## Continuation: Fixed Harness And Remaining Problems, 2026-06-11 00:45 PDT
+
+Current confirmed repeat10/new-checkpoint solves remain `N14`, `N24`, `C39`, `N39`, and `N1`. No new valid solve has been confirmed in this continuation window.
+
+New fixed-harness artifacts added or staged:
+
+```text
+recipes/aceproof-tts/pipeline/evaluate_fixed_promotion.py
+recipes/aceproof-tts/prompts/proof_generation_self_contained_repair.yaml
+recipes/aceproof-tts/dataset/repeat10-028-c50-legacy-attempt-memory-20260611.jsonl
+recipes/aceproof-tts/dataset/repeat10-newckpt-current-unsolved2-028-c50-20260611.jsonl
+recipes/aceproof-tts/scripts/launch_repeat10_genonly_v5_109_030_verifiers_tmux.sh
+recipes/aceproof-tts/scripts/launch_repeat10_legacy_028_c50_verifiers_tmux.sh
+recipes/aceproof-tts/scripts/launch_repeat10_current2_028_c50_focus_tmux.sh
+recipes/aceproof-tts/scripts/launch_repeat10_028_c50_attempt_memory_repair_tmux.sh
+```
+
+`evaluate_fixed_promotion.py` is the executable version of the high-precision promotion rule: static filter must pass, every required verifier family must have enough completed valid rows, and every required verifier score must be exactly `1.0`. Missing sidecar rows, incomplete rows, malformed scores, `0`, or `0.5` all reject. A dry run on the incomplete live v5 sidecars correctly promoted zero candidates.
+
+The deterministic static filter was tightened for `proofbench133_030`: any proof that bases Shayan's strategy on the recurring “Shayan can/should always play `k=1`” family is now no-promote unless a separate adversarial verifier process is explicitly used. This catches all current repairseed `030` rows seen so far and does not reject the previously confirmed non-`030` solutions in the local confirmation files.
+
+Candidate/audit status by remaining problem:
+
+- `proofbench133_109`: current live filtered bundle contains 26 non-static-rejected candidates, mostly repairseed variants. Prior high-value Gaussian-cube candidates were invalid due missing unit/sector/sign branches. A v5 verifier sidecar over 25 earlier `109` survivors plus 4 `030` rows was launched, but as of this note it has zero completed verifier rows because the multiplexer is returning nginx/OpenAI-compatible `500` responses.
+- `proofbench133_030`: live repairseed now has several perimeter/adjacency candidates, all in the same always-`k=1` strategy family. Earlier independent audits found seeds 7 and 86 invalid; the strengthened static gate rejects the current family for promotion.
+- `proofbench133_028`: four legacy candidates were independently audited. None is valid as written; three have a plausible induction skeleton but fail to prove the base cases such as `f(1)=1` and `f(2)=2` fully. The staged attempt-memory repair input uses only model-generated candidates plus normal verifier comments, not the independent audit notes.
+- `C50`: four legacy candidates were independently audited. None is a standalone proof; the best ones reduce the problem to a black-box additive-combinatorics inequality of the form `|A+A| >= c |A-A|^{3/5}|A|^{2/5}` but do not prove or adequately justify the lemma. The self-contained repair prompt asks the model to prove any invoked black-box lemma or mark the proof incomplete.
+- `G25`: current rows remain a false-positive hotspot and are filtered by the Pitot/opposite-side-sum static gate. The one v6 filtered survivor is a decomposition subproblem algebra row, not a final proof candidate.
+
+Active local multiplexer sessions launched in this continuation:
+
+```text
+repeat10-genonly-v5-109-030-verifiers
+repeat10-legacy-028-c50-verifiers
+repeat10-current2-028-c50-focus
+```
+
+They were launched at low concurrency with transient-error retries. At the latest health check, the multiplexer reported all worker slots busy, zero pending jobs, and roughly 22.9k jobs in flight; new focused runs were still at zero completed rows and retrying transient `500` errors. The redundant `repeat10-current3-slow-focus-retry2` session was stopped after many synchronized retries and zero rows, because its scope is covered by the smaller targeted sessions above.
+
+Next queued experiment once the endpoint accepts work again: launch `repeat10-028-c50-attempt-memory-repair` from `launch_repeat10_028_c50_attempt_memory_repair_tmux.sh`, using `proof_generation_self_contained_repair.yaml` over `repeat10-028-c50-legacy-attempt-memory-20260611.jsonl`. This is intended to test a fair fixed-harness repair loop: previous model attempts plus model verifier comments, with no independent audit text fed back to the model.

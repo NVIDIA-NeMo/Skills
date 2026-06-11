@@ -60,7 +60,7 @@ GAME_SHAYAN_ALWAYS_K1_TERMS = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 GAME_BAY_FILL_COVERAGE_TERMS = re.compile(
-    r"(fill(s|ing)?\s+the\s+(bay|missing\s+corner)|bay[- ]filling|Shayan.{0,160}(fill|fills|play).{0,80}(bay|missing\s+corner))",
+    r"(fill(s|ing)?\s+the\s+(bay|missing\s+corner)|bay[- ]filling|Shayan.{0,160}(fill|fills|filled|filling).{0,80}(bay|missing\s+corner))",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -102,15 +102,16 @@ def gaussian_cube_sign_branch_reasons(proof: str, problem_idx: str | None = None
 
 
 def game_bay_response_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
-    """Detect the most obvious bay-strategy false positive for the grid game."""
+    """Detect obvious k=1/bay-strategy false positives for the grid game."""
 
     if problem_idx != "proofbench133_030":
         return []
-    if not (GAME_BAY_TERMS.search(proof) and GAME_SHAYAN_ALWAYS_K1_TERMS.search(proof)):
-        return []
-    if GAME_BAY_FILL_COVERAGE_TERMS.search(proof):
-        return []
-    return ["asserts Shayan always plays k=1 in a bay/L-shape strategy without handling bay-filling moves"]
+    has_always_k1 = bool(GAME_SHAYAN_ALWAYS_K1_TERMS.search(proof))
+    if has_always_k1:
+        return [
+            "bases the grid-game strategy on Shayan can/should always play k=1; this recurring family needs adversarial bay-filling verification before promotion"
+        ]
+    return []
 
 
 def annotate_row(row: dict[str, Any]) -> dict[str, Any]:
