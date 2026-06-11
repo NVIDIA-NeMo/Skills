@@ -715,3 +715,26 @@ recipes/aceproof-tts/prompts/proof_verification_self_contained_theorem_use.yaml
 ```
 
 This gate requires every nontrivial named theorem, cited result, black-box inequality, classification, or proof-sketch dependency to be fully proved in the candidate. Routine elementary facts remain allowed. A partial run of this gate immediately scored the promoted `C50` candidate as `0.0`, explicitly rejecting the unproved Garaev lemma and crossing-number sketch. Re-running fixed promotion with this self-contained family included reduced the partial legacy `028/C50` promotion count from `1/8` to `0/8`.
+
+## Continuation: Endpoint Working But Loaded, 2026-06-11 10:50 PDT
+
+Live endpoint status improved compared with the overnight nginx `500` failure mode. At `2026-06-11 10:37 PDT`, the `ultra` queue reported `ok=True`, `39/39` workers alive, `8568/9984` slots busy, `11` pending jobs, and `7976` in-flight jobs. Recent local logs had no fresh nginx `500` or LiteLLM endpoint-error signatures. A tiny direct chat-completions probe did not return an immediate `500`; it timed out after 60 seconds with no bytes. The practical interpretation is that the endpoint is working and processing queued work, but remains heavily loaded and not responsive to short synchronous probes.
+
+The relaunched verifier streams are producing rows again. On the attempt-memory `028/C50` snapshot, all returned verifier rows are still hard rejections:
+
+```text
+snapshot78 strict/theorem/congruence/self-contained: 30/29/24/39 returned rows, all score 0
+legacy 028/C50 self-contained theorem-use: 41 returned rows, all score 0
+```
+
+The v5 `109/030` fixed-promotion rerun with the latest strict/theorem/congruence/Gaussian-sign sidecars still promotes `0/29` candidates, even with `min_scores_per_family=1`. Some `proofbench133_109` rows receive Gaussian-sign `1.0` scores, but every such row is blocked by non-1.0 scores from strict, theorem, and/or congruence verifier families.
+
+A new current2 high-self-eval `proofbench133_028` candidate exposed another generic verifier false positive. The candidate specializes the original condition at `k=2` as if the right-hand side were `x^2-y^2` before proving `f(2)=2`; this is circular because the true specialized condition is `f(x)+f(y) | x^{f(2)}-y^{f(2)}`. The generic strict verifier scored this candidate `1.0` and repeated the invalid specialization as correct.
+
+A targeted substitution-integrity verifier prompt was added to catch this family:
+
+```text
+recipes/aceproof-tts/prompts/proof_verification_substitution_integrity.yaml
+```
+
+This verifier explicitly lists each specialization of the original condition and rejects proofs that replace unknown quantities such as `f(2)`, `f(3)`, or `f(n)` by their intended final values before those values are proved. The first returned substitution-integrity row already rejected a related `028` candidate for invalid divisibility manipulation; the specific strict-verifier false-positive row is still pending in that verifier stream.

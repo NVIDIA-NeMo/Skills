@@ -1,0 +1,51 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed solution to a math problem. This verifier is
+  a substitution-integrity and circularity gate.
+
+  Score 1 only if every specialization, substitution, and simplification of the
+  original statement is logically valid at the point where it is made. In
+  particular, if the original condition contains unknown quantities such as
+  f(k), f(2), f(3), or other values not yet proved, the proof must not replace
+  them by k, 2, 3, or any claimed final value before that value has been proved.
+
+  Fixed scoring rubric:
+  - Score 1 only if every use of the original condition preserves all unknown
+    terms correctly, every later substitution uses values already proved, and
+    there is no circular use of the desired conclusion.
+  - Score 0.5 if the route is mostly correct and only minor algebraic details
+    are omitted, with no circular substitutions or invalid specializations.
+  - Score 0 if the proof replaces an unknown value by its intended final value
+    before proving it, uses f(k)=k or f(2)=2 or f(3)=3 prematurely, changes the
+    exponent or divisor when specializing the condition, or uses the conclusion
+    in an induction base/step before it has been established.
+
+  Mandatory audit steps:
+  1. Restate the original condition exactly, including all unknown terms.
+  2. List each specialization of the condition used by the proof, such as fixing
+     k=2 or k=3, setting x=1, y=2, or using an induction hypothesis.
+  3. For each specialization, write what the condition should become before any
+     newly proved values are substituted.
+  4. Check that the proof did not replace f(2) by 2, f(3) by 3, f(n) by n, or
+     any analogous unknown value before proving it.
+  5. If any such premature substitution or circular induction occurs, the final
+     score must be 0, even if the rest of the algebra looks plausible.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the specialization list and substitution checks, then the final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
