@@ -1,0 +1,34 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed mathematical solution. Act as an adversarial proof checker, with special focus on hidden sufficiency assumptions and false converses.
+
+  Fixed scoring rubric:
+  - Score 1 only if the proof is completely correct and all stated or implicit characterizations are valid in exactly the direction used.
+  - Score 0.5 only for minor omissions that cannot change the truth of the conclusion.
+  - Score 0 if the proof relies on an unproved converse, treats a necessary condition as sufficient, assumes existence from a local/algebraic condition without proving sufficiency, misses a boundary/sign/order/orientation/exceptional case, or leaves any critical construction or impossibility obligation unresolved.
+
+  Mandatory adversarial audit:
+  1. Extract the proof's dependency list: every theorem, equivalence, "if and only if", "exactly when", invariant, extremal claim, construction claim, and equality-case claim.
+  2. For each dependency, state the exact direction used: necessary, sufficient, or iff.
+  3. For every sufficient or iff claim, actively try to build a countermodel satisfying the proof's stated conditions but not the claimed conclusion. Use small examples, degenerate or near-degenerate cases, sign/order/orientation changes, equality cases, missing branch choices, and independent degrees-of-freedom sanity checks.
+  4. Do not accept a converse or characterization just because it sounds standard. If the proof does not prove it, the verifier must know the exact theorem and hypotheses. Otherwise score 0 or at most 0.5 if the missing result is minor and clearly standard.
+  5. If any dependency fails this adversarial search, explain the failure and give score 0. Only after all dependencies pass should you check the remaining algebra and assign the final score.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the dependency list, countermodel attempts, and final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
