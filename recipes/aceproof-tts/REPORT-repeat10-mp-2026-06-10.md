@@ -270,6 +270,23 @@ The current normal verifier repeatedly accepts invalid Pitot-converse arguments.
 
 ## Artifacts
 
+Cluster copy, with files/directories set to `a+rX`:
+
+```text
+/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/igitman/aceproof-share/20260610-aceproof-tts/repeat10/
+```
+
+This path is under the `llmservice_nemo_reasoning` project tree. It is readable
+to users who can traverse that project directory, i.e. `llmservice` project
+users on AWS-DFW.
+
+The cluster copy includes the full local interim bundle that was too large to
+commit to Git:
+
+```text
+/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/igitman/aceproof-share/20260610-aceproof-tts/repeat10/outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_interim.jsonl
+```
+
 Confirmed solves:
 
 ```text
