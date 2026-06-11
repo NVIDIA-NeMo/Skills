@@ -3,13 +3,13 @@ set -euo pipefail
 
 ROOT=/home/igitman/workspace/NeMo-Skills-aceproof-mp
 PY=/home/igitman/workspace/NeMo-Skills/.venv/bin/python
-SESSION="${SESSION:-repeat10-current3-slow-focus}"
-INPUT=recipes/aceproof-tts/dataset/repeat10-newckpt-current-unsolved3-slow-20260610.jsonl
-OUT_ROOT="$ROOT/outputs/repeat10-ultra-mp-current3-slow-focus"
-LOG_ROOT="$ROOT/outputs/repeat10-ultra-mp-current3-slow-focus-launch-logs"
-N_PARALLEL="${N_PARALLEL:-128}"
+SESSION="${SESSION:-repeat10-fixedreject-repair-109-030}"
+INPUT=recipes/aceproof-tts/dataset/repeat10-fixedreject-repair-109-030-20260611.jsonl
+OUT_ROOT="$ROOT/outputs/repeat10-fixedreject-repair-109-030"
+LOG_ROOT="$ROOT/outputs/repeat10-fixedreject-repair-109-030-launch-logs"
+N_PARALLEL="${N_PARALLEL:-96}"
 TEMPERATURE="${TEMPERATURE:-1.0}"
-MAX_CONCURRENT="${MAX_CONCURRENT:-384}"
+MAX_CONCURRENT="${MAX_CONCURRENT:-96}"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   echo "tmux session already exists: $SESSION"
@@ -20,12 +20,10 @@ fi
 mkdir -p "$OUT_ROOT" "$LOG_ROOT"
 
 arms=(
-  "proofonly:recipes/aceproof-tts/prompts/proof_generation_proof_only.yaml"
-  "obligation:recipes/aceproof-tts/prompts/proof_generation_obligation_certificate.yaml"
-  "invariantextremal:recipes/aceproof-tts/prompts/proof_generation_invariant_extremal.yaml"
-  "dualbounds:recipes/aceproof-tts/prompts/proof_generation_dual_bounds.yaml"
+  "repairseed:recipes/aceproof-tts/prompts/proof_generation_repair_seed.yaml"
   "branch:recipes/aceproof-tts/prompts/proof_generation_branch_exhaustive.yaml"
-  "decompose:recipes/aceproof-tts/prompts/proof_generation_decompose.yaml"
+  "obligation:recipes/aceproof-tts/prompts/proof_generation_obligation_certificate.yaml"
+  "gapresistant:recipes/aceproof-tts/prompts/proof_generation_gap_resistant.yaml"
 )
 
 make_cmd() {
@@ -38,12 +36,12 @@ cd '$ROOT'
 export OPENAI_API_KEY="\${OPENAI_API_KEY:-dummy}"
 export NEMO_SKILLS_OPENAI_AIOHTTP="\${NEMO_SKILLS_OPENAI_AIOHTTP:-1}"
 export NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT="\${NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT:-65536}"
+export NEMO_SKILLS_TRANSIENT_ERROR_RETRIES="\${NEMO_SKILLS_TRANSIENT_ERROR_RETRIES:-24}"
 export PYTHONUNBUFFERED=1
-export NEMO_SKILLS_TRANSIENT_ERROR_RETRIES="${NEMO_SKILLS_TRANSIENT_ERROR_RETRIES:-24}"
 export PATH='$(dirname "$PY")':\$PATH
 mkdir -p '$out' '$LOG_ROOT'
 '$PY' recipes/aceproof-tts/pipeline/prepare_round1.py --input_paths '$INPUT' --output_dir '$out' --n_parallel_proof_gen '$N_PARALLEL' --prompt_config_path '$prompt' --interleave_rows
-'$PY' recipes/aceproof-tts/pipeline/run_proof_gen_sidecar.py --input_file '$out/rounds/R1/proof_gen/input.jsonl' --output_dir '$out/rounds/R1/proof_gen' --prompt_config_path '$prompt' --expname repeat10_current3_slow_${arm}_temp10 --temperature '$TEMPERATURE' --max_concurrent_requests '$MAX_CONCURRENT' 2>&1 | tee '$log'
+'$PY' recipes/aceproof-tts/pipeline/run_proof_gen_sidecar.py --input_file '$out/rounds/R1/proof_gen/input.jsonl' --output_dir '$out/rounds/R1/proof_gen' --prompt_config_path '$prompt' --expname repeat10_fixedreject_${arm}_temp10 --temperature '$TEMPERATURE' --max_concurrent_requests '$MAX_CONCURRENT' 2>&1 | tee '$log'
 echo '[done]' \$?
 sleep infinity
 CMD

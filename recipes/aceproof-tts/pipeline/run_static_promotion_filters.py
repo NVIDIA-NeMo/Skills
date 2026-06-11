@@ -34,6 +34,36 @@ IFF_OR_SUFFICIENCY_TERMS = re.compile(
 )
 PITOT_TERMS = re.compile(r"\bPitot'?s?\b", re.IGNORECASE)
 
+GAUSSIAN_CUBE_TERMS = re.compile(
+    r"(Gaussian|\\mathbb\{Z\}\[i\]|Z\[i\]|a\^2\s*\+\s*i\s*b\^2|a\^2\+ib\^2)",
+    re.IGNORECASE,
+)
+CUBE_FACTOR_TERMS = re.compile(
+    r"(\([a-z]\s*\+\s*[a-z]i\)\^3|\([a-z]\+i[a-z]\)\^3|unit\s+times\s+a\s+cube|associate\s+to\s+a\s+cube)",
+    re.IGNORECASE,
+)
+SIGNED_REAL_FACTOR_TERMS = re.compile(
+    r"([a-z]\^2\s*-\s*3[a-z]\^2|3[a-z]\^2\s*-\s*[a-z]\^2|c\^2-3d\^2|3c\^2-d\^2|u\^2-3v\^2|3u\^2-v\^2)",
+    re.IGNORECASE,
+)
+SIGNED_BRANCH_COVERAGE_TERMS = re.compile(
+    r"(both\s+negative|negative\s+branches?|sign\s+branches?|branch\s+table|"
+    r"c\^2\s*-\s*3d\^2\s*<\s*0|3c\^2\s*-\s*d\^2\s*<\s*0|"
+    r"u\^2\s*-\s*3v\^2\s*<\s*0|3u\^2\s*-\s*v\^2\s*<\s*0)",
+    re.IGNORECASE,
+)
+
+GAME_BAY_TERMS = re.compile(r"\b(bay|concave|L[- ]shape|missing corner|2x2|2\\times\\s*2)\b", re.IGNORECASE)
+GAME_SHAYAN_ALWAYS_K1_TERMS = re.compile(
+    r"(Shayan.{0,120}(always|will always|can always|must)\s+(play|choose).{0,80}k\s*=\s*1|"
+    r"Shayan'?s\s+moves?.{0,120}(all|always).{0,80}k\s*=\s*1)",
+    re.IGNORECASE | re.DOTALL,
+)
+GAME_BAY_FILL_COVERAGE_TERMS = re.compile(
+    r"(fill(s|ing)?\s+the\s+(bay|missing\s+corner)|bay[- ]filling|Shayan.{0,160}(fill|fills|play).{0,80}(bay|missing\s+corner))",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 def pitot_false_converse_reasons(proof: str) -> list[str]:
     """Detect use of Pitot side-sum equality as sufficient for tangency."""
@@ -55,9 +85,41 @@ def pitot_false_converse_reasons(proof: str) -> list[str]:
     return reasons
 
 
+def gaussian_cube_sign_branch_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
+    """Detect Gaussian-cube arguments that omit signed real-factor branches."""
+
+    if problem_idx != "proofbench133_109":
+        return []
+    if not (GAUSSIAN_CUBE_TERMS.search(proof) and CUBE_FACTOR_TERMS.search(proof)):
+        return []
+    if not SIGNED_REAL_FACTOR_TERMS.search(proof):
+        return []
+    if SIGNED_BRANCH_COVERAGE_TERMS.search(proof):
+        return []
+    return [
+        "uses a Gaussian cube factorization and square real-factor equations without an explicit sign/negative-branch analysis"
+    ]
+
+
+def game_bay_response_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
+    """Detect the most obvious bay-strategy false positive for the grid game."""
+
+    if problem_idx != "proofbench133_030":
+        return []
+    if not (GAME_BAY_TERMS.search(proof) and GAME_SHAYAN_ALWAYS_K1_TERMS.search(proof)):
+        return []
+    if GAME_BAY_FILL_COVERAGE_TERMS.search(proof):
+        return []
+    return ["asserts Shayan always plays k=1 in a bay/L-shape strategy without handling bay-filling moves"]
+
+
 def annotate_row(row: dict[str, Any]) -> dict[str, Any]:
-    proof = str(row.get("proof") or row.get("generation") or "")
-    reasons = pitot_false_converse_reasons(proof)
+    proof = str(row.get("proof") or row.get("generation") or row.get("candidate_proof") or "")
+    problem_idx = row.get("problem_idx")
+    reasons = []
+    reasons.extend(pitot_false_converse_reasons(proof))
+    reasons.extend(gaussian_cube_sign_branch_reasons(proof, problem_idx=problem_idx))
+    reasons.extend(game_bay_response_reasons(proof, problem_idx=problem_idx))
     out = dict(row)
     out["static_promotion_reject"] = bool(reasons)
     out["static_promotion_reject_reasons"] = reasons

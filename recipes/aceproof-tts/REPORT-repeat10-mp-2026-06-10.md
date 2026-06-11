@@ -592,10 +592,34 @@ proofbench133_040, proofbench133_075, proofbench133_109,
 proofbench133_130
 ```
 
-This broad run is the source of the “previously successful ideas” that motivated the smaller repeat10 multiplexer rerun. Compared with the broad open53 result, the repeat10 multiplexer/new-checkpoint branch is much narrower: it tries to reproduce or transfer success on only 10 selected rows through the cloud endpoint and now has confirmed audited repeat10 gains on `N14`, `N24`, `C39`, and `N39`.
+This broad run is the source of the “previously successful ideas” that motivated the smaller repeat10 multiplexer rerun. Compared with the broad open53 result, the repeat10 multiplexer/new-checkpoint branch is much narrower: it tries to reproduce or transfer success on only 10 selected rows through the cloud endpoint and now has confirmed audited repeat10 gains on `N14`, `N24`, `C39`, `N39`, and `N1`.
+
+## Fixed-Harness Promotion Update
+
+The continuation work after the initial report tested whether manual candidate selection could be replaced by fixed, reproducible promotion gates.
+
+Recommended high-precision rule:
+
+1. Require a nonempty, complete proof row.
+2. Apply `recipes/aceproof-tts/pipeline/run_static_promotion_filters.py`; any `static_promotion_reject=true` is a hard no-promote.
+3. Require completed required verifier sidecars and unanimity: any `0`, `0.5`, malformed output, missing required family, or incomplete sidecar means no promote.
+4. Use problem-family gates:
+   - normal strict/theorem/congruence verifier families for number-theory/divisibility proofs;
+   - Pitot/false-converse static gate plus false-converse verifier for G25-style geometry proofs;
+   - Gaussian cube sign/sector static gate plus Gaussian sign verifier for `proofbench133_109`;
+   - theorem/countermodel verifier unanimity for `proofbench133_030` game-invariant proofs.
+
+Observed fit on current artifacts:
+
+- `N1:89:repairseed/rounds:ebcd6c24a6fc47cc` passes static filtering and has unanimous sidecar support across the located strict/theorem/congruence/Gaussian-style rows. This is the strongest fixed-harness promotion success so far.
+- Current G25 candidate families are rejected by the Pitot/opposite-side-sum static gate even when generic verifiers score them highly.
+- Top `proofbench133_109` candidates are rejected by the Gaussian cube sign/sector gate; independent audit confirmed the fatal gap is exactly missing unit/sector/sign branches after the Gaussian cube reduction.
+- Top older `proofbench133_030` candidates fail adversarial audit because they do not cover Shayan filling the bay after Ali creates an L-shape. The newer repairseed candidates `proofbench133_030:86:repairseed:0b1569a1cdd4ea76` and `proofbench133_030:7:repairseed:b179525779e35400` are also invalid; seed 7 is closer but still only proves bay persistence when Shayan plays `k=1`, not when Shayan fills the initial bay with `k=2`. A narrow static gate now blocks the clearest “Shayan always plays k=1” bay-strategy false pattern, but promotion should still require adversarial verifier unanimity.
+
+Endpoint robustness note: the local multiplexer sidecar runs can die if a single early request receives an nginx/OpenAI-compatible `500`. For the active local run I patched the staged NeMo-Skills `BaseModel.generate_async` path to retry transient OpenAI-compatible 429/500/502/503/504/connection/timeout errors with exponential backoff, and relaunched `repeat10-current3-slow-focus-retry2` at lower concurrency. This is an operational robustness change, not a prompt or selection change.
 
 ## Bottom Line
 
-The completed repeat10/new-checkpoint target set has confirmed audited gains on `N14`, `N24`, `C39`, and `N39`. The strongest new update since the incomplete report is `N39`: generic repairseed, not just explicit audit-feedback, produced two valid proofs.
+The repeat10/new-checkpoint target set now has confirmed audited gains on `N14`, `N24`, `C39`, `N39`, and `N1`. The strongest new continuation update is `N1`: generic repairseed produced a valid route that a fixed high-precision verifier ensemble can also promote.
 
-The most reliable pattern is prompt-family diversity plus candidate-level audit, with repairseed as the most promising next-stage mechanism when a near-solve has a localized flaw. The biggest caution is verifier reliability: `G25`, `proofbench133_030`, and `proofbench133_109` show that normal verifier ratios can be confidently wrong on recurring proof-pattern failures, while some real solves have mixed or weak verifier support.
+The most reliable pattern is prompt-family diversity plus candidate-level audit, with repairseed as the most promising next-stage mechanism when a near-solve has a localized flaw. The biggest caution is verifier reliability: `G25`, `proofbench133_030`, and `proofbench133_109` show that normal verifier ratios can be confidently wrong on recurring proof-pattern failures. Fixed promotion should combine verifier unanimity with narrow static blockers for known false-positive proof families.
