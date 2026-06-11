@@ -1,6 +1,6 @@
 # Repeat10 Multiplexer/New-Checkpoint Report
 
-Status as of 2026-06-10 16:20 PDT. This report summarizes the local repeat10 workstream that reruns previously successful AceProof harness variants against the `ultra` cloud multiplexer endpoint/new checkpoint, with no explicit token cap in requests.
+Status as of 2026-06-10 21:35 PDT. This report summarizes the completed local repeat10 workstream that reran previously successful AceProof harness variants against the `ultra` cloud multiplexer endpoint/new checkpoint, with no explicit token cap in requests.
 
 ## Executive Summary
 
@@ -8,15 +8,18 @@ We targeted 10 rows that the new checkpoint still needed help with under the ref
 
 - `C39`, `N1`, `N14`, `N24`, `N39`, `proofbench133_028`, `proofbench133_109`, `C50`, `proofbench133_030`, `G25`.
 
-Confirmed audited solves from this repeat10 workstream so far:
+Confirmed audited solves from this repeat10 workstream:
 
 | Problem | Source | Method / arm | Verifier signal | Final status |
 | --- | --- | --- | --- | --- |
-| `N14` | `gems-remarkable` | `temp10/formalsanity`, R1 direct generation | `1/1` normal verifier | Confirmed valid by audit |
+| `N14` | `gems-remarkable` | `temp10/formalsanity`, R1 direct generation | `1/1`, mean `1.0` | Confirmed valid by audit |
 | `N24` | `gems-remarkable` | `temp08/proofonly`, R1 direct generation | no verifier rows for the valid candidate | Confirmed valid out-of-band by audit |
-| `C39` | `gems-remarkable` | `temp10/proofonly`, reduced remaining-8 rerun | `1/4` full verifier votes, mean `0.625` | Confirmed valid by audit, assuming Vosper equality theorem is allowed |
+| `C39` | `gems-remarkable` | `temp10/proofonly`, reduced remaining-8 rerun | original confirmed row `1/4`, mean `0.625`; later C39 candidates reached `11/12` | Confirmed valid by audit, assuming Vosper equality theorem is allowed |
+| `N39` | `gems-remarkable` | N39 generic repair-seed stream, `temp08/repairseed` seed 9 and `temp10/repairseed` seed 51 | seed 9: `2/4`, mean `0.75`; seed 51: `3/4`, mean `0.875` | Confirmed valid by audit |
 
-The most important operational finding is that final pipeline promotion alone is not reliable enough here. The workstream found real solves by inspecting candidate bundles and using independent/manual audits, while the normal verifier also strongly promoted several invalid families.
+The most important result from the completed tail is that `N39` is now a repeat10 success. It was first solved by explicit audit-feedback variants, but more importantly it was also solved by the more generic repair-seed stream that seeded from the previous candidate plus a coarse audit note, without the explicit targeted modular fixes used in the later audit-feedback prompt.
+
+The most important operational finding is unchanged: final pipeline promotion alone is not reliable enough here. Real solves were found by inspecting candidate bundles and using independent/manual audits, while the normal verifier also strongly promoted several invalid families.
 
 ## Inputs And Harness
 
@@ -38,6 +41,18 @@ Prepared reduced input after also excluding confirmed `C39`:
 recipes/aceproof-tts/dataset/repeat10-newckpt-remaining7-after-c39-20260610.jsonl
 ```
 
+N39 repair-seed input:
+
+```text
+recipes/aceproof-tts/dataset/repeat10-n39-51-repairseed-20260610.jsonl
+```
+
+N39 explicit audit-feedback input:
+
+```text
+recipes/aceproof-tts/dataset/repeat10-n39-51-auditfeedback-20260610.jsonl
+```
+
 Endpoint/model:
 
 ```text
@@ -54,11 +69,15 @@ The finalized first ablation used 14 arms:
 - Prompt families: `case`, `claimcert`, `compactaudit`, `formalsanity`, `lemma`, `proofonly`, `routecompare`.
 - R1 only: generation plus verification. Refinement settings exist in configs but were not exercised in these R1-only runs.
 
-The second reduced rerun used only the two prompt families that looked most productive or least noisy in the first ablation:
+The reduced remaining-8 rerun used only the two prompt families that looked most productive or least noisy in the first ablation:
 
 - `proofonly`
 - `formalsanity`
 
+The N39 follow-up used two repair-style prompt streams:
+
+- `repairseed`: previous candidate proof plus a coarse audit note about likely gaps, with instructions to reprove everything from the original problem.
+- `repairfeedback`: a more explicit problem-specific audit-feedback prompt naming the recurring base-case failures and missing subcases.
 
 ## Method And Prompt Details
 
@@ -76,9 +95,32 @@ R1 ablation structure:
   -> candidate bundle extraction and out-of-band audit
 ```
 
-The seven prompt families were `case`, `claimcert`, `compactaudit`, `formalsanity`, `lemma`, `proofonly`, and `routecompare`. For `temp08`, generation/refinement temperature was `0.8` and verifier temperature was `1.0`. For `temp10`, generation/refinement/verifier temperature was `1.0`. Since these were R1-only runs, refinement was configured but not exercised.
+Reduced remaining-8 rerun structure:
+
+```text
+8 remaining target problem rows
+  x 2 generation temperatures: temp08 and temp10
+  x 2 prompt families: proofonly and formalsanity
+  x 64 independent candidate attempts per problem/arm
+  -> normal verifier prompt on completed candidates
+  -> streaming early-stop verifier policy
+  -> candidate bundle extraction and out-of-band audit
+```
+
+N39 repair-stream structure:
+
+```text
+1 N39 row
+  x 2 generation temperatures: temp08 and temp10
+  x 64 candidate attempts per arm
+  x repairseed or repairfeedback prompt
+  -> normal verifier prompt on completed candidates
+  -> out-of-band audit of high-value candidates
+```
 
 Common mux config values were `n_parallel_proof_gen: 64`, `n_verification_per_proof: 16`, solved threshold `0.99999`, `top_p: 0.95`, request timeout `14400`, and `max_rounds: 1`. The streaming verifier used `min_verifications_per_proof: 4`, `early_stop_only_if_score_lt_1: true`, and `cancel_remaining: true`; this allowed obviously non-perfect candidates to stop after enough evidence while still preserving candidate rows for later audit.
+
+For `temp08`, generation/refinement temperature was `0.8` and verifier temperature was `1.0`. For `temp10`, generation/refinement/verifier temperature was `1.0`. The small sample does not support a general conclusion that `0.8` or `1.0` is better.
 
 Prompt-family contracts:
 
@@ -91,20 +133,9 @@ Prompt-family contracts:
 | `compactaudit` | `proof_generation_compact_audit.yaml` | Asks for one direct route plus detailed self-audit of hidden gaps, with explicit instructions to remove speculative alternatives and report unresolved issues faithfully. |
 | `lemma` | `proof_generation_lemma_first.yaml` | Starts from small intermediate lemmas, proves them completely, and then assembles the final solution; the self-evaluation audits each lemma and assembly step. |
 | `routecompare` | `proof_generation_route_compare.yaml` | Internally compares multiple routes, presents only the selected route, and adds `## Route check` explaining why the critical steps are justified. |
+| `repairseed` | `proof_generation_repair_seed.yaml` | Treats a prior candidate and audit note as non-authoritative scratch work. Reuses ideas only after reproving all lemmas/cases, and explicitly checks finite cases, theorem exceptions, divisibility, sign/order choices, and induction hypotheses. Produced confirmed `N39` candidates. |
 
 Normal verification used `proof_verification.yaml`: the same 0/0.5/1 proof-quality rubric as the baseline harness, requiring a detailed evaluation followed by `\boxed{...}`. The repeat10 workstream did not use strict/case-check verifier prompts for automatic promotion; independent/manual audits were used out-of-band to decide which high- or promising-low-verifier candidates were real solves.
-
-Repair-seed structure:
-
-```text
-repeat10-n39-51-repairseed-20260610.jsonl
-  -> original N39 problem
-  -> previous candidate proof N39_51
-  -> audit note identifying the likely gap
-  -> proof_generation_repair_seed.yaml
-```
-
-The repair-seed prompt tells the model to treat the candidate and audit notes as non-authoritative scratch work, prove the original problem rather than a meta-claim, reuse candidate ideas only after reproving all needed lemmas/cases, and explicitly handle finite checks, divisibility cases, sign/order choices, theorem hypotheses, and exceptional cases for named tools such as Bertrand, Zsigmondy, Catalan/Mihailescu, and LTE. It outputs `## Solution` and `## Sanity check` only. This was staged as a targeted repair method, not as evidence of a confirmed solve in the current report.
 
 ## Confirmed Solves
 
@@ -190,32 +221,149 @@ Candidate metadata:
 - arm: `temp10/proofonly`
 - prompt family: `proof_generation_proof_only.yaml`
 - temperature family: `temp10`
-- normal verifier scores: `[1.0, 0.5, 0.5, 0.5]`
-- normal verifier mean: `0.625`
+- normal verifier scores on the confirmed row: `[1.0, 0.5, 0.5, 0.5]`
+- normal verifier mean on the confirmed row: `0.625`
+- later stronger C39 candidates in the completed remaining8 run: top `C39_51`, `11/12` verifier ones, mean `0.9167`; `C39_8`, `9/10`, mean `0.9`
 - audit status: `valid`
 
 What worked:
 
-The successful proof again came from `proofonly`, but at temperature `1.0`. It assumes no rainbow solution, derives pairwise sumset containments such as `R+B subset R union B union {0}`, adjoins zero to color classes, and applies a Vosper/equality inverse-Cauchy-Davenport classification to force arithmetic-progression structure. It then uses the resulting interval/one-sided structure and singleton color cases to reach a contradiction.
+The successful proof came from `proofonly` at temperature `1.0`. It assumes no rainbow solution, derives pairwise sumset containments such as `R+B subset R union B union {0}`, adjoins zero to color classes, and applies a Vosper/equality inverse-Cauchy-Davenport classification to force arithmetic-progression structure. It then uses the resulting interval/one-sided structure and singleton color cases to reach a contradiction.
 
 Notes:
 
-Audit marked the proof valid assuming the stated Vosper equality theorem is allowed. This candidate would not have been promoted by the normal `meanscore >= 0.99999` pipeline threshold. It was found by ranking intermediate candidates and auditing a low-mean but structurally promising proof.
+Audit marked the proof valid assuming the stated Vosper equality theorem is allowed. The first confirmed candidate would not have been promoted by the normal `meanscore >= 0.99999` pipeline threshold. It was found by ranking intermediate candidates and auditing a low-mean but structurally promising proof.
+
+### `N39`
+
+Problem:
+
+```text
+Let (a_n)_{n>=1} be a sequence of positive integers such that for all m,n>=1, all prime factors of a_m+a_n are among the prime factors of m+n. Prove that a_n=n for all n.
+```
+
+Primary artifact:
+
+```text
+outputs/repeat10-ultra-mp-n39repairseed/confirmed_solutions_so_far.jsonl
+```
+
+Generic repairseed confirmed candidates:
+
+| Proof id | Arm | Verifier scores | Audit status |
+| --- | --- | --- | --- |
+| `N39_9` | `temp08/repairseed` | `[1.0, 1.0, 0.5, 0.5]`, mean `0.75` | valid |
+| `N39_51` | `temp10/repairseed` | `[1.0, 0.5, 1.0, 1.0]`, mean `0.875` | valid |
+
+What worked:
+
+The generic `repairseed` stream used a previous promising `N39_51` candidate plus a coarse audit note, but did not provide the exact explicit modular repairs later used in `repairfeedback`. It instructed the model to treat the seed as non-authoritative scratch work and to reprove all steps from the original problem.
+
+The successful proof family establishes the base values and then runs a Bertrand/Zsigmondy induction. The key repairs compared with earlier invalid candidates were:
+
+- handling `(a_1,a_2)=(8,1)` rigorously;
+- splitting `B=1`, `B=2`, and `B>=3` for the `5^B-1` branch;
+- using primitive prime divisors of `5^B-1` correctly to rule out extra prime factors beyond `2,3`;
+- eliminating the `a_3=24` branch at `n=4`, including the `a_4=1` case;
+- checking Zsigmondy exceptions and auxiliary induction indices.
+
+Seed 9 repairs the recurring `(8,1)` gap by eliminating that branch at `n=4` without needing uniqueness for `2^A=5^B+7`. Seed 51 is cleaner: it rules out `(8,1)` using `a_1=8,a_2=1` and `n=4`, then handles the `p^e-1` Zsigmondy exception in the induction with a `p<2n-1` / `p=2n-1` split.
+
+Explicit audit-feedback variants also solved N39:
+
+```text
+outputs/repeat10-ultra-mp-n39auditfeedback/confirmed_solutions_so_far.jsonl
+```
+
+| Proof id | Arm | Verifier scores | Audit status |
+| --- | --- | --- | --- |
+| `N39_35` | `temp08/repairfeedback` | `[0.5, 0.5, 0.5, 0.5]`, mean `0.5` | valid |
+| `N39_51` | `temp10/repairfeedback` | `[0.5, 1.0, 1.0, 0.5]`, mean `0.75` | valid |
+| `N39_57` | `temp10/repairfeedback` | `[1.0, 0.5, 1.0, 0.5]`, mean `0.75` | valid with minor wording cleanup |
+
+These are useful evidence that the route is robust, but the generic repairseed solves are the more important harness result because they did not rely on the explicit problem-specific repair checklist.
 
 ## Current Target Status
 
 | Problem | User-provided circumstance | Current repeat10 status | Notes |
 | --- | --- | --- | --- |
-| `C39` | pipeline-unsolved | Confirmed solved | `temp10/proofonly`, audited valid with Vosper caveat. |
-| `N1` | pipeline-unsolved | Not solved | `N1_63` was invalid: it proves set equality but then uses the stronger unsupported claim `a_i=i`. |
+| `C39` | pipeline-unsolved | Confirmed solved | `temp10/proofonly`, audited valid with Vosper caveat. Later C39 candidates had stronger verifier support. |
+| `N1` | pipeline-unsolved | Not solved | `N1_63` was invalid: it proves set equality but then uses the stronger unsupported claim `a_i=i`. Final top still `N1_63`; no new credible candidate. |
 | `N14` | pipeline-unsolved | Confirmed solved | `temp10/formalsanity`, audited valid. |
 | `N24` | pipeline-unsolved | Confirmed solved | `temp08/proofonly`, valid but not promoted by normal verifier. |
-| `N39` | pipeline-unsolved | Not solved; repair seed found | `N39_51` has a promising Bertrand/Zsigmondy induction, but base-case exponential checks are not rigorously proved. |
-| `proofbench133_028` | pipeline-unsolved | Not solved | No confirmed candidate in the inspected repeat10 artifacts. |
+| `N39` | pipeline-unsolved | Confirmed solved | Two valid generic repairseed proofs plus three explicit audit-feedback variants. |
+| `proofbench133_028` | pipeline-unsolved | Not solved | Completed remaining8 top candidates are all `0.5`-style verifier support, no ones. |
 | `proofbench133_109` | gpt-rejected | Not solved; many false positives | Repeated Gaussian-integer candidates miss unit/sign branches. |
-| `C50` | pipeline-unsolved | Not solved | No confirmed candidate in the inspected repeat10 artifacts. |
-| `proofbench133_030` | pipeline-unsolved | Not solved | Game/minimax candidates had unsupported strategy invariants. |
-| `G25` | gpt-rejected | Not solved; verifier false-positive hotspot | Many candidates got near-perfect or perfect verifier scores, but they use invalid Pitot/Ptolemy reasoning. |
+| `C50` | pipeline-unsolved | Not solved | Completed remaining8 top mean `0.375`, no verifier ones. |
+| `proofbench133_030` | pipeline-unsolved | Not solved | Game/minimax candidates had unsupported strategy invariants; `030_38` was audited invalid despite `3/4` verifier ones. |
+| `G25` | gpt-rejected | Not solved; verifier false-positive hotspot | Many candidates got perfect verifier scores, but they use invalid Pitot/Ptolemy reasoning. |
+
+## Completed Run Totals
+
+Final remaining8 rerun totals:
+
+```text
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1
+proof rows: 1,864
+verified proof groups: 1,575
+verifier rows: 6,442
+outer problem-arm rows: 32/32 completed
+```
+
+Final N39 repairseed totals:
+
+```text
+outputs/repeat10-ultra-mp-n39repairseed
+proof rows: 128
+verifier rows: 488
+outer rows: 2/2 completed
+confirmed valid proof rows: 2
+```
+
+Final N39 auditfeedback totals:
+
+```text
+outputs/repeat10-ultra-mp-n39auditfeedback
+proof rows: 128
+verifier rows: 500
+outer rows: 2/2 completed
+confirmed valid proof rows: 3
+```
+
+Combined confirmed-solution handoff:
+
+```text
+outputs/repeat10-confirmed-solutions-combined.jsonl
+```
+
+This file currently has 8 confirmed proof rows over 4 distinct problems: `C39`, `N14`, `N24`, and `N39`.
+
+Combined potential-candidate handoff:
+
+```text
+outputs/repeat10-potential-candidates-combined-final.jsonl
+```
+
+This file has 634 triage rows across remaining8, generic N39 repairseed, and N39 audit-feedback. It intentionally includes known verifier false positives; use the audit notes before treating any row as solved.
+
+Remaining8 final artifacts:
+
+```text
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/all_proofs_with_verification_final.jsonl
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_final.jsonl
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/per_problem_summary_final.json
+```
+
+Line counts:
+
+```text
+outputs/repeat10-confirmed-solutions-combined.jsonl                         8
+outputs/repeat10-potential-candidates-combined-final.jsonl                634
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/all_proofs_with_verification_final.jsonl  1864
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_final.jsonl           500
+outputs/repeat10-ultra-mp-n39repairseed/confirmed_solutions_so_far.jsonl       2
+outputs/repeat10-ultra-mp-n39auditfeedback/confirmed_solutions_so_far.jsonl    3
+```
 
 ## Comparison To Finished New-Checkpoint Runs
 
@@ -227,13 +375,14 @@ The fully finalized 14-arm multiplexer ablation ended with these finalizer-level
 | `temp08/formalsanity` | `N24` | invalid promoted row (`N24_27`) |
 | all other finalized arms | none | no finalizer solve |
 
-This understates and overstates quality in different ways:
+This understated and overstated quality in different ways:
 
-- It understates quality because `N24_6` was a real solve from `temp08/proofonly` but had no verifier rows and was not promoted.
-- It overstates quality because `N24_27` was pipeline-promoted but invalid.
-- The reduced remaining-8 rerun is not finalized yet. Its current audited contribution is `C39_7`, a real solve found from interim proof/verify files, plus `N39_51` as a repair seed.
+- It understated quality because `N24_6` was a real solve from `temp08/proofonly` but had no verifier rows and was not promoted.
+- It overstated quality because `N24_27` was pipeline-promoted but invalid.
+- The reduced remaining8 rerun found `C39`, but the first audited valid row had only mean `0.625`.
+- The N39 repairseed stream found valid proofs whose verifier scores were mixed rather than threshold-perfect.
 
-Relative to the new checkpoint's original setup, this harness workstream adds confirmed audited solves on `N14`, `N24`, and `C39`. The rest of the target set remains unsolved by this repeat10 analysis.
+Relative to the new checkpoint's original setup, this harness workstream adds confirmed audited solves on `N14`, `N24`, `C39`, and `N39`.
 
 ## What Worked Well
 
@@ -241,12 +390,14 @@ Prompt family diversity helped, but only a subset was actually productive in thi
 
 - `formalsanity` produced the confirmed `N14` solve.
 - `proofonly` produced the confirmed `N24` and `C39` solves.
+- `repairseed` produced the confirmed `N39` solves.
 - Both `temp08` and `temp10` produced useful candidates. There is no clean evidence from this small sample that `0.8` dominates `1.0` or vice versa.
 
 Candidate-level auditing was essential:
 
 - `N24_6` would have been missed by finalizer-only analysis.
 - `C39_7` had only mean `0.625`, so it would have been discarded by solved-threshold promotion, but audit found it valid.
+- `N39_35` was independently valid despite normal verifier scores `[0.5, 0.5, 0.5, 0.5]`.
 - Several high-verifier candidates were invalid, so high normal-verifier score alone was not enough.
 
 Using no explicit token cap was fine for these runs:
@@ -256,58 +407,52 @@ Using no explicit token cap was fine for these runs:
 
 The reduced rerun strategy was useful:
 
-- After `N14` and `N24` were confirmed, rerunning only the remaining 8 with the two most useful prompt families found `C39` and a serious `N39` repair seed.
+- After `N14` and `N24` were confirmed, rerunning only the remaining 8 with the two most useful prompt families found `C39`.
+- After `C39`, the targeted N39 repair stream found multiple valid N39 variants.
 
 ## What Did Not Work / Failure Modes
 
-Endpoint stability dominated the first 14-arm run:
+Endpoint stability affected the first 14-arm run:
 
 - The multiplexer became unhealthy during the first launch. Several arms finalized as zero-proof timeout artifacts.
 - Zero-proof arms should not be interpreted as evidence that those prompts are bad.
+- Later reduced and N39-specific runs completed successfully after endpoint recovery.
 
 Normal verification produced serious false positives:
 
-- `G25`: many candidates reached perfect or near-perfect verifier scores. The common flaw is treating Pitot side-sum equality as sufficient for a convex quadrilateral to be tangential, or otherwise misusing Ptolemy/Pitot converses. These are invalid despite strong verifier support.
-- `proofbench133_109`: multiple high-score candidates had Gaussian-integer unit/sign branch failures. After absorbing a Gaussian unit, they assume cube-root coordinates can be taken positive and then treat signed factors as positive squares. `proofbench133_109_60` reached `3/3` verifier ones and was still invalid by audit.
-- `proofbench133_030`: high-scoring grid-game candidates did not prove the minimax invariant. They assumed Shayan leaf behavior, ignored possible `k >= 3` or multi-threat positions, or used unsupported pair-sum invariants.
+- `G25`: many candidates reached perfect or near-perfect verifier scores. The common flaw is treating Pitot side-sum equality as sufficient for a convex quadrilateral to be tangential, or otherwise misusing Ptolemy/Pitot converses. Representative `G25_30` was audited invalid; the same pattern appears broadly.
+- `proofbench133_109`: multiple high-score candidates had Gaussian-integer unit/sign branch failures. After absorbing a Gaussian unit, they assume cube-root coordinates can be taken positive and then treat signed factors as positive squares. `proofbench133_109_6` and earlier `109` candidates were audited invalid; `109_2` spot-inspection shows the same unsupported normalization.
+- `proofbench133_030`: high-scoring grid-game candidates did not prove the minimax invariant. `proofbench133_030_38` reached `3/4` verifier ones but was audited invalid: a `3 x 2` rectangle with a one-cell tail attached to the middle of a long side breaks the claimed rectangle-plus-tail invariant.
+- `N1_63`: invalid induction; it proves only unordered set equality for first prime-index blocks but then uses pointwise equality.
 - `C39_26`: invalid Combinatorial Nullstellensatz proof; it used ordinary coefficient vanishing where only the reduced remainder modulo grid polynomials is controlled.
 - `N39_60`: invalid induction proof; the `a_n > n` case had a fatal divisibility arithmetic error.
-- `N1_63`: invalid induction; it proved only unordered set equality for first prime-index blocks but then used pointwise equality.
 
 The self-evaluation text inside generations was not enough for promotion:
 
 - Some invalid candidates self-scored or presented as complete.
 - The useful signal was mostly in candidate structure plus independent audit, not in the model's own boxed self-score.
 
-## Repair Seeds And Next Candidates
+## Repair Seeds And Candidate Lessons
 
-### `N39_51`
+### `N39`
 
-Artifact:
+Status: solved by repairseed.
 
-```text
-outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_interim.jsonl
-recipes/aceproof-tts/dataset/repeat10-n39-51-repairseed-20260610.jsonl
-```
+The earlier report treated `N39_51` only as a promising repair seed. The completed run changed that conclusion. Generic repairseed produced two valid audited proofs (`N39_9` and `N39_51`), and explicit auditfeedback produced three more valid or valid-with-minor-wording-fix variants.
 
-Status: not solved, but promising.
-
-The proof uses a Bertrand-prime induction and Zsigmondy primitive-prime-divisor obstructions. Independent audit found the main induction strategy substantially sound. The first gap is in the base-case exponential checking, especially the `(a_1,a_2)=(8,1)` branch. A generic repair prompt has been staged that includes the original problem, the candidate proof, and the audit note, while instructing the model not to trust the candidate unless it can make every step rigorous.
-
-Prepared repair configs:
-
-```text
-recipes/aceproof-tts/configs/repeat10-mp-repair/repeat10-ultra-mp-n39repairseed-temp08.yaml
-recipes/aceproof-tts/configs/repeat10-mp-repair/repeat10-ultra-mp-n39repairseed-temp10.yaml
-```
-
-These were staged but not launched as part of this report.
+The route is now one of the strongest positive findings from repeat10. It also illustrates that standard verifier majority is not sufficient: the valid candidates did not reach a near-perfect verifier ratio, while unrelated false-positive families did.
 
 ### `proofbench133_109`
 
-Status: repair direction unclear.
+Status: repair direction still unclear.
 
 The repeated route through Gaussian integers may still be viable, but every high-scoring candidate so far misses a signed branch. Any future prompt should explicitly force a complete unit/sign case split or an absolute-value formulation that proves all branches.
+
+### `proofbench133_030`
+
+Status: verifier hotspot, not a confirmed solve.
+
+The repeated route through a rectangle/tail game invariant is not currently rigorous. Future prompts should either ask for a formal invariant with exhaustive responses to every Shayan move, or switch to a different game-theoretic proof route. The candidate arithmetic alone is not enough.
 
 ### `G25`
 
@@ -317,39 +462,25 @@ The current normal verifier repeatedly accepts invalid Pitot-converse arguments.
 
 ## Artifacts
 
-Cluster copy, with files/directories set to `a+rX`:
+Local working-tree artifacts from the completed repeat10 run:
+
+```text
+outputs/repeat10-confirmed-solutions-combined.jsonl
+outputs/repeat10-potential-candidates-combined-final.jsonl
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/all_proofs_with_verification_final.jsonl
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_final.jsonl
+outputs/repeat10-ultra-mp-r1-remaining8-rerun1/per_problem_summary_final.json
+outputs/repeat10-ultra-mp-n39repairseed/confirmed_solutions_so_far.jsonl
+outputs/repeat10-ultra-mp-n39auditfeedback/confirmed_solutions_so_far.jsonl
+```
+
+Earlier cluster copy, with files/directories set to `a+rX`:
 
 ```text
 /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/igitman/aceproof-share/20260610-aceproof-tts/repeat10/
 ```
 
-This path is under the `llmservice_nemo_reasoning` project tree. It is readable
-to users who can traverse that project directory, i.e. `llmservice` project
-users on AWS-DFW.
-
-The cluster copy includes the full local interim bundle that was too large to
-commit to Git:
-
-```text
-/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/igitman/aceproof-share/20260610-aceproof-tts/repeat10/outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_interim.jsonl
-```
-
-Confirmed solves:
-
-```text
-outputs/repeat10-ultra-mp-r1-ablation/confirmed_solutions_so_far.jsonl
-outputs/repeat10-ultra-mp-r1-remaining8-rerun1/confirmed_solutions_so_far.jsonl
-```
-
-Candidate bundles:
-
-```text
-outputs/repeat10-ultra-mp-r1-ablation/potential_candidates_so_far.jsonl
-outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_audited_subset.jsonl
-
-# Full local interim bundle, not committed because it is large:
-outputs/repeat10-ultra-mp-r1-remaining8-rerun1/potential_candidates_interim.jsonl
-```
+That cluster copy was created before the final N39/remaining8 tails completed, so prefer the local working-tree artifacts listed above for final repeat10 conclusions unless the cluster copy is refreshed.
 
 Run notes:
 
@@ -369,8 +500,8 @@ Prompts that produced confirmed solves:
 ```text
 recipes/aceproof-tts/prompts/proof_generation_formal_sanity.yaml
 recipes/aceproof-tts/prompts/proof_generation_proof_only.yaml
+recipes/aceproof-tts/prompts/proof_generation_repair_seed.yaml
 ```
-
 
 ## Original Broad Open53 Run
 
@@ -415,8 +546,10 @@ proofbench133_040, proofbench133_075, proofbench133_109,
 proofbench133_130
 ```
 
-This broad run is the source of the “previously successful ideas” that motivated the smaller repeat10 multiplexer rerun. Compared with the broad open53 result, the repeat10 multiplexer/new-checkpoint branch is much narrower: it tries to reproduce or transfer success on only 10 selected rows through the cloud endpoint and currently has confirmed audited repeat10 gains on `N14`, `N24`, and `C39`.
+This broad run is the source of the “previously successful ideas” that motivated the smaller repeat10 multiplexer rerun. Compared with the broad open53 result, the repeat10 multiplexer/new-checkpoint branch is much narrower: it tries to reproduce or transfer success on only 10 selected rows through the cloud endpoint and now has confirmed audited repeat10 gains on `N14`, `N24`, `C39`, and `N39`.
 
 ## Bottom Line
 
-The most reliable pattern so far is not a single prompt or temperature; it is prompt-family diversity plus candidate-level audit. For this repeat10/new-checkpoint target set, the confirmed gains are `N14`, `N24`, and `C39`. The best next follow-up is a small `N39_51` repair run, because its main proof strategy appears sound and the known gap is narrow. The biggest caution is verifier reliability: `G25` and `proofbench133_109` show that normal verifier ratios can be confidently wrong on recurring proof-pattern failures.
+The completed repeat10/new-checkpoint target set has confirmed audited gains on `N14`, `N24`, `C39`, and `N39`. The strongest new update since the incomplete report is `N39`: generic repairseed, not just explicit audit-feedback, produced two valid proofs.
+
+The most reliable pattern is prompt-family diversity plus candidate-level audit, with repairseed as the most promising next-stage mechanism when a near-solve has a localized flaw. The biggest caution is verifier reliability: `G25`, `proofbench133_030`, and `proofbench133_109` show that normal verifier ratios can be confidently wrong on recurring proof-pattern failures, while some real solves have mixed or weak verifier support.
