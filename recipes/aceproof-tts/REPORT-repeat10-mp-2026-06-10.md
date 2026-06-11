@@ -24,6 +24,21 @@ Verifier/promotion experiments:
 - `proof_verification_countermodel_audit.yaml` did not fix G25 in early rows; it still accepted the same false candidates.
 - `run_static_promotion_filters.py` is currently the most reliable fixed promotion gate for this specific failure mode. On the calibration set it rejected exactly the G25 false/uncertain Pitot-converse candidates and did not reject the known-valid C39/N14/N24/N39 examples. Applied to current live G25 final rows, it rejected all normal-verifier G25 promotions seen so far.
 
+Live continuation update after 23:00 PDT:
+
+- `N1` now has a confirmed audited repeat10 route from `outputs/repeat10-ultra-mp-remaining6-repairseed-genonly/temp10/repairseed/rounds/R1/proof_gen/output_chunk_0.jsonl-async`, candidate uid `N1:89:repairseed/rounds:ebcd6c24a6fc47cc`. The proof uses the prime-divisor-of-differences lemma, induction over consecutive primes, Sylvester's theorem for blocks of `q`-smooth consecutive integers, and PNT for prime gaps. Independent audits found it valid assuming Sylvester's theorem is allowed. Fixed verifier sidecars also support this family: theorem/congruence/Gaussian guards accepted seed 89, and strict/Gaussian guards accepted related N1 variants.
+- `proofbench133_109` remains unsolved. Four additional high-value candidates, including a fresh no-G25 `formalsanity` candidate and three repairseed candidates, were independently audited invalid. The recurring fatal flaw is the same: after Gaussian-integer cube reduction, the proofs silently choose a unit/sign/quadrant branch, or treat factors such as `c` and `c^2-3d^2` as positive when both may be negative. The new `proof_verification_gaussian_sign_branch_guard.yaml` prompt was added to make this a fixed verifier-sidecar check.
+- Current fair promptwide G25 rows are not useful solves. The deterministic Pitot-converse filter rejects 93 of 94 completed G25 rows from `outputs/repeat10-ultra-mp-current5-fair-promptwide/`; the single survivor had an empty proof string, so effectively all completed G25 fair-prompt candidates are rejected.
+- New coordinated/decomposition infrastructure was added in commit `bf641ef86` and pushed to `igitman/nemo-skills-aceproof` branch `aceproof-repeat10-mux-share-20260610`. It includes model-generated attempt-memory prompts/builders, decomposition planner/subproblem/assembly builders, a stricter Gaussian sign verifier, and launchers for current-five promptwide/decomposition/verifier batches.
+- Active coordinated runs at this point include:
+  - `outputs/repeat10-ultra-mp-current5-fair-promptwide/`
+  - `outputs/repeat10-ultra-mp-current5-decomp-planner/`
+  - `outputs/repeat10-decomp-subproblem-solver/v1_solver/`
+  - `outputs/repeat10-ultra-mp-current5-branch-exhaustive/`
+  - `outputs/repeat10-genonly-candidate-verification/v4_*`
+
+The current strategy is to exclude already solved `N1` from future large candidate-generation batches where practical, keep using static G25 filtering for promotion, and push `proofbench133_109` through either a genuinely branch-exhaustive Gaussian proof or a non-Gaussian route.
+
 ## Executive Summary
 
 We targeted 10 rows that the new checkpoint still needed help with under the reference setup:

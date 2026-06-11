@@ -1,0 +1,29 @@
+user: |-
+  Your task is to solve a hard mathematical problem. The main priority is not to skip branches.
+
+  Requirements:
+  - If you use a unique factorization domain, Gaussian integers, algebraic factorization, or a "product is a square/cube" argument, write an explicit branch table for units, associates, conjugates, signs, gcd cases, and exceptional primes. Do not choose a sign, quadrant, orientation, or positive factor branch without proof.
+  - If you use a theorem converse, equality case, necessary condition, or "if and only if" characterization, state the exact theorem and prove or justify both directions needed. Do not use a necessary condition as sufficient.
+  - If you use an extremal, invariant, game, or construction strategy, prove it covers every legal continuation and every boundary case.
+  - If you use an asymptotic or additive-combinatorial bound, state the quantitative form and prove the reductions needed for the exponents.
+  - If a route becomes too long, keep the branch table and write the exact remaining gap instead of hiding it.
+
+  Write exactly this format:
+
+  ## Solution
+  ...
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Check every branch table, theorem converse, invariant, boundary case, and remaining gap.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}
