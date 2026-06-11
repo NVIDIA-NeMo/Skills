@@ -666,3 +666,52 @@ repeat10-current2-028-c50-focus
 They were launched at low concurrency with transient-error retries. At the latest health check, the multiplexer reported all worker slots busy, zero pending jobs, and roughly 22.9k jobs in flight; new focused runs were still at zero completed rows and retrying transient `500` errors. The redundant `repeat10-current3-slow-focus-retry2` session was stopped after many synchronized retries and zero rows, because its scope is covered by the smaller targeted sessions above.
 
 Next queued experiment once the endpoint accepts work again: launch `repeat10-028-c50-attempt-memory-repair` from `launch_repeat10_028_c50_attempt_memory_repair_tmux.sh`, using `proof_generation_self_contained_repair.yaml` over `repeat10-028-c50-legacy-attempt-memory-20260611.jsonl`. This is intended to test a fair fixed-harness repair loop: previous model attempts plus model verifier comments, with no independent audit text fed back to the model.
+
+## Continuation: Endpoint Recovery And C50 Verifier False Positive, 2026-06-11 09:35 PDT
+
+The nginx/OpenAI-compatible `500` failures above were observed overnight around `2026-06-11 00:50-00:53 PDT`. A live check at `2026-06-11 09:12 PDT` showed `/v1/models` returning `200` and the health endpoint reporting healthy `ultra` workers. A tiny chat-completions probe no longer returned an immediate nginx `500`; it timed out after 45 seconds with no bytes, consistent with queue pressure rather than the earlier front-door failure mode.
+
+The zero-row streams that failed during the overnight `500` window were relaunched:
+
+```text
+repeat10-028-c50-attempt-memory-repair
+repeat10-current2-028-c50-focus
+repeat10-genonly-v5-109-030-verifiers
+repeat10-legacy-028-c50-verifiers
+```
+
+An endpoint-failure monitor was added and started in tmux:
+
+```text
+recipes/aceproof-tts/scripts/monitor_repeat10_endpoint_failures.sh
+tmux session: repeat10-endpoint-failure-monitor
+```
+
+It scans recently modified local logs for fresh nginx/LiteLLM `500` signatures and calls `/home/igitman/.claude/bin/notify-slack` if a new signature appears. As of this update, it has not seen a fresh endpoint-failure signature after the relaunch.
+
+The relaunched jobs are progressing through async chunk files rather than final `output.jsonl` files. The most informative current counts are partial:
+
+```text
+attempt-memory repair: 75 async proof-gen rows
+current2 028/C50 proofonly/obligation/invariantextremal/decompose: 5/8/1/3 async proof-gen rows
+v5 109/030 strict/theorem/congruence/Gaussian-sign: 221/227/224/6 async verifier rows
+legacy 028/C50 strict/theorem/congruence: 62 async / 64 final / 63 async verifier rows
+```
+
+The partial legacy fixed-promotion check without the self-contained gate promoted one `C50` candidate:
+
+```text
+C50:noseed:repeat10-ultra-mp-r1-remaining8-rerun1/temp10:f5b929ae10f567ff
+```
+
+That candidate had unanimous `1.0` sidecar support from the generic strict, theorem-gate, and congruence families, but manual inspection showed it is not a standalone proof. It relies on a black-box Garaev additive-combinatorics lemma and labels the key proof as a sketch. The candidate's own self-evaluation also says the omitted lemma proof is a material gap.
+
+This exposed a concrete verifier false-positive mode: `proof_verification_theorem_gate.yaml` permits “standard theorem whose hypotheses exactly match the problem,” so it can still accept a research-level or contest-nonstandard named theorem if the model treats it as standard.
+
+To repair this fixed-harness path, a new verifier prompt was added:
+
+```text
+recipes/aceproof-tts/prompts/proof_verification_self_contained_theorem_use.yaml
+```
+
+This gate requires every nontrivial named theorem, cited result, black-box inequality, classification, or proof-sketch dependency to be fully proved in the candidate. Routine elementary facts remain allowed. A partial run of this gate immediately scored the promoted `C50` candidate as `0.0`, explicitly rejecting the unproved Garaev lemma and crossing-number sketch. Re-running fixed promotion with this self-contained family included reduced the partial legacy `028/C50` promotion count from `1/8` to `0/8`.

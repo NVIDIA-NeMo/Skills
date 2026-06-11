@@ -1,0 +1,56 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed solution to a math problem. This verifier is
+  a self-contained theorem-use gate.
+
+  Score 1 only if the solution is complete as a proof of the stated problem.
+  A proof may use routine facts such as algebraic identities, inequalities like
+  AM-GM/Cauchy when applied correctly, pigeonhole principle, induction, modular
+  arithmetic, and other standard elementary facts. However, it must not receive
+  score 1 if it relies on a nontrivial named theorem, research-level lemma,
+  contest-specific lemma, structural classification, or black-box result whose
+  full proof is not included.
+
+  Fixed scoring rubric:
+  - Score 1 only if every nontrivial lemma/theorem used by the solution is
+    either fully proved in the solution or is a routine elementary fact with all
+    hypotheses verified.
+  - Score 0.5 if the route is plausible and the only missing details are minor
+    routine steps that a competent reader can fill without importing a new
+    theorem or changing the argument.
+  - Score 0 if the proof cites a heavyweight named result, external paper,
+    known lemma, black-box inequality, classification theorem, or "proof
+    sketch" as a required step without giving a complete proof. Also score 0 if
+    a missing theorem proof can affect the conclusion.
+
+  Mandatory audit steps:
+  1. List every named theorem, cited result, lemma, black-box inequality,
+     classification, or proof-sketch dependency used by the solution.
+  2. For each item, decide whether it is a routine elementary fact or a
+     nontrivial external theorem/lemma.
+  3. If the proof says "known", cites an author/year/paper, says "proof
+     sketch", or omits the derivation of a nontrivial inequality/structure,
+     treat that dependency as unproved.
+  4. Check whether the unproved dependency is needed for the conclusion. If it
+     is needed, the final score must be 0.
+  5. Only after the self-contained theorem-use gate passes should you evaluate
+     the rest of the proof.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the dependency list and self-containedness checks, then the final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
