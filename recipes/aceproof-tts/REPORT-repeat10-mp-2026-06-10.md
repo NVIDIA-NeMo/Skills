@@ -832,3 +832,51 @@ candidates=98 promoted=0
 ```
 
 Current conclusion: this `proofbench133_109` candidate is invalid, and fixed promotion should require the static modular-root blocker in addition to verifier sidecars. The root-integrity model verifier can remain as a diagnostic sidecar, but it is not reliable enough to be the only defense for this failure mode.
+
+## Continuation: Fixed-Gate Rerun And Independent Audit, 2026-06-11 14:55 PDT
+
+The endpoint remains healthy but saturated. A live health sample at `2026-06-11 14:49 PDT` reported `ok=True`, `56/56` ultra workers alive, `14100/14336` slots busy, `0` pending jobs, `13903` in-flight jobs, and `276764` completed jobs. A fresh scan of local logs found no new nginx `500`, LiteLLM internal server error, transient endpoint error, connection error, or `job not found` signatures.
+
+The latest fixed-promotion reruns still promote no new candidates:
+
+```text
+current decomposition planner/assembly, with static modular-root blocker and root-integrity sidecar:
+  outputs/repeat10-genonly-candidate-verification/current_decomp_fixed_promotion_20260611_1452_staticroot_min1_withroot_partial.jsonl
+  candidates=98 promoted=0
+
+v5 proofbench133_109/proofbench133_030:
+  outputs/repeat10-genonly-candidate-verification/current_candidates_v5_109_030_fixed_promotion_20260611_1452_min1_partial.jsonl
+  candidates=29 promoted=0
+
+attempt-memory delta after snapshot78:
+  outputs/repeat10-028-c50-attempt-memory-repair-verification/delta_after_snapshot78/fixed_promotion_20260611_1452_min1_partial.jsonl
+  candidates=56 promoted=0
+
+current2 high-self-eval proofbench133_028 rows:
+  outputs/repeat10-genonly-candidate-verification/current2_new_high_selfeval_028_verifiers/fixed_promotion_20260611_1452_min1_partial.jsonl
+  candidates=2 promoted=0
+```
+
+The current-decomposition near miss remains the same `proofbench133_109` planner row. It has the largest verifier support, but the new static blocker rejects it for deriving `a^2 == +/- b^2` from a negative fourth-power congruence. The next-best current-decomposition row is a `G25` planner candidate, but it is rejected by strict, theorem, and self-contained sidecars. The v5 `proofbench133_109` candidates still have partial support only; the best one has many `1.0` verifier scores but is rejected by strict, theorem, congruence, and Gaussian-sign families.
+
+Independent best-model audits of the highest-priority candidate set also found no valid full solution:
+
+```text
+C50:
+  4 audited candidates.
+  Verdict: promising but incomplete or invalid.
+  Common missing piece: the crossing-number/Garaev-type inequality is invoked or sketched but not proved, so the candidates are reductions rather than standalone proofs.
+
+proofbench133_028:
+  4 audited candidates.
+  Verdict: promising but incomplete or invalid.
+  Common missing piece: base-case work for f(1), f(2), and sometimes f(3) is asserted or uses premature substitution before those values are proved.
+
+proofbench133_030 / proofbench133_109:
+  7 audited candidates.
+  Verdict: no valid full solution.
+  proofbench133_030 has a plausible perimeter/minimax direction but leaves the key invariant unproved.
+  proofbench133_109 candidates fail on Gaussian-unit case analysis, false coprimality, or incorrect modular/cubic congruence steps.
+```
+
+This aligns with the fixed harness: no additional solved problem should be claimed from the current repeat10/new-checkpoint streams. The active value of these runs is diagnostic. They identify which proof families are close enough to deserve targeted harness pressure, and they expose verifier false positives that need deterministic blockers or stronger verifier prompts before promotion.
