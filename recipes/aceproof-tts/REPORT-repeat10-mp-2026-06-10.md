@@ -898,3 +898,35 @@ recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-input-20260611
 Both inputs are being run through `recipes/aceproof-tts/prompts/proof_generation_memory_synthesis.yaml` at temperature `1.0`. The full-context tmux session is `repeat10-current-modelmemory-synthesis`; the compact-context tmux session is `repeat10-current-modelmemory-compact-synthesis`. Both were relaunched with the NeMo-Skills venv prepended to `PATH` because the first full-context launch failed locally before any endpoint request with `python: command not found` inside the generated nemo-run script.
 
 As of `2026-06-11 15:08 PDT`, both memory-synthesis runs are alive but have not returned their first rows. Endpoint health remains `ok=True` with no fresh endpoint-failure signatures in local logs.
+
+## Continuation: Memory-Guided Solver Launches, 2026-06-11 15:55 PDT
+
+The compact model-memory synthesis completed for all five remaining problems. Its notes all self-evaluated as `1.0` and are stored at:
+
+```text
+outputs/repeat10-current-modelmemory-synthesis/temp10compact/memory/output.jsonl
+```
+
+The full-context model-memory synthesis has returned four notes so far: `G25`, `C50`, `proofbench133_109`, and `proofbench133_028`; `proofbench133_030` is still pending in the full-context stream.
+
+Based on those memory notes, the following memory-guided proof-generation streams were launched with `proof_generation_with_memory.yaml`, temperature `1.0`, and no explicit token cap:
+
+```text
+repeat10-current-modelmemory-compact-solver-x32
+  input: recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-partial-x32-20260611.jsonl
+  coverage: proofbench133_028, proofbench133_109, C50, G25; 32 attempts each
+
+repeat10-current-modelmemory-compact-solver-030-x32
+  input: recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-030-x32-20260611.jsonl
+  coverage: proofbench133_030; 32 attempts
+
+repeat10-current-modelmemory-full-solver-c50-109-x32
+  input: recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-c50-109-x32-20260611.jsonl
+  coverage: C50 and proofbench133_109; 32 attempts each
+
+repeat10-current-modelmemory-full-solver-028-x32
+  input: recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-028-x32-20260611.jsonl
+  coverage: proofbench133_028; 32 attempts
+```
+
+Early compact-solver rows are all `G25`. As of `2026-06-11 15:55 PDT`, 26 `G25` rows have returned and every one is deterministically rejected by the static promotion filter for a Pitot/incircle converse/sufficiency false pattern. No verifier sidecars were launched for those rows because they failed the deterministic gate. The non-`G25` compact rows and all rows from the other solver streams are still pending. Endpoint health remains `ok=True` and no fresh endpoint-failure signatures have appeared in local logs.
