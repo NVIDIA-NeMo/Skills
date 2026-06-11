@@ -930,3 +930,53 @@ repeat10-current-modelmemory-full-solver-028-x32
 ```
 
 Early compact-solver rows are all `G25`. As of `2026-06-11 15:55 PDT`, 26 `G25` rows have returned and every one is deterministically rejected by the static promotion filter for a Pitot/incircle converse/sufficiency false pattern. No verifier sidecars were launched for those rows because they failed the deterministic gate. The non-`G25` compact rows and all rows from the other solver streams are still pending. Endpoint health remains `ok=True` and no fresh endpoint-failure signatures have appeared in local logs.
+
+## Continuation: Memory-Guided Solver Relaunches, 2026-06-11 16:40 PDT
+
+The full-context model-memory synthesis has now completed for all five remaining problems:
+
+```text
+outputs/repeat10-current-modelmemory-synthesis/temp10/memory/output.jsonl
+```
+
+All five full-context memory notes self-evaluated as `1.0` and stopped naturally. Because `proofbench133_030` was still pending when the first full-memory solver streams were launched, a matching full-memory 030 solver input was added after the full note arrived:
+
+```text
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-030-20260611.jsonl
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-030-x32-20260611.jsonl
+```
+
+This uses the same prompt as the other memory-guided solver streams:
+
+```text
+recipes/aceproof-tts/prompts/proof_generation_with_memory.yaml
+```
+
+and is running as:
+
+```text
+repeat10-current-modelmemory-full-solver-030-x32
+  input: recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-030-x32-20260611.jsonl
+  output: outputs/repeat10-current-modelmemory-solver/temp10full/memorysolver_030_x32
+  temperature: 1.0
+  max_concurrent_requests: 32
+  token cap: none set explicitly; use the endpoint/context limit
+```
+
+The four earlier memory-guided solver streams were relaunched at `max_concurrent_requests=32` after a transient endpoint connection-error wave around `16:03 PDT`. The endpoint health page returned to `ok=True`, and the jobs are being monitored rather than cancelled because individual requests may legitimately take one to two hours on this endpoint. As of this update, the compact partial stream has produced 27 rows, all for `G25`; every returned `G25` row is still rejected by deterministic static promotion filters, so no verifier sidecars have been launched from this memory-solver family yet.
+
+## Continuation: proofbench-ultra Endpoint Switch, 2026-06-11 16:40 PDT
+
+The memory-guided solver streams were switched from model name `ultra` to the new `proofbench-ultra` endpoint after the user pointed out that it runs fewer requests per node and may be faster. The replacement launches use the same gateway URL, prompts, inputs, temperature, top-p, concurrency, and no explicit token cap; only the `--model` value and output directories changed. This keeps the speed comparison clean.
+
+The active replacement outputs are:
+
+```text
+outputs/repeat10-current-modelmemory-solver-proofbench-ultra/temp10compact/memorysolver_x32
+outputs/repeat10-current-modelmemory-solver-proofbench-ultra/temp10compact/memorysolver_030_x32
+outputs/repeat10-current-modelmemory-solver-proofbench-ultra/temp10full/memorysolver_c50_109_x32
+outputs/repeat10-current-modelmemory-solver-proofbench-ultra/temp10full/memorysolver_028_x32
+outputs/repeat10-current-modelmemory-solver-proofbench-ultra/temp10full/memorysolver_030_x32
+```
+
+The old `ultra` memory-solver clients were stopped after the proofbench-ultra sessions reached the async request loop. Their partial outputs remain on disk for comparison. Before the 16:03 endpoint connection-error wave and 16:28 relaunch, the original compact partial stream had produced 26 rows between roughly 15:25 and 15:55. After the 16:28 relaunch, it added only one more row before the endpoint switch, while the compact 030, full C50/109, full 028, and full 030 streams were still at zero rows. That means the compact `G25` slice was clearly moving better before 16:28, but there is no evidence that the other slices were faster before 16:28.
