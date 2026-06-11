@@ -72,6 +72,8 @@ def _load_scores(sidecars: dict[str, list[str]]) -> dict[str, dict[str, list[dic
         for pattern in patterns:
             for path in _iter_jsonl_paths(pattern):
                 for row in _read_jsonl(path):
+                    if not isinstance(row, dict):
+                        continue
                     uid = row.get("candidate_uid")
                     if not uid:
                         continue

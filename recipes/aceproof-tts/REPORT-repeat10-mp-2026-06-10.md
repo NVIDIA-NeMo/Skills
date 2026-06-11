@@ -738,3 +738,45 @@ recipes/aceproof-tts/prompts/proof_verification_substitution_integrity.yaml
 ```
 
 This verifier explicitly lists each specialization of the original condition and rejects proofs that replace unknown quantities such as `f(2)`, `f(3)`, or `f(n)` by their intended final values before those values are proved. The first returned substitution-integrity row already rejected a related `028` candidate for invalid divisibility manipulation; the specific strict-verifier false-positive row is still pending in that verifier stream.
+
+## Continuation: Afternoon Fixed-Gate Status, 2026-06-11 14:10 PDT
+
+The multiplexer endpoint is working again, though still loaded. A live health sample at `2026-06-11 13:57 PDT` reported `ok=True`, `42/42` ultra workers alive, `8261/10752` slots busy, `0` pending jobs, `8179` in-flight jobs, and `273750` completed jobs. A scan of locally modified logs from the prior 30 minutes found no fresh nginx `500`, LiteLLM connection, transient OpenAI-compatible endpoint, or `job not found` signatures.
+
+The v5 `proofbench133_109` / `proofbench133_030` sidecars now have enough rows to rerun the fixed gate:
+
+```text
+strict: 237 rows
+theorem: 235 final rows, including 3 literal null merge-artifact rows
+congruence: 237 rows
+Gaussian-sign: 225 rows
+fixed promotion with min_scores_per_family=1: 0/29 promoted
+```
+
+The promotion loader now skips non-object JSONL rows so finalization artifacts such as literal `null` lines do not break monitoring. The best current `proofbench133_109` candidate has 26/32 complete verifier scores equal to `1.0`, but it is still rejected by non-1.0 scores in strict, theorem, congruence, and Gaussian-sign families. No v5 `109` or `030` candidate currently passes a fixed fair gate.
+
+The attempt-memory `028/C50` snapshot also remains non-promoting:
+
+```text
+snapshot78 strict/theorem/congruence/self-contained rows: 77/77/76/75
+score distribution: strict all 0; theorem 76 zero and 1 one; congruence 75 zero and 1 one; self-contained 74 zero and 1 half
+fixed promotion with min_scores_per_family=1: 0/78 promoted
+```
+
+The attempt-memory generator has continued past the original snapshot. A delta input was created for 56 fresh candidates beyond the 78-row snapshot:
+
+```text
+outputs/repeat10-028-c50-attempt-memory-repair-verification/delta_after_snapshot78/input_candidates_20260611_1408.jsonl
+```
+
+A new tmux verifier session was launched over that delta with the same x1 sidecar families:
+
+```text
+repeat10-attempt-memory-delta56-verifiers
+strict_audit_x1
+theorem_gate_x1
+congruence_guard_x1
+selfcontained_theorem_use_x1
+```
+
+For `proofbench133_028`, the targeted false-positive row `proofbench133_028_49` is now fully diagnosed. The generic strict verifier scored it `1.0`, and the self-contained theorem-use verifier also scored it `1.0`; both missed the circular specialization from `x^{f(2)}-y^{f(2)}` to `x^2-y^2`. The substitution-integrity gate scored the exact same candidate `0.0` and identified the invalid premature substitution. This makes substitution-integrity a necessary fixed verifier sidecar for future `028` promotion attempts; self-contained theorem-use alone is not sufficient for this failure mode.
