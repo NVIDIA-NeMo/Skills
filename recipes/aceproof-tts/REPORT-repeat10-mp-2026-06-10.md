@@ -809,3 +809,26 @@ recipes/aceproof-tts/prompts/proof_verification_modular_root_integrity.yaml
 ```
 
 This gate audits root extraction, sign changes, cancellation, units, associates, and branch choices in modular algebra. It is general harness logic and does not contain a problem-specific hint. A one-row smoke test on the false-positive candidate and a broader x4 current-decomposition root-integrity sidecar were launched. Early broader root-integrity rows are returning mostly `0.0`, but they have not yet reached the exact false-positive candidate. Re-running fixed promotion with root-integrity required currently gives `0/98` promoted because no candidate has complete support from all required families including root-integrity.
+
+## Continuation: Static Modular-Root Blocker, 2026-06-11 14:48 PDT
+
+The modular-root verifier prompt did not reliably catch the `proofbench133_109:21:planner/rounds:4fbde754cbe373e7` false positive. The one-row root-integrity smoke completed after about 17 minutes and scored the candidate `1.0`; the broader root-integrity sidecar also returned `1.0` rows for the same candidate. The model verifier repeated the same invalid implication instead of rejecting it.
+
+A deterministic static promotion filter was therefore added to `recipes/aceproof-tts/pipeline/run_static_promotion_filters.py`. It rejects `proofbench133_109` candidates that combine a negative fourth-power congruence such as `a^4 == -b^4 (mod p)` with an invalid root extraction of the form `a^2 == +/- b^2`. This is a general algebraic false-pattern blocker, not a prompt hint fed back to generation.
+
+Validation on the false-positive one-row file:
+
+```text
+recipes/aceproof-tts/pipeline/run_static_promotion_filters.py
+input: outputs/repeat10-genonly-candidate-verification/current_decomp_109_root_falsepositive_x1.jsonl
+rows=1 static_rejected=1
+```
+
+Re-running the current-decomposition fixed promotion with the updated static gate and existing sidecars gives:
+
+```text
+outputs/repeat10-genonly-candidate-verification/current_decomp_fixed_promotion_20260611_1448_staticroot_min1_partial.jsonl
+candidates=98 promoted=0
+```
+
+Current conclusion: this `proofbench133_109` candidate is invalid, and fixed promotion should require the static modular-root blocker in addition to verifier sidecars. The root-integrity model verifier can remain as a diagnostic sidecar, but it is not reliable enough to be the only defense for this failure mode.

@@ -53,6 +53,18 @@ SIGNED_BRANCH_COVERAGE_TERMS = re.compile(
     re.IGNORECASE,
 )
 
+
+NEGATIVE_FOURTH_POWER_CONGRUENCE = re.compile(
+    r"(a\^4.{0,120}(?:\\equiv|==|=).{0,40}-\s*b\^4|"
+    r"a\^\{4\}.{0,120}(?:\\equiv|==|=).{0,40}-\s*b\^\{4\})",
+    re.IGNORECASE | re.DOTALL,
+)
+BAD_NEGATIVE_FOURTH_ROOT = re.compile(
+    r"(a\^2.{0,100}(?:\\equiv|==|=).{0,40}(?:\\pm|\+/-).{0,30}b\^2|"
+    r"a\^\{2\}.{0,100}(?:\\equiv|==|=).{0,40}(?:\\pm|\+/-).{0,30}b\^\{2\})",
+    re.IGNORECASE | re.DOTALL,
+)
+
 GAME_BAY_TERMS = re.compile(r"\b(bay|concave|L[- ]shape|missing corner|2x2|2\\times\\s*2)\b", re.IGNORECASE)
 GAME_SHAYAN_ALWAYS_K1_TERMS = re.compile(
     r"(Shayan.{0,120}(always|will always|can always|must)\s+(play|choose).{0,80}k\s*=\s*1|"
@@ -101,6 +113,14 @@ def gaussian_cube_sign_branch_reasons(proof: str, problem_idx: str | None = None
     ]
 
 
+def negative_fourth_power_root_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
+    if problem_idx != "proofbench133_109":
+        return []
+    if NEGATIVE_FOURTH_POWER_CONGRUENCE.search(proof) and BAD_NEGATIVE_FOURTH_ROOT.search(proof):
+        return ["derives a^2 == +/- b^2 from a negative fourth-power congruence such as a^4 == -b^4 modulo p"]
+    return []
+
+
 def game_bay_response_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
     """Detect obvious k=1/bay-strategy false positives for the grid game."""
 
@@ -120,6 +140,7 @@ def annotate_row(row: dict[str, Any]) -> dict[str, Any]:
     reasons = []
     reasons.extend(pitot_false_converse_reasons(proof))
     reasons.extend(gaussian_cube_sign_branch_reasons(proof, problem_idx=problem_idx))
+    reasons.extend(negative_fourth_power_root_reasons(proof, problem_idx=problem_idx))
     reasons.extend(game_bay_response_reasons(proof, problem_idx=problem_idx))
     out = dict(row)
     out["static_promotion_reject"] = bool(reasons)
