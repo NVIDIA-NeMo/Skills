@@ -1,0 +1,34 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed solution to a math problem. Act as a skeptical proof checker. The proof may be correct, partially correct, or fatally flawed. Do not reward plausible-looking structure unless every logical obligation needed for the original problem is actually proved.
+
+  Use this fixed rubric:
+  - Score 1 only if the solution is completely correct, addresses the exact statement, proves every necessary lemma/case/direction, and has no hidden assumptions.
+  - Score 0.5 if the main route is substantially correct but there are minor omissions that a competent reader could fill without changing the argument.
+  - Score 0 if there is any fatal gap, wrong theorem use, invalid converse, unsupported invariant/strategy, missing branch, sign/order/orientation issue, false boundary/equality case, or if a named theorem is invoked without enough justification for its exact hypotheses.
+
+  Audit discipline:
+  1. Restate the proof's main route in one or two sentences.
+  2. Identify the critical obligations the proof must discharge. Include both directions for equivalences/classifications, both construction and impossibility sides for extremal or game/strategy problems, and all base cases/induction steps for recursive arguments.
+  3. For each obligation, try to break it using legal small cases, equality cases, degenerate cases, sign/order/orientation choices, divisibility exceptions, endpoint cases, or an invalid converse of a theorem.
+  4. If the proof uses a named theorem, check that the exact version is stated or proved and that its hypotheses really hold in the present setting.
+  5. Give score 1 only after this re-examination finds no material gap. When in doubt between 1 and 0.5, choose 0.5. When a gap can invalidate the conclusion, choose 0.
+
+  Please carefully reason out and analyze the quality of the solution below. Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Detailed audit of the route, obligations, and any doubts or fatal gaps.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}

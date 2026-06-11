@@ -1,0 +1,48 @@
+# Repeat10 multiplexer continuation: remaining six rows, two-round streaming run.
+# Arm: temp10; prompt family: construction.
+# Token budgets are intentionally omitted so requests do not send max_completion_tokens.
+
+pipeline:
+  cluster: none
+  output_dir: /home/igitman/workspace/NeMo-Skills-aceproof-mp/outputs/repeat10-ultra-mp-remaining6-r2/temp10/construction
+  input_paths: recipes/aceproof-tts/dataset/repeat10-newckpt-remaining6-after-n39-20260610.jsonl
+  gateway_address: http://aiapps-053026.dyn.nvidia.com:28000/v1
+  proof_gen_prompt_path: recipes/aceproof-tts/prompts/proof_generation_construction_certificate.yaml
+  verify_prompt_path: recipes/aceproof-tts/prompts/proof_verification.yaml
+  refine_prompt_path: recipes/aceproof-tts/prompts/proof_refinement.yaml
+  partition: null
+  qos: null
+  rerun_done: false
+
+scaling:
+  n_parallel_proof_gen: 64
+  n_verification_per_proof: 16
+  n_agg_trials: 16
+  n_best_proofs_to_sample: 24
+  n_proofs_to_refine: 2
+  max_rating_per_score: 4
+  solved_threshold: 0.99999
+  max_rounds: 2
+  num_chunks: 1
+
+streaming:
+  min_verifications_per_proof: 4
+  early_stop_only_if_score_lt_1: true
+  cancel_remaining: true
+  max_concurrent_requests: 2048
+  gen_max_concurrent: 512
+  verify_max_concurrent: 1280
+  refine_max_concurrent: 512
+
+inference:
+  temperature: 1.0
+  top_p: 0.95
+  timeout: 14400
+  gen_temperature: 1.0
+  verify_temperature: 1.0
+  refine_temperature: 1.0
+
+profiles:
+  proof_gen: ultra
+  verify: ultra
+  refine: ultra

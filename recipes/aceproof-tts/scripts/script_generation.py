@@ -21,11 +21,12 @@ from dataclasses import asdict, field, is_dataclass
 
 import hydra
 
-from nemo_skills.inference.generate import (
-    GenerateSolutionsConfig,
-    GenerationTask,
-    InferenceConfig,
-)
+from nemo_skills.inference.generate import GenerationTask, InferenceConfig
+
+try:  # config class name differs across NeMo-Skills branches
+    from nemo_skills.inference.generate import GenerateSolutionsConfig as _BaseGenConfig
+except ImportError:  # pragma: no cover
+    from nemo_skills.inference.generate import GenerationTaskConfig as _BaseGenConfig
 from nemo_skills.inference.model import server_params
 from nemo_skills.utils import (
     get_help_message,
@@ -41,7 +42,7 @@ class ScriptInferenceConfig(InferenceConfig):
 
 
 @nested_dataclass(kw_only=True)
-class ScriptGenerationConfig(GenerateSolutionsConfig):
+class ScriptGenerationConfig(_BaseGenConfig):
     inference: ScriptInferenceConfig = field(default_factory=ScriptInferenceConfig)
     model_name: str | None = None
     prompt_format: str = "openai"
