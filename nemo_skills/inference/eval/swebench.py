@@ -497,6 +497,11 @@ class SweBenchGenerationTask(GenerationTask):
                 instance_id=data_point["instance_id"].replace("__", "_1776_")
             )
 
+            # If pre_commands are specified, execute them before running the agent
+            pre_commands = data_point.get("pre_commands", "").strip()
+            if pre_commands:
+                container_commands.append(pre_commands)
+
             # If the repo is not in /testbed, copy it before running the agent
             container_repo_dir = data_point.get("container_repo_dir", "/testbed")
             if mode == "agent" and container_repo_dir != "/testbed":
