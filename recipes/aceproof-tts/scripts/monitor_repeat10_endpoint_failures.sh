@@ -34,8 +34,19 @@ while true; do
 
   if [[ -s "$STATE_DIR/latest_scan.txt" ]] && rg -q "$PATTERN" "$STATE_DIR/latest_scan.txt"; then
     sig="$(rg "$PATTERN" "$STATE_DIR/latest_scan.txt" | tail -n 5)"
-    key="$(printf '%s' "$sig" | sha256sum | awk '{print $1}')"
-    notify_once "$key" "AceProof repeat10 endpoint failure detected at $now in $SESSION_LABEL.
+    if rg -q 'nginx/1\.27\.5|Internal Server Error|HTTP Error 500' <<<"$sig"; then
+      family="nginx_500"
+    elif rg -q 'job .* not found|queue_job_failed' <<<"$sig"; then
+      family="queue_job_failed"
+    elif rg -q 'Connection error|Transient OpenAI-compatible endpoint error' <<<"$sig"; then
+      family="connection_error"
+    else
+      family="other_endpoint_error"
+    fi
+    # Coalesce noisy retry storms while still allowing a later outage to notify.
+    bucket="$(date '+%Y%m%d%H')-$((10#$(date '+%M') / 30))"
+    key="$SESSION_LABEL:$family:$bucket"
+    notify_once "$key" "AceProof repeat10 endpoint failure detected at $now in $SESSION_LABEL ($family).
 
 Recent log signature:
 \`\`\`text
