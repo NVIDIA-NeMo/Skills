@@ -739,7 +739,7 @@ recipes/aceproof-tts/prompts/proof_verification_substitution_integrity.yaml
 
 This verifier explicitly lists each specialization of the original condition and rejects proofs that replace unknown quantities such as `f(2)`, `f(3)`, or `f(n)` by their intended final values before those values are proved. The first returned substitution-integrity row already rejected a related `028` candidate for invalid divisibility manipulation; the specific strict-verifier false-positive row is still pending in that verifier stream.
 
-## Continuation: Afternoon Fixed-Gate Status, 2026-06-11 14:10 PDT
+## Continuation: Afternoon Fixed-Gate Status, 2026-06-11 14:03 PDT
 
 The multiplexer endpoint is working again, though still loaded. A live health sample at `2026-06-11 13:57 PDT` reported `ok=True`, `42/42` ultra workers alive, `8261/10752` slots busy, `0` pending jobs, `8179` in-flight jobs, and `273750` completed jobs. A scan of locally modified logs from the prior 30 minutes found no fresh nginx `500`, LiteLLM connection, transient OpenAI-compatible endpoint, or `job not found` signatures.
 
@@ -780,3 +780,11 @@ selfcontained_theorem_use_x1
 ```
 
 For `proofbench133_028`, the targeted false-positive row `proofbench133_028_49` is now fully diagnosed. The generic strict verifier scored it `1.0`, and the self-contained theorem-use verifier also scored it `1.0`; both missed the circular specialization from `x^{f(2)}-y^{f(2)}` to `x^2-y^2`. The substitution-integrity gate scored the exact same candidate `0.0` and identified the invalid premature substitution. This makes substitution-integrity a necessary fixed verifier sidecar for future `028` promotion attempts; self-contained theorem-use alone is not sufficient for this failure mode.
+
+A second current-decomposition fixed-gate batch was also staged from the newer planner and decomposition-assembly rows, because those were not covered by the earlier v5 verifier bundle. Static filtering left 98 candidates: `C50` 26, `G25` 1, `proofbench133_028` 32, `proofbench133_030` 9, and `proofbench133_109` 30. The verifier input is:
+
+```text
+outputs/repeat10-genonly-candidate-verification/current_decomp_planner_assembly_verify_static64_x4_20260611.jsonl
+```
+
+It was launched in tmux session `repeat10-current-decomp-fixed-verifiers` with x4 strict, theorem, congruence, self-contained theorem-use, Gaussian-sign, and substitution-integrity sidecars.
