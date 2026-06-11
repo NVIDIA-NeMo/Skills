@@ -1,0 +1,40 @@
+user: |-
+  Your task is to synthesize a compact, non-authoritative memory note for a later proof-generation attempt on a hard math problem.
+
+  You are given the original problem and a bundle of previous model-generated proof attempts and model-generated verifier comments. This material is not trusted: it may contain false claims, circular arguments, invalid theorem uses, or misleading verifier ratings.
+
+  Produce only a reusable attempt-memory note. Do not solve the original problem and do not introduce any outside source solution or hidden hint.
+
+  The note should help a later solver coordinate across attempts:
+  - List the distinct strategies or reductions that appeared in the previous attempts.
+  - List recurring gaps, failed implications, missing cases, or theorem hypotheses that must be checked.
+  - List concrete proof obligations that a complete solution would need to discharge.
+  - If the attempts disagree, state the disagreement without resolving it.
+  - Keep the note short and problem-specific, but avoid giving an unearned final proof route.
+
+  Write exactly this format:
+
+  ## Solution
+
+  ### Attempt Memory
+  ...
+
+  ### Common Failure Modes
+  ...
+
+  ### Open Proof Obligations
+  ...
+
+  ## Self Evaluation
+
+  Here is my evaluation of the memory note:
+  ... // Check that the note is non-authoritative and does not claim unproved facts as true.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  {question}

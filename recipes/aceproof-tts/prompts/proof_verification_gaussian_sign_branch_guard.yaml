@@ -1,0 +1,35 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed mathematical solution. This verifier is specialized for algebraic-number-theory and factorization arguments, especially Gaussian integer arguments. Score the proof by the rubric below.
+
+  Fixed scoring rubric:
+  - Score 1 only if the solution is completely correct and every unit, associate, conjugate, exponent, sign, positivity, gcd, and exceptional branch is handled rigorously.
+  - Score 0.5 only for minor omissions that cannot affect the conclusion.
+  - Score 0 if a factorization proof drops a unit/sign branch, assumes a real or imaginary part is positive without justification, assumes two real factors are positive when they could both be negative, mishandles split/inert/ramified prime cases, treats a necessary divisibility condition as sufficient, misses a gcd/common-divisor case, or infers an exponent parity/shape without proving it.
+
+  Mandatory audit steps:
+  1. Identify every use of a unique factorization domain, Gaussian integers, prime splitting, conjugation, gcd/coprimality, exponent comparison, or "factor times factor is a square/cube" claim.
+  2. For each equality that is true only up to a unit or associate, write down the possible unit/sign/conjugate alternatives and check that the proof either eliminates all but one or treats all branches.
+  3. If the proof equates real and imaginary parts after multiplying by a unit, check whether the chosen associate can simultaneously satisfy every claimed parity, positivity, and sign condition. Do not allow "choose the unit" arguments that silently change later equations.
+  4. If the proof has an equation of the form square = A B, explicitly check the branches where A and B are both positive and where A and B are both negative. If a common gcd can be 1, 2, 3, or another small prime, check each valuation branch separately.
+  5. For each prime case, verify split/inert/ramified branches separately and check all exceptional primes such as 2 and 3 when they can divide a gcd.
+  6. If any branch is missing or an equation is only true up to sign/associate and the proof does not handle the alternatives, give score 0.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include factorization/unit/sign/exponent checks and final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}

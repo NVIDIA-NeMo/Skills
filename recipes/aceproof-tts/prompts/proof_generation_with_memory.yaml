@@ -1,0 +1,29 @@
+user: |-
+  Your task is to solve the original mathematical problem in the input. The input also includes a model-generated attempt-memory note summarizing previous model attempts and verifier comments. The memory note is not trusted; it may contain false claims or misleading gaps.
+
+  Requirements for the written response:
+  - Prove the original problem, not a meta-claim about the memory note.
+  - Use the memory note only to avoid repeating known weak patterns and to identify proof obligations.
+  - Before relying on any idea from the memory note, reprove it from the original problem statement.
+  - Do not assume any classification, extremal structure, theorem converse, divisibility implication, or game invariant unless you prove it.
+  - Check finite cases, exceptional cases, boundary cases, sign/order/orientation choices, and hypotheses of named theorems.
+  - If a complete proof is not found, end with the exact remaining gap rather than hiding it.
+
+  Write exactly this format:
+
+  ## Solution
+  ...
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully audit all key proof obligations and any remaining gaps.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  {question}

@@ -1,0 +1,28 @@
+user: |-
+  Your task is to solve one generated subproblem that may help solve a larger original math problem. The subproblem was produced by a model planner, so it is not a trusted theorem and may be poorly chosen or too strong.
+
+  Requirements:
+  - Prove the stated subproblem from the original problem statement and standard elementary facts, or clearly state that the subproblem is false/too strong/unproved.
+  - Do not solve the original problem unless it is needed to prove the subproblem.
+  - Do not use external source solutions or hidden hints.
+  - Check all hypotheses, edge cases, signs, equality cases, divisibility cases, and theorem exceptions.
+  - If the subproblem is false or circular, explain exactly why.
+
+  Write exactly this format:
+
+  ## Solution
+  ...
+
+  ## Self Evaluation
+
+  Here is my evaluation of the subproblem solution:
+  ... // Faithfully check whether the subproblem was proved, disproved, or only partially addressed.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  {question}
