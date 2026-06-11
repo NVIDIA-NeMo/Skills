@@ -59,6 +59,53 @@ The second reduced rerun used only the two prompt families that looked most prod
 - `proofonly`
 - `formalsanity`
 
+
+## Method And Prompt Details
+
+The repeat10 workstream reused the same AceProof R1 candidate-generation and normal-verification logic, but ran locally against the cloud multiplexer instead of submitting Slurm inference jobs. Configs set `cluster: none`, `gateway_address: http://aiapps-053026.dyn.nvidia.com:28000/v1`, and `profiles: ultra`. They intentionally did not set `tokens_to_generate` or `max_completion_tokens`, so the endpoint's 256k default context budget controlled completions.
+
+R1 ablation structure:
+
+```text
+10 target problem rows
+  x 2 generation temperatures: temp08 and temp10
+  x 7 proof-generation prompt families
+  x 64 independent candidate attempts per arm
+  -> normal verifier prompt on completed candidates
+  -> streaming early-stop verifier policy
+  -> candidate bundle extraction and out-of-band audit
+```
+
+The seven prompt families were `case`, `claimcert`, `compactaudit`, `formalsanity`, `lemma`, `proofonly`, and `routecompare`. For `temp08`, generation/refinement temperature was `0.8` and verifier temperature was `1.0`. For `temp10`, generation/refinement/verifier temperature was `1.0`. Since these were R1-only runs, refinement was configured but not exercised.
+
+Common mux config values were `n_parallel_proof_gen: 64`, `n_verification_per_proof: 16`, solved threshold `0.99999`, `top_p: 0.95`, request timeout `14400`, and `max_rounds: 1`. The streaming verifier used `min_verifications_per_proof: 4`, `early_stop_only_if_score_lt_1: true`, and `cancel_remaining: true`; this allowed obviously non-perfect candidates to stop after enough evidence while still preserving candidate rows for later audit.
+
+Prompt-family contracts:
+
+| Family | Prompt file | Prompt contract / structure |
+| --- | --- | --- |
+| `proofonly` | `proof_generation_proof_only.yaml` | Writes only `## Solution`; removes self-evaluation, score, search diary, and speculative alternatives. If incomplete, it asks for the exact remaining gap. Produced confirmed `N24` and `C39` candidates. |
+| `formalsanity` | `proof_generation_formal_sanity.yaml` | Tracks exact quantifiers and original hypotheses, forbids unproved generic-position assumptions, and adds a compact `## Sanity check` plus self-evaluation. Produced confirmed `N14`. |
+| `case` | `proof_generation_case_construction.yaml` | Forces exhaustive case or construction coverage, direct property checks for constructions, explicit contradictions for eliminated cases, and self-evaluation of case completeness. |
+| `claimcert` | `proof_generation_claim_certificate.yaml` | Uses a short claim/proof dependency chain, requiring each normalization, transformation, extremal choice, induction step, or bound to be proved before use. |
+| `compactaudit` | `proof_generation_compact_audit.yaml` | Asks for one direct route plus detailed self-audit of hidden gaps, with explicit instructions to remove speculative alternatives and report unresolved issues faithfully. |
+| `lemma` | `proof_generation_lemma_first.yaml` | Starts from small intermediate lemmas, proves them completely, and then assembles the final solution; the self-evaluation audits each lemma and assembly step. |
+| `routecompare` | `proof_generation_route_compare.yaml` | Internally compares multiple routes, presents only the selected route, and adds `## Route check` explaining why the critical steps are justified. |
+
+Normal verification used `proof_verification.yaml`: the same 0/0.5/1 proof-quality rubric as the baseline harness, requiring a detailed evaluation followed by `\boxed{...}`. The repeat10 workstream did not use strict/case-check verifier prompts for automatic promotion; independent/manual audits were used out-of-band to decide which high- or promising-low-verifier candidates were real solves.
+
+Repair-seed structure:
+
+```text
+repeat10-n39-51-repairseed-20260610.jsonl
+  -> original N39 problem
+  -> previous candidate proof N39_51
+  -> audit note identifying the likely gap
+  -> proof_generation_repair_seed.yaml
+```
+
+The repair-seed prompt tells the model to treat the candidate and audit notes as non-authoritative scratch work, prove the original problem rather than a meta-claim, reuse candidate ideas only after reproving all needed lemmas/cases, and explicitly handle finite checks, divisibility cases, sign/order choices, theorem hypotheses, and exceptional cases for named tools such as Bertrand, Zsigmondy, Catalan/Mihailescu, and LTE. It outputs `## Solution` and `## Sanity check` only. This was staged as a targeted repair method, not as evidence of a confirmed solve in the current report.
+
 ## Confirmed Solves
 
 ### `N14`
