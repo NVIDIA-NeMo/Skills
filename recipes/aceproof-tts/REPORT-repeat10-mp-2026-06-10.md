@@ -880,3 +880,21 @@ proofbench133_030 / proofbench133_109:
 ```
 
 This aligns with the fixed harness: no additional solved problem should be claimed from the current repeat10/new-checkpoint streams. The active value of these runs is diagnostic. They identify which proof families are close enough to deserve targeted harness pressure, and they expose verifier false positives that need deterministic blockers or stronger verifier prompts before promotion.
+
+## Continuation: Model-Memory Repair Stream, 2026-06-11 15:08 PDT
+
+A new fair attempt-memory stream was launched for the five repeat10/new-checkpoint problems still not solved by the fixed gate: `proofbench133_028`, `proofbench133_109`, `C50`, `proofbench133_030`, and `G25`. The setup uses only model-generated candidates and model-generated verifier comments from the current streams; it does not use the independent best-model audit text.
+
+Input construction now preserves existing `candidate_uid` values from curated candidate files so verifier sidecar comments attach correctly, and it skips literal non-object JSONL rows such as `null` merge artifacts. The committed inputs are:
+
+```text
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-input-20260611.jsonl
+  full context: 185 deduplicated candidates, up to 10 candidates/problem, up to 4 comments/candidate, about 522 KB
+
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-input-20260611.jsonl
+  compact context: same candidate pool, up to 4 candidates/problem, up to 2 comments/candidate, about 123 KB
+```
+
+Both inputs are being run through `recipes/aceproof-tts/prompts/proof_generation_memory_synthesis.yaml` at temperature `1.0`. The full-context tmux session is `repeat10-current-modelmemory-synthesis`; the compact-context tmux session is `repeat10-current-modelmemory-compact-synthesis`. Both were relaunched with the NeMo-Skills venv prepended to `PATH` because the first full-context launch failed locally before any endpoint request with `python: command not found` inside the generated nemo-run script.
+
+As of `2026-06-11 15:08 PDT`, both memory-synthesis runs are alive but have not returned their first rows. Endpoint health remains `ok=True` with no fresh endpoint-failure signatures in local logs.
