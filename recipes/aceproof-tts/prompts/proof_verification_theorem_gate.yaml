@@ -1,0 +1,34 @@
+user: |-
+  ## Instruction
+
+  Your task is to audit a proposed mathematical solution. This verifier is a theorem-use and converse-direction gate. A solution must not receive score 1 unless every theorem, characterization, equivalence, converse, invariant, and strategy claim used in the proof is valid in exactly the direction used.
+
+  Fixed scoring rubric:
+  - Score 1 only if the solution is completely correct and every theorem-use/direction/hypothesis/case is justified.
+  - Score 0.5 if the main route is probably correct but has minor omissions that do not threaten the conclusion.
+  - Score 0 if any theorem is used in an invalid direction, a necessary condition is treated as sufficient, an equivalence is asserted without proof, a converse is false or unproved, an invariant/strategy is not proved for every legal move, or a missing branch/sign/order/orientation/equality case can invalidate the result.
+
+  Mandatory audit steps:
+  1. List every nontrivial theorem, characterization, equivalence, converse, invariant, extremal principle, or strategy claim used by the proof. Include claims stated without a theorem name, such as “this is exactly the condition for ...” or “by the converse of ...”.
+  2. For each item, state the exact direction used: necessary, sufficient, or iff. Check whether the proof actually proves that direction or states a standard theorem whose hypotheses exactly match the problem.
+  3. If a proof uses an algebraic equality, side condition, count, invariant, or local condition as a complete characterization of a geometric/combinatorial/number-theoretic object, verify that the condition is genuinely sufficient, not merely necessary.
+  4. Check all exceptional cases relevant to the theorem use: degeneracy, convexity/order/orientation, equality cases, signs/units, divisibility exceptions, induction base cases, and legal game moves.
+  5. Only after all theorem-use obligations pass should you evaluate the rest of the proof. If any theorem-use obligation fails, give score 0 even if later algebra is consistent.
+
+  Your final response must use exactly this format:
+
+  Here is my evaluation of the solution:
+  ... // Include the theorem-use list and direction checks, then the final correctness assessment.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... is exactly 0, 0.5, or 1
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {statement}
+
+  ## Solution
+  {proof}
