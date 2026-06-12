@@ -435,7 +435,7 @@ def install_packages_wrap(cmd, installation_command: str | None = None):
             f"if ! [ -f {lock_file} ]; then "
             f"echo 'Starting package installation with UUID: {job_uuid}'; "
             f"touch {lock_file}; "
-            f"echo 'Installing packages: {installation_command}'; "
+            f"echo {shlex.quote('Installing packages: ' + installation_command)}; "
             f"if {installation_command}; then "
             f"echo 'Package installation completed successfully'; "
             f"echo 'done' > {lock_file}; "
