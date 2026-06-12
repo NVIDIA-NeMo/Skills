@@ -1030,3 +1030,64 @@ seeds 256..383:
 ```
 
 The compact partial and full C50/109 streams use `max_concurrent_requests=512`; the smaller single-problem streams use `256`. All ten added sessions reached the async request loop against `proofbench-ultra` by `17:06 PDT`.
+
+## Continuation: Elastic proofbench-ultra Wide Expansion, 2026-06-11 17:40 PDT
+
+After the user clarified that the `proofbench-ultra` endpoint is elastic and should not be locally queued, the memory-guided solver streams were widened substantially. In addition to the original `0..31` and `32..127` seed ranges, independent seed-band sessions were launched through `2047` for the same five memory-solver slices:
+
+```text
+compact partial: proofbench133_028, proofbench133_109, C50, G25
+compact 030: proofbench133_030
+full C50/109: C50, proofbench133_109
+full 028: proofbench133_028
+full 030: proofbench133_030
+```
+
+Each band keeps the same prompt and endpoint setup:
+
+```text
+prompt: recipes/aceproof-tts/prompts/proof_generation_with_memory.yaml
+model: proofbench-ultra
+gateway: http://aiapps-053026.dyn.nvidia.com:28000/v1
+temperature/top_p: 1.0 / 0.95
+token cap: none set explicitly; use endpoint/context limit
+```
+
+The wider launches reached async loops for the active solver streams, with three early-return slices restarted after they exited before the async loop and produced no output:
+
+```text
+compact partial s1920-2047
+full 028 s1664-1791
+full C50/109 s1536-1663
+```
+
+A fresh static-pass collection at `17:31 PDT` found `393` deduplicated static-pass candidates from `1988` returned solver rows:
+
+```text
+C50: 107
+proofbench133_028: 118
+proofbench133_030: 60
+proofbench133_109: 108
+```
+
+This snapshot is stored at:
+
+```text
+outputs/repeat10-genonly-candidate-verification/proofbench_ultra_modelmemory_staticpass_all_20260611_1731_candidates_all.jsonl
+```
+
+Verifier sidecars were launched for the `316` candidates that were new relative to the `17:15` snapshot:
+
+```text
+outputs/repeat10-genonly-candidate-verification/proofbench_ultra_modelmemory_staticpass_delta_1731/
+```
+
+Broad verifier families are normal, strict audit, theorem gate, congruence guard, self-contained theorem-use, and countermodel audit. For the 109 subset, Gaussian sign branch, Gaussian unit, and modular-root integrity sidecars were also launched. Two 109-specific verifier arms (`gaussiansign`, `root`) initially exited before async-loop startup and were relaunched as retry sessions; the retry sessions reached async loops.
+
+Endpoint health stayed `ok=True`, but a real transient retry wave appeared around `17:37 PDT` in the `proofbench-ultra-staticpass-delta-1731` theorem/countermodel verifier logs:
+
+```text
+litellm.InternalServerError: InternalServerError: OpenAIException - Connection error
+```
+
+These were retryable client-side warnings (`retrying 1/24` and `2/24`), not final failures. A Slack notification was sent per the user's instruction. New launches were paused after this wave while existing solver/verifier requests continue retrying and completing. As of the partial `17:40 PDT` reducer, no candidate is promoted by the fixed verifier gate; most candidates in the newest snapshot still lack completed broad verifier rows.
