@@ -222,15 +222,18 @@ def test_ray_backend_runtime_env_normalizes_and_filters_values():
 
     backend = RayBackend(dashboard_url="http://ray-head:8265", env_vars={"A": "1", "B": None, "C": 2})
 
-    assert backend._build_runtime_env() == {"env_vars": {"A": "1", "C": "2"}}
+    # RAY_OVERRIDE_JOB_RUNTIME_ENV is always injected so a job driver that re-inits Ray
+    # (e.g. NeMo-RL GRPO/rollout) can merge its runtime_env instead of erroring on a shared key.
+    assert backend._build_runtime_env() == {"env_vars": {"A": "1", "C": "2", "RAY_OVERRIDE_JOB_RUNTIME_ENV": "1"}}
 
 
-def test_ray_backend_runtime_env_none_when_no_env():
+def test_ray_backend_runtime_env_sets_override_even_with_no_env():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
     backend = RayBackend(dashboard_url="http://ray-head:8265", env_vars={})
 
-    assert backend._build_runtime_env() is None
+    # Even with no forwarded env vars the runtime_env still carries the override flag (never None).
+    assert backend._build_runtime_env() == {"env_vars": {"RAY_OVERRIDE_JOB_RUNTIME_ENV": "1"}}
 
 
 # ---------------------------------------------------------------------------
