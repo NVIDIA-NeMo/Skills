@@ -217,6 +217,15 @@ def test_non_precreated_ray_honors_use_with_ray_cluster_flag():
     assert not (backend.stage_metadata(use_with_ray_cluster=False) or {}).get("use_with_ray_cluster")
 
 
+def test_ray_executor_none_without_dashboard_raises():
+    # backend.name: ray + executor: none targets a pre-provisioned Ray Jobs cluster,
+    # which needs a dashboard URL. Without one (and no precreated flag), fail fast with
+    # an actionable message instead of the opaque nemo-run SlurmExecutor error.
+    cluster_config = {"executor": "none", "backend": {"name": "ray"}}
+    with pytest.raises(ValueError, match="dashboard_url"):
+        get_execution_backend(cluster_config)
+
+
 def test_ray_backend_runtime_env_normalizes_and_filters_values():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 

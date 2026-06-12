@@ -200,6 +200,20 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             bool(backend_config.get("precreated_cluster", False)) or bool(endpoint) or bool(dashboard_url)
         )
         control_plane = str(backend_config.get("control_plane") or "").strip().lower()
+        # `backend.name: ray` with `executor: none` targets a pre-provisioned Ray Jobs
+        # cluster, which needs a dashboard URL to submit to. If none resolved (and this
+        # is not a Kubernetes control plane), fail fast with an actionable message rather
+        # than fall through to the opaque nemo-run error
+        # "use_with_ray_cluster is only supported for SlurmExecutor".
+        if not precreated_cluster and control_plane != "kubernetes":
+            executor_kind = str(cluster_config.get("executor") or "").strip().lower()
+            if executor_kind == "none":
+                raise ValueError(
+                    "backend.name: ray with executor: none targets a pre-provisioned Ray Jobs "
+                    "cluster and requires a dashboard URL — set "
+                    "backend.dashboard_url: http://<head>:<port> (or backend.precreated_cluster: true). "
+                    "To run Ray inside a Slurm allocation instead, set executor: slurm."
+                )
         k8s_cfg = backend_config.get("kubernetes") or {}
         selector = backend_config.get("entrypoint_label_selector") or k8s_cfg.get("entrypoint_label_selector")
         image_label_key = backend_config.get("image_label_key") or k8s_cfg.get("image_label_key")
