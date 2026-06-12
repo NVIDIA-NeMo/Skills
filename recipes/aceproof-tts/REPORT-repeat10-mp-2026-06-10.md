@@ -980,3 +980,27 @@ outputs/repeat10-current-modelmemory-solver-proofbench-ultra/temp10full/memoryso
 ```
 
 The old `ultra` memory-solver clients were stopped after the proofbench-ultra sessions reached the async request loop. Their partial outputs remain on disk for comparison. Before the 16:03 endpoint connection-error wave and 16:28 relaunch, the original compact partial stream had produced 26 rows between roughly 15:25 and 15:55. After the 16:28 relaunch, it added only one more row before the endpoint switch, while the compact 030, full C50/109, full 028, and full 030 streams were still at zero rows. That means the compact `G25` slice was clearly moving better before 16:28, but there is no evidence that the other slices were faster before 16:28.
+
+## Continuation: Endpoint Monitor Fix And Elastic proofbench-ultra Expansion, 2026-06-11 17:02 PDT
+
+The repeated Slack endpoint alerts after the `16:03-16:04 PDT` connection-error wave were stale-log false positives. The monitor scanned recently modified log files and matched old timestamped error lines inside those logs. It now filters matches to error lines whose embedded timestamp is within the last five minutes before notifying. Live endpoint health at the time of this fix was still `ok=True` for both `ultra` and `proofbench-ultra`; no fresh `proofbench-ultra` connection/500/timeout signatures were present.
+
+The user clarified that the endpoint is elastic and can schedule more nodes as needed, so new proofbench-ultra submissions should not be locally throttled for queue concerns. Based on that, additional memory-guided solver inputs were created for seeds `32..127` and launched against `proofbench-ultra` with `max_concurrent_requests=256` per stream:
+
+```text
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-partial-s32-127-20260611.jsonl
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-030-s32-127-20260611.jsonl
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-c50-109-s32-127-20260611.jsonl
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-028-s32-127-20260611.jsonl
+recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-030-s32-127-20260611.jsonl
+```
+
+These add 864 proof attempts total. Output directories are under:
+
+```text
+outputs/repeat10-current-modelmemory-solver-proofbench-ultra-delta/
+```
+
+The original proofbench-ultra `0..31` seed run is already faster than the stalled `ultra` relaunch: by `16:51 PDT`, it had returned rows for compact `G25`, compact `proofbench133_030`, full `proofbench133_109`, and full `proofbench133_030`. Static filtering left three full-memory `proofbench133_109` candidates. Seven x8 verifier sidecars were launched on those candidates using `proofbench-ultra`: strict audit, theorem gate, congruence guard, self-contained theorem-use, Gaussian sign branch, Gaussian unit, and modular-root integrity.
+
+Independent audits so far rejected two of the three `proofbench133_109` candidates for missing Gaussian sign branches. The third candidate, `proofbench133_109_21`, received one valid audit and is being re-audited independently while verifier sidecars run.

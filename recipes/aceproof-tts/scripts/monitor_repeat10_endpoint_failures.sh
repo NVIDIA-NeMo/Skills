@@ -26,10 +26,23 @@ notify_once() {
 
 while true; do
   now="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+  raw_scan="$STATE_DIR/latest_scan.raw.txt"
   {
     echo "[$now] scanning recent logs under $LOG_GLOB_ROOT"
     find "$LOG_GLOB_ROOT" -type f -name '*.log' -mmin -3 -print0 2>/dev/null \
       | xargs -0 -r rg -n "$PATTERN" || true
+  } >"$raw_scan"
+
+  cutoff_epoch="$(date -d '5 minutes ago' '+%s')"
+  {
+    head -n 1 "$raw_scan"
+    awk -v cutoff="$cutoff_epoch" '
+      match($0, /20[0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]/) {
+        ts = substr($0, RSTART, RLENGTH)
+        gsub(/[-:]/, " ", ts)
+        if (mktime(ts) >= cutoff) print
+      }
+    ' "$raw_scan"
   } >"$STATE_DIR/latest_scan.txt"
 
   if [[ -s "$STATE_DIR/latest_scan.txt" ]] && rg -q "$PATTERN" "$STATE_DIR/latest_scan.txt"; then
