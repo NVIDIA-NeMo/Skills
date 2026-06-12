@@ -1003,4 +1003,30 @@ outputs/repeat10-current-modelmemory-solver-proofbench-ultra-delta/
 
 The original proofbench-ultra `0..31` seed run is already faster than the stalled `ultra` relaunch: by `16:51 PDT`, it had returned rows for compact `G25`, compact `proofbench133_030`, full `proofbench133_109`, and full `proofbench133_030`. Static filtering left three full-memory `proofbench133_109` candidates. Seven x8 verifier sidecars were launched on those candidates using `proofbench-ultra`: strict audit, theorem gate, congruence guard, self-contained theorem-use, Gaussian sign branch, Gaussian unit, and modular-root integrity.
 
-Independent audits so far rejected two of the three `proofbench133_109` candidates for missing Gaussian sign branches. The third candidate, `proofbench133_109_21`, received one valid audit and is being re-audited independently while verifier sidecars run.
+Independent audits rejected all three current `proofbench133_109` candidates. Candidates `proofbench133_109_11` and `proofbench133_109_29` miss Gaussian sign branches. Candidate `proofbench133_109_21` initially received one valid audit, but two independent follow-up audits both found the same fatal algebra error in the negative branch: it uses the false expansion
+
+```text
+s^12 + 27s^8u^4 + 243s^4u^8 + 729u^12 = (s^4 + 3u^4)^3
+```
+
+The correct cube matching those middle coefficients would not be `(s^4+3u^4)^3`; this makes the branch argument tautological rather than contradictory. A deterministic static blocker was added in `recipes/aceproof-tts/pipeline/run_static_promotion_filters.py` for this exact `proofbench133_109` false-positive pattern. With partial verifier sidecars and that static blocker, the fixed promotion gate promotes zero of the three current candidates.
+
+At `17:05 PDT`, after the user clarified again that the mux endpoint is elastic and should not be locally queued, two more non-overlapping seed bands were launched for the same five memory-solver slices:
+
+```text
+seeds 128..255:
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-partial-s128-255-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-030-s128-255-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-c50-109-s128-255-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-028-s128-255-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-030-s128-255-20260611.jsonl
+
+seeds 256..383:
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-partial-s256-383-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-compact-solver-input-030-s256-383-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-c50-109-s256-383-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-028-s256-383-20260611.jsonl
+  recipes/aceproof-tts/dataset/repeat10-current-modelmemory-full-solver-input-030-s256-383-20260611.jsonl
+```
+
+The compact partial and full C50/109 streams use `max_concurrent_requests=512`; the smaller single-problem streams use `256`. All ten added sessions reached the async request loop against `proofbench-ultra` by `17:06 PDT`.

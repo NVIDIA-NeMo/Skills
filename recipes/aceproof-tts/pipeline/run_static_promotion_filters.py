@@ -65,6 +65,12 @@ BAD_NEGATIVE_FOURTH_ROOT = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+FALSE_NEGATIVE_BRANCH_CUBE_EXPANSION = re.compile(
+    r"(s\^\{12\}\s*\+\s*27s\^\{8\}u\^\{4\}\s*\+\s*243s\^\{4\}u\^\{8\}\s*\+\s*729u\^\{12\}.{0,240}"
+    r"\(s\^\{4\}\s*\+\s*3u\^\{4\}\)\^\{3\})",
+    re.IGNORECASE | re.DOTALL,
+)
+
 GAME_BAY_TERMS = re.compile(r"\b(bay|concave|L[- ]shape|missing corner|2x2|2\\times\\s*2)\b", re.IGNORECASE)
 GAME_SHAYAN_ALWAYS_K1_TERMS = re.compile(
     r"(Shayan.{0,120}(always|will always|can always|must)\s+(play|choose).{0,80}k\s*=\s*1|"
@@ -121,6 +127,16 @@ def negative_fourth_power_root_reasons(proof: str, problem_idx: str | None = Non
     return []
 
 
+def false_negative_branch_cube_expansion_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
+    if problem_idx != "proofbench133_109":
+        return []
+    if FALSE_NEGATIVE_BRANCH_CUBE_EXPANSION.search(proof):
+        return [
+            "uses the false expansion s^12+27s^8u^4+243s^4u^8+729u^12 = (s^4+3u^4)^3 in a Gaussian negative-branch argument"
+        ]
+    return []
+
+
 def game_bay_response_reasons(proof: str, problem_idx: str | None = None) -> list[str]:
     """Detect obvious k=1/bay-strategy false positives for the grid game."""
 
@@ -141,6 +157,7 @@ def annotate_row(row: dict[str, Any]) -> dict[str, Any]:
     reasons.extend(pitot_false_converse_reasons(proof))
     reasons.extend(gaussian_cube_sign_branch_reasons(proof, problem_idx=problem_idx))
     reasons.extend(negative_fourth_power_root_reasons(proof, problem_idx=problem_idx))
+    reasons.extend(false_negative_branch_cube_expansion_reasons(proof, problem_idx=problem_idx))
     reasons.extend(game_bay_response_reasons(proof, problem_idx=problem_idx))
     out = dict(row)
     out["static_promotion_reject"] = bool(reasons)
