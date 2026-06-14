@@ -38,9 +38,8 @@ class Schema:
 
 
 def load_include_datasets(languages, split):
-    return [
-        load_dataset("CohereLabs/include-base-44", lang)[split] for lang in languages
-    ]
+    return [load_dataset("CohereLabs/include-base-44", lang)[split] for lang in languages]
+
 
 # MMMLU-style greedy fallback: last answer letter anywhere in the response.
 LETTER_REGEX = r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
