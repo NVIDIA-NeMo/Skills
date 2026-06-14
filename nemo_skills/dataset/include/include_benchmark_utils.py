@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datasets import load_dataset
-
 from collections import namedtuple
+
+from datasets import load_dataset
 
 MCQFormat = namedtuple("MCQFormat", ["task", "answer_prefix", "placeholder"])
 
 
-# Dataset schema defined in Hugging Face datasets
+# Hugging Face dataset schema.
 class Schema:
     ANSWER: str = "answer"
     LANGUAGE: str = "language"
@@ -39,11 +39,10 @@ class Schema:
 
 def load_include_datasets(languages, split):
     return [
-        load_dataset(f"CohereLabs/include-base-44", lang)[split] for lang in languages
+        load_dataset("CohereLabs/include-base-44", lang)[split] for lang in languages
     ]
 
-# Greedy fallback: grab the last answer letter anywhere in the response.
-# Mirrors the MMMLU benchmark greedy regex (covers non-Latin letter variants).
+# MMMLU-style greedy fallback: last answer letter anywhere in the response.
 LETTER_REGEX = r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
 GREEDY_REGEX = r"[\s\S]*" + LETTER_REGEX
 
@@ -278,8 +277,7 @@ def digit_to_letter(digit):
 
 
 def build_extract_regex(language):
-    # Phrase-anchored regex from the language's answer placeholder (cf. MMLU-ProX),
-    # with the MMMLU-style greedy matcher as a fallback.
+    # Phrase-anchored regex from the language's placeholder, then greedy fallback.
     placeholder = MCQ_FORMATS[language].placeholder
     phrase_regex = placeholder.replace("({})", r"\(?([ABCD])\)?\s*")
     return [phrase_regex, GREEDY_REGEX]
@@ -303,36 +301,14 @@ def copy_other_fields(entry):
     }
 
 
-QUESTION_TEMPLATE = (
-    "{question}\nA. {option_a}\nB. {option_b}\nC. {option_c}\nD. {option_d}\n"
-)
+def build_prompt(question, options_text, language, subject):
+    fmt = MCQ_FORMATS[language]
+    task = fmt.task.format(subject=subject, ans_suffix=fmt.placeholder.format("X"))
+    return f"{task}\n\n{question}\n{options_text}\n{fmt.answer_prefix}".strip()
 
 
-def build_prompt(target_question, target_options, language, subject):
-    mcq_format = MCQ_FORMATS[language]
-    prompt = mcq_format.task.format(
-        subject=subject, ans_suffix=mcq_format.placeholder.format("X")
-    )
-    prompt += "\n\n"
-    prompt += QUESTION_TEMPLATE.format(
-        question=target_question,
-        option_a=target_options["A"],
-        option_b=target_options["B"],
-        option_c=target_options["C"],
-        option_d=target_options["D"],
-    )
-    prompt += mcq_format.answer_prefix
-    return prompt.strip()
-
-
-def get_mcq_fields(target_question, target_options, language, subject):
-    target_options_dict = {
-        digit_to_letter(i): option for i, option in enumerate(target_options)
-    }
-    target_options_text = "\n".join(
-        f"{letter}. {option}" for letter, option in target_options_dict.items()
-    )
-    prompt = build_prompt(
-        target_question, target_options_dict, language, subject
-    )
-    return {"question": prompt, "options": target_options_text, **target_options_dict}
+def get_mcq_fields(question, options, language, subject):
+    options_dict = {digit_to_letter(i): opt for i, opt in enumerate(options)}
+    options_text = "\n".join(f"{k}. {v}" for k, v in options_dict.items())
+    prompt = build_prompt(question, options_text, language, subject)
+    return {"question": prompt, "options": options_text, **options_dict}
