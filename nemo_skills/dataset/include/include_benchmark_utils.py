@@ -305,7 +305,7 @@ QUESTION_TEMPLATE = (
 )
 
 
-def create_zero_shot_context(target_question, target_options, language, subject):
+def build_prompt(target_question, target_options, language, subject):
     mcq_format = MCQ_FORMATS[language]
     prompt = mcq_format.task.format(
         subject=subject, ans_suffix=mcq_format.placeholder.format("X")
@@ -329,7 +329,7 @@ def get_mcq_fields(target_question, target_options, language, subject):
     target_options_text = "\n".join(
         f"{letter}. {option}" for letter, option in target_options_dict.items()
     )
-    prompt = create_zero_shot_context(
+    prompt = build_prompt(
         target_question, target_options_dict, language, subject
     )
     return {"question": prompt, "options": target_options_text, **target_options_dict}
