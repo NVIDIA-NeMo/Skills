@@ -39,6 +39,7 @@ def format_entry(entry, language):
         "expected_answer": expected_answer,
         "extract_from_boxed": False,
         "extract_regex": build_extract_regex(language),
+        "relaxed": False,
         "subset_for_metrics": language,
         "category": category,
         **get_mcq_fields(target_question, target_options, language, subject),
