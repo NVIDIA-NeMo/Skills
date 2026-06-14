@@ -17,9 +17,9 @@ import json
 from pathlib import Path
 
 from include_benchmark_utils import (
-    EXTRACT_REGEX,
     SUPPORTED_LANGUAGES,
     Schema,
+    build_extract_regex,
     copy_other_fields,
     digit_to_letter,
     get_mcq_fields,
@@ -38,7 +38,7 @@ def format_entry(entry, language):
     return {
         "expected_answer": expected_answer,
         "extract_from_boxed": False,
-        "extract_regex": EXTRACT_REGEX,
+        "extract_regex": build_extract_regex(language),
         "subset_for_metrics": language,
         "category": category,
         **get_mcq_fields(target_question, target_options, language, subject),

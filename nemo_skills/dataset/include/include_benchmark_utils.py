@@ -42,9 +42,10 @@ def load_include_datasets(languages, split):
         load_dataset(f"CohereLabs/include-base-44", lang)[split] for lang in languages
     ]
 
-# Extract the final predicted uppercase letter from {A, B, C, D}.
-LATTER_REGEX = r"\b\(?\s*([ABCD])\s*\)?\.?\b"
-EXTRACT_REGEX = r"[\s\S]*" + LATTER_REGEX
+# Greedy fallback: grab the last answer letter anywhere in the response.
+# Mirrors the MMMLU benchmark greedy regex (covers non-Latin letter variants).
+LETTER_REGEX = r"\b\(?\s*([A-D]|[أ-د]|[অ]|[ব]|[ড]|[ঢ]|[Ａ]|[Ｂ]|[Ｃ]|[Ｄ])\s*\)?\.?\b"
+GREEDY_REGEX = r"[\s\S]*" + LETTER_REGEX
 
 MCQ_FORMATS = {
     "Russian": MCQFormat(
@@ -274,6 +275,14 @@ SUPPORTED_LANGUAGES = sorted(MCQ_FORMATS.keys())
 
 def digit_to_letter(digit):
     return chr(ord("A") + int(digit))
+
+
+def build_extract_regex(language):
+    # Phrase-anchored regex from the language's answer placeholder (cf. MMLU-ProX),
+    # with the MMMLU-style greedy matcher as a fallback.
+    placeholder = MCQ_FORMATS[language].placeholder
+    phrase_regex = placeholder.replace("({})", r"\(?([ABCD])\)?\s*")
+    return [phrase_regex, GREEDY_REGEX]
 
 
 def normalize_entry_field(entry, key):
