@@ -47,11 +47,6 @@ LATTER_REGEX = r"\b\(?\s*([ABCD])\s*\)?\.?\b"
 EXTRACT_REGEX = r"[\s\S]*" + LATTER_REGEX
 
 MCQ_FORMATS = {
-    "English": MCQFormat(
-        answer_prefix="Answer: Let's think step by step.",
-        task='The following are multiple choice questions (with answers) about {subject}. Think step by step and then finish your answer with "{ans_suffix}" where X is the correct letter choice.',
-        placeholder="the answer is ({})",
-    ),
     "Russian": MCQFormat(
         answer_prefix="Ответ: Давайте подумаем шаг за шагом.",
         task='Ниже приведены вопросы с несколькими вариантами ответов (с ответами) по теме {subject}. Пожалуйста, размышляйте шаг за шагом, а затем завершите свой ответ с "{ans_suffix}", где X - это буква правильного варианта.',
@@ -274,8 +269,7 @@ MCQ_FORMATS = {
     ),
 }
 
-SUPPORTED_LANGUAGES = sorted(list(MCQ_FORMATS.keys()))
-SUPPORTED_LANGUAGES.remove("English")
+SUPPORTED_LANGUAGES = sorted(MCQ_FORMATS.keys())
 
 
 def digit_to_letter(digit):
