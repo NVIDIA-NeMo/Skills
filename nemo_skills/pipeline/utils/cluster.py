@@ -259,7 +259,7 @@ def get_env_variables(cluster_config):
     # the job is being launched, not where its being run.
     for key, value in env_vars.items():
         if isinstance(value, str) and "$" in value:
-            if key == "NEMO_SKILLS_SANDBOX_PORT" and "SLURM_JOB_ID" in value:
+            if "SLURM_JOB_ID" in value and key in {"NEMO_SKILLS_SANDBOX_PORT", "LISTEN_PORT", "NGINX_PORT"}:
                 continue
             if key in os.environ:
                 env_vars[key] = os.path.expandvars(value)

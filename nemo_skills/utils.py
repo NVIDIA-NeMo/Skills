@@ -632,8 +632,8 @@ def get_server_wait_cmd(server_address):
     # this will try to handshake in a loop and unblock when the server is ready
     return (
         f"echo 'Waiting for the server to start at {server_address}' && "
-        f"while ! (curl -sS {models_url} >/dev/null 2>&1 || "
-        f"curl -sS {health_url} >/dev/null 2>&1); do sleep 3; done "
+        f"while ! (curl -fsS --max-time 3 {models_url} >/dev/null 2>&1 || "
+        f"curl -fsS --max-time 3 {health_url} >/dev/null 2>&1); do sleep 3; done "
     )
 
 
