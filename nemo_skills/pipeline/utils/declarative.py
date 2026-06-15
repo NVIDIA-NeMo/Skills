@@ -581,13 +581,27 @@ class Pipeline:
         return script, exec_config
 
     def _rewrite_local_paths(self, script: run.Script) -> run.Script:
-        """For executor='none', replace /nemo_run/code paths with local repo paths."""
+        """For executor='none', replace /nemo_run/code paths with local repo paths.
+
+        Under the Ray Jobs API backend (``backend.name == "ray"``) the command is
+        submitted to a *remote* cluster whose image and Python version need not match
+        the driver's, so the driver-side absolute install path (e.g.
+        ``/usr/local/lib/python3.10/dist-packages``) will not exist there. In that
+        case rewrite to relative (cwd) paths instead -- mirroring the add_task path --
+        so the command runs from the job's working directory and ``nemo_skills``
+        resolves via the baked image's ``PYTHONPATH``.
+        """
         nemo_repo = get_registered_external_repo("nemo_skills")
-        if nemo_repo is None:
+        is_ray = (self.cluster_config.get("backend") or {}).get("name") == "ray"
+        if nemo_repo is None and not is_ray:
             return script
 
-        pkg_path = str(nemo_repo.path)
-        repo_root = str(nemo_repo.path.parent)
+        if is_ray:
+            pkg_path = "./nemo_skills"
+            repo_root = "."
+        else:
+            pkg_path = str(nemo_repo.path)
+            repo_root = str(nemo_repo.path.parent)
 
         def _replace(cmd: str) -> str:
             return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
