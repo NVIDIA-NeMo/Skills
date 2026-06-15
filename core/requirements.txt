@@ -19,6 +19,7 @@ huggingface_hub
 hydra-core
 ipython
 iso639-lang
+koifeval @ git+https://github.com/bzantium/koifeval.git@7a27889c0cf285e60b1a7b4795211846dc328aaf
 langcodes
 langdetect
 language-data

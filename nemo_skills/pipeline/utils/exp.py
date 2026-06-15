@@ -435,7 +435,7 @@ def install_packages_wrap(cmd, installation_command: str | None = None):
             f"if ! [ -f {lock_file} ]; then "
             f"echo 'Starting package installation with UUID: {job_uuid}'; "
             f"touch {lock_file}; "
-            f"echo 'Installing packages: {installation_command}'; "
+            f"echo {shlex.quote('Installing packages: ' + installation_command)}; "
             f"if {installation_command}; then "
             f"echo 'Package installation completed successfully'; "
             f"echo 'done' > {lock_file}; "
@@ -614,15 +614,35 @@ def add_task(
                     f"add_task() call under cluster_config.executor='ray'."
                 )
             ray_dependencies.append(dep)
+        # Also honor run_after on the Ray path. In this codepath
+        # expname == task_name == submission_id by construction
+        # (this function returns submission_id and downstream callers
+        # pass it back as run_after), so each entry maps directly to
+        # a Ray submission_id without needing get_exp_handles().
+        if run_after is not None:
+            if isinstance(run_after, (str, run.Experiment)):
+                run_after = [run_after]
+            for dep_expname in run_after:
+                if not isinstance(dep_expname, str):
+                    raise NotImplementedError(
+                        f"Ray executor run_after entries must be Ray submission IDs (str); "
+                        f"got {type(dep_expname).__name__}. nemo-run Experiment objects "
+                        f"are valid on the slurm path but not under cluster_config.executor='ray'."
+                    )
+                if dep_expname not in ray_dependencies:
+                    ray_dependencies.append(dep_expname)
         ray_cluster_config = cluster_config.get("ray", {})
         # default_num_cpus is per-node; multiply by num_nodes to get the per-job total.
         ray_default_cpus_per_node = ray_cluster_config.get("default_num_cpus", 8)
         ray_log_dir = log_dir or cluster_config.get("jobs", {}).get("log_dir", "/tmp/ray_jobs")
 
+        # num_gpus arg is per-node (matches get_executor's `int(gpus_per_node) * num_nodes`);
+        # RayJobConfig.num_gpus is per-job total (ray_executor.py divides by num_nodes).
+        ray_num_gpus_per_node = num_gpus if num_gpus is not None else 1
         ray_job_config = RayJobConfig(
             name=task_name,
             command=ray_cmd,
-            num_gpus=num_gpus if num_gpus is not None else 1,
+            num_gpus=ray_num_gpus_per_node * num_nodes,
             num_cpus=ray_default_cpus_per_node * num_nodes,
             num_nodes=num_nodes,
             env_vars=env_vars,
@@ -639,22 +659,23 @@ def add_task(
         LOG.info("Ray job submitted: task=%s submission_id=%s", task_name, submission_id)
         return submission_id
 
+    # Check if we need to add server first to ensure SLURM allocates GPU partition.
+    # This happens when the client doesn't need GPUs but the server does.
+    server_needs_gpus = server_config is not None and int(server_config.get("num_gpus", 0)) > 0
+    client_num_gpus = num_gpus or 0
+    # For ray heterogenous jobs, nemo-run assumes the first het group is the main task.
+    # So we send the server last if the job needs gpus.
+    server_goes_first = server_needs_gpus and not client_num_gpus
+
     het_group = 0
     het_group_indices = []
-    total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + with_sandbox
+    sandbox_needs_executor = with_sandbox and not with_ray
+    total_het_groups = (n_servers if server_config is not None else 0) + bool(cmd) + sandbox_needs_executor
 
     LOG.info("Adding a task with commands:")
 
     commands = []
     executors = []
-
-    # Check if we need to add server first to ensure SLURM allocates GPU partition
-    # This happens when the client doesn't need GPUs but the server does
-    server_needs_gpus = server_config is not None and int(server_config.get("num_gpus", 0)) > 0
-    client_num_gpus = num_gpus or 0
-    # For ray heterogenous jobs, nemo-run assumes the first het group is the main task
-    # So we send the server last if the job needs gpus
-    server_goes_first = server_needs_gpus and not client_num_gpus
 
     def add_server_tasks():
         nonlocal het_group
@@ -721,17 +742,28 @@ def add_task(
         for cur_idx, (cur_cmd, cur_container, cur_tasks) in enumerate(zip(cmd, container, num_tasks)):
             if cluster_config["executor"] != "slurm" and cur_tasks > 1:
                 cur_cmd = f"mpirun --allow-run-as-root -np {cur_tasks} bash -c {shlex.quote(cur_cmd)}"
-            with temporary_env_update(cluster_config, {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}):
+            main_task_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
+            main_env_updates = {"NEMO_SKILLS_SANDBOX_PORT": sandbox_port}
+            if with_ray:
+                main_env_updates["GPUS_PER_NODE"] = str(main_task_gpus)
+            if with_sandbox and with_ray:
+                main_env_updates.update(
+                    {
+                        "SANDBOX_PORT": str(sandbox_port),
+                        "SANDBOX_CONTAINER": sandbox_container or cluster_config["containers"]["sandbox"],
+                        "SANDBOX_COMMAND": get_sandbox_command(cluster_config),
+                    }
+                )
+            with temporary_env_update(cluster_config, main_env_updates):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
                 commands.append(cur_cmd)
-                client_num_gpus = num_gpus if (server_config is None or num_nodes > 1) else 0
                 executors.append(
                     get_executor(
                         cluster_config=cluster_config,
                         container=cur_container,
                         num_nodes=num_nodes,
                         tasks_per_node=cur_tasks,
-                        gpus_per_node=client_num_gpus,
+                        gpus_per_node=main_task_gpus,
                         partition=partition,
                         account=account,
                         dependencies=dependencies,
@@ -743,7 +775,7 @@ def add_task(
                         heterogeneous=heterogeneous,
                         het_group=het_group,
                         total_het_groups=total_het_groups,
-                        overlap=(not client_num_gpus),  # Only when the main task does not have gpus
+                        overlap=(not main_task_gpus),  # Only when the main task does not have gpus
                         with_ray=with_ray,
                         ray_template=ray_template,
                     )
@@ -753,7 +785,9 @@ def add_task(
         LOG.info("Main command(s): %s", ", ".join(cmd))
 
     # Then a sandbox if needed
-    if with_sandbox:
+    if with_sandbox and with_ray:
+        LOG.info("Sandbox will be launched by the Ray template using SANDBOX_* environment variables.")
+    elif with_sandbox:
         sandbox_env_updates = {
             "LISTEN_PORT": sandbox_port,
             "NGINX_PORT": sandbox_port,
@@ -797,7 +831,7 @@ def add_task(
                 with_ray=False,
                 ray_template=ray_template,
                 # Allow the sandbox to survive individual worker crashes (e.g. SIGILL
-                # from libraries compiled for a different CPU).  nemo-run hardcodes
+                # from libraries compiled for a different CPU). nemo-run hardcodes
                 # --kill-on-bad-exit=1 on every srun; appending =0 overrides it so
                 # that start-with-nginx.sh can restart crashed workers instead of
                 # srun killing the entire step.

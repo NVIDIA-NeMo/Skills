@@ -624,6 +624,11 @@ def evaluate_cer(
     if normalize_compound:
         ref, hyp = normalize_compound_pairs(ref, hyp)
 
+    # Mirror evaluate_asr: drop samples whose normalized reference is empty rather
+    # than dividing by zero in the character edit distance.
+    if not ref:
+        return {key_prefix: None, "is_correct": None, "text": "", "pred_text": hyp or ""}
+
     result = _cer_with_counts(ref, hyp, key_prefix=key_prefix)
     result["is_correct"] = result[key_prefix] < 0.5
     result["text"] = ref
@@ -800,15 +805,18 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             "lang": src_lang,
             "remove_diacritics": True,
         }
+        # Only normalize compound pairs for non-English languages
+        normalize_compound = src_lang not in [None, "en"]
+
+        # Mixed WER column: CJK-style languages (use_cer) fold their CER into the WER
+        # column (stored under wer* keys), all other languages contribute standard WER.
         if use_cer:
-            # Use CER instead of WER for languages such as Chinese, Japanese, and Korean
             metrics = evaluate_cer(
                 expected_answer,
                 generation,
                 normalization_mode=mode,
-                key_prefix="wer",  # use wer prefix for consistency with _wer_with_counts
-                # Only normalize compound pairs for non-English languages
-                normalize_compound=src_lang not in [None, "en"],
+                key_prefix="wer",  # fold CER into the mixed WER column
+                normalize_compound=normalize_compound,
                 **preprocess_kwargs,
             )
         else:
@@ -816,11 +824,32 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
                 expected_answer,
                 generation,
                 normalization_mode=mode,
-                # Only normalize compound pairs for non-English languages
-                normalize_compound=src_lang not in [None, "en"],
+                normalize_compound=normalize_compound,
                 **preprocess_kwargs,
             )
         updates.update(metrics)
+
+        # Parallel only-CER column: character error rate computed for every sample,
+        # reported separately (cer* keys) alongside the mixed WER column.
+        cer_metrics = evaluate_cer(
+            expected_answer,
+            generation,
+            normalization_mode=mode,
+            key_prefix="cer",
+            normalize_compound=normalize_compound,
+            **preprocess_kwargs,
+        )
+        # Merge only cer* keys so the mixed metric's is_correct/text/pred_text are preserved.
+        for cer_key in (
+            "cer",
+            "cer_errors",
+            "cer_ref_words",
+            "cer_substitutions",
+            "cer_insertions",
+            "cer_deletions",
+        ):
+            if cer_key in cer_metrics:
+                updates[cer_key] = cer_metrics[cer_key]
 
     elif task_type == "CER":
         metrics = evaluate_cer(expected_answer, generation, normalization_mode="none", key_prefix="cer")

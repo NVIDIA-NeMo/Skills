@@ -710,7 +710,12 @@ def _build_task_cmd(
     launcher_run_cfg = OmegaConf.create(launcher_run_cfg)
     task_cfg_copy = OmegaConf.create(copy.deepcopy(task_cfg))
     if url_override:
-        OmegaConf.update(task_cfg_copy, "overrides", {"target.api_endpoint.url": url_override}, force_add=True)
+        OmegaConf.update(
+            task_cfg_copy,
+            "overrides",
+            {"target.api_endpoint.url": _escape_shell_interpolation(url_override)},
+            force_add=True,
+        )
 
     if model_id:
         OmegaConf.update(
@@ -725,7 +730,7 @@ def _build_task_cmd(
             OmegaConf.update(
                 task_cfg_copy,
                 "overrides",
-                {"config.params.extra.judge.url": judge_url_override},
+                {"config.params.extra.judge.url": _escape_shell_interpolation(judge_url_override)},
                 force_add=True,
             )
         if judge_model_id:
@@ -743,6 +748,11 @@ def _build_task_cmd(
     cmd_struct = get_eval_factory_command(launcher_run_cfg, task_cfg_copy, task_definition)
 
     return cmd_struct.cmd
+
+
+def _escape_shell_interpolation(value: str) -> str:
+    """Preserve shell ${...} expressions when storing them in OmegaConf values."""
+    return value.replace("${", r"\${")
 
 
 @dataclass(kw_only=True)

@@ -24,4 +24,6 @@ python tests/slurm-tests/unified_asr/run_test.py --cluster $CLUSTER --workspace 
 python tests/slurm-tests/unified_tts/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/unified_tts --expname_prefix unified_tts_$RUN_NAME
 # sleep 10
 python tests/slurm-tests/wmt24pp_gym_topology/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/wmt24pp_gym_topology --expname_prefix wmt24pp_gym_topology_$RUN_NAME
+# sleep 10
+python tests/slurm-tests/unified_salm/run_test.py --cluster $CLUSTER --workspace /workspace/nemo-skills-slurm-ci/$RUN_NAME/unified_salm --expname_prefix unified_salm_$RUN_NAME
 # wait

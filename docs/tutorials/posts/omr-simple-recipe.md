@@ -208,9 +208,18 @@ ns nemo_rl sft \
     --final_hf_path=/workspace/training/qwen2.5-14b-improved-hf \
     ++policy.max_total_sequence_length=8192 \
     ++policy.train_global_batch_size=32 \
-    ++policy.tensor_model_parallel_size=4 \
-    ++policy.context_parallel_size=2 \
-    ++policy.lr=1e-5 \
+    ++policy.tokenizer.chat_template=null \
+    ++policy.sequence_packing.enabled=True \
+    ++policy.sequence_packing.sequence_length_round=64 \
+    ++policy.make_sequence_length_divisible_by=4 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=4 \
+    ++policy.megatron_cfg.context_parallel_size=2 \
+    ++policy.megatron_cfg.optimizer.lr=1e-5 \
+    ++policy.megatron_cfg.optimizer.min_lr=1e-5 \
+    ++data.add_bos=false \
+    ++data.add_eos=false \
+    ++data.add_generation_prompt=false \
+    ++sft.val_period=0 \
     ++sft.max_num_epochs=2
 ```
 

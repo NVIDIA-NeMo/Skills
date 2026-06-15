@@ -591,11 +591,121 @@ pass@1          | 128        | 12000       | 98.87%       | 1.13%  | 1.55%  | 0.
 
 Per-domain breakdowns are included automatically based on the `domain_label` field.
 
+## Contextual Earnings-22
+
+Contextual Earnings-22 is a contextual ASR benchmark on earnings-call clips, built on top of the Earnings-22 corpus by Argmax. It pairs short (15 s) clips with realistic custom-vocabulary contexts and evaluates both an idealized regime (per-clip keywords only) and a deployment-realistic regime (per-call inventory with distractors).
+
+**Dataset:** [argmaxinc/contextual-earnings22](https://huggingface.co/datasets/argmaxinc/contextual-earnings22) (`test` split: 772 samples, ~3.2 hours, with per-clip and per-call keyword lists)
+
+**Paper:** [Contextual Earnings-22: A Speech Recognition Benchmark with Custom Vocabulary in the Wild](https://arxiv.org/abs/2604.07354) (Argmax, 2025)
+
+**Evaluation Modes:**
+
+- `contextual-earnings22.contextless`: Plain transcription (no context provided)
+- `contextual-earnings22.local`: Per-clip keyword list as context (only keywords actually spoken in the clip)
+- `contextual-earnings22.global`: Per-call keyword inventory as context (includes distractors not spoken in the clip)
+
+**Metrics (paper Section 3):**
+
+- **WER**: Word Error Rate (corpus-level, micro-averaged).
+- **Keyword Precision / Recall / F1**: a keyword is a True Positive iff it matches the reference text *and* its alignment position (computed via minimum edit distance) maps to identical hypothesis tokens. Otherwise it is a False Negative (in reference but not hypothesis at the aligned position) or a False Positive (in hypothesis but not reference, including misaligned correct text). Precision, recall, and F1 are micro-averaged across the corpus.
+
+For all three modes the keyword list used to *evaluate* the predictions is always the per-clip ("local") list — only the *prompt* changes between modes. This isolates the effect of context-conditioning on a fixed evaluation target.
+
+### Dataset Location
+
+* Benchmark is defined in [`nemo_skills/dataset/contextual-earnings22/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/contextual-earnings22/__init__.py)
+* Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/argmaxinc/contextual-earnings22)
+
+### Preparing Contextual Earnings-22 Data
+
+Contextual Earnings-22 requires audio files for evaluation. **Audio is downloaded
+automatically by default** from HuggingFace (~404 MB):
+
+```bash
+ns prepare_data contextual-earnings22
+```
+
+This streams the parquet file via `datasets.load_dataset()` and writes per-clip
+16 kHz mono WAV files to `<data_dir>/audio/`, plus a `samples.jsonl` metadata
+file. The default `<data_dir>` is a sibling directory of the Skills repo to
+keep the dataset out of the repo tree.
+
+To download to a specific directory, or to use pre-downloaded data:
+
+```bash
+ns prepare_data contextual-earnings22 --data_dir=/path/to/contextual-earnings22
+```
+
+If the directory already contains `samples.jsonl` and `audio/`, the existing
+data is used directly. If the metadata is missing, the data is downloaded
+there automatically.
+
+To use a custom audio path prefix (e.g., for container mount points):
+
+```bash
+ns prepare_data contextual-earnings22 --data_dir=/path/to/contextual-earnings22 --audio-prefix /data/contextual-earnings22
+```
+
+### Running Contextual Earnings-22 Evaluation
+
+Evaluate all three modes:
+
+```bash
+ns eval \
+    --cluster=local \
+    --benchmarks=contextual-earnings22 \
+    --server_type=openai \
+    --server_address=http://localhost:8000/v1 \
+    --model=Qwen/Qwen3-Omni-7B \
+    --output_dir=/workspace/contextual-earnings22-eval \
+    --data_dir=/path/to/contextual-earnings22
+```
+
+Evaluate a single mode:
+
+```bash
+ns eval --benchmarks=contextual-earnings22.local ...
+```
+
+### Understanding Contextual Earnings-22 Results
+
+```text
+<output_dir>/
+└── eval-results/
+    └── contextual-earnings22/
+        ├── metrics.json                                # Overall aggregate
+        ├── contextual-earnings22.contextless/
+        │   └── metrics.json
+        ├── contextual-earnings22.local/
+        │   └── metrics.json
+        └── contextual-earnings22.global/
+            └── metrics.json
+```
+
+Example output:
+
+```text
+------------------ contextual-earnings22.contextless ------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | wer   | keyword_precision | keyword_recall | keyword_f1 | num_entries
+pass@1          | 64         | 1100        | 99.10%       | 8.20% | 75.30%            | 71.80%         | 73.50%     | 772
+
+--------------------- contextual-earnings22.local ---------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | wer   | keyword_precision | keyword_recall | keyword_f1 | num_entries
+pass@1          | 64         | 1100        | 99.20%       | 7.80% | 88.10%            | 86.50%         | 87.30%     | 772
+
+--------------------- contextual-earnings22.global --------------------
+evaluation_mode | avg_tokens | gen_seconds | success_rate | wer   | keyword_precision | keyword_recall | keyword_f1 | num_entries
+pass@1          | 64         | 1100        | 99.05%       | 8.05% | 80.40%            | 84.20%         | 82.25%     | 772
+```
+
+Per-source-file breakdowns are included automatically based on the `file_id` field (which is also used as `subset_for_metrics`).
+
 ## CoVoST 2
 
 CoVoST 2 is a large-scale multilingual corpus for speech recognition (ASR) and speech translation (AST), built on Common Voice audio with translation references from Facebook's [CoVoST v2](https://github.com/facebookresearch/covost) release.
 
-**Tasks:** ASR (monolingual transcription) and AST (X→en / en→X translation)
+**Subtasks:** `covost2.asr` (monolingual transcription) and `covost2.st` (X→en / en→X translation)
 
 **Splits:** `validation`, `test`
 
@@ -603,7 +713,7 @@ For non-alphabetic scripts (`zh-CN`, `ja`), evaluation reports Character Error R
 
 ### Dataset Location
 
-- Benchmark is defined in [`nemo_skills/dataset/covost2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/covost2/__init__.py)
+- Benchmark group is defined in [`nemo_skills/dataset/covost2/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/covost2/__init__.py); per-subtask config lives in `covost2/asr/__init__.py` and `covost2/st/__init__.py`.
 - Original benchmark source is hosted on [GitHub](https://github.com/facebookresearch/covost)
 
 ### Preparing CoVoST 2 Data
@@ -619,39 +729,34 @@ Unlike most other benchmarks on this page, **CoVoST 2 does not auto-download aud
 
 and the corresponding `validated.tsv` (columns: `path, split, lang, sentence`).
 
-The `--languages` flag selects which CoVoST 2 languages are prepared. For ASR it filters the source-language audio that is transcribed; for AST every valid X→en / en→X pair touching the listed languages is included. Omit it to prepare all 21 supported languages.
+A single `prepare_data covost2` run produces both subtasks at once — `covost2/asr/{split}.jsonl` and `covost2/st/{split}.jsonl`. There is no `--task` flag; pass the parent group name (`covost2`), not the dotted subtask names.
 
-=== "ASR"
+The `--languages` flag selects which CoVoST 2 languages are prepared. For ASR it filters the source-language audio that is transcribed; for ST every valid X→en / en→X pair touching the listed languages is included. Omit it to prepare all 21 supported languages.
 
-    ```bash
-    ns prepare_data covost2 \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task ASR \
-        --languages de fr \
-        --split test \
-        --cv_data_dir /workspace/datasets/covost2 \
-        --validated_tsv /workspace/datasets/covost2/validated.tsv
-    ```
+```bash
+ns prepare_data covost2 \
+    --data_dir /path/to/data \
+    --cluster <cluster_name> \
+    --languages de fr es \
+    --split test \
+    --cv_data_dir /workspace/datasets/covost2 \
+    --validated_tsv /workspace/datasets/covost2/validated.tsv
+```
 
-=== "AST"
+Output:
 
-    ```bash
-    ns prepare_data covost2 \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task AST \
-        --languages de fr es \
-        --split test \
-        --cv_data_dir /workspace/datasets/covost2 \
-        --validated_tsv /workspace/datasets/covost2/validated.tsv
-    ```
-
-Each `--task` produces a separate manifest: `{split}-asr.jsonl` or `{split}-ast.jsonl` (e.g. `test-asr.jsonl`).
+```
+<data_dir>/covost2/
+    asr/test.jsonl   # one record per (lang, audio) for transcription
+    st/test.jsonl    # one record per (src→tgt, audio) for translation
+    audio/<lang>/<split>/...wav
+```
 
 ## FLEURS
 
-[FLEURS](https://huggingface.co/datasets/google/fleurs) (Few-shot Learning Evaluation of Universal Representations of Speech) is Google's multilingual speech benchmark covering 102 locales. It supports both ASR and AST.
+[FLEURS](https://huggingface.co/datasets/google/fleurs) (Few-shot Learning Evaluation of Universal Representations of Speech) is Google's multilingual speech benchmark covering 102 locales.
+
+**Subtasks:** `fleurs.asr` (monolingual transcription) and `fleurs.st` (`en_us` → locale and locale → `en_us` translation)
 
 **Splits:** `train`, `dev`, `test`
 
@@ -659,33 +764,28 @@ CER (rather than WER) is used for these locales: `cmn_hans_cn`, `yue_hant_hk`, `
 
 ### Dataset Location
 
-- Benchmark is defined in [`nemo_skills/dataset/fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/fleurs/__init__.py)
+- Benchmark group is defined in [`nemo_skills/dataset/fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/fleurs/__init__.py); per-subtask config lives in `fleurs/asr/__init__.py` and `fleurs/st/__init__.py`.
 - Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/google/fleurs)
 
 ### Preparing FLEURS Data
 
-Audio is downloaded automatically from HuggingFace. As with CoVoST 2, `--task` produces `{split}-asr.jsonl` or `{split}-ast.jsonl`.
+Audio is downloaded automatically from HuggingFace. A single `prepare_data fleurs` run produces both subtasks at once — `fleurs/asr/{split}.jsonl` and `fleurs/st/{split}.jsonl`. There is no `--task` flag; pass the parent group name (`fleurs`), not the dotted subtask names.
 
-The `--languages` flag selects which FLEURS locales are prepared. For ASR it filters the source-language audio that is transcribed; for AST every (`en_us` → locale) and (locale → `en_us`) pair across the listed locales is included. Omit it to prepare all 102 locales.
+The `--languages` flag selects which FLEURS locales are prepared. ASR records are emitted for the listed locales. ST records are emitted for every (`en_us` → locale) and (locale → `en_us`) pair touching the listed locales — even if `en_us` is not itself in `--languages`, since it is the pivot. Omit `--languages` to prepare all 102 locales.
 
-=== "ASR"
+```bash
+ns prepare_data fleurs \
+    --data_dir /path/to/data \
+    --cluster <cluster_name> \
+    --languages en_us de_de fr_fr es_419 it_it ja_jp \
+    --split test
+```
 
-    ```bash
-    ns prepare_data fleurs \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task ASR \
-        --languages en_us de_de fr_fr \
-        --split test
-    ```
+Output:
 
-=== "AST"
-
-    ```bash
-    ns prepare_data fleurs \
-        --data_dir /path/to/data \
-        --cluster <cluster_name> \
-        --task AST \
-        --languages en_us de_de fr_fr es_419 it_it ja_jp \
-        --split test
-    ```
+```
+<data_dir>/fleurs/
+    asr/test.jsonl   # one record per (locale, audio) for transcription
+    st/test.jsonl    # one record per (src→tgt, audio) for translation
+    audio/<locale>/...wav
+```

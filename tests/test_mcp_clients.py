@@ -638,7 +638,7 @@ if __name__ == "__main__":
 
 
 # ==============================
-# Comparison tests: MCP PythonTool vs DirectPythonTool
+# DirectPythonTool functional tests
 # ==============================
 
 
@@ -848,74 +848,50 @@ async def test_direct_python_tool_cleanup_request_deletes_session():
 
 
 @pytest.mark.asyncio
-async def test_mcp_vs_direct_python_tool_parity():
-    """MCP-based PythonTool and DirectPythonTool produce identical results for the same tool calls."""
-    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+async def test_direct_python_tool_session_sequence():
+    """DirectPythonTool runs a multi-step stateful session and computes correct results."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
 
     sandbox_context = {"sandbox": {"sandbox_type": "local"}}
 
-    # Set up DirectPythonTool
     direct = DirectPythonTool()
     direct.configure(context=sandbox_context)
 
-    # Set up MCP PythonTool
-    mcp_tool = PythonTool()
-    mcp_tool.configure(context=sandbox_context)
+    assert (await direct.list_tools())[0]["name"] == "stateful_python_code_exec"
 
-    # Verify both expose the same tool name
-    direct_tools = await direct.list_tools()
-    mcp_tools = await mcp_tool.list_tools()
-    assert direct_tools[0]["name"] == mcp_tools[0]["name"] == "stateful_python_code_exec"
-
-    # Define a sequence of tool calls that exercises session persistence
+    # A sequence of tool calls that exercises session persistence
     tool_calls = [
-        {"code": "import math", "request_id": "parity"},
-        {"code": "result = math.factorial(10)", "request_id": "parity"},
-        {"code": "print(result)", "request_id": "parity"},
-        {"code": "x = [i**2 for i in range(5)]", "request_id": "parity"},
-        {"code": "print(sum(x))", "request_id": "parity"},
+        {"code": "import math", "request_id": "seq"},
+        {"code": "result = math.factorial(10)", "request_id": "seq"},
+        {"code": "print(result)", "request_id": "seq"},
+        {"code": "x = [i**2 for i in range(5)]", "request_id": "seq"},
+        {"code": "print(sum(x))", "request_id": "seq"},
     ]
 
-    direct_results = await _run_tool_sequence(direct, tool_calls)
-    mcp_results = await _run_tool_sequence(mcp_tool, tool_calls)
-
-    for i, (d, m) in enumerate(zip(direct_results, mcp_results)):
-        assert d == m, f"Mismatch at step {i}: direct={d!r}, mcp={m!r}"
+    results = await _run_tool_sequence(direct, tool_calls)
 
     # Verify the actual computed values are correct
-    assert direct_results[2] == "3628800"  # 10!
-    assert direct_results[4] == "30"  # 0 + 1 + 4 + 9 + 16
+    assert results[2] == "3628800"  # 10!
+    assert results[4] == "30"  # 0 + 1 + 4 + 9 + 16
 
     await direct.shutdown()
-    await mcp_tool.shutdown()
 
 
 @pytest.mark.asyncio
-async def test_mcp_vs_direct_error_parity():
-    """Both implementations handle errors the same way."""
-    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+async def test_direct_python_tool_surfaces_exceptions():
+    """DirectPythonTool surfaces Python exceptions in the returned output."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
 
     sandbox_context = {"sandbox": {"sandbox_type": "local"}}
 
     direct = DirectPythonTool()
     direct.configure(context=sandbox_context)
 
-    mcp_tool = PythonTool()
-    mcp_tool.configure(context=sandbox_context)
+    results = await _run_tool_sequence(direct, [{"code": "1 / 0", "request_id": "err"}])
 
-    tool_calls = [
-        {"code": "1 / 0", "request_id": "err"},
-    ]
-
-    direct_results = await _run_tool_sequence(direct, tool_calls)
-    mcp_results = await _run_tool_sequence(mcp_tool, tool_calls)
-
-    # Both should contain ZeroDivisionError
-    assert "ZeroDivisionError" in direct_results[0]
-    assert "ZeroDivisionError" in mcp_results[0]
+    assert "ZeroDivisionError" in results[0]
 
     await direct.shutdown()
-    await mcp_tool.shutdown()
 
 
 # ==============================
@@ -960,6 +936,66 @@ def _direct_tool_with_stub(stub):
     tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
     tool._sandbox = stub
     return tool
+
+
+def test_python_tools_accept_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import DEFAULT_EXEC_TIMEOUT_S, DirectPythonTool, PythonTool
+
+    assert PythonTool().default_config()["exec_timeout_s"] == DEFAULT_EXEC_TIMEOUT_S
+    assert DirectPythonTool().default_config()["exec_timeout_s"] == DEFAULT_EXEC_TIMEOUT_S
+    assert PythonTool(exec_timeout_s=42).default_config()["exec_timeout_s"] == 42
+    assert DirectPythonTool(exec_timeout_s=42).default_config()["exec_timeout_s"] == 42
+
+
+def test_python_tool_defaults_to_direct_provider():
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    # PythonTool is now the in-process direct provider (no stdio MCP transport).
+    assert isinstance(PythonTool(), DirectPythonTool)
+
+
+@pytest.mark.asyncio
+async def test_python_tool_description_uses_exec_timeout_override():
+    from nemo_skills.mcp.servers.python_tool import PythonTool
+
+    tool = PythonTool()
+    tool.configure(
+        overrides={"exec_timeout_s": 37},
+        context={"sandbox": {"sandbox_type": "local"}},
+    )
+
+    tools = await tool.list_tools()
+
+    assert "37.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_uses_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    seen = {}
+
+    async def record_execute(code, language, timeout, session_id):
+        seen["timeout"] = timeout
+        return {"process_status": "completed", "stdout": "done\n", "stderr": ""}, session_id
+
+    tool = DirectPythonTool(exec_timeout_s=42)
+    tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
+    tool._sandbox = _StubSandbox(execute_code=record_execute)
+
+    tools = await tool.list_tools()
+    assert "42.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print('done')"},
+        extra_args={"request_id": "timeout-arg"},
+    )
+
+    assert result == "done"
+    assert seen["timeout"] == 42
 
 
 @pytest.mark.asyncio
