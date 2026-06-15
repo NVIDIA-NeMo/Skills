@@ -126,6 +126,22 @@ def evaluate_with_nvembed_similarity(
     return matched_choice, confidence
 
 
+def _coerce_text(value: Any) -> str:
+    """Convert loose NVEmbed generation payloads to plain text."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("text", "expected_answer", "answer", "transcript", "reference", "generation"):
+            if key in value and value[key] is not None:
+                return _coerce_text(value[key])
+        return " ".join(_coerce_text(item) for item in value.values() if item is not None).strip()
+    if isinstance(value, (list, tuple)):
+        return " ".join(_coerce_text(item) for item in value if item is not None).strip()
+    return str(value).strip()
+
+
 def evaluate_sample_with_nvembed(sample: dict[str, Any], model_name: str = "nvidia/NV-Embed-v2") -> dict[str, Any]:
     """Evaluate a single sample using NVEmbed similarity matching."""
     sample = sample.copy()
@@ -133,8 +149,7 @@ def evaluate_sample_with_nvembed(sample: dict[str, Any], model_name: str = "nvid
     if "nvembed_confidence" in sample:
         return sample
 
-    generation_value = sample.get("generation", "")
-    generation = generation_value.strip() if isinstance(generation_value, str) else ""
+    generation = _coerce_text(sample.get("generation", ""))
     choices = sample.get("choices", [])
     expected_answer = sample.get("expected_answer", "")
 
