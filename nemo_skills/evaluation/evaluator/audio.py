@@ -458,7 +458,7 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         from nemo_skills.evaluation.evaluator.apptek_callcenter import normalize_apptek_callcenter_text
 
         if "is_prediction" not in kwargs:
-            raise ValueError("mode=\"apptek_callcenter\" requires explicit is_prediction")
+            raise ValueError('mode="apptek_callcenter" requires explicit is_prediction')
         return normalize_apptek_callcenter_text(text, is_prediction=kwargs["is_prediction"])
 
     from whisper_normalizer.english import EnglishTextNormalizer
