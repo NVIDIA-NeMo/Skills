@@ -39,6 +39,9 @@ import json
 import tarfile
 from pathlib import Path
 
+from nemo_skills.dataset.utils import build_container_audio_path
+
+BENCHMARK_NAME = "contextasr-bench"
 HF_REPO_ID = "MrSupW/ContextASR-Bench"
 JSONL_FILENAME = "ContextASR-Speech_English.jsonl"
 AUDIO_TAR_PREFIX = "audio/ContextASR-Speech/English/ContextASR-Speech_English"
@@ -142,6 +145,11 @@ def build_messages(prompt_text, audio_path, duration):
     ]
 
 
+def resolve_audio_prefix(audio_prefix: str | None = None) -> str:
+    """Return the in-container ContextASR audio prefix used in JSONL paths."""
+    return build_container_audio_path(BENCHMARK_NAME, audio_prefix=audio_prefix)
+
+
 def format_entry(sample, mode, audio_prefix):
     """Format a single dataset sample into a JSONL record for a given mode."""
     audio_path = f"{audio_prefix}/{sample['audio']}"
@@ -191,8 +199,9 @@ def main():
         default=None,
         help=(
             "Override audio path prefix written into JSONL files. "
-            "Defaults to the data_dir value. Useful for container mount points "
-            "(e.g., --audio-prefix /data/contextasr-bench)."
+            "This is the global in-container audio root; the script appends "
+            f"{BENCHMARK_NAME}/. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data "
+            f"(e.g., --audio-prefix /data writes /data/{BENCHMARK_NAME}/...)."
         ),
     )
     parser.add_argument(
@@ -220,8 +229,7 @@ def main():
         print(f"Data not found at {data_dir}. Downloading there...")
         download_dataset(data_dir)
 
-    audio_prefix = args.audio_prefix if args.audio_prefix else str(data_dir)
-    audio_prefix = audio_prefix.rstrip("/")
+    audio_prefix = resolve_audio_prefix(args.audio_prefix)
 
     jsonl_path = data_dir / JSONL_FILENAME
 
@@ -236,14 +244,15 @@ def main():
     print(f"Loaded {len(samples)} samples")
 
     if not args.no_audio:
-        sample_audio = Path(audio_prefix) / samples[0]["audio"]
+        sample_audio = data_dir / samples[0]["audio"]
         if not sample_audio.exists():
             print(
                 f"WARNING: Sample audio file not found at {sample_audio}. "
-                f"Audio paths may need adjustment via --audio-prefix."
+                f"Audio paths may need adjustment via --data_dir."
             )
         else:
             print(f"Audio files verified (sample check: {sample_audio})")
+    print(f"Audio paths in JSONL will use: {audio_prefix}/...")
 
     modes = {
         "contextless": output_dir / "contextless" / "test.jsonl",

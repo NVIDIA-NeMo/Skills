@@ -31,6 +31,11 @@ from nemo_skills.dataset.fleurs.languages import (
     get_lang_group,
     get_lang_name,
 )
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 
 def parse_tsv(tsv_path: str) -> dict[str, dict]:
@@ -105,8 +110,8 @@ def prepare_audio(item: dict) -> tuple[np.ndarray, int, float]:
     return y, sr, duration
 
 
-def get_container_audio_path(locale: str, wav_filename: str) -> str:
-    return f"/dataset/fleurs/audio/{locale}/{wav_filename}"
+def get_container_audio_path(locale: str, wav_filename: str, audio_root: str) -> str:
+    return build_container_audio_path("fleurs", "audio", locale, wav_filename, audio_prefix=audio_root)
 
 
 def save_audio(y: np.ndarray, sr: int, wav_path: Path) -> None:
@@ -171,6 +176,7 @@ def _collect_asr_records(
     local_dir: Path,
     split: str,
     no_audio: bool,
+    audio_root: str,
 ) -> list[dict]:
     records: list[dict] = []
     for src_locale in languages:
@@ -181,7 +187,7 @@ def _collect_asr_records(
             y, sr, duration = prepare_audio(source_row)
             wav_filename = source_row["wav_filename"]
             wav_path = locale_audio_dir / wav_filename
-            cpath = get_container_audio_path(src_locale, wav_filename)
+            cpath = get_container_audio_path(src_locale, wav_filename, audio_root=audio_root)
             if not no_audio:
                 save_audio(y, sr, wav_path)
             records.append(
@@ -204,6 +210,7 @@ def _collect_st_records(
     local_dir: Path,
     split: str,
     no_audio: bool,
+    audio_root: str,
 ) -> list[dict]:
     pairs = build_translation_pairs(languages)
     target_cache: dict[str, dict[int, dict]] = {}
@@ -227,7 +234,7 @@ def _collect_st_records(
             y, sr, duration = prepare_audio(source_row)
             wav_filename = source_row["wav_filename"]
             wav_path = locale_audio_dir / wav_filename
-            cpath = get_container_audio_path(src_locale, wav_filename)
+            cpath = get_container_audio_path(src_locale, wav_filename, audio_root=audio_root)
             if not no_audio:
                 save_audio(y, sr, wav_path)
             extra = _src_extra_fields(source_row, src_locale)
@@ -262,7 +269,13 @@ def _dump_jsonl(path: Path, records: list[dict]) -> None:
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: bool) -> None:
+def prepare_fleurs(
+    data_dir: Path,
+    split: str,
+    languages: list[str],
+    no_audio: bool,
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
+) -> None:
     if not languages:
         raise ValueError("No languages to process")
 
@@ -277,8 +290,8 @@ def prepare_fleurs(data_dir: Path, split: str, languages: list[str], no_audio: b
     asr_jsonl = asr_dir / f"{split}.jsonl"
     st_jsonl = st_dir / f"{split}.jsonl"
 
-    asr_records = _collect_asr_records(languages, audio_dir, local_dir, split, no_audio)
-    st_records = _collect_st_records(languages, audio_dir, local_dir, split, no_audio)
+    asr_records = _collect_asr_records(languages, audio_dir, local_dir, split, no_audio, audio_root=audio_root)
+    st_records = _collect_st_records(languages, audio_dir, local_dir, split, no_audio, audio_root=audio_root)
 
     _dump_jsonl(asr_jsonl, asr_records)
     _dump_jsonl(st_jsonl, st_records)
@@ -312,6 +325,12 @@ def main():
         action="store_true",
         help="Skip saving audio files (only create manifests)",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
     unknown = set(args.languages) - LOCALES
@@ -323,12 +342,15 @@ def main():
     else:
         data_dir = Path(__file__).parent
     data_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
+    print(f"Audio paths in JSONL will use: {audio_root}/fleurs/audio/...")
 
     prepare_fleurs(
         data_dir=data_dir,
         split=args.split,
         languages=args.languages,
         no_audio=args.no_audio,
+        audio_root=audio_root,
     )
 
 
