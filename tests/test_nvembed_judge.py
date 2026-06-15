@@ -37,3 +37,20 @@ def test_nvembed_coerces_nested_generation_text(monkeypatch):
     assert result["nvembed_confidence"] == 99.0
     assert result["is_correct"] is True
     assert "nvembed_error" not in result
+
+
+def test_nvembed_soft_fails_empty_generation():
+    """Empty coerced generation payloads should be marked as failed outputs."""
+
+    sample = {
+        "generation": {"text": [" ", {"text": None}]},
+        "choices": ["A", "B"],
+        "expected_answer": "A",
+    }
+
+    result = nvembed_judge.evaluate_sample_with_nvembed(sample)
+
+    assert result["nvembed_matched_choice"] == ""
+    assert result["nvembed_confidence"] == 0.0
+    assert result["is_correct"] is False
+    assert result["nvembed_error"] == "empty_generation"

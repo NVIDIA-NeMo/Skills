@@ -150,8 +150,8 @@ def evaluate_sample_with_nvembed(sample: dict[str, Any], model_name: str = "nvid
         return sample
 
     generation = _coerce_text(sample.get("generation", ""))
-    choices = sample.get("choices", [])
-    expected_answer = sample.get("expected_answer", "")
+    choices = sample["choices"]
+    expected_answer = sample["expected_answer"]
 
     # Empty model outputs are valid failed predictions. Keep malformed-data
     # checks strict, but do not let one blank generation abort the whole eval.
