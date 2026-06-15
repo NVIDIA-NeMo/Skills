@@ -48,6 +48,8 @@ def install_packages():
             "pip",
             "install",
             "-q",
+            # Keep this constraint compatible with the pinned runtime install in
+            # nemo_skills/pipeline/judges/nvembed_judge.py.
             "numpy<2",
             "datasets",
             "einops",

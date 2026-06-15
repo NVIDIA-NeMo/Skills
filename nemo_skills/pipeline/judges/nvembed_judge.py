@@ -130,6 +130,7 @@ def create_judge_tasks(
         "NVEMBED_DEPS_DIR=/tmp/nvembed_deps_${SLURM_JOB_ID:-$$} && "
         'mkdir -p "$NVEMBED_DEPS_DIR" && '
         'python3 -m pip install -q --upgrade --target "$NVEMBED_DEPS_DIR" '
+        # Keep this pin compatible with the evaluator script's numpy<2 constraint.
         "'numpy==1.26.4' datasets einops transformers==4.42.4 tqdm && "
         'export PYTHONPATH="$NVEMBED_DEPS_DIR:${PYTHONPATH:-}" && '
         "export HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 HF_DATASETS_OFFLINE=0 && "
