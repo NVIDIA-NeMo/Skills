@@ -307,8 +307,12 @@ def evaluate_asr_pc(
     wer_c = jiwer.wer(ref_c, hyp_c)
 
     if normalize_standard_wer:
-        ref_std = preprocess_asr_text(reference, mode=normalization_mode)
-        hyp_std = preprocess_asr_text(hypothesis, mode=normalization_mode)
+        if normalization_mode == "apptek_callcenter":
+            ref_std = preprocess_asr_text(reference, mode=normalization_mode, is_prediction=False)
+            hyp_std = preprocess_asr_text(hypothesis, mode=normalization_mode, is_prediction=True)
+        else:
+            ref_std = preprocess_asr_text(reference, mode=normalization_mode)
+            hyp_std = preprocess_asr_text(hypothesis, mode=normalization_mode)
     else:
         ref_std = normalize_whitespace(re.sub(r"[^\w\s]", "", reference.lower()))
         hyp_std = normalize_whitespace(re.sub(r"[^\w\s]", "", hypothesis.lower()))
@@ -453,7 +457,9 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
     if mode == "apptek_callcenter":
         from nemo_skills.evaluation.evaluator.apptek_callcenter import normalize_apptek_callcenter_text
 
-        return normalize_apptek_callcenter_text(text, is_prediction=kwargs.get("is_prediction", False))
+        if "is_prediction" not in kwargs:
+            raise ValueError("mode=\"apptek_callcenter\" requires explicit is_prediction")
+        return normalize_apptek_callcenter_text(text, is_prediction=kwargs["is_prediction"])
 
     from whisper_normalizer.english import EnglishTextNormalizer
 
@@ -648,8 +654,12 @@ def evaluate_cer(
 ) -> dict[str, Any]:
     """Evaluate CER: character-level edit distance."""
 
-    ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
-    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
+    if normalization_mode == "apptek_callcenter":
+        ref = preprocess_asr_text(reference, mode=normalization_mode, is_prediction=False)
+        hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, is_prediction=True)
+    else:
+        ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
+        hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
     if normalize_compound:
         ref, hyp = normalize_compound_pairs(ref, hyp)

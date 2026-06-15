@@ -72,11 +72,11 @@ def _write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
 
 
 def _row_extra(row: dict[str, Any], key: str) -> Any:
-    """Read a per-row metadata value from extra_fields, falling back to top level."""
-    extras = row.get("extra_fields") or {}
+    """Read a required per-row metadata value from extra_fields or top level."""
+    extras = row["extra_fields"] if "extra_fields" in row else {}
     if key in extras:
         return extras[key]
-    return row.get(key)
+    return row[key]
 
 
 def _row_file_name(row: dict[str, Any]) -> str:
@@ -84,14 +84,17 @@ def _row_file_name(row: dict[str, Any]) -> str:
 
 
 def _row_accent_code(row: dict[str, Any]) -> str:
-    return _row_extra(row, "accent_code") or row.get("subset_for_metrics") or "unknown"
+    extras = row["extra_fields"] if "extra_fields" in row else {}
+    if "accent_code" in extras:
+        return extras["accent_code"]
+    return row["subset_for_metrics"]
 
 
 def _manifest_audio_path(row: dict[str, Any]) -> Path:
-    path = row.get("audio_filepath")
+    path = row["audio_filepath"]
     if not path:
-        for message in row.get("messages", []):
-            audio = message.get("audio")
+        for message in row["messages"]:
+            audio = message["audio"]
             if audio:
                 path = audio["path"]
                 break
@@ -347,6 +350,10 @@ def score_predictions(args: argparse.Namespace, rows: list[dict[str, Any]], pred
     from nemo_skills.evaluation.evaluator.apptek_callcenter import normalize_apptek_callcenter_text
 
     prediction_by_file = {row["file_name"]: row["text"] for row in predictions}
+    expected_files = {_row_file_name(row) for row in rows}
+    missing = sorted(expected_files - prediction_by_file.keys())
+    if missing:
+        raise ValueError(f"Missing predictions for {len(missing)} file(s), e.g. {missing[:5]}")
     refs = []
     hyps = []
     by_accent: dict[str, dict[str, list[str]]] = defaultdict(lambda: {"refs": [], "hyps": []})
@@ -355,7 +362,7 @@ def score_predictions(args: argparse.Namespace, rows: list[dict[str, Any]], pred
         file_name = _row_file_name(row)
         accent_code = _row_accent_code(row)
         ref = normalize_apptek_callcenter_text(row["expected_answer"], is_prediction=False)
-        hyp = normalize_apptek_callcenter_text(prediction_by_file.get(file_name, ""), is_prediction=True)
+        hyp = normalize_apptek_callcenter_text(prediction_by_file[file_name], is_prediction=True)
         refs.append(ref)
         hyps.append(hyp)
         by_accent[accent_code]["refs"].append(ref)
@@ -440,7 +447,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--force-segment", action="store_true", help="Regenerate Silero segments from scratch.")
     parser.add_argument("--skip-transcribe", action="store_true", help="Only segment and score existing predictions.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.mode == "direct" and (args.skip_transcribe or args.force_segment):
+        parser.error("--skip-transcribe and --force-segment are only valid with --mode silero")
+    return args
 
 
 def main() -> None:

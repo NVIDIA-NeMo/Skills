@@ -49,6 +49,12 @@ def test_apptek_callcenter_preprocess_forwards_prediction_flag():
     assert preprocess_asr_text("oh hello", mode="apptek_callcenter", is_prediction=True) == "hello"
 
 
+def test_apptek_callcenter_preprocess_requires_prediction_flag():
+    """AppTek normalization must explicitly know reference vs prediction mode."""
+    with pytest.raises(ValueError, match="requires explicit is_prediction"):
+        preprocess_asr_text("ahh hello", mode="apptek_callcenter")
+
+
 def test_apptek_callcenter_hesitations_override_word_mappings():
     """Hesitation removals take precedence over broader word normalisations."""
-    assert preprocess_asr_text("ahh hello", mode="apptek_callcenter") == "hello"
+    assert preprocess_asr_text("ahh hello", mode="apptek_callcenter", is_prediction=False) == "hello"
