@@ -178,12 +178,18 @@ def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args):
     monkeypatch.setattr(eval_pipeline, "prepare_eval_commands", lambda **kwargs: ({"gsm8k": benchmark_args()}, []))
 
 
+DEFAULT_SUMMARIZE_SBATCH_KWARGS = {"exclusive": False, "mem": "16G", "time": "0-01:00:00", "time_min": "00:15:00"}
+
+
 @pytest.mark.parametrize(
     "summarize_sbatch_kwargs,expected_sbatch_kwargs",
     [
-        (None, {"segment": 4, "qos": "main"}),
-        ({}, None),
-        ({"segment": 1}, {"segment": 1}),
+        (
+            None,
+            {"segment": 4, "qos": "main", **DEFAULT_SUMMARIZE_SBATCH_KWARGS},
+        ),
+        ({}, DEFAULT_SUMMARIZE_SBATCH_KWARGS),
+        ({"segment": 1}, {"segment": 1, **DEFAULT_SUMMARIZE_SBATCH_KWARGS}),
     ],
 )
 def test_eval_summarize_sbatch_kwargs_and_account(
