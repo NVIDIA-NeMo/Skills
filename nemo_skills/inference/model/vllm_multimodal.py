@@ -91,7 +91,7 @@ class VLLMMultimodalModel(VLLMModel):
             chunk_audio_threshold_sec: Audio duration threshold for chunking (in seconds).
             audio_format: Format for audio content ("audio_url" or "input_audio"). If None, select by mode.
             audio_as_path: If True, send local audio paths as file:// URLs instead of inlining base64.
-                If None, defaults to True for local vLLM audio_url mode and False for external APIs.
+                Requires vLLM to be launched with ``--allowed-local-media-path``. If None, defaults to False.
             **kwargs: Other parameters passed to VLLMModel/BaseModel.
         """
         super().__init__(model=model, base_url=base_url, **kwargs)
@@ -110,7 +110,7 @@ class VLLMMultimodalModel(VLLMModel):
             raise ValueError(f"Unsupported audio_format '{audio_format}'. Use 'audio_url' or 'input_audio'.")
         self.audio_format = audio_format
         if audio_as_path is None:
-            audio_as_path = not self._external_api_mode and self.audio_format == "audio_url"
+            audio_as_path = False
         if audio_as_path and (self._external_api_mode or self.audio_format != "audio_url"):
             raise ValueError("audio_as_path is only supported for local vLLM audio_url requests.")
         self.audio_as_path = audio_as_path

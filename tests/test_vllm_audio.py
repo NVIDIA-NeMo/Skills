@@ -239,21 +239,21 @@ def _stub_vllm_base():
 
 
 def test_audio_as_path_defaults_local_default_url():
-    """Local vLLM (no base_url) defaults to audio_url + audio_as_path=True."""
+    """Local vLLM defaults to audio_url but keeps file:// audio opt-in."""
     with _stub_vllm_base():
         model = VLLMMultimodalModel(base_url=None)
     assert model._external_api_mode is False
     assert model.audio_format == "audio_url"
-    assert model.audio_as_path is True
+    assert model.audio_as_path is False
 
 
 def test_audio_as_path_defaults_local_explicit_localhost():
-    """Explicit local URL is still treated as local (path default on)."""
+    """Explicit local URL is still treated as local without enabling file:// by default."""
     with _stub_vllm_base():
         model = VLLMMultimodalModel(base_url="http://127.0.0.1:5000/v1")
     assert model._external_api_mode is False
     assert model.audio_format == "audio_url"
-    assert model.audio_as_path is True
+    assert model.audio_as_path is False
 
 
 def test_audio_as_path_defaults_external_api():
@@ -265,7 +265,15 @@ def test_audio_as_path_defaults_external_api():
     assert model.audio_as_path is False
 
 
-def test_audio_as_path_local_base64_opt_out():
+def test_audio_as_path_local_opt_in():
+    """audio_as_path=True is allowed for local audio_url when the server permits file:// media."""
+    with _stub_vllm_base():
+        model = VLLMMultimodalModel(base_url=None, audio_as_path=True)
+    assert model.audio_format == "audio_url"
+    assert model.audio_as_path is True
+
+
+def test_audio_as_path_local_base64_explicit():
     """audio_as_path=False is allowed for local audio_url (base64 fallback)."""
     with _stub_vllm_base():
         model = VLLMMultimodalModel(base_url=None, audio_as_path=False)

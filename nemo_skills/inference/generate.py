@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import importlib
 import json
 import logging
 import random
@@ -290,9 +291,17 @@ def _patch_httpcore_connection_pool_assignment() -> None:
     this fast path omits.
     """
     try:
-        import httpcore._async.connection_pool as async_connection_pool
+        httpcore = importlib.import_module("httpcore")
+        async_connection_pool = importlib.import_module("httpcore._async.connection_pool")
     except ImportError:
         LOG.debug("httpcore is not installed; skipping async connection-pool patch")
+        return
+
+    if httpcore.__version__ != "1.0.9":
+        LOG.warning(
+            "Skipping httpcore AsyncConnectionPool patch: validated only on httpcore 1.0.9, found %s",
+            httpcore.__version__,
+        )
         return
 
     original_assign = async_connection_pool.AsyncConnectionPool._assign_requests_to_connections
