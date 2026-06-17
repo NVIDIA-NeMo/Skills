@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 
 from nemo_skills.utils import get_logger_name
 
@@ -352,7 +353,7 @@ class VLLMMultimodalModel(VLLMModel):
     def _make_audio_input_block(self, audio_path: str) -> dict:
         """Create an audio input block for a local file path."""
         if self.audio_as_path:
-            return make_audio_url_content_block(f"file://{os.path.abspath(audio_path)}")
+            return make_audio_url_content_block(Path(audio_path).resolve().as_uri())
 
         base64_audio = audio_file_to_base64(audio_path)
         return make_audio_content_block(base64_audio, self.audio_format)

@@ -297,10 +297,11 @@ def _patch_httpcore_connection_pool_assignment() -> None:
         LOG.debug("httpcore is not installed; skipping async connection-pool patch")
         return
 
-    if httpcore.__version__ != "1.0.9":
+    httpcore_version = getattr(httpcore, "__version__", None)
+    if httpcore_version != "1.0.9":
         LOG.warning(
             "Skipping httpcore AsyncConnectionPool patch: validated only on httpcore 1.0.9, found %s",
-            httpcore.__version__,
+            httpcore_version,
         )
         return
 
@@ -332,8 +333,7 @@ def _patch_httpcore_connection_pool_assignment() -> None:
             else:
                 occupied_conns.append(connection)
 
-        total_existing = len(available_conns) + len(occupied_conns) + len(closing_conns)
-        new_conns_remaining = self._max_connections - total_existing
+        new_conns_remaining = self._max_connections - len(available_conns) - len(occupied_conns)
 
         # Phase 2: assign queued requests. Reuse an available connection
         # (popping so it is never handed to two requests in one pass), else

@@ -15,7 +15,7 @@
 """Tests for the optional httpcore connection-pool hot-path patch."""
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 from nemo_skills.inference.generate import _patch_httpcore_connection_pool_assignment
 
@@ -51,6 +51,16 @@ def test_httpcore_patch_skips_unvalidated_version(monkeypatch):
     assert pool_cls._assign_requests_to_connections is original_assign
 
 
+def test_httpcore_patch_skips_missing_version(monkeypatch):
+    pool_cls = _install_fake_httpcore(monkeypatch, "1.0.9")
+    del sys.modules["httpcore"].__version__
+    original_assign = pool_cls._assign_requests_to_connections
+
+    _patch_httpcore_connection_pool_assignment()
+
+    assert pool_cls._assign_requests_to_connections is original_assign
+
+
 def test_httpcore_patch_applies_to_validated_version(monkeypatch):
     pool_cls = _install_fake_httpcore(monkeypatch, "1.0.9")
     original_assign = pool_cls._assign_requests_to_connections
@@ -60,3 +70,56 @@ def test_httpcore_patch_applies_to_validated_version(monkeypatch):
     patched_assign = pool_cls._assign_requests_to_connections
     assert patched_assign is not original_assign
     assert getattr(patched_assign, "_nemo_skills_fast_assign", False) is True
+
+
+def test_httpcore_patch_replaces_expired_connection_in_same_pass(monkeypatch):
+    pool_cls = _install_fake_httpcore(monkeypatch, "1.0.9")
+    _patch_httpcore_connection_pool_assignment()
+
+    class FakeConnection:
+        def __init__(self, *, expired=False):
+            self.expired = expired
+
+        def is_closed(self):
+            return False
+
+        def has_expired(self):
+            return self.expired
+
+        def is_available(self):
+            return not self.expired
+
+        def is_idle(self):
+            return not self.expired
+
+        def can_handle_request(self, origin):
+            return False
+
+    class FakePoolRequest:
+        def __init__(self):
+            self.request = SimpleNamespace(url=SimpleNamespace(origin="https://example.test"))
+            self.assigned_connection = None
+
+        def is_queued(self):
+            return self.assigned_connection is None
+
+        def assign_to_connection(self, connection):
+            self.assigned_connection = connection
+
+    expired_connection = FakeConnection(expired=True)
+    new_connection = FakeConnection()
+    pool_request = FakePoolRequest()
+    pool = SimpleNamespace(
+        _http2=False,
+        _connections=[expired_connection],
+        _requests=[pool_request],
+        _max_connections=1,
+        _max_keepalive_connections=1,
+        create_connection=lambda origin: new_connection,
+    )
+
+    closing_connections = pool_cls._assign_requests_to_connections(pool)
+
+    assert closing_connections == [expired_connection]
+    assert pool_request.assigned_connection is new_connection
+    assert pool._connections == [new_connection]

@@ -104,8 +104,20 @@ def test_content_text_to_list_with_audio(mock_vllm_multimodal_model, tmp_path):
     assert isinstance(result["content"], list)
     assert len(result["content"]) == 2
     assert _is_valid_audio_content(result["content"][0])
-    assert result["content"][0]["audio_url"]["url"] == f"file://{audio_path}"
+    assert result["content"][0]["audio_url"]["url"] == audio_path.resolve().as_uri()
     assert result["content"][1]["type"] == "text"
+
+
+def test_content_text_to_list_with_audio_url_path_escapes_uri(mock_vllm_multimodal_model, tmp_path):
+    """file:// audio URLs must be valid URIs even when local paths contain reserved characters."""
+    audio_path = tmp_path / "test audio#1.wav"
+    with open(audio_path, "wb") as f:
+        f.write(b"RIFF" + b"\x00" * 100)
+
+    message = {"role": "user", "content": "Describe this audio", "audio": {"path": audio_path.name}}
+    result = mock_vllm_multimodal_model.content_text_to_list(message)
+
+    assert result["content"][0]["audio_url"]["url"] == audio_path.resolve().as_uri()
 
 
 def test_content_text_to_list_with_audio_url_base64_fallback(mock_vllm_multimodal_model, tmp_path):
