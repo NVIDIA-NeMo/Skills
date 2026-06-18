@@ -17,7 +17,10 @@
 import sys
 from types import ModuleType, SimpleNamespace
 
-from nemo_skills.inference.generate import _patch_httpcore_connection_pool_assignment
+from nemo_skills.inference.generate import (
+    _VALIDATED_HTTPCORE_FAST_ASSIGN_VERSIONS,
+    _patch_httpcore_connection_pool_assignment,
+)
 
 
 def _install_fake_httpcore(monkeypatch, version: str):
@@ -61,15 +64,25 @@ def test_httpcore_patch_skips_missing_version(monkeypatch):
     assert pool_cls._assign_requests_to_connections is original_assign
 
 
-def test_httpcore_patch_applies_to_validated_version(monkeypatch):
-    pool_cls = _install_fake_httpcore(monkeypatch, "1.0.9")
+def test_httpcore_patch_applies_to_validated_versions(monkeypatch):
+    for version in _VALIDATED_HTTPCORE_FAST_ASSIGN_VERSIONS:
+        pool_cls = _install_fake_httpcore(monkeypatch, version)
+        original_assign = pool_cls._assign_requests_to_connections
+
+        _patch_httpcore_connection_pool_assignment()
+
+        patched_assign = pool_cls._assign_requests_to_connections
+        assert patched_assign is not original_assign
+        assert getattr(patched_assign, "_nemo_skills_fast_assign", False) is True
+
+
+def test_httpcore_patch_skips_older_unvalidated_version(monkeypatch):
+    pool_cls = _install_fake_httpcore(monkeypatch, "1.0.2")
     original_assign = pool_cls._assign_requests_to_connections
 
     _patch_httpcore_connection_pool_assignment()
 
-    patched_assign = pool_cls._assign_requests_to_connections
-    assert patched_assign is not original_assign
-    assert getattr(patched_assign, "_nemo_skills_fast_assign", False) is True
+    assert pool_cls._assign_requests_to_connections is original_assign
 
 
 def test_httpcore_patch_replaces_expired_connection_in_same_pass(monkeypatch):

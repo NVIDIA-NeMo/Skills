@@ -273,11 +273,21 @@ class GenerationTaskConfig:
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_generation_config", node=GenerationTaskConfig)
 
+_VALIDATED_HTTPCORE_FAST_ASSIGN_VERSIONS = {
+    "1.0.3",
+    "1.0.4",
+    "1.0.5",
+    "1.0.6",
+    "1.0.7",
+    "1.0.8",
+    "1.0.9",
+}
+
 
 def _patch_httpcore_connection_pool_assignment() -> None:
     """Patch httpcore's async connection assignment hot path.
 
-    httpcore 1.0.9's ``_assign_requests_to_connections`` is O(N^2 + N*M)
+    httpcore 1.0.3-1.0.9's ``_assign_requests_to_connections`` is O(N^2 + N*M)
     (N connections, M queued requests): it rebuilds connection-state lists for
     every idle connection and again for every queued request. At high
     OpenAI-compatible concurrency this dominates the client asyncio loop
@@ -298,9 +308,9 @@ def _patch_httpcore_connection_pool_assignment() -> None:
         return
 
     httpcore_version = getattr(httpcore, "__version__", None)
-    if httpcore_version != "1.0.9":
+    if httpcore_version not in _VALIDATED_HTTPCORE_FAST_ASSIGN_VERSIONS:
         LOG.warning(
-            "Skipping httpcore AsyncConnectionPool patch: validated only on httpcore 1.0.9, found %s",
+            "Skipping httpcore AsyncConnectionPool patch: validated only on httpcore 1.0.3-1.0.9, found %s",
             httpcore_version,
         )
         return
