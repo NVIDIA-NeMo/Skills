@@ -23,7 +23,7 @@ koifeval @ git+https://github.com/bzantium/koifeval.git@7a27889c0cf285e60b1a7b47
 langcodes
 langdetect
 language-data
-litellm[caching]==1.83.14
+litellm[caching]==1.84.0
 math-verify[antlr4_9_3]
 mcp
 numpy
