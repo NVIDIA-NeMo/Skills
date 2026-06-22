@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+#
+# Thin layer on top of dockerfiles/Dockerfile.nemo-gym.
+# Adds nemo-skills-tools so DirectTavilyGymTool is available in the Gym venv.
+#
+# Build:
+#   docker build -f dockerfiles/Dockerfile.nemo-gym \
+#     --build-arg GYM_COMMIT=<gym-main-sha> \
+#     -t nemo-gym:main \
+#     dockerfiles/
+#
+#   docker build -f dockerfiles/Dockerfile.nemo-gym-skills \
+#     --build-arg BASE_IMAGE=nemo-gym:main \
+#     --build-arg SKILLS_COMMIT=<skills-main-sha> \
+#     -t nemo-gym:main-skills \
+#     dockerfiles/
+
+ARG BASE_IMAGE=nemo-gym:main
+ARG SKILLS_COMMIT=da85a881d972e6fec847b90cf553a0bf9bf10638
+
+FROM ${BASE_IMAGE}
+
+ARG SKILLS_COMMIT=da85a881d972e6fec847b90cf553a0bf9bf10638
+
+# tools/ pyproject.toml resolves nemo_skills from the repo root (where = [".."])
+RUN . /opt/Gym/.venv/bin/activate \
+    && uv pip install "nemo-skills-tools @ git+https://github.com/NVIDIA-NeMo/Skills.git@${SKILLS_COMMIT}#subdirectory=tools" \
+    && uv pip install 'tavily-python==0.7.21' \
+    && python -c "from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool; print('ok', DirectTavilyGymTool)"
+
+ENV TAVILY_GYM_TOOL=nemo_skills.mcp.servers.tavily_search_tool::DirectTavilyGymTool
