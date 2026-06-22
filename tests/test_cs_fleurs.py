@@ -38,6 +38,31 @@ class TestSplitPair:
     def test_no_separator_is_matrix_only(self):
         assert languages.split_pair("eng") == ("eng", "")
 
+    def test_non_english_embedded_pair(self):
+        # xtts-test2 contains pairs whose embedded language is not English.
+        assert languages.split_pair("cmn-fra") == ("cmn", "fra")
+
+
+class TestGetIso1:
+    def test_known_code_maps_to_iso1(self):
+        assert languages.get_iso1("deu") == "de"
+
+    @pytest.mark.parametrize("code", ["ceb", "yue"])
+    def test_code_without_iso1_form_is_none(self, code):
+        # No ISO 639-1 form -> None, which tells the evaluator to skip num2words.
+        assert languages.get_iso1(code) is None
+
+    def test_unknown_code_is_none(self):
+        assert languages.get_iso1("xxx") is None
+
+
+class TestGetLangName:
+    def test_known_code(self):
+        assert languages.get_lang_name("jpn") == "Japanese"
+
+    def test_unknown_code_falls_back_to_code(self):
+        assert languages.get_lang_name("xxx") == "xxx"
+
 
 class TestUsesCer:
     @pytest.mark.parametrize("matrix", ["cmn", "yue", "jpn", "kor", "tha", "lao", "mya", "khm", "vie"])
@@ -47,6 +72,18 @@ class TestUsesCer:
     @pytest.mark.parametrize("matrix", ["eng", "ara", "deu", "fra", "spa"])
     def test_space_delimited_matrix_uses_wer(self, matrix):
         assert languages.uses_cer(matrix) is False
+
+
+class TestUsesGrapheme:
+    @pytest.mark.parametrize("matrix", ["tha", "lao", "mya", "khm"])
+    def test_combining_mark_scripts_use_grapheme(self, matrix):
+        assert languages.uses_grapheme(matrix) is True
+
+    @pytest.mark.parametrize("matrix", ["cmn", "yue", "jpn", "kor", "eng", "deu"])
+    def test_precomposed_or_space_delimited_scripts_do_not(self, matrix):
+        # Han/kana/Hangul are precomposed (no combining marks); Latin is
+        # space-delimited. None need grapheme-cluster segmentation.
+        assert languages.uses_grapheme(matrix) is False
 
 
 class TestComputeScore:
@@ -80,3 +117,13 @@ class TestComputeScore:
         assert "read" not in result["greedy"]
         assert result["greedy"]["overall"]["wer"] == 10.0
         assert result["greedy"]["overall"]["num_entries"] == 5
+
+    def test_zero_valued_summed_metric_is_kept(self):
+        # A perfect subset reports 0 substitutions; it must still be emitted as
+        # 0 rather than dropped by a truthiness check on the sum.
+        combined = {
+            "cs-fleurs.read": {"greedy": {"num_entries": 5, "wer": 0.0, "substitutions": 0}},
+        }
+        result = audio_score.compute_score(combined)
+        assert result["greedy"]["read"]["substitutions"] == 0
+        assert result["greedy"]["overall"]["substitutions"] == 0

@@ -131,6 +131,13 @@ def _build_record(row: dict, raw_subdir: str) -> dict:
         "embedded_lang_name": languages.get_lang_name(embedded) if embedded else "",
         "lang_pair": language,
         "use_cer": languages.uses_cer(matrix),
+        # Score code-switched utterances with Mixed Error Rate: scriptio-continua
+        # scripts counted by character, space-delimited scripts by word, in the
+        # same utterance. use_mer supersedes use_cer in the audio evaluator. Use
+        # grapheme-cluster segmentation when either side is a combining-mark
+        # script (Thai/Lao/Myanmar/Khmer); harmless no-op for the other scripts.
+        "use_mer": True,
+        "mer_grapheme": languages.uses_grapheme(matrix) or (bool(embedded) and languages.uses_grapheme(embedded)),
         "speaker": row.get("speaker"),
     }
     if "fluency" in row:

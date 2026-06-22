@@ -54,6 +54,10 @@ def compute_score(combined_metrics: dict) -> dict:
         weighted_sums = {m: 0.0 for m in weighted_metrics}
         weighted_counts = {m: 0 for m in weighted_metrics}
         sums = {m: 0 for m in summed_metrics}
+        # Track presence separately so a legitimately-zero metric (e.g. 0
+        # substitutions on a perfect subset) is still emitted, rather than
+        # dropped by a truthiness check on the sum.
+        seen = {m: False for m in summed_metrics}
 
         for metrics in metrics_list:
             num_entries = metrics.get("num_entries", 0)
@@ -71,6 +75,7 @@ def compute_score(combined_metrics: dict) -> dict:
             for m in summed_metrics:
                 if m in metrics:
                     sums[m] += metrics[m]
+                    seen[m] = True
 
         if total_entries == 0:
             return None
@@ -86,7 +91,7 @@ def compute_score(combined_metrics: dict) -> dict:
             if weighted_counts[m] > 0:
                 agg[m] = round(weighted_sums[m] / weighted_counts[m], 2)
         for m in summed_metrics:
-            if sums[m]:
+            if seen[m]:
                 agg[m] = sums[m]
         return agg
 

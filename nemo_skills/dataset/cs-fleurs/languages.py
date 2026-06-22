@@ -130,3 +130,24 @@ def get_iso1(code: str) -> str | None:
 def uses_cer(matrix_code: str) -> bool:
     """Whether a code-switched pair with this matrix language is scored with CER."""
     return matrix_code in CER_LANGS
+
+
+# Scripts whose characters carry spacing/non-spacing combining marks (vowel
+# signs, tone marks). For these, Mixed Error Rate must segment by grapheme
+# cluster, since per-codepoint splitting would separate a base consonant from
+# its marks. Han / kana / Hangul are precomposed (no combining marks), so
+# codepoint-level segmentation is already correct and they are intentionally
+# excluded here.
+GRAPHEME_CLUSTER_LANGS: frozenset[str] = frozenset(
+    {
+        "tha",  # Thai
+        "lao",  # Lao
+        "mya",  # Burmese
+        "khm",  # Khmer
+    }
+)
+
+
+def uses_grapheme(code: str) -> bool:
+    """Whether this language's script needs grapheme-cluster MER segmentation."""
+    return code in GRAPHEME_CLUSTER_LANGS

@@ -241,6 +241,84 @@ def split_tokens(text: str) -> list[str]:
     return re.findall(r"\w+|[^\w\s]", text)
 
 
+# Scriptio-continua scripts (no inter-word spaces) whose units are tokenized
+# individually for Mixed Error Rate, while space-delimited scripts (e.g. Latin)
+# keep their whitespace-delimited words. Covers every CER-style script that
+# occurs in CS-FLEURS plus the obvious siblings (Lao/Khmer).
+_CONTINUA_RANGES = (
+    "㐀-䶿"  # CJK Unified Ideographs Extension A
+    "一-鿿"  # CJK Unified Ideographs
+    "豈-﫿"  # CJK Compatibility Ideographs
+    "぀-ゟ"  # Hiragana
+    "゠-ヿ"  # Katakana
+    "ㇰ-ㇿ"  # Katakana Phonetic Extensions
+    "ᄀ-ᇿ"  # Hangul Jamo
+    "㄰-㆏"  # Hangul Compatibility Jamo
+    "가-힣"  # Hangul Syllables
+    "฀-๿"  # Thai
+    "຀-໿"  # Lao
+    "က-႟"  # Myanmar
+    "ꩠ-ꩿ"  # Myanmar Extended-A
+    "ក-៿"  # Khmer
+)
+_CONTINUA_RE = re.compile(f"[{_CONTINUA_RANGES}]")
+
+
+def _grapheme_clusters(text: str) -> list[str]:
+    """Group each base character with its trailing combining marks.
+
+    A lightweight, dependency-free grapheme segmentation: combining marks
+    (Unicode categories Mn/Mc/Me) attach to the preceding base. This keeps a
+    Thai/Myanmar consonant together with its vowel signs and tone marks, which
+    naive per-codepoint splitting would tear apart.
+    """
+    clusters: list[str] = []
+    for ch in text:
+        if clusters and unicodedata.category(ch) in ("Mn", "Mc", "Me"):
+            clusters[-1] += ch
+        else:
+            clusters.append(ch)
+    return clusters
+
+
+def mixed_segment(text: str, grapheme: bool = False) -> list[str]:
+    """Tokenize code-switched text for Mixed Error Rate (MER).
+
+    Each scriptio-continua unit (Han/kana/Hangul/Thai/Lao/Myanmar/Khmer) becomes
+    its own token; runs of space-delimited script (e.g. Latin) stay as their
+    whitespace-delimited words. The result, joined with spaces, can be scored
+    with the standard word-level edit distance so Mandarin is counted by
+    character and English by word in the same utterance.
+
+    Args:
+        text: Normalized transcription (normalize first, then segment).
+        grapheme: When True, scriptio-continua units are grapheme clusters
+            (base + combining marks) rather than single codepoints. Needed for
+            Thai/Myanmar to avoid splitting tone/vowel marks off their base;
+            unnecessary for Han/kana/Hangul (no combining marks). Default False
+            keeps per-codepoint counting, consistent with the evaluator's CER.
+    """
+    units = _grapheme_clusters(text) if grapheme else list(text)
+    tokens: list[str] = []
+    buffer: list[str] = []
+
+    def _flush():
+        if buffer:
+            tokens.append("".join(buffer))
+            buffer.clear()
+
+    for unit in units:
+        if unit[0].isspace():
+            _flush()
+        elif _CONTINUA_RE.match(unit[0]):
+            _flush()
+            tokens.append(unit)
+        else:
+            buffer.append(unit)
+    _flush()
+    return tokens
+
+
 def extract_punctuation(text: str) -> list[str]:
     """Extract only punctuation characters from text."""
     return [c for c in text if not c.isalnum() and not c.isspace()]
@@ -636,6 +714,47 @@ def evaluate_cer(
     return result
 
 
+def evaluate_mer(
+    reference: str,
+    hypothesis: str,
+    normalization_mode: str = "none",
+    normalize_compound: bool = False,
+    grapheme: bool = False,
+    **kwargs,
+) -> dict[str, Any]:
+    """Evaluate Mixed Error Rate for code-switched ASR.
+
+    Scriptio-continua scripts are counted by character and space-delimited
+    scripts by word within the same utterance (see ``mixed_segment``), then
+    scored with the standard word-level edit distance. Results are reported
+    under the ``wer*`` keys so the mixed figure occupies the headline WER column
+    (matching how ``Multilingual-ASR`` folds CER into ``wer*``).
+    """
+    ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
+    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
+
+    if normalize_compound:
+        ref, hyp = normalize_compound_pairs(ref, hyp)
+
+    # Mirror evaluate_asr/evaluate_cer: drop samples whose normalized reference
+    # is empty rather than scoring against a placeholder.
+    if not ref:
+        return {"wer": None, "is_correct": None, "text": "", "pred_text": hyp or ""}
+
+    if not hyp:
+        hyp = "empty"
+
+    ref_seg = " ".join(mixed_segment(ref, grapheme=grapheme))
+    hyp_seg = " ".join(mixed_segment(hyp, grapheme=grapheme))
+
+    result = _wer_with_counts(ref_seg, hyp_seg)
+    result["is_correct"] = result["wer"] < 0.5
+    # Store the human-readable (unsegmented) normalized text, not the spaced tokens.
+    result["text"] = ref
+    result["pred_text"] = hyp
+    return result
+
+
 def evaluate_hallucination(reference: str, hypothesis: str, audio_context: dict = None) -> dict[str, Any]:
     """Detect potential hallucinations via speaking rate anomaly.
 
@@ -810,7 +929,20 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
 
         # Mixed WER column: CJK-style languages (use_cer) fold their CER into the WER
         # column (stored under wer* keys), all other languages contribute standard WER.
-        if use_cer:
+        # Code-switched samples (use_mer) instead get a true Mixed Error Rate, counting
+        # scriptio-continua scripts by character and space-delimited scripts by word in
+        # the same utterance; also stored under the wer* column. Monolingual benchmarks
+        # (e.g. fleurs) never set use_mer, so their use_cer/WER behavior is unchanged.
+        if extra_fields.get("use_mer", False):
+            metrics = evaluate_mer(
+                expected_answer,
+                generation,
+                normalization_mode=mode,
+                normalize_compound=normalize_compound,
+                grapheme=extra_fields.get("mer_grapheme", False),
+                **preprocess_kwargs,
+            )
+        elif use_cer:
             metrics = evaluate_cer(
                 expected_answer,
                 generation,
