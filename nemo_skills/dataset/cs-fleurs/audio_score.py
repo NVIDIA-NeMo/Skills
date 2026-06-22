@@ -41,6 +41,10 @@ def compute_score(combined_metrics: dict) -> dict:
 
     weighted_metrics = ["wer", "wer_macro"]
     summed_metrics = ["substitutions", "insertions", "deletions", "ref_words"]
+    # Generation/timing metrics that are entry-weighted like WER but only emitted
+    # when present: pure-ASR runs omit success_rate / no_answer, so we must not
+    # fabricate them as 0.
+    optional_weighted = ["success_rate", "avg_tokens", "no_answer"]
 
     first_benchmark = next(iter(benchmarks.values()))
     eval_modes = list(first_benchmark.keys())
@@ -48,11 +52,9 @@ def compute_score(combined_metrics: dict) -> dict:
     def _summarize(metrics_list: list[dict]) -> dict | None:
         total_entries = 0
         total_gen_seconds = 0
-        weighted_success = 0.0
-        weighted_tokens = 0.0
-        weighted_no_answer = 0.0
-        weighted_sums = {m: 0.0 for m in weighted_metrics}
-        weighted_counts = {m: 0 for m in weighted_metrics}
+        gen_seconds_seen = False
+        weighted_sums = {m: 0.0 for m in weighted_metrics + optional_weighted}
+        weighted_counts = {m: 0 for m in weighted_metrics + optional_weighted}
         sums = {m: 0 for m in summed_metrics}
         # Track presence separately so a legitimately-zero metric (e.g. 0
         # substitutions on a perfect subset) is still emitted, rather than
@@ -60,15 +62,14 @@ def compute_score(combined_metrics: dict) -> dict:
         seen = {m: False for m in summed_metrics}
 
         for metrics in metrics_list:
-            num_entries = metrics.get("num_entries", 0)
+            num_entries = metrics["num_entries"]  # required; fail loudly if absent
             if num_entries == 0:
                 continue
             total_entries += num_entries
-            total_gen_seconds += metrics.get("gen_seconds", 0)
-            weighted_success += metrics.get("success_rate", 0.0) * num_entries
-            weighted_tokens += metrics.get("avg_tokens", 0.0) * num_entries
-            weighted_no_answer += metrics.get("no_answer", 0.0) * num_entries
-            for m in weighted_metrics:
+            if "gen_seconds" in metrics:
+                total_gen_seconds += metrics["gen_seconds"]
+                gen_seconds_seen = True
+            for m in weighted_metrics + optional_weighted:
                 if m in metrics:
                     weighted_sums[m] += metrics[m] * num_entries
                     weighted_counts[m] += num_entries
@@ -80,16 +81,16 @@ def compute_score(combined_metrics: dict) -> dict:
         if total_entries == 0:
             return None
 
-        agg = {
-            "avg_tokens": int(weighted_tokens / total_entries),
-            "gen_seconds": total_gen_seconds,
-            "success_rate": weighted_success / total_entries,
-            "no_answer": weighted_no_answer / total_entries,
-            "num_entries": total_entries,
-        }
+        agg = {"num_entries": total_entries}
+        if gen_seconds_seen:
+            agg["gen_seconds"] = total_gen_seconds
         for m in weighted_metrics:
             if weighted_counts[m] > 0:
                 agg[m] = round(weighted_sums[m] / weighted_counts[m], 2)
+        for m in optional_weighted:
+            if weighted_counts[m] > 0:
+                value = weighted_sums[m] / weighted_counts[m]
+                agg[m] = int(value) if m == "avg_tokens" else value
         for m in summed_metrics:
             if seen[m]:
                 agg[m] = sums[m]

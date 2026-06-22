@@ -821,7 +821,7 @@ ns prepare_data cs-fleurs \
 
 Output:
 
-```
+```text
 <data_dir>/cs-fleurs/
     read/test.jsonl         # one ASR record per (pair, audio)
     mms/test.jsonl

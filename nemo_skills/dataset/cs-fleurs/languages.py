@@ -29,6 +29,7 @@ from __future__ import annotations
 # ISO 639-3 code -> (display name, ISO 639-1 code or None for num2words/normalization)
 CS_FLEURS_LANGUAGES: dict[str, tuple[str, str | None]] = {
     "ara": ("Arabic", "ar"),
+    "aze": ("Azerbaijani", "az"),
     "ben": ("Bengali", "bn"),
     "bul": ("Bulgarian", "bg"),
     "cat": ("Catalan", "ca"),
@@ -70,6 +71,7 @@ CS_FLEURS_LANGUAGES: dict[str, tuple[str, str | None]] = {
     "slk": ("Slovak", "sk"),
     "spa": ("Spanish", "es"),
     "swe": ("Swedish", "sv"),
+    "swh": ("Swahili", "sw"),
     "tam": ("Tamil", "ta"),
     "tel": ("Telugu", "te"),
     "tgk": ("Tajik", "tg"),
@@ -116,15 +118,23 @@ def split_pair(language: str) -> tuple[str, str]:
 
 
 def get_lang_name(code: str) -> str:
-    """Display name for an ISO 639-3 code, falling back to the code itself."""
-    entry = CS_FLEURS_LANGUAGES.get(code)
-    return entry[0] if entry else code
+    """Display name for an ISO 639-3 code.
+
+    Raises KeyError on an unknown code: every CS-FLEURS language is expected in
+    the table, so an unknown code signals a dataset/table mismatch we want to
+    fail on loudly rather than paper over.
+    """
+    return CS_FLEURS_LANGUAGES[code][0]
 
 
 def get_iso1(code: str) -> str | None:
-    """ISO 639-1 code for an ISO 639-3 code, or None when unavailable."""
-    entry = CS_FLEURS_LANGUAGES.get(code)
-    return entry[1] if entry else None
+    """ISO 639-1 code for a (known) ISO 639-3 code.
+
+    Returns None for languages that have no ISO 639-1 form (e.g. ``ceb``,
+    ``yue``); number normalization is then skipped, which the evaluator handles.
+    Raises KeyError on an unknown code (see ``get_lang_name``).
+    """
+    return CS_FLEURS_LANGUAGES[code][1]
 
 
 def uses_cer(matrix_code: str) -> bool:

@@ -45,9 +45,7 @@ from pathlib import Path
 
 # The package dir is "cs-fleurs" (hyphen), so the sibling languages module is not
 # importable by dotted name. Load it by file path instead.
-_lang_spec = importlib.util.spec_from_file_location(
-    "cs_fleurs_languages", Path(__file__).parent / "languages.py"
-)
+_lang_spec = importlib.util.spec_from_file_location("cs_fleurs_languages", Path(__file__).parent / "languages.py")
 languages = importlib.util.module_from_spec(_lang_spec)
 _lang_spec.loader.exec_module(languages)
 

@@ -52,16 +52,19 @@ class TestGetIso1:
         # No ISO 639-1 form -> None, which tells the evaluator to skip num2words.
         assert languages.get_iso1(code) is None
 
-    def test_unknown_code_is_none(self):
-        assert languages.get_iso1("xxx") is None
+    def test_unknown_code_raises(self):
+        # Unknown code signals a dataset/table mismatch: fail fast, don't degrade.
+        with pytest.raises(KeyError):
+            languages.get_iso1("xxx")
 
 
 class TestGetLangName:
     def test_known_code(self):
         assert languages.get_lang_name("jpn") == "Japanese"
 
-    def test_unknown_code_falls_back_to_code(self):
-        assert languages.get_lang_name("xxx") == "xxx"
+    def test_unknown_code_raises(self):
+        with pytest.raises(KeyError):
+            languages.get_lang_name("xxx")
 
 
 class TestUsesCer:
