@@ -802,8 +802,13 @@ Output:
 
 In addition, a parallel **CER** column (`cer*`) is emitted for direct comparison with the [CS-FLEURS paper](https://arxiv.org/abs/2509.14161), which reports *"case insensitive and unpunctuated character error rate"*. For CS-FLEURS this CER is normalized the paper's way — lowercased and de-punctuated but with **combining marks preserved** (so Thai/Myanmar vowel and tone marks count), via the `lower_nopunct` normalization mode. So each pair gets both a code-switching-aware MER (`wer*`) and a paper-comparable CER (`cer*`).
 
-!!! warning "Known limitation: Thai/Myanmar diacritic stripping (reviewers' input welcome)"
-    The shared `multilingual` normalization removes Unicode combining marks (category `Mn`, and turns `Mc` into spaces) as "diacritics". This is correct for Latin accents but **destroys meaning-bearing vowel and tone marks in Thai/Myanmar** (e.g. `ที่` → `ท`). The paper-comparable **CER column (`cer*`) avoids this** by using the mark-preserving `lower_nopunct` normalization. However, the **MER column (`wer*`) still inherits the shared `multilingual` normalization**, so MER for Thai/Myanmar is computed over consonant skeletons (and `mer_grapheme` grapheme-clustering is consequently a no-op there, since marks are stripped before segmentation). This mark-stripping is **pre-existing** — it affects the plain `use_cer` path and `fleurs` too. A full fix makes the shared multilingual normalization script-aware (preserve `Mn`/`Mc` for Thai/Lao/Myanmar/Khmer/Indic), which would change `fleurs` numbers — deferred pending maintainer guidance. Affects only ~695 of ~49k CS-FLEURS records (Thai + Myanmar); use the `cer*` column for those.
+!!! note "Combining marks (Thai/Myanmar vowels & tones) are preserved for CS-FLEURS"
+    The shared `multilingual` normalization removes Unicode combining marks (category `Mn`, and turns `Mc` into spaces) as "diacritics" — correct for Latin accents, but it **destroys meaning-bearing vowel and tone marks in Thai/Myanmar** (e.g. `ที่` → `ท`). CS-FLEURS opts out of this so both metrics score those marks:
+
+    - **MER (`wer*`)** uses `multilingual` normalization with the `preserve_marks` option (marks kept, `num2words` and other steps retained); `mer_grapheme` grapheme-clustering is therefore effective for Thai/Myanmar.
+    - **CER (`cer*`)** uses `lower_nopunct` (lowercase + unpunctuated, marks kept) for paper comparability.
+
+    Both are gated on `use_mer`, so **monolingual benchmarks (`fleurs`, `covost2`) are unchanged** — they keep the default mark-stripping. Whether that shared default should itself become script-aware (preserve `Mn`/`Mc` for abugida scripts everywhere, which would change `fleurs` numbers) is a separate upstream question, left to maintainer guidance.
 
 ### Dataset Location
 

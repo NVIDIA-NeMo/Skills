@@ -138,3 +138,27 @@ class TestLowerNopunctNormalization:
         # no_tn_itn drops the Thai marks (\w doesn't match them); lower_nopunct keeps them.
         norm = self._norm()
         assert norm("ที่", mode="lower_nopunct") != norm("ที่", mode="no_tn_itn")
+
+
+class TestMultilingualPreserveMarks:
+    """`preserve_marks` opt-in on multilingual normalization keeps abugida vowel/tone
+    marks (so MER counts them) while retaining the rest of the multilingual pipeline.
+    Dependency-free here: non-English lang + no digits avoids whisper/num2words imports."""
+
+    def _norm(self):
+        import pytest
+
+        # multilingual mode imports whisper_normalizer unconditionally (for the
+        # English-normalizer branch), so skip if it's unavailable.
+        pytest.importorskip("whisper_normalizer")
+        from nemo_skills.evaluation.evaluator.audio import preprocess_asr_text
+
+        return preprocess_asr_text
+
+    def test_preserve_marks_keeps_thai_vowel_and_tone(self):
+        out = self._norm()("ที่!", mode="multilingual", lang="th", preserve_marks=True)
+        assert out == "ที่"  # base + vowel + tone kept, punctuation dropped
+
+    def test_default_multilingual_strips_marks(self):
+        out = self._norm()("ที่", mode="multilingual", lang="th", preserve_marks=False)
+        assert "ี" not in out and "่" not in out  # vowel ี and tone ่ removed

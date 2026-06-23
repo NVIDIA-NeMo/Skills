@@ -96,6 +96,16 @@ def remove_symbols(s: str):
     return "".join(" " if unicodedata.category(c)[0] in "MSP" else c for c in unicodedata.normalize("NFKC", s))
 
 
+def remove_symbols_keep_marks(s: str):
+    """
+    Replace symbols and punctuation (categories S*, P*) with a space, but KEEP combining
+    marks (M*) and letters/numbers. For abugida scripts (Thai/Lao/Myanmar/Khmer/Indic),
+    the vowel and tone marks are meaning-bearing, unlike Latin diacritics, so they must
+    not be stripped. Uses NFC to keep precomposed forms intact.
+    """
+    return "".join(" " if unicodedata.category(c)[0] in "SP" else c for c in unicodedata.normalize("NFC", s))
+
+
 def normalize_compound_pairs(ref_text: str, pred_text: str) -> tuple[str, str]:
     """Normalize compound word boundaries between ref/pred pairs.
 
@@ -133,8 +143,14 @@ class MultilingualTextNormalizer:
     Pass lang= to also convert digits to words via num2words.
     """
 
-    def __init__(self, remove_diacritics: bool = True):
-        self.clean = remove_symbols_and_diacritics if remove_diacritics else remove_symbols
+    def __init__(self, remove_diacritics: bool = True, preserve_marks: bool = False):
+        # preserve_marks keeps combining marks (M*) — essential vowels/tones in abugida
+        # scripts — while still removing symbols/punctuation. Overrides remove_diacritics.
+        self.preserve_marks = preserve_marks
+        if preserve_marks:
+            self.clean = remove_symbols_keep_marks
+        else:
+            self.clean = remove_symbols_and_diacritics if remove_diacritics else remove_symbols
 
     def _normalize_numbers(self, text, lang):
         import num2words
@@ -157,8 +173,11 @@ class MultilingualTextNormalizer:
         s = re.sub(r"\(([^)]+?)\)", "", s)  # remove words between parenthesis
         s = self.clean(s).lower()
 
-        # Remove punctuations and extra spaces
-        s = re.sub(r"[^\w\s]", "", s)
+        # Remove punctuations and extra spaces. Skip the [^\w\s] strip when preserving
+        # marks (it would delete combining marks, which \w does not match); self.clean
+        # has already removed symbols/punctuation in that case.
+        if not self.preserve_marks:
+            s = re.sub(r"[^\w\s]", "", s)
         s = normalize_whitespace(s)
 
         if lang is not None:
@@ -574,9 +593,10 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            text = MultilingualTextNormalizer(remove_diacritics=kwargs.get("remove_diacritics", False))(
-                text, lang=lang
-            )
+            text = MultilingualTextNormalizer(
+                remove_diacritics=kwargs.get("remove_diacritics", False),
+                preserve_marks=kwargs.get("preserve_marks", False),
+            )(text, lang=lang)
         return normalize_whitespace(text)
 
 
@@ -942,6 +962,12 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             "lang": src_lang,
             "remove_diacritics": True,
         }
+        # For code-switched data (use_mer, i.e. cs-fleurs), preserve combining marks in
+        # the multilingual normalization so MER counts Thai/Myanmar vowels/tones (and so
+        # grapheme-cluster segmentation is meaningful). num2words and other steps still
+        # apply. Monolingual benchmarks keep the existing mark-stripping behavior.
+        if extra_fields.get("use_mer", False):
+            preprocess_kwargs["preserve_marks"] = True
         # Only normalize compound pairs for non-English languages
         normalize_compound = src_lang not in [None, "en"]
 
