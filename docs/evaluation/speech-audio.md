@@ -832,24 +832,28 @@ Output:
 
 ### Baseline results
 
-Reference numbers from **Whisper `large-v3`** (an external multilingual ASR model, *not* a SpeechLM/SALM model), transcribing the full `cs-fleurs.read` subset (5,818 utterances, greedy decoding) and scored with this benchmark's MER path (multilingual normalization, per-pair breakdown). These are a sanity-check baseline for the metric and data pipeline, not a tuned result.
+Reference numbers from **Whisper `large-v3`** (an external multilingual ASR model, *not* a SpeechLM/SALM model), transcribing the full `cs-fleurs.read` subset (5,818 utterances, greedy decoding) and scored with this benchmark's MER path (multilingual normalization). These are a sanity-check baseline for the metric and data pipeline, not a tuned result. MER is reported in the `wer` column; `subset_for_metrics` gives the per-language-pair breakdown.
 
-| Language pair | N | MER (%) |
-|---|---|---|
-| ara-eng | 989 | 29.03 |
-| ces-eng | 326 | 16.39 |
-| cmn-eng | 1321 | 17.14 |
-| deu-eng | 298 | 10.98 |
-| fra-eng | 307 | 19.39 |
-| hin-eng | 233 | 41.58 |
-| ita-eng | 176 | 12.21 |
-| jpn-eng | 196 | 42.75 |
-| kor-eng | 466 | 34.75 |
-| por-eng | 338 | 15.23 |
-| rus-eng | 337 | 22.05 |
-| slk-eng | 314 | 24.62 |
-| spa-eng | 320 | 9.60 |
-| tel-eng | 197 | 60.16 |
-| **overall** | **5818** | **25.75** |
+Example output:
 
-Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita ~10–12%), higher for low-resource or distinct-script languages (tel/jpn/hin/kor). A SpeechLM model evaluated through the standard pipeline will report the same MER metric.
+```text
+--------------------------------- cs-fleurs.read ---------------------------------
+language_pair  | num_entries | mer
+ara-eng        | 989         | 29.03
+ces-eng        | 326         | 16.39
+cmn-eng        | 1321        | 17.14
+deu-eng        | 298         | 10.98
+fra-eng        | 307         | 19.39
+hin-eng        | 233         | 41.58
+ita-eng        | 176         | 12.21
+jpn-eng        | 196         | 42.75
+kor-eng        | 466         | 34.75
+por-eng        | 338         | 15.23
+rus-eng        | 337         | 22.05
+slk-eng        | 314         | 24.62
+spa-eng        | 320         | 9.60
+tel-eng        | 197         | 60.16
+overall        | 5818        | 25.75
+```
+
+Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita ~10–12%), higher for low-resource or distinct-script languages (tel/jpn/hin/kor). A SpeechLM model evaluated through the standard pipeline reports the same MER metric.
