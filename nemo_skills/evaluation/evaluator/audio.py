@@ -477,7 +477,15 @@ def _remove_non_speech_elements(text: str) -> str:
     return re.sub(non_speech_patterns, "", text)
 
 
-VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual")
+VALID_NORMALIZATION_MODES = (
+    "standard",
+    "audiobench",
+    "hf_leaderboard",
+    "none",
+    "no_tn_itn",
+    "multilingual",
+    "lower_nopunct",
+)
 TASKS_NEED_PARSING = {"ASR", "ASR-PC", "ASR_LEADERBOARD", "Multilingual-ASR", "CER", "Hallucination", "PC-Rate"}
 
 
@@ -518,6 +526,16 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         # Lowercase + remove punctuation + whitespace normalization
         text = text.lower()
         text = re.sub(r"[^\w\s]", "", text)
+        return normalize_whitespace(text)
+
+    if mode == "lower_nopunct":
+        # Lowercase + drop punctuation only, PRESERVING combining marks (Mn/Mc).
+        # Unlike no_tn_itn (whose [^\w\s] also strips abugida vowel/tone marks,
+        # since \w does not match them), this keeps Thai/Myanmar/Indic vowels and
+        # tones. Matches the CS-FLEURS paper's "case insensitive and unpunctuated"
+        # character error rate, so per-language CER is comparable to the paper.
+        text = text.lower()
+        text = "".join("" if unicodedata.category(ch).startswith("P") else ch for ch in text)
         return normalize_whitespace(text)
 
     from whisper_normalizer.english import EnglishTextNormalizer
@@ -963,10 +981,15 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
 
         # Parallel only-CER column: character error rate computed for every sample,
         # reported separately (cer* keys) alongside the mixed WER column.
+        # Code-switched benchmarks (use_mer, i.e. cs-fleurs) score this CER with
+        # mark-preserving normalization (lowercase + unpunctuated, combining marks
+        # kept) so it matches the CS-FLEURS paper's CER; monolingual benchmarks keep
+        # the standard multilingual normalization unchanged.
+        cer_mode = "lower_nopunct" if extra_fields.get("use_mer", False) else mode
         cer_metrics = evaluate_cer(
             expected_answer,
             generation,
-            normalization_mode=mode,
+            normalization_mode=cer_mode,
             key_prefix="cer",
             normalize_compound=normalize_compound,
             **preprocess_kwargs,

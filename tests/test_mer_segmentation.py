@@ -113,3 +113,28 @@ class TestEvaluateMer:
         evaluate_mer = self._evaluate_mer()
         r = evaluate_mer("", "anything", normalization_mode="none")
         assert r["wer"] is None
+
+
+class TestLowerNopunctNormalization:
+    """Mark-preserving normalization (lowercase + unpunctuated) for paper-comparable
+    CER. Dependency-free: this mode returns before any optional imports."""
+
+    def _norm(self):
+        from nemo_skills.evaluation.evaluator.audio import preprocess_asr_text
+
+        return preprocess_asr_text
+
+    def test_lowercases_and_strips_punctuation(self):
+        assert self._norm()("Hello, World!", mode="lower_nopunct") == "hello world"
+
+    def test_preserves_thai_combining_marks(self):
+        # base ท + vowel ี + tone ่ all kept; trailing punctuation dropped.
+        assert self._norm()("ที่!", mode="lower_nopunct") == "ที่"
+
+    def test_preserves_myanmar_marks(self):
+        assert self._norm()("ကျော่.", mode="lower_nopunct") == "ကျော่"
+
+    def test_differs_from_no_tn_itn_which_strips_marks(self):
+        # no_tn_itn drops the Thai marks (\w doesn't match them); lower_nopunct keeps them.
+        norm = self._norm()
+        assert norm("ที่", mode="lower_nopunct") != norm("ที่", mode="no_tn_itn")
