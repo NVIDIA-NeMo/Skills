@@ -37,6 +37,7 @@ Key design points
 from __future__ import annotations
 
 import fnmatch
+import inspect
 import json
 import logging
 import os
@@ -731,13 +732,26 @@ class RayBackend(ExecutionBackend):
                 self.dashboard_url,
                 selector or {},
             )
-            job_id = client.submit_job(
+            submit_kwargs = dict(
                 entrypoint=entrypoint,
                 submission_id=submission_id,
                 metadata=metadata,
-                entrypoint_label_selector=selector or None,
                 runtime_env=self._build_runtime_env(),
             )
+            # entrypoint_label_selector was added to JobSubmissionClient.submit_job in
+            # Ray 2.55; older clients (e.g. Ray 2.54 in the nemo-rl image) reject the
+            # kwarg. Only pass it when a selector is configured and the client supports
+            # it, so the common no-selector path works against any Ray the cluster runs.
+            if selector:
+                if "entrypoint_label_selector" in inspect.signature(client.submit_job).parameters:
+                    submit_kwargs["entrypoint_label_selector"] = selector
+                else:
+                    LOG.warning(
+                        "Ray client lacks entrypoint_label_selector support; ignoring "
+                        "selector %s (requires Ray >= 2.55).",
+                        selector,
+                    )
+            job_id = client.submit_job(**submit_kwargs)
             return {
                 "task_name": task_name,
                 "task_handle": job.get("task_handle"),
