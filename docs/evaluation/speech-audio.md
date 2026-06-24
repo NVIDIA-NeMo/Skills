@@ -800,7 +800,7 @@ Output:
 
 **Scoring — Mixed Error Rate (MER).** Because each utterance mixes two scripts, a single per-utterance CER-or-WER choice mis-scores it (e.g. whole-utterance CER over a `cmn-eng` sentence scores the embedded English at the character level). Instead, records set `use_mer=true` and the audio evaluator computes a Mixed Error Rate: scriptio-continua scripts (Han / kana / Hangul / Thai / Lao / Myanmar / Khmer) are counted by character and space-delimited scripts (e.g. Latin) by word, within the same utterance, then scored with the standard word-level edit distance. This matches the standard MER used for Mandarin-English code-switching (e.g. SEAME). The mixed figure is reported in the headline `wer*` column. `subset_for_metrics` is the code-switched pair (e.g. `ara-eng`), giving a per-pair breakdown; the group score module adds a per-test-set and overall entry-weighted figure. MER only affects CS-FLEURS — it is gated behind `use_mer`, which monolingual benchmarks (including `fleurs`) never set, so their CER/WER behavior is unchanged.
 
-In addition, a parallel **CER** column (`cer*`) is emitted for direct comparison with the [CS-FLEURS paper](https://arxiv.org/abs/2509.14161), which reports *"case insensitive and unpunctuated character error rate"*. For CS-FLEURS this CER is normalized the paper's way — lowercased and de-punctuated but with **combining marks preserved** (so Thai/Myanmar vowel and tone marks count), via the `lower_nopunct` normalization mode. So each pair gets both a code-switching-aware MER (`wer*`) and a paper-comparable CER (`cer*`).
+In addition, a parallel **CER** column (`cer*`) is emitted for direct comparison with the [CS-FLEURS paper](https://arxiv.org/abs/2509.14161), which reports *"case insensitive and unpunctuated character error rate"*. So each pair gets both a code-switching-aware MER (`wer*`) and a paper-comparable CER (`cer*`); see the note below for how the normalization keeps them faithful.
 
 !!! note "Combining marks (Thai/Myanmar vowels & tones) are preserved for CS-FLEURS"
     The shared `multilingual` normalization removes Unicode combining marks (category `Mn`, and turns `Mc` into spaces) as "diacritics" — correct for Latin accents, but it **destroys meaning-bearing vowel and tone marks in Thai/Myanmar** (e.g. `ที่` → `ท`). CS-FLEURS opts out of this so both metrics score those marks:
@@ -839,28 +839,28 @@ Output:
 
 ### Baseline results
 
-Reference numbers from **Whisper `large-v3`** (an external multilingual ASR model, *not* a SpeechLM/SALM model), transcribing the full `cs-fleurs.read` subset (5,818 utterances, greedy decoding) and scored with this benchmark's MER path (multilingual normalization). These are a sanity-check baseline for the metric and data pipeline, not a tuned result. MER is reported in the `wer` column; `subset_for_metrics` gives the per-language-pair breakdown.
+Reference numbers from **Whisper `large-v3`** (an external multilingual ASR model, *not* a SpeechLM/SALM model), transcribing the full `cs-fleurs.read` subset (5,818 utterances, greedy decoding) and scored through this benchmark's evaluator. Both the code-switching-aware **MER** (`wer` column, mark-preserving) and the paper-comparable **CER** (`cer` column) are shown per language pair (`subset_for_metrics`). These are a sanity-check baseline, not a tuned result.
 
 Example output:
 
 ```text
---------------------------------- cs-fleurs.read ---------------------------------
-language_pair  | num_entries | mer
-ara-eng        | 989         | 29.03
-ces-eng        | 326         | 16.39
-cmn-eng        | 1321        | 17.14
-deu-eng        | 298         | 10.98
-fra-eng        | 307         | 19.39
-hin-eng        | 233         | 41.58
-ita-eng        | 176         | 12.21
-jpn-eng        | 196         | 42.75
-kor-eng        | 466         | 34.75
-por-eng        | 338         | 15.23
-rus-eng        | 337         | 22.05
-slk-eng        | 314         | 24.62
-spa-eng        | 320         | 9.60
-tel-eng        | 197         | 60.16
-overall        | 5818        | 25.75
+------------------------------- cs-fleurs.read -------------------------------
+language_pair  | num_entries | mer   | cer
+ara-eng        | 989         | 32.57 | 21.02
+ces-eng        | 326         | 17.47 | 7.10
+cmn-eng        | 1321        | 17.15 | 16.69
+deu-eng        | 298         | 10.95 | 3.72
+fra-eng        | 307         | 19.74 | 10.17
+hin-eng        | 233         | 39.13 | 33.43
+ita-eng        | 176         | 12.28 | 4.78
+jpn-eng        | 196         | 42.82 | 35.23
+kor-eng        | 466         | 32.71 | 34.46
+por-eng        | 338         | 15.43 | 7.10
+rus-eng        | 337         | 22.53 | 16.12
+slk-eng        | 314         | 26.67 | 10.25
+spa-eng        | 320         | 9.79  | 4.33
+tel-eng        | 197         | 73.08 | 47.59
+overall        | 5818        | 24.51 | 16.47
 ```
 
-Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita ~10–12%), higher for low-resource or distinct-script languages (tel/jpn/hin/kor). A SpeechLM model evaluated through the standard pipeline reports the same MER metric.
+Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita), higher for distinct-script or low-resource languages (tel/jpn/hin/kor). The corpus-pooled overall CER (16.47%) is ~18.0% when macro-averaged over the 14 pairs, in line with the paper's ~19.8% read-test CER (residual gap: greedy vs beam decoding, inference stack, exact normalization). A SpeechLM model evaluated through the standard pipeline reports the same metrics.
