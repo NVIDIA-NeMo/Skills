@@ -15,6 +15,7 @@
 # tuple of dataset name, available splits and prepared sft files
 DATASETS = [
     ("aime25", ["test"]),
+    ("apex_2025", ["test"]),
     ("math-500", ["test"]),
     ("aime24", ["test"]),
     ("amc23", ["test"]),
