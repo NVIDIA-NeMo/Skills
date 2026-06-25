@@ -1,0 +1,29 @@
+# Deterministic chemistry grading (SMILES / SAFE / numeric) instead of the unreliable
+# LLM judge, for datasets whose final answers are molecular strings or numbers.
+#
+# Two mechanisms, mirroring how the pipeline already grades math (symbolic_correct)
+# and MCQ (no judge):
+#   * difficulty_estimation: runs the Evaluator inline during generation
+#     (eval_type=chemistry). The evaluator extracts the boxed answer itself and sets
+#     `symbolic_correct` per sample, so the LLM judge step is skipped. Difficulty always
+#     uses a boxed prompt, so no custom extraction is needed.
+#   * generate_solutions: turns the LLM judge off (make_judgement: False), keeps the
+#     existing per-prompt regex extraction (extract_predictions.py / answer_regex), and
+#     compares predicted_answer vs expected_answer with answer_comparison=chemistry
+#     (RDKit canonical equality, which still tries exact == first, then numeric).
+#
+# RDKit is installed on the relevant inference/CPU jobs via `pip install rdkit`.
+
+stages:
+  difficulty_estimation:
+    eval_type: chemistry
+    # Extra inline-evaluator overrides, forwarded as hydra args, e.g.
+    # "++eval_config.ignore_stereo=True". Defaults are fine for SMILES/SAFE.
+    eval_config_args: ""
+    eval_installation_command: "pip install rdkit"
+
+  generate_solutions:
+    make_judgement: False
+    answer_comparison: chemistry
+    # RDKit must be importable where aggregate_solutions runs.
+    aggregate_installation_command: "pip install rdkit"

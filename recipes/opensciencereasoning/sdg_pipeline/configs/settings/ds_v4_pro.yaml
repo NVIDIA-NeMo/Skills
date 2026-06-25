@@ -1,0 +1,79 @@
+cluster: hsg
+
+stages:
+  generate_solutions:
+    make_judgement: True
+    chat_template_kwargs:
+      thinking: True
+      reasoning_effort: max
+    prompt_config: ++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/default_problem.yaml
+    tokens_to_generate: ++inference.tokens_to_generate=120000
+    reasoning_effort: ++chat_template_kwargs.reasoning_effort=${stages.generate_solutions.chat_template_kwargs.reasoning_effort}
+    thinking: ++chat_template_kwargs.thinking=${stages.generate_solutions.chat_template_kwargs.thinking}
+    endpoint_type: ++inference.endpoint_type=chat
+
+    generation_kwargs:
+      args:
+        model: /hf_models/DeepSeek-V4-Pro
+        server_type: vllm_dp_ray
+        server_container: /lustre/fs1/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/wedu/images/vllm-deepseekv4-v0200-cu130-ray-arm64.sqsh
+        server_gpus: 4
+        server_nodes: 2
+        num_random_seeds: 5
+        dependent_jobs: 2
+        num_chunks: 20
+        server_args: >-
+          --kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel
+          -cc.pass_config.fuse_allreduce_rms=False
+          --tensor-parallel-size 4 --data-parallel-size 2
+          --data-parallel-size-local 1 --data-parallel-backend ray
+          --max-model-len 131072 --gpu-memory-utilization 0.94
+          --max-num-seqs 128
+          --compilation-config '{"cudagraph_mode": "FULL_AND_PIECEWISE", "custom_ops":["all"]}'
+          --attention_config.use_fp4_indexer_cache=True
+          --tokenizer-mode deepseek_v4 --tool-call-parser deepseek_v4
+          --enable-auto-tool-choice --reasoning-parser deepseek_v4
+          --distributed-executor-backend ray
+      ctx_args: >-
+        ${stages.generate_solutions.prompt_config}
+        ++max_concurrent_requests=1024
+        ${stages.generate_solutions.tokens_to_generate}
+        ${stages.generate_solutions.endpoint_type}
+        ++inference.temperature=1.0
+        ++inference.top_p=0.95
+        ++inference.top_k=64
+        ${stages.generate_solutions.thinking}
+        ${stages.generate_solutions.reasoning_effort}
+
+    # Tool-enabled LLM judge (gpt-oss-120b from base.yaml): the judge can run
+    # python/RDKit in the sandbox to verify answers. Used for datasets that keep
+    # the LLM judge (chemistry SMILES/SAFE datasets switch to deterministic RDKit
+    # grading via the `chemistry` settings overlay).
+    judge_kwargs:
+      endpoint_type: ++inference.endpoint_type=chat
+      ctx_args: >-
+        ++prompt_config=judge/general-judge
+        ++inference.reasoning_effort=high
+        ++code_execution=true
+        ++code_tags=gpt-oss
+        ++server.code_execution.max_code_executions=8
+        ++chat_template_kwargs.builtin_tools=[python]
+        ++inference.endpoint_type=chat
+        ++inference.tokens_to_generate=128000
+      args:
+        with_sandbox: True
+
+  difficulty_estimation:
+    # Tool-enabled LLM judge for difficulty estimation (mirrors generate_solutions).
+    judge_kwargs:
+      args:
+        with_sandbox: True
+      ctx_args: >-
+        ++prompt_config=judge/general-judge
+        ++code_execution=true
+        ++code_tags=gpt-oss
+        ++server.code_execution.max_code_executions=8
+        ++chat_template_kwargs.builtin_tools=[python]
+        ++inference.endpoint_type=chat
+        ++inference.reasoning_effort=high
+        ++inference.tokens_to_generate=32000

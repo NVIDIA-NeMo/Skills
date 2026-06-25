@@ -49,6 +49,7 @@ _EVALUATOR_MAP_PATHS = {
 # Class-based evaluators: eval_type -> "module_path:ClassName"
 _EVALUATOR_CLASS_MAP_PATHS = {
     "math": "nemo_skills.evaluation.evaluator.math:MathEvaluator",
+    "chemistry": "nemo_skills.evaluation.evaluator.chemistry:ChemistryEvaluator",
     "lean4-proof": "nemo_skills.evaluation.evaluator.math:Lean4ProofEvaluator",
     "code_exec": "nemo_skills.evaluation.evaluator.code:CodeExecEvaluator",
     "ioi": "nemo_skills.evaluation.evaluator.ioi:IOIEvaluator",

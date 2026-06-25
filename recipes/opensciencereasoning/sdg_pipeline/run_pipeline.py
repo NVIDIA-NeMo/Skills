@@ -204,7 +204,7 @@ def decontaminate(cluster: str, expname: str, run_after: str, stage_config: dict
         log_dir=f"{output_dir}/logs",
         expname=f"{expname}_retrieve_similar",
         run_after=run_after,
-        installation_command="pip install torch sentence-transformers",  # TODO remove
+        installation_command='pip install torch "sentence-transformers<5"',  # TODO remove
         ctx=wrap_arguments(cmd),
     )
 
@@ -336,6 +336,10 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     output_dir = stage_config["output_dir"]
     make_majority_voting = stage_config.get("make_majority_voting", None)
     make_judgement = stage_config.get("make_judgement", None)
+    # How aggregate_solutions decides correctness when there is no LLM judgement
+    # (make_judgement is off). "string" => exact ==; "chemistry" => RDKit canonical
+    # equality (which still tries == first, then numeric, then molecular canonicalization).
+    answer_comparison = stage_config.get("answer_comparison", "string")
     predicted_answer_regex = stage_config.get("predicted_answer_regex", None)
     predicted_answer_regex_field = stage_config.get("predicted_answer_regex_field", None)
 
@@ -390,10 +394,14 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
             run_after=f"{expname}_extract_predictions",
             **judge_args,
         )
-
         judgement_arg = f"    --judgement_dir '{output_dir}/judgement' "
     else:
         judgement_arg = ""
+
+    # The chemistry comparator needs RDKit available where aggregate_solutions runs.
+    aggregate_installation_command = stage_config.get("aggregate_installation_command", None)
+    if answer_comparison == "chemistry" and not aggregate_installation_command:
+        aggregate_installation_command = "pip install rdkit"
 
     run_cmd(
         ctx=wrap_arguments(
@@ -401,12 +409,14 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
             f"    --generation_dir '{generation_dir}' "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
             f"    --generation_model '{generation_args['model'].split('/')[-1]}' "
+            f"    --answer_comparison '{answer_comparison}' "
             f"{judgement_arg}"
         ),
         cluster=cluster,
         expname=expname,
         log_dir=f"{output_dir}/logs",
         run_after=[f"{expname}_extract_predictions", f"{expname}_judgement"],
+        installation_command=aggregate_installation_command,
     )
 
 
@@ -436,6 +446,19 @@ def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
     judge_args = judge_kwargs.get("args", {})
     judge_ctx_args = judge_kwargs.get("ctx_args", "")
 
+    # Deterministic inline grading (e.g. eval_type=chemistry). When set, correctness
+    # (symbolic_correct) is computed during generation by the Evaluator, which extracts
+    # the boxed answer itself (no custom regex), so the LLM judge step is skipped. This
+    # is the "symbolic_correct" approach: difficulty always uses a boxed prompt.
+    eval_type = stage_config.get("eval_type", None)
+    eval_config_args = stage_config.get("eval_config_args", "")
+    eval_installation_command = stage_config.get("eval_installation_command", None)
+    generation_extra_args = dict(generation_args)
+    if eval_type:
+        generation_ctx_args = f"{generation_ctx_args} ++eval_type={eval_type} {eval_config_args} "
+        if eval_installation_command:
+            generation_extra_args.setdefault("installation_command", eval_installation_command)
+
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/remove_redundant_fields.py "
@@ -457,30 +480,38 @@ def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
         output_dir=f"{output_dir}/generation",
         expname=f"{expname}-generation",
         run_after=f"{expname}_prepare_difficulty_estimation",
-        **generation_args,
+        **generation_extra_args,
     )
 
-    generate(
-        ctx=wrap_arguments(judge_ctx_args),
-        generation_type="math_judge",
-        cluster=cluster,
-        input_dir=f"{output_dir}/generation",
-        output_dir=f"{output_dir}/judgement",
-        expname=f"{expname}-judgement",
-        run_after=f"{expname}-generation",
-        **judge_args,
-    )
+    if eval_type:
+        # symbolic_correct was produced inline during generation; skip the LLM judge and
+        # aggregate directly over the generation outputs.
+        judgement_dir = f"{output_dir}/generation"
+        aggregate_run_after = f"{expname}-generation"
+    else:
+        generate(
+            ctx=wrap_arguments(judge_ctx_args),
+            generation_type="math_judge",
+            cluster=cluster,
+            input_dir=f"{output_dir}/generation",
+            output_dir=f"{output_dir}/judgement",
+            expname=f"{expname}-judgement",
+            run_after=f"{expname}-generation",
+            **judge_args,
+        )
+        judgement_dir = f"{output_dir}/judgement"
+        aggregate_run_after = f"{expname}-judgement"
 
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_difficulty.py "
-            f"    --judgement_dir '{output_dir}/judgement' "
+            f"    --judgement_dir '{judgement_dir}' "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
             f"    --difficulty_model '{generation_args['model'].split('/')[-1]}' "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
-        run_after=f"{expname}-judgement",
+        run_after=aggregate_run_after,
         expname=expname,
     )
 

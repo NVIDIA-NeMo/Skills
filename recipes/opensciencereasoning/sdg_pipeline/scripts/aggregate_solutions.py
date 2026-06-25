@@ -66,11 +66,35 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output_file", required=True, help="Where to write the aggregated JSONL")
     parser.add_argument("--generation_model", required=True, help="Identifier of the generation model to record")
+    parser.add_argument(
+        "--answer_comparison",
+        default="string",
+        choices=["string", "chemistry"],
+        help=(
+            "How to compare predicted vs expected answers when there is no LLM judgement. "
+            "'string' => exact ==; 'chemistry' => RDKit canonical equality (tries ==, then "
+            "numeric, then molecular canonicalization). Ignored when a judgement is present."
+        ),
+    )
 
     return parser.parse_args()
 
 
-def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterable[Path] = None) -> List[Dict]:
+def compare_answers(predicted_answer, expected_answer, answer_comparison: str) -> bool:
+    """Compare a predicted answer against the expected answer using the selected method."""
+    if answer_comparison == "chemistry":
+        # Imported lazily so non-chemistry aggregation never needs RDKit.
+        from nemo_skills.evaluation.chemistry_grader import chemistry_equal
+
+        return chemistry_equal(expected_answer, predicted_answer)
+    return predicted_answer == expected_answer
+
+
+def aggregate_samples(
+    generation_files: Iterable[Path],
+    judgement_files: Iterable[Path] = None,
+    answer_comparison: str = "string",
+) -> List[Dict]:
     """Read generation/judgement files and enrich them with correctness metrics.
 
     If judgement_files is provided, this function will:
@@ -120,10 +144,12 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                         gen_id = f"{problem_id}__rs{random_seed}__{file_hash}"
 
                     if gen_id in generation_data_map:
-                        # Use generation data as base and only take judgement from judged file
+                        # Use generation data as base and only take the verdict from the judged file
                         base_sample = generation_data_map[gen_id].copy()
                         if "judgement" in sample:
                             base_sample["judgement"] = sample["judgement"]
+                        if "symbolic_correct" in sample:
+                            base_sample["symbolic_correct"] = sample["symbolic_correct"]
                         sample = base_sample
                     else:
                         LOG.warning("Generation data not found for generation_id: %s", gen_id)
@@ -138,6 +164,7 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                         "predicted_answer",
                         "generation",
                         "judgement",
+                        "symbolic_correct",
                         "majority_voting_agreement_rate",
                         "majority_voting_agreement_at_n",
                         "tools",
@@ -148,10 +175,18 @@ def aggregate_samples(generation_files: Iterable[Path], judgement_files: Iterabl
                     ]
                 }
 
-                if "judgement" in sample:
+                # Correctness priority: an inline deterministic verdict (symbolic_correct),
+                # then the LLM judge verdict, then a direct predicted-vs-expected comparison
+                # (string == or, for answer_comparison=chemistry, RDKit canonical equality).
+                if "symbolic_correct" in sample:
+                    is_correct = bool(sample["symbolic_correct"])
+                elif "judgement" in sample:
                     is_correct = is_correct_judgement(sample["judgement"])
                 else:
-                    is_correct = sample["predicted_answer"] == sample["expected_answer"]
+                    is_correct = compare_answers(
+                        sample.get("predicted_answer"), sample.get("expected_answer"), answer_comparison
+                    )
+                    sample["symbolic_correct"] = is_correct
 
                 sample["is_correct"] = is_correct
 
@@ -194,14 +229,14 @@ def main() -> None:
             return
         if not generation_files:
             LOG.warning("No generation data files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_dir)
-        samples = aggregate_samples(generation_files, judgement_files)
+        samples = aggregate_samples(generation_files, judgement_files, answer_comparison=args.answer_comparison)
     else:
         if not generation_files:
             LOG.warning("No files matched %s in %s", DEFAULT_OUTPUT_PATTERN, generation_dir)
             Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
             open(args.output_file, "w").close()
             return
-        samples = aggregate_samples(generation_files)
+        samples = aggregate_samples(generation_files, answer_comparison=args.answer_comparison)
 
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_file, "w") as fout:

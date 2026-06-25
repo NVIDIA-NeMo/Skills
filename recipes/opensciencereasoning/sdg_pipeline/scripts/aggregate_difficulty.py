@@ -49,10 +49,14 @@ def main():
                 sample = json.loads(line)
                 if i == 0:
                     samples.append(sample)
+                # Prefer the deterministic verdict (e.g. RDKit chemistry grader) when present,
+                # otherwise fall back to parsing the LLM judge's "Judgement: Yes/No" string.
+                if "symbolic_correct" in sample:
+                    is_correct = bool(sample["symbolic_correct"])
+                else:
+                    is_correct = is_correct_judgement(sample.get("judgement", ""))
                 judgements_by_problem[sample["problem"]]["total"] += 1
-                judgements_by_problem[sample["problem"]]["correct"] += (
-                    1 if is_correct_judgement(sample["judgement"]) else 0
-                )
+                judgements_by_problem[sample["problem"]]["correct"] += 1 if is_correct else 0
 
     # Write updated records with required keys
     Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)
