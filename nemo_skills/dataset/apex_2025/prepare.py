@@ -32,9 +32,11 @@ def format_entry(entry):
 
 
 def write_data_to_file(output_file, data):
+    formatted_entries = [format_entry(entry) for entry in tqdm(data, desc=f"Formatting {output_file.name}")]
+
     with open(output_file, "wt", encoding="utf-8") as fout:
-        for entry in tqdm(data, desc=f"Writing {output_file.name}"):
-            json.dump(format_entry(entry), fout, ensure_ascii=False)
+        for entry in tqdm(formatted_entries, desc=f"Writing {output_file.name}"):
+            json.dump(entry, fout, ensure_ascii=False)
             fout.write("\n")
 
 
