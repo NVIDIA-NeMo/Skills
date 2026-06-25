@@ -806,7 +806,7 @@ In addition, a parallel **CER** column (`cer*`) is emitted for direct comparison
     The shared `multilingual` normalization removes Unicode combining marks (category `Mn`, and turns `Mc` into spaces) as "diacritics" — correct for Latin accents, but it **destroys meaning-bearing vowel and tone marks in Thai/Myanmar** (e.g. `ที่` → `ท`). CS-FLEURS opts out of this so both metrics score those marks:
 
     - **MER (`wer*`)** uses `multilingual` normalization with the `preserve_marks` option (marks kept, `num2words` and other steps retained); `mer_grapheme` grapheme-clustering is therefore effective for Thai/Myanmar.
-    - **CER (`cer*`)** uses `lower_nopunct` (lowercase + unpunctuated, marks kept) for paper comparability.
+    - **CER (`cer*`)** uses `lower_nopunct` (lowercase + unpunctuated, marks kept) plus `strip_whitespace` (spaces not counted), matching the paper's character-level CER.
 
     Both are gated on `use_mer`, so **monolingual benchmarks (`fleurs`, `covost2`) are unchanged** — they keep the default mark-stripping. Whether that shared default should itself become script-aware (preserve `Mn`/`Mc` for abugida scripts everywhere, which would change `fleurs` numbers) is a separate upstream question, left to maintainer guidance.
 
@@ -846,21 +846,21 @@ Example output:
 ```text
 ------------------------------- cs-fleurs.read -------------------------------
 language_pair  | num_entries | mer   | cer
-ara-eng        | 989         | 32.57 | 21.02
-ces-eng        | 326         | 17.47 | 7.10
-cmn-eng        | 1321        | 17.15 | 16.69
-deu-eng        | 298         | 10.95 | 3.72
-fra-eng        | 307         | 19.74 | 10.17
-hin-eng        | 233         | 39.13 | 33.43
-ita-eng        | 176         | 12.28 | 4.78
-jpn-eng        | 196         | 42.82 | 35.23
-kor-eng        | 466         | 32.71 | 34.46
-por-eng        | 338         | 15.43 | 7.10
-rus-eng        | 337         | 22.53 | 16.12
-slk-eng        | 314         | 26.67 | 10.25
-spa-eng        | 320         | 9.79  | 4.33
-tel-eng        | 197         | 73.08 | 47.59
-overall        | 5818        | 24.51 | 16.47
+ara-eng        | 989         | 32.57 | 23.54
+ces-eng        | 326         | 17.47 | 7.58
+cmn-eng        | 1321        | 17.15 | 15.14
+deu-eng        | 298         | 10.95 | 4.04
+fra-eng        | 307         | 19.74 | 11.03
+hin-eng        | 233         | 39.13 | 39.62
+ita-eng        | 176         | 12.28 | 5.19
+jpn-eng        | 196         | 42.82 | 34.44
+kor-eng        | 466         | 32.71 | 40.23
+por-eng        | 338         | 15.43 | 7.78
+rus-eng        | 337         | 22.53 | 18.01
+slk-eng        | 314         | 26.67 | 11.05
+spa-eng        | 320         | 9.79  | 4.87
+tel-eng        | 197         | 73.08 | 50.98
+overall        | 5818        | 24.51 | 17.72
 ```
 
-Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita), higher for distinct-script or low-resource languages (tel/jpn/hin/kor). The corpus-pooled overall CER (16.47%) is ~18.0% when macro-averaged over the 14 pairs, in line with the paper's ~19.8% read-test CER (residual gap: greedy vs beam decoding, inference stack, exact normalization). A SpeechLM model evaluated through the standard pipeline reports the same metrics.
+Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita), higher for distinct-script or low-resource languages (tel/jpn/hin/kor). The overall `cer` shown is corpus-pooled (micro) = 17.72%; macro-averaged over the 14 pairs it is **19.54%**, matching the paper's ~19.8% read-test CER (residual gap: greedy vs beam decoding and inference stack). A SpeechLM model evaluated through the standard pipeline reports the same metrics.

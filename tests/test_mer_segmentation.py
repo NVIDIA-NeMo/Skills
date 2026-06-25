@@ -115,6 +115,29 @@ class TestEvaluateMer:
         assert r["wer"] is None
 
 
+class TestCerStripWhitespace:
+    """strip_whitespace makes CER count only non-space characters (paper-style)."""
+
+    def _evaluate_cer(self):
+        import pytest
+
+        pytest.importorskip("jiwer")
+        from nemo_skills.evaluation.evaluator.audio import evaluate_cer
+
+        return evaluate_cer
+
+    def test_spaces_not_counted_when_stripped(self):
+        evaluate_cer = self._evaluate_cer()
+        # ref/hyp differ only by a space -> 0 CER when whitespace is stripped.
+        r = evaluate_cer("ab cd", "abcd", normalization_mode="none", strip_whitespace=True)
+        assert r["cer"] == 0.0
+
+    def test_spaces_counted_by_default(self):
+        evaluate_cer = self._evaluate_cer()
+        r = evaluate_cer("ab cd", "abcd", normalization_mode="none", strip_whitespace=False)
+        assert r["cer"] > 0
+
+
 class TestLowerNopunctNormalization:
     """Mark-preserving normalization (lowercase + unpunctuated) for paper-comparable
     CER. Dependency-free: this mode returns before any optional imports."""

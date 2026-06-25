@@ -730,15 +730,25 @@ def evaluate_cer(
     normalization_mode: str = "none",
     key_prefix: str = "cer",
     normalize_compound: bool = False,
+    strip_whitespace: bool = False,
     **kwargs,
 ) -> dict[str, Any]:
-    """Evaluate CER: character-level edit distance."""
+    """Evaluate CER: character-level edit distance.
+
+    strip_whitespace removes all whitespace before scoring, so CER is computed over
+    the bare character sequence (spaces not counted). This matches the CS-FLEURS
+    paper's character error rate; default False keeps spaces (existing behavior).
+    """
 
     ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
     if normalize_compound:
         ref, hyp = normalize_compound_pairs(ref, hyp)
+
+    if strip_whitespace:
+        ref = re.sub(r"\s+", "", ref)
+        hyp = re.sub(r"\s+", "", hyp)
 
     # Mirror evaluate_asr: drop samples whose normalized reference is empty rather
     # than dividing by zero in the character edit distance.
@@ -1018,6 +1028,7 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             normalization_mode=cer_mode,
             key_prefix="cer",
             normalize_compound=normalize_compound,
+            strip_whitespace=extra_fields.get("use_mer", False),
             **preprocess_kwargs,
         )
         # Merge only cer* keys so the mixed metric's is_correct/text/pred_text are preserved.
