@@ -48,6 +48,9 @@ Configuration:
           ]
         }
 
+    A ready-made HLE answer-leak blocklist (from the Claude Opus 4.8 System Card) ships at
+    ``nemo_skills/mcp/servers/exclude_domains_hle_opus.json``.
+
     If these tools are used for training data curation, use an
     organization-approved exclusion registry. This reduces the risk of collecting
     content from domains that must be excluded for legal, license, policy, or
