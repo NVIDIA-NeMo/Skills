@@ -14,7 +14,7 @@
 
 import pytest
 
-from nemo_skills.pipeline.utils.backends import get_execution_backend
+from nemo_skills.pipeline.utils.backends import get_backend_name, get_execution_backend, is_ray_backend_name
 
 
 def test_kubernetes_ray_selector_with_image_label_translation():
@@ -361,3 +361,77 @@ def test_stop_jobs_best_effort_continues_when_one_stop_raises():
     backend._stop_jobs_best_effort(FlakyClient(), ["job-1", "job-2"], reason="poll-failure")
 
     assert sorted(stopped) == ["job-1", "job-2"]
+
+
+# ---------------------------------------------------------------------------
+# Backend-name parsing helpers (string-form safe)
+# ---------------------------------------------------------------------------
+
+
+def test_get_backend_name_handles_string_and_dict_and_alias_forms():
+    # Bare-string form must not crash and must normalize like the dict form.
+    assert get_backend_name({"backend": "ray"}) == "ray"
+    assert get_backend_name({"backend": {"name": "Ray"}}) == "ray"
+    assert get_backend_name({"backend": "  Kubernetes-Ray  "}) == "kubernetes-ray"
+    assert get_backend_name({"execution_backend": "ray"}) == "ray"
+    assert get_backend_name({}) == ""
+    assert get_backend_name({"backend": {}}) == ""
+
+
+def test_is_ray_backend_name_recognizes_aliases_and_rejects_default():
+    assert is_ray_backend_name({"backend": "ray"}) is True
+    assert is_ray_backend_name({"backend": {"name": "kubernetes-ray"}}) is True
+    assert is_ray_backend_name({"backend": "ray_kubernetes"}) is True
+    assert is_ray_backend_name({"backend": "ray-kubernetes"}) is True
+    assert is_ray_backend_name({"backend": "default"}) is False
+    assert is_ray_backend_name({"backend": "none"}) is False
+    assert is_ray_backend_name({}) is False
+
+
+def test_default_backend_path_does_not_import_ray_backend():
+    """The default / Slurm resolution path must not import the heavy ray_backend module
+    (the decoupling nit). Verified in a fresh interpreter so it is order-independent, while
+    the historical ``from ...backends import RayBackend`` re-export still works (lazily).
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "import nemo_skills.pipeline.utils.backends as b\n"
+        "assert 'nemo_skills.pipeline.utils.ray_backend' not in sys.modules, 'imported at module load'\n"
+        "b.get_execution_backend({'executor': 'slurm'})\n"
+        "b.get_execution_backend({'executor': 'slurm', 'backend': {'name': 'default'}})\n"
+        "assert 'nemo_skills.pipeline.utils.ray_backend' not in sys.modules, 'imported on default path'\n"
+        "from nemo_skills.pipeline.utils.backends import RayBackend\n"
+        "assert RayBackend.__name__ == 'RayBackend'\n"
+        "assert 'nemo_skills.pipeline.utils.ray_backend' in sys.modules, 're-export should import it'\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# run_exp must honor --dry_run before any live remote I/O (non-Ray regression guard)
+# ---------------------------------------------------------------------------
+
+
+def test_run_exp_dry_run_skips_remote_mount_check(monkeypatch):
+    """A --dry_run must not perform live remote I/O on the default (non-Ray) path: the mount
+    check opens an SSH tunnel and stats each source on the cluster. It must be skipped on a
+    dry run so a dry run stays offline-safe (guards the regression where the early dry-run
+    short-circuit was removed)."""
+    from unittest.mock import MagicMock
+
+    from nemo_skills.pipeline.utils import exp as exp_mod
+
+    calls = []
+    monkeypatch.setattr(exp_mod, "get_mounts_from_config", lambda cc: cc["mounts"])
+    monkeypatch.setattr(exp_mod, "check_remote_mount_directories", lambda *a, **k: calls.append(("check", a)))
+
+    cluster_config = {"executor": "slurm", "mounts": ["/src:/dst"]}
+    # Default backend + slurm + dry_run: must return without touching the cluster.
+    exp_mod.run_exp(MagicMock(), cluster_config, dry_run=True)
+    assert calls == []

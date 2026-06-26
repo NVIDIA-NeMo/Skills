@@ -28,7 +28,7 @@ from nemo_run.core.execution.local import LocalExecutor
 from nemo_run.core.execution.slurm import SlurmJobDetails, get_packaging_job_key
 from torchx.specs.api import AppState
 
-from nemo_skills.pipeline.utils.backends import BackendRunOptions, get_execution_backend
+from nemo_skills.pipeline.utils.backends import BackendRunOptions, get_execution_backend, is_ray_backend_name
 from nemo_skills.pipeline.utils.cluster import (
     get_env_variables,
     get_slurm_timeout_str,
@@ -696,6 +696,12 @@ def add_task(
     command_images = []
     executors = []
 
+    # command_images is consumed only by the Ray Jobs queue (queue_ray_job_commands).
+    # Resolving an image can be expensive (e.g. a `docker inspect` for `dockerfile:`
+    # specs), so only populate it when a Ray backend is active; the non-Ray path leaves
+    # it empty (the queue is a no-op there anyway).
+    collect_command_images = bool(with_ray) or is_ray_backend_name(cluster_config)
+
     def add_server_tasks():
         """Append the server (and its executor) for each requested server replica."""
         nonlocal het_group
@@ -740,7 +746,8 @@ def add_task(
             if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
                 cmd_to_add = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
             commands.append(cmd_to_add)
-            command_images.append(resolve_container_image(server_container, cluster_config))
+            if collect_command_images:
+                command_images.append(resolve_container_image(server_container, cluster_config))
             executors.append(server_executor)
             het_group_indices.append(het_group)
             het_group += 1
@@ -778,7 +785,8 @@ def add_task(
             with temporary_env_update(cluster_config, main_env_updates):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
                 commands.append(cur_cmd)
-                command_images.append(resolve_container_image(cur_container, cluster_config))
+                if collect_command_images:
+                    command_images.append(resolve_container_image(cur_container, cluster_config))
                 executors.append(
                     get_executor(
                         cluster_config=cluster_config,
@@ -828,7 +836,8 @@ def add_task(
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
             sandbox_image = sandbox_container or cluster_config["containers"]["sandbox"]
-            command_images.append(resolve_container_image(sandbox_image, cluster_config))
+            if collect_command_images:
+                command_images.append(resolve_container_image(sandbox_image, cluster_config))
             if sandbox_mounts is not None:
                 sandbox_exec_mounts = normalize_mounts_list(sandbox_mounts, allow_rw_mode=True)
             else:
@@ -916,7 +925,14 @@ def add_task(
 
     backend = get_execution_backend(cluster_config, with_ray=with_ray)
     first_command_image = command_images[0] if command_images else None
-    should_use_with_ray_cluster = bool(with_ray or getattr(backend, "name", "") == "ray")
+    # use_with_ray_cluster requests an EMBEDDED Ray cluster, which nemo-run only supports on
+    # SlurmExecutor (it asserts otherwise). Gate the whole flag on executor == "slurm": legacy
+    # with_ray on a non-Slurm executor (and the compat RayBackend it resolves to, whose name is
+    # also "ray") must NOT request it -- the old code silently no-op'd that combo. A precreated
+    # Ray Jobs cluster (executor: none) never embeds; RayBackend.stage_metadata enforces that.
+    should_use_with_ray_cluster = bool(
+        cluster_config["executor"] == "slurm" and (with_ray or getattr(backend, "name", "") == "ray")
+    )
     metadata = backend.stage_metadata(
         use_with_ray_cluster=should_use_with_ray_cluster,
         container_image=first_command_image,
@@ -1047,7 +1063,11 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
 
     If it is specified, it will be used as is.
     """
-    if "mounts" in cluster_config:
+    # Skip the live mount check on a dry run: check_remote_mount_directories opens an SSH
+    # tunnel and stats each source on the cluster, so honoring --dry_run here keeps a dry
+    # run free of remote I/O (and runnable fully offline), matching historical behavior.
+    # The backend's start_experiment() handles its own dry-run logging below.
+    if not dry_run and "mounts" in cluster_config:
         # Can only check cluster mounts here, not those added to add_task
         mounts = get_mounts_from_config(cluster_config)
         mount_sources = [m.split(":")[0] for m in mounts]
