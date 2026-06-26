@@ -15,6 +15,7 @@ import abc
 import asyncio
 import logging
 import os
+import uuid
 from enum import Enum
 from typing import Union
 
@@ -301,6 +302,31 @@ class BaseModel:
     def _build_responses_request_params(self, **kwargs) -> dict:
         raise NotImplementedError("Responses completion is not not supported or implemented for this model.")
 
+    @staticmethod
+    def _apply_routing_keys(request_params: dict, cache_key: str | None) -> None:
+        """Attach the nmux pull-queue routing keys. No-op semantics elsewhere —
+        a plain OpenAI/vLLM/gemini endpoint just ignores (or echoes) them.
+
+          * `X-Request-Id` (extra_headers) = per-request IDEMPOTENCY. If a retry
+            resends the same id the nmux gateway re-attaches to the in-flight job
+            instead of duplicating it. The OpenAI SDK reuses request options across
+            its internal retry loop, so one id per logical call stays stable across
+            those attempts; distinct calls (incl. parallel samples) get distinct
+            ids → distinct jobs.
+          * `prompt_cache_key` (opt-in via `cache_key`) = prefix-cache AFFINITY.
+            Requests sharing a cache_key route to the SAME replica to reuse its KV
+            cache (multi-turn conversations, or single-turn requests sharing a long
+            prefix). Omitted when cache_key is None — the gateway then infers
+            affinity for multi-turn and lets unique single requests spread.
+
+        Decoupled on purpose: prompt_cache_key is meant to be SHARED across distinct
+        requests, so it must NOT double as the idempotency key (that made branches
+        re-attach to a sibling's job). See multiplexer docs/plans/MULTI_TURN_AFFINITY.md.
+        """
+        request_params.setdefault("extra_headers", {}).setdefault("X-Request-Id", str(uuid.uuid4()))
+        if cache_key is not None:
+            request_params["prompt_cache_key"] = cache_key
+
     @with_context_retry
     async def generate_async(
         self,
@@ -323,6 +349,7 @@ class BaseModel:
         include_response: bool = False,
         extra_body: dict = None,
         response_format=None,
+        cache_key: str | None = None,
     ) -> dict:
         if endpoint_type is None:
             # Infering completion type from prompt
@@ -375,6 +402,7 @@ class BaseModel:
                     if endpoint_type == EndpointType.chat:
                         assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         # Fast path: native AsyncOpenAI + aiohttp transport,
                         # set up in __init__ when NEMO_SKILLS_OPENAI_AIOHTTP=1.
                         # Skips litellm's httpx-based dispatch which is the
@@ -416,6 +444,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.text:
                         assert isinstance(prompt, str), "Text completion requests must be a string."
                         request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
                         if stream:
                             result = self._stream_completion_chunks_async(response)
@@ -426,6 +455,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.responses:
                         assert isinstance(prompt, list), "Responses completion requests must be a list."
                         request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
                         if stream:
                             raise NotImplementedError("Streaming responses is not supported yet.")

@@ -15,7 +15,6 @@
 import copy
 import os
 import re
-import uuid
 
 from .base import BaseModel
 
@@ -130,15 +129,12 @@ class OpenAIModel(BaseModel):
             "stream": stream,
             "tools": tools,
             "response_format": response_format,
-            # Per-call idempotency hint. The OpenAI SDK reuses the same
-            # request body across its internal retry loop, so this UUID
-            # stays stable across attempts of one logical request.
-            # Downstream services that dedup by prompt_cache_key see the
-            # same value across SDK-internal retries and can re-attach
-            # to the in-flight request instead of starting a duplicate.
-            # On real OpenAI this is just a prompt-cache lookup hint —
-            # a unique UUID means no cache hit, a minor perf cost.
-            "prompt_cache_key": str(uuid.uuid4()),
+            # NOTE: idempotency (X-Request-Id) and prefix-cache affinity
+            # (prompt_cache_key, opt-in via generate_async(cache_key=...)) are
+            # attached centrally in BaseModel._apply_routing_keys. We deliberately
+            # do NOT set a per-request-UUID prompt_cache_key here: that would give
+            # every request a unique affinity key and defeat cross-request prefix
+            # caching. See multiplexer docs/plans/MULTI_TURN_AFFINITY.md.
         }
 
         if self._is_reasoning_model(self.model):
