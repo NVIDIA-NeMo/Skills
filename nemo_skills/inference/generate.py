@@ -327,7 +327,14 @@ class GenerationTask:
                         "You can only use one of them!"
                     )
 
-                self.cfg.inference.extra_body["chat_template_kwargs"] = dict(self.cfg.chat_template_kwargs)
+                # Deep-convert to native python types (OmegaConf list/dict values such as
+                # builtin_tools=[python] are not JSON-serializable when sent to the server).
+                if isinstance(self.cfg.chat_template_kwargs, DictConfig):
+                    self.cfg.inference.extra_body["chat_template_kwargs"] = OmegaConf.to_container(
+                        self.cfg.chat_template_kwargs, resolve=True
+                    )
+                else:
+                    self.cfg.inference.extra_body["chat_template_kwargs"] = dict(self.cfg.chat_template_kwargs)
                 self.cfg.chat_template_kwargs = None
 
         if self.cfg.inference.extra_body.get("chat_template_kwargs"):
