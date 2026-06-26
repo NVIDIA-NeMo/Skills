@@ -16,12 +16,18 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 import nemo_run as run
 
 from nemo_skills.pipeline.utils.cluster import get_env_variables
 from nemo_skills.utils import get_logger_name
+
+if TYPE_CHECKING:
+    # Re-exported via __getattr__ at runtime (kept lazy); declared here so type checkers
+    # and ruff's __all__ resolution see RayBackend as a defined name without importing
+    # the heavy ray_backend module on the default path.
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
@@ -34,6 +40,25 @@ def _normalize_backend_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(backend_config, dict):
         raise ValueError(f"cluster_config backend must be a dict or string, got {type(backend_config).__name__}")
     return backend_config
+
+
+# Backend names that select a Ray backend (canonical name plus accepted aliases).
+_RAY_BACKEND_NAMES = frozenset({"ray", "kubernetes-ray", "ray-kubernetes", "ray_kubernetes"})
+
+
+def get_backend_name(cluster_config: Dict[str, Any]) -> str:
+    """Return the normalized (lowercased) backend name, or '' when none is set.
+
+    Accepts the same string- or dict-form ``backend`` / ``execution_backend`` config as
+    :func:`get_execution_backend`, so callers never re-implement backend-name parsing
+    (and never crash on the supported bare-string form, e.g. ``backend: ray``).
+    """
+    return str(_normalize_backend_config(cluster_config).get("name") or "").strip().lower()
+
+
+def is_ray_backend_name(cluster_config: Dict[str, Any]) -> bool:
+    """True when the configured backend name selects a Ray backend (any alias)."""
+    return get_backend_name(cluster_config) in _RAY_BACKEND_NAMES
 
 
 def _resolve_selector_keys_with_container_map(
@@ -142,15 +167,29 @@ class ExecutionBackend:
 
 
 # ---------------------------------------------------------------------------
-# RayBackend lives in ray_backend.py – imported here for backwards compat.
+# RayBackend lives in ray_backend.py. It is imported lazily -- only when a Ray
+# backend is actually selected (see get_execution_backend) -- so the default /
+# Slurm path never pays to import the ~900-line ray_backend module. A module-level
+# __getattr__ (PEP 562) keeps the historical `from ...backends import RayBackend`
+# re-export working without eagerly importing the module at package load.
 # ---------------------------------------------------------------------------
-from nemo_skills.pipeline.utils.ray_backend import RayBackend  # noqa: E402  # re-exported
 
-# RayBackend is re-exported here (listed in __all__) for backwards-compatible imports.
+
+def __getattr__(name: str):
+    if name == "RayBackend":
+        from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+        return RayBackend
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# RayBackend is re-exported here (via __getattr__) for backwards-compatible imports.
 __all__ = [
     "BackendRunOptions",
     "ExecutionBackend",
     "RayBackend",
+    "get_backend_name",
+    "is_ray_backend_name",
     "get_execution_backend",
     "track_stage_tasks",
     "stop_stage_tasks",
@@ -168,6 +207,11 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
     backend_config = _normalize_backend_config(cluster_config)
     backend_name = str(backend_config.get("name") or "").strip().lower()
     legacy_ray_endpoint = cluster_config.get("ray_endpoint")
+
+    # Import RayBackend lazily -- only when a Ray backend is actually selected -- so the
+    # default / Slurm resolution path never imports the heavy ray_backend module.
+    if with_ray or backend_name in _RAY_BACKEND_NAMES:
+        from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
     if not backend_name:
         if with_ray:

@@ -457,3 +457,90 @@ def test_add_task_sandbox_mounts_override_keep_mounts_true(mock_port, mock_get_e
     )
 
     assert mock_get_executor.call_args_list[-1].kwargs["mounts"] == ["/host/data:/sandbox/data:ro"]
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_with_ray_on_non_slurm_does_not_request_embedded_cluster(mock_port, mock_get_executor):
+    """Legacy with_ray=True on a non-Slurm executor must NOT attach use_with_ray_cluster.
+
+    nemo-run only supports an embedded Ray cluster on SlurmExecutor (it asserts otherwise). The
+    legacy compat path resolves with_ray to a RayBackend whose name is "ray", so gating only the
+    with_ray term is insufficient -- the flag must be gated on executor == "slurm". The old code
+    silently no-op'd this combo; this guards the regression where it began requesting embedding.
+    """
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    captured = {}
+
+    def _add(script, **kwargs):
+        captured["script"] = script
+        return "task_handle"
+
+    exp = SimpleNamespace(add=_add)
+    cluster_config = {"executor": "local", "containers": {"sandbox": "sandbox:latest"}}
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_ray=True,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    metadata = getattr(captured["script"], "metadata", None) or {}
+    assert "use_with_ray_cluster" not in metadata, (
+        f"with_ray=True on a non-Slurm executor must not request an embedded Ray cluster; got {metadata}"
+    )
+
+
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="resolved:image")
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_resolves_command_images_only_when_ray_backend_active(mock_port, mock_get_executor, mock_resolve):
+    """command_images is consumed only by the Ray Jobs queue, and resolving an image can be
+    expensive (a docker inspect for dockerfile: specs). With get_executor mocked, the only
+    remaining caller of resolve_container_image is the (guarded) command_images appends -- so it
+    must not be called on the non-Ray path and must be called when a Ray backend is active.
+    """
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    cluster_config = {"executor": "local", "containers": {"sandbox": "sandbox:latest"}}
+
+    # Non-Ray backend: no command-image resolution.
+    add_task(
+        exp=SimpleNamespace(add=MagicMock(return_value="h")),
+        cmd="echo hello",
+        task_name="t",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+    assert mock_resolve.call_count == 0, "non-Ray add_task must not resolve command images"
+
+    # Ray-active path (legacy with_ray): images ARE resolved for the Ray queue.
+    mock_resolve.reset_mock()
+    add_task(
+        exp=SimpleNamespace(add=MagicMock(return_value="h")),
+        cmd="echo hello",
+        task_name="t",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_ray=True,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+    assert mock_resolve.call_count >= 1, "Ray-active add_task must resolve command images for the queue"

@@ -31,7 +31,7 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     temporary_env_update,
 )
-from nemo_skills.pipeline.utils.backends import get_execution_backend
+from nemo_skills.pipeline.utils.backends import get_backend_name, get_execution_backend
 from nemo_skills.pipeline.utils.exp import (
     REUSE_CODE_EXP,
     get_packaging_job_key,
@@ -592,7 +592,9 @@ class Pipeline:
         resolves via the baked image's ``PYTHONPATH``.
         """
         nemo_repo = get_registered_external_repo("nemo_skills")
-        is_ray = (self.cluster_config.get("backend") or {}).get("name") == "ray"
+        # Use the shared parser so the supported bare-string form (``backend: ray``) is
+        # handled too -- a direct ``.get("name")`` raises AttributeError on a string.
+        is_ray = get_backend_name(self.cluster_config) == "ray"
         if nemo_repo is None and not is_ray:
             return script
 
@@ -922,7 +924,12 @@ class Pipeline:
 
         # Ray metadata handling
         backend = get_execution_backend(cluster_config, with_ray=self.with_ray)
-        should_use_with_ray_cluster = bool(self.with_ray or getattr(backend, "name", "") == "ray")
+        # use_with_ray_cluster (embedded Ray-on-Slurm) is only valid on SlurmExecutor, so gate
+        # on executor == "slurm" -- mirrors add_task so a non-Slurm executor never requests an
+        # embedded cluster. Precreated Ray Jobs clusters never embed (RayBackend enforces that).
+        should_use_with_ray_cluster = bool(
+            self.cluster_config["executor"] == "slurm" and (self.with_ray or getattr(backend, "name", "") == "ray")
+        )
         metadata = backend.stage_metadata(
             use_with_ray_cluster=should_use_with_ray_cluster,
             container_image=metadata_container_image,
@@ -954,14 +961,16 @@ class Pipeline:
 
         # A run_after naming another experiment whose tasks have already finished
         # resolves to empty handles and falls through as a bare experiment-name string
-        # in internal_deps. nemo-run's exp.add asserts every dependency is a job in THIS
-        # experiment, so drop deps that are not present here -- cross-experiment ordering
-        # is still honored via external_deps and (on Ray) the queued dep resolver. Only
-        # filters when exp.jobs is introspectable, so it never over-drops valid handles.
+        # in internal_deps. Only the Ray backend resolves cross-experiment ordering from
+        # the queued dep names (external_deps + the Ray queue), so only it needs those
+        # finished-cross-experiment strings dropped from exp.add(). On the default backend
+        # we must NOT silently drop them: nemo-run's exp.add asserts every dependency is a
+        # job in THIS experiment, and that fail-loud behavior is the historical contract.
         # Only filter when exp.jobs is a concrete list (a real nemo-run experiment); a
         # mocked or duck-typed exp leaves deps untouched so valid handles are never dropped.
+        is_ray_backend = getattr(backend, "name", "") == "ray"
         exp_jobs = getattr(exp, "jobs", None)
-        if internal_deps and isinstance(exp_jobs, (list, tuple)):
+        if is_ray_backend and internal_deps and isinstance(exp_jobs, (list, tuple)):
             known_job_ids = {getattr(job, "id", None) for job in exp_jobs}
             kept = []
             for dep in internal_deps:

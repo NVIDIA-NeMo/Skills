@@ -22,6 +22,7 @@ import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.dataset.utils import import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP, GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
+from nemo_skills.pipeline.utils.backends import get_backend_name
 from nemo_skills.pipeline.utils.cluster import parse_kwargs
 from nemo_skills.pipeline.utils.declarative import (
     Command,
@@ -649,10 +650,7 @@ def generate(
     if not jobs:
         return None
 
-    backend_config = cluster_config.get("backend") or cluster_config.get("execution_backend") or {}
-    if isinstance(backend_config, str):
-        backend_config = {"name": backend_config}
-    with_ray_pipeline = str(backend_config.get("name", "")).strip().lower() == "ray"
+    with_ray_pipeline = get_backend_name(cluster_config) == "ray"
 
     # Create and run pipeline
     pipeline = Pipeline(
