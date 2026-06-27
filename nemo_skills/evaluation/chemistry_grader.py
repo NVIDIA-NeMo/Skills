@@ -100,6 +100,8 @@ def _to_number(value) -> float | None:
     if value is None:
         return None
     text = str(value).strip().rstrip(".").strip()
+    # LaTeX escapes percent as ``\%`` (e.g. ``\boxed{50\%}``); normalize so it parses.
+    text = text.replace("\\%", "%")
     is_percent = False
     if text.endswith("%"):
         text = text[:-1].strip()
