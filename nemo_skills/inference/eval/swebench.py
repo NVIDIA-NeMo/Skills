@@ -160,8 +160,8 @@ class SweBenchGenerationConfig:
     max_samples: int = -1  # If > 0, will stop after generating this many samples. Useful for debugging
     skip_filled: bool = False  # If True, will skip the generations that are already in the output file
 
-    # maximum number of concurrent requests to the server for the async loop
-    # if sync loop is used, this is the batch size
+    # Maximum number of concurrent agent rollouts in each job.
+    # Each rollout sends 1 request to the LLM server at a time, so this is also the max number of concurrent requests.
     max_concurrent_requests: int = 512
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
@@ -926,6 +926,8 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
 
+        # Run the agent rollout.
+        # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
         async with self.semaphore:
             if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
                 pred_file = await self._run_swe_agent(data_point, api_base)
