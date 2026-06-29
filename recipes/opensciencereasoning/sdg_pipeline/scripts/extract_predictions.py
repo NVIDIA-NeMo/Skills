@@ -82,8 +82,11 @@ def collect_predictions(
                 sample = json.loads(line)
                 extract_from_boxed = True
                 if predicted_answer_regex_field:
-                    extract_from_boxed = sample["metadata"].get("extract_from_boxed", False)
-                    predicted_answer_regex = "" if extract_from_boxed else sample[predicted_answer_regex_field]
+                    metadata = sample.get("metadata")
+                    extract_from_boxed = (
+                        metadata.get("extract_from_boxed", False) if isinstance(metadata, dict) else False
+                    )
+                    predicted_answer_regex = "" if extract_from_boxed else sample.get(predicted_answer_regex_field)
                 elif predicted_answer_regex:
                     extract_from_boxed = False
                 try:
