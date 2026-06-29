@@ -917,11 +917,6 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
-        async with self.semaphore:
-            return await self._process_single_datapoint_impl(data_point, data)
-
-    async def _process_single_datapoint_impl(self, data_point, data):
-        """Implementation of process_single_datapoint, called within semaphore."""
 
         # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
         # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?
@@ -931,19 +926,20 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
 
-        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            pred_file = await self._run_swe_agent(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-            pred_file = await self._run_mini_swe_agent(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            pred_file = await self._run_openhands(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            pred_file = await self._get_gold_patch(data_point)
-        else:
-            raise ValueError(
-                f"Unsupported agent framework: {self.cfg.agent_framework}. "
-                f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
-            )
+        async with self.semaphore:
+            if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+                pred_file = await self._run_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+                pred_file = await self._run_mini_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+                pred_file = await self._run_openhands(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+                pred_file = await self._get_gold_patch(data_point)
+            else:
+                raise ValueError(
+                    f"Unsupported agent framework: {self.cfg.agent_framework}. "
+                    f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
+                )
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
         with open(pred_file, "r") as f:
