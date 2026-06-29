@@ -1,27 +1,16 @@
-# Overrides to enable python-tool-assisted generations across pipelines.
-
+# Diversity prompts: each problem is rendered with a varied answer-format prompt and
+# carries its own `answer_regex` extraction pattern (see map_diversity_prompts.py).
 stages:
   filter_problems:
     problem_field: null
-    diversity_prompts_path: /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/diversity_prompts/mcq_various_formats.jsonl
+    diversity_prompts_path: /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/diversity_prompts/openq_various_prompts.jsonl
     diversity_prompts_prompt_key: user_prompt
     diversity_prompts_answer_regex_key: output_regex
   generate_solutions:
     prompt_config: ++prompt_config=/nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/prompt/configs/default_problem.yaml
+    predicted_answer_regex_field: answer_regex
     generation_kwargs:
       args:
-        input_file: ${base_output_dir}/solution-sdg/step-0-filter-problems/final_result.jsonl
+        input_file: ${base_output_dir}/step-0-filter-problems/final_result.jsonl
     dependencies:
       - filter_problems
-  decontaminate:
-    enabled: False
-  topics_labeling:
-    enabled: False
-  difficulty_estimation:
-    enabled: False
-  aggregate:
-    enabled: False
-  filter_solutions:
-    input_file: ${base_output_dir}/solution-sdg/step-4-generate-solutions/final_result.jsonl
-    dependencies:
-      - generate_solutions

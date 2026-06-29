@@ -324,6 +324,20 @@ def topics_labeling(cluster: str, expname: str, run_after: str, stage_config: di
     )
 
 
+def combine_ctx_args(kwargs: dict) -> str:
+    """Combine a stage's ``ctx_args`` (override channel) with ``ctx_args_extra`` (extend channel).
+
+    ``ctx_args`` holds the core/base hydra args and is meant to be *overridden* wholesale by
+    model-specific settings (e.g. ``ds_v4_pro`` swaps in DeepSeek inference params).
+    ``ctx_args_extra`` is *appended* and is where feature overlays (e.g. ``python_enabled``)
+    contribute flags that must survive a ``ctx_args`` override. The two are concatenated so
+    settings from different overlays can be mixed instead of clobbering each other.
+    """
+    base = kwargs.get("ctx_args", "") or ""
+    extra = kwargs.get("ctx_args_extra", "") or ""
+    return f"{base} {extra}".strip()
+
+
 def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     """Launch model inference, adds predicted_answer/expected_answer via regex/majority voting, optionally judge, then aggregate per-problem stats.
 
@@ -347,8 +361,8 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     judge_kwargs = stage_config.get("judge_kwargs", {})
 
     generation_args = generation_kwargs.get("args", {})
-    ctx_args = generation_kwargs.get("ctx_args", "")
-    judge_ctx_args = judge_kwargs.get("ctx_args", "")
+    ctx_args = combine_ctx_args(generation_kwargs)
+    judge_ctx_args = combine_ctx_args(judge_kwargs)
     judge_args = judge_kwargs.get("args", {})
 
     generate(
@@ -441,10 +455,10 @@ def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
     judge_kwargs = stage_config.get("judge_kwargs", {})
 
     generation_args = generation_kwargs.get("args", {})
-    generation_ctx_args = generation_kwargs.get("ctx_args", "")
+    generation_ctx_args = combine_ctx_args(generation_kwargs)
 
     judge_args = judge_kwargs.get("args", {})
-    judge_ctx_args = judge_kwargs.get("ctx_args", "")
+    judge_ctx_args = combine_ctx_args(judge_kwargs)
 
     # Deterministic inline grading (e.g. eval_type=chemistry). When set, correctness
     # (symbolic_correct) is computed during generation by the Evaluator, which extracts

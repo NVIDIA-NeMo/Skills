@@ -1,8 +1,8 @@
 # Trim the pipeline for datasets that already include answers and only need metadata enrichment.
 
 directories:
-  step-4-aggregate: ${base_output_dir}/solution-sdg/step-4-aggregate
-  step-5-filter-solutions: ${base_output_dir}/solution-sdg/step-5-filter-solutions
+  step-4-aggregate: ${base_output_dir}/step-4-aggregate
+  step-5-filter-solutions: ${base_output_dir}/step-5-filter-solutions
 
 stages:
   generate_solutions:

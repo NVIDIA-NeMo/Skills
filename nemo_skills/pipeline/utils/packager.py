@@ -207,11 +207,43 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
                 include_patterns.append(str(f))
                 include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
 
-            # picking up jsonl files in recipes directory if it exists
+            # picking up jsonl files in recipes directory if it exists.
+            # Enumerate concrete file paths (instead of a `recipes/**/*.jsonl` glob) for two reasons:
+            #   1. nemo_run expands include_pattern via `find <pattern> -type f` in a non-globstar
+            #      shell, so `**` does NOT recurse and deeply-nested files would be missed.
+            #   2. include_pattern fragments are taken from the working tree, so listing the file
+            #      explicitly ships its current (possibly uncommitted) content, overriding the stale
+            #      committed copy that `git archive` would otherwise bake in -- no commit required.
             recipes_dir = Path(repo_path) / "recipes"
             if recipes_dir.exists():
-                include_patterns.append(str(recipes_dir / "**/*.jsonl"))
-                include_pattern_relative_paths.append(str(repo_path))
+                for f in recipes_dir.rglob("*.jsonl"):
+                    include_patterns.append(str(f))
+                    include_pattern_relative_paths.append(str(repo_path))
+
+                # Ship recipe config YAMLs that `git archive` won't include correctly:
+                # untracked files (absent from the committed tree) and locally-modified
+                # tracked files (git archive would ship a stale committed copy). The validate
+                # stage re-reads these config files on the cluster (unlike other stages that
+                # bake resolved values into their commands locally), so they must travel with
+                # the package even when uncommitted.
+                #
+                # NOTE: nemo_run expands include_pattern via `find <pattern> -type f` in a
+                # non-globstar shell, so a `**` glob does NOT recurse. We must enumerate
+                # concrete file paths here (mirroring the dataset rglob handling above).
+                extra_yaml: set[str] = set()
+                for ls_args in (["--others", "--exclude-standard"], ["--modified"]):
+                    extra_yaml.update(
+                        subprocess.run(
+                            ["git", "ls-files", *ls_args, "--", "recipes"],
+                            cwd=str(repo_path),
+                            capture_output=True,
+                            text=True,
+                        ).stdout.split()
+                    )
+                for rel in sorted(extra_yaml):
+                    if rel.endswith((".yaml", ".yml")) and (Path(repo_path) / rel).is_file():
+                        include_patterns.append(str(Path(repo_path) / rel))
+                        include_pattern_relative_paths.append(str(repo_path))
 
         root_package = run.GitArchivePackager(
             include_pattern=include_patterns,

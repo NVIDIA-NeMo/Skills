@@ -1,4 +1,4 @@
-cluster: hsg
+cluster: aws
 
 stages:
   generate_solutions:
@@ -12,11 +12,19 @@ stages:
     thinking: ++chat_template_kwargs.thinking=${stages.generate_solutions.chat_template_kwargs.thinking}
     endpoint_type: ++inference.endpoint_type=chat
 
+    # DeepSeek-V4-Pro uses NATIVE tool calling (server below runs --tool-call-parser
+    # deepseek_v4 --enable-auto-tool-choice), not gpt-oss inline code execution. Override
+    # the python mechanism so the `python_enabled` overlay wires up tool_modules instead of
+    # code_tags. No effect on CoT runs -- only injected when python_enabled is set.
+    python_tool_args: >-
+      ++tool_modules=[nemo_skills.mcp.servers.python_tool::DirectPythonTool]
+      ++max_tool_calls=100
+
     generation_kwargs:
       args:
         model: /hf_models/DeepSeek-V4-Pro
         server_type: vllm_dp_ray
-        server_container: /lustre/fs1/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/wedu/images/vllm-deepseekv4-v0200-cu130-ray-arm64.sqsh
+        server_container: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/snarenthiran/images/vllm-deepseekv4-v0200-cu130-ray-arm64.sqsh
         server_gpus: 4
         server_nodes: 2
         num_random_seeds: 5

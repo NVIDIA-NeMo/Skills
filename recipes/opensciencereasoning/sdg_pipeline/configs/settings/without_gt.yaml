@@ -1,10 +1,10 @@
 # Adjust the pipeline when the input set lacks ground-truth answers.
 
 directories:
-  step-3-generate-solutions: ${base_output_dir}/solution-sdg/step-3-generate-solutions
-  step-4-difficulty-estimation: ${base_output_dir}/solution-sdg/step-4-difficulty-estimation
-  step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate
-  step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions
+  step-3-generate-solutions: ${base_output_dir}/step-3-generate-solutions
+  step-4-difficulty-estimation: ${base_output_dir}/step-4-difficulty-estimation
+  step-5-aggregate: ${base_output_dir}/step-5-aggregate
+  step-6-filter-solutions: ${base_output_dir}/step-6-filter-solutions
 
 stages:
   generate_solutions:

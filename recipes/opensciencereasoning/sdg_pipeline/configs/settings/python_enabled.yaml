@@ -1,5 +1,15 @@
-# Overrides to enable python-tool-assisted generations across pipelines.
-
+# Enable python-tool-assisted generation for the solver.
+#
+# This single overlay works for every model: it turns the sandbox on and injects the
+# model's `python_tool_args` into the generation context. The MECHANISM is model-specific
+# and lives in the model config, so there is no per-model python overlay:
+#   - gpt-oss (base.yaml default) -> inline code execution (code_tags=gpt-oss, the keys set
+#     below feed base.yaml's `python_tool_args`).
+#   - DeepSeek-V4-Pro (ds_v4_pro.yaml) -> overrides `python_tool_args` to native tool
+#     calling (`++tool_modules=[...]`), because its server runs --tool-call-parser deepseek_v4.
+#
+# So to give a different model python, override `python_tool_args` in that model's config
+# rather than adding a new overlay here.
 stages:
   generate_solutions:
     code_tags: ++code_tags=gpt-oss
@@ -9,3 +19,6 @@ stages:
     generation_kwargs:
       args:
         with_sandbox: True
+      # Inject the model-specific python tool flags into the extend channel. This is also
+      # the gate: CoT runs (no python_enabled) keep base.yaml's empty ctx_args_extra.
+      ctx_args_extra: ${stages.generate_solutions.python_tool_args}

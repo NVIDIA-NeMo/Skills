@@ -20,10 +20,7 @@ stages:
     # Extra inline-evaluator overrides, forwarded as hydra args, e.g.
     # "++eval_config.ignore_stereo=True". Defaults are fine for SMILES/SAFE.
     eval_config_args: ""
-    eval_installation_command: "pip install rdkit"
 
   generate_solutions:
     make_judgement: False
     answer_comparison: chemistry
-    # RDKit must be importable where aggregate_solutions runs.
-    aggregate_installation_command: "pip install rdkit"

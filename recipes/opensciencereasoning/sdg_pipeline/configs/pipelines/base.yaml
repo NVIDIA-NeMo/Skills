@@ -30,16 +30,16 @@ pipeline_stages:
 
 # Directory structure configuration
 directories:
-  step-0-filter-problems: ${base_output_dir}/solution-sdg/step-0-filter-problems
-  step-1-decontaminate: ${base_output_dir}/solution-sdg/step-1-decontaminate
-  step-2-topics-labeling: ${base_output_dir}/solution-sdg/step-2-topics-labeling
-  step-3-difficulty-estimation: ${base_output_dir}/solution-sdg/step-3-difficulty-estimation
-  step-4-generate-solutions: ${base_output_dir}/solution-sdg/step-4-generate-solutions
-  step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate
-  step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions
-  step-7-prepare-for-sft: ${base_output_dir}/solution-sdg/step-7-prepare-for-sft
-  step-8-process-messages-and-bucket: ${base_output_dir}/solution-sdg/step-8-process-messages-and-bucket
-  validate: ${base_output_dir}/solution-sdg/validate
+  step-0-filter-problems: ${base_output_dir}/step-0-filter-problems
+  step-1-decontaminate: ${base_output_dir}/step-1-decontaminate
+  step-2-topics-labeling: ${base_output_dir}/step-2-topics-labeling
+  step-3-difficulty-estimation: ${base_output_dir}/step-3-difficulty-estimation
+  step-4-generate-solutions: ${base_output_dir}/step-4-generate-solutions
+  step-5-aggregate: ${base_output_dir}/step-5-aggregate
+  step-6-filter-solutions: ${base_output_dir}/step-6-filter-solutions
+  step-7-prepare-for-sft: ${base_output_dir}/step-7-prepare-for-sft
+  step-8-process-messages-and-bucket: ${base_output_dir}/step-8-process-messages-and-bucket
+  validate: ${base_output_dir}/validate
 
 # Stage-specific configurations
 stages:
@@ -63,9 +63,9 @@ stages:
       - ["mmlu", "test"]
       - ["mmlu-pro", "test"]
       - ["gpqa", "diamond"]
-    model: /hf_models/Qwen2.5-32B-Instruct
+    model: /models/Qwen3-14B
     server_type: sglang
-    server_gpus: 1
+    server_gpus: 4
     server_nodes: 1
     dependent_jobs: 1
     num_chunks: 20
@@ -78,7 +78,7 @@ stages:
     model: /hf_models/gpt-oss-120b
     end_marker: ++end_reasoning_string="'<|start|>assistant<|channel|>final<|message|>'"
     server_type: sglang
-    server_gpus: 8
+    server_gpus: 4
     server_nodes: 1
     dependent_jobs: 1
     num_chunks: 5
@@ -140,26 +140,30 @@ stages:
 
     generation_kwargs:
       args:
-        model: /hf_models/Qwen3-30B-A3B
+        model: /models/Qwen3-30B-A3B
         server_type: vllm
-        server_gpus: 8
+        server_gpus: 4
         server_nodes: 1
         dependent_jobs: 1
         num_random_seeds: 5
         num_chunks: 20
+        server_args: "--enable-expert-parallel"
       ctx_args: >-
         ++prompt_config=generic/general-boxed
         ++inference.tokens_to_generate=16000
+        ++parse_reasoning=True
 
     judge_kwargs:
       args:
-        model: /hf_models/gpt-oss-20b
+        model: /hf_models/gpt-oss-120b
         server_type: vllm
-        server_gpus: 8
+        server_gpus: 4
         server_nodes: 1
         num_random_seeds: ${stages.difficulty_estimation.generation_kwargs.args.num_random_seeds}
         dependent_jobs: 1
         num_chunks: 5
+        server_args: "--async-scheduling"
+        with_sandbox: False
       ctx_args: >-
         ++prompt_config=judge/general-judge
 
@@ -182,6 +186,16 @@ stages:
     enable_code_execution: ""
     code_execution_limits: ""
     builtin_tools: ""
+    # Python tool flags, injected into ctx_args_extra by the `python_enabled` overlay.
+    # MODEL-SPECIFIC: the default below is gpt-oss INLINE code execution (built from the
+    # keys above). Native-tool models override this wholesale -- e.g. ds_v4_pro sets it to
+    # `++tool_modules=[...]`. Has no effect unless `python_enabled` is in the settings
+    # (which is what sets ctx_args_extra to reference this).
+    python_tool_args: >-
+      ${stages.generate_solutions.code_tags}
+      ${stages.generate_solutions.enable_code_execution}
+      ${stages.generate_solutions.code_execution_limits}
+      ${stages.generate_solutions.builtin_tools}
     endpoint_type: ++inference.endpoint_type=chat
 
     generation_kwargs:
@@ -189,7 +203,7 @@ stages:
         input_file: ${directories.step-1-decontaminate}/final_result.jsonl
         model: /hf_models/gpt-oss-120b
         server_type: vllm
-        server_gpus: 8
+        server_gpus: 4
         server_nodes: 1
         dependent_jobs: 1
         num_chunks: 20
@@ -197,29 +211,34 @@ stages:
         server_args: "--async-scheduling"
         with_sandbox: False
 
+      # Override channel: the core inference args. Model-specific overlays (e.g. ds_v4_pro)
+      # are expected to replace this wholesale.
       ctx_args: >-
         ${stages.generate_solutions.prompt_config}
-        ${stages.generate_solutions.code_tags}
-        ${stages.generate_solutions.enable_code_execution}
-        ${stages.generate_solutions.code_execution_limits}
         ++max_concurrent_requests=1024
         ${stages.generate_solutions.tokens_to_generate}
         ${stages.generate_solutions.endpoint_type}
         ++inference.temperature=1.0
         ++inference.top_p=1.0
         ${stages.generate_solutions.reasoning_effort}
-        ${stages.generate_solutions.builtin_tools}
+      # Extend channel: appended to ctx_args by combine_ctx_args(), so a model-specific
+      # ctx_args override does NOT drop it. Empty by default (CoT, no tools). The
+      # `python_enabled` overlay sets this to ${...python_tool_args} to turn python on,
+      # which keeps the mechanism model-specific (see python_tool_args above).
+      ctx_args_extra: ""
 
     judge_kwargs:
       endpoint_type: ++inference.endpoint_type=text
       ctx_args: >-
         ++prompt_config=judge/general-judge
+        ++inference.reasoning_effort=high
+        ++inference.tokens_to_generate=120000
 
       args:
-        model: /hf_models/gpt-oss-20b
+        model: /hf_models/gpt-oss-120b
         server_type: vllm
-        server_gpus: 8
-        server_nodes: 1
+        server_gpus: 4
+        server_nodes: 2
         num_random_seeds: ${stages.generate_solutions.generation_kwargs.args.num_random_seeds}
         dependent_jobs: 1
         num_chunks: 5
@@ -265,6 +284,7 @@ stages:
         ++filters.remove_no_think_tags=false
         ++filters.remove_contaminated=false
         ++filters.trim_solutions=false
+        ++processors.0.keys_to_keep=[total_votes,majority_votes,expected_answer,predicted_answer,answer_rm_score,solutions,num_solutions,max_idx,serialized_output,_filled_prompt]
         ${stages.generate_solutions.reasoning_effort}
         ${stages.generate_solutions.builtin_tools}
     dependencies:
