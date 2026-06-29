@@ -263,18 +263,29 @@ def main():
                 artifacts["filter_solutions"]["count"] <= artifacts["aggregate"]["count"],
                 "filter_solutions should not have more rows than aggregate",
             )
+        # prepare_for_sft (nemo_skills.training.prepare_data) deduplicates identical
+        # (problem, solution) pairs, so it may legitimately have fewer rows than
+        # filter_solutions. Downstream stages must then match prepare_for_sft.
+        if "prepare_for_sft" in artifacts:
+            soft_assert(
+                artifacts["prepare_for_sft"]["count"] <= artifacts["filter_solutions"]["count"],
+                f"prepare_for_sft ({artifacts['prepare_for_sft']['count']}) should not exceed "
+                f"filter_solutions ({artifacts['filter_solutions']['count']})",
+            )
+            reference_count = artifacts["prepare_for_sft"]["count"]
+        else:
+            reference_count = artifacts["filter_solutions"]["count"]
         for stage in [
-            "prepare_for_sft",
             "convert_to_messages_format",
             "bucket",
             "convert_to_qwen_format",
             "bucket_qwen",
         ]:
-            expect_equal(stage, artifacts["filter_solutions"]["count"])
+            expect_equal(stage, reference_count)
             if stage in bucket_totals:
                 soft_assert(
-                    bucket_totals[stage] == artifacts["filter_solutions"]["count"],
-                    f"`{stage}` total ({bucket_totals[stage]}) should match filter_solutions ({artifacts['filter_solutions']['count']})",
+                    bucket_totals[stage] == reference_count,
+                    f"`{stage}` total ({bucket_totals[stage]}) should match prepare_for_sft ({reference_count})",
                 )
 
     has_topics = "topics_labeling" in artifacts
