@@ -175,7 +175,7 @@ def test_dashboard_only_ray_config_is_precreated_not_embedded():
     assert backend.precreated_cluster is True
 
     metadata = backend.stage_metadata(container_image="nvcr.io/nvidia/pytorch:25.02-py3")
-    assert not (metadata or {}).get("use_with_ray_cluster")
+    assert "use_with_ray_cluster" not in (metadata or {})
 
 
 def test_dashboard_only_precreated_preflight_does_not_require_endpoint():
@@ -214,7 +214,7 @@ def test_non_precreated_ray_honors_use_with_ray_cluster_flag():
     assert backend.precreated_cluster is False
 
     assert backend.stage_metadata(use_with_ray_cluster=True).get("use_with_ray_cluster") is True
-    assert not (backend.stage_metadata(use_with_ray_cluster=False) or {}).get("use_with_ray_cluster")
+    assert "use_with_ray_cluster" not in (backend.stage_metadata(use_with_ray_cluster=False) or {})
 
 
 def test_ray_executor_none_without_dashboard_raises():
