@@ -160,8 +160,8 @@ class SweBenchGenerationConfig:
     max_samples: int = -1  # If > 0, will stop after generating this many samples. Useful for debugging
     skip_filled: bool = False  # If True, will skip the generations that are already in the output file
 
-    # maximum number of concurrent requests to the server for the async loop
-    # if sync loop is used, this is the batch size
+    # Maximum number of concurrent agent rollouts in each job.
+    # Each rollout sends 1 request to the LLM server at a time, so this is also the max number of concurrent requests.
     max_concurrent_requests: int = 512
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
@@ -497,8 +497,16 @@ class SweBenchGenerationTask(GenerationTask):
                 instance_id=data_point["instance_id"].replace("__", "_1776_")
             )
 
-            # If the repo is not in /testbed, copy it before running the agent
+            # Get the folder where the repo is cloned inside the container
             container_repo_dir = data_point.get("container_repo_dir", "/testbed")
+
+            # If pre_commands are specified, execute them before running the agent
+            pre_commands = data_point.get("pre_commands", "").strip()
+            if pre_commands:
+                container_commands.append(f"cd {container_repo_dir}")
+                container_commands.append(pre_commands)
+
+            # If the repo is not in /testbed, copy it before running the agent
             if mode == "agent" and container_repo_dir != "/testbed":
                 container_commands.append(f"cp -r {container_repo_dir} /testbed")
 
@@ -909,11 +917,6 @@ class SweBenchGenerationTask(GenerationTask):
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
-        async with self.semaphore:
-            return await self._process_single_datapoint_impl(data_point, data)
-
-    async def _process_single_datapoint_impl(self, data_point, data):
-        """Implementation of process_single_datapoint, called within semaphore."""
 
         # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
         # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?
@@ -923,19 +926,22 @@ class SweBenchGenerationTask(GenerationTask):
         else:
             api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
 
-        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            pred_file = await self._run_swe_agent(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-            pred_file = await self._run_mini_swe_agent(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            pred_file = await self._run_openhands(data_point, api_base)
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            pred_file = await self._get_gold_patch(data_point)
-        else:
-            raise ValueError(
-                f"Unsupported agent framework: {self.cfg.agent_framework}. "
-                f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
-            )
+        # Run the agent rollout.
+        # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
+        async with self.semaphore:
+            if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+                pred_file = await self._run_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+                pred_file = await self._run_mini_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+                pred_file = await self._run_openhands(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+                pred_file = await self._get_gold_patch(data_point)
+            else:
+                raise ValueError(
+                    f"Unsupported agent framework: {self.cfg.agent_framework}. "
+                    f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
+                )
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
         with open(pred_file, "r") as f:
