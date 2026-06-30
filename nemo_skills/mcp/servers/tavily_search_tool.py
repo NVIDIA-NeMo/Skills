@@ -837,7 +837,9 @@ class DirectTavilyGymTool(_DirectTavilyBase):
         if results.get("error"):
             return results["error"]
         results["results"] = [
-            r for r in (results.get("results") or []) if isinstance(r.get("url"), str) and not self._is_url_blocked(r["url"])
+            r
+            for r in (results.get("results") or [])
+            if isinstance(r.get("url"), str) and not self._is_url_blocked(r["url"])
         ]
         return "".join(_postprocess_gym_search_results(results, int(self._config["max_result_chars"])))
 
