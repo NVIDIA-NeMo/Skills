@@ -233,3 +233,43 @@ def test_native_params_drop_none_and_litellm_only(monkeypatch):
     for dropped in ("seed", "stop", "tools", "response_format", "top_logprobs"):
         assert dropped not in captured
     assert captured["model"] == "test-model"
+
+
+def test_pydantic_response_format_falls_back_to_litellm(monkeypatch):
+    # A pydantic BaseModel response_format (structured output) must NOT go through
+    # the native client -- chat.completions.create() rejects a BaseModel class
+    # ("must use .parse() instead"). litellm accepts it, so we fall back.
+    import litellm
+    from pydantic import BaseModel
+
+    monkeypatch.delenv("NEMO_SKILLS_OPENAI_AIOHTTP", raising=False)
+    monkeypatch.setattr(openai, "AsyncOpenAI", _CapturingAsyncOpenAI, raising=False)
+    monkeypatch.setattr(openai, "DefaultAioHttpClient", _DummyAioHttpClient, raising=False)
+
+    litellm_called = {"hit": False}
+
+    async def fake_acompletion(**kwargs):
+        litellm_called["hit"] = True
+        return _FakeResponse(types.SimpleNamespace(content='{"ok": true}'))
+
+    monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
+
+    class _RF(BaseModel):
+        answer: str
+
+    model = VLLMModel(model="test-model", base_url="http://localhost:9999/v1")
+    assert isinstance(model._async_openai_client, _CapturingAsyncOpenAI)  # native is available...
+
+    asyncio.run(
+        model.generate_async(
+            prompt=[{"role": "user", "content": "hi"}],
+            tokens_to_generate=8,
+            temperature=0.0,
+            top_p=0.95,
+            response_format=_RF,
+        )
+    )
+
+    # ...but it was NOT used for the structured-output request; litellm handled it.
+    assert model._async_openai_client.captured_kwargs is None
+    assert litellm_called["hit"] is True

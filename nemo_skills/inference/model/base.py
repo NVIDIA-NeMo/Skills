@@ -13,6 +13,7 @@
 # limitations under the License.
 import abc
 import asyncio
+import inspect
 import logging
 import os
 import uuid
@@ -25,6 +26,7 @@ import litellm.constants
 import litellm.llms.custom_httpx.http_handler
 import litellm.llms.openai.common_utils
 import openai
+from pydantic import BaseModel as PydanticBaseModel
 
 from nemo_skills.inference.patch_litellm_logging import patch_litellm_logging_worker
 from nemo_skills.utils import get_logger_name
@@ -439,7 +441,16 @@ class BaseModel:
                         # streaming and non-streaming chat are routed here; the
                         # responses API, text completions, and non-OpenAI
                         # providers still fall through to litellm.
-                        use_native = self._async_openai_client is not None
+                        #
+                        # Exception: a pydantic BaseModel response_format (structured
+                        # output) must go through litellm. The native SDK's
+                        # chat.completions.create() rejects a BaseModel class
+                        # ("must use .parse() instead"); litellm accepts it and
+                        # converts it to a JSON schema. (dict/json_schema
+                        # response_formats are fine on the native path.)
+                        rf = request_params.get("response_format")
+                        needs_litellm_response_format = inspect.isclass(rf) and issubclass(rf, PydanticBaseModel)
+                        use_native = self._async_openai_client is not None and not needs_litellm_response_format
                         if use_native:
                             # Strip (a) litellm-only knobs the strict SDK rejects
                             # and (b) None-valued params. litellm OMITS None-valued
