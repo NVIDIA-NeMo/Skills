@@ -15,11 +15,30 @@
 import asyncio
 import json
 import logging
+import os
 import random
 import shutil
 import subprocess
 import sys
 import time
+
+# uvloop is a drop-in replacement for asyncio's default event loop
+# that's ~2-4x faster on CPU-bound asyncio workloads. ns generate's
+# async_loop at high concurrency (5k+ lanes) becomes CPU-bound on
+# the event loop's per-task scheduling overhead -- not on actual
+# Python work in user code. Installing uvloop closes that gap so
+# the bounded pool can refill at the rate the upstream can sustain
+# instead of the rate one Python thread can scheduler-switch.
+#
+# Set NEMO_SKILLS_DISABLE_UVLOOP=1 to opt out (useful if a tool in
+# the stack assumes selector loop semantics; rare).
+if not os.environ.get("NEMO_SKILLS_DISABLE_UVLOOP"):
+    try:
+        import uvloop
+
+        uvloop.install()
+    except ImportError:
+        pass
 from copy import deepcopy
 from dataclasses import asdict, field, is_dataclass
 from pathlib import Path
@@ -125,6 +144,47 @@ class GenerationTaskConfig:
     # maximum number of concurrent requests to the server for the async loop
     # if sync loop is used, this is the batch size
     max_concurrent_requests: int = 512
+    # Rate at which the async loop opens NEW HTTP connections during
+    # initial prime (target connections per second). The bounded
+    # worker pool would otherwise spawn `max_concurrent_requests`
+    # tasks in a tight loop, each opening a TCP connection nearly
+    # simultaneously -- the kernel accept queue on the receiving end
+    # (typically capped at net.core.somaxconn=4096) can briefly
+    # overflow and SYN-drop the excess. Limiting the ramp rate so
+    # each ~ramp_rate/4-connection burst is followed by a short pause
+    # keeps the accept queue draining cleanly.
+    #
+    # Default 4000/sec accounts for ns generate's per-task pre-work
+    # (format_prompt, build litellm request, semaphore acquires) --
+    # the time from asyncio.create_task to "TCP request fired" is
+    # significant, so the configured task-creation rate has to be
+    # higher than the SYN rate you actually want at the kernel.
+    # Each burst is still ramp_rate/4 SYNs (1000 at default), well
+    # under net.core.somaxconn=4096.
+    #
+    # Set to 0 (or negative) to disable ramping and prime
+    # instantaneously. The transient-retry logic in
+    # BaseModel.generate_async would still cover any resulting SYN
+    # drops; the ramp just makes them not happen in the first place.
+    ramp_rate_per_sec: int = 4000
+    # Number of background coroutines that postprocess + (optionally)
+    # evaluate completed datapoints. The async loop's bounded worker
+    # pool used to keep each lane "alive" (occupying a slot) until
+    # postprocess + evaluate + queue.put all completed -- which
+    # serialized those steps with the next HTTP refill. For
+    # reasoning-heavy workloads the per-lane post-HTTP work is small
+    # in absolute terms (~ms per record) but multiplied across
+    # thousands of lanes it can keep the bounded-pool slot occupied
+    # while real HTTP capacity sits idle. Moving postprocess + eval
+    # to a separate processor pool lets the lane exit the moment
+    # generate_async returns, so the bounded pool refills with the
+    # next datapoint immediately.
+    #
+    # Default 16 is enough headroom for synchronous postprocess (no
+    # eval) at >3k records/sec. If you enable an LLM-judge evaluator
+    # inside generate, raise this to match the eval concurrency you
+    # want.
+    postprocess_workers: int = 16
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
     chunk_id: int | None = None  # if specified, will index the specified chunk only
@@ -409,6 +469,14 @@ class GenerationTask:
 
         # output_lock will be initialized when async_loop is called
         self.output_lock = None
+        # Three-stage pipeline queues (set by async_loop):
+        #   _raw_queue:    lanes -> processors  (un-postprocessed outputs)
+        #   _output_queue: processors -> writer (ready-to-write records)
+        # None outside of async_loop; _generate_and_save_datapoint
+        # falls back to inline postprocess + locked write in that
+        # case (used by entrypoints like prover.py).
+        self._raw_queue = None
+        self._output_queue = None
 
     def setup_prompt(self):
         if self.cfg.prompt_config is None:
@@ -849,16 +917,23 @@ class GenerationTask:
             output["generation_end_time"] = end_time
             output["generation_time"] = end_time - start_time
 
-        await self.postprocess_single_output(output, data_point)
-
-        # evaluate single-data point if requested and evaluator supports that
-        if self.should_run_evaluation and self.evaluator:
-            output = await self.evaluate_single_datapoint({**data_point, **output})
-
-        # Thread-safe output writing
-        async with self.output_lock:
-            self.dump_outputs([output], [data_point], fout)
-            pbar.update(1)
+        # Hand the raw (un-postprocessed) completion off to the
+        # processor pool. The bounded-pool slot in async_loop frees
+        # the moment this coroutine returns, so the next datapoint
+        # can begin its HTTP request immediately. Postprocess +
+        # evaluate run in the processor pool; the writer task drains
+        # processed records to disk in batches.
+        if self._raw_queue is not None:
+            await self._raw_queue.put((output, data_point))
+        else:
+            # Fallback path (async_loop not entered through the
+            # processor/writer split). Run synchronously inline.
+            await self.postprocess_single_output(output, data_point)
+            if self.should_run_evaluation and self.evaluator:
+                output = await self.evaluate_single_datapoint({**data_point, **output})
+            async with self.output_lock:
+                self.dump_outputs([output], [data_point], fout)
+                pbar.update(1)
 
     async def async_loop(self, data):
         """Async loop to generate generations using asyncio."""
@@ -881,7 +956,15 @@ class GenerationTask:
 
         pbar = tqdm(total=len(remaining_data_points), desc="Remaining generations")
 
-        with open(self.cfg.output_file + "-async", "at", encoding="utf-8", buffering=1) as fout:
+        # Default Python buffering (8KB on most platforms). The
+        # previous `buffering=1` forced a kernel flush on every
+        # newline -- combined with the per-completion output_lock,
+        # that flush became the throughput bottleneck (~60-80/sec
+        # cap regardless of client concurrency). The writer task
+        # below issues an explicit fout.flush() after every batch
+        # drained from the queue, so durability is preserved without
+        # paying for a syscall per record.
+        with open(self.cfg.output_file + "-async", "at", encoding="utf-8") as fout:
             # Dump prefilled data first
             if len(prefilled_data_points) > 0:
                 for output, data_point in zip(prefilled_outputs, prefilled_data_points):
@@ -893,15 +976,165 @@ class GenerationTask:
                 async with self.output_lock:
                     self.dump_outputs(prefilled_outputs, prefilled_data_points, fout)
 
-            # Create tasks for all remaining data points
-            tasks = []
-            for data_point in remaining_data_points:
-                task = asyncio.create_task(self._generate_and_save_datapoint(data_point, data, fout, pbar))
-                tasks.append(task)
+            # Three-stage pipeline:
+            #
+            #   lanes ── raw_queue ──> processors ── write_queue ──> writer
+            #
+            # `lanes` are the bounded-pool tasks below; each one does
+            # one HTTP call and exits the instant the response is
+            # parsed. `processors` is a small pool of background
+            # coroutines that run postprocess_single_output and
+            # (optionally) evaluate_single_datapoint -- both of which
+            # used to run INSIDE the lane, holding its bounded-pool
+            # slot for ~5-10ms past the HTTP return for postprocess
+            # alone, and seconds or more if an LLM-judge evaluator
+            # was attached. Decoupling them lets the lane refill
+            # instantly. `writer` batches processed records and
+            # flushes once per batch.
+            #
+            # Queue sizes are picked so producer puts never block in
+            # steady state. A `None` sentinel propagates through each
+            # stage on shutdown.
+            queue_cap = max(self.cfg.max_concurrent_requests * 2, 1024)
+            self._raw_queue: asyncio.Queue = asyncio.Queue(maxsize=queue_cap)
+            self._output_queue = asyncio.Queue(maxsize=queue_cap)
+            num_processors = max(1, int(self.cfg.postprocess_workers))
 
-            # Wait for all tasks to complete
-            if tasks:
-                await asyncio.gather(*tasks)
+            async def _processor():
+                # Drain raw_queue, postprocess (+ evaluate), forward
+                # to output_queue. A `None` sentinel terminates this
+                # worker; the dispatcher below pushes one sentinel
+                # per worker.
+                while True:
+                    item = await self._raw_queue.get()
+                    if item is None:
+                        return
+                    output, data_point = item
+                    try:
+                        await self.postprocess_single_output(output, data_point)
+                        if self.should_run_evaluation and self.evaluator:
+                            output = await self.evaluate_single_datapoint({**data_point, **output})
+                    except Exception:
+                        pos = data_point.get(self.cfg.async_position_key, "?")
+                        LOG.exception("postprocess/evaluate failed for async_pos=%s", pos)
+                    await self._output_queue.put((output, data_point))
+
+            async def _writer():
+                # Drain in batches: pull one item (blocking), then
+                # opportunistically drain any others already in the
+                # queue without blocking, write them all, and flush
+                # once at the end. Throughput scales with completion
+                # rate, not per-record syscall cost.
+                while True:
+                    item = await self._output_queue.get()
+                    if item is None:
+                        return
+                    batch = [item]
+                    # Drain anything that's already enqueued.
+                    while not self._output_queue.empty():
+                        nxt = self._output_queue.get_nowait()
+                        if nxt is None:
+                            for o, _dp in batch:
+                                fout.write(json.dumps(o) + "\n")
+                            pbar.update(len(batch))
+                            fout.flush()
+                            return
+                        batch.append(nxt)
+                    for o, _dp in batch:
+                        fout.write(json.dumps(o) + "\n")
+                    pbar.update(len(batch))
+                    fout.flush()
+
+            processor_tasks = [asyncio.create_task(_processor()) for _ in range(num_processors)]
+            writer_task = asyncio.create_task(_writer())
+
+            # Bounded worker pool. At most `max_in_flight` tasks
+            # exist at any moment; as each one completes we spawn the
+            # next datapoint's task. Memory is O(in_flight), not
+            # O(total inputs), so the loop runs cleanly on 100k/1M+
+            # input files without preallocating a coroutine frame
+            # for each.
+            #
+            # Was: tasks = [asyncio.create_task(...) for dp in data]
+            # That created ALL coroutines upfront. At a 100k input
+            # file and ~1-5 KB per coroutine frame (closure + Task
+            # bookkeeping) the upfront allocation was 100-500 MB --
+            # avoidable memory pressure when co-located with other
+            # services. The outer semaphore inside each task bounded
+            # in-flight requests but didn't help that upfront cost.
+            #
+            # Each task is wrapped in a try/except so a single
+            # exception doesn't crash the whole gather (the old
+            # default behavior was first-exception-wins, killing
+            # all other in-flight datapoints).
+            max_in_flight = self.cfg.max_concurrent_requests
+
+            async def _safe_one(dp):
+                try:
+                    await self._generate_and_save_datapoint(dp, data, fout, pbar)
+                except Exception:
+                    pos = dp.get(self.cfg.async_position_key, "?")
+                    LOG.exception("datapoint async_pos=%s crashed", pos)
+
+            data_iter = iter(remaining_data_points)
+            in_flight: set = set()
+
+            # Prime the pool up to the concurrency cap, with rate-
+            # limited ramp so we don't open all max_in_flight TCP
+            # connections in a microsecond burst.
+            ramp_rate = self.cfg.ramp_rate_per_sec
+            if ramp_rate > 0:
+                # Spawn in batches sized so the implied pause is
+                # ~250ms -- short enough not to extend wall-time
+                # noticeably (target_depth=20k at 1000/s = 20s
+                # ramp), long enough for the kernel accept queue
+                # to drain between bursts.
+                ramp_batch = max(50, ramp_rate // 4)
+                ramp_interval = ramp_batch / ramp_rate
+            else:
+                ramp_batch = max_in_flight  # instant prime
+                ramp_interval = 0.0
+
+            primed = 0
+            for dp in data_iter:
+                in_flight.add(asyncio.create_task(_safe_one(dp)))
+                primed += 1
+                if primed >= max_in_flight:
+                    break
+                if ramp_interval > 0 and primed % ramp_batch == 0:
+                    await asyncio.sleep(ramp_interval)
+
+            # Refill as tasks complete. asyncio.wait with
+            # FIRST_COMPLETED returns as soon as ANY task finishes,
+            # which lets us start a fresh task immediately rather
+            # than waiting for the whole batch.
+            while in_flight:
+                done, in_flight = await asyncio.wait(
+                    in_flight,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for _ in done:
+                    try:
+                        dp = next(data_iter)
+                    except StopIteration:
+                        continue
+                    in_flight.add(asyncio.create_task(_safe_one(dp)))
+
+            # Shutdown sequence: cascade sentinels through the
+            # pipeline so every in-flight record is flushed.
+            #   1. Put one None on raw_queue per processor -- each
+            #      processor exits after seeing its sentinel.
+            #   2. Wait for all processors. Any record put on
+            #      output_queue by a processor is already there.
+            #   3. Put one None on output_queue -- writer drains
+            #      whatever's queued ahead of it, then exits.
+            for _ in range(num_processors):
+                await self._raw_queue.put(None)
+            await asyncio.gather(*processor_tasks)
+            await self._output_queue.put(None)
+            await writer_task
+            self._raw_queue = None
+            self._output_queue = None
 
             pbar.close()
 

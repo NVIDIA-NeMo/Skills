@@ -19,6 +19,9 @@ from .openai import OpenAIModel
 
 class AzureOpenAIModel(OpenAIModel):
     MODEL_PROVIDER = "azure"
+    # Azure uses a different endpoint layout + api-version/api-key auth that a
+    # plain AsyncOpenAI client can't target; keep it on litellm.
+    SUPPORTS_NATIVE_OPENAI = False
 
     def __init__(
         self,

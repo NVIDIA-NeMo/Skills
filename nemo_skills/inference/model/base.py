@@ -15,6 +15,7 @@ import abc
 import asyncio
 import logging
 import os
+import uuid
 from enum import Enum
 from typing import Union
 
@@ -73,6 +74,14 @@ class BaseModel:
     # Litellm provider name
     MODEL_PROVIDER = "openai"
 
+    # Whether this model may use the native AsyncOpenAI + aiohttp fast-path
+    # (see __init__). Only OpenAI-compatible endpoints that speak the plain
+    # /v1/chat/completions schema at self.base_url can opt in. Subclasses that
+    # talk to a non-OpenAI server (megatron), a differently-authed endpoint
+    # (azure), a non-OpenAI provider (gemini), or need litellm's request
+    # rewriting (multimodal audio) leave this False and stay on litellm.
+    SUPPORTS_NATIVE_OPENAI = False
+
     def __init__(
         self,
         model: str,
@@ -95,6 +104,17 @@ class BaseModel:
         output_dir: str | None = None,
         # Request tokenizer initialization independent of soft_fail
         require_tokenizer: bool = False,
+        # Max in-flight HTTP requests gated by an internal semaphore.
+        # The semaphore was originally added because earlier
+        # combinations of httpx + litellm would hang under truly
+        # unbounded concurrency. Modern httpx (>=0.27) handles this
+        # fine, so the default is now high enough to effectively be
+        # "no internal limit" -- the script-level concurrency knob
+        # (generate.py `max_concurrent_requests`) is the single
+        # user-facing cap. Override via $NEMO_SKILLS_MODEL_CONCURRENCY
+        # only if you have a specific reason to throttle BELOW the
+        # script-level cap.
+        concurrent_requests_limit: int = int(os.environ.get("NEMO_SKILLS_MODEL_CONCURRENCY", "65536")),
     ):
         self._tunnel = None
         self.model_name_or_path = model
@@ -169,7 +189,69 @@ class BaseModel:
         litellm.aclient_session = httpx.AsyncClient(limits=httpx_limits)
         # Controlling concurrent requests using semaphore since large
         # concurrent requests result into httpx hanging
-        self.concurrent_semaphore = asyncio.Semaphore(2048)
+        self.concurrent_semaphore = asyncio.Semaphore(concurrent_requests_limit)
+
+        # Native aiohttp fast-path (DEFAULT for OpenAI-compatible
+        # providers). The litellm.acompletion path goes through httpx,
+        # a pure-Python HTTP implementation -- at 5k+ concurrent
+        # connections it becomes the GIL-bound bottleneck (~95% of
+        # single-core CPU in the async loop, per py-spy). The OpenAI
+        # SDK natively supports an aiohttp transport via
+        # DefaultAioHttpClient. aiohttp's request/response parsing is
+        # C-extension backed, so the same workload runs at <5% CPU on
+        # the same hardware.
+        #
+        # Enabled by default for providers with SUPPORTS_NATIVE_OPENAI
+        # (openai, vllm, sglang). Both the non-streaming and streaming
+        # chat endpoints go through this path; text completions, the
+        # responses API, and non-OpenAI-shaped providers (gemini,
+        # azure, megatron, multimodal) still use litellm. Set
+        # NEMO_SKILLS_OPENAI_AIOHTTP=0 to force everything back onto
+        # litellm/httpx.
+        self._async_openai_client = None
+        native_enabled = os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP", "1") != "0"
+        if native_enabled and self.SUPPORTS_NATIVE_OPENAI:
+            try:
+                from openai import AsyncOpenAI, DefaultAioHttpClient
+
+                # openai SDK defaults the aiohttp connector to
+                # max_connections=1000, max_keepalive_connections=100,
+                # which silently caps the lane count at high
+                # concurrency (8k lanes see only ~1000 open TCP
+                # connections; the rest stall in the aiohttp connector
+                # queue). Also, httpx-aiohttp's transport translates
+                # httpx.Limits(max_connections=None) to "omit the
+                # `limit` kwarg," which makes aiohttp fall back to ITS
+                # default of 100 -- worse than the openai SDK
+                # default. We therefore pass an explicit large
+                # integer (NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT, default
+                # 65536) instead of None.
+                aiohttp_limit = int(os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT", "65536"))
+                self._async_openai_client = AsyncOpenAI(
+                    api_key=api_key,
+                    base_url=self.base_url,
+                    http_client=DefaultAioHttpClient(
+                        limits=httpx.Limits(
+                            max_connections=aiohttp_limit,
+                            max_keepalive_connections=aiohttp_limit,
+                        ),
+                    ),
+                    max_retries=0,  # we own retries; SDK's retry would
+                    # rebuild the request and double-count
+                    # concurrent_semaphore holds.
+                )
+            except Exception as e:
+                # ImportError if openai[aiohttp] isn't installed, but the
+                # DefaultAioHttpClient constructor can also raise other errors
+                # when the aiohttp extra is only partially present. Degrade to
+                # litellm/httpx rather than failing model construction.
+                LOG.warning(
+                    "Native AsyncOpenAI aiohttp fast-path unavailable (%s: %s); "
+                    "falling back to litellm/httpx. Install openai[aiohttp] to enable it.",
+                    type(e).__name__,
+                    e,
+                )
+                self._async_openai_client = None
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         if api_key:  # explicit cmd argument always takes precedence
@@ -185,8 +267,11 @@ class BaseModel:
         return api_key
 
     def __del__(self):
-        if self._tunnel:
-            self._tunnel.stop()
+        # getattr guard: __del__ can fire on an instance whose __init__ raised
+        # (or never ran), before _tunnel was set.
+        tunnel = getattr(self, "_tunnel", None)
+        if tunnel:
+            tunnel.stop()
 
     def _maybe_apply_stop_phrase_removal(
         self, result: dict, remove_stop_phrases: bool, stop_phrases: list[str] | None
@@ -239,6 +324,27 @@ class BaseModel:
     def _build_responses_request_params(self, **kwargs) -> dict:
         raise NotImplementedError("Responses completion is not not supported or implemented for this model.")
 
+    @staticmethod
+    def _apply_routing_keys(request_params: dict, cache_key: str | None) -> None:
+        """Attach optional, provider-agnostic request-routing keys. Plain
+        OpenAI/vLLM/gemini endpoints ignore (or echo) them.
+
+          * `X-Request-Id` (extra_headers) = per-request id for idempotency /
+            tracing. Kept stable across the OpenAI SDK's internal retry loop so
+            a retry is identifiable as the same logical call; distinct calls
+            (incl. parallel samples) get distinct ids.
+          * `prompt_cache_key` (opt-in via `cache_key`) = the standard
+            OpenAI/vLLM prefix-cache hint. Requests that share a value are
+            hinting they share a common prompt prefix and can reuse a warm
+            prefix cache. Omitted when cache_key is None.
+
+        Kept separate on purpose: prompt_cache_key is meant to be SHARED across
+        distinct requests, so it must not double as the per-request idempotency id.
+        """
+        request_params.setdefault("extra_headers", {}).setdefault("X-Request-Id", str(uuid.uuid4()))
+        if cache_key is not None:
+            request_params["prompt_cache_key"] = cache_key
+
     @with_context_retry
     async def generate_async(
         self,
@@ -261,6 +367,7 @@ class BaseModel:
         include_response: bool = False,
         extra_body: dict = None,
         response_format=None,
+        cache_key: str | None = None,
     ) -> dict:
         if endpoint_type is None:
             # Infering completion type from prompt
@@ -289,9 +396,23 @@ class BaseModel:
             "response_format": response_format,
         }
 
-        # TODO: remove this after we no longer use gpt-oss or it's fixed in vllm
+        # Two separate retry budgets:
+        # - bad_request_count is for the gpt-oss "output messages"
+        #   bug; small, app-level. Kept as-is until we drop that
+        #   model (or vLLM fixes it upstream).
+        # - transient_count handles socket-level failures that the
+        #   raw HTTP path can hit under burst load (kernel SYN-drops
+        #   when the accept queue overflows, brief upstream
+        #   unavailability during worker turnover, etc). litellm's
+        #   own max_retries covers HTTP 429/5xx but NOT these
+        #   connection-class exceptions, so a single ramp-up burst
+        #   into the upstream could otherwise hard-fail individual
+        #   datapoints. Retries here turn those into invisible
+        #   ~50-200ms re-tries.
         max_retries = 2
         retry_count = 0
+        max_transient_retries = int(os.environ.get("NEMO_SKILLS_TRANSIENT_RETRIES", "3"))
+        transient_count = 0
 
         async with self.concurrent_semaphore:
             while retry_count <= max_retries:
@@ -299,7 +420,38 @@ class BaseModel:
                     if endpoint_type == EndpointType.chat:
                         assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
-                        response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
+                        # Fast path: native AsyncOpenAI + aiohttp transport,
+                        # set up in __init__ for OpenAI-compatible providers
+                        # (disable with NEMO_SKILLS_OPENAI_AIOHTTP=0). Skips
+                        # litellm's httpx-based dispatch which is the dominant
+                        # single-core CPU consumer at high concurrency. Both
+                        # streaming and non-streaming chat are routed here; the
+                        # responses API, text completions, and non-OpenAI
+                        # providers still fall through to litellm.
+                        use_native = self._async_openai_client is not None
+                        if use_native:
+                            native_params = {
+                                k: v
+                                for k, v in request_params.items()
+                                # litellm-only knobs we strip before
+                                # handing the body to AsyncOpenAI. The
+                                # SDK validates against the OpenAI
+                                # schema and rejects unknown top-level
+                                # fields.
+                                if k not in ("allowed_openai_params",)
+                            }
+                            # AsyncOpenAI needs `model` as a top-level
+                            # kwarg; litellm consumes it via
+                            # self.litellm_kwargs (with the `openai/`
+                            # provider prefix). Use the raw model name
+                            # here.
+                            native_params.setdefault("model", self.model_name_or_path)
+                            response = await self._async_openai_client.chat.completions.create(
+                                **native_params,
+                            )
+                        else:
+                            response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
                         if stream:
                             result = self._stream_chat_chunks_async(response)
                         else:
@@ -309,6 +461,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.text:
                         assert isinstance(prompt, str), "Text completion requests must be a string."
                         request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
                         if stream:
                             result = self._stream_completion_chunks_async(response)
@@ -319,6 +472,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.responses:
                         assert isinstance(prompt, list), "Responses completion requests must be a list."
                         request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
                         if stream:
                             raise NotImplementedError("Streaming responses is not supported yet.")
@@ -348,6 +502,41 @@ class BaseModel:
                         }
                     else:
                         raise e
+                except (
+                    httpx.ConnectError,
+                    httpx.ReadError,
+                    httpx.RemoteProtocolError,
+                    httpx.PoolTimeout,
+                    httpx.NetworkError,
+                    openai.APIConnectionError,
+                    ConnectionError,
+                    ConnectionResetError,
+                ) as e:
+                    # Transient socket-level failure. Common cause at
+                    # high concurrency: kernel SYN-drop during ramp-up
+                    # when the upstream accept queue briefly overflows.
+                    # Backoff doubles each retry (50ms, 100ms, 200ms)
+                    # to let the accept queue drain.
+                    if transient_count < max_transient_retries:
+                        transient_count += 1
+                        backoff = 0.05 * (2 ** (transient_count - 1))
+                        LOG.warning(
+                            "transient connect error, retry %d/%d after %.0fms: %s: %s",
+                            transient_count,
+                            max_transient_retries,
+                            backoff * 1000,
+                            type(e).__name__,
+                            e,
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
+                    LOG.error(
+                        "transient connect error after %d retries, propagating: %s: %s",
+                        max_transient_retries,
+                        type(e).__name__,
+                        e,
+                    )
+                    raise
 
         return result
 
@@ -384,6 +573,23 @@ class BaseModel:
 
         return result
 
+    @staticmethod
+    def _extract_reasoning(message_or_delta) -> str | None:
+        """Return reasoning text from an OpenAI chat message or streaming delta,
+        tolerating both field names.
+
+        vLLM historically exposed reasoning as `reasoning_content`; newer vLLM
+        versions expose it as `reasoning`. litellm normalizes these to
+        `reasoning_content` for us, but the native AsyncOpenAI fast-path sees
+        vLLM's raw field unchanged -- so we accept either here. Prefers
+        `reasoning_content` when both are present.
+        """
+        for attr in ("reasoning_content", "reasoning"):
+            value = getattr(message_or_delta, attr, None)
+            if value:
+                return value
+        return None
+
     def _parse_chat_completion_response(self, response, include_response: bool = False, **kwargs) -> dict:
         choice = response.choices[0]
         output = choice.message.content
@@ -395,9 +601,28 @@ class BaseModel:
         elif getattr(response.usage, "input_tokens", None) is not None:
             result["num_input_tokens"] = response.usage.input_tokens
 
-        # Add reasoning_content if available
-        if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
-            result["reasoning_content"] = choice.message.reasoning_content
+        # Add reasoning_content if available (accepts .reasoning or .reasoning_content)
+        reasoning = self._extract_reasoning(choice.message)
+        if reasoning:
+            result["reasoning_content"] = reasoning
+
+        # Dump the full usage object verbatim into the output. Keeping
+        # None-valued fields (rather than excluding them) preserves the
+        # distinction between "server explicitly sent null" and "field
+        # was absent" — both can be meaningful (e.g. some providers
+        # send prompt_tokens_details=null when there's no cache hit).
+        try:
+            result["usage"] = response.usage.model_dump()
+        except AttributeError:
+            # Older or non-pydantic usage objects: fall back to dict().
+            try:
+                result["usage"] = dict(response.usage)
+            except Exception:
+                result["usage"] = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", None),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", None),
+                    "total_tokens": getattr(response.usage, "total_tokens", None),
+                }
 
         # Extract detailed token breakdown for reasoning models if available
         if hasattr(response.usage, "completion_tokens_details") and response.usage.completion_tokens_details:
@@ -463,12 +688,8 @@ class BaseModel:
         """Process a single chat chunk and return data to yield."""
         if hasattr(chunk.choices[0], "delta"):
             cur_delta = chunk.choices[0].delta.content
-            # Check for reasoning_content in delta
-            reasoning_delta = (
-                getattr(chunk.choices[0].delta, "reasoning_content", None)
-                if hasattr(chunk.choices[0].delta, "reasoning_content")
-                else None
-            )
+            # Check for reasoning in delta (accepts .reasoning or .reasoning_content)
+            reasoning_delta = self._extract_reasoning(chunk.choices[0].delta)
             tool_calls_delta = getattr(chunk.choices[0].delta, "tool_calls", None)
         else:
             cur_delta = chunk.choices[0].text
@@ -561,6 +782,12 @@ class BaseModel:
 
     async def _stream_chat_chunks_async(self, response):
         async for chunk in response:
+            # Some servers emit chunks with no choices (e.g. a trailing
+            # usage-only chunk when stream_options.include_usage is set, or
+            # keepalive chunks). They carry no delta -- skip them so
+            # _process_chat_chunk's choices[0] access stays safe.
+            if not getattr(chunk, "choices", None):
+                continue
             results = self._process_chat_chunk(chunk)
             for result in results:
                 yield result
