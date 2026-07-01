@@ -91,6 +91,11 @@ def process_image_content(content: list | str | None, data_dir: str = "") -> lis
 
 
 class VLLMModel(BaseModel):
+    # vLLM (and sglang, which subclasses this) serve an OpenAI-compatible
+    # /v1/chat/completions API -- eligible for the native AsyncOpenAI +
+    # aiohttp fast-path (see BaseModel.__init__).
+    SUPPORTS_NATIVE_OPENAI = True
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 

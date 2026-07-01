@@ -74,6 +74,14 @@ class BaseModel:
     # Litellm provider name
     MODEL_PROVIDER = "openai"
 
+    # Whether this model may use the native AsyncOpenAI + aiohttp fast-path
+    # (see __init__). Only OpenAI-compatible endpoints that speak the plain
+    # /v1/chat/completions schema at self.base_url can opt in. Subclasses that
+    # talk to a non-OpenAI server (megatron), a differently-authed endpoint
+    # (azure), a non-OpenAI provider (gemini), or need litellm's request
+    # rewriting (multimodal audio) leave this False and stay on litellm.
+    SUPPORTS_NATIVE_OPENAI = False
+
     def __init__(
         self,
         model: str,
@@ -183,23 +191,26 @@ class BaseModel:
         # concurrent requests result into httpx hanging
         self.concurrent_semaphore = asyncio.Semaphore(concurrent_requests_limit)
 
-        # Optional aiohttp fast-path. The default litellm.acompletion
-        # path goes through httpx, which is a pure-Python HTTP
-        # implementation -- at 5k+ concurrent connections it becomes
-        # the GIL-bound bottleneck (~95% of single-core CPU in the
-        # async loop, per py-spy). The OpenAI SDK natively supports
-        # an aiohttp transport via DefaultAioHttpClient. aiohttp's
-        # request/response parsing is C-extension backed, so the
-        # same workload runs at <5% CPU on the same hardware.
+        # Native aiohttp fast-path (DEFAULT for OpenAI-compatible
+        # providers). The litellm.acompletion path goes through httpx,
+        # a pure-Python HTTP implementation -- at 5k+ concurrent
+        # connections it becomes the GIL-bound bottleneck (~95% of
+        # single-core CPU in the async loop, per py-spy). The OpenAI
+        # SDK natively supports an aiohttp transport via
+        # DefaultAioHttpClient. aiohttp's request/response parsing is
+        # C-extension backed, so the same workload runs at <5% CPU on
+        # the same hardware.
         #
-        # Set NEMO_SKILLS_OPENAI_AIOHTTP=1 to enable. Only the
-        # non-streaming chat endpoint goes through this path; text
-        # completions, streaming, the responses API, and
-        # non-OpenAI-shaped providers (gemini, azure, etc.) still
-        # use litellm -- since this transport assumes an
-        # OpenAI-compatible HTTP API at self.base_url.
+        # Enabled by default for providers with SUPPORTS_NATIVE_OPENAI
+        # (openai, vllm, sglang). Both the non-streaming and streaming
+        # chat endpoints go through this path; text completions, the
+        # responses API, and non-OpenAI-shaped providers (gemini,
+        # azure, megatron, multimodal) still use litellm. Set
+        # NEMO_SKILLS_OPENAI_AIOHTTP=0 to force everything back onto
+        # litellm/httpx.
         self._async_openai_client = None
-        if os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP") == "1":
+        native_enabled = os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP", "1") != "0"
+        if native_enabled and self.SUPPORTS_NATIVE_OPENAI:
             try:
                 from openai import AsyncOpenAI, DefaultAioHttpClient
 
@@ -229,10 +240,18 @@ class BaseModel:
                     # rebuild the request and double-count
                     # concurrent_semaphore holds.
                 )
-            except ImportError:
+            except Exception as e:
+                # ImportError if openai[aiohttp] isn't installed, but the
+                # DefaultAioHttpClient constructor can also raise other errors
+                # when the aiohttp extra is only partially present. Degrade to
+                # litellm/httpx rather than failing model construction.
                 LOG.warning(
-                    "NEMO_SKILLS_OPENAI_AIOHTTP=1 but openai[aiohttp] is not installed; falling back to litellm/httpx."
+                    "Native AsyncOpenAI aiohttp fast-path unavailable (%s: %s); "
+                    "falling back to litellm/httpx. Install openai[aiohttp] to enable it.",
+                    type(e).__name__,
+                    e,
                 )
+                self._async_openai_client = None
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         if api_key:  # explicit cmd argument always takes precedence
@@ -248,8 +267,11 @@ class BaseModel:
         return api_key
 
     def __del__(self):
-        if self._tunnel:
-            self._tunnel.stop()
+        # getattr guard: __del__ can fire on an instance whose __init__ raised
+        # (or never ran), before _tunnel was set.
+        tunnel = getattr(self, "_tunnel", None)
+        if tunnel:
+            tunnel.stop()
 
     def _maybe_apply_stop_phrase_removal(
         self, result: dict, remove_stop_phrases: bool, stop_phrases: list[str] | None
@@ -404,15 +426,14 @@ class BaseModel:
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
                         self._apply_routing_keys(request_params, cache_key)
                         # Fast path: native AsyncOpenAI + aiohttp transport,
-                        # set up in __init__ when NEMO_SKILLS_OPENAI_AIOHTTP=1.
-                        # Skips litellm's httpx-based dispatch which is the
-                        # dominant single-core CPU consumer at high
-                        # concurrency. Only the non-streaming chat endpoint
-                        # is routed here; everything else falls through to
-                        # litellm so we don't have to reimplement the full
-                        # transport surface for streaming, responses API,
-                        # text completions, or non-OpenAI providers.
-                        use_native = self._async_openai_client is not None and not stream
+                        # set up in __init__ for OpenAI-compatible providers
+                        # (disable with NEMO_SKILLS_OPENAI_AIOHTTP=0). Skips
+                        # litellm's httpx-based dispatch which is the dominant
+                        # single-core CPU consumer at high concurrency. Both
+                        # streaming and non-streaming chat are routed here; the
+                        # responses API, text completions, and non-OpenAI
+                        # providers still fall through to litellm.
+                        use_native = self._async_openai_client is not None
                         if use_native:
                             native_params = {
                                 k: v
@@ -556,6 +577,23 @@ class BaseModel:
 
         return result
 
+    @staticmethod
+    def _extract_reasoning(message_or_delta) -> str | None:
+        """Return reasoning text from an OpenAI chat message or streaming delta,
+        tolerating both field names.
+
+        vLLM historically exposed reasoning as `reasoning_content`; newer vLLM
+        versions expose it as `reasoning`. litellm normalizes these to
+        `reasoning_content` for us, but the native AsyncOpenAI fast-path sees
+        vLLM's raw field unchanged -- so we accept either here. Prefers
+        `reasoning_content` when both are present.
+        """
+        for attr in ("reasoning_content", "reasoning"):
+            value = getattr(message_or_delta, attr, None)
+            if value:
+                return value
+        return None
+
     def _parse_chat_completion_response(self, response, include_response: bool = False, **kwargs) -> dict:
         choice = response.choices[0]
         output = choice.message.content
@@ -567,9 +605,10 @@ class BaseModel:
         elif getattr(response.usage, "input_tokens", None) is not None:
             result["num_input_tokens"] = response.usage.input_tokens
 
-        # Add reasoning_content if available
-        if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
-            result["reasoning_content"] = choice.message.reasoning_content
+        # Add reasoning_content if available (accepts .reasoning or .reasoning_content)
+        reasoning = self._extract_reasoning(choice.message)
+        if reasoning:
+            result["reasoning_content"] = reasoning
 
         # Dump the full usage object verbatim into the output. Keeping
         # None-valued fields (rather than excluding them) preserves the
@@ -653,12 +692,8 @@ class BaseModel:
         """Process a single chat chunk and return data to yield."""
         if hasattr(chunk.choices[0], "delta"):
             cur_delta = chunk.choices[0].delta.content
-            # Check for reasoning_content in delta
-            reasoning_delta = (
-                getattr(chunk.choices[0].delta, "reasoning_content", None)
-                if hasattr(chunk.choices[0].delta, "reasoning_content")
-                else None
-            )
+            # Check for reasoning in delta (accepts .reasoning or .reasoning_content)
+            reasoning_delta = self._extract_reasoning(chunk.choices[0].delta)
             tool_calls_delta = getattr(chunk.choices[0].delta, "tool_calls", None)
         else:
             cur_delta = chunk.choices[0].text
@@ -751,6 +786,12 @@ class BaseModel:
 
     async def _stream_chat_chunks_async(self, response):
         async for chunk in response:
+            # Some servers emit chunks with no choices (e.g. a trailing
+            # usage-only chunk when stream_options.include_usage is set, or
+            # keepalive chunks). They carry no delta -- skip them so
+            # _process_chat_chunk's choices[0] access stays safe.
+            if not getattr(chunk, "choices", None):
+                continue
             results = self._process_chat_chunk(chunk)
             for result in results:
                 yield result

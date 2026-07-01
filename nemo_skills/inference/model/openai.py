@@ -20,6 +20,10 @@ from .base import BaseModel
 
 
 class OpenAIModel(BaseModel):
+    # OpenAI-compatible /v1/chat/completions endpoint -- eligible for the
+    # native AsyncOpenAI + aiohttp fast-path (see BaseModel.__init__).
+    SUPPORTS_NATIVE_OPENAI = True
+
     def __init__(
         self,
         host: str = "127.0.0.1",

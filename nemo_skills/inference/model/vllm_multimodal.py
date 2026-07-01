@@ -69,6 +69,11 @@ class VLLMMultimodalModel(VLLMModel):
         )
     """
 
+    # Audio/VLM request rewriting and response post-processing go through
+    # litellm; keep this off the native fast-path until it's verified for
+    # multimodal payloads. Overrides VLLMModel's True.
+    SUPPORTS_NATIVE_OPENAI = False
+
     def __init__(
         self,
         model: str | None = None,
