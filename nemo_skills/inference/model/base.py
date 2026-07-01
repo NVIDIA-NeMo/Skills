@@ -350,9 +350,6 @@ class BaseModel:
             OpenAI/vLLM prefix-cache hint. Requests that share a value are
             hinting they share a common prompt prefix and can reuse a warm
             prefix cache. Omitted when cache_key is None.
-
-        Kept separate on purpose: prompt_cache_key is meant to be SHARED across
-        distinct requests, so it must not double as the per-request idempotency id.
         """
         request_params.setdefault("extra_headers", {}).setdefault("X-Request-Id", str(uuid.uuid4()))
         if cache_key is not None:
@@ -594,11 +591,12 @@ class BaseModel:
         """Return reasoning text from an OpenAI chat message or streaming delta,
         tolerating both field names.
 
-        vLLM historically exposed reasoning as `reasoning_content`; newer vLLM
-        versions expose it as `reasoning`. litellm normalizes these to
-        `reasoning_content` for us, but the native AsyncOpenAI fast-path sees
-        vLLM's raw field unchanged -- so we accept either here. Prefers
-        `reasoning_content` when both are present.
+        We normalize the field name here manually because litellm typically
+        takes care of it for us (it maps vLLM's field to `reasoning_content`),
+        but the native AsyncOpenAI fast-path bypasses litellm and sees vLLM's
+        raw field. vLLM historically exposed it as `reasoning_content`; newer
+        versions use `reasoning`. We accept either, preferring `reasoning_content`
+        when both are present.
         """
         for attr in ("reasoning_content", "reasoning"):
             value = getattr(message_or_delta, attr, None)
