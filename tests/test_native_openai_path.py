@@ -181,3 +181,55 @@ def test_native_client_off_for_ineligible_provider(monkeypatch, _mock_openai_cli
 
     model = _NoNative(model="test-model", base_url="http://localhost:9999/v1")
     assert model._async_openai_client is None
+
+
+class _CapturingAsyncOpenAI:
+    """Captures the kwargs passed to chat.completions.create."""
+
+    def __init__(self, *args, **kwargs):
+        self.captured_kwargs = None
+        outer = self
+
+        class _Completions:
+            async def create(self, **kw):
+                outer.captured_kwargs = kw
+                return _FakeResponse(types.SimpleNamespace(content="ok"))
+
+        class _Chat:
+            completions = _Completions()
+
+        self.chat = _Chat()
+
+
+def test_native_params_drop_none_and_litellm_only(monkeypatch):
+    # The native path must not forward litellm-only keys (allowed_openai_params)
+    # nor explicit None values (which the SDK would serialize as JSON null,
+    # unlike litellm which omits them).
+    monkeypatch.delenv("NEMO_SKILLS_OPENAI_AIOHTTP", raising=False)
+    monkeypatch.setattr(openai, "AsyncOpenAI", _CapturingAsyncOpenAI, raising=False)
+    monkeypatch.setattr(openai, "DefaultAioHttpClient", _DummyAioHttpClient, raising=False)
+
+    model = VLLMModel(model="test-model", base_url="http://localhost:9999/v1")
+    assert isinstance(model._async_openai_client, _CapturingAsyncOpenAI)
+
+    asyncio.run(
+        model.generate_async(
+            prompt=[{"role": "user", "content": "hi"}],
+            tokens_to_generate=8,
+            temperature=0.0,
+            top_p=0.95,
+            random_seed=None,  # -> seed=None in the builder, must be dropped
+            stop_phrases=None,  # -> stop=None, must be dropped
+            tools=None,  # -> tools=None, must be dropped
+            response_format=None,  # -> response_format=None, must be dropped
+        )
+    )
+
+    captured = model._async_openai_client.captured_kwargs
+    assert captured is not None
+    assert "allowed_openai_params" not in captured
+    assert all(v is not None for v in captured.values()), f"None leaked: {captured}"
+    # explicit-None builder fields were dropped, not sent as null
+    for dropped in ("seed", "stop", "tools", "response_format", "top_logprobs"):
+        assert dropped not in captured
+    assert captured["model"] == "test-model"

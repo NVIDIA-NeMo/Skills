@@ -160,6 +160,20 @@ def parse_kwargs(kwargs: str | dict | None, **extra_kwargs) -> dict | None:
     return full_kwargs
 
 
+# NEMO_SKILLS_* vars that must NOT be auto-forwarded from the launcher shell
+# into the job/container. Scoped tightly to the SSH-tunnel controls: when BOTH
+# are set, model/base.py opens an SSH tunnel at init -- so forwarding a laptop's
+# tunnel config into a cluster job (where the client and inference server are
+# co-located and the host key path doesn't exist) makes model init fail or
+# mis-route. Everything else with the NEMO_SKILLS_ prefix -- runtime knobs,
+# model/base-url selection, sandbox settings, host paths, and future knobs -- is
+# forwarded automatically (worst case a stale value is redundant, not fatal).
+_NON_FORWARDED_ENV_VARS = {
+    "NEMO_SKILLS_SSH_SERVER",
+    "NEMO_SKILLS_SSH_KEY_PATH",
+}
+
+
 def get_env_variables(cluster_config):
     """
     Will get the environment variables from the cluster config and the user environment.
@@ -215,15 +229,18 @@ def get_env_variables(cluster_config):
         "HF_TOKEN",
         "NGC_API_KEY",
     }
-    # Auto-passthrough for NEMO_SKILLS_* runtime tuning vars set in
-    # the user's shell. Without this, opt-in env knobs like
-    # NEMO_SKILLS_OPENAI_AIOHTTP, NEMO_SKILLS_DISABLE_UVLOOP, and
-    # NEMO_SKILLS_TRANSIENT_RETRIES are stripped when the launcher
-    # spawns the inner python -- they only live in the wrapper
-    # shell. Scoping by prefix keeps the surface tight (no risk of
-    # accidentally exporting unrelated user env).
+    # Auto-passthrough for NEMO_SKILLS_* runtime knobs set in the user's shell.
+    # Without this, opt-in env knobs (e.g. NEMO_SKILLS_OPENAI_AIOHTTP,
+    # NEMO_SKILLS_DISABLE_UVLOOP) are stripped when the launcher spawns the inner
+    # python -- they only live in the wrapper shell. Forward the whole prefix so
+    # future knobs work without maintaining a list, except the SSH-tunnel vars in
+    # _NON_FORWARDED_ENV_VARS (see there).
     for name in os.environ:
-        if name.startswith("NEMO_SKILLS_") and name not in optional_env_vars_to_add:
+        if (
+            name.startswith("NEMO_SKILLS_")
+            and name not in _NON_FORWARDED_ENV_VARS
+            and name not in optional_env_vars_to_add
+        ):
             optional_env_vars_to_add.add(name)
     default_factories = {
         "HF_TOKEN": lambda: str(token) if (token := get_token()) else "",

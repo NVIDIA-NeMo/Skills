@@ -1014,10 +1014,27 @@ class GenerationTask:
                         await self.postprocess_single_output(output, data_point)
                         if self.should_run_evaluation and self.evaluator:
                             output = await self.evaluate_single_datapoint({**data_point, **output})
-                    except Exception:
+                    except Exception as e:
                         pos = data_point.get(self.cfg.async_position_key, "?")
                         LOG.exception("postprocess/evaluate failed for async_pos=%s", pos)
+                        # postprocess_single_output merges data_point (which carries
+                        # async_position_key) into output only partway through, so a
+                        # failure before that merge would write a record with no
+                        # position key -- and restore_async_order would then KeyError
+                        # on the whole file. Stamp the position and an error marker so
+                        # the record is still placeable and the failure is visible.
+                        if self.cfg.async_position_key in data_point:
+                            output[self.cfg.async_position_key] = data_point[self.cfg.async_position_key]
+                        output.setdefault("postprocess_error", repr(e))
                     await self._output_queue.put((output, data_point))
+
+            def _flush_batch(batch):
+                # Route through self.dump_outputs (the overridable hook the
+                # prefilled path also uses) rather than an inline json.dumps, so
+                # a subclass customizing serialization applies to async records too.
+                self.dump_outputs([o for o, _dp in batch], [dp for _o, dp in batch], fout)
+                pbar.update(len(batch))
+                fout.flush()
 
             async def _writer():
                 # Drain in batches: pull one item (blocking), then
@@ -1030,20 +1047,17 @@ class GenerationTask:
                     if item is None:
                         return
                     batch = [item]
+                    stop = False
                     # Drain anything that's already enqueued.
                     while not self._output_queue.empty():
                         nxt = self._output_queue.get_nowait()
                         if nxt is None:
-                            for o, _dp in batch:
-                                fout.write(json.dumps(o) + "\n")
-                            pbar.update(len(batch))
-                            fout.flush()
-                            return
+                            stop = True
+                            break
                         batch.append(nxt)
-                    for o, _dp in batch:
-                        fout.write(json.dumps(o) + "\n")
-                    pbar.update(len(batch))
-                    fout.flush()
+                    _flush_batch(batch)
+                    if stop:
+                        return
 
             processor_tasks = [asyncio.create_task(_processor()) for _ in range(num_processors)]
             writer_task = asyncio.create_task(_writer())
@@ -1072,9 +1086,17 @@ class GenerationTask:
             async def _safe_one(dp):
                 try:
                     await self._generate_and_save_datapoint(dp, data, fout, pbar)
-                except Exception:
+                except Exception as e:
                     pos = dp.get(self.cfg.async_position_key, "?")
                     LOG.exception("datapoint async_pos=%s crashed", pos)
+                    # Emit a placeholder so this datapoint's position still
+                    # produces exactly one output line. Without it,
+                    # restore_async_order sees a hole and either IndexErrors (a
+                    # non-last position missing) or silently drops/misaligns rows.
+                    # Routed through raw_queue so postprocess stamps the position
+                    # and merges the original fields, same as a normal record.
+                    if self._raw_queue is not None:
+                        await self._raw_queue.put(({"generation": "", "generation_error": repr(e)}, dp))
 
             data_iter = iter(remaining_data_points)
             in_flight: set = set()
@@ -1145,13 +1167,26 @@ class GenerationTask:
         with open(self.cfg.output_file + "-async", "rt", encoding="utf-8") as fin:
             generations = [json.loads(line) for line in fin]
 
-        ordered_generations = [None] * len(generations)
+        # Size by the max position, not the line count: those differ if any
+        # record was dropped, and indexing a count-sized list by original
+        # position would then IndexError. pop(default) + skip means a
+        # missing/position-less record can never crash finalization. The
+        # pipeline emits a placeholder per datapoint so holes should not occur;
+        # this is a safety net.
+        key = self.cfg.async_position_key
+        positions = [gen[key] for gen in generations if key in gen]
+        ordered_generations = [None] * ((max(positions) + 1) if positions else 0)
         for gen_dict in generations:
-            async_pos = gen_dict.pop(self.cfg.async_position_key)
+            async_pos = gen_dict.pop(key, None)
+            if async_pos is None:
+                LOG.warning("async record missing %s, dropping from reorder", key)
+                continue
             ordered_generations[async_pos] = gen_dict
 
         with open(self.cfg.output_file, "wt", encoding="utf-8") as fout:
             for gen_dict in ordered_generations:
+                if gen_dict is None:
+                    continue
                 fout.write(json.dumps(gen_dict) + "\n")
 
         Path(self.cfg.output_file + "-async").unlink()

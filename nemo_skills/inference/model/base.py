@@ -82,6 +82,12 @@ class BaseModel:
     # rewriting (multimodal audio) leave this False and stay on litellm.
     SUPPORTS_NATIVE_OPENAI = False
 
+    # Keys that litellm understands but AsyncOpenAI's strict schema rejects as
+    # unknown top-level fields; stripped before handing the body to the native
+    # client. Keep this in sync with any litellm-only knob a _build_chat_request_params
+    # implementation may emit.
+    _LITELLM_ONLY_CHAT_PARAMS = frozenset({"allowed_openai_params"})
+
     def __init__(
         self,
         model: str,
@@ -236,9 +242,16 @@ class BaseModel:
                             max_keepalive_connections=aiohttp_limit,
                         ),
                     ),
-                    max_retries=0,  # we own retries; SDK's retry would
-                    # rebuild the request and double-count
-                    # concurrent_semaphore holds.
+                    # Mirror the litellm path's retry budget (self.litellm_kwargs
+                    # also passes max_retries). The SDK's own retry loop honors
+                    # Retry-After / backoff for HTTP 429 and 5xx -- error classes
+                    # that our app-level transient-retry except clause does NOT
+                    # catch (it only handles connection-class errors). Leaving this
+                    # at 0 silently dropped 429/5xx under load on the native path,
+                    # which is the DEFAULT for openai/vllm/sglang. SDK retries run
+                    # inside our concurrent_semaphore hold, so one logical request
+                    # still counts as one in-flight slot.
+                    max_retries=max_retries,
                 )
             except Exception as e:
                 # ImportError if openai[aiohttp] isn't installed, but the
@@ -431,15 +444,18 @@ class BaseModel:
                         # providers still fall through to litellm.
                         use_native = self._async_openai_client is not None
                         if use_native:
+                            # Strip (a) litellm-only knobs the strict SDK rejects
+                            # and (b) None-valued params. litellm OMITS None-valued
+                            # fields from the wire body, but AsyncOpenAI serializes
+                            # an explicit None as JSON `null` -- e.g. the vllm builder
+                            # emits response_format/tools/stop/seed=None, and some
+                            # OpenAI-compatible servers reject `"response_format": null`.
+                            # Dropping None here keeps the native body byte-compatible
+                            # with what the litellm path sent.
                             native_params = {
                                 k: v
                                 for k, v in request_params.items()
-                                # litellm-only knobs we strip before
-                                # handing the body to AsyncOpenAI. The
-                                # SDK validates against the OpenAI
-                                # schema and rejects unknown top-level
-                                # fields.
-                                if k not in ("allowed_openai_params",)
+                                if k not in self._LITELLM_ONLY_CHAT_PARAMS and v is not None
                             }
                             # AsyncOpenAI needs `model` as a top-level
                             # kwarg; litellm consumes it via
