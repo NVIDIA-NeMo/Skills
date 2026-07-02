@@ -11,19 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Unit tests for the native AsyncOpenAI + aiohttp fast-path in BaseModel.
-
-Covers the three feature-completion items:
-  1. Native path is the DEFAULT for OpenAI-compatible providers and can be
-     disabled with NEMO_SKILLS_OPENAI_AIOHTTP=0; non-OpenAI providers never
-     use it.
-  2. Reasoning content is read from BOTH `.reasoning` and `.reasoning_content`
-     (litellm normalizes this for us; the native path sees vLLM's raw field).
-  3. Streaming is routed through the native path and tolerates chunks with no
-     choices.
-
-These are pure unit tests -- no server or network access.
-"""
+"""Unit tests for BaseModel's native AsyncOpenAI aiohttp path."""
 
 import asyncio
 import types
@@ -42,7 +30,7 @@ from nemo_skills.inference.model.vllm_multimodal import VLLMMultimodalModel
 
 
 # ---------------------------------------------------------------------------
-# Item 2: reasoning extraction accepts both field names
+# Reasoning extraction
 # ---------------------------------------------------------------------------
 def test_extract_reasoning_from_reasoning_content():
     obj = types.SimpleNamespace(reasoning_content="thinking")
@@ -50,7 +38,6 @@ def test_extract_reasoning_from_reasoning_content():
 
 
 def test_extract_reasoning_from_reasoning():
-    # New vLLM field name; only `.reasoning` present.
     obj = types.SimpleNamespace(reasoning="thinking")
     assert BaseModel._extract_reasoning(obj) == "thinking"
 
@@ -89,8 +76,7 @@ class _FakeResponse:
 
 
 def test_parse_chat_completion_reads_reasoning_field():
-    # A response carrying ONLY `.reasoning` (as newer vLLM emits over the raw
-    # OpenAI schema) must still populate reasoning_content in the result.
+    # The `.reasoning` field is supported when `.reasoning_content` is absent.
     inst = BaseModel.__new__(BaseModel)
     message = types.SimpleNamespace(content="the answer", reasoning="the thinking")
     result = inst._parse_chat_completion_response(_FakeResponse(message))
@@ -100,7 +86,7 @@ def test_parse_chat_completion_reads_reasoning_field():
 
 
 # ---------------------------------------------------------------------------
-# Item 3: streaming chunk parsing (reasoning + empty-choices guard)
+# Streaming chunk parsing
 # ---------------------------------------------------------------------------
 def test_process_chat_chunk_reads_reasoning_field():
     inst = BaseModel.__new__(BaseModel)
@@ -129,7 +115,7 @@ def test_stream_skips_empty_choices_chunk():
 
 
 # ---------------------------------------------------------------------------
-# Item 1: which providers are eligible for the native fast-path
+# Native-client eligibility
 # ---------------------------------------------------------------------------
 def test_native_eligibility_by_provider():
     assert BaseModel.SUPPORTS_NATIVE_OPENAI is False
@@ -202,9 +188,7 @@ class _CapturingAsyncOpenAI:
 
 
 def test_native_params_drop_none_and_litellm_only(monkeypatch):
-    # The native path must not forward litellm-only keys (allowed_openai_params)
-    # nor explicit None values (which the SDK would serialize as JSON null,
-    # unlike litellm which omits them).
+    # The native client receives only supported parameters with concrete values.
     monkeypatch.delenv("NEMO_SKILLS_OPENAI_AIOHTTP", raising=False)
     monkeypatch.setattr(openai, "AsyncOpenAI", _CapturingAsyncOpenAI, raising=False)
     monkeypatch.setattr(openai, "DefaultAioHttpClient", _DummyAioHttpClient, raising=False)
@@ -229,16 +213,15 @@ def test_native_params_drop_none_and_litellm_only(monkeypatch):
     assert captured is not None
     assert "allowed_openai_params" not in captured
     assert all(v is not None for v in captured.values()), f"None leaked: {captured}"
-    # explicit-None builder fields were dropped, not sent as null
+    # Builder fields with None values are omitted.
     for dropped in ("seed", "stop", "tools", "response_format", "top_logprobs"):
         assert dropped not in captured
     assert captured["model"] == "test-model"
 
 
 def test_pydantic_response_format_falls_back_to_litellm(monkeypatch):
-    # A pydantic BaseModel response_format (structured output) must NOT go through
-    # the native client -- chat.completions.create() rejects a BaseModel class
-    # ("must use .parse() instead"). litellm accepts it, so we fall back.
+    # Pydantic response formats require LiteLLM because the native completion
+    # method does not accept model classes.
     import litellm
     from pydantic import BaseModel
 
@@ -258,7 +241,7 @@ def test_pydantic_response_format_falls_back_to_litellm(monkeypatch):
         answer: str
 
     model = VLLMModel(model="test-model", base_url="http://localhost:9999/v1")
-    assert isinstance(model._async_openai_client, _CapturingAsyncOpenAI)  # native is available...
+    assert isinstance(model._async_openai_client, _CapturingAsyncOpenAI)
 
     asyncio.run(
         model.generate_async(
@@ -270,6 +253,5 @@ def test_pydantic_response_format_falls_back_to_litellm(monkeypatch):
         )
     )
 
-    # ...but it was NOT used for the structured-output request; litellm handled it.
     assert model._async_openai_client.captured_kwargs is None
     assert litellm_called["hit"] is True

@@ -11,18 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Unit tests for the request-routing keys attached by BaseModel.
-
-Idempotency (X-Request-Id) and prefix-cache affinity (prompt_cache_key) are
-DECOUPLED: X-Request-Id is per-request (unique per call, safe for retries),
-prompt_cache_key is opt-in and SHARED across requests with a common prefix.
-"""
+"""Tests for BaseModel request IDs and optional prompt-cache affinity keys."""
 
 from nemo_skills.inference.model.base import BaseModel
 
 
 def test_idempotency_header_always_set_affinity_opt_in():
-    # No cache_key → X-Request-Id present (idempotency), prompt_cache_key OMITTED.
+    # Request IDs do not depend on cache affinity.
     params = {}
     BaseModel._apply_routing_keys(params, None)
     assert "prompt_cache_key" not in params
@@ -38,8 +33,7 @@ def test_cache_key_sets_prompt_cache_key():
 
 
 def test_shared_affinity_distinct_request_ids():
-    # The branching/multi-sample invariant: same cache_key (shared prefix), but
-    # each call gets a DISTINCT X-Request-Id (unique per request).
+    # Requests may share cache affinity without sharing request IDs.
     p1, p2 = {}, {}
     BaseModel._apply_routing_keys(p1, "conv-1")
     BaseModel._apply_routing_keys(p2, "conv-1")
@@ -48,8 +42,7 @@ def test_shared_affinity_distinct_request_ids():
 
 
 def test_preserves_existing_headers_and_does_not_override_request_id():
-    # setdefault semantics: a caller-set X-Request-Id (e.g. for app-level retry
-    # idempotency) and other headers survive.
+    # Existing request and custom headers are preserved.
     params = {"extra_headers": {"X-Custom": "v", "X-Request-Id": "preset"}}
     BaseModel._apply_routing_keys(params, None)
     assert params["extra_headers"]["X-Custom"] == "v"

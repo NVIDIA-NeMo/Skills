@@ -11,13 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""restore_async_order must tolerate a dropped datapoint position.
-
-The async loop is fault-tolerant (a failed datapoint is logged and skipped, and
-a placeholder is emitted), so restore_async_order can encounter an -async file
-whose positions are non-contiguous. It must not IndexError (which would destroy
-the whole run's output at the final reorder step) nor mis-align rows.
-"""
+"""Tests for restoring ordered output from partial async result files."""
 
 import json
 from types import SimpleNamespace
@@ -43,8 +37,7 @@ def _run_restore(tmp_path, records):
 
 
 def test_restore_async_order_tolerates_missing_middle_position(tmp_path):
-    # positions 0 and 2 present, 1 dropped. Old code did [None]*len(lines)=2
-    # and indexed at 2 -> IndexError. Must not crash; must keep order.
+    # Position 1 is absent; the remaining records retain their relative order.
     rows, out = _run_restore(
         tmp_path,
         [
@@ -69,7 +62,7 @@ def test_restore_async_order_complete_is_ordered(tmp_path):
 
 
 def test_restore_async_order_skips_positionless_record(tmp_path):
-    # A record with no position key must be skipped (logged), not KeyError.
+    # Positionless records are ignored.
     rows, _ = _run_restore(
         tmp_path,
         [

@@ -133,12 +133,6 @@ class OpenAIModel(BaseModel):
             "stream": stream,
             "tools": tools,
             "response_format": response_format,
-            # NOTE: idempotency (X-Request-Id) and prefix-cache affinity
-            # (prompt_cache_key, opt-in via generate_async(cache_key=...)) are
-            # attached centrally in BaseModel._apply_routing_keys. We deliberately
-            # do NOT set a per-request-UUID prompt_cache_key here: that would give
-            # every request a unique affinity key and defeat cross-request prefix
-            # caching.
         }
 
         if self._is_reasoning_model(self.model):

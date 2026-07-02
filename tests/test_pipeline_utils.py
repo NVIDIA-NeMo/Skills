@@ -460,21 +460,17 @@ def test_add_task_sandbox_mounts_override_keep_mounts_true(mock_port, mock_get_e
 
 
 def test_get_env_variables_forwards_prefix_except_ssh(monkeypatch):
-    """NEMO_SKILLS_* passthrough forwards the whole prefix (so future knobs work
-    without a maintained list), except the SSH-tunnel vars -- forwarding a
-    laptop's tunnel config into a co-located cluster job would break model init.
-    """
+    """NEMO_SKILLS_* values are forwarded except launcher-local SSH settings."""
     from nemo_skills.pipeline.utils.cluster import get_env_variables
 
-    # Forwarded: runtime knobs, model/base-url selection, sandbox, host paths,
-    # and future knobs (worst case a stale value is redundant, not fatal).
+    # Representative runtime settings, including an unknown future setting.
     monkeypatch.setenv("NEMO_SKILLS_OPENAI_AIOHTTP", "1")
     monkeypatch.setenv("NEMO_SKILLS_DISABLE_UVLOOP", "1")
     monkeypatch.setenv("NEMO_SKILLS_OPENAI_BASE_URL", "http://model:8000/v1")
     monkeypatch.setenv("NEMO_SKILLS_SANDBOX_HOST", "sandbox")
     monkeypatch.setenv("NEMO_SKILLS_CONFIG_DIR", "/home/user/cluster_configs")
     monkeypatch.setenv("NEMO_SKILLS_SOME_FUTURE_KNOB", "x")
-    # Not forwarded: SSH-tunnel controls.
+    # SSH tunnel settings remain launcher-local.
     monkeypatch.setenv("NEMO_SKILLS_SSH_SERVER", "login-node")
     monkeypatch.setenv("NEMO_SKILLS_SSH_KEY_PATH", "/home/user/.ssh/id_rsa")
 
