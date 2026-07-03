@@ -301,6 +301,9 @@ class ToolCallingWrapper:
             result_steps["num_tool_calls"] = sum(result_steps["num_tool_calls"])
             result_steps["conversation"] = conversation
             result_steps["tools"] = tools  # Schema sent to model (with overrides applied)
+            tool_metrics = await self.tool_manager.get_request_metrics(request_id)
+            if tool_metrics:
+                result_steps["tool_metrics"] = tool_metrics
 
             return result_steps
         finally:
@@ -437,6 +440,9 @@ class ToolCallingWrapper:
             }
             if all_reasoning:
                 final_result["reasoning_content"] = "".join(all_reasoning)
+            tool_metrics = await self.tool_manager.get_request_metrics(request_id)
+            if tool_metrics:
+                final_result["tool_metrics"] = tool_metrics
             yield final_result
         finally:
             await self.tool_manager.cleanup_request(request_id)

@@ -46,22 +46,37 @@ sft_nemo_rl(
     ctx=wrap_arguments(
         '++sft.max_num_epochs=2000 '
         f'++sft.max_num_steps={max_steps} '
-        '++data.force_reprocess=false '
+        '++sft.val_period=0 '
+        '++sft.val_at_start=false '
+        '++sft.val_batches=1 '
+        '++policy.tokenizer.chat_template=null '
+        '++policy.sequence_packing.enabled=True '
+        '++policy.sequence_packing.sequence_length_round=64 '
+        '++policy.make_sequence_length_divisible_by=128 '
         '++data.num_workers=10 '
+        '++data.add_bos=false '
+        '++data.add_eos=false '
+        '++data.add_generation_prompt=false '
         f'++policy.megatron_cfg.tensor_model_parallel_size={tp} '
         f'++policy.megatron_cfg.context_parallel_size={cp} '
         f'++policy.megatron_cfg.expert_model_parallel_size={emp} '
         f'++policy.megatron_cfg.expert_tensor_parallel_size={etp} '
         f'++policy.megatron_cfg.pipeline_model_parallel_size={pp} '
-        f'++policy.sequence_parallel=True '
+        f'++policy.megatron_cfg.sequence_parallel=True '
         f'++policy.megatron_cfg.bias_activation_fusion=True '
         f'++policy.megatron_cfg.apply_rope_fusion=True '
+        '++policy.megatron_cfg.layernorm_epsilon=1e-6 '
+        '++policy.megatron_cfg.moe_permute_fusion=false '
         f'++checkpointing.save_period={save_period} '
+        '++checkpointing.keep_top_k=50 '
         f'++policy.train_global_batch_size={batch_size} '
         f'++policy.max_total_sequence_length=131072 '
+        '++policy.max_grad_norm=0.0 '
         f'++policy.megatron_cfg.optimizer.lr={lr} '
         '++policy.megatron_cfg.optimizer.bf16=True '
         f'++policy.megatron_cfg.optimizer.min_lr={min_lr} '
+        '++policy.megatron_cfg.optimizer.weight_decay=0.01 '
+        '++policy.megatron_cfg.optimizer.adam_eps=1e-8 '
         f'++policy.megatron_cfg.scheduler.lr_warmup_iters={warmup} '
         f'++policy.megatron_cfg.scheduler.lr_decay_iters={max_steps} '
         '++policy.megatron_cfg.scheduler.lr_warmup_init=1e-7 '
@@ -96,6 +111,3 @@ sft_nemo_rl(
 | Qwen3-8B      | 32k            | 2  | 4  | 1  | -   | -   |
 | Qwen3-8B      | 64k            | 4  | 4  | 1  | -   | -   |
 | Qwen3-8B      | 128k           | 8  | 8  | 1  | -   | -   |
-
-
-

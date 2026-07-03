@@ -33,3 +33,9 @@ We directly use official `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8` image.
 ## Building sglang image
 
 We directly use official `lmsysorg/sglang:v0.5.10.post1` image.
+
+## NeMo-RL image default
+
+The sample local cluster config currently defaults `containers.nemo-rl` to the upstream NeMo-RL release image
+`nvcr.io/nvidia/nemo-rl:v0.6.0`. If you need a custom NeMo-RL image, build it from the upstream NeMo-RL repository
+and point your cluster config at that locally built image instead.

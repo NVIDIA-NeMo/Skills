@@ -1,0 +1,148 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Static FLEURS language metadata: locale -> display name and region group."""
+
+from __future__ import annotations
+
+FLEURS_LANGUAGES: dict[str, dict[str, str]] = {
+    "af_za": {"name": "Afrikaans", "group": "sub_saharan_african_ssa"},
+    "am_et": {"name": "Amharic", "group": "sub_saharan_african_ssa"},
+    "ar_eg": {"name": "Arabic", "group": "central_asia_middle_north_african_cmn"},
+    "as_in": {"name": "Assamese", "group": "south_asian_sa"},
+    "ast_es": {"name": "Asturian", "group": "western_european_we"},
+    "az_az": {"name": "Azerbaijani", "group": "central_asia_middle_north_african_cmn"},
+    "be_by": {"name": "Belarusian", "group": "eastern_european_ee"},
+    "bg_bg": {"name": "Bulgarian", "group": "eastern_european_ee"},
+    "bn_in": {"name": "Bengali", "group": "south_asian_sa"},
+    "bs_ba": {"name": "Bosnian", "group": "western_european_we"},
+    "ca_es": {"name": "Catalan", "group": "western_european_we"},
+    "ceb_ph": {"name": "Cebuano", "group": "south_east_asian_sea"},
+    "ckb_iq": {"name": "Sorani-Kurdish", "group": "central_asia_middle_north_african_cmn"},
+    "cmn_hans_cn": {"name": "Mandarin Chinese", "group": "chinese_japanase_korean_cjk"},
+    "cs_cz": {"name": "Czech", "group": "eastern_european_ee"},
+    "cy_gb": {"name": "Welsh", "group": "western_european_we"},
+    "da_dk": {"name": "Danish", "group": "western_european_we"},
+    "de_de": {"name": "German", "group": "western_european_we"},
+    "el_gr": {"name": "Greek", "group": "western_european_we"},
+    "en_us": {"name": "English", "group": "western_european_we"},
+    "es_419": {"name": "Spanish", "group": "western_european_we"},
+    "et_ee": {"name": "Estonian", "group": "eastern_european_ee"},
+    "fa_ir": {"name": "Persian", "group": "central_asia_middle_north_african_cmn"},
+    "ff_sn": {"name": "Fula", "group": "sub_saharan_african_ssa"},
+    "fi_fi": {"name": "Finnish", "group": "western_european_we"},
+    "fil_ph": {"name": "Filipino", "group": "south_east_asian_sea"},
+    "fr_fr": {"name": "French", "group": "western_european_we"},
+    "ga_ie": {"name": "Irish", "group": "western_european_we"},
+    "gl_es": {"name": "Galician", "group": "western_european_we"},
+    "gu_in": {"name": "Gujarati", "group": "south_asian_sa"},
+    "ha_ng": {"name": "Hausa", "group": "sub_saharan_african_ssa"},
+    "he_il": {"name": "Hebrew", "group": "central_asia_middle_north_african_cmn"},
+    "hi_in": {"name": "Hindi", "group": "south_asian_sa"},
+    "hr_hr": {"name": "Croatian", "group": "western_european_we"},
+    "hu_hu": {"name": "Hungarian", "group": "western_european_we"},
+    "hy_am": {"name": "Armenian", "group": "eastern_european_ee"},
+    "id_id": {"name": "Indonesian", "group": "south_east_asian_sea"},
+    "ig_ng": {"name": "Igbo", "group": "sub_saharan_african_ssa"},
+    "is_is": {"name": "Icelandic", "group": "western_european_we"},
+    "it_it": {"name": "Italian", "group": "western_european_we"},
+    "ja_jp": {"name": "Japanese", "group": "chinese_japanase_korean_cjk"},
+    "jv_id": {"name": "Javanese", "group": "south_east_asian_sea"},
+    "ka_ge": {"name": "Georgian", "group": "eastern_european_ee"},
+    "kam_ke": {"name": "Kamba", "group": "sub_saharan_african_ssa"},
+    "kea_cv": {"name": "Kabuverdianu", "group": "western_european_we"},
+    "kk_kz": {"name": "Kazakh", "group": "central_asia_middle_north_african_cmn"},
+    "km_kh": {"name": "Khmer", "group": "south_east_asian_sea"},
+    "kn_in": {"name": "Kannada", "group": "south_asian_sa"},
+    "ko_kr": {"name": "Korean", "group": "chinese_japanase_korean_cjk"},
+    "ky_kg": {"name": "Kyrgyz", "group": "central_asia_middle_north_african_cmn"},
+    "lb_lu": {"name": "Luxembourgish", "group": "western_european_we"},
+    "lg_ug": {"name": "Ganda", "group": "sub_saharan_african_ssa"},
+    "ln_cd": {"name": "Lingala", "group": "sub_saharan_african_ssa"},
+    "lo_la": {"name": "Lao", "group": "south_east_asian_sea"},
+    "lt_lt": {"name": "Lithuanian", "group": "eastern_european_ee"},
+    "luo_ke": {"name": "Luo", "group": "sub_saharan_african_ssa"},
+    "lv_lv": {"name": "Latvian", "group": "eastern_european_ee"},
+    "mi_nz": {"name": "Maori", "group": "south_east_asian_sea"},
+    "mk_mk": {"name": "Macedonian", "group": "eastern_european_ee"},
+    "ml_in": {"name": "Malayalam", "group": "south_asian_sa"},
+    "mn_mn": {"name": "Mongolian", "group": "central_asia_middle_north_african_cmn"},
+    "mr_in": {"name": "Marathi", "group": "south_asian_sa"},
+    "ms_my": {"name": "Malay", "group": "south_east_asian_sea"},
+    "mt_mt": {"name": "Maltese", "group": "western_european_we"},
+    "my_mm": {"name": "Burmese", "group": "south_east_asian_sea"},
+    "nb_no": {"name": "Norwegian", "group": "western_european_we"},
+    "ne_np": {"name": "Nepali", "group": "south_asian_sa"},
+    "nl_nl": {"name": "Dutch", "group": "western_european_we"},
+    "nso_za": {"name": "Northern-Sotho", "group": "sub_saharan_african_ssa"},
+    "ny_mw": {"name": "Nyanja", "group": "sub_saharan_african_ssa"},
+    "oc_fr": {"name": "Occitan", "group": "western_european_we"},
+    "om_et": {"name": "Oromo", "group": "sub_saharan_african_ssa"},
+    "or_in": {"name": "Oriya", "group": "south_asian_sa"},
+    "pa_in": {"name": "Punjabi", "group": "south_asian_sa"},
+    "pl_pl": {"name": "Polish", "group": "eastern_european_ee"},
+    "ps_af": {"name": "Pashto", "group": "central_asia_middle_north_african_cmn"},
+    "pt_br": {"name": "Portuguese", "group": "western_european_we"},
+    "ro_ro": {"name": "Romanian", "group": "eastern_european_ee"},
+    "ru_ru": {"name": "Russian", "group": "eastern_european_ee"},
+    "sd_in": {"name": "Sindhi", "group": "south_asian_sa"},
+    "sk_sk": {"name": "Slovak", "group": "eastern_european_ee"},
+    "sl_si": {"name": "Slovenian", "group": "eastern_european_ee"},
+    "sn_zw": {"name": "Shona", "group": "sub_saharan_african_ssa"},
+    "so_so": {"name": "Somali", "group": "sub_saharan_african_ssa"},
+    "sr_rs": {"name": "Serbian", "group": "eastern_european_ee"},
+    "sv_se": {"name": "Swedish", "group": "western_european_we"},
+    "sw_ke": {"name": "Swahili", "group": "sub_saharan_african_ssa"},
+    "ta_in": {"name": "Tamil", "group": "south_asian_sa"},
+    "te_in": {"name": "Telugu", "group": "south_asian_sa"},
+    "tg_tj": {"name": "Tajik", "group": "central_asia_middle_north_african_cmn"},
+    "th_th": {"name": "Thai", "group": "south_east_asian_sea"},
+    "tr_tr": {"name": "Turkish", "group": "central_asia_middle_north_african_cmn"},
+    "uk_ua": {"name": "Ukrainian", "group": "eastern_european_ee"},
+    "umb_ao": {"name": "Umbundu", "group": "sub_saharan_african_ssa"},
+    "ur_pk": {"name": "Urdu", "group": "south_asian_sa"},
+    "uz_uz": {"name": "Uzbek", "group": "central_asia_middle_north_african_cmn"},
+    "vi_vn": {"name": "Vietnamese", "group": "south_east_asian_sea"},
+    "wo_sn": {"name": "Wolof", "group": "sub_saharan_african_ssa"},
+    "xh_za": {"name": "Xhosa", "group": "sub_saharan_african_ssa"},
+    "yo_ng": {"name": "Yoruba", "group": "sub_saharan_african_ssa"},
+    "yue_hant_hk": {"name": "Cantonese Chinese", "group": "chinese_japanase_korean_cjk"},
+    "zu_za": {"name": "Zulu", "group": "sub_saharan_african_ssa"},
+}
+
+LOCALES: frozenset[str] = frozenset(FLEURS_LANGUAGES)
+
+# Locales evaluated with Character Error Rate instead of Word Error Rate
+# (scripts without explicit word boundaries).
+CER_LOCALES: frozenset[str] = frozenset(
+    {
+        "cmn_hans_cn",  # Mandarin Chinese (Simplified)
+        "yue_hant_hk",  # Cantonese Chinese (Traditional)
+        "ja_jp",  # Japanese
+        "th_th",  # Thai
+        "lo_la",  # Lao
+        "my_mm",  # Burmese
+        "km_kh",  # Khmer
+        "ko_kr",  # Korean
+        "vi_vn",  # Vietnamese
+    }
+)
+
+
+def get_lang_name(locale: str) -> str:
+    return FLEURS_LANGUAGES[locale]["name"]
+
+
+def get_lang_group(locale: str) -> str:
+    return FLEURS_LANGUAGES[locale]["group"]

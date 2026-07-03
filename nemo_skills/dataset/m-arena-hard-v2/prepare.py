@@ -18,8 +18,11 @@ from pathlib import Path
 
 import datasets
 
-HF_DATASET = "CohereLabs/m-ArenaHard-v2.0"
-SUPPORTED_LANGUAGES = datasets.get_dataset_config_names(HF_DATASET)
+HF_DATASET_VERSIONS = {
+    "v2.0": "CohereLabs/m-ArenaHard-v2.0",
+    "v2.1": "CohereLabs/m-ArenaHard-v2.1",
+}
+DEFAULT_VERSION = "v2.1"
 
 
 def format_entry(row: dict, language: str) -> dict:
@@ -36,17 +39,21 @@ def format_entry(row: dict, language: str) -> dict:
 
 
 def main(args):
-    invalid_langs = set(args.languages) - set(SUPPORTED_LANGUAGES)
+    hf_dataset = HF_DATASET_VERSIONS[args.version]
+    supported_languages = datasets.get_dataset_config_names(hf_dataset)
+
+    languages = args.languages if args.languages is not None else supported_languages
+    invalid_langs = set(languages) - set(supported_languages)
     if invalid_langs:
-        raise ValueError(f"Unsupported languages: {invalid_langs}. Supported: {SUPPORTED_LANGUAGES}")
+        raise ValueError(f"Unsupported languages: {sorted(invalid_langs)}. Supported: {sorted(supported_languages)}")
 
     data_dir = Path(__file__).absolute().parent
     output_file = data_dir / "test.jsonl"
 
     all_entries = []
-    for language in args.languages:
+    for language in languages:
         print(f"Processing {language}...")
-        ds = datasets.load_dataset(HF_DATASET, name=language, split="test")
+        ds = datasets.load_dataset(hf_dataset, name=language, split="test")
         for row in ds:
             all_entries.append(format_entry(row, language))
 
@@ -72,12 +79,18 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Prepare m-ArenaHard-v2.0 multilingual benchmark.")
+    parser = argparse.ArgumentParser(description="Prepare m-ArenaHard multilingual benchmark.")
+    parser.add_argument(
+        "--version",
+        default=DEFAULT_VERSION,
+        choices=list(HF_DATASET_VERSIONS),
+        help=f"Dataset version to prepare. Default: {DEFAULT_VERSION}",
+    )
     parser.add_argument(
         "--languages",
-        default=SUPPORTED_LANGUAGES,
+        default=None,
         nargs="+",
-        help=f"Languages to include. Supported: {SUPPORTED_LANGUAGES}",
+        help="Languages to include. Defaults to all languages supported by the selected --version.",
     )
     parser.add_argument(
         "--baseline-file",

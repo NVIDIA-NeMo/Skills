@@ -75,7 +75,7 @@ Here are some suggestions on what can be defined in cluster configs for differen
    (e.g. [NeMo](https://github.com/NVIDIA/NeMo)). If you get some errors, you might also need to modify the entry-point
    scripts we use, e.g.
    [nemo_skills/inference/server/serve_vllm.py](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/inference/server/serve_vllm.py)
-   or [nemo_skills/training/start_sft.py](https://github.com/NVIDIA-NeMo/Skills/tree/main/nemo_skills/training/start_sft.py)
+
 
 4. For slurm clusters it's recommended to [build .sqsh files](https://github.com/NVIDIA/enroot/blob/master/doc/cmd/import.md#example)
    for all containers and reference the cluster path

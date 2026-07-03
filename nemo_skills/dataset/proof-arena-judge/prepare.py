@@ -27,14 +27,21 @@ JUDGEMENT_NO = "Judgement: No"
 SUBSET_PROOFS = "proofs"
 MAX_QWEN_TOKENS = 10000
 
+# Pin to the 2026-03-25 dataset uploads. The 2026-04-25 uploads changed the
+# schema of `grading_details_judge_*` so each entry is a string instead of a
+# dict, which breaks `grading_scheme_to_rubric`.
+IMO_OUTPUTS_REVISION = "d995fc906b58"
+USAMO_OUTPUTS_REVISION = "0fafbf629a32"
+IMC_OUTPUTS_REVISION = "d4f93c209272"
+
 qwen3_tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B")
 
 
 def prepare_data(output_path):
     # Load data
-    imo_data = datasets.load_dataset("MathArena/imo_2025_outputs")["train"]
-    usamo_data = datasets.load_dataset("MathArena/usamo_2025_outputs")["train"]
-    imc_data = datasets.load_dataset("MathArena/imc_2025_outputs")["train"]
+    imo_data = datasets.load_dataset("MathArena/imo_2025_outputs", revision=IMO_OUTPUTS_REVISION)["train"]
+    usamo_data = datasets.load_dataset("MathArena/usamo_2025_outputs", revision=USAMO_OUTPUTS_REVISION)["train"]
+    imc_data = datasets.load_dataset("MathArena/imc_2025_outputs", revision=IMC_OUTPUTS_REVISION)["train"]
     openai_imo_data = load_openai_imo_proofs()
     gemini_imo_data = load_gemini_imo_proofs()
     processed_data = []

@@ -72,6 +72,12 @@ For more details see [https://github.com/NVIDIA/RULER/blob/rulerv2-ns](https://g
 - Benchmark is defined in [`nemo_skills/dataset/mrcr/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mrcr/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/openai/mrcr).
 
+### graphwalks
+
+- Benchmark is defined in [`nemo_skills/dataset/graphwalks/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/graphwalks/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/openai/graphwalks).
+- We modify the original evaluation logic in this [discussion](https://huggingface.co/datasets/openai/graphwalks/discussions/8).
+
 ### aalcr
 - Benchmark is defined in [`nemo_skills/dataset/aalcr/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/aalcr/__init__.py)
 - Original benchmark source is [here](https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR) and the reported scores by AA is here [here](https://artificialanalysis.ai/evaluations/artificial-analysis-long-context-reasoning).

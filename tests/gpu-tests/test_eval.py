@@ -52,9 +52,13 @@ EXCLUDED_DATASETS = {
     "asr-leaderboard",
     "mrcr",
     "audiobench",
+    "fleurs",
     "librispeech-pc",
     "musan",
     "numb3rs",
+    "covost2",
+    "contextasr-bench",  # audio benchmark, requires ~22 GB download
+    "contextual-earnings22",  # audio benchmark, requires HF download (~404 MB)
     # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
     "compute-eval",
     # CritPt requires exactly 70 submissions and external API key (ARTIFICIAL_ANALYSIS_API_KEY)

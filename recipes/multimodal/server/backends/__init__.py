@@ -18,6 +18,7 @@ Backend implementations for the Unified NeMo Inference Server.
 Available backends:
 - magpie_tts: MagpieTTS text-to-speech (audio output from text input)
 - nemo_asr: NeMo ASR speech-to-text (text output from audio input)
+- salm: SALM speech-to-text using chat-style generate API (e.g. canary-qwen-2.5b)
 
 Backends are lazily loaded to avoid importing heavy dependencies upfront.
 """
@@ -40,6 +41,7 @@ __all__ = [
 BACKEND_REGISTRY = {
     "magpie_tts": ("magpie_tts_backend", "MagpieTTSBackend"),
     "nemo_asr": ("nemo_asr_backend", "NeMoASRBackend"),
+    "salm": ("salm_backend", "SALMBackend"),
 }
 
 

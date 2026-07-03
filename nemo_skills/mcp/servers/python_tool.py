@@ -26,7 +26,6 @@ from pydantic import Field
 
 from nemo_skills.code_execution.sandbox import get_sandbox
 from nemo_skills.mcp.tool_manager import Tool
-from nemo_skills.mcp.tool_providers import MCPClientTool
 from nemo_skills.mcp.utils import add_config_args, load_mcp_config
 
 logger = logging.getLogger(__name__)
@@ -43,18 +42,24 @@ mcp = FastMCP(name="python_tool")
 # Initialized from config in main()
 sandbox = None
 
-# TODO: how should we control timeout in description?
-description = (
-    "Call this function to execute Python code in a stateful Jupyter notebook environment. "
-    "Python will respond with the output of the execution or time out after 120.0 seconds."
-)
+DEFAULT_EXEC_TIMEOUT_S = 10
+
+
+def get_python_tool_description(exec_timeout_s: float = DEFAULT_EXEC_TIMEOUT_S) -> str:
+    return (
+        "Call this function to execute Python code in a stateful Jupyter notebook environment. "
+        f"Python will respond with the output of the execution or time out after {exec_timeout_s:.1f} seconds."
+    )
+
+
+description = get_python_tool_description()
 
 
 @mcp.tool(name="stateful_python_code_exec", description=description)
 async def stateful_python_code_exec(
     code: Annotated[str, Field(description="Code to execute")],
     session_id: Annotated[str | None, Field(description="Session id for session persistence")] = None,
-    timeout: Annotated[float, Field(description="Time in seconds to allow the job to run")] = 10,
+    timeout: Annotated[float, Field(description="Time in seconds to allow the job to run")] = DEFAULT_EXEC_TIMEOUT_S,
 ) -> ExecutionResult:
     language = "ipython"
     try:
@@ -104,66 +109,26 @@ def main():
 # ==============================
 
 
-class PythonTool(MCPClientTool):
-    def __init__(self) -> None:
-        super().__init__()
-        # Defaults for stdio Python MCP using explicit client class
-        self.apply_config_updates(
-            {
-                "client": "nemo_skills.mcp.clients.MCPStdioClient",
-                "client_params": {
-                    "command": "python",
-                    "args": ["-m", "nemo_skills.mcp.servers.python_tool"],
-                },
-                # hide args from schemas and sanitize at runtime
-                "hide_args": {"stateful_python_code_exec": ["session_id", "timeout"]},
-                # use explicit Hydra connector built from full context by default
-                "init_hook": "hydra",
-                # execution-specific default
-                "exec_timeout_s": 10,
-            }
-        )
-        self.requests_to_sessions = defaultdict(lambda: None)
-
-    async def execute(self, tool_name: str, arguments: Dict[str, Any], extra_args: Dict[str, Any] | None = None):
-        # Ensure timeout is sent via extra_args (post-sanitize), not in main arguments
-        arguments = dict(arguments)
-        # TODO: error handling?
-        request_id = extra_args.pop("request_id")
-        merged_extra = dict(extra_args or {})
-        merged_extra.setdefault("timeout", self._config.get("exec_timeout_s", 10))
-        merged_extra["session_id"] = self.requests_to_sessions[request_id]
-        result = await self._client.call_tool(tool=tool_name, args=arguments, extra_args=merged_extra)
-        self.requests_to_sessions[request_id] = result["session_id"]
-        output = f"{result['output_dict']['stdout']}{result['output_dict']['stderr']}"
-        if output.endswith("\n"):  # there is always a trailing newline, removing it
-            output = output[:-1]
-        return output
-
-    async def shutdown(self) -> None:
-        return None
-
-
 class DirectPythonTool(Tool):
     """Python code execution tool that calls the sandbox directly, bypassing MCP.
 
-    This is a drop-in replacement for PythonTool that eliminates the MCP protocol
-    overhead (subprocess spawning, MCP session initialization, JSON-RPC serialization)
-    by calling sandbox.execute_code() directly via HTTP.
+    This is the in-process implementation used by PythonTool. It eliminates the
+    MCP protocol overhead (subprocess spawning, MCP session initialization,
+    JSON-RPC serialization) by calling sandbox.execute_code() directly via HTTP.
 
-    Shared config keys with PythonTool (so switching is just changing the module spec):
+    Config keys:
         - hide_args: controls which args are stripped from schemas and sanitized at runtime
         - exec_timeout_s: default execution timeout
 
     Usage:
-        tool_modules=["nemo_skills.mcp.servers.python_tool::DirectPythonTool"]
+        tool_modules=["nemo_skills.mcp.servers.python_tool::PythonTool"]
     """
 
-    def __init__(self) -> None:
+    def __init__(self, exec_timeout_s: float = DEFAULT_EXEC_TIMEOUT_S) -> None:
         self._config: Dict[str, Any] = {
-            # Same keys/defaults as PythonTool (minus MCP-specific: client, client_params, init_hook)
+            # MCP-specific keys (client, client_params, init_hook) are intentionally absent here
             "hide_args": {"stateful_python_code_exec": ["session_id", "timeout"]},
-            "exec_timeout_s": 10,
+            "exec_timeout_s": exec_timeout_s,
             "sandbox": {},
         }
         self._sandbox = None
@@ -193,7 +158,7 @@ class DirectPythonTool(Tool):
         return [
             {
                 "name": "stateful_python_code_exec",
-                "description": description,
+                "description": get_python_tool_description(self._config.get("exec_timeout_s", DEFAULT_EXEC_TIMEOUT_S)),
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -213,7 +178,7 @@ class DirectPythonTool(Tool):
 
         extra_args = dict(extra_args or {})
         request_id = extra_args.pop("request_id", None)
-        timeout = extra_args.get("timeout", self._config.get("exec_timeout_s", 10))
+        timeout = extra_args.get("timeout", self._config.get("exec_timeout_s", DEFAULT_EXEC_TIMEOUT_S))
         session_id = self.requests_to_sessions[request_id] if request_id is not None else None
 
         # Validate required `code` argument. The MCP path gets this via Pydantic at the FastMCP
@@ -281,6 +246,18 @@ class DirectPythonTool(Tool):
             except Exception:
                 logger.exception("Failed to delete sandbox session %s during cleanup_request", session_id)
         self.requests_to_sessions.pop(request_id, None)
+
+
+class PythonTool(DirectPythonTool):
+    """Default Python tool implementation.
+
+    Uses the direct in-process provider (DirectPythonTool) instead of stdio MCP
+    transport so generation jobs do not depend on a subprocess teardown path.
+    Kept as a subclass for backward compatibility with existing
+    ``tool_modules=[...python_tool::PythonTool]`` references.
+    """
+
+    pass
 
 
 if __name__ == "__main__":

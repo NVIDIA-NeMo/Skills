@@ -2,7 +2,7 @@
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics
@@ -23,6 +23,9 @@ class CCCMetrics(BaseMetrics):
         super().reset()
         self.predictions_by_problem = defaultdict(list)
         self._solutions_written = False
+        self.token_counts = []
+        self.finish_reasons = Counter()
+        self.eval_times = []
 
     def setup(self, input_files):
         """Capture run metadata and random-seed indices from input filenames."""
@@ -41,6 +44,15 @@ class CCCMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions)
         if not predictions:
             return
+
+        for pred in predictions:
+            if "num_generated_tokens" in pred:
+                self.token_counts.append(int(pred["num_generated_tokens"]))
+            finish_reason = pred.get("finish_reason")
+            if finish_reason is not None:
+                self.finish_reasons[str(finish_reason)] += 1
+            if "eval_time_seconds" in pred:
+                self.eval_times.append(float(pred["eval_time_seconds"]))
 
         annotated_predictions = []
         for idx, prediction in enumerate(predictions):
@@ -181,6 +193,10 @@ class CCCMetrics(BaseMetrics):
 
         for problem_id, submissions in sorted(self.predictions_by_problem.items()):
             problem_name = submissions[0]["name"]
+            problem_eval_times = []
+            for submission in submissions:
+                if "eval_time_seconds" in submission:
+                    problem_eval_times.append(float(submission["eval_time_seconds"]))
             grouped_rows = defaultdict(list)
             for idx, submission in enumerate(submissions):
                 row_key = submission.get("id", f"__row_{idx}")
@@ -193,13 +209,22 @@ class CCCMetrics(BaseMetrics):
                 declared = float(submission.get("subtask_score", 0.0))
                 declared_max_by_subtask[st] = max(declared_max_by_subtask.get(st, 0.0), declared)
             all_subtasks = set()
+            inferred_max_by_subtask = {}
             for submission in submissions:
-                all_subtasks.update(submission.get("test_case_results", {}).keys())
+                test_case_results = submission.get("test_case_results", {})
+                all_subtasks.update(test_case_results.keys())
+                for st, subtask_result in test_case_results.items():
+                    if "max_score" in subtask_result:
+                        inferred = float(subtask_result.get("max_score", 0.0))
+                        inferred_max_by_subtask[st] = max(inferred_max_by_subtask.get(st, 0.0), inferred)
+            for st, inferred in inferred_max_by_subtask.items():
+                if st not in declared_max_by_subtask and inferred > 0.0:
+                    declared_max_by_subtask[st] = inferred
             missing_max_subtasks = sorted(st for st in all_subtasks if st not in declared_max_by_subtask)
             if missing_max_subtasks:
                 raise ValueError(
                     f"Problem '{problem_id}' has subtasks without defined max score: {missing_max_subtasks}. "
-                    "Each subtask must have a declared subtask_score."
+                    "Each subtask must have a declared subtask_score or test_case_results[*].max_score."
                 )
             subtasks = {}
             labeled_row_reports = []
@@ -296,6 +321,14 @@ class CCCMetrics(BaseMetrics):
                 ),
                 "subtasks": subtasks,
             }
+            if problem_eval_times:
+                problem_report["eval_time_stats"] = {
+                    "count": len(problem_eval_times),
+                    "total": sum(problem_eval_times),
+                    "min": min(problem_eval_times),
+                    "max": max(problem_eval_times),
+                    "avg": sum(problem_eval_times) / len(problem_eval_times),
+                }
             if mode == "best":
                 solution_selection = self._select_minimal_solutions(problem_id, problem_name, submissions, subtasks)
                 problem_report.update(solution_selection)
@@ -357,12 +390,7 @@ class CCCMetrics(BaseMetrics):
             mask = 0
             for subtask in ordered_subtasks:
                 subtask_result = test_case_results.get(subtask, {})
-                score = 0.0
-                if isinstance(subtask_result, dict):
-                    try:
-                        score = float(subtask_result.get("score", 0.0))
-                    except Exception:
-                        score = 0.0
+                score = float(subtask_result.get("score", 0.0)) if isinstance(subtask_result, dict) else 0.0
                 achieved_subtask_scores[subtask] = score
                 if subtask in subtask_to_bit:
                     achieved_total_score += score
@@ -496,11 +524,38 @@ class CCCMetrics(BaseMetrics):
 
         self._solutions_written = True
 
+    def _token_stats(self):
+        """Aggregate stats over per-prediction `num_generated_tokens`."""
+        if not self.token_counts:
+            return None
+        return {
+            "count": len(self.token_counts),
+            "total": sum(self.token_counts),
+            "min": min(self.token_counts),
+            "max": max(self.token_counts),
+            "avg": sum(self.token_counts) / len(self.token_counts),
+        }
+
+    def _eval_time_stats(self):
+        """Aggregate stats over per-prediction `eval_time_seconds`."""
+        if not self.eval_times:
+            return None
+        return {
+            "count": len(self.eval_times),
+            "total": sum(self.eval_times),
+            "min": min(self.eval_times),
+            "max": max(self.eval_times),
+            "avg": sum(self.eval_times) / len(self.eval_times),
+        }
+
     def get_metrics(self):
         """Return filtered metrics enriched with CCC-specific summary/report fields."""
         metrics_dict = super().get_metrics()
         keep_keys = [f"pass@1[avg-of-{self.max_k}]", f"pass@{self.max_k}"]
         metrics_dict = {k: v for k, v in metrics_dict.items() if k in keep_keys}
+        token_stats = self._token_stats()
+        stop_reasons = dict(self.finish_reasons) if self.finish_reasons else None
+        eval_time_stats = self._eval_time_stats()
 
         avg_report = self._build_problem_reports(mode="avg")
         best_report = self._build_problem_reports(mode="best")
@@ -531,21 +586,22 @@ class CCCMetrics(BaseMetrics):
                     )
                     for _, subtask_info in ordered_subtasks
                 ]
-                problem_table.append(
-                    {
-                        "problem_id": problem["problem_id"],
-                        "name": problem["name"],
-                        "status": "passed"
-                        if problem["score"] >= problem["max_score"] and problem["max_score"] > 0
-                        else "failed",
-                        "score": int(problem["score"]) if float(problem["score"]).is_integer() else problem["score"],
-                        "max_score": int(problem["max_score"])
-                        if float(problem["max_score"]).is_integer()
-                        else problem["max_score"],
-                        "compile_success_rate": problem["compile_success_rate"],
-                        "score_array": score_array,
-                    }
-                )
+                problem_row = {
+                    "problem_id": problem["problem_id"],
+                    "name": problem["name"],
+                    "status": "passed"
+                    if problem["score"] >= problem["max_score"] and problem["max_score"] > 0
+                    else "failed",
+                    "score": int(problem["score"]) if float(problem["score"]).is_integer() else problem["score"],
+                    "max_score": int(problem["max_score"])
+                    if float(problem["max_score"]).is_integer()
+                    else problem["max_score"],
+                    "compile_success_rate": problem["compile_success_rate"],
+                    "score_array": score_array,
+                }
+                if "eval_time_stats" in problem:
+                    problem_row["eval_time_stats"] = problem["eval_time_stats"]
+                problem_table.append(problem_row)
             summary = {
                 "total_score": total_score,
                 "total_max_score": total_max_score,
@@ -566,6 +622,12 @@ class CCCMetrics(BaseMetrics):
                 summary["sample_tests_total"] = report["sample_tests_total"]
                 summary["secret_tests_passed"] = report["secret_tests_passed"]
                 summary["secret_tests_total"] = report["secret_tests_total"]
+            if token_stats is not None:
+                summary["token_stats"] = token_stats
+            if stop_reasons is not None:
+                summary["stop_reasons"] = stop_reasons
+            if eval_time_stats is not None:
+                summary["eval_time_stats"] = eval_time_stats
             summary["problem_table"] = problem_table
 
             metric.clear()
@@ -588,6 +650,12 @@ class CCCMetrics(BaseMetrics):
                 metric["sample_tests_total"] = report["sample_tests_total"]
                 metric["secret_tests_passed"] = report["secret_tests_passed"]
                 metric["secret_tests_total"] = report["secret_tests_total"]
+            if token_stats is not None:
+                metric["token_stats"] = token_stats
+            if stop_reasons is not None:
+                metric["stop_reasons"] = stop_reasons
+            if eval_time_stats is not None:
+                metric["eval_time_stats"] = eval_time_stats
             metric["problems"] = report["problems"]
         return metrics_dict
 
