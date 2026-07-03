@@ -1055,7 +1055,7 @@ class SweBenchGenerationTask(GenerationTask):
                     "cd /root/SWE-bench && "
                     # run the evaluation with streaming output
                     f"/root/SWE-bench/venv/bin/python scripts/local_eval.py "
-                    f"    --json {self.cfg.input_file} "
+                    f"    --json /input_mount/{Path(self.cfg.input_file).name} "
                     f"    --patches {pred_mounted_path} "
                     f"    --instance-ids {data_point['instance_id']} "
                     f"    --report-json logs/report.json && "
