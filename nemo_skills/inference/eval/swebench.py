@@ -393,7 +393,16 @@ class SweBenchGenerationTask(GenerationTask):
         search_path = os.path.join(
             self.output_dir, "trajectories", "*", "*", data_point["instance_id"], f"{data_point['instance_id']}.pred"
         )
-        pred_file = await self._execute_container_command(data_point, swe_agent_cmd, search_path, mode="agent")
+        if self.cfg.skip_inference:
+            out_files = glob.glob(search_path)
+            if not out_files:
+                return None  # skip this instance entirely
+            elif len(out_files) > 1:
+                raise ValueError(f"Found multiple files matching {search_path}: {out_files}")
+            else:
+                pred_file = out_files[0]
+        else:
+            pred_file = await self._execute_container_command(data_point, swe_agent_cmd, search_path, mode="agent")
 
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read().strip())
