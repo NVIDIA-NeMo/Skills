@@ -4,6 +4,32 @@ More details are coming soon!
 
 ## Supported benchmarks
 
+### BBH (BIG-Bench Hard)
+
+- Benchmark is defined in [`nemo_skills/dataset/bbh/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/bbh/__init__.py)
+- Original benchmark source is [here](https://arxiv.org/abs/2210.09261) ([suzgun/BIG-Bench-Hard](https://github.com/suzgun/BIG-Bench-Hard)); data is pulled from the [`lukaemon/bbh`](https://huggingface.co/datasets/lukaemon/bbh) mirror.
+- 27 tasks, 6511 examples total. Answers are graded with exact match after extracting `\boxed{...}` (multiple-choice letters, True/False, yes/no, numbers and short strings are all handled by the `math` grader).
+- Per-task accuracy is reported via `subset_for_metrics` (the task name); the top-line metric is the average over all examples.
+- The default prompt is zero-shot boxed (`generic/general-boxed`), which follows NeMo-Skills' standardized boxed protocol rather than the original paper's 3-shot chain-of-thought exemplars.
+
+#### Data Preparation
+
+```bash
+ns prepare_data bbh
+```
+
+#### Running the Evaluation
+
+```bash
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=<MODEL_PATH> \
+    --server_type=vllm \
+    --server_gpus=8 \
+    --benchmarks=bbh \
+    --output_dir=<OUTPUT_DIR>
+```
+
 ### arena-hard
 
 - Benchmark is defined in [`nemo_skills/dataset/arena-hard/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/arena-hard/__init__.py)
