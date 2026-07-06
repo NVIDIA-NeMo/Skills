@@ -7,6 +7,20 @@ Once prepared, the `ns eval` command will run on all languages prepared, and the
 
 ## Supported benchmarks
 
+### MGSM
+
+- Benchmark is defined in [`nemo_skills/dataset/mgsm/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mgsm/__init__.py)
+- Original benchmark source is [here](https://arxiv.org/abs/2210.03057); data is pulled from the [`juletxara/mgsm`](https://huggingface.co/datasets/juletxara/mgsm) mirror.
+- 250 GSM8K test problems translated into 10 languages plus English (11 total: `en`, `es`, `fr`, `de`, `ru`, `zh`, `ja`, `th`, `sw`, `bn`, `te`).
+- Answers are integers, graded by exact match after extracting `\boxed{...}`. Per-language accuracy is reported via `subset_for_metrics`.
+- Uses a single English boxed instruction (en-CoT setting) by default. `target_language` is populated on every example, so switching `METRICS_TYPE` to `math_multilingual` (to additionally score native-language reasoning) works without changing data preparation.
+
+```bash
+ns prepare_data mgsm --languages <lang1> <lang2> ...
+```
+
+Prepare all languages by omitting `--languages`.
+
 ### mmlu-prox
 
 - Benchmark is defined in [`nemo_skills/dataset/mmlu-prox/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/mmlu-prox/__init__.py)
