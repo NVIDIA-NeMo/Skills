@@ -13,7 +13,7 @@ agent:
     I've uploaded a python code repository in the directory /testbed. Consider the following PR description:
 
     <pr_description>
-    {{problem_statement}}
+    {{task}}
     </pr_description>
 
     Can you help me write high quality rubrics to grade the solution to the task described in the <pr_description>?
