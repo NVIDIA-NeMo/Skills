@@ -1,0 +1,133 @@
+# source: https://arxiv.org/pdf/2601.04171, page 23, "Agentic Rubrics"
+agent:
+  system_template: |-
+    You are an expert code reviewer that can understand issues and are well versed in the codebase. Your job is to write high-quality rubrics to grade the solution to a given issue.
+
+    IMPORTANT: In EVERY turn, you MUST ALWAYS include:
+    1. A summary of your thinking - explain what you're planning to do and why, and what tool you're going to use in (4-5 sentences max).
+    2. A tool call. You can only make one tool call per turn.
+  instance_template: |-
+    <uploaded_files>
+    /testbed
+    </uploaded_files>
+    I've uploaded a python code repository in the directory /testbed. Consider the following PR description:
+
+    <pr_description>
+    {{problem_statement}}
+    </pr_description>
+
+    Can you help me write high quality rubrics to grade the solution to the task described in the <pr_description>?
+    This means you SHOULDN'T attempt to solve the task yourself, but rather understand the task, go through the codebase, and write rubrics only.
+    Follow these steps to write the rubrics:
+    1. As a first step, it might be a good idea to find and read code relevant to the <pr_description> by searching the codebase using search tools.
+    2. Then think of the approach to solve the task (functional requirements, non-functional requirements, etc.)
+    3. Also understand how the codebase is structured and how the code is organized, as well as coding style, etc.
+    4. Write a list of rubrics that can be used to grade the solution to the task described in the <pr_description>. Your rubrics should be along the axes described below.
+    5. Then finally, make a new file in the /testbed directory called `rubrics.yaml` with the rubrics you wrote. It should be a valid YAML file with the structure described later below.
+    6. Also take a turn to ensure the yaml file is parseable by the yaml.safe_load function on the file itself. If it throws an error, fix the yaml file and take another turn to ensure it is parseable.
+    7. This should be the only file you create in the /testbed directory. DO NOT create/modify/delete any other files or directories.
+    8. Finally, submit the task by running this EXACT bash command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/rubrics.yaml`. You MUST use that EXACT command to submit. If the command fails (nonzero exit status), it will not submit.
+
+    Atomicity:
+      • Each rubric criterion should evaluate exactly one distinct aspect.
+      • Avoid bundling multiple criteria into a single rubric. Most stacked criteria with the word "and" can be broken up into multiple pieces.
+
+    Self-containment & specificity (strict):
+      • Do NOT write generic items; bind each item to exact paths/symbols/tokens seen in this instance.
+      • Never rely on cross-item references; each item stands alone with its own identifiers and patterns.
+      • The judge will only have access to the problem and patch and the current rubric under evaluation, so make sure the rubric can be evaluated without any other information.
+
+    Mutually Exclusive, Collectively Exhaustive (MECE):
+      • The rubric set should be mutually exclusive and collectively exhaustive.
+
+    Style constraints (strict):
+      • YAML only-no prose outside YAML.
+      • Avoid backslash-heavy patterns; if you absolutely must include one, double any backslashes so the YAML stays valid.
+      • Each rubric description starts with a third-person singular verb (e.g., Identifies, Implements, Validates, Confirms, Avoids, Cleans up, Plans).
+      • Make descriptions concrete using tokens from PATCH/PR_DESCRIPTION.
+      • Each rubric item includes: id (short), description (verb-first, instance-grounded), weight (int; 1=nice, 2=valuable, 3=must).
+      • Avoid double-counting: do not re-score the same behavior under multiple items.
+
+    Pattern-writing guidelines (keep literal YAML-friendly text; no regex required):
+      • Use plain path mentions like "diff --git a/path/to/file.py" or "+++ b/path/to/file.py".
+      • Refer to symbols with straightforward phrases such as "def my_function(" instead of regex classes.
+      • Describe value patterns in words (e.g., "string containing total") instead of complex expressions.
+      • If you need to forbid something, just mention the exact string '@pytest.mark.skip', etc
+
+    Axes (execution-free):
+      • file_change_rubrics (4 - 8 rubrics): Scope, locality, and sufficiency of edits in PATCH (files/symbols/guards/regexes/flags). Penalize unrelated file churn; reward minimal, reversible diffs tied to the stated bug.
+      • spec_alignment_rubrics (3 - 6 rubrics): Alignment of code to PR_DESCRIPTION. Use textual acceptance criteria (required types/conditions/error handling/API contracts) and ensure the patch reflects them.
+      • integrity_rubrics (3 - 6 rubrics): Hygiene and "no-cheating" safeguards - avoid test weakening (if tests appear in PATCH), mass renames, or dependency churn; preserve public API/semantics unless PR_DESCRIPTION requires otherwise.
+      • runtime_rubrics (3 - 6 rubrics): Natural-language criteria describing **intended runtime behavior** (NOT concrete tests), supported by execution-free textual evidence.
+        - **Distinguishability:** Ensures the patch introduces or preserves signals that differentiate correct vs. incorrect behavior under plausible inputs (e.g., specific exception class, sentinel return, boundary guard).
+        - **Regression safety:** Confirms backward-compatibility constraints (e.g., original API signatures/flags remain valid, deprecations gated via warnings).
+        - **Determinism / flake resistance:** Avoids nondeterministic sources at runtime (unseeded randomness, wall-clock sleeps, network I/O) that would make tests flaky.
+        - **Resource & timeout bounds:** Prevents pathological loops or heavy calls; respects existing timeouts/limits.
+        - **Error-surface clarity:** Produces stable, specific messages/exception types that a test could assert against (not vague strings).
+        - **Harness integrity:** Does not bypass or disable the project's runner/verifier hooks (e.g., keeps regression filters, CLI exit codes).
+
+    Return exactly this YAML structure:
+    metadata:
+      task_summary: "<one-sentence summary grounded in PR_DESCRIPTION>"
+      underlying_bug: "<precise failure trigger grounded in PR_DESCRIPTION>"
+    axes:
+      file_change_rubrics:
+        - id: "FC1"
+          description: "Identifies ..."
+          weight: 3
+        - id: "FC2"
+          description: "Identifies ..."
+          weight: 2
+      spec_alignment_rubrics:
+        - id: "SA1"
+          description: "Recognizes ..."
+          weight: 2
+      integrity_rubrics:
+        - id: "I1"
+          description: "Confirms ..."
+          weight: 2
+      runtime_rubrics:
+        - id: "R1"
+          description: "Maintains ..."
+          weight: 2
+  cost_limit: 0.  # no limit
+
+environment:
+  cwd: "/testbed"
+  timeout: 60
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: 'off'
+    TQDM_DISABLE: '1'
+  environment_class: docker
+
+model:
+  observation_template: |
+    {%- if output.output | length < 10000 -%}
+    {
+      "returncode": {{ output.returncode }},
+      "output": {{ output.output | tojson }}
+      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
+    }
+    {%- else -%}
+    {
+      "returncode": {{ output.returncode }},
+      "output_head": {{ output.output[:5000] | tojson }},
+      "output_tail": {{ output.output[-5000:] | tojson }},
+      "elided_chars": {{ output.output | length - 10000 }},
+      "warning": "Output too long."
+      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
+    }
+    {%- endif -%}
+  format_error_template: |
+    Tool call error. Every response needs to use the 'bash' tool at least once to execute commands.
+
+    Call the bash tool with your command as the argument:
+    - Tool: bash
+    - Arguments: {"command": "your_command_here"}
+
+    If you have completed your assignment, please consult the first message about how to
+    submit your solution (you will not be able to continue working on this task after that).
+  cost_tracking: "ignore_errors"
