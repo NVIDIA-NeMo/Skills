@@ -25,10 +25,13 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List
 
 from nemo_skills.mcp.utils import locate
+
+LOG = logging.getLogger(__name__)
 
 
 class FatalToolError(Exception):
@@ -66,6 +69,12 @@ class Tool(ABC):
         self, tool_name: str, arguments: Dict[str, Any], extra_args: Dict[str, Any] | None = None
     ) -> Any:
         pass
+
+    async def cleanup_request(self, request_id: str) -> None:  # Optional hook
+        return None
+
+    async def get_request_metrics(self, request_id: str) -> Dict[str, Any]:  # Optional hook
+        return {}
 
     async def shutdown(self) -> None:  # Optional hook
         return None
@@ -121,6 +130,22 @@ class ToolManager:
             except Exception:
                 # Best effort; do not propagate shutdown issues
                 pass
+
+    async def cleanup_request(self, request_id: str) -> None:
+        for tool in self._tools.values():
+            await tool.cleanup_request(request_id)
+
+    async def get_request_metrics(self, request_id: str) -> Dict[str, Any]:
+        metrics: Dict[str, Any] = {}
+        for provider_id, tool in self._tools.items():
+            try:
+                provider_metrics = await tool.get_request_metrics(request_id)
+            except Exception:
+                LOG.exception("Failed to collect request metrics from tool %s", provider_id)
+                continue
+            if provider_metrics:
+                metrics[provider_id] = provider_metrics
+        return metrics
 
     async def list_all_tools(self, use_cache: bool = True) -> List[Dict[str, Any]]:
         async with self._list_lock:

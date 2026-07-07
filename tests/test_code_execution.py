@@ -474,6 +474,22 @@ async def test_ioi_eval_execution():
 
 
 @pytest.mark.asyncio
+async def test_ccc_eval_execution():
+    import json
+
+    from nemo_skills.evaluation.evaluator.ccc import CCCEvaluator
+
+    base = os.path.dirname(__file__)
+    data_path = os.path.join(base, "data", "ccc", "test.jsonl")
+    meta_path = os.path.join(base, "data", "ccc", "test_metadata.json")
+    with open(data_path, "r", encoding="utf-8") as f:
+        dp = json.loads(next(f))
+    evaluator = CCCEvaluator(config={"test_file": meta_path})
+    out = await evaluator.eval_single(dp)
+    assert all(r.get("score") == 1.0 for s in out["test_case_results"].values() for r in s["outputs"])
+
+
+@pytest.mark.asyncio
 @pytest.mark.mathlib
 async def test_math_to_lean4_fewshots():
     sandbox = _get_sandbox()

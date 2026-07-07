@@ -20,14 +20,21 @@ jobs:
     runs-on: self-hosted-nemo-gpus-1
     if: ${{ github.event.label.name == 'run GPU tests' }}
     steps:
-    - name: Cleanup old containers
+    - name: Cleanup old Docker images and build cache
       run: |
-        docker system prune --all --filter "until=360h" --force
-    - uses: actions/checkout@v5
+        docker system prune --all --filter "until=168h" --force
+        docker builder prune --all --filter "until=168h" --force
+    - name: Cleanup old HF cache
+      run: |
+        docker run --rm -v /mnt/datadrive:/mnt/datadrive alpine \
+          sh -c 'find /mnt/datadrive/nemo-skills-test-data/hf-cache/datasets -maxdepth 2 -mindepth 2 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
+                 find /mnt/datadrive/nemo-skills-test-data/hf-cache/hub -maxdepth 1 -mindepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null;
+                 true'
+    - uses: actions/checkout@v6
       with:
         path: ${{ github.run_id }}
     - name: Set up Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.10"
     - name: Install dependencies
@@ -35,10 +42,12 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         cd ${{ github.run_id }}
-        python -m pip install --upgrade pip
-        pip uninstall -y nemo-skills nemo_run
-        pip install -e .
-        pip install -r requirements/common-tests.txt
+        python -m pip install --upgrade pip uv
+        uv pip uninstall --system nemo-skills nemo_run || true
+        # Use `uv pip` so [tool.uv].override-dependencies in pyproject.toml is honored
+        # (relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x can be installed).
+        uv pip install --system -e .
+        uv pip install --system -r requirements/common-tests.txt
         ns prepare_data gsm8k human-eval mbpp algebra222 mmlu ifeval math-500 amc23 aime24
     - name: Build Docker image
       run: |

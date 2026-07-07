@@ -15,6 +15,7 @@ import logging
 import signal
 import subprocess
 import time
+from typing import List
 
 import typer
 from nemo_run import SSHTunnel
@@ -125,10 +126,14 @@ def launch_server(
     tail_logs=False,
     cmd="",
     partition=None,
+    account=None,
     with_sandbox=False,
     keep_mounts_for_sandbox=False,
+    sandbox_mounts=None,
     server_port=None,
     sandbox_port=None,
+    main_container=None,
+    sandbox_container=None,
     sbatch_kwargs=None,
 ):
     """Launch a model server in the background.
@@ -174,13 +179,16 @@ def launch_server(
         cmd=cmd,
         task_name="server",
         log_dir=log_dir,
-        container=cluster_config["containers"]["nemo-skills"],
+        container=main_container or cluster_config["containers"]["nemo-skills"],
         cluster_config=cluster_config,
         partition=partition,
+        account=account,
         server_config=server_config,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_mounts=sandbox_mounts,
         sandbox_port=sandbox_port,
+        sandbox_container=sandbox_container,
         sbatch_kwargs=sbatch_kwargs,
     )
     exp.run(detach=True, tail_logs=tail_logs)
@@ -213,7 +221,10 @@ def start_server(
         "If not specified, will use the default entrypoint for the server type.",
     ),
     server_container: str = typer.Option(None, help="Override container image for the hosted server"),
+    main_container: str = typer.Option(None, help="Override container image for the main task (e.g., chat interface)"),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     partition: str = typer.Option(None, help="Cluster partition to use"),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
@@ -223,6 +234,10 @@ def start_server(
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
     ),
     launch_chat_interface: bool = typer.Option(
         False, help="If True, will launch a gradio app that provides chat with the model"
@@ -274,10 +289,14 @@ def start_server(
         tail_logs=True,
         cmd=cmd,
         partition=partition,
+        account=account,
         with_sandbox=with_sandbox,
         keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+        sandbox_mounts=sandbox_mounts,
         server_port=server_port,
         sandbox_port=sandbox_port,
+        main_container=main_container,
+        sandbox_container=sandbox_container,
         sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
     )
 

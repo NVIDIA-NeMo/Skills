@@ -47,13 +47,28 @@ def get_subset_name(benchmark: str, subset: str) -> str:
     return f"{benchmark}-{subset}"
 
 
+def _set_asr_leaderboard_macro_wer(metrics: dict):
+    """Override _all_ WER with macro average across ASR leaderboard subsets."""
+    subset_names = [subset for subset in metrics if subset != "_all_"]
+    if not subset_names:
+        return
+
+    for eval_mode, overall_metrics in metrics["_all_"].items():
+        subset_wers = [metrics[subset][eval_mode]["wer"] for subset in subset_names]
+        overall_metrics["wer"] = round(sum(subset_wers) / len(subset_wers), 2)
+
+
 def add_benchmark_groups(results, metrics_to_print, evaluations_to_print):
     # Average results for benchmarks with dot notation (e.g., ruler.niah_single_1, ruler.niah_single_2)
     benchmark_groups = defaultdict(list)
     for benchmark in results.keys():
-        if "." in benchmark:
-            prefix = benchmark.rsplit(".", 1)[0]
-            benchmark_groups[prefix].append(benchmark)
+        if "." not in benchmark:
+            continue
+        prefix, suffix = benchmark.rsplit(".", 1)
+        if "-" in suffix:
+            # entry is `<benchmark>-<subset>` from get_subset_name; not a sibling under a group
+            continue
+        benchmark_groups[prefix].append(benchmark)
 
     # Create a new ordered dictionary to ensure prefix benchmarks appear first
     new_results = OrderedDict()
@@ -278,11 +293,12 @@ def summarize_results(
         metrics = {}
 
         has_greedy = Path(f"{benchmark_path}/output.jsonl").exists()
+        output_rs_pattern = re.compile(r"^output-rs\d+\.jsonl$")
         input_files = sorted(
             [
                 jsonl_file
-                for jsonl_file in glob.glob(f"{benchmark_path}/*.jsonl")
-                if Path(jsonl_file).name != "output.jsonl" and "_chunk_" not in Path(jsonl_file).name
+                for jsonl_file in glob.glob(f"{benchmark_path}/output-rs*.jsonl")
+                if output_rs_pattern.match(Path(jsonl_file).name)
             ]
         )
         has_sampling = len(input_files) > 0
@@ -303,6 +319,8 @@ def summarize_results(
             input_files = [f"{benchmark_path}/output.jsonl"]
 
         metrics = metrics_calculator.compute_metrics(input_files=input_files)
+        if benchmark == "asr-leaderboard" and len(metrics) > 1:
+            _set_asr_leaderboard_macro_wer(metrics)
         if len(metrics) > 1:  # has subsets
             for subset, subset_metrics in metrics.items():
                 results[get_subset_name(benchmark, subset)].update(subset_metrics)

@@ -22,8 +22,8 @@ if __name__ == "__main__":
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
 
-    base_url = "https://raw.githubusercontent.com/google-deepmind/superhuman/c1ee02e03d4cdb2ab21cd01ac927d895f5287fc8/imobench"
-    source_url = f"{base_url}/answerbench.csv"
+    base_url = "https://raw.githubusercontent.com/google-deepmind/superhuman/326a740a6877d5ec098035c534d2fbd931fe83ee/imobench"
+    source_url = f"{base_url}/answerbench_v2.csv"
     output_file = data_dir / "test.jsonl"
 
     with urllib.request.urlopen(source_url, timeout=30) as response:

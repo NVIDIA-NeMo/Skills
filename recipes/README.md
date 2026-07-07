@@ -7,3 +7,5 @@
 * [OpenMathReasoning](https://nvidia-nemo.github.io/Skills/releases/openmathreasoning/)
 
 * [OpenMathInstruct-2](https://nvidia-nemo.github.io/Skills/releases/openmathinstruct2/)
+
+* [LibTrace](https://nvidia-nemo.github.io/Skills/recipes/libtrace/)

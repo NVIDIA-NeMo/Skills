@@ -27,11 +27,14 @@ from tests.conftest import docker_rm
 # These don't support max_samples, require explicit parameters, or are very heavy to prepare
 EXCLUDED_DATASETS = {
     "__pycache__",
+    "longcodebench",
+    "longbench-v2",
     "ruler",
     "ruler2",
     "bigcodebench",
     "livecodebench",
-    "livebench_coding",
+    "livecodebench-x",
+    "livebench-coding",
     "livecodebench-pro",
     "livecodebench-cpp",
     "ioi",
@@ -40,6 +43,7 @@ EXCLUDED_DATASETS = {
     "swe-bench",
     "swe-bench-multilingual",
     "swe-rebench",
+    "swe-bench-pro",
     "aai",
     "human-eval",
     "human-eval-infilling",
@@ -48,12 +52,24 @@ EXCLUDED_DATASETS = {
     "asr-leaderboard",
     "mrcr",
     "audiobench",
+    "fleurs",
     "librispeech-pc",
     "musan",
+    "numb3rs",
+    "covost2",
+    "contextasr-bench",  # audio benchmark, requires ~22 GB download
+    "contextual-earnings22",  # audio benchmark, requires HF download (~404 MB)
     # Excluded for the time being as compute eval requires either a CTK or local docker engine to run
     "compute-eval",
     # CritPt requires exactly 70 submissions and external API key (ARTIFICIAL_ANALYSIS_API_KEY)
     "critpt",
+    # SPEED-Bench downloads dozens of large external HF datasets, exhausting CI runner disk space
+    "speed-bench",
+    "mmmlu",  # too large
+    # Multilingual benchmarks that download many HF dataset splits (one per language)
+    "polymath",
+    "m-arena-hard",
+    "m-arena-hard-v2",
 }
 
 
@@ -178,23 +194,9 @@ def test_aaa_prepare_and_eval_all_datasets():
     missing_metrics = [dataset for dataset in non_judge_datasets if dataset not in summary_metrics]
     assert not missing_metrics, f"Missing metrics for datasets in metrics.json: {missing_metrics}"
 
-    # have to process bfcl separately as it's eval group and fails on summarize results.
-    # It also needs a special eval arg
-    # TODO: after summarize results works natively with eval groups, we can merge these
-    # TODO: enable bfcl_v4 after figuring out why it's broken in this setup
-    # setting 10 samples as bfcl is brittle when using only 2
-    bfcl_eval_args = "++eval_config.partial_eval=true ++model_name=Qwen/Qwen3-1.7B-FC ++max_samples=10"
-    eval(
-        ctx=wrap_arguments(f"{common_ctx} {bfcl_eval_args}"),
-        output_dir=output_dir,
-        benchmarks="bfcl_v3",
-        expname=f"eval-all-datasets-{model_type}-bfcl",
-        auto_summarize_results=True,
-        **eval_kwargs,
-    )
-
-    bfcl_metrics_file = eval_results_dir / "bfcl_v3" / "metrics.json"
-    assert bfcl_metrics_file.exists(), "Missing metrics.json for dataset bfcl_v3"
+    # TODO: re-enable bfcl_v3 and bfcl_v4 after fixing the transformers dependency
+    # version conflict in the CI Docker image (bfcl.py fails at import time with
+    # require_version_core in transformers/dependency_versions_check.py)
 
     # TODO: add same for judge_datasets after generate supports num_jobs
     # (otherwise it starts judge every time and takes forever)

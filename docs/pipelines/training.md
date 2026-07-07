@@ -4,8 +4,6 @@
 
     This pipeline starting script is [nemo_skills/pipeline/nemo_rl/sft.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/pipeline/nemo_rl/sft.py)
 
-    All extra parameters are passed to [nemo_skills/training/nemo_rl/start_sft.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/training/nemo_rl/start_sft.py)
-
 
 ## Preparing the data
 
@@ -54,7 +52,8 @@ ns nemo_rl sft \
     --num_gpus=8 \
     --dependent_jobs=3 \
     --backend=megatron \
-    --training_data=/data/sft-data.jsonl
+    --training_data=/data/sft-data.jsonl \
+    ++sft.val_period=0
 ```
 
 This will run training on 8 nodes of 8 GPUs, using 4 dependent slurm jobs.
@@ -66,14 +65,14 @@ The training will finish once either the specified number of epochs or steps is 
     ++sft.max_num_steps=1000 \
 ```
 
-It is also recommended to tune the micro batch size, max sequence length and parallelism parameters for optimal performance. If sequence packing is enabled (default) it's recommended to keep micro batch size as 1 and instead increase sequence packing length when GPU memory isn't used fully.
+It is also recommended to tune the micro batch size, max sequence length and parallelism parameters for optimal performance. If sequence packing is enabled, it's recommended to keep micro batch size as 1 and instead increase sequence packing length when GPU memory isn't used fully.
 
 For dense models (e.g., Qwen3-8B), adjusting these settings can significantly improve training efficiency.
 
 ```bash
     ++policy.train_global_batch_size=32 \
     ++policy.train_micro_batch_size=1 \
-    ++policy.tensor_model_parallel_size=4 \
+    ++policy.megatron_cfg.tensor_model_parallel_size=4 \
 ```
 
 For MoE models (e.g., Qwen3-30B-A3B), you can also adjust additional MoE-specific parameters to further optimize performance.
@@ -84,11 +83,10 @@ For MoE models (e.g., Qwen3-30B-A3B), you can also adjust additional MoE-specifi
 ```
 
 
-We also support sequence packing and context parallel, especially for training sequences > 4k or so, it's recommended to use sequence packing and context parallel.
-By default, our sft config set sequence_packing as True.
+We also support sequence packing and context parallel. For training sequences > 4k or so, it's recommended to enable sequence packing and context parallel explicitly.
 ```bash
    ++policy.sequence_packing.enabled=True \
-   ++policy.context_parallel_size=4
+   ++policy.megatron_cfg.context_parallel_size=4
 ```
 
 
@@ -112,7 +110,7 @@ cluster = "slurm"
 output_dir = f"/workspace/{expname}/checkpoints"
 
 sft_nemo_rl(
-    ctx=wrap_arguments(""),
+    ctx=wrap_arguments("++sft.val_period=0 "),
     cluster=cluster,
     expname=expname,
     output_dir=output_dir,
@@ -134,4 +132,3 @@ eval(
     run_after=expname,
 )
 ```
-

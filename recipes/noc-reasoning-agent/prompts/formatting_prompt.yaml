@@ -1,0 +1,191 @@
+user: |-
+  You are an expert Process Auditor and Training Assistant for a Network Operations Center (NOC). Your goal is to retrospectively analyze a completed incident by comparing the work notes and chat logs against the official Standard Operating Procedure (SOP).
+
+  Your final output will be a standardized, step-by-step playbook in a structured JSON format. This playbook will be used to train new engineers and ensure process consistency.
+
+  # AVAILABLE TOOLS
+  (These are the standardized tools that map to engineer actions.)
+
+  query_alarm[<site_or_element_id>]
+  - Purpose: Queries the alarm management system to retrieve current alarm details, severity, and active time.
+  - Returns: Alarm status (active/cleared), severity, timestamp, description.
+
+  query_resource_health[<element_id>]
+  - Purpose: Polls monitoring systems (EMS/NMS/Telemetry) to retrieve device health metrics such as CPU, memory, interface status, and cell state.
+  - Returns: Health report (e.g., "All systems operational" / "Fault detected").
+
+  query_performance[<metric_type>]
+  - Purpose: Fetches KPIs from monitoring tools. Reports if trends are in line with expectations.
+  - Example Metrics: 'prb_utilization', 'throughput', 'handover_stats', 'volte_kpi', 'signaling_load'
+  - Returns: KPI status (OK / NOK / trend analysis).
+
+  query_topology[<element_id>]
+  - Purpose: Verifies neighbors, adjacencies, upstream devices, and identifies common alarms in an area. Maps affected services through topology.
+  - Returns: Adjacent elements with alarm status, affected services.
+
+  execute_remote_action[<element_id>, '<action>']
+  - Purpose: Executes remote CLI commands (SSH/Netconf) for resets, restarts, failovers, and other operational actions.
+  - Example Actions: 'enodeb_reset', 'generator_start', 'sctp_reset', 'hvac_reset', 'software_rollback'
+  - Returns: Execution result (Success/Fail).
+
+  apply_configuration[<element_id>, '<config_type>']
+  - Purpose: Retrieves, validates, and pushes configuration changes. Supports parameter adjustments, load balancing, QoS policies, etc.
+  - Example Config Types: 'load_balancing', 'hvac_setpoint', 'handover_params', 'qos_policy'
+  - Returns: Configuration Verified/Applied or error.
+
+  run_diagnostics[<diagnostic_type>]
+  - Purpose: Runs diagnostic scripts: config audits, OTDR tests, kubelet checks, resource analysis.
+  - Example Types: 'config_audit', 'otdr', 'kubelet', 'resource_usage', 'sidecar_health'
+  - Returns: Diagnostic report summary.
+
+  inspect_logs[<log_type>]
+  - Purpose: Connects to devices/containers and reviews system logs, dump files, and event records.
+  - Example Types: 'container', 'bbu_system', 'routing', 'access_control', 'upgrade'
+  - Returns: Log analysis (issues identified / no issues).
+
+  create_trouble_ticket[<priority>, '<team>', '<issue_details>']
+  - Purpose: Logs and routes tickets to departments via the ticketing system.
+  - Example Teams: 'transport', 'core_operations', 'rf_engineering', 'devops'
+  - Returns: Ticket ID. Once resolved, outputs the solution used.
+
+  verify_recovery[<element_id>]
+  - Purpose: Final verification step — confirms service restoration, alarm clearance, and operational status.
+  - Returns: Recovery status (recovered / degraded / ongoing).
+
+  query_external_factors[<site_or_area>]
+  - Purpose: Scans for external factors: weather conditions, fiber cuts, utility outages, maintenance windows, scheduled work.
+  - Returns: External issue report.
+
+  orchestrate_workload[<action>, '<type>']
+  - Purpose: Automates container/VM operations via Kubernetes or orchestrator: restart, scale, migrate, failover, drain.
+  - Example Actions: 'restart pod', 'scale deployment', 'migrate vm', 'failover cnf'
+  - Returns: Operation status (Successful/Unsuccessful).
+
+  query_power_system[<target>]
+  - Purpose: Queries power infrastructure status: UPS, battery, generator, rectifier, HVAC systems.
+  - Example Targets: 'ups', 'battery', 'generator', 'hvac', 'rectifier'
+  - Returns: Power system status and readings.
+
+  query_rf_status[<sector_or_antenna_id>]
+  - Purpose: Queries RF chain status: antenna health, PA status, VSWR, beamforming, RET controller.
+  - Returns: RF status report (transmit power, VSWR, antenna tilt, etc.).
+
+  query_container_status[<type>]
+  - Purpose: Queries Kubernetes pod/node/container state from the orchestrator.
+  - Example Types: 'pod', 'node', 'control_plane', 'cnf', 'service_mesh'
+  - Returns: Container/pod state details.
+
+  verify_signaling_path[<interface>]
+  - Purpose: Tests signaling protocol paths: SCTP, SIP, Diameter, GTP, SIGTRAN.
+  - Example Interfaces: 'SCTP', 'SIP', 'GTP', 'Diameter', 'SIGTRAN'
+  - Returns: Path status (healthy / degraded / down).
+
+  test_connectivity[<test_type>]
+  - Purpose: Tests IP/network connectivity: ICMP, backhaul, CPRI, peer connectivity, end-to-end quality.
+  - Example Types: 'backhaul', 'icmp', 'cpri', 'peer_connectivity', 'end_to_end'
+  - Returns: Connectivity test results.
+
+  # RULES
+  1. Analyze the Entire Log: Read the full context from start to finish to understand the incident's story and the actual sequence of actions.
+  2. Trace and Build the Workflow (Crucial): Your goal is to build a JSON array that represents the actual sequence of executed steps.
+    - Start at Step 1 of the SOP. Find the log evidence for it.
+    - Create the first JSON object in your array for this step. Fill in its details (action, tool, result).
+    - Read the "Flow-Deciding Answers/Outcomes" for that step (e.g., "if succeeds, go to step 4; if fails, escalate to step 8").
+    - Based on the result (see Rule 3), determine the next executed step.
+    - Find the log evidence for that next step (e.g., Step 8). Create the second JSON object in your array for Step 8.
+    - Repeat this process, following the workflow from step to step as dictated by the SOP's logic and the engineer's logs. Each executed step is a new object appended to your JSON array.
+  3. Generate Plausible Results:
+    - For every step you add to the JSON array, you must determine the tool_call used. If no tools were used, mark the result as null.
+    - If a tool was used the result field must not be null.
+    - If the log provides the tool's output, use it.
+    - If the log does not provide the output (e.g., "Engineer saw cells were locked"), you may generate a plausible, mock result that justifies the next action in the workflow (e.g., "result": "Cell 01: LOCKED, Cell 02: LOCKED").
+  4. Handle Skipped Steps: If a step is bypassed by the workflow (e.g., the flow jumps from Step 3 directly to Step 8), you do not create a JSON object for the skipped steps (4, 5, 6, 7). Your output array must only contain steps that were actually performed.
+  5. Synthesize Actions: For action_taken, transform the informal dialogue from the logs into a formal summary of what the engineer did.
+  6. Strict JSON Output Format:
+    - Your final output MUST be a valid JSON array of objects.
+    - The order of objects in the array must represent the chronological order of execution.
+    - The step_number field in each object must correspond to the step number from the SOP (this means the step_number values in the array will be non-sequential, like 1, 2, 3, 8, 9).
+    - Do not add any text, explanations, or markdown formatting before or after the JSON array.
+
+  # EXAMPLE OF CORRECT JSON OUTPUT FORMAT
+  (This example shows the workflow jumping from Step 3 to Step 8, as per the SOP logic "if fails, escalate to step 8")
+
+  ```json
+  [
+  {{
+    "step_number": 1,
+    "sop_step_title": "Verify Site Outage",
+    "status": "Completed",
+    "action_taken": "Acknowledged alarm for site-123 and confirmed site unreachable.",
+    "tool_call": "query_alarm[site-123]",
+    "result": "ALARM: Site-123 | SEVERITY: Critical | STATUS: Active | DESC: Site unreachable - confirmed"
+  }},
+  {{
+    "step_number": 2,
+    "sop_step_title": "Check Backhaul Status",
+    "status": "Completed",
+    "action_taken": "Tested transport link to site, confirmed backhaul down.",
+    "tool_call": "test_connectivity[backhaul]",
+    "result": "TEST: Backhaul link to site-123 | STATUS: Down | Packet loss: 100%"
+  }},
+  {{
+    "step_number": 3,
+    "sop_step_title": "Check Power Status",
+    "status": "Completed",
+    "action_taken": "Attempted to query site power via remote monitoring but site was offline.",
+    "tool_call": "query_power_system[all]",
+    "result": "QUERY FAILED: Unable to reach site power monitoring - site offline"
+  }},
+  {{
+    "step_number": 8,
+    "sop_step_title": "Contact Transport Team",
+    "status": "Completed",
+    "action_taken": "Backhaul down confirmed. Created critical ticket and escalated to transport team.",
+    "tool_call": "create_trouble_ticket[critical, 'transport', 'Site-123 backhaul down causing complete site outage']",
+    "result": "TICKET_CREATED: TK78901 | Assigned to: Transport Operations"
+  }},
+  {{
+    "step_number": 12,
+    "sop_step_title": "Document All Actions and Close Incident",
+    "status": "Completed",
+    "action_taken": "Documented all troubleshooting steps and findings. Incident closed.",
+    "tool_call": null,
+    "result": "All actions documented. Incident closed with resolution applied."
+  }}
+  ]
+  ```
+  ---
+  ### Your Turn:
+
+  SOP:
+  {problem_code_reasoning_process}
+
+  Final step: end with a conclusion. Follow the conclusion given to you.
+
+  Incident Details:
+  * Number: {incident_identifier}
+  * Region: {geographical_territory}
+  * Category: {incident_classification}
+  * Subcategory: {incident_subtype}
+  * Market: {service_domain}
+  * Vendor: {equipment_provider}
+  * AOI: {operational_zone}
+  * Priority: {urgency_level}
+  * Locations: {affected_site}
+  * Short Description: {incident_summary}
+  * Opened At: {detection_timestamp}
+  * Assignment Group: {responsible_team}
+  * Problem Code: {fault_category}
+
+  Logs:
+  {action_chronicle}
+
+  Conclusion:
+  {resolution_summary}
+
+  close_code:
+  {root_cause_secondary}
+
+  ### Correct Output:
+
+  /think

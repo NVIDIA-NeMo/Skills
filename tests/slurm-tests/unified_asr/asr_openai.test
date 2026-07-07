@@ -1,0 +1,2 @@
+{"id": "sample_2", "_reference": "sample 2 this is a test of text to speech synthesis", "messages": [{"role": "user", "content": "Transcribe this audio accurately.", "audio": {"path": "/nemo_run/code/tests/slurm-tests/asr_nim/wavs/t2_16.wav"}}]}
+{"id": "sample_3", "_reference": "sample 3 hello how are you today", "messages": [{"role": "user", "content": "Transcribe this audio accurately.", "audio": {"path": "/nemo_run/code/tests/slurm-tests/asr_nim/wavs/t3_16.wav"}}]}

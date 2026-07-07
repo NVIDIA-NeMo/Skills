@@ -14,8 +14,17 @@
 
 import re
 from collections import defaultdict
+from statistics import mean
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics
+
+# Score-label preference for picking the best of N predictions per judgement direction.
+# "Best" = most candidate-favorable. The two preference orders are mirrored because the
+# judge prompts swap the A/B slot assignments to mitigate position bias:
+#   judgement-gen-base: A = candidate's answer, B = baseline's answer
+#   judgement-base-gen: A = baseline's answer, B = candidate's answer
+_GEN_BASE_PREFERENCE = ("A>>B", "A>B", "A=B", "B>A", "B>>A")
+_BASE_GEN_PREFERENCE = ("B>>A", "B>A", "A=B", "A>B", "A>>B")
 
 
 class ArenaMetrics(BaseMetrics):
@@ -40,87 +49,128 @@ class ArenaMetrics(BaseMetrics):
         prediction["judgement-base-gen"] = "Rating: [[B>>A]]"
         return prediction
 
+    @staticmethod
+    def _best_pair(prompt_pairs):
+        """Pick the most candidate-favorable label across all predictions, per direction."""
+        gen_base_pool = [pair[0] for pair in prompt_pairs]
+        base_gen_pool = [pair[1] for pair in prompt_pairs]
+        return [
+            next((s for s in _GEN_BASE_PREFERENCE if s in gen_base_pool), None),
+            next((s for s in _BASE_GEN_PREFERENCE if s in base_gen_pool), None),
+        ]
+
     def update(self, predictions):
-        """Updating the evaluation results with the current element.
+        """Store all per-prediction (gen-base, base-gen) score pairs for this prompt.
 
-        Args:
-            predictions (list[dict]): aggregated predictions across all generations.
-                The content of the file is benchmark specific.
+        Aggregation is deferred to get_metrics() so that both pass@N (best-of-N) and
+        pass@1[avg-of-N] can be derived from the same stored data.
         """
-        # this shouldn't do any heavy calculation, but just read the metric from existing json entry
-        # all the heavy lifting should be done in the evaluation script
         super().update(predictions)
-        self.scores.append([])
-        self.agg_mode = f"pass@{len(predictions)}"
-
-        # Track category for per-category scoring (defaults to None for v1 compatibility)
-        category = predictions[0].get("category")
-        self.categories.append(category)
-
-        if len(predictions) > 1:
-            judge_scores = [self._get_judge_score(elem["judgement-gen-base"]) for elem in predictions]
-            # adding the best score out of all the generations
-            possible_scores = ["A>>B", "A>B", "A=B", "B>A", "B>>A"]
-            for possible_score in possible_scores:
-                # picking the best available score
-                if any([score == possible_score for score in judge_scores]):
-                    self.scores[-1].append(possible_score)
-                    best_id = judge_scores.index(possible_score)
-                    self.lengths += predictions[best_id].get("num_generated_tokens", 0)
-                    break
-            else:
-                self.scores[-1].append(None)  # in case judge didn't generate a valid score
-
-            judge_scores = [self._get_judge_score(elem["judgement-base-gen"]) for elem in predictions]
-            # second score is grading swapped answers, so we iterate from the end
-            for possible_score in possible_scores[::-1]:
-                # picking the best available score
-                if any([score == possible_score for score in judge_scores]):
-                    self.scores[-1].append(possible_score)
-                    best_id = judge_scores.index(possible_score)
-                    self.lengths += predictions[best_id].get("num_generated_tokens", 0)
-                    break
-            else:
-                self.scores[-1].append(None)  # in case judge didn't generate a valid score
-        else:
-            self.lengths += predictions[0].get("num_generated_tokens", 0)
-            self.scores[-1] = [
-                self._get_judge_score(predictions[0]["judgement-gen-base"]),
-                self._get_judge_score(predictions[0]["judgement-base-gen"]),
+        self.per_prompt_scores.append(
+            [
+                (
+                    self._get_judge_score(p["judgement-gen-base"]),
+                    self._get_judge_score(p["judgement-base-gen"]),
+                )
+                for p in predictions
             ]
+        )
+        self.categories.append(predictions[0].get("category"))
 
     def get_metrics(self):
+        n = self.max_k or 1
+        emit_categories = len(set(self.categories)) > 1
+
+        # pass@N (best-of-N): pick the most candidate-favorable label per direction across
+        # all N predictions per prompt, then run Elo on those 1-pair-per-prompt lists.
+        best_of_n = [self._best_pair(pairs) for pairs in self.per_prompt_scores]
+        metrics_dict = {f"pass@{n}": self._aggregate(best_of_n, emit_categories)}
+
+        # pass@1[avg-of-N]: N independent single-shot Elo bootstraps (one per repeat),
+        # averaged. Skipped for N==1 since avg-of-1 is degenerate with pass@1.
+        if n > 1:
+            per_repeat_aggs = [
+                self._aggregate(
+                    [list(pairs[r]) for pairs in self.per_prompt_scores],
+                    emit_categories,
+                )
+                for r in range(n)
+            ]
+            metrics_dict[f"pass@1[avg-of-{n}]"] = self._average_aggregations(per_repeat_aggs)
+
+        return metrics_dict
+
+    def _aggregate(self, prompt_pairs, emit_categories):
+        """Run get_aggregate_score on a list of (gen-base, base-gen) pairs (one per prompt)."""
         from nemo_skills.evaluation.evaluator.arena import get_aggregate_score
 
-        metrics_dict = {}
+        agg = {"num_entries": self.total}
+        agg.update(self._native_aggregate_score(get_aggregate_score(prompt_pairs)))
+        self.update_common_metrics(agg)
 
-        # Compute overall metrics
-        overall_metrics = {"num_entries": self.total}
-        overall_metrics.update(get_aggregate_score(self.scores))
-        self.update_common_metrics(overall_metrics)
+        if emit_categories:
+            by_category = defaultdict(list)
+            for pair, category in zip(prompt_pairs, self.categories, strict=True):
+                by_category[category].append(pair)
+            for category, pairs in by_category.items():
+                cat_agg = {"num_entries": len(pairs)}
+                cat_agg.update(self._native_aggregate_score(get_aggregate_score(pairs)))
+                agg[f"category_{category}"] = cat_agg
 
-        # Group scores by category for per-category metrics
-        category_scores = defaultdict(list)
-        for score, category in zip(self.scores, self.categories, strict=True):
-            category_scores[category].append(score)
+        return agg
 
-        # If we have multiple categories, compute per-category metrics
-        unique_categories = set(self.categories)
-        if len(unique_categories) > 1:
-            for category, scores in category_scores.items():
-                cat_metrics = {"num_entries": len(scores)}
-                cat_metrics.update(get_aggregate_score(scores))
-                overall_metrics[f"category_{category}"] = cat_metrics
+    @staticmethod
+    def _native_aggregate_score(agg):
+        """Cast get_aggregate_score's numpy types to native Python — yaml.safe_dump can't serialize numpy."""
+        return {
+            "score": float(agg["score"]),
+            "95_CI": tuple(float(x) for x in agg["95_CI"]),
+            "invalid_scores": int(agg["invalid_scores"]),
+        }
 
-        metrics_dict[self.agg_mode] = overall_metrics
-        # arena metrics have their own confidence estimation, so not doing std metrics here
-        return metrics_dict
+    def _average_aggregations(self, per_repeat):
+        """Average a list of per-repeat aggregation dicts to produce pass@1[avg-of-N].
+
+        - 'score': mean across repeats.
+        - 'invalid_scores': summed across repeats (total invalid-judgement count).
+        - '95_CI': dropped (mean of CIs is not a meaningful CI).
+        - num_entries / avg_tokens / gen_seconds: same across repeats; populated by
+          update_common_metrics.
+        - Per-category sub-dicts: averaged using the same rules.
+
+        Per-repeat scores are not surfaced here because downstream metric parsers
+        (e.g. nemo-evaluator-launcher's `core_evals/nemo_skills/output.py`) wrap each
+        leaf value in a `Score(value=float)` and reject lists. Consumers who need the
+        per-repeat breakdown can recompute it from `output-rs*.jsonl`.
+        """
+        # Cast to native Python float — get_aggregate_score returns numpy.float64,
+        # which yaml.safe_dump can't serialize.
+        avg = {"num_entries": per_repeat[0]["num_entries"]}
+        avg["score"] = float(mean(m["score"] for m in per_repeat))
+        avg["invalid_scores"] = sum(m["invalid_scores"] for m in per_repeat)
+        self.update_common_metrics(avg)
+
+        for cat_key in [k for k in per_repeat[0] if k.startswith("category_")]:
+            cat_avg = {"num_entries": per_repeat[0][cat_key]["num_entries"]}
+            cat_avg["score"] = float(mean(m[cat_key]["score"] for m in per_repeat))
+            cat_avg["invalid_scores"] = sum(m[cat_key]["invalid_scores"] for m in per_repeat)
+            avg[cat_key] = cat_avg
+
+        return avg
+
+    def evaluations_to_print(self):
+        # Override BaseMetrics' default — Arena doesn't compute majority@k, so dropping
+        # that key avoids a missing-key request to the framework's printer (matches the
+        # OmniMetrics convention).
+        n = self.max_k or 1
+        if n > 1:
+            return [f"pass@{n}", f"pass@1[avg-of-{n}]"]
+        return ["pass@1"]
 
     def reset(self):
         super().reset()
-        self.scores = []  # list of lists
-        self.categories = []  # list of category strings
-        self.lengths = 0
-        # TODO: the class should support pass@k, but this forces it to report as pass@1.
-        #       There is some error here for k>1
-        self.agg_mode = "pass@1"
+        # Per-prompt list of (gen-base, base-gen) score pairs — N tuples per prompt where
+        # N == self.max_k. Aggregation is deferred to get_metrics() so both pass@N
+        # (best-of-N) and pass@1[avg-of-N] can be derived from the same data.
+        self.per_prompt_scores = []
+        self.categories = []

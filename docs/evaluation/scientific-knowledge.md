@@ -6,13 +6,15 @@ Nemo-Skills can be used to evaluate an LLM on various STEM datasets.
 
 | <div style="width:55px; display:inline-block; text-align:center">Dataset</div> | <div style="width:105px; display:inline-block; text-align:center">Questions</div> | <div style="width:85px; display:inline-block; text-align:center">Types</div> | <div style="width:145px; display:inline-block; text-align:center">Domain</div> | <div style="width:60px; display:inline-block; text-align:center">Images?</div> | <div style="width:50px; display:inline-block; text-align:center">NS default</div> |
 |:---|:---:|:---:|:---|:---:|:---:|
-| **[HLE](https://huggingface.co/datasets/cais/hle)** | 2500 | Open ended, MCQ | Engineering, Physics, Chemistry, Bio, etc. | Yes | text only |
+| **[HLE](https://huggingface.co/datasets/cais/hle)** | 2,500 | Open ended, MCQ | Engineering, Physics, Chemistry, Bio, etc. | Yes | text only |
+| **[HLE-Verified](https://huggingface.co/datasets/skylenage/HLE-Verified)** | 2,500 | Open ended, MCQ | Engineering, Physics, Chemistry, Bio, etc. | Yes | gold+revision text only |
 | **[GPQA ](https://huggingface.co/datasets/Idavidrein/gpqa)** | 448 (main)<br>198 (diamond)</br>546 (ext.) | MCQ (4) | Physics, Chemistry, Biology | No | diamond |
 | **[SuperGPQA](https://huggingface.co/datasets/m-a-p/SuperGPQA)** | 26,529 | MCQ (≤ 10) | Science, Eng, Humanities, etc. | No | test |
 | **[MMLU-Pro](https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro)** | 12,032 | MCQ (≤ 10) | Multiple subjects | No | test |
 | **[SciCode](https://huggingface.co/datasets/SciCode1/SciCode)** | 80</br>(338 subtasks) | Code gen | Scientific computing | No | test+val |
 | **[FrontierScience](https://huggingface.co/datasets/openai/frontierscience)** | 100 | Short-answer | Physics, Chemistry, Biology | No | all |
 | **[Physics](https://huggingface.co/datasets/desimfj/PHYSICS)** | 1,000 (EN), 1,000 (ZH) | Open-ended | Physics | No | EN |
+| **[UGPhysics](https://huggingface.co/datasets/UGPhysics/ugphysics)** | 5,520 (EN), 5,520 (ZH) | Open-ended MCQ | Physics | No | EN |
 | **[MMLU](https://huggingface.co/datasets/cais/mmlu)** | 14,042 | MCQ (4) | Multiple Subjects | No | test |
 | **[MMLU-Redux](https://huggingface.co/datasets/edinburgh-dawg/mmlu-redux)** | 5,385| MCQ (4) | Multiple Subjects | No | test |
 | **[SimpleQA](https://github.com/openai/simple-evals/)** | 4,326 (test), 1,000 (verified) | Open ended | Factuality, Parametric knowledge| No | verified |

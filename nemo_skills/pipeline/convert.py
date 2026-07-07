@@ -180,6 +180,8 @@ def convert(
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
+    container: str = typer.Option(None, help="Override container image for the conversion job"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
@@ -320,12 +322,13 @@ def convert(
             cmd=conversion_cmd,
             task_name=expname,
             log_dir=log_dir,
-            container=container_map[(convert_from, convert_to)],
+            container=container or container_map[(convert_from, convert_to)],
             num_gpus=num_gpus,
             num_nodes=1,  # always running on a single node, might need to change that in the future
             num_tasks=1,
             cluster_config=cluster_config,
             partition=partition,
+            account=account,
             run_after=run_after,
             reuse_code=reuse_code,
             reuse_code_exp=reuse_code_exp,

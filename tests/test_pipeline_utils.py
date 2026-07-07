@@ -16,6 +16,9 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from nemo_skills.pipeline.utils.declarative import Command
 from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_expected_done_files,
@@ -355,3 +358,102 @@ def test_separate_hydra_args_with_quoted_special_chars():
     hydra_args, override_args = separate_hydra_args(extra_args)
     assert hydra_args == " --config-path /configs"
     assert override_args == " ++end_reasoning_string=END_TAG ++prompt=Question: {question}"
+
+
+# --- SandboxScript.keep_mounts wiring tests ---
+
+
+@patch("nemo_skills.pipeline.utils.scripts.server.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.server.get_free_port", return_value=12345)
+def test_sandbox_keep_mounts_false_produces_empty_mounts(mock_port, mock_cmd):
+    """Default keep_mounts=False must produce mounts=[] so the sandbox is filesystem-isolated.
+
+    This test revealed a pre-fix bug: Command.prepare_for_execution always emitted
+    mounts=None regardless of SandboxScript.keep_mounts, silently granting the sandbox
+    full cluster filesystem access even when the user explicitly left keep_mounts=False.
+    """
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {"executor": "slurm", "containers": {"sandbox": "sandbox:latest"}}
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=False)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+    assert exec_config["mounts"] == [], (
+        "keep_mounts=False must yield mounts=[] to isolate the sandbox from cluster filesystems"
+    )
+
+
+@patch("nemo_skills.pipeline.utils.scripts.server.sandbox_command", return_value=("echo sandbox", {}))
+@patch("nemo_skills.pipeline.utils.scripts.server.get_free_port", return_value=12345)
+def test_sandbox_keep_mounts_true_produces_none_mounts(mock_port, mock_cmd):
+    """keep_mounts=True must produce mounts=None so the sandbox inherits cluster mounts."""
+    from nemo_skills.pipeline.utils.scripts import SandboxScript
+
+    cluster_config = {"executor": "slurm", "containers": {"sandbox": "sandbox:latest"}}
+    sandbox = SandboxScript(cluster_config=cluster_config, keep_mounts=True)
+    cmd = Command(script=sandbox, container="sandbox:latest", name="sandbox")
+    _, exec_config = cmd.prepare_for_execution(cluster_config)
+    assert exec_config["mounts"] is None, (
+        "keep_mounts=True must yield mounts=None so get_executor inherits cluster config mounts"
+    )
+
+
+def test_non_sandbox_command_mounts_unchanged():
+    """Non-SandboxScript commands must still produce mounts=None (inherit cluster mounts)."""
+    import nemo_run as run
+
+    script = run.Script(inline="echo hello")
+    cmd = Command(script=script, container="nemo-skills:latest", name="client")
+    _, exec_config = cmd.prepare_for_execution({"executor": "slurm"})
+    assert exec_config["mounts"] is None, "Non-sandbox commands should inherit cluster mounts (mounts=None)"
+
+
+def test_normalize_mounts_list_supports_sandbox_modes(monkeypatch):
+    from nemo_skills.pipeline.utils.mounts import normalize_mounts_list
+
+    monkeypatch.setenv("SANDBOX_DATA", "/cluster/sandbox-data")
+
+    assert normalize_mounts_list(
+        ["${SANDBOX_DATA}:/sandbox/data:ro", "/host/scratch:/sandbox/scratch:rw"],
+        allow_rw_mode=True,
+    ) == ["/cluster/sandbox-data:/sandbox/data:ro", "/host/scratch:/sandbox/scratch:rw"]
+
+
+@pytest.mark.parametrize("mount", ["/host/data:/sandbox/data:rw", ":/sandbox/data", "/host/data:"])
+def test_normalize_mounts_list_rejects_invalid_regular_mounts(mount):
+    from nemo_skills.pipeline.utils.mounts import normalize_mounts_list
+
+    with pytest.raises(ValueError):
+        normalize_mounts_list([mount])
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_sandbox_mounts_override_keep_mounts_true(mock_port, mock_get_executor):
+    """Legacy add_task sandbox sidecars should also use sandbox_mounts exactly."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="task_handle"))
+    cluster_config = {
+        "executor": "local",
+        "containers": {"sandbox": "sandbox:latest"},
+    }
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_sandbox=True,
+        keep_mounts_for_sandbox=True,
+        sandbox_mounts=["/host/data:/sandbox/data:ro"],
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    assert mock_get_executor.call_args_list[-1].kwargs["mounts"] == ["/host/data:/sandbox/data:ro"]

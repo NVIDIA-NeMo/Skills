@@ -19,7 +19,9 @@ from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
-from nemo_skills.dataset.utils import get_mcq_fields
+from nemo_skills.dataset.utils import filter_by_subset, get_mcq_fields, load_subset_ids
+
+SUBSETS_DIR = Path(__file__).absolute().parent / "subsets"
 
 
 def format_entry(entry):
@@ -41,7 +43,18 @@ def write_data_to_file(output_file, data):
 
 
 def main(args):
-    dataset = load_dataset("TIGER-Lab/MMLU-Pro")[args.split]
+    if args.split in ("validation", "test"):
+        dataset = load_dataset("TIGER-Lab/MMLU-Pro")[args.split]
+    else:
+        subset_file = SUBSETS_DIR / f"{args.split}.txt"
+        if not subset_file.exists():
+            raise ValueError(
+                f"Unknown split '{args.split}'. Expected 'validation', 'test', or a subset file at subsets/{args.split}.txt"
+            )
+        dataset = load_dataset("TIGER-Lab/MMLU-Pro")["test"]
+        subset_ids = load_subset_ids(subset_file)
+        dataset = filter_by_subset(dataset, subset_ids, question_key="question", options_key="options")
+
     data_dir = Path(__file__).absolute().parent
     data_dir.mkdir(exist_ok=True)
     output_file = data_dir / f"{args.split}.jsonl"
@@ -50,6 +63,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--split", default="test", choices=("validation", "test"), help="Dataset split to process.")
+    parser.add_argument(
+        "--split", default="test", choices=("validation", "test", "10pct_opt_v1"), help="Dataset split to process."
+    )
     args = parser.parse_args()
     main(args)

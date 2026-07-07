@@ -1,0 +1,11 @@
+# Overrides to enable python-tool-assisted generations across pipelines.
+
+stages:
+  generate_solutions:
+    code_tags: ++code_tags=gpt-oss
+    enable_code_execution: ++code_execution=true
+    code_execution_limits: ++server.code_execution.max_code_executions=100
+    builtin_tools: ++chat_template_kwargs.builtin_tools=[python]
+    generation_kwargs:
+      args:
+        with_sandbox: True

@@ -1,0 +1,64 @@
+name: sandbox
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - pip
+  # Core scientific stack
+  - numpy
+  - scipy
+  - sympy
+  # Materials / simulation utilities
+  - ase
+  - pymatgen
+  # Quantum toolkits
+  - qutip
+  - qiskit
+  # HEP / ROOT IO (python-only)
+  - uproot
+  # Astronomy
+  - astropy
+  # MD engines and bindings (best-effort; remove if unavailable on your arch)
+  - lammps
+  # Geant4 (very large; remove if not needed or unavailable)
+  - geant4
+  # Build tools for native extensions (e.g., gmxapi)
+  - cmake
+  - ninja
+  - c-compiler
+  - cxx-compiler
+  # Server runtimes
+  - ipython
+  - flask
+  - uwsgi
+  - psutil
+  - curl
+  - gunicorn
+  # Chemistry-specific packages (conda-forge)
+  - rdkit
+  - pyscf
+  - openbabel
+  - chempy
+  - mendeleev
+  - coin-or-cbc  # For chempy stoichiometry balancing (pulp solver)
+  - mako  # For chempy native ODE code generation
+  # Biology-specific packages (conda-forge / bioconda)
+  - biopython
+  - scikit-bio
+  - biotite
+  - dendropy
+  - ete3
+  - cobra
+  - pysam
+  - pip:
+      - sdss-access
+      # Chemistry packages (pip)
+      - pubchempy
+      - radioactivedecay
+      - thermo
+      - pulp<2.8  # Older version with bundled CBC for chempy stoichiometry
+      - pycodeexport  # For chempy native ODE code generation
+      # Biology packages (pip)
+      - bioservices
+      - cyvcf2

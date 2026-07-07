@@ -18,5 +18,5 @@ EVAL_ARGS = "++eval_type=mmau-pro"
 
 # NVEmbed judge configuration for closed-form evaluation
 JUDGE_PIPELINE_ARGS = {
-    "judge_type": "nvembed",
+    "judge_step_fn": "nemo_skills.pipeline.judges.nvembed_judge::create_judge_tasks",
 }

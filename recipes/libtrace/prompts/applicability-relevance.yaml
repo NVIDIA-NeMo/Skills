@@ -1,0 +1,28 @@
+system: ""
+
+user: |-
+  Analyze the following {source} {type}: {name}
+
+  Docstring:
+  {doc}
+
+  Determine if this {type} can be used to solve {domain} problems.
+  Consider:
+  1. Is it primarily for scientific computation (not just visualization, data formatting, or memory management)?
+  2. Does it perform mathematical operations that could model {domain} phenomena?
+  3. Could it be used in {domain} simulations, calculations, or analysis?
+
+  Evaluate its applicability to {domain} problem-solving.
+  0 - Not applicable - visualization, formatting, memory management or purely abstract
+  1 - Applicable - can be used for {domain} computations, simulations, or analysis
+
+  And evaluate its relevance to {domain} problem-solving:
+  1 - Tangentially relevant - could be used but not primarily {domain}-focused
+  2 - Moderately relevant - commonly used in {domain} but also other fields
+  3 - Highly relevant - specifically designed for or commonly used in {domain}
+
+  Respond strictly in a format of:
+  {domain}-Applicable: {{0 or 1}}
+  {domain}-Relevance: {{1 or 2 or 3}}
+
+  Do not output any other text or comments.

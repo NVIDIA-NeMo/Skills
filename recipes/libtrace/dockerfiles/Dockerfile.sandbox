@@ -1,0 +1,124 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.
+# Licensed under the Apache License, Version 2.0
+
+# LibTrace sandbox image — physics / chemistry / biology oriented
+#
+# Matches the entrypoint/expectations of dockerfiles/Dockerfile.sandbox
+# but adds large scientific stacks via micromamba (conda-forge).
+#
+# Build (from repo root):
+#   docker build -f recipes/libtrace/dockerfiles/Dockerfile.sandbox -t nemo-skills-sandbox-libtrace .
+#
+# Convert to squashfs for Slurm/enroot:
+#   enroot import -o nemo-skills-sandbox-libtrace.sqsh -- dockerd://nemo-skills-sandbox-libtrace
+
+FROM tiangolo/uwsgi-nginx-flask:python3.10
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Base system deps
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl git bzip2 ca-certificates build-essential cmake ninja-build pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+
+# Optional: pypy3 (consistent with default sandbox)
+RUN curl -L https://downloads.python.org/pypy/pypy3.10-v7.3.17-linux64.tar.bz2 -o /tmp/pypy.tar.bz2 && \
+    tar -xjf /tmp/pypy.tar.bz2 -C /opt/ && \
+    ln -s /opt/pypy3.10-v7.3.17-linux64/bin/pypy3 /usr/local/bin/pypy3 && \
+    rm /tmp/pypy.tar.bz2
+
+# Install micromamba (lightweight conda) and prepare runtime env
+ENV MAMBA_ROOT_PREFIX=/opt/micromamba
+RUN curl -L https://micromamba.snakepit.net/api/micromamba/linux-64/latest | \
+    tar -xvj -C /usr/local/bin --strip-components=1 bin/micromamba
+ENV MAMBA_EXE=/usr/local/bin/micromamba
+ENV MAMBA_SUBDIR=linux-64
+
+# Copy environment specification
+COPY recipes/libtrace/dockerfiles/environment.yml /tmp/env.yml
+
+# Create env and install additional conda packages
+RUN micromamba create -y -n sandbox -f /tmp/env.yml && \
+    micromamba install -y -n sandbox -c conda-forge qiskit-aer "pybind11=2.11" expat xerces-c && \
+    micromamba clean -a -y
+
+# Ensure the sandbox env is active for all subsequent RUN/CMD and uwsgi runtime
+ENV PATH=/opt/micromamba/envs/sandbox/bin:$PATH
+ENV CONDA_PREFIX=/opt/micromamba/envs/sandbox
+ENV MAMBA_DEFAULT_ENV=sandbox
+ENV LD_LIBRARY_PATH=/opt/micromamba/envs/sandbox/lib:${LD_LIBRARY_PATH}
+ENV UWSGI_PYHOME=/opt/micromamba/envs/sandbox
+ENV UWSGI_VIRTUALENV=/opt/micromamba/envs/sandbox
+ENV PYTHONNOUSERSITE=1
+# Geant4 data directory (required for geant4_pybind to find datasets)
+ENV GEANT4_DATA_DIR=/opt/micromamba/envs/sandbox/share/Geant4/data
+
+SHELL ["/bin/bash", "-c"]
+
+# Install nemo-skills server Python deps matching default sandbox
+COPY requirements/code_execution.txt /app/requirements.txt
+RUN micromamba run -n sandbox pip install --no-cache-dir -r /app/requirements.txt
+
+# --- GROMACS ---
+RUN set -ex && \
+    export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) && \
+    git clone --depth 1 --branch v2025.3 https://gitlab.com/gromacs/gromacs.git /tmp/gromacs && \
+    cd /tmp/gromacs && mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
+        -DGMX_BUILD_OWN_FFTW=ON \
+        -DREGRESSIONTEST_DOWNLOAD=OFF \
+        -DGMXAPI=ON \
+        -DGMX_MPI=OFF \
+        -DPYTHON_EXECUTABLE=python && \
+    make -j$(nproc) && make install && \
+    pip install --no-cache-dir /tmp/gromacs/python_packaging/gmxapi && \
+    python -c "import gmxapi; print('gmxapi OK')" && \
+    cd / && rm -rf /tmp/gromacs
+
+# --- Geant4 + pybind ---
+RUN set -ex && \
+    export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) && \
+    export G4INSTALL_DIR=${CONDA_PREFIX} && \
+    git clone --depth 1 --branch v11.2.2 https://github.com/Geant4/geant4.git /tmp/geant4 && \
+    cd /tmp/geant4 && mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_INSTALL_PREFIX=${G4INSTALL_DIR} \
+        -DGEANT4_INSTALL_DATA=ON \
+        -DGEANT4_BUILD_TLS_MODEL=global-dynamic \
+        -DGEANT4_USE_PYTHON=ON \
+        -DGEANT4_USE_OPENGL_X11=OFF \
+        -DGEANT4_USE_QT=OFF \
+        -DGEANT4_USE_XM=OFF && \
+    make -j$(nproc) && make install && \
+    source ${G4INSTALL_DIR}/bin/geant4.sh && \
+    git clone --recursive https://github.com/HaarigerHarald/geant4_pybind.git /tmp/geant4_pybind && \
+    pip install --no-cache-dir /tmp/geant4_pybind && \
+    python -c "from geant4_pybind import G4UImanager; print('geant4_pybind OK')" && \
+    rm -rf /tmp/geant4 /tmp/geant4_pybind
+
+# Additional networking packages
+RUN micromamba install -y -n sandbox -c conda-forge aiohttp requests
+
+# Place the sandbox app
+COPY nemo_skills/code_execution/local_sandbox/local_sandbox_server.py /app/main.py
+
+# Reuse nginx config from the standard sandbox
+COPY dockerfiles/sandbox/nginx.conf.template /etc/nginx/nginx.conf.template
+# Copy the standard entrypoint as the base, then layer our wrapper on top
+COPY dockerfiles/sandbox/start-with-nginx.sh /start-with-nginx-base.sh
+COPY recipes/libtrace/dockerfiles/start-with-nginx.sh /start-with-nginx.sh
+RUN chmod +x /start-with-nginx-base.sh /start-with-nginx.sh
+
+WORKDIR /app
+
+# Multi-worker settings (same envs as default sandbox image)
+ENV NGINX_PORT=6000
+ENV LISTEN_PORT=6000
+ENV PYTHONUNBUFFERED=1
+
+# uWSGI timeouts tuned for long tool calls
+RUN echo "uwsgi_read_timeout 14400s;" > /etc/nginx/conf.d/custom_timeout.conf
+
+CMD ["/start-with-nginx.sh"]

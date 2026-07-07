@@ -34,14 +34,10 @@ def compute_score(metrics: dict):
     metrics[setup] = {}
 
     for aggregation in metrics[f"{setup}.mk_niah_basic"]:
-        metrics[setup][aggregation] = {
-            "accuracy": sum(
-                metrics[f"{setup}.{task}"][aggregation].get(
-                    "accuracy", (metrics[f"{setup}.{task}"][aggregation]["symbolic_correct"])
-                )
-                for task in tasks
-            )
-            / len(tasks)
-        }
+        total = 0
+        for task in tasks:
+            d = metrics[f"{setup}.{task}"][aggregation]
+            total += d["accuracy"] if "accuracy" in d else d["symbolic_correct"]
+        metrics[setup][aggregation] = {"accuracy": total / len(tasks)}
 
     return metrics

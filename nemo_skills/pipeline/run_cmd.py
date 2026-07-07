@@ -58,6 +58,7 @@ def run_cmd(
     partition: str = typer.Option(
         None, help="Can specify if need interactive jobs or a specific non-default partition"
     ),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
     num_gpus: int | None = typer.Option(None, help="Number of GPUs per node to use"),
@@ -77,6 +78,7 @@ def run_cmd(
     server_container: str = typer.Option(
         None, help="Override container image for the hosted server (if server_gpus is set)"
     ),
+    sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     dependent_jobs: int = typer.Option(0, help="Specify this to launch that number of dependent jobs"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     run_after: List[str] = typer.Option(
@@ -99,6 +101,10 @@ def run_cmd(
     keep_mounts_for_sandbox: bool = typer.Option(
         False,
         help="If True, will keep the mounts for the sandbox container. Note that, it is risky given that sandbox executes LLM commands and could potentially lead to data loss. So, we advise not to use this unless absolutely necessary.",
+    ),
+    sandbox_mounts: List[str] = typer.Option(
+        None,
+        help="Mounts to pass only to the sandbox container. Supports src:dst[:ro|rw].",
     ),
     log_dir: str = typer.Option(
         None,
@@ -197,10 +203,13 @@ def run_cmd(
                 container=containers,
                 cluster_config=cluster_config,
                 partition=partition,
+                account=account,
                 server_config=server_config,
                 with_sandbox=with_sandbox,
                 keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+                sandbox_mounts=sandbox_mounts,
                 sandbox_port=None if get_random_port else 6000,
+                sandbox_container=sandbox_container,
                 run_after=run_after,
                 reuse_code=reuse_code,
                 reuse_code_exp=reuse_code_exp,

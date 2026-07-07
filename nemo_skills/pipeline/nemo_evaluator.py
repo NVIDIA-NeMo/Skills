@@ -125,6 +125,7 @@ def nemo_evaluator(
     job_gpus: int = typer.Option(0, help="GPUs to allocate for the evaluator client when no servers are hosted"),
     job_nodes: int = typer.Option(1, help="Nodes to allocate for the evaluator job"),
     partition: str = typer.Option(None, help="Cluster partition to use"),
+    account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Slurm QoS"),
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     log_dir: str = typer.Option(None, help="Custom location for logs"),
@@ -325,6 +326,7 @@ def nemo_evaluator(
             job_nodes=job_nodes,
             cluster_config=cluster_config,
             partition=partition,
+            account=account,
             qos=qos,
             exclusive=exclusive,
         )
@@ -346,6 +348,7 @@ def nemo_evaluator(
                     commands=[main_server_cmd, client_cmd],
                     hardware=_hardware_for_group(
                         task_ctx.partition,
+                        task_ctx.account,
                         task_ctx.server_gpus or None,
                         task_ctx.server_nodes or 1,
                         task_ctx.qos,
@@ -358,6 +361,7 @@ def nemo_evaluator(
                     commands=[judge_server_cmd],
                     hardware=_hardware_for_group(
                         task_ctx.partition,
+                        task_ctx.account,
                         task_ctx.judge_server_gpus or None,
                         task_ctx.judge_server_nodes or 1,
                         task_ctx.qos,
@@ -393,7 +397,12 @@ def nemo_evaluator(
                 CommandGroup(
                     commands=sg_cmds,
                     hardware=_hardware_for_group(
-                        task_ctx.partition, group_num_gpus, group_num_nodes, task_ctx.qos, task_ctx.exclusive
+                        task_ctx.partition,
+                        task_ctx.account,
+                        group_num_gpus,
+                        group_num_nodes,
+                        task_ctx.qos,
+                        task_ctx.exclusive,
                     ),
                     name=f"{task_ctx.expname}-{task_ctx.idx}",
                     log_dir=log_dir,
@@ -543,17 +552,24 @@ class _TaskCreationContext:
     job_nodes: int
     cluster_config: Dict
     partition: Optional[str]
+    account: Optional[str]
     qos: Optional[str]
     exclusive: bool
 
 
 def _hardware_for_group(
-    partition: Optional[str], num_gpus: Optional[int], num_nodes: int, qos: Optional[str], exclusive: bool
+    partition: Optional[str],
+    account: Optional[str],
+    num_gpus: Optional[int],
+    num_nodes: int,
+    qos: Optional[str],
+    exclusive: bool,
 ) -> HardwareConfig:
     """Create HardwareConfig for a CommandGroup.
 
     Args:
         partition: SLURM partition name
+        account: SLURM account name
         num_gpus: Number of GPUs (None means no GPU allocation)
         num_nodes: Number of nodes
         qos: SLURM QoS setting
@@ -564,6 +580,7 @@ def _hardware_for_group(
     """
     return HardwareConfig(
         partition=partition,
+        account=account,
         num_gpus=num_gpus,
         num_nodes=num_nodes,
         sbatch_kwargs={
@@ -693,7 +710,12 @@ def _build_task_cmd(
     launcher_run_cfg = OmegaConf.create(launcher_run_cfg)
     task_cfg_copy = OmegaConf.create(copy.deepcopy(task_cfg))
     if url_override:
-        OmegaConf.update(task_cfg_copy, "overrides", {"target.api_endpoint.url": url_override}, force_add=True)
+        OmegaConf.update(
+            task_cfg_copy,
+            "overrides",
+            {"target.api_endpoint.url": _escape_shell_interpolation(url_override)},
+            force_add=True,
+        )
 
     if model_id:
         OmegaConf.update(
@@ -708,7 +730,7 @@ def _build_task_cmd(
             OmegaConf.update(
                 task_cfg_copy,
                 "overrides",
-                {"config.params.extra.judge.url": judge_url_override},
+                {"config.params.extra.judge.url": _escape_shell_interpolation(judge_url_override)},
                 force_add=True,
             )
         if judge_model_id:
@@ -726,6 +748,11 @@ def _build_task_cmd(
     cmd_struct = get_eval_factory_command(launcher_run_cfg, task_cfg_copy, task_definition)
 
     return cmd_struct.cmd
+
+
+def _escape_shell_interpolation(value: str) -> str:
+    """Preserve shell ${...} expressions when storing them in OmegaConf values."""
+    return value.replace("${", r"\${")
 
 
 @dataclass(kw_only=True)

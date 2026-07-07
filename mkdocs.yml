@@ -56,6 +56,7 @@ nav:
   - Nemo-Skills: index.md
   - Getting started:
     - basics/index.md
+    - Installation & Dependencies: basics/installation.md
     - Cluster configs: basics/cluster-configs.md
     - Code packaging: basics/code-packaging.md
     - Prompt format: basics/prompt-format.md
@@ -72,6 +73,8 @@ nav:
     - Training (verl): pipelines/training-verl.md
     - Arbitrary commands: pipelines/run-cmd.md
     - Starting a Server: pipelines/start-server.md
+  - Recipes:
+    - LibTrace: recipes/libtrace.md
   - Evaluation:
     - evaluation/index.md
     - evaluation/natural-math.md
@@ -86,6 +89,7 @@ nav:
     - evaluation/vlm.md
     - evaluation/other-benchmarks.md
     - evaluation/robustness.md
+    - evaluation/speculative-decoding.md
     - External benchmarks: evaluation/external-benchmarks.md
   - Agentic Inference:
     - agentic_inference/parallel_thinking.md

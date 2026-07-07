@@ -18,6 +18,7 @@
 import argparse
 import os
 import re
+import shutil
 
 import yaml
 from nemo_rl.models.megatron.community_import import export_model_from_megatron
@@ -86,6 +87,24 @@ def find_max_step_folder(training_folder, step_override=None):
     return os.path.join(training_folder, f"step_{chosen_step}")
 
 
+def copy_tokenizer_files(tokenizer_path, hf_ckpt_path):
+    """Copy source tokenizer metadata into the exported HF checkpoint."""
+    tokenizer_files = [
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+        "added_tokens.json",
+        "chat_template.jinja",
+    ]
+    for fname in tokenizer_files:
+        src = os.path.join(tokenizer_path, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(hf_ckpt_path, fname))
+            print(f"Copied {fname}")
+
+
 def main():
     """Main entry point."""
     args = parse_args()
@@ -128,6 +147,7 @@ def main():
         overwrite=True,
         hf_overrides=hf_overrides,
     )
+    copy_tokenizer_files(tokenizer_name, args.hf_ckpt_path)
 
 
 if __name__ == "__main__":

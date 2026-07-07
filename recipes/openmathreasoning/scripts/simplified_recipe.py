@@ -113,14 +113,24 @@ def run_training(workspace, cluster, num_gpus, expname_prefix, backend, wandb_pa
     base_args = [
         "++policy.max_total_sequence_length=8192",
         "++policy.train_global_batch_size=32",
-        "++policy.tensor_model_parallel_size=4",
-        "++policy.context_parallel_size=2",
-        "++policy.lr=1e-5",
         "++sft.max_num_epochs=2",
     ]
+    backend_args = {
+        "fsdp": [
+            "++policy.dtensor_cfg.tensor_parallel_size=4",
+            "++policy.dtensor_cfg.context_parallel_size=2",
+            "++policy.optimizer.kwargs.lr=1e-5",
+        ],
+        "megatron": [
+            "++policy.megatron_cfg.tensor_model_parallel_size=4",
+            "++policy.megatron_cfg.context_parallel_size=2",
+            "++policy.megatron_cfg.optimizer.lr=1e-5",
+            "++policy.megatron_cfg.optimizer.min_lr=1e-5",
+        ],
+    }
     # For FSDP, sequence_packing cannot be used with context parallel
     for training_backend in backend:
-        args = list(base_args)
+        args = base_args + backend_args[training_backend]
         if training_backend == "fsdp":
             args.append("++policy.sequence_packing.enabled=False")
 

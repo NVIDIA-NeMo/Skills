@@ -562,7 +562,6 @@ if [ "$NODE_COUNT" -gt 1 ]; then
         echo "${i}:${ACTUAL_WORKER_PORTS[$((i-1))]}" >> "$PORTS_FILE"
     done
     echo "PORT_REPORT_COMPLETE" >> "$PORTS_FILE"
-    sync
     echo "[$_H] Port assignments written to $PORTS_FILE"
 fi
 

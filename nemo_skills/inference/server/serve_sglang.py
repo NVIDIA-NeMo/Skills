@@ -14,6 +14,7 @@
 
 import argparse
 import subprocess
+from shlex import join
 
 
 def main():
@@ -32,7 +33,7 @@ def main():
         if args.dist_init_addr is None:
             raise ValueError("dist_init_addr must be specified for multi-node setup")
 
-    extra_arguments = f"{' '.join(unknown)}"
+    extra_arguments = join(unknown)
 
     print(f"Deploying model {args.model}")
     print("Starting OpenAI Server")

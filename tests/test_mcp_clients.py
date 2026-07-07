@@ -634,3 +634,618 @@ if __name__ == "__main__":
     assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
     assert len(result) == 3
     assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+
+
+# ==============================
+# DirectPythonTool functional tests
+# ==============================
+
+
+async def _run_tool_sequence(tool_impl, tool_calls):
+    """Run a sequence of tool calls against a Tool implementation and return results.
+
+    Each tool_call is a dict with 'code' and 'request_id' keys.
+    Returns list of result strings.
+    """
+    results = []
+    for call in tool_calls:
+        result = await tool_impl.execute(
+            "stateful_python_code_exec",
+            {"code": call["code"]},
+            extra_args={"request_id": call["request_id"]},
+        )
+        results.append(result)
+    return results
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_basic_execution():
+    """DirectPythonTool can execute code and return output."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    tools = await tool.list_tools()
+    assert len(tools) == 1
+    assert tools[0]["name"] == "stateful_python_code_exec"
+    assert "code" in tools[0]["input_schema"]["properties"]
+    # session_id and timeout should NOT be exposed
+    assert "session_id" not in tools[0]["input_schema"]["properties"]
+    assert "timeout" not in tools[0]["input_schema"]["properties"]
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(2 + 2)"},
+        extra_args={"request_id": "test-basic"},
+    )
+    assert result == "4"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_session_persistence():
+    """DirectPythonTool maintains session state across calls with the same request_id."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    results = await _run_tool_sequence(
+        tool,
+        [
+            {"code": "x = 42", "request_id": "session-test"},
+            {"code": "y = x * 2", "request_id": "session-test"},
+            {"code": "print(y)", "request_id": "session-test"},
+        ],
+    )
+    assert results[0] == ""  # assignment, no output
+    assert results[1] == ""  # assignment, no output
+    assert results[2] == "84"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_sanitizes_hidden_args():
+    """Model-supplied session_id/timeout in arguments are stripped and cannot override internal values."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    # First call establishes a session
+    await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "x = 99"},
+        extra_args={"request_id": "sanitize-test"},
+    )
+
+    # Second call: model tries to inject a bogus session_id to hijack/reset the session
+    # If sanitization fails, this would either error or lose the variable 'x'
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(x)", "session_id": "bogus-session-id", "timeout": 0.001},
+        extra_args={"request_id": "sanitize-test"},
+    )
+    # x should still be accessible (session_id was not overridden)
+    # and the call should not have timed out (timeout was not overridden)
+    assert result == "99"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_separate_sessions():
+    """Different request_ids get independent sessions."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    # Set variable in session A
+    await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "secret = 'session_a'"},
+        extra_args={"request_id": "A"},
+    )
+
+    # Session B should not see it
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(secret)"},
+        extra_args={"request_id": "B"},
+    )
+    assert "NameError" in result
+
+    # Session A should still see it
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(secret)"},
+        extra_args={"request_id": "A"},
+    )
+    assert result == "session_a"
+    await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_cleanup_request_deletes_session():
+    """cleanup_request deletes the remote sandbox session for a finished request."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    tool.configure(context={"sandbox": {"sandbox_type": "local"}})
+
+    request_id = "cleanup-DirectPythonTool"
+    try:
+        await tool.execute(
+            "stateful_python_code_exec",
+            {"code": "x = 123"},
+            extra_args={"request_id": request_id},
+        )
+
+        session_id = tool.requests_to_sessions[request_id]
+        assert session_id is not None
+
+        response = await tool._sandbox.http_session.get(
+            url=f"http://{tool._sandbox.host}:{tool._sandbox.port}/sessions",
+            timeout=10.0,
+            headers={"X-Session-ID": str(session_id)},
+        )
+        assert response.status_code == 200
+        assert str(session_id) in response.json()["sessions"]
+
+        await tool.cleanup_request(request_id)
+        assert request_id not in tool.requests_to_sessions
+
+        response = await tool._sandbox.http_session.get(
+            url=f"http://{tool._sandbox.host}:{tool._sandbox.port}/sessions",
+            timeout=10.0,
+            headers={"X-Session-ID": str(session_id)},
+        )
+        assert response.status_code == 200
+        assert str(session_id) not in response.json()["sessions"]
+
+        result = await tool.execute(
+            "stateful_python_code_exec",
+            {"code": "print(x)"},
+            extra_args={"request_id": request_id},
+        )
+        assert "NameError" in result
+    finally:
+        await tool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_session_sequence():
+    """DirectPythonTool runs a multi-step stateful session and computes correct results."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    sandbox_context = {"sandbox": {"sandbox_type": "local"}}
+
+    direct = DirectPythonTool()
+    direct.configure(context=sandbox_context)
+
+    assert (await direct.list_tools())[0]["name"] == "stateful_python_code_exec"
+
+    # A sequence of tool calls that exercises session persistence
+    tool_calls = [
+        {"code": "import math", "request_id": "seq"},
+        {"code": "result = math.factorial(10)", "request_id": "seq"},
+        {"code": "print(result)", "request_id": "seq"},
+        {"code": "x = [i**2 for i in range(5)]", "request_id": "seq"},
+        {"code": "print(sum(x))", "request_id": "seq"},
+    ]
+
+    results = await _run_tool_sequence(direct, tool_calls)
+
+    # Verify the actual computed values are correct
+    assert results[2] == "3628800"  # 10!
+    assert results[4] == "30"  # 0 + 1 + 4 + 9 + 16
+
+    await direct.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_surfaces_exceptions():
+    """DirectPythonTool surfaces Python exceptions in the returned output."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    sandbox_context = {"sandbox": {"sandbox_type": "local"}}
+
+    direct = DirectPythonTool()
+    direct.configure(context=sandbox_context)
+
+    results = await _run_tool_sequence(direct, [{"code": "1 / 0", "request_id": "err"}])
+
+    assert "ZeroDivisionError" in results[0]
+
+    await direct.shutdown()
+
+
+# ==============================
+# Hardening tests: DirectPythonTool should not raise on malformed calls or
+# transient sandbox/shutdown failures — RL runs must survive them.
+# ==============================
+
+
+class _StubSandbox:
+    """Stand-in sandbox whose behavior is controlled by the test."""
+
+    def __init__(self, execute_code=None, delete_session=None, close=None):
+        self._execute_code = execute_code
+        self._delete_session = delete_session
+        self._close = close
+        self.delete_calls = []
+        self.close_calls = 0
+
+    async def execute_code(self, code, language="ipython", timeout=10, session_id=None, **kwargs):
+        if self._execute_code is None:
+            raise AssertionError("execute_code called but not stubbed")
+        return await self._execute_code(code, language=language, timeout=timeout, session_id=session_id)
+
+    async def delete_session(self, session_id):
+        self.delete_calls.append(session_id)
+        if self._delete_session is not None:
+            await self._delete_session(session_id)
+
+    async def close(self):
+        self.close_calls += 1
+        if self._close is not None:
+            await self._close()
+
+
+def _direct_tool_with_stub(stub):
+    """Build a DirectPythonTool wired to a stub sandbox without needing a live server."""
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    tool = DirectPythonTool()
+    # configure() builds sanitize keys from hide_args; we replace the sandbox afterwards
+    # so we don't depend on a running local sandbox server.
+    tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
+    tool._sandbox = stub
+    return tool
+
+
+def test_python_tools_accept_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import DEFAULT_EXEC_TIMEOUT_S, DirectPythonTool, PythonTool
+
+    assert PythonTool().default_config()["exec_timeout_s"] == DEFAULT_EXEC_TIMEOUT_S
+    assert DirectPythonTool().default_config()["exec_timeout_s"] == DEFAULT_EXEC_TIMEOUT_S
+    assert PythonTool(exec_timeout_s=42).default_config()["exec_timeout_s"] == 42
+    assert DirectPythonTool(exec_timeout_s=42).default_config()["exec_timeout_s"] == 42
+
+
+def test_python_tool_defaults_to_direct_provider():
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool, PythonTool
+
+    # PythonTool is now the in-process direct provider (no stdio MCP transport).
+    assert isinstance(PythonTool(), DirectPythonTool)
+
+
+@pytest.mark.asyncio
+async def test_python_tool_description_uses_exec_timeout_override():
+    from nemo_skills.mcp.servers.python_tool import PythonTool
+
+    tool = PythonTool()
+    tool.configure(
+        overrides={"exec_timeout_s": 37},
+        context={"sandbox": {"sandbox_type": "local"}},
+    )
+
+    tools = await tool.list_tools()
+
+    assert "37.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_uses_exec_timeout_argument():
+    from nemo_skills.mcp.servers.python_tool import DirectPythonTool
+
+    seen = {}
+
+    async def record_execute(code, language, timeout, session_id):
+        seen["timeout"] = timeout
+        return {"process_status": "completed", "stdout": "done\n", "stderr": ""}, session_id
+
+    tool = DirectPythonTool(exec_timeout_s=42)
+    tool._sanitize_keys = {"stateful_python_code_exec": {"session_id", "timeout"}}
+    tool._sandbox = _StubSandbox(execute_code=record_execute)
+
+    tools = await tool.list_tools()
+    assert "42.0 seconds" in tools[0]["description"]
+    assert "10.0 seconds" not in tools[0]["description"]
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print('done')"},
+        extra_args={"request_id": "timeout-arg"},
+    )
+
+    assert result == "done"
+    assert seen["timeout"] == 42
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_missing_code_returns_error_not_raise():
+    """A tool call without 'code' must return a sandbox-shaped error, not crash the run."""
+    tool = _direct_tool_with_stub(_StubSandbox())  # execute_code must NOT be called
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {},  # no 'code' key — mirrors the KeyError seen in production
+        extra_args={"request_id": "missing-code"},
+    )
+    assert isinstance(result, str)
+    assert "code" in result  # error mentions the missing argument
+    # Must not leak framework internals (Python exception names / tracebacks).
+    assert "KeyError" not in result
+    assert "Traceback" not in result
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_sandbox_exception_returns_generic_error():
+    """Unexpected sandbox exceptions must be contained and must not leak internals."""
+
+    async def exploding_execute(code, language, timeout, session_id):
+        raise RuntimeError("internal sandbox detail that must not reach the model")
+
+    tool = _direct_tool_with_stub(_StubSandbox(execute_code=exploding_execute))
+
+    result = await tool.execute(
+        "stateful_python_code_exec",
+        {"code": "print(1)"},
+        extra_args={"request_id": "boom"},
+    )
+    assert isinstance(result, str)
+    # Generic message only — no leaked exception detail, no stack.
+    assert "internal sandbox detail" not in result
+    assert "Traceback" not in result
+    assert "RuntimeError" not in result
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_shutdown_tolerates_delete_failure():
+    """A failing delete_session for one session must not abort shutdown of the rest."""
+
+    async def flaky_delete(session_id):
+        if session_id == "sess-a":
+            raise RuntimeError("transient delete failure")
+
+    stub = _StubSandbox(delete_session=flaky_delete)
+    tool = _direct_tool_with_stub(stub)
+    tool.requests_to_sessions["req-a"] = "sess-a"
+    tool.requests_to_sessions["req-b"] = "sess-b"
+
+    # Must not raise despite sess-a's delete blowing up.
+    await tool.shutdown()
+
+    assert set(stub.delete_calls) == {"sess-a", "sess-b"}
+    assert stub.close_calls == 1  # close() still called after delete failures
+    assert tool.requests_to_sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_direct_python_tool_cleanup_request_tolerates_delete_failure():
+    """cleanup_request must not propagate delete_session errors into ToolManager."""
+
+    async def failing_delete(session_id):
+        raise RuntimeError("transient delete failure")
+
+    stub = _StubSandbox(delete_session=failing_delete)
+    tool = _direct_tool_with_stub(stub)
+    tool.requests_to_sessions["req-x"] = "sess-x"
+
+    # Must not raise; session must be removed from the mapping regardless.
+    await tool.cleanup_request("req-x")
+    assert "req-x" not in tool.requests_to_sessions
+
+
+# -- Radioactive decay direct tool tests ------------------------------------
+
+
+class TestRadioactivedecayTool:
+    def test_radioactivedecay_tool_config(self):
+        from nemo_skills.mcp.servers.physics.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        assert tool.default_config()["time_unit"] == "s"
+
+    @pytest.mark.asyncio
+    async def test_radioactivedecay_direct_list_tools(self):
+        from nemo_skills.mcp.servers.physics.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        tool.configure()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert "nuclide-info" in tool_names
+        assert "decay-chain" in tool_names
+        decay_tool = next(t for t in tools if t["name"] == "decay-chain")
+        assert "time_unit" not in decay_tool["input_schema"]["properties"]
+
+    @pytest.mark.asyncio
+    async def test_radioactivedecay_rejects_non_finite_time(self):
+        from nemo_skills.mcp.servers.physics.radioactivedecay_tool import RadioactivedecayTool
+
+        tool = RadioactivedecayTool()
+        tool.configure()
+        result = await tool.execute("decay-chain", {"nuclide": "H-3", "time": float("inf")})
+        assert result == "Time must be a finite number."
+
+
+# -- Particle direct tool tests ---------------------------------------------
+
+
+class TestParticleTool:
+    def test_particle_tool_config(self):
+        from nemo_skills.mcp.servers.physics.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        assert tool.default_config() == {}
+
+    @pytest.mark.asyncio
+    async def test_particle_direct_list_tools(self):
+        from nemo_skills.mcp.servers.physics.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        tool.configure()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "particle-lookup" in tool_names
+        assert "particle-search" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_particle_tool_rejects_extra_args(self):
+        from nemo_skills.mcp.servers.physics.particle_tool import ParticleTool
+
+        tool = ParticleTool()
+        with pytest.raises(ValueError, match="does not support extra_args"):
+            await tool.execute("particle-search", {"query": "pi"}, extra_args={"unused": True})
+
+
+# -- Periodictable direct tool tests ----------------------------------------
+
+
+class TestPeriodictableTool:
+    def test_periodictable_tool_config(self):
+        from nemo_skills.mcp.servers.chemistry.periodictable_tool import PeriodictableTool
+
+        tool = PeriodictableTool()
+        assert tool.default_config() == {}
+
+    @pytest.mark.asyncio
+    async def test_periodictable_direct_list_tools(self):
+        from nemo_skills.mcp.servers.chemistry.periodictable_tool import PeriodictableTool
+
+        tool = PeriodictableTool()
+        tool.configure()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "element-info" in tool_names
+        assert "isotope-info" in tool_names
+
+
+# -- CoolProp direct tool tests ---------------------------------------------
+
+
+class TestCoolPropTool:
+    def test_coolprop_tool_config(self):
+        from nemo_skills.mcp.servers.physics.coolprop_tool import CoolPropTool
+
+        tool = CoolPropTool()
+        assert tool.default_config() == {}
+
+    @pytest.mark.asyncio
+    async def test_coolprop_direct_list_tools(self):
+        from nemo_skills.mcp.servers.physics.coolprop_tool import CoolPropTool
+
+        tool = CoolPropTool()
+        tool.configure()
+        tool_names = {t["name"] for t in await tool.list_tools()}
+        assert "fluid-property" in tool_names
+        assert "fluid-list" in tool_names
+
+
+# -- Wikipedia direct tool tests --------------------------------------------
+
+
+class TestWikipediaTool:
+    def test_wikipedia_tool_config(self):
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        assert tool.default_config()["num_results"] == 3
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_search_rejects_out_of_range_num_results(self):
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        tool.configure()
+        result = await tool.execute("wikipedia-search", {"query": "Hydrogen atom", "num_results": 6})
+        assert result == "num_results must be between 1 and 5."
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_direct_list_tools(self):
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
+
+        tool = WikipediaSearchTool()
+        tool.configure()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert {
+            "wikipedia-search",
+            "wikipedia-page",
+            "wikipedia-summary",
+            "wikipedia-sections",
+            "wikipedia-section",
+            "wikipedia-query-summary",
+            "wikipedia-key-facts",
+        } <= tool_names
+        search_tool = next(t for t in tools if t["name"] == "wikipedia-search")
+        assert "query" in search_tool["input_schema"]["properties"]
+        assert "num_results" not in search_tool["input_schema"]["properties"]
+
+        query_summary_tool = next(t for t in tools if t["name"] == "wikipedia-query-summary")
+        assert {"title", "query"} <= set(query_summary_tool["input_schema"]["properties"])
+        assert set(query_summary_tool["input_schema"]["required"]) == {"title", "query"}
+
+    @pytest.mark.asyncio
+    async def test_wikipedia_execute_dispatch_contracts(self, monkeypatch):
+        from nemo_skills.mcp.servers.web import wikipedia_tool
+        from nemo_skills.mcp.servers.web.wikipedia_tool import WikipediaSearchTool
+
+        async def fake_page(title):
+            return f"page:{title}"
+
+        async def fake_section(title, section):
+            return f"section:{title}:{section}"
+
+        async def fake_query_summary(title, query, max_chars=700):
+            return f"query-summary:{title}:{query}:{max_chars}"
+
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_page", fake_page)
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_section", fake_section)
+        monkeypatch.setattr(wikipedia_tool, "wikipedia_query_summary", fake_query_summary)
+
+        tool = WikipediaSearchTool()
+        assert await tool.execute("wikipedia-page", {"title": "Hydrogen"}) == "page:Hydrogen"
+        assert (
+            await tool.execute("wikipedia-section", {"title": "Hydrogen", "section": "Isotopes"})
+            == "section:Hydrogen:Isotopes"
+        )
+        assert (
+            await tool.execute("wikipedia-query-summary", {"title": "Hydrogen", "query": "isotope"})
+            == "query-summary:Hydrogen:isotope:2500"
+        )
+
+
+# -- ArXiv direct tool tests ------------------------------------------------
+
+
+class TestArxivTool:
+    def test_arxiv_tool_config(self):
+        from nemo_skills.mcp.servers.web.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        assert tool.default_config()["max_results"] == 3
+
+    @pytest.mark.asyncio
+    async def test_arxiv_search_rejects_non_positive_max_results(self):
+        from nemo_skills.mcp.servers.web.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        tool.configure()
+        result = await tool.execute("arxiv-search", {"query": "quantum entanglement", "max_results": 0})
+        assert result == "max_results must be >= 1."
+
+    @pytest.mark.asyncio
+    async def test_arxiv_direct_list_tools(self):
+        from nemo_skills.mcp.servers.web.arxiv_tool import ArxivSearchTool
+
+        tool = ArxivSearchTool()
+        tool.configure()
+        tools = await tool.list_tools()
+        tool_names = {t["name"] for t in tools}
+        assert {"arxiv-search", "arxiv-get", "arxiv-sections", "arxiv-read-chunk"} <= tool_names
+        search_tool = next(t for t in tools if t["name"] == "arxiv-search")
+        assert "query" in search_tool["input_schema"]["properties"]
+        assert "max_results" not in search_tool["input_schema"]["properties"]

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import getpass
 import os
 import subprocess
 from pathlib import Path
@@ -103,7 +104,7 @@ def setup():
             "as well as for your models (e.g. /trt_models, /hf_models).\n"
             "If you're setting up a Slurm config, make sure to use the cluster paths here.\n"
             "What mounts would you like to add? (comma separated)",
-            default=f"/home/{os.getlogin()}:/workspace" if config_type == "local" else None,
+            default=f"{os.path.expanduser('~')}:/workspace" if config_type == "local" else None,
         )
 
         # parse mounts early so we can validate HF_HOME against them
@@ -172,7 +173,7 @@ def setup():
                 ssh_tunnel["host"] = typer.prompt("\nWhat is the ssh hostname of your cluster?")
                 ssh_tunnel["user"] = typer.prompt(
                     "\nWhat is your ssh username on the cluster?",
-                    default=os.getlogin(),
+                    default=getpass.getuser(),
                 )
                 default_key = os.path.expanduser("~/.ssh/id_rsa")
                 ssh_tunnel["identity"] = typer.prompt(

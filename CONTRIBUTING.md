@@ -49,6 +49,17 @@ The following things are required when adding new benchmarks
   the dataset into slurm tests. This is the most comprehensive test we can do by running full
   evaluation on cluster with arbitrary model and check that results are as expected.
 
+### Respect the Core / Pipeline dependency boundary
+
+NeMo Skills is split into **Core** (inference, evaluation, tools, benchmarks) and **Pipeline** (CLI, cluster orchestration). The one-way rule:
+
+- **Pipeline** can import from **Core**
+- **Core** CANNOT import from **Pipeline** (no `nemo_run`, no `nemo_skills.pipeline`)
+
+When adding dependencies: inference/evaluation/benchmark deps go in `core/requirements.txt`, orchestration deps go in `requirements/pipeline.txt`. This boundary is enforced by `tests/test_dependency_isolation.py`.
+
+For full details (examples, common patterns, what to avoid), see [Dependency Boundary Guide](core/README.md).
+
 ### Keep the code elegant
 When adding new features, try to keep the code simple and elegant.
 - Can you reuse / extend an existing functionality?

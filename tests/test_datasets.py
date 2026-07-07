@@ -15,6 +15,7 @@
 # tuple of dataset name, available splits and prepared sft files
 DATASETS = [
     ("aime25", ["test"]),
+    ("apex_2025", ["test"]),
     ("math-500", ["test"]),
     ("aime24", ["test"]),
     ("amc23", ["test"]),
@@ -55,6 +56,8 @@ DATASETS = [
     ("college_math", ["test"]),
     ("comp-math-24-25", ["test"]),
     ("mmau-pro", ["test"]),
+    ("contextasr-bench", ["test"]),
+    ("contextual-earnings22", ["test"]),
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),

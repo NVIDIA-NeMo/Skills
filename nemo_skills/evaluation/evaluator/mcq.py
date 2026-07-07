@@ -25,11 +25,32 @@ from nemo_skills.utils import get_logger_name, nested_dataclass
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def normalize_extracted_answer(extracted_answer: str) -> str:
+    return (
+        # In arabic these are the letters used for A-D in multiple choice questions
+        extracted_answer.replace("أ", " A")
+        .replace("ب", " B")
+        .replace("ج", " C")
+        .replace("د", " D")
+        # In Bengali these are the letters used for A-D in multiple choice questions
+        .replace("অ", " A")
+        .replace("ব", " B")
+        .replace("ড", " C")
+        .replace("ঢ", " D")
+        # In Japanese these are the letters sometimes used for A-D in multiple choice questions
+        .replace("Ａ", " A")
+        .replace("Ｂ", " B")
+        .replace("Ｃ", " C")
+        .replace("Ｄ", " D")
+        .strip()
+    )
+
+
 @nested_dataclass(kw_only=True)
 class MCQEvaluatorConfig(BaseEvaluatorConfig):
     extract_from_boxed: bool = True
     # only used if extract_from_boxed is False
-    extract_regex: str = r"The final answer is (.+)$"
+    extract_regex: str | list[str] = r"The final answer is (.+)$"
     # if relaxed is True:
     #   extract from regex FIRST, if not found, extract from boxed
     # if relaxed is False:
@@ -42,22 +63,37 @@ def eval_mcq(cfg):
     eval_config = MCQEvaluatorConfig(**cfg)
 
     def extract_letter(
-        text, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$", relaxed=False
+        text,
+        extract_from_boxed: bool = True,
+        extract_regex: str | list[str] = r"The final answer is (.+)$",
+        relaxed=False,
     ):
         # extract prediction from boxed{} or regex
-        extracted_answer = extract_answer(
-            text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex, relaxed=relaxed
-        )
-        parsed_letter = None
+        extracted_answer = None
+        if isinstance(extract_regex, list):
+            for regex in extract_regex:
+                extracted_answer = extract_answer(
+                    text, extract_from_boxed=extract_from_boxed, extract_regex=regex, relaxed=relaxed
+                )
+                if extracted_answer is not None:
+                    break
+        else:
+            extracted_answer = extract_answer(
+                text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex, relaxed=relaxed
+            )
 
         if extracted_answer is not None:
+            extracted_answer = normalize_extracted_answer(extracted_answer)
+
+        parsed_letter = None
+        if extracted_answer is not None:
             if len(extracted_answer) == 1:
-                parsed_letter = extracted_answer
+                parsed_letter = extracted_answer.upper()
             elif len(extracted_answer) > 1:
                 # try to extract the letter from extracted answer, useful to match <A>, {A}, *A*, etc.
                 match = re.findall(r"\b[A-Z]\b(?!.*\b[A-Z]\b)", extracted_answer, re.DOTALL)
                 if len(match) > 0:
-                    parsed_letter = match[-1].strip()
+                    parsed_letter = match[-1].strip().upper()
 
         # adapted from https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview
         if parsed_letter is None:

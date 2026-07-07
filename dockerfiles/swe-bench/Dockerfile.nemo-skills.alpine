@@ -1,0 +1,39 @@
+# using the oldest version of alpine among swe-bench pro containers for maximum compatibility
+FROM alpine:3.17.1
+
+# installs python 3.10
+RUN apk update && apk add --no-cache \
+    python3 \
+    py3-pip \
+    curl \
+    wget \
+    git \
+    git-lfs \
+    ffmpeg \
+    bash \
+    build-base \
+    python3-dev \
+    linux-headers && \
+    ln -sf /usr/bin/python3 /usr/bin/python
+
+RUN pip install --upgrade pip setuptools uv
+
+# install apptainer as community alpine package
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/v3.19/community \
+    apptainer apptainer-suid
+
+RUN apk del py3-blinker
+
+# we aren't copying main nemo_skills folder as it will always be mounted from host
+# but we do want to install all requirements in the container directly
+RUN mkdir -p /opt/NeMo-Skills/requirements /opt/NeMo-Skills/core
+COPY pyproject.toml README.md /opt/NeMo-Skills/
+COPY requirements /opt/NeMo-Skills/requirements/
+COPY core/requirements.txt /opt/NeMo-Skills/core/requirements.txt
+
+# don't install sentence_transformers as it is not used for swe-bench but causes errors during the build
+RUN sed -i '/^sentence_transformers$/d' /opt/NeMo-Skills/core/requirements.txt
+
+ARG CACHEBUST=4
+# don't install pipeline requirements as nemo-run causes errors during the build
+RUN pip install --no-cache-dir -r /opt/NeMo-Skills/core/requirements.txt

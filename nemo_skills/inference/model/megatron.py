@@ -32,6 +32,8 @@ class MegatronModel(BaseModel):
         top_k: int = -1,
         min_p: float = 0.0,
         repetition_penalty: float = 1.0,
+        presence_penalty: float = 0.0,
+        frequency_penalty: float = 0.0,
         random_seed: int = None,
         stop_phrases: list[str] | None = None,
         timeout: int | None = None,
@@ -63,8 +65,8 @@ class MegatronModel(BaseModel):
             "echo": False,
             "n": 1,
             "logit_bias": None,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0,
+            "frequency_penalty": frequency_penalty,
+            "presence_penalty": presence_penalty,
             "timeout": timeout,
         }
         return params
@@ -79,6 +81,8 @@ class MegatronModel(BaseModel):
         top_k: int = -1,
         min_p: float = 0.0,
         repetition_penalty: float = 1.0,
+        presence_penalty: float = 0.0,
+        frequency_penalty: float = 0.0,
         random_seed: int = None,
         stop_phrases: list[str] | None = None,
         timeout: int | None = None,
@@ -110,8 +114,8 @@ class MegatronModel(BaseModel):
             "echo": False,
             "n": 1,
             "logit_bias": None,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0,
+            "frequency_penalty": frequency_penalty,
+            "presence_penalty": presence_penalty,
             "timeout": timeout,
         }
 

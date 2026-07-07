@@ -414,6 +414,44 @@ class WriteFinalSftManifest(BaseProcessor):
         LOG.info("Prepared dataset size: %d", samples_count)
 
 
+class WriteFinalConversationManifest(WriteFinalSftManifest):
+    def process(self):
+        samples_count = 0
+        seen_predictions = defaultdict(set)
+        with (
+            open(self.input_manifest_file, "rt", encoding="utf-8") as fin,
+            open(self.output_manifest_file, "wt", encoding="utf-8") as fout,
+        ):
+            # only looping over the correct samples (unless asked for incorrect)
+            for line in fin:
+                elem = json.loads(line)
+                question = elem[self.input_key]
+                # deduplication
+                if elem[self.output_key] in seen_predictions[question]:
+                    continue
+                seen_predictions[question].add(elem[self.output_key])
+                if "expected_answer" in elem:
+                    elem["expected_answer"] = str(elem["expected_answer"])
+                # take only required keys from the input if exclude_optional_keys is True
+                output_sample = {}
+                if not self.exclude_optional_keys:
+                    output_sample = json.loads(line)
+                elif "expected_answer" in elem:
+                    output_sample["expected_answer"] = elem["expected_answer"]
+
+                if self.prompt:
+                    elem.pop(self.output_key, None)
+                    output_sample.pop(self.output_key, None)
+                    input_messages = self.prompt.fill(input_dict=elem)
+                    output_sample["messages"] = input_messages + output_sample.pop("serialized_output")
+
+                output_sample.update(self.metadata)
+                fout.write(json.dumps(output_sample) + "\n")
+                samples_count += 1
+
+        LOG.info("Prepared dataset size: %d", samples_count)
+
+
 class WriteFinalRLManifest(BaseProcessor):
     def __init__(
         self,

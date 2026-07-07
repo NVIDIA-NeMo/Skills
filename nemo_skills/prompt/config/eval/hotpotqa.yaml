@@ -1,0 +1,12 @@
+user: |-
+  Answer the following question based on the provided context. You must also identify the supporting facts: the specific sentences that are necessary to answer the question.
+
+  Context:
+  {context}
+
+  Question: {question}
+
+  Provide your response in the following JSON format:
+  {{"answer": "<your answer>", "supporting_facts": [["<paragraph title>", <sentence index>], ...]}}
+
+  Output only the JSON object, nothing else.

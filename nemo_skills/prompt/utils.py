@@ -106,6 +106,9 @@ class PromptConfig:
     image_field: str | None = None
     # Whether to put image before or after the text in multimodal content
     image_position: str = "before"  # "before" or "after"
+    # Audio support: field name from input_dict containing audio metadata (dict or list of dicts)
+    # When set, audio metadata is attached to the user message as "audios" list for model processing
+    audio_field: str | None = None
 
 
 class Prompt:
@@ -150,7 +153,10 @@ class Prompt:
 
     def build_examples_dict(self, input_dict):
         if self.config.few_shot_examples.examples_type:
-            return examples_map[self.config.few_shot_examples.examples_type.format(**input_dict)]
+            key = self.config.few_shot_examples.examples_type.format(**input_dict)
+            if key in (None, "", "None"):
+                return []
+            return examples_map[key]
 
         if self.config.few_shot_examples.retriever is None:
             return []
@@ -292,7 +298,16 @@ class Prompt:
         else:
             user_content = user_text
 
-        messages.append({"role": "user", "content": user_content})
+        user_message_dict = {"role": "user", "content": user_content}
+
+        # For audio: attach audio metadata to user message as audios list (model layer handles base64 conversion)
+        if self.config.audio_field and self.config.audio_field in input_dict:
+            audio_data = input_dict[self.config.audio_field]
+            if isinstance(audio_data, dict):
+                audio_data = [audio_data]
+            user_message_dict["audios"] = audio_data
+
+        messages.append(user_message_dict)
 
         if not format_as_string:
             if start_assistant_response_key:
@@ -326,7 +341,7 @@ class Prompt:
                     if isinstance(user_content, list):
                         text_parts = [item["text"] for item in user_content if item.get("type") == "text"]
                         user_content = " ".join(text_parts)
-                    if hasattr(self.tokenizer, "bos_token"):
+                    if hasattr(self.tokenizer, "bos_token") and self.tokenizer.bos_token:
                         messages_string = self.tokenizer.bos_token + user_content
                     else:
                         messages_string = user_content
@@ -449,6 +464,7 @@ def get_prompt(
     code_tags: str | dict | None = None,
     examples_type: str | None = None,
     system_message: str | None = None,
+    user_message: str | None = None,
     config_dir: str | None = None,
     code_tags_dir: str | None = None,
 ) -> Prompt:
@@ -462,6 +478,9 @@ def get_prompt(
 
     if system_message is not None:
         config["system"] = system_message
+
+    if user_message is not None:
+        config["user"] = user_message
 
     code_tags_obj = None
     if code_tags is not None:

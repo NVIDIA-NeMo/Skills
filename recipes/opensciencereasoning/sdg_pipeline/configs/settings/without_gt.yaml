@@ -1,0 +1,29 @@
+# Adjust the pipeline when the input set lacks ground-truth answers.
+
+directories:
+  step-3-generate-solutions: ${base_output_dir}/solution-sdg/step-3-generate-solutions
+  step-4-difficulty-estimation: ${base_output_dir}/solution-sdg/step-4-difficulty-estimation
+  step-5-aggregate: ${base_output_dir}/solution-sdg/step-5-aggregate
+  step-6-filter-solutions: ${base_output_dir}/solution-sdg/step-6-filter-solutions
+
+stages:
+  generate_solutions:
+    enabled: True
+    output_dir: ${directories.step-3-generate-solutions}
+    make_majority_voting: True
+    dependencies:
+      - decontaminate
+  difficulty_estimation:
+    input_file: ${directories.step-3-generate-solutions}/final_result.jsonl
+    output_dir: ${directories.step-4-difficulty-estimation}
+    dependencies:
+      - generate_solutions
+  aggregate:
+    output_dir: ${directories.step-5-aggregate}
+    solutions_path: ${directories.step-3-generate-solutions}/final_result.jsonl
+    metadata_files:
+      - ${directories.step-2-topics-labeling}/final_result.jsonl
+      - ${directories.step-4-difficulty-estimation}/final_result.jsonl
+  filter_solutions:
+    input_file: ${directories.step-5-aggregate}/final_result.jsonl
+    output_dir: ${directories.step-6-filter-solutions}

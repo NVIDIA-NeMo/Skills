@@ -40,6 +40,39 @@ from nemo_skills.utils import get_logger_name
 LOG = logging.getLogger(get_logger_name(__file__))
 
 
+def compute_corpus_bleu(
+    hyps: list[str],
+    refs: list[str],
+    tokenizes: list[str],
+) -> float:
+    """Compute corpus BLEU, bucketing by sacrebleu tokenizer.
+
+    Each (hyp, ref) is grouped by the tokenizer resolved at sentence-BLEU
+    time, so ja/zh/ko aren't silently scored under the default 13a tokenizer.
+    Single-tokenizer runs are one corpus_bleu call; mixed runs weighted-average
+    per-tokenizer corpus_bleu by sample count.
+    """
+    from sacrebleu import corpus_bleu
+
+    groups: dict[str, tuple[list[str], list[str]]] = {}
+    for hyp, ref, tokenize in zip(hyps, refs, tokenizes, strict=True):
+        bucket = groups.setdefault(tokenize, ([], []))
+        bucket[0].append(hyp)
+        bucket[1].append(ref)
+
+    if len(groups) == 1:
+        tokenize, (group_hyps, group_refs) = next(iter(groups.items()))
+        return corpus_bleu(hypotheses=group_hyps, references=[group_refs], tokenize=tokenize).score
+
+    weighted_sum = 0.0
+    total = 0
+    for tokenize, (group_hyps, group_refs) in groups.items():
+        score = corpus_bleu(hypotheses=group_hyps, references=[group_refs], tokenize=tokenize).score
+        weighted_sum += score * len(group_hyps)
+        total += len(group_hyps)
+    return weighted_sum / total
+
+
 class AudioMetrics(BaseMetrics):
     """Metrics class for audio evaluation tasks.
 
@@ -59,15 +92,33 @@ class AudioMetrics(BaseMetrics):
         super().__init__(compute_no_answer=compute_no_answer)
         self.max_k = max_k
 
-        # Core audio metrics
         self.wer_scores = []
+
+        # Corpus-level WER accumulators (total errors / total ref words)
+        self.wer_total_errors = 0
+        self.wer_total_ref_words = 0
+        self.wer_total_substitutions = 0
+        self.wer_total_insertions = 0
+        self.wer_total_deletions = 0
+
         self.wer_c_scores = []
         self.wer_pc_scores = []
         self.per_scores = []
-        self.bleu_scores = []
+        self.bleu_hyps: list[str] = []
+        self.bleu_refs: list[str] = []
+        self.bleu_tokenizes: list[str] = []
+        self.comet_scores = []
 
         # Extended metrics
         self.cer_scores = []
+
+        # Corpus-level CER accumulators (total errors / total ref chars)
+        self.cer_total_errors = 0
+        self.cer_total_ref_chars = 0
+        self.cer_total_substitutions = 0
+        self.cer_total_insertions = 0
+        self.cer_total_deletions = 0
+
         self.hallucination_scores = []
         self.pc_rate_scores = []
         self.punct_f1_scores = []
@@ -77,6 +128,9 @@ class AudioMetrics(BaseMetrics):
 
         # Judge scores (AudioBench-style rating 0-5, or legacy binary Yes/No mapped to 1/0)
         self.judge_ratings = []
+
+        # Dataset-specific WER variants from additional reference fields (e.g., wer_tn, wer_itn).
+        self.reference_wer_scores: dict[str, list[float]] = {}
 
     def _extract_judge_result(self, judgement_text: str) -> tuple[bool, float]:
         """Extract judge result from judgement text.
@@ -136,7 +190,7 @@ class AudioMetrics(BaseMetrics):
 
         if category == "open" and "judge_correct" in score_dict:
             score_dict["correct"] = score_dict["judge_correct"]
-        elif "is_correct" in prediction:
+        elif "is_correct" in prediction and prediction["is_correct"] is not None:
             score_dict["correct"] = prediction["is_correct"]
         else:
             score_dict["correct"] = False
@@ -189,6 +243,12 @@ class AudioMetrics(BaseMetrics):
 
         # Collect existing metrics: WER, PnC, and BLEU scores
         for pred in predictions:
+            if "wer_errors" in pred and "wer_ref_words" in pred:
+                self.wer_total_errors += pred["wer_errors"]
+                self.wer_total_ref_words += pred["wer_ref_words"]
+                self.wer_total_substitutions += pred["wer_substitutions"]
+                self.wer_total_insertions += pred["wer_insertions"]
+                self.wer_total_deletions += pred["wer_deletions"]
             if "wer" in pred and pred["wer"] is not None:
                 self.wer_scores.append(pred["wer"])
             if "wer_c" in pred and pred["wer_c"] is not None:
@@ -198,9 +258,19 @@ class AudioMetrics(BaseMetrics):
             if "per" in pred and pred["per"] is not None:
                 self.per_scores.append(pred["per"])
             if "bleu" in pred and pred["bleu"] is not None:
-                self.bleu_scores.append(pred["bleu"])
+                self.bleu_hyps.append(pred["pred_text"])
+                self.bleu_refs.append(pred["text"])
+                self.bleu_tokenizes.append(pred["bleu_tokenize"])
+            if "comet" in pred and pred["comet"] is not None:
+                self.comet_scores.append(pred["comet"])
 
             # Collect extended metrics
+            if "cer_errors" in pred and "cer_ref_words" in pred:
+                self.cer_total_errors += pred["cer_errors"]
+                self.cer_total_ref_chars += pred["cer_ref_words"]
+                self.cer_total_substitutions += pred["cer_substitutions"]
+                self.cer_total_insertions += pred["cer_insertions"]
+                self.cer_total_deletions += pred["cer_deletions"]
             if "cer" in pred and pred["cer"] is not None:
                 self.cer_scores.append(pred["cer"])
             if "hallucination_rate" in pred and pred["hallucination_rate"] is not None:
@@ -223,6 +293,24 @@ class AudioMetrics(BaseMetrics):
             score_dict = self._get_score_dict(pred)
             if "judge_rating" in score_dict:
                 self.judge_ratings.append(score_dict["judge_rating"])
+
+            # Collect dataset-specific WER variants from any configured reference fields.
+            _wer_count_fields = {
+                "wer_c",
+                "wer_pc",
+                "wer_errors",
+                "wer_ref_words",
+                "wer_substitutions",
+                "wer_insertions",
+                "wer_deletions",
+            }
+            for metric_name, metric_value in pred.items():
+                if (
+                    metric_name.startswith("wer_")
+                    and metric_name not in _wer_count_fields
+                    and metric_value is not None
+                ):
+                    self.reference_wer_scores.setdefault(metric_name, []).append(metric_value)
 
         self._compute_pass_at_k(predictions=predictions, predicted_answers=predicted_answers)
         self._compute_majority_at_k(predictions=predictions, predicted_answers=predicted_answers)
@@ -256,20 +344,36 @@ class AudioMetrics(BaseMetrics):
                 agg_metrics["judge_score"] = avg_rating * 20
 
             # Add existing metrics: WER, PnC, and BLEU if available (convert to percentages and round to 2 decimals)
+            if self.wer_total_ref_words > 0:
+                agg_metrics["substitutions"] = self.wer_total_substitutions
+                agg_metrics["insertions"] = self.wer_total_insertions
+                agg_metrics["deletions"] = self.wer_total_deletions
+                agg_metrics["ref_words"] = self.wer_total_ref_words
+                agg_metrics["wer"] = round(100.0 * self.wer_total_errors / self.wer_total_ref_words, 2)
             if self.wer_scores:
-                agg_metrics["wer"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
+                agg_metrics["wer_macro"] = round(100.0 * sum(self.wer_scores) / len(self.wer_scores), 2)
             if self.wer_c_scores:
                 agg_metrics["wer_c"] = round(100.0 * sum(self.wer_c_scores) / len(self.wer_c_scores), 2)
             if self.wer_pc_scores:
                 agg_metrics["wer_pc"] = round(100.0 * sum(self.wer_pc_scores) / len(self.wer_pc_scores), 2)
             if self.per_scores:
                 agg_metrics["per"] = round(100.0 * sum(self.per_scores) / len(self.per_scores), 2)
-            if self.bleu_scores:
-                agg_metrics["bleu"] = round(100.0 * sum(self.bleu_scores) / len(self.bleu_scores), 2)
+            if self.bleu_refs:
+                agg_metrics["bleu"] = round(
+                    compute_corpus_bleu(self.bleu_hyps, self.bleu_refs, self.bleu_tokenizes), 2
+                )
+            if self.comet_scores:
+                agg_metrics["comet"] = round(100.0 * sum(self.comet_scores) / len(self.comet_scores), 2)
 
             # Add extended metrics if available
+            if self.cer_total_ref_chars > 0:
+                agg_metrics["cer_substitutions"] = self.cer_total_substitutions
+                agg_metrics["cer_insertions"] = self.cer_total_insertions
+                agg_metrics["cer_deletions"] = self.cer_total_deletions
+                agg_metrics["cer_ref_chars"] = self.cer_total_ref_chars
+                agg_metrics["cer"] = round(100.0 * self.cer_total_errors / self.cer_total_ref_chars, 2)
             if self.cer_scores:
-                agg_metrics["cer"] = round(100.0 * sum(self.cer_scores) / len(self.cer_scores), 2)
+                agg_metrics["cer_macro"] = round(100.0 * sum(self.cer_scores) / len(self.cer_scores), 2)
             if self.hallucination_scores:
                 agg_metrics["hallucination_rate"] = round(
                     100.0 * sum(self.hallucination_scores) / len(self.hallucination_scores), 2
@@ -285,6 +389,11 @@ class AudioMetrics(BaseMetrics):
             if self.total_audio_seconds > 0:
                 total_minutes = self.total_audio_seconds / 60.0
                 agg_metrics["char_rate"] = round(self.total_hallucinated_chars / total_minutes, 2)
+
+            # Dataset-specific WER variants from additional reference fields.
+            for metric_name, metric_values in self.reference_wer_scores.items():
+                if metric_values:
+                    agg_metrics[metric_name] = round(100.0 * sum(metric_values) / len(metric_values), 2)
 
         return metrics_dict
 
@@ -321,21 +430,31 @@ class AudioMetrics(BaseMetrics):
         if self.judge_ratings:
             base_metrics["judge_score"] = lambda _k, v, _all: f"{v:.2f}"
 
-        # Add existing metrics if they were computed
+        # Error rates grouped side by side: WER (macro/micro) then CER (macro/micro)
         if self.wer_scores:
+            base_metrics["wer_macro"] = as_percentage
+        if self.wer_total_ref_words > 0:
             base_metrics["wer"] = as_percentage
+        if self.cer_scores:
+            base_metrics["cer_macro"] = as_percentage
+        if self.cer_total_ref_chars > 0:
+            base_metrics["cer"] = as_percentage
+        # WER error breakdown (kept in get_metrics; printed after the error rates)
+        if self.wer_total_ref_words > 0:
+            base_metrics["substitutions"] = as_int
+            base_metrics["insertions"] = as_int
+            base_metrics["deletions"] = as_int
+            base_metrics["ref_words"] = as_int
         if self.wer_c_scores:
             base_metrics["wer_c"] = as_percentage
         if self.wer_pc_scores:
             base_metrics["wer_pc"] = as_percentage
         if self.per_scores:
             base_metrics["per"] = as_percentage
-        if self.bleu_scores:
+        if self.bleu_refs:
             base_metrics["bleu"] = as_percentage
-
-        # Add extended metrics if they were computed
-        if self.cer_scores:
-            base_metrics["cer"] = as_percentage
+        if self.comet_scores:
+            base_metrics["comet"] = as_percentage
         if self.hallucination_scores:
             base_metrics["hallucination_rate"] = as_percentage
         if self.pc_rate_scores:
@@ -346,6 +465,11 @@ class AudioMetrics(BaseMetrics):
             base_metrics["cap_accuracy"] = as_percentage
         if self.total_audio_seconds > 0:
             base_metrics["char_rate"] = as_float
+
+        # Dataset-specific WER variants from additional reference fields.
+        for metric_name in sorted(self.reference_wer_scores):
+            if self.reference_wer_scores[metric_name]:
+                base_metrics[metric_name] = as_percentage
 
         base_metrics["num_entries"] = as_int  # Add at end for better display order
 
