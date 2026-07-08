@@ -766,6 +766,7 @@ class SweBenchGenerationTask(GenerationTask):
                 and not (data_point.get("model_patch") or "").strip()
             ):
                 pred_file = search_path
+                Path(pred_file).parent.mkdir(parents=True, exist_ok=True)
                 rubric = json.loads(data_point.get("rubric_json", "{}"))
                 zero_scores = {key: 0 for key in rubric}
                 trajectory_dict = {"info": {"submission": json.dumps(zero_scores)}}
