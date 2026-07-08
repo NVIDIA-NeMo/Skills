@@ -1,4 +1,4 @@
-# source: https://arxiv.org/pdf/2601.04171, page 23, "Agentic Rubrics"
+# based on: https://arxiv.org/pdf/2601.04171, page 23, "Agentic Rubrics"
 agent:
   system_template: |-
     You are an expert code reviewer that can understand issues and are well versed in the codebase. Your job is to write high-quality rubrics to grade the solution to a given issue.

@@ -704,6 +704,13 @@ class SweBenchGenerationTask(GenerationTask):
             }
         )
 
+        # Process any data point field placeholders in the config instance template.
+        # For example, {{data_point.rubric}} is replaced with data_point["rubric"].
+        for key, value in data_point.items():
+            full_config["agent"]["instance_template"] = full_config["agent"]["instance_template"].replace(
+                "{{data_point." + key + "}}", str(value)
+            )
+
         (self.output_dir / "configs").mkdir(parents=True, exist_ok=True)
         tmp_config_filename = f"configs/config_{data_point['instance_id']}.yaml"
         host_tmp_path = os.path.join(self.output_dir, tmp_config_filename)
