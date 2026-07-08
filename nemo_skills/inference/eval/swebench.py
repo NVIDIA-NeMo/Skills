@@ -703,7 +703,8 @@ class SweBenchGenerationTask(GenerationTask):
 
         base_config_path = get_config_path(self.cfg.agent_config)
         with open(base_config_path, "r") as f:
-            full_config = yaml.safe_load(f)
+            full_config_str = f.read()
+        full_config = yaml.safe_load(full_config_str)
 
         if "agent" not in full_config:
             full_config["agent"] = {}
@@ -723,13 +724,6 @@ class SweBenchGenerationTask(GenerationTask):
             }
         )
 
-        # Process any data point field placeholders in the config instance template.
-        # For example, {{data_point.rubric_json}} is replaced with data_point["rubric_json"].
-        for key, value in data_point.items():
-            full_config["agent"]["instance_template"] = full_config["agent"]["instance_template"].replace(
-                "{{data_point." + key + "}}", str(value)
-            )
-
         (self.output_dir / "configs").mkdir(parents=True, exist_ok=True)
         tmp_config_filename = f"configs/config_{data_point['instance_id']}.yaml"
         host_tmp_path = os.path.join(self.output_dir, tmp_config_filename)
@@ -740,6 +734,18 @@ class SweBenchGenerationTask(GenerationTask):
         with open(host_tmp_path, "w") as f:
             yaml.dump(full_config, f)
 
+        # If any {{FIELD_...}} placeholders are present in the config file,
+        # export the corresponding data point fields as env variables to make them available to mini-swe-agent.
+        # E.g. {{FIELD_rubric_json}} will be replaced with data_point["rubric_json"].
+        # This is done in a separate script to avoid making the main command too long.
+        script_filename = f"configs/export_fields_{data_point['instance_id']}.sh"
+        host_script_path = os.path.join(self.output_dir, script_filename)
+        container_script_path = os.path.join("/trajectories_mount", script_filename)
+        with open(host_script_path, "w") as fout:
+            for key, value in data_point.items():
+                if "{{FIELD_" + key + "}}" in full_config_str:
+                    print(f"export FIELD_{key}={shlex.quote(str(value))}", file=fout)
+
         try:
             mini_swe_agent_cmd = (
                 "cp -r /root_mount/mini-swe-agent /root && "
@@ -747,6 +753,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
+                f"source {container_script_path} && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
@@ -803,6 +810,8 @@ class SweBenchGenerationTask(GenerationTask):
         finally:
             if os.path.exists(host_tmp_path):
                 os.remove(host_tmp_path)
+            if os.path.exists(host_script_path):
+                os.remove(host_script_path)
 
     async def _run_openhands(self, data_point, api_base):
         """
