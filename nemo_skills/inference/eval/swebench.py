@@ -763,7 +763,7 @@ class SweBenchGenerationTask(GenerationTask):
             # skip the agent run and return a score of 0 for all rubric items.
             if (
                 self.cfg.agent_task == SupportedAgentTasks.verification
-                and not data_point.get("model_patch", "").strip()
+                and not (data_point.get("model_patch") or "").strip()
             ):
                 pred_file = search_path
                 rubric = json.loads(data_point.get("rubric_json", "{}"))
