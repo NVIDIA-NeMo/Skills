@@ -49,6 +49,12 @@ class SupportedAgentFrameworks(str, Enum):
     gold_patch = "gold_patch"
 
 
+class SupportedAgentTasks(str, Enum):
+    issue_resolution = "issue_resolution"
+    rubric_generation = "rubric_generation"
+    verification = "verification"
+
+
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
@@ -130,6 +136,11 @@ class SweBenchGenerationConfig:
     # cloning the repo to /testbed before running the agent.
     # This does not affect evaluation, which still runs in the container_formatter containers.
     swe_zero_container: str | None = None
+
+    # Enables functionality for the rubric-based agentic verifier pipeline. Only works for mini-swe-agent.
+    # If set to 'rubric_generation' or 'verification', will use the corresponding default config file
+    # and enable other features, such as automatically skipping verification for empty patches.
+    agent_task: SupportedAgentTasks = SupportedAgentTasks.issue_resolution
 
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
@@ -671,6 +682,14 @@ class SweBenchGenerationTask(GenerationTask):
         Runs mini-swe-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
+        if self.cfg.agent_config is None:
+            if self.cfg.agent_task == SupportedAgentTasks.rubric_generation:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/rubric-generation"
+            elif self.cfg.agent_task == SupportedAgentTasks.verification:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/verification"
+            else:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swebench"
+
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
             for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
@@ -682,7 +701,7 @@ class SweBenchGenerationTask(GenerationTask):
         if "reasoning_effort" in completion_kwargs:
             completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
+        base_config_path = get_config_path(self.cfg.agent_config)
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
@@ -705,7 +724,7 @@ class SweBenchGenerationTask(GenerationTask):
         )
 
         # Process any data point field placeholders in the config instance template.
-        # For example, {{data_point.rubric}} is replaced with data_point["rubric"].
+        # For example, {{data_point.rubric_json}} is replaced with data_point["rubric_json"].
         for key, value in data_point.items():
             full_config["agent"]["instance_template"] = full_config["agent"]["instance_template"].replace(
                 "{{data_point." + key + "}}", str(value)
@@ -738,15 +757,30 @@ class SweBenchGenerationTask(GenerationTask):
                 "mkdir -p /trajectories_mount/trajectories && cp -r trajectories/* /trajectories_mount/trajectories/"
             )
 
-            # Execute mini-swe-agent command
             search_path = os.path.join(self.output_dir, "trajectories", f"{data_point['instance_id']}.traj.json")
 
-            pred_file = await self._execute_container_command(
-                data_point, mini_swe_agent_cmd, search_path, mode="agent"
-            )
-
-            with open(pred_file, "r") as f:
-                trajectory_dict = json.loads(f.read().strip())
+            # If we are doing verification and the model patch is empty or missing,
+            # skip the agent run and return a score of 0 for all rubric items.
+            if (
+                self.cfg.agent_task == SupportedAgentTasks.verification
+                and not data_point.get("model_patch", "").strip()
+            ):
+                pred_file = search_path
+                rubric = json.loads(data_point.get("rubric_json", "{}"))
+                zero_scores = {key: 0 for key in rubric}
+                trajectory_dict = {"info": {"submission": json.dumps(zero_scores)}}
+                LOG.info(
+                    "Skipping verification for instance %s because the model patch is empty or missing. "
+                    "Returning a score of 0 for all rubric items.",
+                    data_point["instance_id"],
+                )
+            else:
+                # Execute mini-swe-agent command
+                pred_file = await self._execute_container_command(
+                    data_point, mini_swe_agent_cmd, search_path, mode="agent"
+                )
+                with open(pred_file, "r") as f:
+                    trajectory_dict = json.loads(f.read().strip())
 
             pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
             with open(pred_jsonl_file, "w") as f:
