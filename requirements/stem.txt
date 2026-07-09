@@ -189,7 +189,6 @@ transformers
 trimesh
 typ
 utils
-vedas
 wbdata
 webcolors
 wikidata
