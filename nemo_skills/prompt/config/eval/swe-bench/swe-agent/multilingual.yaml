@@ -112,3 +112,27 @@ agent:
     total_cost_limit: 0
     max_input_tokens: 0
     max_output_tokens: 0
+env:
+  # Some Python task datasets require the prebuilt Python venv to be manually activated before running the agent.
+  # This handles two paths: /opt/miniconda3/envs/testbed (SWE-Gym, SWE-rebench) and /testbed/.venv (R2E-Gym)
+  # This also deletes R2E-Gym test files that the agent should not have access to.
+  # For other datasets, these commands will have no effect.
+  post_startup_commands:
+    - >-
+      if [ -d /opt/miniconda3/envs/testbed ]; then
+          conda config --set changeps1 False &&
+          . /opt/miniconda3/etc/profile.d/conda.sh &&
+          conda activate testbed &&
+          echo 'Activated environment at /opt/miniconda3/envs/testbed';
+      elif [ -f /testbed/.venv/bin/activate ]; then
+          export VIRTUAL_ENV_DISABLE_PROMPT=1 &&
+          source /testbed/.venv/bin/activate &&
+          echo 'Activated environment at /testbed/.venv';
+      fi
+    - >-
+      for f in / /root /testbed; do
+          rm -rf $f/r2e_tests &&
+          if grep -qs r2e_tests $f/run_tests.sh; then
+              rm -rf $f/run_tests.sh;
+          fi
+      done

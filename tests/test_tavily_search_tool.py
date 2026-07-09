@@ -491,3 +491,117 @@ def test_direct_tavily_v3_name_remains_compatible():
 
     assert issubclass(DirectTavilyV3Tool, DirectTavilyBrowserTool)
     assert DirectTavilyV3Tool().__class__.__name__ == "DirectTavilyV3Tool"
+
+
+def test_is_url_substring_blocked_normalizes_and_is_page_precise():
+    from nemo_skills.mcp.servers.tavily_search_tool import _is_url_substring_blocked, _normalize_url_for_substring
+
+    assert _normalize_url_for_substring("GitHub.com/Foo/Bar") == "github.comfoobar"
+
+    # Page-precise: block the HLE paper / specific repo, but NOT the rest of arxiv / github.
+    patterns = ["2501.14249", "github.com/centerforaisafety/hle", "://scale.com", ".scale.com", "last-exam"]
+    assert _is_url_substring_blocked("https://arxiv.org/abs/2501.14249", patterns)
+    assert not _is_url_substring_blocked("https://arxiv.org/abs/1706.03762", patterns)
+    assert _is_url_substring_blocked("https://github.com/centerforaisafety/hle", patterns)
+    assert not _is_url_substring_blocked("https://github.com/pytorch/pytorch", patterns)
+    # Anchored "://scale.com" matches scale.com but not descale.com.
+    assert _is_url_substring_blocked("https://scale.com/leaderboard", patterns)
+    assert not _is_url_substring_blocked("https://descale.com/page", patterns)
+    # Plain substring.
+    assert _is_url_substring_blocked("https://blog.example/the-last-exam-answers", patterns)
+    # No patterns -> nothing blocked.
+    assert not _is_url_substring_blocked("https://arxiv.org/abs/2501.14249", [])
+
+
+@pytest.fixture
+def exclude_url_substrings_config(tmp_path):
+    exclude_file = tmp_path / "exclude_substr.json"
+    exclude_file.write_text(
+        json.dumps(
+            {
+                "notices": [
+                    {
+                        "properties": [
+                            {"type": "domain", "value": "blocked.example"},
+                            {"type": "url_substring", "value": "2501.14249"},
+                            {"type": "url_substring", "value": "github.com/centerforaisafety/hle"},
+                        ]
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return str(exclude_file)
+
+
+def test_tool_loads_exclude_url_substrings_from_config(exclude_url_substrings_config):
+    from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilySearchTool
+
+    tool = DirectTavilySearchTool()
+    tool.configure({"tavily_api_key": "test-key", "exclude_domains_config": exclude_url_substrings_config})
+
+    assert tool._exclude_domains == ["blocked.example"]
+    assert tool._exclude_url_substrings == ["2501.14249", "github.com/centerforaisafety/hle"]
+    # Substring patterns and the (separate) domain list both feed _is_url_blocked.
+    assert tool._is_url_blocked("https://arxiv.org/abs/2501.14249")
+    assert tool._is_url_blocked("https://sub.blocked.example/x")
+    assert not tool._is_url_blocked("https://arxiv.org/abs/1706.03762")
+
+
+def test_browser_web_search_filters_url_substring_results(exclude_url_substrings_config):
+    async def run_test():
+        from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyBrowserTool
+
+        tool = DirectTavilyBrowserTool()
+        tool.configure({"tavily_api_key": "test-key", "exclude_domains_config": exclude_url_substrings_config})
+
+        async def fake_post_json(endpoint, payload):
+            return {
+                "results": [
+                    {"url": "https://arxiv.org/abs/2501.14249", "title": "HLE Paper", "content": "leak"},
+                    {"url": "https://arxiv.org/abs/1706.03762", "title": "Attention Is All You Need", "content": "ok"},
+                ]
+            }
+
+        tool._post_json = fake_post_json
+
+        result = await tool.execute("web_search", {"query": "humanity last exam"}, extra_args={"request_id": "req"})
+        assert "Attention Is All You Need" in result
+        assert "HLE Paper" not in result
+        assert "2501.14249" not in result
+
+        # Opening / extracting the blocked page is refused too.
+        blocked = await tool.execute(
+            "find_in_page",
+            {"url": "https://arxiv.org/abs/2501.14249", "query": "answer"},
+            extra_args={"request_id": "req"},
+        )
+        assert "excluded domains" in str(blocked)
+
+    asyncio.run(run_test())
+
+
+def test_gym_web_search_filters_url_substring_results(exclude_url_substrings_config):
+    async def run_test():
+        from nemo_skills.mcp.servers.tavily_search_tool import DirectTavilyGymTool
+
+        tool = DirectTavilyGymTool()
+        tool.configure({"tavily_api_key": "test-key", "exclude_domains_config": exclude_url_substrings_config})
+
+        async def fake_post_json(endpoint, payload):
+            return {
+                "results": [
+                    {"url": "https://github.com/centerforaisafety/hle", "title": "HLE repo", "content": "leak"},
+                    {"url": "https://example.com/ok", "title": "Allowed", "content": "fine"},
+                ]
+            }
+
+        tool._post_json = fake_post_json
+
+        result = await tool.execute("web_search", {"query": "hle"}, extra_args={"request_id": "req"})
+        assert "Allowed" in result
+        assert "HLE repo" not in result
+        assert "centerforaisafety" not in result
+
+    asyncio.run(run_test())

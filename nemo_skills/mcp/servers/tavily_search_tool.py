@@ -29,18 +29,27 @@ Configuration:
 
         ++tool_overrides.DirectTavilyBrowserTool.exclude_domains_config=/path/to/exclude_domains.json
 
-    The config file is expected to contain domain-valued notice properties:
+    The config file contains notice properties of two types:
+      - "domain": matched against the URL hostname (exact or subdomain) and also passed to
+        Tavily's API ``exclude_domains``.
+      - "url_substring": matched as a normalized substring of the full URL (drop "/", lowercase).
+        This enables page-precise blocking (e.g. a single arxiv id or repo path) without banning
+        the whole domain. Search results, find_in_page, scroll_page and open/extract all respect it.
 
         {
           "notices": [
             {
               "properties": [
                 {"type": "domain", "value": "example.com"},
-                {"type": "domain", "value": "restricted.example.org"}
+                {"type": "url_substring", "value": "2501.14249"},
+                {"type": "url_substring", "value": "github.com/owner/leak-repo"}
               ]
             }
           ]
         }
+
+    A ready-made HLE answer-leak blocklist (from the Claude Opus 4.8 System Card) ships at
+    ``nemo_skills/mcp/servers/exclude_domains_hle_opus.json``.
 
     If these tools are used for training data curation, use an
     organization-approved exclusion registry. This reduces the risk of collecting
@@ -182,7 +191,7 @@ def _parse_exclude_domains(exclude_config: dict[str, Any]) -> list[str]:
     notices = exclude_config["notices"]
     for notice in notices:
         for prop in notice["properties"]:
-            if prop.get("type") == "domain":
+            if prop["type"] == "domain":
                 exclude_domains.append(prop["value"])
     return exclude_domains
 
@@ -191,6 +200,24 @@ def _load_exclude_domains_from_file(path: str) -> list[str]:
     with open(path, "r", encoding="utf-8") as f:
         exclude_config = json.load(f)
     return _parse_exclude_domains(exclude_config)
+
+
+def _parse_exclude_url_substrings(exclude_config: dict[str, Any]) -> list[str]:
+    # Same notice/property structure as domains, but with type "url_substring". These are matched
+    # as substrings against normalized URLs (see _is_url_substring_blocked), which lets a blocklist
+    # target a single page/paper (e.g. one arxiv id) without banning the whole domain.
+    substrings = []
+    for notice in exclude_config["notices"]:
+        for prop in notice["properties"]:
+            if prop["type"] == "url_substring":
+                substrings.append(prop["value"])
+    return substrings
+
+
+def _load_exclude_url_substrings_from_file(path: str) -> list[str]:
+    with open(path, "r", encoding="utf-8") as f:
+        exclude_config = json.load(f)
+    return _parse_exclude_url_substrings(exclude_config)
 
 
 def _normalize_api_keys(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
@@ -282,6 +309,19 @@ def _extract_domain(url: str) -> str:
 def _is_url_excluded(url: str, exclude_domains: list[str]) -> bool:
     hostname = urlparse(url).hostname or ""
     return any(hostname == domain or hostname.endswith("." + domain) for domain in exclude_domains)
+
+
+def _normalize_url_for_substring(value: str) -> str:
+    # Normalization used by the substring blocklist: drop "/" and lowercase, then substring-match.
+    # Mirrors the HLE blocklist methodology so anchored patterns like "://scale.com" behave as intended.
+    return value.replace("/", "").lower()
+
+
+def _is_url_substring_blocked(url: str, exclude_url_substrings: list[str]) -> bool:
+    if not exclude_url_substrings:
+        return False
+    normalized_url = _normalize_url_for_substring(url)
+    return any(_normalize_url_for_substring(pattern) in normalized_url for pattern in exclude_url_substrings)
 
 
 def _cache_key_for_url(url: str) -> str:
@@ -396,6 +436,7 @@ class _DirectTavilyBase(Tool):
             "tavily_api_key": None,
             "api_base_url": DEFAULT_API_BASE_URL,
             "exclude_domains": [],
+            "exclude_url_substrings": [],
             "timeout_s": DEFAULT_HTTP_TIMEOUT_S,
             "max_retries": DEFAULT_MAX_RETRIES,
             "retry_backoff_s": DEFAULT_RETRY_BACKOFF_S,
@@ -405,6 +446,7 @@ class _DirectTavilyBase(Tool):
         self._api_keys: list[str] = []
         self._num_requests = 0
         self._exclude_domains: list[str] = []
+        self._exclude_url_substrings: list[str] = []
         self._sanitize_keys: dict[str, set[str]] = {}
         self.requests_to_metrics: dict[str, TavilySearchMetrics] = defaultdict(TavilySearchMetrics)
 
@@ -428,7 +470,17 @@ class _DirectTavilyBase(Tool):
         self._exclude_domains = list(cfg.get("exclude_domains") or [])
         self._exclude_domains.extend(_load_exclude_domains_from_file(cfg["exclude_domains_config"]))
         self._exclude_domains = sorted(set(self._exclude_domains))
+        self._exclude_url_substrings = list(cfg.get("exclude_url_substrings") or [])
+        self._exclude_url_substrings.extend(_load_exclude_url_substrings_from_file(cfg["exclude_domains_config"]))
+        self._exclude_url_substrings = sorted(set(self._exclude_url_substrings))
         self._sanitize_keys = {tool: set(keys) for tool, keys in cfg.get("hide_args", {}).items()}
+
+    def _is_url_blocked(self, url: str) -> bool:
+        # Blocked if the hostname is in exclude_domains OR the normalized URL contains any
+        # exclude_url_substrings pattern (page-precise blocklist, e.g. a single arxiv id).
+        return _is_url_excluded(url, self._exclude_domains) or _is_url_substring_blocked(
+            url, self._exclude_url_substrings
+        )
 
     async def list_tools(self) -> list[dict[str, Any]]:
         raise NotImplementedError
@@ -784,6 +836,11 @@ class DirectTavilyGymTool(_DirectTavilyBase):
         results = await self._tracked_post_json("/search", payload, request_id=request_id, function="search")
         if results.get("error"):
             return results["error"]
+        results["results"] = [
+            r
+            for r in (results.get("results") or [])
+            if isinstance(r.get("url"), str) and not self._is_url_blocked(r["url"])
+        ]
         return "".join(_postprocess_gym_search_results(results, int(self._config["max_result_chars"])))
 
     async def _find_in_page(self, arguments: dict[str, Any], *, request_id: str | None) -> str:
@@ -795,7 +852,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
             return "Query is none"
         if not isinstance(url, str) or not isinstance(query, str):
             return "URL and query must be strings"
-        if _is_url_excluded(url, self._exclude_domains):
+        if self._is_url_blocked(url):
             return "URL is in excluded domains"
 
         payload = {
@@ -826,7 +883,7 @@ class DirectTavilyGymTool(_DirectTavilyBase):
             return "URL is none"
         if not isinstance(url, str):
             return "URL must be a string"
-        if _is_url_excluded(url, self._exclude_domains):
+        if self._is_url_blocked(url):
             return "URL is in excluded domains"
 
         start_index, error = _coerce_int_arg(arguments.get("start_index"), 0, "start_index")
@@ -1020,7 +1077,7 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
         entries: list[TavilyBrowserSearchMemoryItem] = []
         for result in results.get("results") or []:
             url = result.get("url")
-            if not isinstance(url, str) or not url or _is_url_excluded(url, self._exclude_domains):
+            if not isinstance(url, str) or not url or self._is_url_blocked(url):
                 continue
             snippet = _clean_text(str(result.get("content") or ""))
             snippet, _ = _truncate_text(snippet, max_result_chars)
@@ -1099,7 +1156,7 @@ class DirectTavilyBrowserTool(DirectTavilyGymTool):
     async def _extract_page(
         self, url: str, *, request_id: str | None
     ) -> tuple[TavilyBrowserCachedPage | None, str | None]:
-        if _is_url_excluded(url, self._exclude_domains):
+        if self._is_url_blocked(url):
             self._increment_stat(request_id, "tool_errors")
             self._increment_stat(request_id, "excluded_url_attempts")
             return None, "URL is in excluded domains"
