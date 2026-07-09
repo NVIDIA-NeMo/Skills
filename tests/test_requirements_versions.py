@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -223,3 +223,37 @@ class TestPyprojectUvOverrides:
         data = _load_toml(PYPROJECT_TOML)
         dynamic_deps = data["tool"]["setuptools"]["dynamic"]["dependencies"]
         assert dynamic_deps["file"] == ["core/requirements.txt", "requirements/pipeline.txt"]
+
+
+class TestPyprojectCommentUpdated:
+    """The comment above override-dependencies referenced an exact litellm pin
+    that has since moved; make sure it was updated rather than left stale."""
+
+    def test_comment_no_longer_references_stale_litellm_pin(self):
+        text = PYPROJECT_TOML.read_text()
+        assert "litellm==1.83.14" not in text
+
+    def test_comment_describes_httpx_floor_requirement(self):
+        text = PYPROJECT_TOML.read_text()
+        assert "litellm's httpx>=0.28.0 floor" in text
+
+
+def test_pipeline_requirements_lines_are_parseable():
+    """Every requirement line in the file should still be valid PEP 508."""
+    for raw_line, code_part, _ in _iter_requirement_lines(PIPELINE_REQUIREMENTS):
+        if not code_part:
+            continue
+        try:
+            Requirement(code_part)
+        except InvalidRequirement as exc:
+            pytest.fail(f"Unparseable requirement line {raw_line!r}: {exc}")
+
+
+def test_wandb_and_typer_click_requirement_comments_are_consistent():
+    """wandb's comment says it needs click>=8.2; typer's comment (in the
+    sibling pipeline.txt file) should agree, since typer>=0.16 is the
+    mechanism that satisfies that click floor without conflicting pins."""
+    _, wandb_comment = _find_requirement(CORE_REQUIREMENTS, "wandb")
+    _, typer_comment = _find_requirement(PIPELINE_REQUIREMENTS, "typer")
+    assert "click>=8.2" in wandb_comment
+    assert "click 8.2" in typer_comment
