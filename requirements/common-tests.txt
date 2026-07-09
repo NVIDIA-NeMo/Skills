@@ -20,3 +20,5 @@ pytest-timeout
 # ray.job_submission, which lives in the [default] extras.
 ray[default]>=2.43,<3.0
 soundfile
+# TOML parsing in tests/test_requirements_versions.py on Python 3.10 (tomllib is stdlib only from 3.11)
+tomli; python_version < '3.11'
