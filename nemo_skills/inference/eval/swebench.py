@@ -290,7 +290,7 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/ludwig-n/mini-swe-agent.git"
                 if self.cfg.agent_framework_commit is None:
-                    self.cfg.agent_framework_commit = "agentic-verifiers"
+                    self.cfg.agent_framework_commit = "agentic-verifiers"  # based on v2.4.5
             else:
                 if self.cfg.agent_framework_repo is None:
                     self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
