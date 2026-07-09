@@ -24,7 +24,6 @@ from dataclasses import field
 from enum import Enum
 from pathlib import Path
 
-import dotenv
 import hydra
 import tomlkit
 import yaml
@@ -287,10 +286,16 @@ class SweBenchGenerationTask(GenerationTask):
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-            if self.cfg.agent_framework_repo is None:
-                self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
-            if self.cfg.agent_framework_commit is None:
-                self.cfg.agent_framework_commit = "v2.4.5"
+            if self.cfg.agent_task != SupportedAgentTasks.issue_resolution:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/ludwig-n/mini-swe-agent.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "agentic-verifiers"
+            else:
+                if self.cfg.agent_framework_repo is None:
+                    self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
+                if self.cfg.agent_framework_commit is None:
+                    self.cfg.agent_framework_commit = "v2.0"
             setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
@@ -704,14 +709,22 @@ class SweBenchGenerationTask(GenerationTask):
 
         base_config_path = get_config_path(self.cfg.agent_config)
         with open(base_config_path, "r") as f:
-            full_config_str = f.read()
-        full_config = yaml.safe_load(full_config_str)
+            full_config = yaml.safe_load(f)
 
-        # Pass problem statement via config (supported in recent versions of mini-swe-agent)
-        # to avoid making the main bash command too long.
-        if "run" not in full_config:
-            full_config["run"] = {}
-        full_config["run"]["task"] = data_point["problem_statement"]
+        # In agentic verifier mode, pass problem statement and data_point fields via config.
+        # Note that template_vars is only supported in the ludwig-n/mini-swe-agent fork.
+        # By default, keep old NS behavior.
+        if self.cfg.agent_task == SupportedAgentTasks.issue_resolution:
+            task_arg = f"--task {shlex.quote(data_point['problem_statement'])}"
+        else:
+            if "run" not in full_config:
+                full_config["run"] = {}
+            if "template_vars" not in full_config["run"]:
+                full_config["run"]["template_vars"] = {}
+
+            full_config["run"]["task"] = data_point["problem_statement"]
+            full_config["run"]["template_vars"]["data_point"] = data_point
+            task_arg = ""
 
         if "agent" not in full_config:
             full_config["agent"] = {}
@@ -741,18 +754,6 @@ class SweBenchGenerationTask(GenerationTask):
         with open(host_tmp_path, "w") as f:
             yaml.dump(full_config, f)
 
-        # If any {{FIELD_...}} placeholders are present in the config file,
-        # export the corresponding data point fields as env variables to make them available to mini-swe-agent.
-        # E.g. {{FIELD_rubric_json}} will be replaced with data_point["rubric_json"].
-        # This is done in a .env file that mini-swe-agent will then automatically source.
-        script_filename = f"configs/{data_point['instance_id']}.env"
-        host_script_path = os.path.join(self.output_dir, script_filename)
-        container_script_path = os.path.join("/trajectories_mount", script_filename)
-        Path(host_script_path).touch()
-        for key, value in data_point.items():
-            if "{{FIELD_" + key + "}}" in full_config_str:
-                dotenv.set_key(host_script_path, f"FIELD_{key}", str(value))
-
         try:
             mini_swe_agent_cmd = (
                 "cp -r /root_mount/mini-swe-agent /root && "
@@ -760,11 +761,10 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
-                f"mkdir -p /root/.config/mini-swe-agent && "
-                f"mv {container_script_path} /root/.config/mini-swe-agent/.env && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
+                f"{task_arg} "
                 f"--output trajectories/{data_point['instance_id']}.traj.json "
                 f"--yolo "
                 f"--exit-immediately && "
@@ -817,8 +817,6 @@ class SweBenchGenerationTask(GenerationTask):
         finally:
             if os.path.exists(host_tmp_path):
                 os.remove(host_tmp_path)
-            if os.path.exists(host_script_path):
-                os.remove(host_script_path)
 
     async def _run_openhands(self, data_point, api_base):
         """
