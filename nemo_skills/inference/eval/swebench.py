@@ -138,8 +138,8 @@ class SweBenchGenerationConfig:
     swe_zero_container: str | None = None
 
     # Enables functionality for the rubric-based agentic verifier pipeline. Only works for mini-swe-agent.
-    # If set to 'rubric_generation' or 'verification', will use the corresponding default config file
-    # and enable other features, such as automatically skipping verification for empty patches.
+    # If set to 'rubric_generation' or 'verification', will use the corresponding default config file,
+    # the ludwig-n/mini-swe-agent fork, and enable other features, such as auto-skipping verification for empty patches.
     agent_task: SupportedAgentTasks = SupportedAgentTasks.issue_resolution
 
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
