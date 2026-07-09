@@ -77,7 +77,7 @@ lie
 LIEGenTools
 lifelines
 lingpy
-lxml
+lxml>=6.1.0  # fixes GHSA-vfmq-68hx-4jfw (High)
 matplotlib
 mendeleev
 mido

@@ -73,7 +73,7 @@ dev = { file = ["requirements/common-tests.txt", "requirements/common-dev.txt"] 
 # rely on pip's looser resolver instead.
 override-dependencies = [
     # leptonai (pulled in by nemo_run) hard-pins httpx[http2]==0.27.2, which
-    # conflicts with litellm==1.83.14's httpx==0.28.1. Relax the pin so the
+    # conflicts with litellm's httpx>=0.28.0 floor. Relax the pin so the
     # resolver can pick a single version that satisfies litellm.
     "httpx[http2]>=0.28.1",
     # urllib3<2 has open CVEs (e.g. CVE-2024-37891 / CVE-2025-50182). torchx
