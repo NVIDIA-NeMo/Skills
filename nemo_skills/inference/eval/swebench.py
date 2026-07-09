@@ -707,7 +707,7 @@ class SweBenchGenerationTask(GenerationTask):
         full_config = yaml.safe_load(full_config_str)
 
         # Pass problem statement via config (supported in recent versions of mini-swe-agent)
-        # to avoid issues with the bash command being too long.
+        # to avoid making the main bash command too long.
         if "run" not in full_config:
             full_config["run"] = {}
         full_config["run"]["task"] = data_point["problem_statement"]
@@ -743,14 +743,14 @@ class SweBenchGenerationTask(GenerationTask):
         # If any {{FIELD_...}} placeholders are present in the config file,
         # export the corresponding data point fields as env variables to make them available to mini-swe-agent.
         # E.g. {{FIELD_rubric_json}} will be replaced with data_point["rubric_json"].
-        # This is done in a separate script to avoid making the main command too long.
-        script_filename = f"configs/export_fields_{data_point['instance_id']}.sh"
+        # This is done in a .env file that mini-swe-agent will then automatically source.
+        script_filename = f"configs/{data_point['instance_id']}.env"
         host_script_path = os.path.join(self.output_dir, script_filename)
         container_script_path = os.path.join("/trajectories_mount", script_filename)
         with open(host_script_path, "w") as fout:
             for key, value in data_point.items():
                 if "{{FIELD_" + key + "}}" in full_config_str:
-                    print(f"export FIELD_{key}={shlex.quote(str(value))}", file=fout)
+                    print(f"FIELD_{key}={shlex.quote(str(value))}", file=fout)
 
         try:
             mini_swe_agent_cmd = (
@@ -759,7 +759,8 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
-                f"source {container_script_path} && "
+                f"mkdir -p /root/.config/mini-swe-agent && "
+                f"mv {container_script_path} /root/.config/mini-swe-agent/.env && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
