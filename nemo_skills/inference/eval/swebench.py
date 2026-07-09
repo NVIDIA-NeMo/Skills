@@ -24,6 +24,7 @@ from dataclasses import field
 from enum import Enum
 from pathlib import Path
 
+import dotenv
 import hydra
 import tomlkit
 import yaml
@@ -747,10 +748,10 @@ class SweBenchGenerationTask(GenerationTask):
         script_filename = f"configs/{data_point['instance_id']}.env"
         host_script_path = os.path.join(self.output_dir, script_filename)
         container_script_path = os.path.join("/trajectories_mount", script_filename)
-        with open(host_script_path, "w") as fout:
-            for key, value in data_point.items():
-                if "{{FIELD_" + key + "}}" in full_config_str:
-                    print(f"FIELD_{key}={shlex.quote(str(value))}", file=fout)
+        Path(host_script_path).touch()
+        for key, value in data_point.items():
+            if "{{FIELD_" + key + "}}" in full_config_str:
+                dotenv.set_key(host_script_path, f"FIELD_{key}", str(value))
 
         try:
             mini_swe_agent_cmd = (
