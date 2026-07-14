@@ -2403,8 +2403,6 @@ vcs-versioning==1.1.1
     # via setuptools-scm
 vdf==3.4
     # via steam
-vedas==0.0.1
-    # via -r requirements/stem.txt
 wasabi==1.1.3
     # via
     #   spacy
