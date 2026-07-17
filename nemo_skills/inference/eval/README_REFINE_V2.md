@@ -27,7 +27,7 @@ Typical eval config:
 ```text
 agent_framework=swe_agent_refine
 refine_strategy=structured_hypothesis
-max_attempts=2
+max_refine_rounds=2
 agent_max_turns=200
 carry_over_token_budget=40000
 refine_verify_feedback_chars=8000
@@ -159,7 +159,7 @@ This snippet is meant to front-load the highest-signal failure evidence before t
 When `refine_write_full_artifacts=True`, v2 writes per-attempt feedback artifacts:
 
 ```text
-refine_feedback/<instance_id>_a0/
+refine_feedback/<instance_id>_r0/
   previous.patch
   feedback.json
   feedback.md

@@ -4,7 +4,7 @@ This document describes the eval-side refine v1 mechanism in `swebench.py` and h
 
 ## One-line Summary
 
-Refine v1 runs SWE-agent for the same instance up to `max_attempts` times. Attempt 0 sees the original problem only. If it fails, attempt 1 starts from a clean repository and receives a text seed containing the previous patch diff plus the tail of the real SWE-bench verifier output.
+Refine v1 runs SWE-agent for the same instance up to `max_refine_rounds` times. Round 0 sees the original problem only. If it fails, round 1 starts from a clean repository and receives a text seed containing the previous patch diff plus the tail of the real SWE-bench verifier output.
 
 The chain is successful if any attempt resolves the instance.
 
@@ -15,7 +15,7 @@ Typical eval config:
 ```text
 agent_framework=swe_agent_refine
 refine_strategy=baseline
-max_attempts=2
+max_refine_rounds=2
 agent_max_turns=200
 carry_over_token_budget=40000
 refine_verify_feedback_chars=8000
@@ -107,10 +107,10 @@ If the patch is too large, the diff is middle-truncated: keep head and tail, dro
 Per attempt artifacts are separated by suffix:
 
 ```text
-rs2/trajectories_a0/
-rs2/eval-outputs_a0/
-rs2/trajectories_a1/
-rs2/eval-outputs_a1/
+rs2/trajectories_r0/
+rs2/eval-outputs_r0/
+rs2/trajectories_r1/
+rs2/eval-outputs_r1/
 ```
 
 The final output row contains `swe-bench-refine`, for example:
@@ -118,10 +118,10 @@ The final output row contains `swe-bench-refine`, for example:
 ```json
 {
   "refine_strategy": "baseline",
-  "num_attempts": 2,
-  "max_attempts": 2,
+  "num_refine_rounds": 2,
+  "max_refine_rounds": 2,
   "chain_resolved": true,
-  "resolved_at_attempt": 1,
+  "resolved_at_refine_round": 1,
   "attempt0_resolved": false,
   "attempt0_failure_type": "target_tests_still_failing",
   "final_failure_type": "resolved",

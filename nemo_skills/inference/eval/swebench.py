@@ -123,23 +123,27 @@ class SweBenchGenerationConfig:
     agent_max_turns: int = 100  # Max iterations for the agent
 
     # Refine harness (agent_framework=swe_agent_refine): run the task as N sequential SWE-agent
-    # attempts, aligned with the training refine mechanism (Gym refine_app.py / _summarize_prior).
-    # Each failed attempt is evaluated in-line so the next attempt's seed carries BOTH the prior
+    # refine rounds, aligned with the training refine mechanism (Gym refine_app.py / _summarize_prior).
+    # Each failed round is evaluated in-line so the next round's seed carries BOTH the prior
     # diff (middle-truncated to carry_over_token_budget) and the raw verify (test-failure) output;
     # the seed is appended to the problem_statement (SWE-agent rebuilds its prompt from there). The
-    # chain early-stops on the first resolved attempt and the reported result is chain-resolved =
-    # any attempt resolved (so file-level pass@1 == chain pass@1). Clean restart each attempt
+    # chain early-stops on the first resolved round and the reported result is chain-resolved =
+    # any round resolved (so file-level pass@1 == chain pass@1). Clean restart each round
     # (summary-style textual handoff), matching the training MVP.
-    max_attempts: int = 1
+    max_refine_rounds: int = 1
     # swe_agent_refine only: approx-token budget (~len/4) for the prior diff carried into the next
-    # attempt's seed; the diff is middle-truncated to fit. Mirrors training carry_over_token_budget.
+    # refine round's seed; the diff is middle-truncated to fit. Mirrors training carry_over_token_budget.
     carry_over_token_budget: int = 40000
-    # swe_agent_refine only: keep at most this many trailing chars of the prior attempt's
-    # test_output.log as the verify feedback in the next attempt's seed.
+    # swe_agent_refine only: keep at most this many trailing chars of the prior round's
+    # test_output.log/test_output.txt as the verify feedback in the next round's seed.
     refine_verify_feedback_chars: int = 8000
     # swe_agent_refine only: "baseline" preserves the original raw diff + raw verify tail handoff.
+    # "compact_raw_legacy" is the original v3 compact raw-evidence seed, including both key snippet
+    # and raw verifier tail even when they overlap.
+    # "compact_raw" is v3-dedup: compact raw evidence with overlapping key/raw verifier text removed.
+    # "failure_aware" is v4: v1-style raw evidence with a short failure-type-specific instruction.
     # "structured_hypothesis" enables refine v2: structured verifier-aware feedback plus explicit
-    # hypothesis revision instructions for the next clean-repo attempt.
+    # hypothesis revision instructions for the next clean-repo round.
     refine_strategy: str = "baseline"
     # swe_agent_refine v2 only: max chars for the extracted high-signal traceback/assertion snippet
     # included in the structured seed. The raw verify tail still obeys refine_verify_feedback_chars.
@@ -150,6 +154,13 @@ class SweBenchGenerationConfig:
     # swe_agent_refine v2 only: write previous.patch + feedback.json/md under output_dir/refine_feedback.
     # Full verifier logs are referenced in-place instead of duplicated.
     refine_write_full_artifacts: bool = True
+    # swe_agent_refine controlled eval only: JSONL bank containing a fixed attempt-0 patch + verifier
+    # result per instance. When provided, the refine chain starts from this bank instead of running
+    # SWE-agent for round 0, so all refine strategies share the same starting patch/verifier output.
+    refine_attempt0_bank_file: str | None = None
+    # swe_agent_refine continuation eval only: JSONL output from an earlier refine run. Resolved rows
+    # are reused as-is; unresolved rows continue from their last recorded patch/verifier output.
+    refine_resume_bank_file: str | None = None
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -250,6 +261,10 @@ class SweBenchGenerationTask(GenerationTask):
         # populated by _run_swe_agent_refine so _process_single_datapoint_impl reuses it instead of
         # re-evaluating. Keyed by instance_id (safe: the async loop is single-threaded).
         self._refine_state: dict = {}
+        self._refine_attempt0_bank = self._load_refine_attempt0_bank()
+        self._refine_resume_bank = self._load_refine_resume_bank()
+        if self._refine_attempt0_bank and self._refine_resume_bank:
+            raise ValueError("refine_attempt0_bank_file and refine_resume_bank_file are mutually exclusive")
 
         # Set up output folder,
         # making sure it is different for each random seed if we're running with --benchmarks=swe-bench:N
@@ -421,6 +436,56 @@ class SweBenchGenerationTask(GenerationTask):
         combined_setup_command = " && ".join(setup_commands)
         asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
 
+    def _load_refine_attempt0_bank(self) -> dict:
+        if not self.cfg.refine_attempt0_bank_file:
+            return {}
+
+        bank_path = Path(self.cfg.refine_attempt0_bank_file)
+        if not bank_path.exists():
+            raise FileNotFoundError(f"refine_attempt0_bank_file not found: {bank_path}")
+
+        bank = {}
+        with bank_path.open("rt", encoding="utf-8") as fin:
+            for line_no, line in enumerate(fin, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                instance_id = row.get("instance_id")
+                if not instance_id:
+                    raise ValueError(f"Missing instance_id in {bank_path}:{line_no}")
+                if instance_id in bank:
+                    raise ValueError(f"Duplicate instance_id in {bank_path}: {instance_id}")
+                bank[instance_id] = row
+
+        LOG.info("Loaded %d fixed attempt-0 entries from %s", len(bank), bank_path)
+        return bank
+
+    def _load_refine_resume_bank(self) -> dict:
+        if not self.cfg.refine_resume_bank_file:
+            return {}
+
+        bank_path = Path(self.cfg.refine_resume_bank_file)
+        if not bank_path.exists():
+            raise FileNotFoundError(f"refine_resume_bank_file not found: {bank_path}")
+
+        bank = {}
+        with bank_path.open("rt", encoding="utf-8") as fin:
+            for line_no, line in enumerate(fin, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                instance_id = row.get("instance_id")
+                if not instance_id:
+                    raise ValueError(f"Missing instance_id in {bank_path}:{line_no}")
+                if instance_id in bank:
+                    raise ValueError(f"Duplicate instance_id in {bank_path}: {instance_id}")
+                if not isinstance(row.get("swe-bench-refine"), dict):
+                    raise ValueError(f"Missing swe-bench-refine in resume row {bank_path}:{line_no}")
+                bank[instance_id] = row
+
+        LOG.info("Loaded %d refine resume entries from %s", len(bank), bank_path)
+        return bank
+
     def log_example_prompt(self, data):
         return
 
@@ -429,6 +494,12 @@ class SweBenchGenerationTask(GenerationTask):
 
     def setup_llm(self):
         return
+
+    def wait_for_server(self):
+        if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            LOG.info("Skipping server wait for gold_patch verification.")
+            return
+        return super().wait_for_server()
 
     def setup_litellm_cache(self):
         return
@@ -759,7 +830,7 @@ class SweBenchGenerationTask(GenerationTask):
         Mirrors the standard evaluation block in _process_single_datapoint_impl, but is
         parameterized by run_id_suffix so refine attempts don't overwrite each other's eval
         outputs. Returns (report_instance_dict, verify_feedback, trajectory_dict, eval_artifacts) where
-        verify_feedback is the trailing chunk of the attempt's test_output.log (used to seed the
+        verify_feedback is the trailing chunk of the attempt's test_output.log/test_output.txt (used to seed the
         next refine attempt, mirroring the training _summarize_prior).
         """
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
@@ -844,7 +915,9 @@ class SweBenchGenerationTask(GenerationTask):
             report_json = json.loads(f.read().strip())
 
         # The verify (test) output lives next to report.json; carry its tail into the next seed.
-        log_matches = glob.glob(os.path.join(self.output_dir, run_id, "*", instance_id, "test_output.log"))
+        log_matches = []
+        for test_output_name in ("test_output.log", "test_output.txt"):
+            log_matches.extend(glob.glob(os.path.join(self.output_dir, run_id, "*", instance_id, test_output_name)))
         if log_matches:
             eval_artifacts["test_output_log"] = log_matches[0]
             try:
@@ -868,18 +941,18 @@ class SweBenchGenerationTask(GenerationTask):
         return text[:head] + "\n...[diff truncated to fit carry-over budget]...\n" + text[-tail:]
 
     def _build_refine_seed(self, patch, verify_feedback) -> str:
-        """Build the text appended to the next attempt's problem_statement.
+        """Build the text appended to the next refine round's problem_statement.
 
         Mirrors the training refine `_summarize_prior`: carry the prior attempt's diff
         (middle-truncated to carry_over_token_budget) plus the raw verify (test-failure) output,
-        so the next attempt can fix the actual failures instead of guessing.
+        so the next refine round can fix the actual failures instead of guessing.
         """
         patch = self._truncate_middle((patch or "").strip(), self.cfg.carry_over_token_budget)
         verify_feedback = (verify_feedback or "").strip()
 
         parts = [
             "\n\n---\n"
-            "Your previous automated attempt did NOT resolve the issue.",
+            "Your previous automated refine round did NOT resolve the issue.",
             "Here is the diff you produced so far:",
             f"```diff\n{patch}\n```",
         ]
@@ -939,6 +1012,9 @@ class SweBenchGenerationTask(GenerationTask):
             lines.append(f"- ... ({len(values) - len(shown)} more)")
         return "\n".join(lines)
 
+    def _safe_instance_filename(self, instance_id) -> str:
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(instance_id))
+
     def _to_container_artifact_path(self, path) -> str | None:
         if not path:
             return None
@@ -947,6 +1023,21 @@ class SweBenchGenerationTask(GenerationTask):
         if path.startswith(output_dir):
             return path.replace(output_dir, "/trajectories_mount", 1)
         return path
+
+    def _detect_patch_artifact_files(self, changed_files: list[str]) -> list[str]:
+        artifact_files = []
+        artifact_name_re = re.compile(
+            r"(^|/)(repro|reproduce|debug|scratch|tmp|temp|check|verify|test_fix|fix_test)"
+            r"([_.-].*)?\.py$",
+            re.IGNORECASE,
+        )
+        for file_path in changed_files:
+            normalized = str(file_path).strip()
+            if not normalized:
+                continue
+            if artifact_name_re.search(normalized):
+                artifact_files.append(normalized)
+        return self._unique_preserve_order(artifact_files)
 
     def _extract_patch_metadata(self, patch) -> dict:
         patch = patch or ""
@@ -969,9 +1060,13 @@ class SweBenchGenerationTask(GenerationTask):
                 removed_lines += 1
 
         changed_files = self._unique_preserve_order(changed_files)
+        patch_artifact_files = self._detect_patch_artifact_files(changed_files)
         return {
             "changed_files": changed_files,
             "num_changed_files": len(changed_files),
+            "patch_artifact_files": patch_artifact_files,
+            "num_patch_artifact_files": len(patch_artifact_files),
+            "has_patch_artifact": bool(patch_artifact_files),
             "num_added_lines": added_lines,
             "num_removed_lines": removed_lines,
             "num_hunks": hunk_count,
@@ -1208,9 +1303,9 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return "\n".join(lines) + "\n"
 
-    def _write_refine_feedback_artifacts(self, data_point, attempt: int, feedback: dict, patch: str) -> dict:
+    def _write_refine_feedback_artifacts(self, data_point, refine_round: int, feedback: dict, patch: str) -> dict:
         safe_instance_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(data_point["instance_id"]))
-        artifact_dir = Path(self.output_dir) / "refine_feedback" / f"{safe_instance_id}_a{attempt}"
+        artifact_dir = Path(self.output_dir) / "refine_feedback" / f"{safe_instance_id}_r{refine_round}"
         artifact_dir.mkdir(parents=True, exist_ok=True)
 
         previous_patch_path = artifact_dir / "previous.patch"
@@ -1267,6 +1362,28 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.refine_strategy == "structured_hypothesis" and self.cfg.refine_write_full_artifacts:
             feedback = self._write_refine_feedback_artifacts(data_point, attempt, feedback, patch)
         return feedback
+
+    def _split_key_and_raw_verify_context(self, key_failure_snippet: str, raw_verify_tail: str) -> tuple[str, str]:
+        """Return (key, additional_raw_context) without repeating the same verifier text twice."""
+        key_failure_snippet = (key_failure_snippet or "").strip()
+        raw_verify_tail = (raw_verify_tail or "").strip()
+        additional_verify_context = raw_verify_tail
+
+        if key_failure_snippet and raw_verify_tail:
+            if raw_verify_tail == key_failure_snippet or raw_verify_tail in key_failure_snippet:
+                additional_verify_context = ""
+            elif key_failure_snippet in raw_verify_tail:
+                additional_verify_context = raw_verify_tail.replace(
+                    key_failure_snippet, "\n...[key verifier output shown above]...\n", 1
+                ).strip()
+            else:
+                key_tail = key_failure_snippet[-1000:]
+                if key_tail and key_tail in raw_verify_tail:
+                    additional_verify_context = raw_verify_tail.replace(
+                        key_tail, "\n...[overlapping key verifier output shown above]...\n", 1
+                    ).strip()
+
+        return key_failure_snippet, additional_verify_context
 
     def _build_refine_seed_v2(self, feedback: dict, patch: str) -> str:
         """Build refine v2 seed: structured verifier evidence + hypothesis revision instructions."""
@@ -1347,6 +1464,232 @@ class SweBenchGenerationTask(GenerationTask):
         )
         return "\n\n".join(parts) + "\n"
 
+    def _build_refine_seed_v3_legacy(self, feedback: dict, patch: str) -> str:
+        """Build original refine v3 seed: compact raw evidence with no key/raw deduplication."""
+        snippets = feedback["snippets"]
+        patch = self._truncate_middle((patch or "").strip(), self.cfg.carry_over_token_budget)
+        key_failure_snippet = (snippets.get("key_failure_snippet") or "").strip()
+        raw_verify_tail = (snippets.get("raw_verify_tail") or "").strip()
+
+        parts = [
+            "\n\n---\n"
+            "Your previous automated refine round did NOT resolve the issue.",
+            "You are starting again from a clean repository. Use the previous round only as debugging evidence.",
+        ]
+
+        if key_failure_snippet:
+            parts.extend(
+                [
+                    "Key verifier output:",
+                    f"```text\n{key_failure_snippet}\n```",
+                ]
+            )
+
+        if raw_verify_tail:
+            parts.extend(
+                [
+                    "Raw verifier output tail:",
+                    f"```text\n{raw_verify_tail}\n```",
+                ]
+            )
+
+        parts.extend(
+            [
+                "Previous patch:",
+                f"```diff\n{patch}\n```",
+                "Use the previous patch only as evidence. You may keep, revise, or discard it. "
+                "Produce a complete minimal patch from the clean repository.",
+            ]
+        )
+        return "\n\n".join(parts) + "\n"
+
+    def _build_refine_seed_v3(self, feedback: dict, patch: str) -> str:
+        """Build refine v3 seed: compact raw verifier evidence + previous diff.
+
+        This keeps the v1 raw-feedback spirit, but front-loads a small high-signal
+        traceback/assertion snippet before the raw verifier tail and diff. It avoids
+        v2's structured summary, artifact paths, and explicit hypothesis checklist.
+        """
+        snippets = feedback["snippets"]
+        patch = self._truncate_middle((patch or "").strip(), self.cfg.carry_over_token_budget)
+        key_failure_snippet, additional_verify_context = self._split_key_and_raw_verify_context(
+            snippets.get("key_failure_snippet"), snippets.get("raw_verify_tail")
+        )
+
+        parts = [
+            "\n\n---\n"
+            "Your previous automated refine round did NOT resolve the issue.",
+            "You are starting again from a clean repository. Use the previous round only as debugging evidence.",
+        ]
+
+        if key_failure_snippet:
+            parts.extend(
+                [
+                    "Key verifier output:",
+                    f"```text\n{key_failure_snippet}\n```",
+                ]
+            )
+
+        if additional_verify_context:
+            context_label = "Additional verifier context:" if key_failure_snippet else "Verifier output tail:"
+            parts.extend(
+                [
+                    context_label,
+                    f"```text\n{additional_verify_context}\n```",
+                ]
+            )
+
+        parts.extend(
+            [
+                "Previous patch:",
+                f"```diff\n{patch}\n```",
+                "Use the previous patch only as evidence. You may keep, revise, or discard it. "
+                "Produce a complete minimal patch from the clean repository.",
+            ]
+        )
+        return "\n\n".join(parts) + "\n"
+
+    def _build_refine_seed_v4(self, feedback: dict, patch: str) -> str:
+        """Build refine v4 seed: v1-style raw evidence with failure-type-specific guidance."""
+        verifier = feedback["verifier"]
+        patch_meta = feedback["patch"]
+        snippets = feedback["snippets"]
+        patch = self._truncate_middle((patch or "").strip(), self.cfg.carry_over_token_budget)
+        key_failure_snippet, additional_verify_context = self._split_key_and_raw_verify_context(
+            snippets.get("key_failure_snippet"), snippets.get("raw_verify_tail")
+        )
+
+        failure_type = verifier.get("failure_type") or "unknown_unresolved"
+        guidance_by_failure_type = {
+            "no_patch": (
+                "The previous round did not produce a valid patch. Treat the prior run as weak evidence only; "
+                "start from the original issue and inspect the repository before editing."
+            ),
+            "patch_apply_failed": (
+                "The previous diff did not apply cleanly. Do not try to mechanically replay it; recover the "
+                "intended change and produce a clean patch against the fresh repository."
+            ),
+            "target_tests_still_failing": (
+                "The previous patch applied but did not satisfy the target failing tests. Focus on the failing "
+                "FAIL_TO_PASS evidence below and fix the incomplete behavior."
+            ),
+            "regression_introduced": (
+                "The previous patch regressed PASS_TO_PASS tests. Preserve existing behavior first; revert or "
+                "narrow the risky part of the prior change before addressing the target failure."
+            ),
+            "mixed_failure": (
+                "The previous patch both missed target tests and regressed existing tests. First remove the "
+                "regression, then make the smallest additional change needed for the target tests."
+            ),
+            "syntax_or_import_error": (
+                "The previous patch introduced a syntax/import/runtime setup failure. Fix that root cause before "
+                "making broader behavior changes."
+            ),
+            "timeout": (
+                "The previous run timed out. Look for excessive work, infinite loops, or overly broad behavior; "
+                "prefer a small localized fix."
+            ),
+            "unknown_tests_failing": (
+                "The verifier failed tests outside the known lists. Use the raw output as the source of truth and "
+                "avoid assuming the previous patch direction was correct."
+            ),
+            "unknown_unresolved": (
+                "The verifier did not provide a clean failure category. Use the raw output as debugging evidence "
+                "and re-check the issue from the clean repository."
+            ),
+            "eval_error": (
+                "The verifier itself failed to complete. Use the previous diff cautiously and produce a clean, "
+                "minimal patch that can be evaluated normally."
+            ),
+        }
+
+        parts = [
+            "\n\n---\n"
+            "Your previous automated refine round did NOT resolve the issue.",
+            "You are starting again from a clean repository. You do not inherit the previous workspace state.",
+            f"Verifier failure type: {failure_type}",
+            guidance_by_failure_type.get(failure_type, guidance_by_failure_type["unknown_unresolved"]),
+        ]
+
+        if patch_meta["changed_files"]:
+            parts.extend(
+                [
+                    "Files changed by the previous patch:",
+                    self._format_limited_list(patch_meta["changed_files"], self.cfg.refine_max_changed_files_in_seed),
+                ]
+            )
+
+        if patch_meta.get("patch_artifact_files"):
+            parts.extend(
+                [
+                    "The previous patch appears to include temporary/debug artifact files. Do not include these "
+                    "in the final patch unless they are truly product files:",
+                    self._format_limited_list(
+                        patch_meta["patch_artifact_files"], self.cfg.refine_max_changed_files_in_seed
+                    ),
+                ]
+            )
+
+        if verifier["fail_to_pass_failed"]:
+            parts.extend(
+                [
+                    "Failing FAIL_TO_PASS tests:",
+                    self._format_limited_list(verifier["fail_to_pass_failed"], self.cfg.refine_max_tests_in_seed),
+                ]
+            )
+
+        if verifier["pass_to_pass_failed"]:
+            parts.extend(
+                [
+                    "Regressed PASS_TO_PASS tests:",
+                    self._format_limited_list(verifier["pass_to_pass_failed"], self.cfg.refine_max_tests_in_seed),
+                ]
+            )
+
+        if key_failure_snippet:
+            parts.extend(
+                [
+                    "Key verifier output:",
+                    f"```text\n{key_failure_snippet}\n```",
+                ]
+            )
+
+        if additional_verify_context:
+            context_label = "Additional verifier context:" if key_failure_snippet else "Verifier output tail:"
+            parts.extend(
+                [
+                    context_label,
+                    f"```text\n{additional_verify_context}\n```",
+                ]
+            )
+
+        if patch:
+            parts.extend(
+                [
+                    "Previous patch:",
+                    f"```diff\n{patch}\n```",
+                ]
+            )
+        else:
+            parts.append("Previous patch: none.")
+
+        parts.append(
+            "Use the previous patch only as evidence. You may keep, revise, or discard it. "
+            "Produce a correct minimal patch for the clean repository."
+        )
+        return "\n\n".join(parts) + "\n"
+
+    def _build_refine_problem_suffix(self, prev_feedback: dict, prev_patch: str, prev_verify: str) -> str:
+        if self.cfg.refine_strategy == "structured_hypothesis":
+            return self._build_refine_seed_v2(prev_feedback, prev_patch)
+        if self.cfg.refine_strategy == "compact_raw_legacy":
+            return self._build_refine_seed_v3_legacy(prev_feedback, prev_patch)
+        if self.cfg.refine_strategy == "compact_raw":
+            return self._build_refine_seed_v3(prev_feedback, prev_patch)
+        if self.cfg.refine_strategy == "failure_aware":
+            return self._build_refine_seed_v4(prev_feedback, prev_patch)
+        return self._build_refine_seed(prev_patch, prev_verify)
+
     def _build_refine_attempt_summary(self, attempt: int, resolved: bool, report: dict, feedback: dict) -> dict:
         verifier = feedback["verifier"]
         patch = feedback["patch"]
@@ -1358,6 +1701,9 @@ class SweBenchGenerationTask(GenerationTask):
             "failure_type": verifier["failure_type"],
             "changed_files": patch["changed_files"][: self.cfg.refine_max_changed_files_in_seed],
             "num_changed_files": patch["num_changed_files"],
+            "patch_artifact_files": patch["patch_artifact_files"][: self.cfg.refine_max_changed_files_in_seed],
+            "num_patch_artifact_files": patch["num_patch_artifact_files"],
+            "has_patch_artifact": patch["has_patch_artifact"],
             "num_added_lines": patch["num_added_lines"],
             "num_removed_lines": patch["num_removed_lines"],
             "num_hunks": patch["num_hunks"],
@@ -1370,6 +1716,18 @@ class SweBenchGenerationTask(GenerationTask):
             "artifacts": feedback.get("artifacts", {}),
         }
 
+    def _add_attempt_overlap_metrics(self, attempts: list[dict], attempt_summary: dict) -> dict:
+        if not attempts:
+            return attempt_summary
+
+        prev_changed_files = set(attempts[-1].get("changed_files", []))
+        current_changed_files = set(attempt_summary.get("changed_files", []))
+        prev_failed_tests = set(attempts[-1].get("all_failed_tests", []))
+        current_failed_tests = set(attempt_summary.get("all_failed_tests", []))
+        attempt_summary["changed_file_overlap_with_previous"] = len(prev_changed_files & current_changed_files)
+        attempt_summary["failed_test_overlap_with_previous"] = len(prev_failed_tests & current_failed_tests)
+        return attempt_summary
+
     def _count_attempt_values(self, attempts: list[dict], key: str) -> dict:
         counts = {}
         for attempt in attempts:
@@ -1377,80 +1735,14 @@ class SweBenchGenerationTask(GenerationTask):
             counts[value] = counts.get(value, 0) + 1
         return counts
 
-    async def _run_swe_agent_refine(self, data_point, api_base):
-        """Multi-attempt refine harness on SWE-agent (eval-side mirror of the training refine).
-
-        Runs SWE-agent up to cfg.max_attempts times. Each later attempt starts from a clean repo
-        but sees the prior attempt's diff + raw verify (test-failure) output appended to the problem
-        statement (textual handoff / summary-style, matching the training MVP). Every failed attempt
-        is evaluated in-line so the seed can carry real test output and the chain can early-stop on
-        the first resolved attempt. The chosen attempt's eval result is stashed in
-        self._refine_state so the outer flow reuses it instead of re-evaluating.
-
-        The reported result is chain-resolved = any attempt resolved: with early-stop the chosen
-        (last recorded) attempt is the resolved one when any resolved, so returning its pred_file
-        makes the file-level pass@1 equal to the chain pass@1.
-        """
-        max_attempts = max(1, self.cfg.max_attempts)
-        if self.cfg.refine_strategy not in ("baseline", "structured_hypothesis"):
-            raise ValueError(
-                f"Unsupported refine_strategy: {self.cfg.refine_strategy}. "
-                "Supported values: baseline, structured_hypothesis."
-            )
-
-        prev_patch = None
-        prev_verify = None
-        prev_feedback = None
-        attempts: list[dict] = []
-        chosen_pred_file = None
-        chosen_report = None
-        chosen_trajectory = None
-
-        for k in range(max_attempts):
-            if k == 0:
-                problem_suffix = ""
-            elif self.cfg.refine_strategy == "structured_hypothesis":
-                problem_suffix = self._build_refine_seed_v2(prev_feedback, prev_patch)
-            else:
-                problem_suffix = self._build_refine_seed(prev_patch, prev_verify)
-
-            pred_file = await self._run_swe_agent(
-                data_point, api_base, attempt_tag=f"_a{k}", problem_suffix=problem_suffix
-            )
-            report_instance, verify_feedback, trajectory_dict, eval_artifacts = await self._evaluate_pred_file(
-                data_point, pred_file, run_id_suffix=f"_a{k}"
-            )
-            resolved = bool(report_instance.get("resolved"))
-            feedback = self._build_structured_refine_feedback(
-                data_point,
-                k,
-                report_instance,
-                trajectory_dict,
-                verify_feedback,
-                eval_artifacts,
-            )
-
-            attempt_summary = self._build_refine_attempt_summary(k, resolved, report_instance, feedback)
-            if attempts:
-                prev_changed_files = set(attempts[-1].get("changed_files", []))
-                current_changed_files = set(attempt_summary.get("changed_files", []))
-                prev_failed_tests = set(attempts[-1].get("all_failed_tests", []))
-                current_failed_tests = set(attempt_summary.get("all_failed_tests", []))
-                attempt_summary["changed_file_overlap_with_previous"] = len(
-                    prev_changed_files & current_changed_files
-                )
-                attempt_summary["failed_test_overlap_with_previous"] = len(prev_failed_tests & current_failed_tests)
-            attempts.append(attempt_summary)
-            chosen_pred_file = pred_file
-            chosen_report = report_instance
-            chosen_trajectory = trajectory_dict
-
-            if resolved:
-                break  # chain solved -> stop early (chosen attempt = this resolved one)
-            prev_patch = trajectory_dict.get("model_patch")
-            prev_verify = verify_feedback
-            prev_feedback = feedback
-
+    def _build_refine_chain_summary(
+        self,
+        attempts: list[dict],
+        max_refine_rounds: int,
+        controlled_attempt0: bool = False,
+        resumed_from_bank: bool = False,
+        resume_attempt_count: int | None = None,
+    ) -> dict:
         chain_resolved = any(a["resolved"] for a in attempts)
         resolved_at = next((a["attempt"] for a in attempts if a["resolved"]), None)
         attempt0 = attempts[0] if attempts else {}
@@ -1458,9 +1750,17 @@ class SweBenchGenerationTask(GenerationTask):
         refine_rescued = bool(attempts and not attempt0.get("resolved") and chain_resolved)
         summary = {
             "refine_strategy": self.cfg.refine_strategy,
+            "controlled_attempt0": controlled_attempt0,
+            "refine_attempt0_bank_file": self.cfg.refine_attempt0_bank_file if controlled_attempt0 else None,
+            "resumed_from_refine_bank": resumed_from_bank,
+            "refine_resume_bank_file": self.cfg.refine_resume_bank_file if resumed_from_bank else None,
+            "resume_attempt_count": resume_attempt_count,
+            "num_refine_rounds": len(attempts),
+            "max_refine_rounds": max_refine_rounds,
             "num_attempts": len(attempts),
-            "max_attempts": max_attempts,
+            "max_attempts": max_refine_rounds,
             "chain_resolved": chain_resolved,
+            "resolved_at_refine_round": resolved_at,
             "resolved_at_attempt": resolved_at,
             "attempt0_resolved": attempt0.get("resolved"),
             "attempt0_failure_type": attempt0.get("failure_type"),
@@ -1482,6 +1782,7 @@ class SweBenchGenerationTask(GenerationTask):
             "num_repeat_failure_attempts": sum(
                 1 for attempt in attempts if attempt.get("failed_test_overlap_with_previous", 0) > 0
             ),
+            "num_artifact_patch_attempts": sum(1 for attempt in attempts if attempt.get("has_patch_artifact")),
             "per_attempt": attempts,
         }
         if len(attempts) > 1:
@@ -1498,6 +1799,292 @@ class SweBenchGenerationTask(GenerationTask):
             summary["failed_test_overlap_attempt0_to_final"] = len(
                 set(attempt0.get("all_failed_tests", [])) & set(final_attempt.get("all_failed_tests", []))
             )
+
+        return summary
+
+    def _extract_bank_report(self, data_point, bank_row: dict, trajectory_dict: dict) -> dict:
+        report = bank_row.get("report") or bank_row.get("swe-bench-metrics") or bank_row.get("metrics") or {}
+        if isinstance(report, dict) and data_point["instance_id"] in report and isinstance(report[data_point["instance_id"]], dict):
+            report = report[data_point["instance_id"]]
+        report = dict(report or {})
+
+        patch = trajectory_dict.get("model_patch")
+        patch_exists = patch is not None
+        report.setdefault("resolved", False)
+        report.setdefault("patch_exists", patch_exists)
+        if not patch_exists:
+            report.setdefault("patch_successfully_applied", False)
+        else:
+            report.setdefault("patch_successfully_applied", None)
+        return report
+
+    def _extract_bank_trajectory(self, data_point, bank_row: dict) -> dict:
+        trajectory = dict(
+            bank_row.get("trajectory")
+            or bank_row.get("swe-bench-outputs")
+            or bank_row.get("swe_bench_outputs")
+            or {}
+        )
+        if "model_patch" in bank_row:
+            trajectory["model_patch"] = bank_row.get("model_patch")
+        elif "model_patch" not in trajectory and "patch" in bank_row:
+            trajectory["model_patch"] = bank_row.get("patch")
+
+        patch = trajectory.get("model_patch")
+        if isinstance(patch, str) and not patch.strip():
+            patch = None
+        trajectory["model_patch"] = patch
+        trajectory.setdefault("model_name_or_path", self.cfg.server.get("model", "fixed_attempt0_bank"))
+        trajectory["instance_id"] = data_point["instance_id"]
+        return trajectory
+
+    def _extract_bank_verify_feedback(self, bank_row: dict) -> tuple[str, dict]:
+        eval_artifacts = dict(bank_row.get("eval_artifacts") or bank_row.get("artifacts") or {})
+        verify_feedback = (
+            bank_row.get("verify_feedback")
+            or bank_row.get("test_output_tail")
+            or bank_row.get("raw_verify_tail")
+            or ""
+        )
+
+        test_log_path = (
+            eval_artifacts.get("test_output_log")
+            or eval_artifacts.get("test_output_log_host_path")
+            or bank_row.get("test_output_log")
+        )
+        if not verify_feedback and test_log_path and Path(test_log_path).exists():
+            try:
+                log_text = Path(test_log_path).read_text(errors="ignore")
+                verify_feedback = log_text[-self.cfg.refine_verify_feedback_chars :]
+            except Exception:
+                verify_feedback = ""
+
+        eval_artifacts.setdefault("run_id", "fixed_attempt0_bank")
+        eval_artifacts.setdefault("test_output_log", test_log_path)
+        eval_artifacts.setdefault("verify_feedback_chars", len(verify_feedback or ""))
+        eval_artifacts.setdefault("eval_error", bank_row.get("eval_error"))
+        return verify_feedback or "", eval_artifacts
+
+    def _extract_resume_trajectory(self, data_point, resume_row: dict) -> dict:
+        trajectory = dict(resume_row.get("swe-bench-outputs") or resume_row.get("trajectory") or {})
+        if "model_patch" not in trajectory and "patch" in resume_row:
+            trajectory["model_patch"] = resume_row.get("patch")
+
+        patch = trajectory.get("model_patch")
+        if isinstance(patch, str) and not patch.strip():
+            patch = None
+        trajectory["model_patch"] = patch
+        trajectory.setdefault("model_name_or_path", self.cfg.server.get("model", "refine_resume_bank"))
+        trajectory["instance_id"] = data_point["instance_id"]
+        return trajectory
+
+    def _extract_resume_report(self, resume_row: dict, trajectory_dict: dict) -> dict:
+        report = dict(resume_row.get("swe-bench-metrics") or resume_row.get("report") or {})
+        patch_exists = trajectory_dict.get("model_patch") is not None
+        report.setdefault("resolved", False)
+        report.setdefault("patch_exists", patch_exists)
+        if not patch_exists:
+            report.setdefault("patch_successfully_applied", False)
+        return report
+
+    def _extract_resume_verify_feedback(self, attempt_summary: dict) -> tuple[str, dict]:
+        artifacts = dict((attempt_summary or {}).get("artifacts") or {})
+        test_log_path = (
+            artifacts.get("full_test_log_host_path")
+            or artifacts.get("test_output_log")
+            or artifacts.get("test_output_log_host_path")
+        )
+        verify_feedback = ""
+        if test_log_path and Path(test_log_path).exists():
+            try:
+                log_text = Path(test_log_path).read_text(errors="ignore")
+                verify_feedback = log_text[-self.cfg.refine_verify_feedback_chars :]
+            except Exception:
+                verify_feedback = ""
+
+        eval_artifacts = {
+            "run_id": artifacts.get("run_id") or "refine_resume_bank",
+            "report_file": artifacts.get("report_file_host_path") or artifacts.get("report_file"),
+            "test_output_log": test_log_path,
+            "verify_feedback_chars": len(verify_feedback or ""),
+        }
+        return verify_feedback or "", eval_artifacts
+
+    def _write_controlled_attempt_pred_file(self, data_point, trajectory_dict: dict, attempt: int) -> str:
+        pred_dir = Path(self.output_dir) / "controlled_attempt0_preds"
+        pred_dir.mkdir(parents=True, exist_ok=True)
+        safe_instance_id = self._safe_instance_filename(data_point["instance_id"])
+        pred_file = pred_dir / f"{safe_instance_id}_r{attempt}.jsonl"
+        pred_file.write_text(json.dumps(trajectory_dict))
+        return str(pred_file)
+
+    def _write_refine_resume_pred_file(self, data_point, trajectory_dict: dict, attempt: int) -> str:
+        pred_dir = Path(self.output_dir) / "refine_resume_preds"
+        pred_dir.mkdir(parents=True, exist_ok=True)
+        safe_instance_id = self._safe_instance_filename(data_point["instance_id"])
+        pred_file = pred_dir / f"{safe_instance_id}_r{attempt}.jsonl"
+        pred_file.write_text(json.dumps(trajectory_dict))
+        return str(pred_file)
+
+    async def _run_swe_agent_refine(self, data_point, api_base):
+        """Multi-attempt refine harness on SWE-agent (eval-side mirror of the training refine).
+
+        Runs SWE-agent up to cfg.max_refine_rounds times. Each later round starts from a clean repo
+        but sees the prior attempt's diff + raw verify (test-failure) output appended to the problem
+        statement (textual handoff / summary-style, matching the training MVP). Every failed attempt
+        is evaluated in-line so the seed can carry real test output and the chain can early-stop on
+        the first resolved attempt. The chosen attempt's eval result is stashed in
+        self._refine_state so the outer flow reuses it instead of re-evaluating.
+
+        The reported result is chain-resolved = any attempt resolved: with early-stop the chosen
+        (last recorded) attempt is the resolved one when any resolved, so returning its pred_file
+        makes the file-level pass@1 equal to the chain pass@1.
+        """
+        max_refine_rounds = max(1, self.cfg.max_refine_rounds)
+        supported_strategies = (
+            "baseline",
+            "compact_raw_legacy",
+            "compact_raw",
+            "failure_aware",
+            "structured_hypothesis",
+        )
+        if self.cfg.refine_strategy not in supported_strategies:
+            raise ValueError(
+                f"Unsupported refine_strategy: {self.cfg.refine_strategy}. "
+                f"Supported values: {', '.join(supported_strategies)}."
+            )
+
+        prev_patch = None
+        prev_verify = None
+        prev_feedback = None
+        attempts: list[dict] = []
+        chosen_pred_file = None
+        chosen_report = None
+        chosen_trajectory = None
+        start_round = 0
+        controlled_attempt0 = bool(self._refine_attempt0_bank)
+        resumed_from_bank = bool(self._refine_resume_bank)
+        resume_attempt_count = None
+
+        if resumed_from_bank:
+            resume_row = self._refine_resume_bank.get(data_point["instance_id"])
+            if resume_row is None:
+                raise ValueError(
+                    f"Missing refine resume bank entry for instance_id={data_point['instance_id']} "
+                    f"in {self.cfg.refine_resume_bank_file}"
+                )
+
+            resume_summary = resume_row.get("swe-bench-refine") or {}
+            attempts = [dict(attempt) for attempt in (resume_summary.get("per_attempt") or [])]
+            if not attempts:
+                raise ValueError(
+                    f"Refine resume row for instance_id={data_point['instance_id']} has no per_attempt history"
+                )
+
+            trajectory_dict = self._extract_resume_trajectory(data_point, resume_row)
+            report_instance = self._extract_resume_report(resume_row, trajectory_dict)
+            last_attempt = attempts[-1]
+            last_attempt_idx = int(last_attempt.get("attempt", len(attempts) - 1))
+            pred_file = self._write_refine_resume_pred_file(data_point, trajectory_dict, attempt=last_attempt_idx)
+            chosen_pred_file = pred_file
+            chosen_report = report_instance
+            chosen_trajectory = trajectory_dict
+            resume_attempt_count = len(attempts)
+
+            if bool(resume_summary.get("chain_resolved")) or bool(report_instance.get("resolved")):
+                start_round = max_refine_rounds
+            else:
+                prev_patch = trajectory_dict.get("model_patch")
+                prev_verify, eval_artifacts = self._extract_resume_verify_feedback(last_attempt)
+                prev_feedback = self._build_structured_refine_feedback(
+                    data_point,
+                    last_attempt_idx,
+                    report_instance,
+                    trajectory_dict,
+                    prev_verify,
+                    eval_artifacts,
+                )
+                start_round = min(max(last_attempt_idx + 1, len(attempts)), max_refine_rounds)
+
+        elif controlled_attempt0:
+            bank_row = self._refine_attempt0_bank.get(data_point["instance_id"])
+            if bank_row is None:
+                raise ValueError(
+                    f"Missing fixed attempt-0 bank entry for instance_id={data_point['instance_id']} "
+                    f"in {self.cfg.refine_attempt0_bank_file}"
+                )
+
+            trajectory_dict = self._extract_bank_trajectory(data_point, bank_row)
+            report_instance = self._extract_bank_report(data_point, bank_row, trajectory_dict)
+            verify_feedback, eval_artifacts = self._extract_bank_verify_feedback(bank_row)
+            pred_file = self._write_controlled_attempt_pred_file(data_point, trajectory_dict, attempt=0)
+            resolved = bool(report_instance.get("resolved"))
+            feedback = self._build_structured_refine_feedback(
+                data_point,
+                0,
+                report_instance,
+                trajectory_dict,
+                verify_feedback,
+                eval_artifacts,
+            )
+            attempt_summary = self._build_refine_attempt_summary(0, resolved, report_instance, feedback)
+            attempts.append(attempt_summary)
+            chosen_pred_file = pred_file
+            chosen_report = report_instance
+            chosen_trajectory = trajectory_dict
+
+            if resolved:
+                start_round = max_refine_rounds
+            else:
+                prev_patch = trajectory_dict.get("model_patch")
+                prev_verify = verify_feedback
+                prev_feedback = feedback
+                start_round = 1
+
+        for k in range(start_round, max_refine_rounds):
+            if controlled_attempt0 and k == 0:
+                continue
+            if k == 0:
+                problem_suffix = ""
+            else:
+                problem_suffix = self._build_refine_problem_suffix(prev_feedback, prev_patch, prev_verify)
+
+            pred_file = await self._run_swe_agent(
+                data_point, api_base, attempt_tag=f"_r{k}", problem_suffix=problem_suffix
+            )
+            report_instance, verify_feedback, trajectory_dict, eval_artifacts = await self._evaluate_pred_file(
+                data_point, pred_file, run_id_suffix=f"_r{k}"
+            )
+            resolved = bool(report_instance.get("resolved"))
+            feedback = self._build_structured_refine_feedback(
+                data_point,
+                k,
+                report_instance,
+                trajectory_dict,
+                verify_feedback,
+                eval_artifacts,
+            )
+
+            attempt_summary = self._build_refine_attempt_summary(k, resolved, report_instance, feedback)
+            attempt_summary = self._add_attempt_overlap_metrics(attempts, attempt_summary)
+            attempts.append(attempt_summary)
+            chosen_pred_file = pred_file
+            chosen_report = report_instance
+            chosen_trajectory = trajectory_dict
+
+            if resolved:
+                break  # chain solved -> stop early (chosen attempt = this resolved one)
+            prev_patch = trajectory_dict.get("model_patch")
+            prev_verify = verify_feedback
+            prev_feedback = feedback
+
+        summary = self._build_refine_chain_summary(
+            attempts,
+            max_refine_rounds,
+            controlled_attempt0=controlled_attempt0,
+            resumed_from_bank=resumed_from_bank,
+            resume_attempt_count=resume_attempt_count,
+        )
 
         self._refine_state[data_point["instance_id"]] = {
             "report_instance": chosen_report,

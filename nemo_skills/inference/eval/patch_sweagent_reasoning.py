@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Patch SWE-agent to preserve LiteLLM reasoning_content in agent history.
+"""Patch SWE-agent for local eval compatibility.
 
 SWE-agent's LiteLLM adapter rebuilds model outputs manually. For models served
 with a reasoning parser, LiteLLM returns `message.reasoning_content`, but the
 unpatched SWE-agent path drops that field before it reaches StepOutput/history.
 This runtime patch keeps the change local to the copied /root/SWE-agent tree in
 each SWE-bench instance container.
+
+Refine rounds can also carry very long prior diffs/test logs. SWE-agent reads
+the full prompt from a file, but still mirrors it into a `PROBLEM_STATEMENT`
+environment variable for the repo shell. Extremely large env values can exceed
+the OS exec limit before the agent even starts, so we cap only that env mirror;
+the model prompt still receives the full problem statement from the file.
 """
 
 from __future__ import annotations
@@ -88,6 +94,23 @@ def patch_agents_py(swe_agent_root: Path) -> None:
             r'\g<indent>if output.get("tool_calls") is not None:' + "\n"
         )
         _replace_once(path, pattern, replacement, "history content reasoning reconstruction")
+
+    text = path.read_text()
+    if "problem_statement_env = self._problem_statement.get_problem_statement_for_env()" not in text:
+        pattern = (
+            r'^(?P<indent>\s*)self\._env\.set_env_variables'
+            r'\(\{"PROBLEM_STATEMENT": self\._problem_statement\.get_problem_statement_for_env\(\)\}\)\n'
+        )
+        replacement = (
+            r'\g<indent>problem_statement_env = self._problem_statement.get_problem_statement_for_env()' + "\n"
+            r'\g<indent>if len(problem_statement_env) > 32000:' + "\n"
+            r'\g<indent>    problem_statement_env = (' + "\n"
+            r'\g<indent>        problem_statement_env[:32000]' + "\n"
+            r'\g<indent>        + "\\n...[PROBLEM_STATEMENT env var truncated; full prompt was loaded from file]..."' + "\n"
+            r'\g<indent>    )' + "\n"
+            r'\g<indent>self._env.set_env_variables({"PROBLEM_STATEMENT": problem_statement_env})' + "\n"
+        )
+        _replace_once(path, pattern, replacement, "long PROBLEM_STATEMENT env guard")
 
 
 def main() -> None:
