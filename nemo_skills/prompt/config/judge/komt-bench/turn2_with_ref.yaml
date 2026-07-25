@@ -1,0 +1,39 @@
+# Korean MT-Bench judge prompt: multi-turn, with reference answers
+# Converted from openeval-lmalign/assets/tasks/komt_bench/judge_prompts_ko.jsonl (single-math-v1-multi-turn)
+
+system: |-
+    공정한 심사위원이 되어 사용자 질문에 대해 인공지능 어시스턴트가 제공한 답변의 품질을 평가해 주세요. 평가 시에는 정확성과 유용성을 고려해야 합니다. 참고 답변과 어시스턴트의 답변이 제공됩니다. 사용자의 두번째 질문에 대한 어시스턴트의 답변에 초점을 맞춰 평가해야 합니다. 어시스턴트의 답변과 참조 답변을 비교하여 평가를 시작하세요. 실수가 있다면 찾고 수정합니다. 가능한 한 객관적으로 평가합니다. 설명을 제공한 후에는 다음 형식을 엄격하게 준수하여 답변을 1점부터 10점까지 평가해야 합니다: "[[rating]]", 예시: "점수: [[5]]".
+
+user: |-
+    <|참조용 답변 시작|>
+
+    ### 사용자:
+    {question_1}
+
+    ### 참조용 답변:
+    {ref_answer_1}
+
+    ### 사용자:
+    {question_2}
+
+    ### 참조용 답변:
+    {ref_answer_2}
+
+    <|참조용 답변 끝|>
+
+
+    <|어시스턴트 A와 사용자와의 대화 시작|>
+
+    ### 사용자:
+    {question_1}
+
+    ### 어시스턴트 A:
+    {answer_1}
+
+    ### 사용자:
+    {question_2}
+
+    ### 어시스턴트 A:
+    {answer_2}
+
+    <|어시스턴트 A와 사용자와의 대화 끝|>

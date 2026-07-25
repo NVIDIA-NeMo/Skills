@@ -10,7 +10,10 @@ RUN apt-get update && \
     wget \
     git \
     git-lfs \
-    ffmpeg && \
+    ffmpeg \
+    libgl1-mesa-glx \
+    libgles2-mesa \
+    libegl1-mesa && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 

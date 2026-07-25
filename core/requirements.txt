@@ -26,6 +26,7 @@ language-data
 litellm[caching]==1.83.14
 math-verify[antlr4_9_3]
 mcp
+mediapipe
 numpy
 openai
 openpyxl>=3.1.0

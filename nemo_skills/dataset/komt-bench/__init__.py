@@ -1,0 +1,34 @@
+# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# settings that define how evaluation should be done by default (all can be changed from cmdline)
+
+METRICS_TYPE = "mt_bench"
+GENERATION_MODULE = "nemo_skills.inference.eval.mt_bench"
+GENERATION_ARGS = "++prompt_format=openai"
+
+JUDGE_PIPELINE_ARGS = {
+    "generation_module": "nemo_skills.inference.eval.mt_bench_judge",
+    "model": "gpt-4o-2024-08-06",
+    "server_type": "openai",
+    "server_address": "https://api.openai.com/v1",
+}
+
+JUDGE_ARGS = (
+    "++prompt_config_turn1=judge/komt-bench/turn1 "
+    "++prompt_config_turn1_with_ref=judge/komt-bench/turn1_with_ref "
+    "++prompt_config_turn2=judge/komt-bench/turn2 "
+    "++prompt_config_turn2_with_ref=judge/komt-bench/turn2_with_ref "
+    "++num_judges=8"
+)
