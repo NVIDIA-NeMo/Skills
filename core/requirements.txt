@@ -25,7 +25,9 @@ langdetect
 language-data
 litellm[caching]==1.83.14
 math-verify[antlr4_9_3]
-mcp
+# mcp 2.0 removed the streamablehttp_client alias that nemo_skills/mcp/clients.py imports.
+# Unpin once those call sites move to streamable_http_client and the 2.0 API is verified.
+mcp<2.0
 numpy
 openai
 openpyxl>=3.1.0
