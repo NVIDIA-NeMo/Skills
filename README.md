@@ -1,14 +1,15 @@
 # Nemo Skills
 
 > [!NOTE]
-> **Evaluations are moving to [NeMo-Gym](https://github.com/NVIDIA-NeMo/Gym).** For evaluation we
-> recommend using NeMo-Gym directly, and new benchmarks should be contributed there rather than here.
+> **Benchmarks and rollouts are moving to [NeMo-Gym](https://github.com/NVIDIA-NeMo/Gym).** We
+> encourage you to move your rollout workflows over to NeMo-Gym, and to implement new benchmarks
+> there rather than in Nemo-Skills.
 >
-> Nemo-Skills evaluation keeps working and is still actively maintained — we're migrating its backend
-> to NeMo-Gym, and existing `ns eval` commands will continue to run. If you want to use NeMo-Gym
-> benchmarks with the Nemo-Skills pipeline machinery (cluster configs, self-hosted servers, sandboxes,
-> slurm) today, you can already do that with
-> [`ns nemo_gym_rollouts`](https://nvidia-nemo.github.io/Skills/pipelines/nemo-gym-rollouts).
+> Nemo-Skills will keep gaining orchestration and execution support for running NeMo-Gym benchmarks
+> (cluster configs, self-hosted servers, sandboxes, slurm), so you can drive Gym rollouts through the
+> pipelines you already use. The benchmark implementation itself should live in NeMo-Gym. An early
+> version of this exists today as `ns nemo_gym_rollouts`, but the interface is experimental and will
+> likely change.
 
 Nemo-Skills is a collection of pipelines to improve "skills" of large language models (LLMs). We support everything needed for LLM development, from synthetic data generation, to model training, to evaluation on a wide range of benchmarks. Start developing on a local workstation and move to a large-scale Slurm cluster with just a one-line change.
 
