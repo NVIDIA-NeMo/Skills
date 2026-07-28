@@ -45,4 +45,6 @@ sympy
 torchcodec
 tqdm
 transformers
-wandb
+# Floors click to >=8.2 (wandb 0.26.x only requires click>=8.0.1, so the resolver
+# was settling on click 8.1.8). Taken from #1507.
+wandb>=0.27.1
