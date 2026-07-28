@@ -5,11 +5,10 @@
 > encourage you to move your rollout workflows over to NeMo-Gym, and to implement new benchmarks
 > there rather than in Nemo-Skills.
 >
-> Nemo-Skills will keep gaining orchestration and execution support for running NeMo-Gym benchmarks
-> (cluster configs, self-hosted servers, sandboxes, slurm), so you can drive Gym rollouts through the
-> pipelines you already use. The benchmark implementation itself should live in NeMo-Gym. An early
-> version of this exists today as `ns nemo_gym_rollouts`, but the interface is experimental and will
-> likely change.
+> Nemo-Skills will continue to add support for running NeMo-Gym benchmarks, so you can run them with
+> the same cluster configs, self-hosted servers, sandboxes, and slurm setup you already use. The
+> benchmark implementation itself should live in NeMo-Gym. An early version of this exists today as
+> `ns nemo_gym_rollouts`, but the interface is experimental and will likely change.
 
 Nemo-Skills is a collection of pipelines to improve "skills" of large language models (LLMs). We support everything needed for LLM development, from synthetic data generation, to model training, to evaluation on a wide range of benchmarks. Start developing on a local workstation and move to a large-scale Slurm cluster with just a one-line change.
 
