@@ -25,6 +25,7 @@ RUN cd /src/wandb/core && \
 
 # using ubuntu instead of debian for easier apptainer installation on arm64
 FROM ubuntu:22.04
+ARG WANDB_CORE_COMMIT
 
 # Install Python and other dependencies
 RUN apt-get update && \
@@ -105,6 +106,7 @@ RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
 # Replace W&B's vulnerable release binary with the source-compatible patched core
 # built and module-verified above. The copy preserves its executable mode.
 COPY --from=wandb-core-builder /wandb-core /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core
-RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --version
+RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
+    grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs

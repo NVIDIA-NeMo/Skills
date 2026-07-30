@@ -165,7 +165,8 @@ class TestPatchedWandbCoreDockerBuild:
     def test_verified_binary_replaces_wandb_release_binary(self, dockerfile):
         destination = "/usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core"
         assert f"COPY --from=wandb-core-builder /wandb-core {destination}" in dockerfile
-        assert f"RUN {destination} --version" in dockerfile
+        assert f"RUN {destination} --help 2>&1" in dockerfile
+        assert 'grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"' in dockerfile
 
 
 class TestPipelineRequirements:
