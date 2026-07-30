@@ -743,17 +743,7 @@ class SweBenchGenerationTask(GenerationTask):
 
             pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
             with open(pred_jsonl_file, "w") as f:
-                trajectory_info = trajectory_dict.get("info", {})
-                trajectory_info["model_name_or_path"] = self.cfg.server.model
-                trajectory_info["instance_id"] = data_point["instance_id"]
-
-                patch = trajectory_info.pop("submission", None)
-                if not patch:
-                    patch = None
-                elif not patch.endswith("\n"):
-                    patch += "\n"
-                trajectory_info["model_patch"] = patch
-
+                trajectory_info = self._format_mini_swe_agent_output(trajectory_dict, data_point)
                 f.write(json.dumps(trajectory_info))
 
             return pred_jsonl_file
@@ -761,6 +751,20 @@ class SweBenchGenerationTask(GenerationTask):
         finally:
             if os.path.exists(host_tmp_path):
                 os.remove(host_tmp_path)
+
+    def _format_mini_swe_agent_output(self, trajectory_dict, data_point):
+        """Convert a mini-swe-agent trajectory to the SWE-bench prediction format."""
+        trajectory_info = trajectory_dict.get("info", {}).copy()
+        trajectory_info["model_name_or_path"] = self.cfg.server.model
+        trajectory_info["instance_id"] = data_point["instance_id"]
+
+        patch = trajectory_info.pop("submission", None)
+        if not patch:
+            patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
+        trajectory_info["model_patch"] = patch
+        return trajectory_info
 
     async def _run_openhands(self, data_point, api_base):
         """
