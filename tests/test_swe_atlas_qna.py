@@ -20,7 +20,7 @@ from nemo_skills.evaluation.metrics.swe_atlas_qna_metrics import (
     SweAtlasQnAMetrics,
     score_swe_atlas_qna_prediction,
 )
-from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask
+from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask, extract_final_answer
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.swe_atlas_qna_judge import SweAtlasQnAJudgeTask, _extract_rating
 from nemo_skills.prompt.utils import get_prompt
@@ -157,9 +157,19 @@ def test_swe_atlas_qna_maps_agent_submission_to_generation():
     task = object.__new__(SweAtlasQnAGenerationTask)
     task.cfg = SimpleNamespace(server=SimpleNamespace(model="test-model"))
     output = task._format_mini_swe_agent_output(
-        {"info": {"submission": "Final answer", "exit_status": "submitted"}},
+        {
+            "info": {
+                "submission": "<<FINAL_ANSWER>>\nFinal answer\n<<FINAL_ANSWER>>",
+                "exit_status": "submitted",
+            }
+        },
         {"instance_id": "task-1"},
     )
     assert output["generation"] == "Final answer"
     assert output["instance_id"] == "task-1"
     assert output["model_name_or_path"] == "test-model"
+
+
+def test_swe_atlas_qna_final_answer_extraction_falls_back_to_plain_submission():
+    assert extract_final_answer("  Plain final answer  ") == "Plain final answer"
+    assert extract_final_answer(None) == ""
