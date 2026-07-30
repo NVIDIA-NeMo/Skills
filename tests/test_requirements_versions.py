@@ -168,6 +168,9 @@ class TestPatchedWandbCoreDockerBuild:
         assert f"RUN {destination} --help 2>&1" in dockerfile
         assert 'grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"' in dockerfile
 
+    def test_uv_git_cache_is_removed_from_final_image(self, dockerfile):
+        assert "RUN rm -rf /root/.cache/uv" in dockerfile
+
 
 class TestPipelineRequirements:
     """requirements/pipeline.txt: click unpin + typer floor."""

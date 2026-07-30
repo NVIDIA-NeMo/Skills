@@ -110,3 +110,7 @@ RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
     grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
+
+# nSpect's global policy flags Git metadata left by uv's source-distribution
+# cache. The cache is build-only, so remove it from the published image.
+RUN rm -rf /root/.cache/uv
