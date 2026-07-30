@@ -23,9 +23,13 @@ koifeval @ git+https://github.com/bzantium/koifeval.git@7a27889c0cf285e60b1a7b47
 langcodes
 langdetect
 language-data
-litellm[caching]==1.83.14
+# 1.83.14 hard-pins click==8.1.8, which caps the whole tree below click 8.2.
+# 1.84.10 relaxes that to click>=8.0.0,<9.0 (and clears GHSA-4xpc-pv4p-pm3w). From #1507.
+litellm[caching]==1.84.10
 math-verify[antlr4_9_3]
-mcp
+# mcp 2.0 removed the streamablehttp_client alias that nemo_skills/mcp/clients.py imports.
+# Unpin once those call sites move to streamable_http_client and the 2.0 API is verified.
+mcp<2.0
 numpy
 openai
 openpyxl>=3.1.0
@@ -43,4 +47,6 @@ sympy
 torchcodec
 tqdm
 transformers
-wandb
+# Floors click to >=8.2 (wandb 0.26.x only requires click>=8.0.1, so the resolver
+# was settling on click 8.1.8). Taken from #1507.
+wandb>=0.27.1
