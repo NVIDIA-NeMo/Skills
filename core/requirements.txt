@@ -6,9 +6,9 @@
 bs4
 compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@e01a5d2
 contractions
-datasets
 # Fixes eight High findings through CVE-2026-55415.
 datamodel-code-generator>=0.64.0
+datasets
 editdistance
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f
 faiss-cpu
