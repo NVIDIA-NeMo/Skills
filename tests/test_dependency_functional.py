@@ -25,7 +25,9 @@ Bumps under test:
   * litellm[caching] ==1.84.10  (fixes GHSA-4xpc-pv4p-pm3w — the pre-1.84 client
                                  could leak the configured api_key to an
                                  attacker-controlled Host header)
-  * wandb            >=0.27.1
+  * GitPython        >=3.1.55
+  * datamodel-code-generator >=0.64.0
+  * wandb            ==0.28.1, with a patched core in the container
   * typer            >=0.16 / click cap removed  (typer<0.16 broke on click 8.2's
                                  Parameter.make_metavar signature — dynamo#1039)
   * lxml             >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw; optional `stem` extra,
@@ -37,10 +39,34 @@ API keys) so they run in the existing `unit-tests` (`-m "not gpu"`) CI job.
 
 import asyncio
 import json
+from importlib.metadata import version
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# GitPython >=3.1.55 and datamodel-code-generator >=0.64.0
+# ---------------------------------------------------------------------------
+
+
+def test_gitpython_can_initialize_and_inspect_repository(tmp_path):
+    import git
+    from packaging.version import Version
+
+    assert Version(version("GitPython")) >= Version("3.1.55")
+    repo = git.Repo.init(tmp_path)
+    assert not repo.bare
+    assert repo.git_dir == str(tmp_path / ".git")
+
+
+def test_datamodel_code_generator_imports_at_fixed_version():
+    import datamodel_code_generator
+    from packaging.version import Version
+
+    assert datamodel_code_generator is not None
+    assert Version(version("datamodel-code-generator")) >= Version("0.64.0")
+
 
 # ---------------------------------------------------------------------------
 # litellm 1.84.10 — driven through nemo_skills.inference.model
@@ -203,7 +229,7 @@ def test_cli_unknown_command_is_usage_error(cli_app):
 
 
 # ---------------------------------------------------------------------------
-# wandb >=0.27.1 — driven through nemo_skills.inference.log_samples_wandb
+# wandb ==0.28.1 — driven through nemo_skills.inference.log_samples_wandb
 # ---------------------------------------------------------------------------
 
 

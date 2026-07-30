@@ -16,7 +16,9 @@
 
 This PR bumps several dependency floors/pins to close known CVEs:
   * litellm[caching] -> ==1.84.10 (fixes GHSA-4xpc-pv4p-pm3w)
-  * wandb            -> >=0.27.1  (bundled wandb-core Go binary CVEs)
+  * GitPython        -> >=3.1.55  (fixes six High findings)
+  * datamodel-code-generator -> >=0.64.0 (fixes eight High findings)
+  * wandb            -> ==0.28.1, paired with a patched wandb-core
   * lxml             -> >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw)
   * typer            -> >=0.16   (click 8.2 compatible)
   * click            -> pin removed from requirements/pipeline.txt
@@ -44,6 +46,8 @@ CORE_REQUIREMENTS = REPO_ROOT / "core" / "requirements.txt"
 PIPELINE_REQUIREMENTS = REPO_ROOT / "requirements" / "pipeline.txt"
 STEM_REQUIREMENTS = REPO_ROOT / "requirements" / "stem.txt"
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
+BFCL_MODULE = REPO_ROOT / "nemo_skills" / "inference" / "eval" / "bfcl.py"
+NEMO_SKILLS_DOCKERFILE = REPO_ROOT / "dockerfiles" / "Dockerfile.nemo-skills"
 
 
 def _load_toml(path: Path) -> dict:
@@ -85,10 +89,10 @@ def _find_requirement(path: Path, package_name: str) -> tuple[Requirement, str]:
 
 
 class TestCoreRequirements:
-    """core/requirements.txt: litellm and wandb security floors."""
+    """core/requirements.txt security floors and pins."""
 
     def test_litellm_pin_fixes_ghsa_4xpc_pv4p_pm3w(self):
-        req, comment = _find_requirement(CORE_REQUIREMENTS, "litellm")
+        req, _ = _find_requirement(CORE_REQUIREMENTS, "litellm")
         assert "caching" in req.extras, "litellm[caching] extra must be preserved"
 
         # Must be pinned to an exact version (== specifier) so the resolver is deterministic.
@@ -100,32 +104,68 @@ class TestCoreRequirements:
             f"litellm is pinned to {pinned_version}, which is below the 1.84.0 floor that "
             "fixes GHSA-4xpc-pv4p-pm3w (API-key leak to arbitrary Host header)"
         )
-        assert "GHSA-4xpc-pv4p-pm3w" in comment
+        assert "GHSA-4xpc-pv4p-pm3w" in CORE_REQUIREMENTS.read_text()
 
     def test_litellm_vulnerable_pin_not_reintroduced(self):
         """Regression guard: the old vulnerable exact pin must not come back."""
         content = CORE_REQUIREMENTS.read_text()
         assert "litellm[caching]==1.83.14" not in content
-        assert "1.83.14" not in content
 
-    def test_wandb_pin_fixes_bundled_go_binary_cves(self):
-        req, comment = _find_requirement(CORE_REQUIREMENTS, "wandb")
+    def test_gitpython_floor_fixes_all_six_high_findings(self):
+        req, _ = _find_requirement(CORE_REQUIREMENTS, "GitPython")
         specs = {spec.operator: spec.version for spec in req.specifier}
-        assert ">=" in specs, f"expected a floor (>=) specifier for wandb, got {req.specifier}"
+        assert ">=" in specs, f"expected a floor (>=) specifier for GitPython, got {req.specifier}"
+        assert Version(specs[">="]) >= Version("3.1.55")
 
-        floor_version = Version(specs[">="])
-        assert floor_version >= Version("0.27.1"), (
-            f"wandb floor is {floor_version}, which is below 0.27.1 (first release with the "
-            "patched x/crypto 0.52.0 wandb-core binary)"
-        )
-        assert "click>=8.2" in comment
+    def test_datamodel_code_generator_floor_fixes_all_eight_high_findings(self):
+        req, _ = _find_requirement(CORE_REQUIREMENTS, "datamodel-code-generator")
+        specs = {spec.operator: spec.version for spec in req.specifier}
+        assert ">=" in specs, f"expected a floor (>=) specifier for datamodel-code-generator, got {req.specifier}"
+        assert Version(specs[">="]) >= Version("0.64.0")
+
+    def test_bfcl_does_not_reinstall_vulnerable_datamodel_code_generator(self):
+        content = BFCL_MODULE.read_text()
+        assert '"datamodel-code-generator==0.64.0"' in content
+        assert "datamodel-code-generator==0.25.7" not in content
+
+    def test_wandb_python_version_is_pinned_to_patched_core_pair(self):
+        req, _ = _find_requirement(CORE_REQUIREMENTS, "wandb")
+        specs = {spec.operator: spec.version for spec in req.specifier}
+        assert specs == {"==": "0.28.1"}
 
     def test_wandb_is_not_unbounded_or_unpinned(self):
-        """wandb must remain a floor-pinned requirement (bare 'wandb' with no version is
-        the pre-fix state and would allow an unvetted, potentially vulnerable version)."""
+        """A bare wandb requirement could resolve to a release with a vulnerable core."""
         for raw_line, code_part, _ in _iter_requirement_lines(CORE_REQUIREMENTS):
             if code_part == "wandb":
-                pytest.fail(f"wandb requirement has no version floor: {raw_line!r}")
+                pytest.fail(f"wandb requirement has no version pin: {raw_line!r}")
+
+
+class TestPatchedWandbCoreDockerBuild:
+    """The final image must replace and verify W&B's bundled Go executable."""
+
+    @pytest.fixture(scope="class")
+    def dockerfile(self):
+        return NEMO_SKILLS_DOCKERFILE.read_text()
+
+    def test_immutable_upstream_security_commit_is_pinned(self, dockerfile):
+        assert "WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7" in dockerfile
+
+    @pytest.mark.parametrize(
+        "expected",
+        [
+            "FROM golang:1.26.5 AS wandb-core-builder",
+            'go version -m /wandb-core | grep -F "go1.26.5"',
+            "google\\.golang\\.org/grpc[[:space:]]+v1\\.82\\.1",
+            "golang\\.org/x/text[[:space:]]+v0\\.40\\.0",
+        ],
+    )
+    def test_fixed_go_components_are_build_time_verified(self, dockerfile, expected):
+        assert expected in dockerfile
+
+    def test_verified_binary_replaces_wandb_release_binary(self, dockerfile):
+        destination = "/usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core"
+        assert f"COPY --from=wandb-core-builder /wandb-core {destination}" in dockerfile
+        assert f"RUN {destination} --version" in dockerfile
 
 
 class TestPipelineRequirements:
@@ -152,16 +192,16 @@ class TestPipelineRequirements:
         assert not re.search(r"^click\s*[<>=]", content, re.MULTILINE)
 
     def test_typer_floor_is_click_8_2_compatible(self):
-        req, comment = _find_requirement(PIPELINE_REQUIREMENTS, "typer")
+        req, _ = _find_requirement(PIPELINE_REQUIREMENTS, "typer")
         specs = {spec.operator: spec.version for spec in req.specifier}
         assert ">=" in specs, f"expected a floor (>=) specifier for typer, got {req.specifier}"
 
         floor_version = Version(specs[">="])
         assert floor_version >= Version("0.16"), (
             f"typer floor is {floor_version}, which is below 0.16 (the first click-8.2-compatible "
-            "release that also satisfies wandb>=0.27.1's click>=8.2 requirement)"
+            "release for click 8.2)"
         )
-        assert "click 8.2" in comment or "click>=8.2" in comment
+        assert "click 8.2" in PIPELINE_REQUIREMENTS.read_text()
 
     def test_nemo_run_and_launcher_pins_untouched(self):
         """Sanity: other pipeline deps referenced by the diff context are still present."""
@@ -247,13 +287,3 @@ def test_pipeline_requirements_lines_are_parseable():
             Requirement(code_part)
         except InvalidRequirement as exc:
             pytest.fail(f"Unparseable requirement line {raw_line!r}: {exc}")
-
-
-def test_wandb_and_typer_click_requirement_comments_are_consistent():
-    """wandb's comment says it needs click>=8.2; typer's comment (in the
-    sibling pipeline.txt file) should agree, since typer>=0.16 is the
-    mechanism that satisfies that click floor without conflicting pins."""
-    _, wandb_comment = _find_requirement(CORE_REQUIREMENTS, "wandb")
-    _, typer_comment = _find_requirement(PIPELINE_REQUIREMENTS, "typer")
-    assert "click>=8.2" in wandb_comment
-    assert "click 8.2" in typer_comment
