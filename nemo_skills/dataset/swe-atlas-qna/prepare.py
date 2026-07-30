@@ -110,7 +110,7 @@ if __name__ == "__main__":
         [
             container_formatter.format(docker_image=row["docker_image"])
             if container_formatter.startswith("docker://")
-            else container_formatter.format(docker_image=row["docker_image"].replace("/", "_").replace(":", "_"))
+            else container_formatter.format(docker_image=row["docker_image"].split(":")[1])
             for row in dataset
         ],
     )
