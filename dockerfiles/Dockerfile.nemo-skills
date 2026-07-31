@@ -40,7 +40,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools "uv>=0.11.10"
+RUN pip install --upgrade pip "setuptools>=78.1.1" "uv>=0.11.10"
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -110,6 +110,13 @@ RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
     grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
+
+# Guard the final resolved environment against the two High findings seen in
+# the July 31 multi-architecture image scan.
+RUN python -c "from importlib.metadata import version as v; from packaging.version import Version as V; \
+               assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
+               assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
+               print('msgpack/setuptools security floors OK')"
 
 # nSpect's global policy flags Git metadata left by uv's source-distribution
 # cache. The cache is build-only, so remove it from the published image.
