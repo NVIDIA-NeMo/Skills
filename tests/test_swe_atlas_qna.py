@@ -119,6 +119,87 @@ def test_swe_atlas_qna_judge_rating_parser_normalizes_rubric_whitespace():
     assert parsed["rubric_statement"] == criterion["title"]
 
 
+def test_swe_atlas_qna_judge_rating_parser_uses_canonical_rubric_when_wording_changes():
+    criterion = {
+        **RUBRIC[0],
+        "title": "Reports measurements at lines 2048, 4096, and 6144.",
+    }
+    rating = _rating(criterion, "YES")
+    rating["rubric_statement"] = "Reports measurements at lines 2048 and 6144."
+
+    parsed = _extract_rating(json.dumps({"ratings": [rating]}), criterion)
+
+    assert parsed["rubric_statement"] == criterion["title"]
+
+
+def test_swe_atlas_qna_judge_rating_parser_repairs_trailing_commas():
+    criterion = RUBRIC[0]
+    response = f"""
+    {{
+      "ratings": [
+        {{
+          "criterion_id": "{criterion["id"]}",
+          "rubric_statement": "{criterion["title"]}",
+          "status": "YES",
+          "score": "1",
+          "justification": "The response demonstrates the behavior.",
+        }},
+      ]
+    }}
+    """
+
+    assert _extract_rating(response, criterion) == _rating(criterion, "YES") | {
+        "justification": "The response demonstrates the behavior."
+    }
+
+
+def test_swe_atlas_qna_judge_retries_empty_response(monkeypatch):
+    criterion = RUBRIC[0]
+    responses = iter(
+        [
+            {"generation": ""},
+            {"generation": json.dumps({"ratings": [_rating(criterion, "YES")]})},
+        ]
+    )
+    calls = 0
+
+    async def fake_process(self, data_point, all_data, prompt_format=None):
+        nonlocal calls
+        calls += 1
+        return next(responses)
+
+    monkeypatch.setattr(GenerationTask, "process_single_datapoint", fake_process)
+    task = object.__new__(SweAtlasQnAJudgeTask)
+    task.cfg = SimpleNamespace(max_judgement_attempts=2, judgement_retry_delay=0)
+
+    rating, raw_judgement, _ = asyncio.run(task._judge_criterion({}, criterion, [], None))
+
+    assert calls == 2
+    assert rating == _rating(criterion, "YES")
+    assert json.loads(raw_judgement)["ratings"][0]["status"] == "YES"
+
+
+def test_swe_atlas_qna_judge_records_parse_error_after_retries(monkeypatch):
+    criterion = RUBRIC[0]
+    calls = 0
+
+    async def fake_process(self, data_point, all_data, prompt_format=None):
+        nonlocal calls
+        calls += 1
+        return {"generation": ""}
+
+    monkeypatch.setattr(GenerationTask, "process_single_datapoint", fake_process)
+    task = object.__new__(SweAtlasQnAJudgeTask)
+    task.cfg = SimpleNamespace(max_judgement_attempts=3, judgement_retry_delay=0)
+
+    rating, raw_judgement, _ = asyncio.run(task._judge_criterion({}, criterion, [], None))
+
+    assert calls == 3
+    assert rating["criterion_id"] == criterion["id"]
+    assert "parse_error" in rating
+    assert raw_judgement == ""
+
+
 def test_swe_atlas_qna_judge_calls_each_criterion(monkeypatch):
     calls = []
 
@@ -188,6 +269,11 @@ def test_swe_atlas_qna_judge_prompt_renders_single_criterion():
     assert "It works this way." in user_message
     assert criterion["id"] in user_message
     assert criterion["title"] in user_message
+    system_message = messages[0]["content"]
+    normalized_system_message = " ".join(system_message.split())
+    assert "underlying technical knowledge" in system_message
+    assert "missing one or two non-core items" in normalized_system_message
+    assert "Do not wrap the object in Markdown fences" in normalized_system_message
 
 
 def test_swe_atlas_qna_maps_agent_submission_to_generation():

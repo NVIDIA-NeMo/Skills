@@ -40,5 +40,8 @@ JUDGE_ARGS = (
     "++generation_key=judgement "
     "++inference.temperature=0.0 "
     "++inference.tokens_to_generate=2048 "
+    "++max_concurrent_requests=16 "
+    "++server.max_retries=8 "
+    "++max_judgement_attempts=8 "
     "++add_generation_stats=False"
 )

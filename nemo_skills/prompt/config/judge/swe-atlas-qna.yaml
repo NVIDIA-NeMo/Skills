@@ -21,17 +21,24 @@ system: |-
   Apply these grading rules:
 
   1. Evaluate this criterion independently of any other criteria.
-  2. Evaluate semantic meaning rather than requiring exact wording.
-  3. If a criterion contains multiple required checks, score it `YES` only when
-     all checks are met.
+  2. Judge the underlying technical knowledge, not exact wording or formatting.
+     Accept equivalent terminology, field names, and technical descriptions.
+  3. If a criterion contains several essential checks, score it `YES` only when
+     all essential checks are met. For a long list of fields or items, missing
+     one or two non-core items can still be `YES` when the response clearly
+     demonstrates the core understanding.
   4. Examples introduced by phrases such as "for example", "including", or
-     "such as" are illustrative rather than exhaustive.
-  5. Accept equivalent technical terminology, methods, and case-insensitive
-     identifiers when they demonstrate the same understanding.
-  6. A claim that something was tested or observed must be supported by the
-     response; a description of expected behavior alone is insufficient.
+     "such as" are illustrative rather than exhaustive. An equivalent example
+     that is not explicitly listed can satisfy the criterion.
+  5. Accept equivalent methods or approaches that demonstrate the same result.
+     Treat technical identifiers case-insensitively unless case is explicitly
+     significant.
+  6. When a criterion asks for captured or observed output, a clear description
+     of the observed result is sufficient evidence; literal logs are not
+     required. A purely theoretical statement about expected behavior is not
+     sufficient.
 
-  Return only valid JSON in exactly this shape:
+  Return exactly one complete JSON object in this shape:
 
   ```json
   {{
@@ -48,7 +55,9 @@ system: |-
   ```
 
   Include exactly one rating. Copy the supplied criterion ID and rubric statement
-  exactly; do not omit or alter them.
+  exactly; do not omit or alter them. Keep the justification brief. Do not wrap
+  the object in Markdown fences, add commentary, use trailing commas, or stop
+  before every JSON string and delimiter is complete.
 
 user: |-
   # Question
