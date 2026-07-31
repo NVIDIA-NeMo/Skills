@@ -46,6 +46,7 @@ class BenchmarkArgs:
     metrics_type: str | None = None
     benchmark_group: str | None = None
     score_module: str | None = None
+    reference_answer_key: str | None = None
     job_ids: list[int] = field(default_factory=list)
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
@@ -195,6 +196,7 @@ def get_benchmark_args_from_module(
         os.environ["NEMO_SKILLS_PRIVILEGED_DOCKER"] = "1"
 
     metrics_type = get_arg_from_module_or_dict(benchmark_module, "METRICS_TYPE", None, override_dict)
+    reference_answer_key = get_arg_from_module_or_dict(benchmark_module, "REFERENCE_ANSWER_KEY", None, override_dict)
 
     return BenchmarkArgs(
         name=benchmark,
@@ -210,6 +212,7 @@ def get_benchmark_args_from_module(
         eval_subfolder=eval_subfolder,
         benchmark_group=benchmark_group,
         metrics_type=metrics_type,
+        reference_answer_key=reference_answer_key,
         sandbox_env_overrides=sandbox_env_overrides,
     )
 
@@ -314,6 +317,7 @@ def prepare_eval_commands(
     generation_type=None,
     generation_module=None,
     extra_benchmark_map=None,
+    evaluate_reference_answer=False,
 ):
     """
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
@@ -380,6 +384,20 @@ def prepare_eval_commands(
                 and not keep_mounts_for_sandbox
             ):
                 LOG.warning("Found benchmark (%s) which requires sandbox to keep mounts, enabling it.", benchmark)
+
+    if evaluate_reference_answer:
+        for benchmark, benchmark_args in benchmarks_dict.items():
+            if benchmark_args.reference_answer_key is None:
+                raise ValueError(
+                    f"Benchmark {benchmark} does not support reference-answer evaluation. "
+                    "Define REFERENCE_ANSWER_KEY in its dataset configuration."
+                )
+            if benchmark_args.num_samples != 0:
+                raise ValueError(
+                    "Reference-answer evaluation does not support repeated sampling. "
+                    f"Specify {benchmark} without a repeat count."
+                )
+        return benchmarks_dict, []
 
     total_evals = 0
     for benchmark, benchmark_args in benchmarks_dict.items():

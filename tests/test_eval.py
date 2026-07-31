@@ -24,6 +24,7 @@ import pytest
 
 import nemo_skills.pipeline.utils.scripts.eval as eval_scripts
 from nemo_skills.pipeline import eval as eval_pipeline
+from nemo_skills.pipeline.materialize_reference_answers import materialize_reference_answers
 from nemo_skills.pipeline.utils import eval as eval_utils
 from nemo_skills.pipeline.utils.scripts import BaseJobScript, EvalClientScript
 
@@ -148,6 +149,62 @@ def test_prepare_eval_commands_propagates_cli_with_sandbox_to_generation_cmd(mon
     client_script.inline()
 
     assert captured["with_sandbox"] is True
+
+
+def test_prepare_eval_commands_skips_generation_for_reference_answers(monkeypatch):
+    benchmark_args = eval_utils.BenchmarkArgs(
+        name="swe-atlas-qna",
+        input_file="/tmp/swe-atlas-qna.jsonl",
+        generation_args="",
+        judge_args="++prompt_config=judge/swe-atlas-qna",
+        judge_pipeline_args={"generation_module": "nemo_skills.inference.swe_atlas_qna_judge"},
+        requires_sandbox=True,
+        keep_mounts_for_sandbox=False,
+        generation_module="nemo_skills.inference.eval.swe_atlas_qna",
+        num_samples=0,
+        num_chunks=None,
+        eval_subfolder="tmp-eval-results/swe-atlas-qna",
+        reference_answer_key="reference_answer",
+    )
+    monkeypatch.setattr(eval_utils, "add_default_args", lambda *args, **kwargs: [benchmark_args])
+
+    benchmarks, job_batches = eval_utils.prepare_eval_commands(
+        cluster_config={"executor": "none"},
+        benchmarks_or_groups="swe-atlas-qna",
+        split=None,
+        num_jobs=1,
+        starting_seed=0,
+        output_dir="/tmp/out",
+        num_chunks=None,
+        chunk_ids=None,
+        rerun_done=False,
+        extra_arguments="",
+        data_dir=None,
+        exclusive=False,
+        with_sandbox=False,
+        keep_mounts_for_sandbox=False,
+        wandb_parameters=None,
+        eval_requires_judge=False,
+        evaluate_reference_answer=True,
+    )
+
+    assert benchmarks["swe-atlas-qna"].reference_answer_key == "reference_answer"
+    assert job_batches == []
+
+
+def test_materialize_reference_answers(tmp_path):
+    input_file = tmp_path / "input.jsonl"
+    output_file = tmp_path / "nested" / "output.jsonl"
+    input_file.write_text(
+        json.dumps({"instance_id": "one", "reference_answer": "Canonical answer", "rubric": "[]"}) + "\n"
+    )
+
+    materialize_reference_answers(input_file, output_file, "reference_answer")
+
+    output = json.loads(output_file.read_text())
+    assert output["generation"] == "Canonical answer"
+    assert output["reference_answer"] == "Canonical answer"
+    assert output["instance_id"] == "one"
 
 
 def test_resolve_child_sbatch_kwargs_inherits_or_overrides():
@@ -275,6 +332,66 @@ def test_eval_judge_sbatch_kwargs_override(monkeypatch, tmp_path):
 
     assert captured["account"] == "acct"
     assert captured["sbatch_kwargs"] == {"segment": 1}
+
+
+def test_eval_reference_answers_runs_materializer_then_judge_without_main_model(monkeypatch, tmp_path):
+    def benchmark_args():
+        return eval_utils.BenchmarkArgs(
+            name="swe-atlas-qna",
+            input_file="/data/swe-atlas-qna/default.ubuntu.jsonl",
+            generation_args="",
+            judge_args="++prompt_config=judge/swe-atlas-qna",
+            judge_pipeline_args={
+                "generation_module": "nemo_skills.inference.swe_atlas_qna_judge",
+                "model": "judge-model",
+                "server_type": "openai",
+                "server_address": "https://judge.example/v1",
+            },
+            requires_sandbox=True,
+            keep_mounts_for_sandbox=False,
+            generation_module="nemo_skills.inference.eval.swe_atlas_qna",
+            num_samples=0,
+            num_chunks=None,
+            eval_subfolder="tmp-eval-results/swe-atlas-qna",
+            metrics_type="swe-atlas-qna",
+            reference_answer_key="reference_answer",
+        )
+
+    _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
+    monkeypatch.setattr(
+        eval_pipeline,
+        "prepare_eval_commands",
+        lambda **kwargs: ({"swe-atlas-qna": benchmark_args()}, []),
+    )
+    captured = {"tasks": []}
+
+    def fake_add_task(*args, **kwargs):
+        captured["tasks"].append(kwargs)
+        return "reference-task"
+
+    def fake_generate(**kwargs):
+        captured["judge"] = kwargs
+        return ["judge-task"]
+
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "add_task", fake_add_task)
+    monkeypatch.setattr(eval_pipeline, "_generate", fake_generate)
+
+    eval_pipeline.eval(
+        ctx=SimpleNamespace(args=[]),
+        cluster="test-cluster",
+        output_dir=str(tmp_path),
+        benchmarks="swe-atlas-qna",
+        evaluate_reference_answer=True,
+        auto_summarize_results=False,
+    )
+
+    assert len(captured["tasks"]) == 1
+    materialize_task = captured["tasks"][0]
+    assert "nemo_skills.pipeline.materialize_reference_answers" in materialize_task["cmd"]
+    assert "--reference-answer-key reference_answer" in materialize_task["cmd"]
+    assert materialize_task["num_gpus"] == 0
+    assert captured["judge"]["input_file"].endswith("tmp-eval-results/swe-atlas-qna/output.jsonl")
+    assert captured["judge"]["_task_dependencies"] == ["reference-task"]
 
 
 @pytest.mark.timeout(300)

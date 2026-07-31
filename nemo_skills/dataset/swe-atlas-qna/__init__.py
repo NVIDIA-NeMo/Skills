@@ -17,6 +17,7 @@
 # default.alpine split separately with Dockerfile.nemo-skills.alpine.
 EVAL_SPLIT = "default.ubuntu"
 METRICS_TYPE = "swe-atlas-qna"
+REFERENCE_ANSWER_KEY = "reference_answer"
 GENERATION_MODULE = "nemo_skills.inference.eval.swe_atlas_qna"
 GENERATION_ARGS = (
     "++agent_framework=mini_swe_agent "

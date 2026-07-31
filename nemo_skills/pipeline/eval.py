@@ -14,6 +14,7 @@
 import enum
 import logging
 import os
+import shlex
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -172,7 +173,7 @@ def eval(
         help="Server address(es). CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     server_type: List[pipeline_utils.SupportedServers] = typer.Option(
-        ...,
+        None,
         help="Server type(s). CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     server_gpus: List[int] = typer.Option(
@@ -265,6 +266,10 @@ def eval(
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     auto_summarize_results: bool = typer.Option(
         True, help="If True, will automatically launch summarize results tasks"
+    ),
+    evaluate_reference_answer: bool = typer.Option(
+        False,
+        help="If True, evaluate each benchmark's reference answer without running main model generation.",
     ),
     single_node_mode: SingleNodeMode = typer.Option(
         SingleNodeMode.parallel,
@@ -399,8 +404,13 @@ def eval(
     else:
         wandb_parameters = None
 
-    # Normalize model configuration to list
-    models_list = pipeline_utils.normalize_models_config(model)
+    # Reference-answer evaluation uses only the judge model, so there is no main model to normalize or host.
+    if evaluate_reference_answer:
+        models_list = []
+    else:
+        if server_type is None:
+            raise ValueError("Must specify --server-type")
+        models_list = pipeline_utils.normalize_models_config(model)
     num_models = len(models_list)
 
     LOG.info(f"Number of models: {num_models}")
@@ -477,6 +487,7 @@ def eval(
         generation_type=generation_type,
         generation_module=generation_module,
         extra_benchmark_map=extra_benchmark_map,
+        evaluate_reference_answer=evaluate_reference_answer,
     )
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
@@ -485,13 +496,44 @@ def eval(
 
     has_tasks = False
     job_id_to_tasks = {}
+    benchmark_to_reference_tasks = {}
     benchmark_to_judge_tasks = {}
     all_tasks = []
     if _task_dependencies is None:
         _task_dependencies = []
     with pipeline_utils.get_exp(expname, cluster_config, _reuse_exp) as exp:
+        if evaluate_reference_answer:
+            for benchmark, benchmark_args in benchmarks_dict.items():
+                reference_output_file = str(Path(output_dir) / benchmark_args.eval_subfolder / "output.jsonl")
+                command = (
+                    "python -m nemo_skills.pipeline.materialize_reference_answers "
+                    f"--input-file {shlex.quote(benchmark_args.input_file)} "
+                    f"--output-file {shlex.quote(reference_output_file)} "
+                    f"--reference-answer-key {shlex.quote(benchmark_args.reference_answer_key)}"
+                )
+                reference_task = pipeline_utils.add_task(
+                    exp,
+                    cmd=command,
+                    task_name=f"{expname}-{benchmark}-materialize-reference-answers",
+                    log_dir=f"{output_dir}/{benchmark_args.eval_subfolder}/materialize-reference-answers",
+                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    cluster_config=cluster_config,
+                    num_gpus=0,
+                    partition=partition,
+                    account=account,
+                    run_after=run_after,
+                    reuse_code_exp=reuse_code_exp,
+                    reuse_code=reuse_code,
+                    task_dependencies=_task_dependencies if cluster_config["executor"] == "slurm" else None,
+                    installation_command=installation_command,
+                    skip_hf_home_check=skip_hf_home_check,
+                    sbatch_kwargs=sbatch_kwargs,
+                )
+                benchmark_to_reference_tasks[benchmark] = [reference_task]
+                all_tasks.append(reference_task)
+
         # scheduling main eval jobs
-        has_tasks = True
+        has_tasks = evaluate_reference_answer
 
         # Validate that pre-hosted models have server addresses (applies to both single & multi-model)
         for model_idx in range(num_models):
@@ -712,10 +754,13 @@ def eval(
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
             if not eval_requires_judge and not benchmark_args.requires_judge:
                 continue
-            dependent_job_ids = benchmark_args.job_ids
-            dependent_tasks = []
-            for job_id in dependent_job_ids:
-                dependent_tasks.extend(job_id_to_tasks[job_id])
+            if evaluate_reference_answer:
+                dependent_tasks = benchmark_to_reference_tasks[benchmark]
+            else:
+                dependent_job_ids = benchmark_args.job_ids
+                dependent_tasks = []
+                for job_id in dependent_job_ids:
+                    dependent_tasks.extend(job_id_to_tasks[job_id])
             judge_wrap_args, judge_pipeline_args = benchmark_args.judge_args, benchmark_args.judge_pipeline_args
 
             benchmark_seeds = benchmark_args.num_samples
