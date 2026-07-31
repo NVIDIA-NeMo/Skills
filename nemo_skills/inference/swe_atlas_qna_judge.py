@@ -65,13 +65,39 @@ def _extract_rating(text: str, criterion: dict) -> dict:
 class SweAtlasQnAJudgeTask(GenerationTask):
     """Judge every SWE-Atlas-QnA rubric criterion with an independent request."""
 
-    async def _judge_criterion(self, data_point, criterion, all_data, prompt_format):
-        criterion_data = {
+    @staticmethod
+    def _parse_rubric(data_point):
+        rubric = data_point.get("rubric")
+        if isinstance(rubric, str):
+            rubric = json.loads(rubric)
+        if not isinstance(rubric, list) or not rubric:
+            raise ValueError("SWE-Atlas-QnA rubric must be a non-empty JSON list")
+        return rubric
+
+    @staticmethod
+    def _add_criterion_fields(data_point, criterion):
+        return {
             **data_point,
             "criterion_id": criterion["id"],
             "rubric_statement": criterion["title"],
             "rubric_type": criterion.get("annotations", {}).get("type", ""),
         }
+
+    def log_example_prompt(self, data):
+        """Render the example prompt with one expanded rubric criterion."""
+        if not data:
+            return
+        data_point = data[0]
+        criterion = self._parse_rubric(data_point)[0]
+        criterion_data = self._add_criterion_fields(data_point, criterion)
+        LOG.info(
+            "Example prompt:\nData dictionary: %s\nPrompt: %s",
+            criterion_data,
+            self.fill_prompt(criterion_data, data),
+        )
+
+    async def _judge_criterion(self, data_point, criterion, all_data, prompt_format):
+        criterion_data = self._add_criterion_fields(data_point, criterion)
         result = await super().process_single_datapoint(criterion_data, all_data, prompt_format)
         raw_judgement = result.get("generation") or ""
         try:
@@ -86,11 +112,7 @@ class SweAtlasQnAJudgeTask(GenerationTask):
         return rating, raw_judgement, result
 
     async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
-        rubric = data_point.get("rubric")
-        if isinstance(rubric, str):
-            rubric = json.loads(rubric)
-        if not isinstance(rubric, list) or not rubric:
-            raise ValueError("SWE-Atlas-QnA rubric must be a non-empty JSON list")
+        rubric = self._parse_rubric(data_point)
 
         results = await asyncio.gather(
             *[self._judge_criterion(data_point, criterion, all_data, prompt_format) for criterion in rubric]

@@ -135,6 +135,30 @@ def test_swe_atlas_qna_judge_calls_each_criterion(monkeypatch):
     assert [rating["criterion_id"] for rating in judgement["ratings"]] == calls
 
 
+def test_swe_atlas_qna_judge_logs_expanded_criterion_prompt():
+    captured = {}
+    task = object.__new__(SweAtlasQnAJudgeTask)
+
+    def fake_fill_prompt(data_point, data):
+        captured.update(data_point)
+        return "Rendered prompt"
+
+    task.fill_prompt = fake_fill_prompt
+    task.log_example_prompt(
+        [
+            {
+                "problem_statement": "Question",
+                "generation": "Answer",
+                "rubric": json.dumps(RUBRIC),
+            }
+        ]
+    )
+
+    assert captured["criterion_id"] == RUBRIC[0]["id"]
+    assert captured["rubric_statement"] == RUBRIC[0]["title"]
+    assert captured["rubric_type"] == RUBRIC[0]["annotations"]["type"]
+
+
 def test_swe_atlas_qna_judge_prompt_renders_single_criterion():
     criterion = RUBRIC[0]
     messages = get_prompt("judge/swe-atlas-qna").fill(
