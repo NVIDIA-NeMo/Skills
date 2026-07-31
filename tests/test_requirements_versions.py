@@ -20,6 +20,8 @@ This PR bumps several dependency floors/pins to close known CVEs:
   * datamodel-code-generator -> >=0.64.0 (fixes eight High findings)
   * wandb            -> ==0.28.1, paired with a patched wandb-core
   * lxml             -> >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw)
+  * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
+  * setuptools       -> >=78.1.1 (fixes CVE-2025-47273)
   * typer            -> >=0.16   (click 8.2 compatible)
   * click            -> pin removed from requirements/pipeline.txt
 
@@ -48,6 +50,7 @@ STEM_REQUIREMENTS = REPO_ROOT / "requirements" / "stem.txt"
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
 BFCL_MODULE = REPO_ROOT / "nemo_skills" / "inference" / "eval" / "bfcl.py"
 NEMO_SKILLS_DOCKERFILE = REPO_ROOT / "dockerfiles" / "Dockerfile.nemo-skills"
+BUILD_PYPROJECTS = [PYPROJECT_TOML, REPO_ROOT / "core" / "pyproject.toml", REPO_ROOT / "tools" / "pyproject.toml"]
 
 
 def _load_toml(path: Path) -> dict:
@@ -171,6 +174,10 @@ class TestPatchedWandbCoreDockerBuild:
     def test_uv_git_cache_is_removed_from_final_image(self, dockerfile):
         assert "RUN rm -rf /root/.cache/uv" in dockerfile
 
+    def test_final_image_asserts_msgpack_and_setuptools_floors(self, dockerfile):
+        assert "V(v('msgpack')) >= V('1.2.1')" in dockerfile
+        assert "V(v('setuptools')) >= V('78.1.1')" in dockerfile
+
 
 class TestPipelineRequirements:
     """requirements/pipeline.txt: click unpin + typer floor."""
@@ -263,6 +270,16 @@ class TestPyprojectUvOverrides:
         assert ">=" in specs
         assert Version(specs[">="]) >= Version("2.6.3")
 
+    @pytest.mark.parametrize(
+        ("package", "minimum"),
+        [("msgpack", "1.2.1"), ("setuptools", "78.1.1")],
+    )
+    def test_container_security_override_present(self, uv_overrides, package, minimum):
+        assert package in uv_overrides
+        specs = {spec.operator: spec.version for spec in uv_overrides[package].specifier}
+        assert ">=" in specs
+        assert Version(specs[">="]) >= Version(minimum)
+
     def test_dependencies_still_sourced_from_core_and_pipeline_requirements(self):
         data = _load_toml(PYPROJECT_TOML)
         dynamic_deps = data["tool"]["setuptools"]["dynamic"]["dependencies"]
@@ -291,3 +308,14 @@ def test_pipeline_requirements_lines_are_parseable():
             Requirement(code_part)
         except InvalidRequirement as exc:
             pytest.fail(f"Unparseable requirement line {raw_line!r}: {exc}")
+
+
+@pytest.mark.parametrize("pyproject", BUILD_PYPROJECTS)
+def test_setuptools_build_floor_fixes_cve_2025_47273(pyproject):
+    data = _load_toml(pyproject)
+    requirement = next(
+        Requirement(entry) for entry in data["build-system"]["requires"] if Requirement(entry).name == "setuptools"
+    )
+    specs = {spec.operator: spec.version for spec in requirement.specifier}
+    assert ">=" in specs
+    assert Version(specs[">="]) >= Version("78.1.1")
