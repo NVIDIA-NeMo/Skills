@@ -30,7 +30,7 @@ GENERATION_ARGS = (
 # must point to an OpenAI-compatible endpoint that serves this model.
 JUDGE_PIPELINE_ARGS = {
     "generation_module": "nemo_skills.inference.swe_atlas_qna_judge",
-    "model": "aws/anthropic/claude-opus-4-5",
+    "model": "azure/anthropic/claude-opus-4-5",
     "server_type": "openai",
     "server_address": "https://inference-api.nvidia.com",
 }
