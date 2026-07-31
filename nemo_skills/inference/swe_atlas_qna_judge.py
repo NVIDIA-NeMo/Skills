@@ -51,7 +51,10 @@ def _extract_rating(text: str, criterion: dict) -> dict:
     rating = ratings[0]
     if rating.get("criterion_id") != criterion["id"]:
         raise ValueError("Judge response criterion_id does not match the requested criterion")
-    if rating.get("rubric_statement") != criterion["title"]:
+    rubric_statement = rating.get("rubric_statement")
+    if not isinstance(rubric_statement, str) or " ".join(rubric_statement.split()) != " ".join(
+        criterion["title"].split()
+    ):
         raise ValueError("Judge response rubric_statement does not match the requested criterion")
     if rating.get("status") not in ("YES", "NO") or str(rating.get("score")) not in ("0", "1"):
         raise ValueError("Judge response has an invalid status or score")
@@ -59,6 +62,7 @@ def _extract_rating(text: str, criterion: dict) -> dict:
         raise ValueError("Judge response status and score disagree")
 
     rating["score"] = str(rating["score"])
+    rating["rubric_statement"] = criterion["title"]
     return rating
 
 

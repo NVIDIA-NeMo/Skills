@@ -106,6 +106,19 @@ def test_swe_atlas_qna_judge_rating_parser():
     assert _extract_rating(response, criterion) == _rating(criterion, "YES")
 
 
+def test_swe_atlas_qna_judge_rating_parser_normalizes_rubric_whitespace():
+    criterion = {
+        **RUBRIC[0],
+        "title": "States the required\nbehavior. ",
+    }
+    rating = _rating(criterion, "YES")
+    rating["rubric_statement"] = "States the required behavior."
+
+    parsed = _extract_rating(json.dumps({"ratings": [rating]}), criterion)
+
+    assert parsed["rubric_statement"] == criterion["title"]
+
+
 def test_swe_atlas_qna_judge_calls_each_criterion(monkeypatch):
     calls = []
 
