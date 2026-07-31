@@ -32,6 +32,8 @@ Bumps under test:
                                  Parameter.make_metavar signature — dynamo#1039)
   * lxml             >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw; optional `stem` extra,
                                so guarded by importorskip)
+  * msgpack          >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
+  * setuptools       >=78.1.1 (fixes CVE-2025-47273)
 
 All tests are CPU-only, hermetic (no sandbox container, no live LLM endpoint, no
 API keys) so they run in the existing `unit-tests` (`-m "not gpu"`) CI job.
@@ -66,6 +68,13 @@ def test_datamodel_code_generator_imports_at_fixed_version():
 
     assert datamodel_code_generator is not None
     assert Version(version("datamodel-code-generator")) >= Version("0.64.0")
+
+
+def test_msgpack_and_setuptools_security_floors():
+    from packaging.version import Version
+
+    assert Version(version("msgpack")) >= Version("1.2.1")
+    assert Version(version("setuptools")) >= Version("78.1.1")
 
 
 # ---------------------------------------------------------------------------
