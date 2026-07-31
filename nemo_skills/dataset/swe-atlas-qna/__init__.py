@@ -30,14 +30,13 @@ GENERATION_ARGS = (
 # must point to an OpenAI-compatible endpoint that serves this model.
 JUDGE_PIPELINE_ARGS = {
     "generation_module": "nemo_skills.inference.swe_atlas_qna_judge",
-    "model": "azure/anthropic/claude-opus-4-5",
+    "model": "aws/anthropic/bedrock-claude-opus-5",
     "server_type": "openai",
-    "server_address": "https://inference-api.nvidia.com",
+    "server_address": "https://inference-api.nvidia.com/v1",
 }
 JUDGE_ARGS = (
     "++prompt_config=judge/swe-atlas-qna "
     "++generation_key=judgement "
-    "++inference.temperature=1.0 "
     "++inference.tokens_to_generate=2048 "
     "++add_generation_stats=False"
 )
