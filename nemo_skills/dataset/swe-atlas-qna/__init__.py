@@ -38,6 +38,7 @@ JUDGE_PIPELINE_ARGS = {
 JUDGE_ARGS = (
     "++prompt_config=judge/swe-atlas-qna "
     "++generation_key=judgement "
+    "++inference.temperature=0.0 "
     "++inference.tokens_to_generate=2048 "
     "++add_generation_stats=False"
 )
