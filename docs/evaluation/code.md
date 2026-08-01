@@ -30,10 +30,11 @@ ns prepare_data deep-swe \
   --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
 ```
 
-This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe), writes `default.jsonl`, materializes Harbor
-task dirs under `tasks/`, and copies the dataset to `/workspace/ns-data/deep-swe/`. Set
-`NEMO_SKILLS_DATA_DIR=/workspace/ns-data` to match. `.sif` images are not downloaded; they must already exist
-at the `container_formatter` paths.
+This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) directly under
+`/workspace/ns-data/deep-swe/deep-swe-repo/`, writes `default.jsonl`, and materializes Harbor
+task dirs under `/workspace/ns-data/deep-swe/tasks/`. The pipeline exports `NEMO_SKILLS_DATA_DIR`
+from `--data_dir` for the preparation process. `.sif` images are not downloaded; they must already
+exist at the `container_formatter` paths.
 
 Useful options:
 

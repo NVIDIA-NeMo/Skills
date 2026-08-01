@@ -213,6 +213,7 @@ def prepare_data(
     )
 
     if data_dir:
+        command = f"export NEMO_SKILLS_DATA_DIR={shlex.quote(data_dir)} && {command}"
         command += f" && mkdir -p {data_dir}"
         for dataset in requested_datasets:
             name = get_dataset_name(dataset)

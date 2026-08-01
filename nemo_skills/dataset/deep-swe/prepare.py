@@ -19,10 +19,10 @@ There is also a gated HuggingFace mirror at https://huggingface.co/datasets/data
 this script clones the public GitHub repo by default because HF access requires accepting
 dataset terms.
 
-Harbor task directories are materialized under ``tasks/`` next to the JSONL. With
-``REQUIRES_DATA_DIR = True``, ``ns prepare_data`` copies them to ``--data_dir/deep-swe/``
-for cluster use. At eval time, ``ns eval --data_dir=...`` resolves tests from
-``{data_dir}/deep-swe/tasks`` automatically (override with ``++eval_config.test_dir``).
+The repository, Harbor task directories, and JSONL are materialized directly under
+``$NEMO_SKILLS_DATA_DIR/deep-swe``. The pipeline sets this environment variable from
+``ns prepare_data --data_dir``. At eval time, ``ns eval --data_dir=...`` resolves tests
+from ``{data_dir}/deep-swe/tasks`` automatically (override with ``++eval_config.test_dir``).
 
 Example:
     ns prepare_data deep-swe \\
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -234,7 +235,10 @@ def main():
     )
     args = parser.parse_args()
 
-    dataset_dir = Path(__file__).parent
+    package_dir = Path(__file__).parent
+    data_dir = os.environ.get("NEMO_SKILLS_DATA_DIR")
+    dataset_dir = Path(data_dir) / "deep-swe" if data_dir else package_dir
+    dataset_dir.mkdir(parents=True, exist_ok=True)
     local_tasks = dataset_dir / "tasks"
     repo_dir = dataset_dir / "deep-swe-repo"
     _clone_or_update_repo(args.repo_url, repo_dir, args.repo_commit)
@@ -255,7 +259,7 @@ def main():
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(f"Wrote {len(rows)} DeepSWE tasks to {output_file}")
-    print(f"Harbor task dirs ready at {tasks_root} (copied to --data_dir/deep-swe/ when using ns prepare_data)")
+    print(f"Harbor task dirs ready at {tasks_root}")
 
 
 if __name__ == "__main__":
