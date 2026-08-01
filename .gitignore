@@ -34,6 +34,11 @@ build
 .venv
 *.lock
 
+# Cloned DeepSWE Harbor checkout + materialized task dirs from ns prepare_data deep-swe.
+# Still uploaded on job submit via packager include_pattern (like dataset *.jsonl).
+nemo_skills/dataset/deep-swe/deep-swe-repo/
+nemo_skills/dataset/deep-swe/tasks/
+
 __pycache__
 .ipynb_checkpoints
 

@@ -60,6 +60,39 @@ class SweBenchMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions=predictions)
 
 
+class DeepSweMetrics(BaseMetrics):
+    """Aggregate Harbor reward.json fields produced by DeepSWE verification."""
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["deep-swe-metrics"]
+        return {
+            "issues_resolved": bool(metrics.get("resolved")),
+            "no_patch": not bool(metrics.get("patch_exists")),
+            "patch_cant_apply": not bool(metrics.get("patch_successfully_applied")),
+            "reward": float(metrics.get("reward") or 0.0),
+            "f2p": float(metrics.get("f2p") or 0.0),
+            "p2p": float(metrics.get("p2p") or 0.0),
+            "partial": float(metrics.get("partial") or 0.0),
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "deep-swe-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+                "reward": 0,
+                "f2p": 0.0,
+                "p2p": 0.0,
+                "partial": 0.0,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
 class SciCodeMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         subtask_status_list = prediction["eval_status"]

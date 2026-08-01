@@ -1,0 +1,424 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""DeepSWE evaluation via Apptainer + Harbor task verifiers.
+
+DeepSWE tasks use Harbor's separate-verifier flow (tests/test.sh + grader.py), not the
+SWE-bench harness. Official Pier/Docker/Modal runners are unsupported on rootless Slurm;
+this module mirrors NeMo-Skills' SWE-bench Apptainer pattern and grades with each task's
+own verifier bundle bind-mounted into the task image.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import glob
+import json
+import logging
+import random
+import shlex
+import sys
+from pathlib import Path
+
+import hydra
+
+from nemo_skills.inference.eval.swebench import (
+    SupportedAgentFrameworks,
+    SweBenchGenerationConfig,
+    SweBenchGenerationTask,
+)
+from nemo_skills.inference.model import server_params
+from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
+
+LOG = logging.getLogger(get_logger_name(__file__))
+
+
+@nested_dataclass(kw_only=True)
+class DeepSweGenerationConfig(SweBenchGenerationConfig):
+    # DeepSWE does not use the SWE-bench eval harness.
+    eval_harness_repo: str = ""
+    eval_harness_commit: str = ""
+    # Harbor verifier timeout fallback when a row omits verifier_timeout_sec.
+    deepswe_tests_timeout: int = 60 * 30
+    # eval_config.test_dir: root of Harbor task dirs (contains <instance_id>/tests/).
+    # Same pattern as livecodebench-pro's ++eval_config.test_dir. If unset, falls back to
+    # the packaged nemo_skills/dataset/deep-swe/tasks tree from prepare_data.
+
+
+cs = hydra.core.config_store.ConfigStore.instance()
+cs.store(name="base_deepswe_generation_config", node=DeepSweGenerationConfig)
+
+
+def _resolve_container(data_point: dict) -> str:
+    formatter = data_point["container_formatter"]
+    return formatter.format(
+        instance_id=data_point["instance_id"],
+        task_id=data_point.get("task_id", data_point["instance_id"]),
+        docker_image=data_point.get("docker_image", ""),
+        docker_image_tag=str(data_point.get("docker_image", "")).rsplit(":", 1)[-1],
+        ext_id=data_point.get("ext_id", ""),
+    )
+
+
+def _default_packaged_tasks_root() -> Path:
+    # nemo_skills/inference/eval/deepswe.py -> nemo_skills/dataset/deep-swe/tasks
+    return Path(__file__).resolve().parents[2] / "dataset" / "deep-swe" / "tasks"
+
+
+def _get_eval_config_value(eval_config, key: str, default=None):
+    if eval_config is None:
+        return default
+    if isinstance(eval_config, dict):
+        return eval_config.get(key, default)
+    # OmegaConf / DictConfig
+    return eval_config.get(key, default) if hasattr(eval_config, "get") else default
+
+
+def _resolve_tests_dir(data_point: dict, eval_config) -> Path:
+    """Resolve Harbor tests/ for one task.
+
+    ``eval_config.test_dir`` should point at the Harbor tasks root
+    (a directory of ``<instance_id>/`` folders), matching livecodebench-pro's
+    ``++eval_config.test_dir`` usage for an external testcase tree.
+    """
+    test_dir = _get_eval_config_value(eval_config, "test_dir")
+    if test_dir:
+        candidate = Path(test_dir) / data_point["instance_id"] / "tests"
+        if candidate.is_dir():
+            return candidate
+        raise ValueError(
+            f"DeepSWE tests dir not found for {data_point['instance_id']}: {candidate}. "
+            f"Check ++eval_config.test_dir={test_dir} (expected <test_dir>/<instance_id>/tests)."
+        )
+
+    packaged = _default_packaged_tasks_root() / data_point["instance_id"] / "tests"
+    if packaged.is_dir():
+        return packaged
+
+    rel = data_point.get("tests_dir_rel")
+    if rel:
+        candidate = Path(__file__).resolve().parents[2] / "dataset" / "deep-swe" / rel
+        if candidate.is_dir():
+            return candidate
+
+    tests_dir = data_point.get("tests_dir")
+    if tests_dir and Path(tests_dir).is_dir():
+        return Path(tests_dir)
+
+    raise ValueError(
+        f"DeepSWE tests dir not found for {data_point['instance_id']}. "
+        "Run `ns prepare_data deep-swe` (populates dataset/deep-swe/tasks) "
+        "or pass ++eval_config.test_dir=/path/to/deep-swe/tasks"
+    )
+
+
+def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
+    """Normalize Harbor reward.json into NeMo-Skills metrics fields."""
+    if not patch_exists:
+        return {
+            "resolved": False,
+            "patch_exists": False,
+            "patch_successfully_applied": False,
+            "reward": 0,
+            "f2p": 0.0,
+            "p2p": 0.0,
+            "partial": 0.0,
+        }
+
+    if not isinstance(reward, dict):
+        return {
+            "resolved": False,
+            "patch_exists": True,
+            "patch_successfully_applied": False,
+            "reward": 0,
+            "f2p": 0.0,
+            "p2p": 0.0,
+            "partial": 0.0,
+        }
+
+    apply_failed = bool(reward.get("apply_failed"))
+    raw_reward = reward.get("reward", 0)
+    try:
+        reward_value = float(raw_reward)
+    except (TypeError, ValueError):
+        reward_value = 0.0
+
+    return {
+        "resolved": (not apply_failed) and reward_value >= 1.0,
+        "patch_exists": True,
+        "patch_successfully_applied": not apply_failed,
+        "reward": reward_value,
+        "f2p": float(reward.get("f2p") or 0.0),
+        "p2p": float(reward.get("p2p") or 0.0),
+        "partial": float(reward.get("partial") or 0.0),
+        "f2p_passed": reward.get("f2p_passed"),
+        "f2p_total": reward.get("f2p_total"),
+        "p2p_passed": reward.get("p2p_passed"),
+        "p2p_total": reward.get("p2p_total"),
+        "raw_reward": reward,
+    }
+
+
+def _load_verifier_reward(eval_out: Path) -> dict | None:
+    reward_json = eval_out / "reward.json"
+    if reward_json.exists():
+        try:
+            return json.loads(reward_json.read_text())
+        except json.JSONDecodeError:
+            LOG.warning("Invalid reward.json at %s", reward_json)
+            return None
+
+    reward_txt = eval_out / "reward.txt"
+    if reward_txt.exists():
+        raw = reward_txt.read_text().strip()
+        try:
+            return {"reward": float(raw)}
+        except ValueError:
+            return {"reward": 0}
+    return None
+
+
+class DeepSweGenerationTask(SweBenchGenerationTask):
+    """Run mini-swe-agent (or gold patches) on DeepSWE and grade with Harbor verifiers."""
+
+    def __init__(self, cfg: DeepSweGenerationConfig):
+        if cfg.agent_framework not in (
+            SupportedAgentFrameworks.mini_swe_agent,
+            SupportedAgentFrameworks.gold_patch,
+        ):
+            raise ValueError(
+                "DeepSWE currently supports only agent_framework=mini_swe_agent or gold_patch "
+                f"(got {cfg.agent_framework})"
+            )
+
+        # Parent installs the SWE-bench harness when evaluate=True. DeepSWE grades via
+        # Harbor tests/test.sh instead, so skip that install.
+        evaluate = cfg.evaluate
+        cfg.evaluate = False
+        try:
+            super().__init__(cfg)
+        finally:
+            cfg.evaluate = evaluate
+            self.cfg.evaluate = evaluate
+
+        if self.cfg.agent_config is None:
+            self.cfg.agent_config = "eval/deep-swe/mini-swe-agent/default"
+
+    async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
+        """Apptainer launch for DeepSWE agent (/app) and Harbor verifier runs."""
+        container_commands = ["echo '127.0.0.1 localhost' >/etc/hosts"]
+        extra_apptainer_args = ""
+
+        container_name = _resolve_container(data_point)
+        container_repo_dir = data_point.get("container_repo_dir", "/app")
+
+        if mode == "agent":
+            pre_commands = data_point.get("pre_commands", "").strip()
+            if pre_commands:
+                container_commands.append(f"cd {container_repo_dir}")
+                container_commands.append(pre_commands)
+            container_commands.append(f"cd {container_repo_dir}")
+            container_commands.append(
+                f"git config --global --add safe.directory {container_repo_dir} 2>/dev/null || true"
+            )
+            container_commands.append("git config core.hooksPath /dev/null 2>/dev/null || true")
+            if timeout >= 100000:
+                timeout = int(data_point.get("agent_timeout_sec") or 5400) + 120
+        elif mode == "eval":
+            tests_dir = _resolve_tests_dir(data_point, self.cfg.eval_config)
+            if not tests_dir.is_dir():
+                raise ValueError(
+                    f"DeepSWE tests dir not found for {data_point['instance_id']}: {tests_dir}. "
+                    "Ensure prepare_data populated dataset/deep-swe/tasks or set ++eval_config.test_dir=..."
+                )
+            extra_apptainer_args += f" --mount type=bind,src={tests_dir},dst=/tests,ro "
+            container_commands.append("mkdir -p /logs/artifacts /logs/verifier")
+            container_commands.append(
+                f"cp /trajectories_mount/patches/{data_point['instance_id']}.patch /logs/artifacts/model.patch"
+            )
+        else:
+            raise ValueError(f"Unsupported DeepSWE container mode: {mode}")
+
+        container_commands.append(command)
+        combined_command = " && ".join(container_commands)
+
+        apptainer_cmd = (
+            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
+            f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
+            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
+            f"--mount type=bind,src=/root,dst=/root_mount,ro "
+            f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
+            f"{extra_apptainer_args} "
+            f"{container_name} bash -c {shlex.quote(combined_command)}"
+        )
+
+        logs_dir = self.output_dir / "apptainer_logs"
+        logs_dir.mkdir(exist_ok=True)
+
+        for attempt in range(self.cfg.max_retries):
+            log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
+            LOG.info(
+                "Starting DeepSWE apptainer command (attempt %d of %d). Logs: %s",
+                attempt + 1,
+                self.cfg.max_retries,
+                log_file_path,
+            )
+            pred_files: list[str] = []
+            try:
+                with open(log_file_path, "w") as log_file:
+                    process = await asyncio.create_subprocess_shell(apptainer_cmd, stdout=log_file, stderr=log_file)
+                    try:
+                        await asyncio.wait_for(process.communicate(), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        if process.returncode is None:
+                            process.kill()
+                            await process.wait()
+                        raise ValueError("Command timed out")
+
+                    # Verifier scripts write reward.json even on failing tests; do not require exit 0.
+                    if mode == "agent" and process.returncode != 0:
+                        raise ValueError(f"Command failed with return code {process.returncode}")
+
+                pred_files = glob.glob(expected_file_pattern, recursive=True)
+                if len(pred_files) == 1:
+                    return pred_files[0]
+                raise ValueError(
+                    f"Expected exactly one file matching {expected_file_pattern} for "
+                    f"{data_point['instance_id']}, found {len(pred_files)}."
+                )
+            except Exception:
+                if attempt < self.cfg.max_retries - 1:
+                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
+                    LOG.warning(
+                        "Attempt %d failed for DeepSWE instance %s. Retrying in %d seconds...",
+                        attempt + 1,
+                        data_point["instance_id"],
+                        retry_interval,
+                    )
+                    if retry_interval > 0:
+                        await asyncio.sleep(retry_interval)
+                    continue
+                LOG.error("All %d attempts failed for instance %s", self.cfg.max_retries, data_point["instance_id"])
+                LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
+                raise ValueError(
+                    f"DeepSWE job failed for {data_point['instance_id']}. Check logs at: {log_file_path}. "
+                    f"Expected exactly one file matching {expected_file_pattern}, "
+                    f"found {len(pred_files)}."
+                )
+
+    async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
+        """Apply model.patch in a pristine task image and run tests/test.sh."""
+        patches_dir = self.output_dir / "patches"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+        patch_path = patches_dir / f"{data_point['instance_id']}.patch"
+        patch_path.write_text(model_patch if model_patch.endswith("\n") else model_patch + "\n")
+
+        eval_out = self.output_dir / "eval-outputs" / data_point["instance_id"]
+        eval_out.mkdir(parents=True, exist_ok=True)
+
+        verifier_cmd = (
+            "export TESTS_DIR=/tests && "
+            "export VERIFIER_DIR=/logs/verifier && "
+            "export APP_DIR=/app && "
+            "export ARTIFACTS_DIR=/logs/artifacts && "
+            "cd /app && "
+            "bash /tests/test.sh; "
+            f"mkdir -p /trajectories_mount/eval-outputs/{data_point['instance_id']} && "
+            f"cp -r /logs/verifier/. /trajectories_mount/eval-outputs/{data_point['instance_id']}/"
+        )
+
+        timeout = int(data_point.get("verifier_timeout_sec") or self.cfg.deepswe_tests_timeout)
+        # Prefer reward.json; fall back to reward.txt via a broad pattern and post-parse.
+        search_path = str(eval_out / "reward.json")
+        try:
+            await self._execute_container_command(
+                data_point,
+                verifier_cmd,
+                search_path,
+                mode="eval",
+                timeout=timeout + 120,
+            )
+        except ValueError:
+            # Some tasks only emit reward.txt on crashes (-1 sentinel).
+            if not (eval_out / "reward.txt").exists():
+                LOG.error("DeepSWE verifier failed for %s", data_point["instance_id"])
+                return parse_deepswe_reward(None, patch_exists=True)
+
+        reward = _load_verifier_reward(eval_out)
+        return parse_deepswe_reward(reward, patch_exists=True)
+
+    async def process_single_datapoint(self, data_point, data, prompt_format=None):
+        if "base_url" in self.cfg.server:
+            api_base = self.cfg.server.base_url
+        else:
+            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+
+        async with self.semaphore:
+            if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+                pred_file = await self._run_mini_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+                pred_file = await self._get_gold_patch(data_point)
+            else:
+                raise ValueError(f"Unsupported agent framework for DeepSWE: {self.cfg.agent_framework}")
+
+        with open(pred_file, "r") as f:
+            trajectory_dict = json.loads(f.read())
+
+        model_patch = trajectory_dict.get("model_patch")
+        has_patch = bool(model_patch and str(model_patch).strip())
+
+        if not has_patch:
+            metrics = parse_deepswe_reward(None, patch_exists=False)
+        elif not self.cfg.evaluate:
+            metrics = {
+                "resolved": None,
+                "patch_exists": True,
+                "patch_successfully_applied": None,
+                "reward": None,
+                "f2p": None,
+                "p2p": None,
+                "partial": None,
+            }
+        else:
+            metrics = await self._run_deepswe_verifier(data_point, str(model_patch))
+
+        return {
+            "deep-swe-metrics": metrics,
+            "deep-swe-outputs": trajectory_dict,
+            "generation": "",
+        }
+
+
+GENERATION_TASK_CLASS = DeepSweGenerationTask
+
+
+@hydra.main(version_base=None, config_name="base_deepswe_generation_config")
+def deepswe_generation(cfg: DeepSweGenerationConfig):
+    cfg = DeepSweGenerationConfig(_init_nested=True, **cfg)
+    LOG.info("Config used: %s", cfg)
+    DeepSweGenerationTask(cfg).generate()
+
+
+HELP_MESSAGE = get_help_message(
+    DeepSweGenerationConfig,
+    server_params=server_params(),
+)
+
+
+if __name__ == "__main__":
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(HELP_MESSAGE)
+    else:
+        setup_logging()
+        deepswe_generation()
