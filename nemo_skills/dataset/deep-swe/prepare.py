@@ -21,7 +21,8 @@ dataset terms.
 
 Harbor task directories are materialized under ``tasks/`` next to the JSONL. With
 ``REQUIRES_DATA_DIR = True``, ``ns prepare_data`` copies them to ``--data_dir/deep-swe/``
-for cluster use (pass the same tree as ``++eval_config.test_dir`` at eval time).
+for cluster use. At eval time, ``ns eval --data_dir=...`` resolves tests from
+``{data_dir}/deep-swe/tasks`` automatically (override with ``++eval_config.test_dir``).
 
 Example:
     ns prepare_data deep-swe \\
@@ -55,12 +56,37 @@ def _as_dict(value):
 
 
 def _clone_or_update_repo(repo_url: str, dest: Path, commit: str | None) -> Path:
+    # Shallow clones often cannot `git pull --ff-only`; fetch + hard reset is reliable.
     if dest.exists() and (dest / ".git").exists():
-        subprocess.check_call(["git", "-C", str(dest), "fetch", "--depth", "1", "origin"], cwd=dest)
         if commit:
-            subprocess.check_call(["git", "-C", str(dest), "checkout", commit], cwd=dest)
+            subprocess.check_call(["git", "-C", str(dest), "fetch", "--depth", "1", "origin", commit])
+            subprocess.check_call(["git", "-C", str(dest), "checkout", "--force", commit], cwd=dest)
+            return dest
+
+        subprocess.check_call(["git", "-C", str(dest), "fetch", "--depth", "1", "origin"])
+        remote_head = subprocess.run(
+            ["git", "-C", str(dest), "rev-parse", "--abbrev-ref", "origin/HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if remote_head.returncode == 0 and remote_head.stdout.strip():
+            target = remote_head.stdout.strip()
         else:
-            subprocess.check_call(["git", "-C", str(dest), "pull", "--ff-only"], cwd=dest)
+            # origin/HEAD unset on some remotes; try common defaults.
+            target = None
+            for candidate in ("origin/main", "origin/master"):
+                probe = subprocess.run(
+                    ["git", "-C", str(dest), "rev-parse", "--verify", candidate],
+                    check=False,
+                    capture_output=True,
+                )
+                if probe.returncode == 0:
+                    target = candidate
+                    break
+            if target is None:
+                raise RuntimeError(f"Could not resolve default branch for shallow repo at {dest}")
+        subprocess.check_call(["git", "-C", str(dest), "reset", "--hard", target])
         return dest
 
     if dest.exists():
@@ -142,8 +168,9 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
         ext_id=ext_id,
     )
 
-    # Paths relative to dataset/deep-swe; absolute paths are filled for the local prepare host.
-    # After ns prepare_data --data_dir=..., prefer ++eval_config.test_dir=<data_dir>/deep-swe/tasks.
+    # Paths relative to dataset/deep-swe. Absolute paths are for local prepare only;
+    # after ns prepare_data --data_dir=..., eval resolves via ++eval_config.data_dir
+    # (or explicit ++eval_config.test_dir), not these absolute paths.
     rel_task_dir = f"tasks/{instance_id}"
     rel_tests_dir = f"tasks/{instance_id}/tests"
     abs_task_dir = str((dataset_dir / rel_task_dir).resolve())

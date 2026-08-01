@@ -21,4 +21,3 @@ GENERATION_MODULE = "nemo_skills.inference.eval.deepswe"
 GENERATION_ARGS = "++agent_framework=mini_swe_agent ++agent_max_turns=250"
 # Harbor task trees are large; keep them under --data_dir (do not package with every job).
 REQUIRES_DATA_DIR = True
-STRICTLY_REQUIRES_DATA_DIR = True

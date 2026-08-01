@@ -27,6 +27,7 @@ import json
 import logging
 import random
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
@@ -50,9 +51,8 @@ class DeepSweGenerationConfig(SweBenchGenerationConfig):
     eval_harness_commit: str = ""
     # Harbor verifier timeout fallback when a row omits verifier_timeout_sec.
     deepswe_tests_timeout: int = 60 * 30
-    # eval_config.test_dir: root of Harbor task dirs (contains <instance_id>/tests/).
-    # Same pattern as livecodebench-pro's ++eval_config.test_dir. Prefer
-    # --data_dir/.../deep-swe/tasks after ns prepare_data (REQUIRES_DATA_DIR).
+    # eval_config.test_dir: optional root of Harbor task dirs (contains <instance_id>/tests/).
+    # If unset, ns eval --data_dir resolves {data_dir}/deep-swe/tasks automatically.
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
@@ -83,19 +83,45 @@ def _get_eval_config_value(eval_config, key: str, default=None):
     return eval_config.get(key, default) if hasattr(eval_config, "get") else default
 
 
+def _tests_candidate(tasks_root: Path, instance_id: str) -> Path:
+    return Path(tasks_root) / instance_id / "tests"
+
+
 def _resolve_tests_dir(data_point: dict, eval_config) -> Path:
-    """Resolve Harbor tests/ for one task via ++eval_config.test_dir or packaged tasks."""
+    """Resolve Harbor tests/ for one task.
+
+    Preference order:
+    1. ``++eval_config.test_dir`` (explicit Harbor tasks root)
+    2. ``++eval_config.data_dir``/deep-swe/tasks (set automatically by ``ns eval --data_dir``)
+    3. Packaged / relative / absolute paths from prepare (local-only fallbacks)
+    """
+    instance_id = data_point["instance_id"]
+
     test_dir = _get_eval_config_value(eval_config, "test_dir")
     if test_dir:
-        candidate = Path(test_dir) / data_point["instance_id"] / "tests"
+        candidate = _tests_candidate(Path(test_dir), instance_id)
         if candidate.is_dir():
             return candidate
         raise ValueError(
-            f"DeepSWE tests dir not found for {data_point['instance_id']}: {candidate}. "
+            f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
             f"Check ++eval_config.test_dir={test_dir} (expected <test_dir>/<instance_id>/tests)."
         )
 
-    packaged = _default_packaged_tasks_root() / data_point["instance_id"] / "tests"
+    # ns eval --data_dir=... injects ++eval_config.data_dir; prefer that over stale
+    # absolute paths baked into JSONL during prepare (those point at the prepare host).
+    data_dir = _get_eval_config_value(eval_config, "data_dir")
+    if data_dir:
+        candidate = _tests_candidate(Path(data_dir) / "deep-swe" / "tasks", instance_id)
+        if candidate.is_dir():
+            return candidate
+        raise ValueError(
+            f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
+            f"Expected tasks under {{data_dir}}/deep-swe/tasks after "
+            f"`ns prepare_data deep-swe --data_dir=...`. "
+            f"Or pass ++eval_config.test_dir explicitly."
+        )
+
+    packaged = _tests_candidate(_default_packaged_tasks_root(), instance_id)
     if packaged.is_dir():
         return packaged
 
@@ -110,14 +136,18 @@ def _resolve_tests_dir(data_point: dict, eval_config) -> Path:
         return Path(tests_dir)
 
     raise ValueError(
-        f"DeepSWE tests dir not found for {data_point['instance_id']}. "
-        "Pass ++eval_config.test_dir=/path/to/deep-swe/tasks "
-        "(typically <data_dir>/deep-swe/tasks after ns prepare_data)."
+        f"DeepSWE tests dir not found for {instance_id}. "
+        "Pass --data_dir (recommended) or ++eval_config.test_dir=/path/to/deep-swe/tasks "
+        "after ns prepare_data."
     )
 
 
 def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
-    """Normalize Harbor reward.json into NeMo-Skills metrics fields."""
+    """Normalize Harbor reward.json into NeMo-Skills metrics fields.
+
+    DeepSWE ``tests/test.sh`` writes ``reward.txt=-1`` (EXIT trap) when the verifier
+    crashes before producing ``reward.json``; treat negative rewards as infra failure.
+    """
     if not patch_exists:
         return {
             "resolved": False,
@@ -146,6 +176,20 @@ def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
         reward_value = float(raw_reward)
     except (TypeError, ValueError):
         reward_value = 0.0
+
+    # Crash sentinel from DeepSWE test.sh EXIT trap (no reward.json written).
+    if reward_value < 0:
+        return {
+            "resolved": False,
+            "patch_exists": True,
+            "patch_successfully_applied": False,
+            "reward": reward_value,
+            "f2p": 0.0,
+            "p2p": 0.0,
+            "partial": 0.0,
+            "verifier_crashed": True,
+            "raw_reward": reward,
+        }
 
     return {
         "resolved": (not apply_failed) and reward_value >= 1.0,
@@ -223,7 +267,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         if not tests_dir.is_dir():
             raise ValueError(
                 f"DeepSWE tests dir not found for {data_point['instance_id']}: {tests_dir}. "
-                "Set ++eval_config.test_dir=<data_dir>/deep-swe/tasks"
+                "Pass --data_dir or ++eval_config.test_dir=<data_dir>/deep-swe/tasks"
             )
 
         extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
@@ -269,10 +313,13 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                         raise ValueError("Command timed out")
 
                 pred_files = glob.glob(expected_file_pattern, recursive=True)
-                if len(pred_files) == 1:
-                    return pred_files[0]
+                # DeepSWE may write reward.json and/or crash-sentinel reward.txt.
+                # Prefer reward.json when both exist.
+                if pred_files:
+                    preferred = [p for p in pred_files if p.endswith("reward.json")]
+                    return preferred[0] if preferred else pred_files[0]
                 raise ValueError(
-                    f"Expected exactly one file matching {expected_file_pattern} for "
+                    f"Expected a file matching {expected_file_pattern} for "
                     f"{data_point['instance_id']}, found {len(pred_files)}."
                 )
             except Exception:
@@ -291,7 +338,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                 LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
                 raise ValueError(
                     f"DeepSWE verifier failed for {data_point['instance_id']}. Check logs at: {log_file_path}. "
-                    f"Expected exactly one file matching {expected_file_pattern}, "
+                    f"Expected a file matching {expected_file_pattern}, "
                     f"found {len(pred_files)}."
                 )
 
@@ -303,6 +350,10 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         patch_path.write_text(model_patch if model_patch.endswith("\n") else model_patch + "\n")
 
         eval_out = self.output_dir / "eval-outputs" / data_point["instance_id"]
+        # Drop stale rewards from prior runs/retries so a failed verifier cannot
+        # accidentally succeed by matching an old reward.json on disk.
+        if eval_out.exists():
+            shutil.rmtree(eval_out)
         eval_out.mkdir(parents=True, exist_ok=True)
 
         verifier_cmd = (
@@ -317,7 +368,8 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         )
 
         timeout = int(data_point.get("verifier_timeout_sec") or self.cfg.deepswe_tests_timeout)
-        search_path = str(eval_out / "reward.json")
+        # Prefer reward.json; DeepSWE crash sentinel only writes reward.txt=-1.
+        search_path = str(eval_out / "reward.*")
         try:
             await self._execute_container_command(
                 data_point,
@@ -327,7 +379,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                 timeout=timeout + 120,
             )
         except ValueError:
-            if not (eval_out / "reward.txt").exists():
+            if not (eval_out / "reward.json").exists() and not (eval_out / "reward.txt").exists():
                 LOG.error("DeepSWE verifier failed for %s", data_point["instance_id"])
                 return parse_deepswe_reward(None, patch_exists=True)
 

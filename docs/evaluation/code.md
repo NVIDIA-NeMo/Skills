@@ -50,22 +50,26 @@ ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
   --data_dir=/workspace/ns-data \
   --model=... --server_type=vllm --server_gpus=8 \
   --output_dir=/path/out \
-  ++agent_framework=mini_swe_agent \
-  ++eval_config.test_dir=/workspace/ns-data/deep-swe/tasks
+  ++agent_framework=mini_swe_agent
 ```
+
+`--data_dir` is required (same as prepare). Harbor tests are resolved from
+`{data_dir}/deep-swe/tasks/<instance_id>/tests` automatically. Override with
+`++eval_config.test_dir=/path/to/deep-swe/tasks` only if tasks live elsewhere.
 
 Supported `++agent_framework` values (same as SWE-bench): `mini_swe_agent`, `swe_agent`, `openhands`, `gold_patch`.
 Default agent configs are the SWE-bench ones (override with `++agent_config=...` if needed).
+Prefer `mini_swe_agent` or `swe_agent`; OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows.
 
 Optional:
 
 - `++agent_framework=gold_patch` — grade reference `solution/solution.patch` without an agent rollout
 - `++evaluate=False` — agent/patch generation only
 - `++agent_max_turns=...` — override the default turn limit
-- `++eval_config.test_dir=.../deep-swe/tasks` — Harbor tasks root containing `<instance_id>/tests/` (same pattern as livecodebench-pro)
+- `++eval_config.test_dir=.../deep-swe/tasks` — optional override of the Harbor tasks root
 
 Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
-
+Verifier crashes that only write the DeepSWE `reward.txt=-1` sentinel are counted as unresolved / not successfully applied.
 ### swe-bench
 
 !!! note

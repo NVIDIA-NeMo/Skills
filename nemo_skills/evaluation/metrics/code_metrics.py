@@ -65,10 +65,12 @@ class DeepSweMetrics(BaseMetrics):
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         metrics = prediction["deep-swe-metrics"]
+        # Use `is True` / `is False` so evaluate=False (None metrics) does not
+        # get counted as unresolved / patch_cant_apply.
         return {
-            "issues_resolved": bool(metrics.get("resolved")),
-            "no_patch": not bool(metrics.get("patch_exists")),
-            "patch_cant_apply": not bool(metrics.get("patch_successfully_applied")),
+            "issues_resolved": metrics.get("resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
             "reward": float(metrics.get("reward") or 0.0),
             "f2p": float(metrics.get("f2p") or 0.0),
             "p2p": float(metrics.get("p2p") or 0.0),
