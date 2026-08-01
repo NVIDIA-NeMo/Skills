@@ -316,6 +316,18 @@ class TestBuildCommand:
         )
         assert "gsm8k" in cmd
 
+    def test_strict_data_dir_requirement_cannot_be_bypassed(self):
+        with pytest.raises(ValueError, match="requires --data_dir; this requirement cannot be bypassed"):
+            _build_command(
+                command="python -m nemo_skills.dataset.prepare",
+                requested_datasets=["deep-swe"],
+                data_dir=None,
+                extra_benchmark_map={},
+                cluster_config={"executor": "none"},
+                skip_data_dir_check=True,
+                prepare_unknown_args=[],
+            )
+
     def test_external_dataset_local(self, benchmark_map_path, dummy_benchmark_git):
         """When executor is 'none', external dataset name is used as-is."""
         os.environ["NEMO_SKILLS_EXTRA_BENCHMARK_MAP"] = benchmark_map_path

@@ -71,7 +71,11 @@ def _build_command(
     for dataset in requested_datasets:
         # we always want to unconditionally check this to trigger import
         # for init.py as it might need to register dataset for packaging
-        requires_data_dir = get_arg_from_module_or_dict(get_dataset_module(dataset)[0], "REQUIRES_DATA_DIR", False)
+        dataset_module = get_dataset_module(dataset)[0]
+        requires_data_dir = get_arg_from_module_or_dict(dataset_module, "REQUIRES_DATA_DIR", False)
+        strictly_requires_data_dir = get_arg_from_module_or_dict(dataset_module, "STRICTLY_REQUIRES_DATA_DIR", False)
+        if strictly_requires_data_dir and not data_dir:
+            raise ValueError(f"Dataset {dataset} requires --data_dir; this requirement cannot be bypassed.")
         if data_dir:
             # Check for name collisions between external and built-in datasets.
             # Both get copied into data_dir by name, so a collision would cause overwrites.

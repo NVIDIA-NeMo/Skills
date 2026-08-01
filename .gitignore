@@ -35,7 +35,7 @@ build
 *.lock
 
 # Cloned DeepSWE Harbor checkout + materialized task dirs from ns prepare_data deep-swe.
-# Still uploaded on job submit via packager include_pattern (like dataset *.jsonl).
+# Kept under --data_dir on cluster (REQUIRES_DATA_DIR); not packaged with every job.
 nemo_skills/dataset/deep-swe/deep-swe-repo/
 nemo_skills/dataset/deep-swe/tasks/
 

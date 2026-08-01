@@ -9,29 +9,37 @@ More details are coming soon!
 - Benchmark is defined in [`nemo_skills/dataset/deep-swe/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/deep-swe/__init__.py)
 - Original benchmark sources: [GitHub tasks](https://github.com/datacurve-ai/deep-swe), gated [HuggingFace dataset](https://huggingface.co/datasets/datacurve/deep-swe)
 
-DeepSWE is a Harbor-format coding-agent benchmark (113 long-horizon tasks). NeMo-Skills runs it with the same Apptainer + mini-SWE-agent pattern as SWE-bench, but grades each task with its Harbor verifier (`tests/test.sh` + `grader.py` + F2P/P2P whitelists in `tests/config.json`), not the SWE-bench harness.
+DeepSWE is a Harbor-format coding-agent benchmark (113 long-horizon tasks). **Generation** reuses the
+same SWE-bench agent stack ([SWE-agent](https://swe-agent.com/latest/), [mini-SWE-agent](https://mini-swe-agent.com/latest/),
+[OpenHands](https://www.all-hands.dev/), or `gold_patch`). The repo lives at `/app` in each task image and is
+copied to `/testbed` for the agent (same as other non-`/testbed` SWE-bench datasets). **Grading** is decoupled:
+each task is scored with its Harbor verifier (`tests/test.sh` + `grader.py` + F2P/P2P in `tests/config.json`),
+not the SWE-bench harness.
 
-Pier/Docker/Modal are **not** required. On rootless Slurm, point `container_formatter` at your prebuilt `.sif` task images and bind-mount each task's `tests/` directory at grading time.
+Pier/Docker/Modal are **not** required. On rootless Slurm, point `container_formatter` at your prebuilt `.sif`
+task images and keep Harbor `tasks/` under `--data_dir`.
 
 #### Data preparation
 
+DeepSWE sets `REQUIRES_DATA_DIR = True`, so `--cluster` and `--data_dir` are required (same idea as livecodebench-pro).
+
 ```bash
 ns prepare_data deep-swe \
-  --container_formatter "/deep-swe-images/{instance_id}.sif"
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
 ```
 
-This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe), copies Harbor task dirs into
-`nemo_skills/dataset/deep-swe/tasks/`, and writes `default.jsonl`.
-
-Those `tasks/` directories are gitignored but **are packaged with Slurm/local jobs** (same include-pattern
-mechanism used for dataset `*.jsonl` files), so verifier `tests/` are available under `/nemo_run/code/...`
-without a separate cluster mount. `.sif` images are still expected on mounted cluster storage.
+This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe), writes `default.jsonl`, materializes Harbor
+task dirs under `tasks/`, and copies the dataset to `/workspace/ns-data/deep-swe/`. Set
+`NEMO_SKILLS_DATA_DIR=/workspace/ns-data` to match. `.sif` images are not downloaded; they must already exist
+at the `container_formatter` paths.
 
 Useful options:
 
-- `--tasks_dir /path/to/deep-swe/tasks` — copy from an existing checkout instead of cloning
-- `--task_ids abs-module-cache-flags,...` — prepare a small subset
 - `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{docker_image_tag}`, `{ext_id}`
+- `--repo_url` / `--repo_commit` — override the DeepSWE Harbor git source
+- `--setup` — output split name (default: `default`)
 
 The HuggingFace dataset is gated (contact form). Prefer the public GitHub task repo for `prepare_data`.
 
@@ -39,17 +47,22 @@ The HuggingFace dataset is gated (contact form). Prefer the public GitHub task r
 
 ```bash
 ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
+  --data_dir=/workspace/ns-data \
   --model=... --server_type=vllm --server_gpus=8 \
   --output_dir=/path/out \
-  ++agent_framework=mini_swe_agent
+  ++agent_framework=mini_swe_agent \
+  ++eval_config.test_dir=/workspace/ns-data/deep-swe/tasks
 ```
+
+Supported `++agent_framework` values (same as SWE-bench): `mini_swe_agent`, `swe_agent`, `openhands`, `gold_patch`.
+Default agent configs are the SWE-bench ones (override with `++agent_config=...` if needed).
 
 Optional:
 
 - `++agent_framework=gold_patch` — grade reference `solution/solution.patch` without an agent rollout
 - `++evaluate=False` — agent/patch generation only
 - `++agent_max_turns=...` — override the default turn limit
-- `++eval_config.test_dir=/path/to/deep-swe/tasks` — Harbor tasks root containing `<instance_id>/tests/` (same pattern as livecodebench-pro). Defaults to the packaged `nemo_skills/dataset/deep-swe/tasks` tree from `prepare_data` when unset.
+- `++eval_config.test_dir=.../deep-swe/tasks` — Harbor tasks root containing `<instance_id>/tests/` (same pattern as livecodebench-pro)
 
 Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
 

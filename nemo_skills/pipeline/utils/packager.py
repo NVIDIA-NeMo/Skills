@@ -207,13 +207,6 @@ def get_packager(extra_package_dirs: tuple[str] | None = None):
                 include_patterns.append(str(f))
                 include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
 
-            # DeepSWE Harbor task trees (downloaded by ns prepare_data deep-swe into dataset/deep-swe/tasks).
-            # These are gitignored but must be uploaded with the job for verifier bind-mounts.
-            deep_swe_tasks = dataset_dir / "deep-swe" / "tasks"
-            if deep_swe_tasks.is_dir():
-                include_patterns.append(str(deep_swe_tasks / "**"))
-                include_pattern_relative_paths.append(str(nemo_skills_dir.parent))
-
             # picking up jsonl files in recipes directory if it exists
             recipes_dir = Path(repo_path) / "recipes"
             if recipes_dir.exists():

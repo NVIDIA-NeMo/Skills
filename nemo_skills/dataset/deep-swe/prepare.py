@@ -19,13 +19,15 @@ There is also a gated HuggingFace mirror at https://huggingface.co/datasets/data
 this script clones the public GitHub repo by default because HF access requires accepting
 dataset terms.
 
-By default Harbor task directories are materialized under
-``nemo_skills/dataset/deep-swe/tasks/`` so NeMo-Skills can package them with the job
-(same mechanism used for dataset ``*.jsonl`` files).
+Harbor task directories are materialized under ``tasks/`` next to the JSONL. With
+``REQUIRES_DATA_DIR = True``, ``ns prepare_data`` copies them to ``--data_dir/deep-swe/``
+for cluster use (pass the same tree as ``++eval_config.test_dir`` at eval time).
 
 Example:
     ns prepare_data deep-swe \\
-        --container_formatter "/deep-swe-images/{instance_id}.sif"
+        --cluster=iad \\
+        --data_dir=/workspace/ns-data \\
+        --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
 """
 
 from __future__ import annotations
@@ -83,8 +85,8 @@ def _format_container(formatter: str, *, instance_id: str, docker_image: str, ex
     )
 
 
-def _sync_tasks(source_tasks: Path, dest_tasks: Path, allowed: set[str] | None) -> Path:
-    """Copy Harbor task dirs into dataset/deep-swe/tasks for job packaging."""
+def _sync_tasks(source_tasks: Path, dest_tasks: Path) -> Path:
+    """Copy Harbor task dirs into dataset/deep-swe/tasks for --data_dir sync."""
     if not source_tasks.is_dir():
         raise FileNotFoundError(f"Tasks directory not found: {source_tasks}")
 
@@ -98,8 +100,6 @@ def _sync_tasks(source_tasks: Path, dest_tasks: Path, allowed: set[str] | None) 
     copied = 0
     for task_dir in sorted(p for p in source_tasks.iterdir() if p.is_dir()):
         if not (task_dir / "task.toml").exists():
-            continue
-        if allowed is not None and task_dir.name not in allowed:
             continue
         shutil.copytree(task_dir, dest_tasks / task_dir.name)
         copied += 1
@@ -142,10 +142,10 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
         ext_id=ext_id,
     )
 
-    # Portable paths relative to dataset/deep-swe so packaged jobs resolve under /nemo_run/code.
+    # Paths relative to dataset/deep-swe; absolute paths are filled for the local prepare host.
+    # After ns prepare_data --data_dir=..., prefer ++eval_config.test_dir=<data_dir>/deep-swe/tasks.
     rel_task_dir = f"tasks/{instance_id}"
     rel_tests_dir = f"tasks/{instance_id}/tests"
-    # Keep absolute paths too for local runs when the relative root is obvious.
     abs_task_dir = str((dataset_dir / rel_task_dir).resolve())
     abs_tests_dir = str((dataset_dir / rel_tests_dir).resolve())
 
@@ -190,28 +190,13 @@ def main():
         help="Optional git commit/tag to checkout after cloning",
     )
     parser.add_argument(
-        "--tasks_dir",
-        type=str,
-        default=None,
-        help=(
-            "Existing path to a deep-swe/tasks directory. If set, skips cloning and copies "
-            "selected tasks into nemo_skills/dataset/deep-swe/tasks/ for packaging."
-        ),
-    )
-    parser.add_argument(
-        "--repo_dir",
-        type=str,
-        default=None,
-        help="Where to clone the DeepSWE repo (default: <this_dir>/deep-swe-repo)",
-    )
-    parser.add_argument(
         "--container_formatter",
         type=str,
         default=DEFAULT_CONTAINER_FORMATTER,
         help=(
             "Container path/URI template. Placeholders: {instance_id}, {task_id}, {docker_image}, "
             "{docker_image_tag}, {ext_id}. Example for Slurm sif images: "
-            "'/deep-swe-images/{instance_id}.sif'"
+            "'/swe-bench-images/deepswe/{instance_id}.sif'"
         ),
     )
     parser.add_argument(
@@ -220,34 +205,17 @@ def main():
         default="default",
         help="Setup name (used as nemo-skills split parameter).",
     )
-    parser.add_argument(
-        "--task_ids",
-        type=str,
-        default=None,
-        help="Optional comma-separated task ids to include (for debugging subsets).",
-    )
     args = parser.parse_args()
 
     dataset_dir = Path(__file__).parent
     local_tasks = dataset_dir / "tasks"
-    allowed = None
-    if args.task_ids:
-        allowed = {tid.strip() for tid in args.task_ids.split(",") if tid.strip()}
-
-    if args.tasks_dir:
-        source_tasks = Path(args.tasks_dir).resolve()
-    else:
-        repo_dir = Path(args.repo_dir).resolve() if args.repo_dir else (dataset_dir / "deep-swe-repo")
-        _clone_or_update_repo(args.repo_url, repo_dir, args.repo_commit)
-        source_tasks = repo_dir / "tasks"
-
-    tasks_root = _sync_tasks(source_tasks, local_tasks, allowed)
+    repo_dir = dataset_dir / "deep-swe-repo"
+    _clone_or_update_repo(args.repo_url, repo_dir, args.repo_commit)
+    tasks_root = _sync_tasks(repo_dir / "tasks", local_tasks)
 
     rows = []
     for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()):
         if not (task_dir / "task.toml").exists():
-            continue
-        if allowed is not None and task_dir.name not in allowed:
             continue
         rows.append(_load_task(task_dir, args.container_formatter, dataset_dir))
 
@@ -260,7 +228,7 @@ def main():
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(f"Wrote {len(rows)} DeepSWE tasks to {output_file}")
-    print(f"Harbor task dirs ready for packaging at {tasks_root}")
+    print(f"Harbor task dirs ready at {tasks_root} (copied to --data_dir/deep-swe/ when using ns prepare_data)")
 
 
 if __name__ == "__main__":

@@ -15,10 +15,10 @@
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 EVAL_SPLIT = "default"
 METRICS_TYPE = "deep-swe"
-# evaluation is fused with generation (Harbor verifier runs after the agent)
+# Agent generation reuses SWE-bench (swe_agent / mini_swe_agent / openhands / gold_patch).
+# Grading uses Harbor tests/test.sh via deepswe.py (not the SWE-bench harness).
 GENERATION_MODULE = "nemo_skills.inference.eval.deepswe"
-GENERATION_ARGS = (
-    "++agent_framework=mini_swe_agent ++agent_config=eval/deep-swe/mini-swe-agent/default ++agent_max_turns=250"
-)
-# Task images (.sif) and the cloned Harbor task repo are large; mount them via data_dir on Slurm.
-REQUIRES_DATA_DIR = False
+GENERATION_ARGS = "++agent_framework=mini_swe_agent ++agent_max_turns=250"
+# Harbor task trees are large; keep them under --data_dir (do not package with every job).
+REQUIRES_DATA_DIR = True
+STRICTLY_REQUIRES_DATA_DIR = True
