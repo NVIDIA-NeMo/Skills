@@ -328,6 +328,117 @@ all you need to do is replace `swe_agent` with `mini_swe_agent` in the command a
 !!! note
     For evaluation, we use a [custom fork](https://github.com/wasiahmad/SWE-bench_Pro-os) of the SWE-bench Pro repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### swe-atlas-qna
+
+- Benchmark is defined in [`nemo_skills/dataset/swe-atlas-qna/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-atlas-qna/__init__.py).
+- Original benchmark source is [ScaleAI/SWE-Atlas-QnA](https://huggingface.co/datasets/ScaleAI/SWE-Atlas-QnA).
+- Official results are published on the [SWE-Atlas-QnA leaderboard](https://labs.scale.com/leaderboard/sweatlas-qna).
+
+SWE-Atlas-QnA contains 124 repository-level software engineering questions. Unlike SWE-bench, the agent submits a prose answer rather than a patch. NeMo-Skills runs [mini-SWE-agent](https://mini-swe-agent.com/latest/) inside the task-specific container, extracts the answer enclosed by `<<FINAL_ANSWER>>` tags, and uses an LLM judge to grade it against the task-specific rubric.
+
+#### Data preparation
+
+Prepare the default dataset with:
+
+```
+ns prepare_data swe-atlas-qna
+```
+
+This creates two files:
+
+- `nemo_skills/dataset/swe-atlas-qna/default.ubuntu.jsonl` with 104 Debian/Ubuntu-based tasks.
+- `nemo_skills/dataset/swe-atlas-qna/default.alpine.jsonl` with 20 Alpine-based tasks.
+
+By default, task containers are loaded from `docker://` URLs. To avoid downloading them during every evaluation, download the images in SIF format as described in the [SWE-bench data preparation](#data-preparation) section, then prepare the dataset with a mounted image path:
+
+```
+ns prepare_data swe-atlas-qna \
+    --container_formatter="<MOUNTED_PATH_TO_IMAGES_FOLDER>/{docker_image}.sif"
+```
+
+For local SIF paths, `{docker_image}` is replaced with the image tag from the dataset, such as `swe_atlas_QnA_minio_minio_1.0`.
+
+!!! note
+    Alpine tasks use musl rather than glibc and must run separately with the Alpine NeMo-Skills container built from [`dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine`](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine).
+
+#### Running the evaluation
+
+The following example launches the Ubuntu and Alpine subsets separately:
+
+```
+#!/bin/bash
+export NVIDIA_API_KEY=<NVIDIA_API_KEY>
+
+COMMON_ARGS=(
+    --cluster=<CLUSTER_NAME>
+    --model=<MODEL>
+    --server_type=vllm
+    --server_args="<SERVER_ARGS>"
+    --server_nodes=1
+    --server_gpus=8
+    --benchmarks=swe-atlas-qna
+    --expname=<EXPERIMENT_NAME>
+    ++inference.temperature=1.0
+    ++inference.top_p=0.95
+    ++max_concurrent_requests=16
+    ++server.host=127.0.0.1
+)
+
+ns eval "${COMMON_ARGS[@]}" \
+    --split=default.ubuntu \
+    --output_dir=<OUTPUT_DIR>/ubuntu \
+    --num_chunks=4
+
+ns eval "${COMMON_ARGS[@]}" \
+    --split=default.alpine \
+    --output_dir=<OUTPUT_DIR>/alpine \
+    --num_chunks=1 \
+    --main_container=<PATH_TO_ALPINE_NS_CONTAINER>
+```
+
+Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
+
+The benchmark configuration supplies the mini-SWE-agent prompt and defaults to 250 agent turns. `++evaluate=True` is not supported because SWE-Atlas-QnA answers are scored by the separate rubric judge rather than the SWE-bench test harness.
+
+The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
+
+#### Scoring
+
+Each rubric criterion is judged independently. Positive criteria pass when the required behavior is present, while negative criteria pass when the prohibited behavior is absent. The reported metrics are:
+
+- **task_resolved:** Percentage of tasks for which every rubric criterion passed.
+- **rubric_score:** Mean percentage of passed rubric criteria.
+- **judgement_parse_error:** Percentage of tasks containing at least one judge response that could not be parsed after retries.
+
+Results for each subset are written to `<OUTPUT_DIR>/<SUBSET>/eval-results/swe-atlas-qna/metrics.json`. To report one score over all 124 tasks, concatenate the judged Ubuntu and Alpine `output.jsonl` files into a single `eval-results/swe-atlas-qna/output.jsonl`, then run:
+
+```
+ns summarize_results \
+    <COMBINED_RESULTS_DIR>/eval-results \
+    --cluster=<CLUSTER_NAME> \
+    --benchmarks=swe-atlas-qna \
+    --metric_type=swe-atlas-qna
+```
+
+To generate multiple answers per task and compute pass@k, use `--benchmarks=swe-atlas-qna:N`, where `N` is the number of samples.
+
+#### Evaluating reference answers
+
+SWE-Atlas-QnA can evaluate the dataset's stored reference answers without launching the main generation model:
+
+```
+export NVIDIA_API_KEY=<NVIDIA_API_KEY>
+
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --benchmarks=swe-atlas-qna \
+    --split=default.ubuntu \
+    --output_dir=<OUTPUT_DIR>/reference-ubuntu \
+    --evaluate_reference_answer
+```
+
+Repeat the command with `--split=default.alpine` for the Alpine subset. Reference-answer evaluation does not accept main model/server options, repeated sampling, or chunking; it materializes the reference answer and runs only the rubric judge.
+
 ### compute-eval
 
 - Benchmark is defined in [`nemo_skills/dataset/compute-eval/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/compute-eval/__init__.py)
