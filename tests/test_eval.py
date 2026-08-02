@@ -46,6 +46,15 @@ class HostnameScript(BaseJobScript):
         super().__post_init__()
 
 
+def test_get_arg_from_module_or_dict_accepts_explicit_none_default():
+    assert eval_utils.get_arg_from_module_or_dict(SimpleNamespace(), "OPTIONAL_ARG", None) is None
+
+
+def test_get_arg_from_module_or_dict_requires_value_without_default():
+    with pytest.raises(ValueError, match="Argument REQUIRED_ARG not found"):
+        eval_utils.get_arg_from_module_or_dict(SimpleNamespace(), "REQUIRED_ARG")
+
+
 def test_eval_client_script_parallel_fails_if_any_unit_fails(monkeypatch, tmp_path):
     """Ensure eval units fail if any command fails in parallel mode."""
     failed_marker = tmp_path / "failed.txt"

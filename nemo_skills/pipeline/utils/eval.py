@@ -28,6 +28,7 @@ from nemo_skills.pipeline.dataset import get_dataset_module
 from nemo_skills.utils import compute_chunk_ids, get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
+_MISSING = object()
 
 
 @dataclass
@@ -77,13 +78,13 @@ class EvalGenerationUnit:
     with_sandbox: bool
 
 
-def get_arg_from_module_or_dict(module, arg_name, default_value=None, override_dict=None):
+def get_arg_from_module_or_dict(module, arg_name, default_value=_MISSING, override_dict=None):
     """If argument is in a dict, take from there. If not, take from the module."""
     if override_dict and arg_name in override_dict:
         return override_dict[arg_name]
     if hasattr(module, arg_name):
         return getattr(module, arg_name)
-    if default_value is not None:
+    if default_value is not _MISSING:
         return default_value
     raise ValueError(f"Argument {arg_name} not found in module {module} or override_dict.")
 
