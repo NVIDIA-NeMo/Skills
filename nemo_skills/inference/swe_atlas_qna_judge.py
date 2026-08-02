@@ -112,14 +112,14 @@ def _extract_json_object(text: str) -> dict:
 
 def _extract_rating(text: str, criterion: dict) -> dict:
     parsed = _extract_json_object(text)
-    ratings = parsed.get("ratings")
+    ratings = parsed["ratings"]
     if not isinstance(ratings, list) or len(ratings) != 1 or not isinstance(ratings[0], dict):
         raise ValueError("Judge response must contain exactly one item in 'ratings'")
 
     rating = ratings[0]
-    if rating.get("criterion_id") != criterion["id"]:
+    if rating["criterion_id"] != criterion["id"]:
         raise ValueError("Judge response criterion_id does not match the requested criterion")
-    if rating.get("status") not in ("YES", "NO") or str(rating.get("score")) not in ("0", "1"):
+    if rating["status"] not in ("YES", "NO") or str(rating["score"]) not in ("0", "1"):
         raise ValueError("Judge response has an invalid status or score")
     if (rating["status"] == "YES") != (str(rating["score"]) == "1"):
         raise ValueError("Judge response status and score disagree")
@@ -171,7 +171,7 @@ class SweAtlasQnAJudgeTask(GenerationTask):
 
         for attempt in range(1, max_attempts + 1):
             result = await super().process_single_datapoint(criterion_data, all_data, prompt_format)
-            raw_judgement = result.get("generation") or ""
+            raw_judgement = result["generation"] or ""
             try:
                 rating = _extract_rating(raw_judgement, criterion)
                 return rating, raw_judgement, result
@@ -179,7 +179,7 @@ class SweAtlasQnAJudgeTask(GenerationTask):
                 if attempt < max_attempts:
                     LOG.warning(
                         "Could not parse criterion %s judgement on attempt %d/%d: %s. Retrying.",
-                        criterion.get("id"),
+                        criterion["id"],
                         attempt,
                         max_attempts,
                         error,
@@ -190,13 +190,13 @@ class SweAtlasQnAJudgeTask(GenerationTask):
 
                 LOG.warning(
                     "Could not parse criterion %s judgement after %d attempts: %s",
-                    criterion.get("id"),
+                    criterion["id"],
                     max_attempts,
                     error,
                 )
                 rating = {
-                    "criterion_id": criterion.get("id"),
-                    "rubric_statement": criterion.get("title"),
+                    "criterion_id": criterion["id"],
+                    "rubric_statement": criterion["title"],
                     "parse_error": str(error),
                 }
                 return rating, raw_judgement, result

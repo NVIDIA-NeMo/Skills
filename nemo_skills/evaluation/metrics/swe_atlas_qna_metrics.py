@@ -51,11 +51,11 @@ def score_swe_atlas_qna_prediction(prediction: dict) -> dict[str, bool | float]:
             rating = ratings_by_id[criterion["id"]]
             if rating.get("parse_error"):
                 raise ValueError(f"unparseable rating for criterion {criterion['id']}")
-            if rating.get("rubric_statement") != criterion["title"]:
+            if rating["rubric_statement"] != criterion["title"]:
                 raise ValueError(f"rubric statement mismatch for criterion {criterion['id']}")
 
-            status = rating.get("status")
-            score = str(rating.get("score"))
+            status = rating["status"]
+            score = str(rating["score"])
             if status not in ("YES", "NO") or score not in ("0", "1"):
                 raise ValueError(f"invalid rating for criterion {criterion['id']}")
             if (status == "YES") != (score == "1"):

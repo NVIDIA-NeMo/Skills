@@ -754,7 +754,7 @@ class SweBenchGenerationTask(GenerationTask):
 
     def _format_mini_swe_agent_output(self, trajectory_dict, data_point):
         """Convert a mini-swe-agent trajectory to the SWE-bench prediction format."""
-        trajectory_info = trajectory_dict.get("info", {}).copy()
+        trajectory_info = trajectory_dict["info"].copy()
         trajectory_info["model_name_or_path"] = self.cfg.server.model
         trajectory_info["instance_id"] = data_point["instance_id"]
 

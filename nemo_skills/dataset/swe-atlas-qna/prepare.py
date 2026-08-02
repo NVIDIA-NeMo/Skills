@@ -121,6 +121,7 @@ if __name__ == "__main__":
     dataset = dataset.add_column("container_repo_dir", ["/app"] * len(dataset))
 
     alpine_dataset = dataset.filter(lambda x: x["instance_id"] in ALPINE_INSTANCE_IDS)
-    alpine_dataset.to_json(output_file_alpine, orient="records", lines=True)
     ubuntu_dataset = dataset.filter(lambda x: x["instance_id"] not in ALPINE_INSTANCE_IDS)
+
+    alpine_dataset.to_json(output_file_alpine, orient="records", lines=True)
     ubuntu_dataset.to_json(output_file_ubuntu, orient="records", lines=True)
