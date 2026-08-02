@@ -406,6 +406,26 @@ def eval(
 
     # Reference-answer evaluation uses only the judge model, so there is no main model to normalize or host.
     if evaluate_reference_answer:
+        unsupported_main_args = []
+        for arg_name, arg_value in (
+            ("model", model),
+            ("server_address", server_address),
+            ("server_type", server_type),
+            ("server_gpus", server_gpus),
+            ("server_entrypoint", server_entrypoint),
+            ("server_container", server_container),
+        ):
+            if arg_value is not None:
+                unsupported_main_args.append(arg_name)
+        if server_nodes not in (None, 1, [1]):
+            unsupported_main_args.append("server_nodes")
+        if any(server_args) if isinstance(server_args, list) else bool(server_args):
+            unsupported_main_args.append("server_args")
+        if unsupported_main_args:
+            raise ValueError(
+                "--evaluate-reference-answer does not use main model/server arguments: "
+                + ", ".join(unsupported_main_args)
+            )
         models_list = []
     else:
         if server_type is None:
@@ -524,7 +544,7 @@ def eval(
                     run_after=run_after,
                     reuse_code_exp=reuse_code_exp,
                     reuse_code=reuse_code,
-                    task_dependencies=_task_dependencies if cluster_config["executor"] == "slurm" else None,
+                    task_dependencies=_task_dependencies,
                     installation_command=installation_command,
                     skip_hf_home_check=skip_hf_home_check,
                     sbatch_kwargs=sbatch_kwargs,

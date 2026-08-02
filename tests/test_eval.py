@@ -200,6 +200,27 @@ def test_prepare_eval_commands_skips_generation_for_reference_answers(monkeypatc
     assert benchmarks["swe-atlas-qna"].reference_answer_key == "reference_answer"
     assert job_batches == []
 
+    with pytest.raises(ValueError, match="does not support chunking"):
+        eval_utils.prepare_eval_commands(
+            cluster_config={"executor": "none"},
+            benchmarks_or_groups="swe-atlas-qna",
+            split=None,
+            num_jobs=1,
+            starting_seed=0,
+            output_dir="/tmp/out",
+            num_chunks=2,
+            chunk_ids=None,
+            rerun_done=False,
+            extra_arguments="",
+            data_dir=None,
+            exclusive=False,
+            with_sandbox=False,
+            keep_mounts_for_sandbox=False,
+            wandb_parameters=None,
+            eval_requires_judge=False,
+            evaluate_reference_answer=True,
+        )
+
 
 def test_materialize_reference_answers(tmp_path):
     input_file = tmp_path / "input.jsonl"
@@ -224,8 +245,32 @@ def test_resolve_child_sbatch_kwargs_inherits_or_overrides():
     assert eval_pipeline._resolve_child_sbatch_kwargs(parent, '{"segment": 1}') == {"segment": 1}
 
 
-def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args):
-    cluster_config = {"executor": "slurm", "containers": {"nemo-skills": "nemo-skills-container"}}
+@pytest.mark.parametrize(
+    "main_model_arg",
+    [
+        {"model": "main-model"},
+        {"server_address": "https://main.example/v1"},
+        {"server_type": "openai"},
+        {"server_gpus": 8},
+        {"server_nodes": [2]},
+        {"server_args": ["--some-server-arg"]},
+        {"server_entrypoint": "/entrypoint.sh"},
+        {"server_container": "main-server-container"},
+    ],
+)
+def test_eval_reference_answers_rejects_main_model_arguments(tmp_path, main_model_arg):
+    with pytest.raises(ValueError, match="does not use main model/server arguments"):
+        eval_pipeline.eval(
+            ctx=SimpleNamespace(args=[]),
+            output_dir=str(tmp_path),
+            benchmarks="swe-atlas-qna",
+            evaluate_reference_answer=True,
+            **main_model_arg,
+        )
+
+
+def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args, executor="slurm"):
+    cluster_config = {"executor": executor, "containers": {"nemo-skills": "nemo-skills-container"}}
 
     monkeypatch.setattr(eval_pipeline.pipeline_utils, "get_cluster_config", lambda *args, **kwargs: cluster_config)
     monkeypatch.setattr(eval_pipeline.pipeline_utils, "resolve_mount_paths", lambda config, *args, **kwargs: config)
@@ -343,7 +388,8 @@ def test_eval_judge_sbatch_kwargs_override(monkeypatch, tmp_path):
     assert captured["sbatch_kwargs"] == {"segment": 1}
 
 
-def test_eval_reference_answers_runs_materializer_then_judge_without_main_model(monkeypatch, tmp_path):
+@pytest.mark.parametrize("executor", ["slurm", "local"])
+def test_eval_reference_answers_runs_materializer_then_judge_without_main_model(monkeypatch, tmp_path, executor):
     def benchmark_args():
         return eval_utils.BenchmarkArgs(
             name="swe-atlas-qna",
@@ -366,7 +412,7 @@ def test_eval_reference_answers_runs_materializer_then_judge_without_main_model(
             reference_answer_key="reference_answer",
         )
 
-    _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
+    _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args, executor=executor)
     monkeypatch.setattr(
         eval_pipeline,
         "prepare_eval_commands",
@@ -392,6 +438,7 @@ def test_eval_reference_answers_runs_materializer_then_judge_without_main_model(
         benchmarks="swe-atlas-qna",
         evaluate_reference_answer=True,
         auto_summarize_results=False,
+        _task_dependencies=["upstream-task"],
     )
 
     assert len(captured["tasks"]) == 1
@@ -399,8 +446,10 @@ def test_eval_reference_answers_runs_materializer_then_judge_without_main_model(
     assert "nemo_skills.pipeline.materialize_reference_answers" in materialize_task["cmd"]
     assert "--reference-answer-key reference_answer" in materialize_task["cmd"]
     assert materialize_task["num_gpus"] == 0
+    assert materialize_task["task_dependencies"] == ["upstream-task"]
     assert captured["judge"]["input_file"].endswith("tmp-eval-results/swe-atlas-qna/output.jsonl")
-    assert captured["judge"]["_task_dependencies"] == ["reference-task"]
+    expected_judge_dependencies = ["reference-task"] if executor == "slurm" else ["reference-task", "upstream-task"]
+    assert captured["judge"]["_task_dependencies"] == expected_judge_dependencies
 
 
 @pytest.mark.timeout(300)

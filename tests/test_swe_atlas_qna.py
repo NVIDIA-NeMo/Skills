@@ -16,11 +16,14 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from nemo_skills.evaluation.metrics.swe_atlas_qna_metrics import (
     SweAtlasQnAMetrics,
     score_swe_atlas_qna_prediction,
 )
 from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask, extract_final_answer
+from nemo_skills.inference.eval.swebench import SupportedAgentFrameworks
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.swe_atlas_qna_judge import SweAtlasQnAJudgeTask, _extract_rating
 from nemo_skills.prompt.utils import get_prompt
@@ -213,6 +216,7 @@ def test_swe_atlas_qna_judge_calls_each_criterion(monkeypatch):
 
     monkeypatch.setattr(GenerationTask, "process_single_datapoint", fake_process)
     task = object.__new__(SweAtlasQnAJudgeTask)
+    task.cfg = SimpleNamespace(max_judgement_attempts=1, judgement_retry_delay=0)
     output = asyncio.run(
         task.process_single_datapoint(
             {
@@ -291,6 +295,13 @@ def test_swe_atlas_qna_maps_agent_submission_to_generation():
     assert output["generation"] == "Final answer"
     assert output["instance_id"] == "task-1"
     assert output["model_name_or_path"] == "test-model"
+
+
+def test_swe_atlas_qna_generation_rejects_inline_evaluation():
+    cfg = SimpleNamespace(agent_framework=SupportedAgentFrameworks.mini_swe_agent, evaluate=True)
+
+    with pytest.raises(ValueError, match="does not support evaluate=True"):
+        SweAtlasQnAGenerationTask(cfg)
 
 
 def test_swe_atlas_qna_final_answer_extraction_falls_back_to_plain_submission():

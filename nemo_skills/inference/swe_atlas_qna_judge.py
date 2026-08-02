@@ -165,9 +165,8 @@ class SweAtlasQnAJudgeTask(GenerationTask):
 
     async def _judge_criterion(self, data_point, criterion, all_data, prompt_format):
         criterion_data = self._add_criterion_fields(data_point, criterion)
-        cfg = getattr(self, "cfg", None)
-        max_attempts = max(1, getattr(cfg, "max_judgement_attempts", 1))
-        retry_delay = max(0.0, getattr(cfg, "judgement_retry_delay", 0.0))
+        max_attempts = max(1, self.cfg.max_judgement_attempts)
+        retry_delay = max(0.0, self.cfg.judgement_retry_delay)
 
         for attempt in range(1, max_attempts + 1):
             result = await super().process_single_datapoint(criterion_data, all_data, prompt_format)

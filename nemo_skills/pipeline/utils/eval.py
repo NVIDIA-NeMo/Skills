@@ -398,6 +398,11 @@ def prepare_eval_commands(
                     "Reference-answer evaluation does not support repeated sampling. "
                     f"Specify {benchmark} without a repeat count."
                 )
+            if num_chunks or benchmark_args.num_chunks:
+                raise ValueError(
+                    "Reference-answer evaluation does not support chunking. "
+                    "Omit --num-chunks and benchmark NUM_CHUNKS settings."
+                )
         return benchmarks_dict, []
 
     total_evals = 0
