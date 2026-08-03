@@ -402,7 +402,7 @@ The benchmark configuration supplies the mini-SWE-agent prompt and defaults to 2
 
 The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
 
-To run generation without launching the rubric judge or computing scores, add `--skip-judge`:
+To run generation without launching the rubric judge or computing scores, add `--skip_judge`:
 
 ```
 ns eval \
@@ -412,10 +412,10 @@ ns eval \
     --benchmarks=swe-atlas-qna \
     --split=default.ubuntu \
     --output_dir=<OUTPUT_DIR>/ubuntu \
-    --skip-judge
+    --skip_judge
 ```
 
-Generation-only outputs are written directly to `<OUTPUT_DIR>/ubuntu/eval-results/swe-atlas-qna`. The pipeline does not add judgement fields, launch automatic result summarization, or create `metrics.json` for this benchmark. `--skip-judge` cannot be combined with reference-answer evaluation or explicit `--judge_*` options.
+Generation-only outputs are written directly to `<OUTPUT_DIR>/ubuntu/eval-results/swe-atlas-qna`. The pipeline does not add judgement fields, launch automatic result summarization, or create `metrics.json` for this benchmark. `--skip_judge` cannot be combined with reference-answer evaluation or explicit `--judge_*` options.
 
 #### Scoring
 

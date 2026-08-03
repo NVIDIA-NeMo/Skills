@@ -383,7 +383,7 @@ def eval(
 
     if skip_judge:
         if evaluate_reference_answer:
-            raise ValueError("--skip-judge cannot be combined with --evaluate-reference-answer")
+            raise ValueError("--skip_judge cannot be combined with --evaluate_reference_answer")
         judge_options = {
             "judge_step_fn": judge_step_fn,
             "judge_model": judge_model,
@@ -403,7 +403,7 @@ def eval(
         }
         conflicting_options = [name for name, value in judge_options.items() if value not in (None, "")]
         if conflicting_options:
-            raise ValueError("--skip-judge cannot be combined with judge options: " + ", ".join(conflicting_options))
+            raise ValueError("--skip_judge cannot be combined with judge options: " + ", ".join(conflicting_options))
 
     # Convert server_type enum values to strings
     def convert_server_type_to_string(st):

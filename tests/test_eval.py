@@ -311,7 +311,7 @@ def test_eval_reference_answers_rejects_main_model_arguments(tmp_path, main_mode
 @pytest.mark.parametrize(
     "conflicting_args,expected_error",
     [
-        ({"evaluate_reference_answer": True}, "cannot be combined with --evaluate-reference-answer"),
+        ({"evaluate_reference_answer": True}, "cannot be combined with --evaluate_reference_answer"),
         ({"judge_model": "judge-model"}, "cannot be combined with judge options: judge_model"),
         ({"extra_judge_args": "++temperature=0"}, "cannot be combined with judge options: extra_judge_args"),
     ],
