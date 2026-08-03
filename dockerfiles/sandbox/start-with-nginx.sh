@@ -113,7 +113,7 @@ print(' '.join(expand_nodelist(sys.argv[1])))
 
 # Start a single uWSGI worker in the background.
 # Args: $1=worker_number $2=port
-# Prints: "pid:port"
+# Sets: STARTED_WORKER_PID and STARTED_WORKER_PORT
 start_worker_fast() {
     local i=$1
     local WORKER_PORT=$2
@@ -142,8 +142,9 @@ EOF
     fi
 
     > /var/log/worker${i}.log
-    ( cd /app && env WORKER_NUM=$i uwsgi --ini /tmp/worker${i}_uwsgi.ini ) &
-    echo "$!:$WORKER_PORT"
+    ( cd /app && exec env WORKER_NUM=$i uwsgi --ini /tmp/worker${i}_uwsgi.ini ) &
+    STARTED_WORKER_PID=$!
+    STARTED_WORKER_PORT=$WORKER_PORT
 }
 
 # Restart wrapper — reuses the worker's existing port assignment.
@@ -159,7 +160,7 @@ worker_had_port_conflict() {
 }
 
 worker_is_alive() {
-    kill -0 "$1" 2>/dev/null
+    pid_is_running "$1"
 }
 
 # Generate /etc/nginx/nginx.conf from template + upstream file.
@@ -388,6 +389,96 @@ else
     echo "UWSGI config - Processes: $UWSGI_PROCESSES, Cheaper: disabled"
 fi
 
+WORKER_PIDS=()
+LOG_TAIL_PIDS=()
+STARTED_WORKER_PID=""
+STARTED_WORKER_PORT=""
+NGINX_MASTER_PID=""
+MONITOR_SLEEP_PID=""
+CLEANUP_STARTED=0
+
+pid_is_running() {
+    local pid=$1
+    local state
+    [ -n "$pid" ] || return 1
+    state=$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}')
+    case "$state" in
+        ""|Z*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+wait_for_children() {
+    local timeout_s=$1
+    shift
+    local deadline=$((SECONDS + timeout_s))
+    local pid
+    while true; do
+        local running=0
+        for pid in "$@"; do
+            if pid_is_running "$pid"; then
+                running=1
+                break
+            fi
+        done
+        [ "$running" -eq 0 ] && return 0
+        [ "$SECONDS" -ge "$deadline" ] && return 1
+        sleep 0.1
+    done
+}
+
+cleanup() {
+    local requested_status=${1:-0}
+    trap - SIGTERM SIGINT
+    if [ "$CLEANUP_STARTED" -eq 1 ]; then
+        return
+    fi
+    CLEANUP_STARTED=1
+    set +e
+    echo "Shutting down tracked workers, nginx, log tails, and monitors..."
+
+    local tracked_pids=()
+    for pid in "${WORKER_PIDS[@]}"; do
+        [ -n "$pid" ] || continue
+        tracked_pids+=("$pid")
+        kill -TERM "$pid" 2>/dev/null
+    done
+    if [ -n "$NGINX_MASTER_PID" ]; then
+        tracked_pids+=("$NGINX_MASTER_PID")
+        kill -QUIT "$NGINX_MASTER_PID" 2>/dev/null
+    fi
+    for pid in "${LOG_TAIL_PIDS[@]}" "$MONITOR_SLEEP_PID"; do
+        [ -n "$pid" ] || continue
+        tracked_pids+=("$pid")
+        kill -TERM "$pid" 2>/dev/null
+    done
+
+    local cleanup_status=$requested_status
+    if ! wait_for_children 5 "${tracked_pids[@]}"; then
+        local stragglers=()
+        for pid in "${tracked_pids[@]}"; do
+            pid_is_running "$pid" && stragglers+=("$pid")
+        done
+        echo "CLEANUP_GRACE_TIMEOUT tracked_pids=${stragglers[*]}"
+        for pid in "${stragglers[@]}"; do
+            kill -KILL "$pid" 2>/dev/null
+        done
+        if ! wait_for_children 2 "${stragglers[@]}"; then
+            echo "CLEANUP_KILL_TIMEOUT tracked_pids=${stragglers[*]}" >&2
+            cleanup_status=1
+        fi
+    fi
+    for pid in "${tracked_pids[@]}"; do
+        wait "$pid" 2>/dev/null
+    done
+
+    [ -n "${HEALTH_CHECK_DIR:-}" ] && rm -rf "$HEALTH_CHECK_DIR" 2>/dev/null
+    [ -n "${REMOTE_HEALTH_DIR:-}" ] && rm -rf "$REMOTE_HEALTH_DIR" 2>/dev/null
+    exit "$cleanup_status"
+}
+
+trap 'cleanup 0' SIGTERM SIGINT
+
 # =============================================================================
 # Log setup
 # =============================================================================
@@ -401,28 +492,15 @@ done
 chmod 644 /var/log/worker*.log || true
 
 tail -f /var/log/nginx/access.log &> /dev/stdout &
+LOG_TAIL_PIDS+=("$!")
 tail -f /var/log/nginx/error.log &> /dev/stderr &
+LOG_TAIL_PIDS+=("$!")
 tail -f /var/log/worker*.log &> /dev/stderr &
+LOG_TAIL_PIDS+=("$!")
 
 # =============================================================================
 # Worker startup
 # =============================================================================
-WORKER_PIDS=()
-
-cleanup() {
-    echo "Shutting down workers and nginx..."
-    for pid in "${WORKER_PIDS[@]}"; do
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -TERM "$pid" 2>/dev/null || true
-        fi
-    done
-    pkill -f nginx || true
-    [ -n "$HEALTH_CHECK_DIR" ] && rm -rf "$HEALTH_CHECK_DIR" 2>/dev/null || true
-    [ -n "$REMOTE_HEALTH_DIR" ] && rm -rf "$REMOTE_HEALTH_DIR" 2>/dev/null || true
-    exit 0
-}
-
-trap cleanup SIGTERM SIGINT
 
 MAX_STARTUP_RETRIES=5
 PORT_INCREMENT=200
@@ -438,9 +516,9 @@ START_SPAWN=$(date +%s)
 
 for i in $(seq 1 $NUM_WORKERS); do
     port=$((SANDBOX_WORKER_BASE_PORT + i - 1))
-    result=$(start_worker_fast $i $port)
-    WORKER_PIDS[$((i - 1))]="${result%%:*}"
-    ACTUAL_WORKER_PORTS[$((i - 1))]=$port
+    start_worker_fast $i $port
+    WORKER_PIDS[$((i - 1))]="$STARTED_WORKER_PID"
+    ACTUAL_WORKER_PORTS[$((i - 1))]="$STARTED_WORKER_PORT"
 done
 
 echo "[$_H] All $NUM_WORKERS workers spawned in $(($(date +%s) - START_SPAWN))s"
@@ -454,6 +532,7 @@ while [ $retry_round -lt $MAX_STARTUP_RETRIES ]; do
     for i in $(seq 1 $NUM_WORKERS); do
         idx=$((i - 1))
         worker_is_alive "${WORKER_PIDS[$idx]}" && continue
+        wait "${WORKER_PIDS[$idx]}" 2>/dev/null || true
         worker_had_port_conflict $i && FAILED_WORKERS+=($i)
     done
 
@@ -465,9 +544,9 @@ while [ $retry_round -lt $MAX_STARTUP_RETRIES ]; do
     for i in "${FAILED_WORKERS[@]}"; do
         idx=$((i - 1))
         new_port=$((SANDBOX_WORKER_BASE_PORT + i - 1 + PORT_OFFSET))
-        result=$(start_worker_fast $i $new_port)
-        WORKER_PIDS[$idx]="${result%%:*}"
-        ACTUAL_WORKER_PORTS[$idx]=$new_port
+        start_worker_fast $i $new_port
+        WORKER_PIDS[$idx]="$STARTED_WORKER_PID"
+        ACTUAL_WORKER_PORTS[$idx]="$STARTED_WORKER_PORT"
     done
 
     retry_round=$((retry_round + 1))
@@ -599,7 +678,8 @@ if [ "$IS_MASTER" = "1" ]; then
     fi
 
     echo "[$_H] Starting nginx on port $NGINX_PORT..."
-    nginx
+    nginx -g 'daemon off;' &
+    NGINX_MASTER_PID=$!
 else
     # --- Worker node: local nginx proxy forwarding to master ---
     echo "[$_H] Starting nginx proxy to master $MASTER_NODE:$NGINX_PORT..."
@@ -614,9 +694,41 @@ else
         exit 1
     fi
 
-    nginx
+    nginx -g 'daemon off;' &
+    NGINX_MASTER_PID=$!
     echo "[$_H] Nginx proxy started: localhost:$NGINX_PORT -> $MASTER_NODE:$NGINX_PORT"
 fi
+
+# Wait until the exact tracked nginx process has loaded its configuration and
+# can serve requests before enabling ld.so.preload network blocking below.
+nginx_health_check() {
+    case "$NGINX_PORT" in
+        unix:*)
+            curl -s -f --connect-timeout 1 --max-time 2 \
+                --unix-socket "${NGINX_PORT#unix:}" http://localhost/health > /dev/null 2>&1
+            ;;
+        *)
+            curl -s -f --connect-timeout 1 --max-time 2 \
+                "http://127.0.0.1:${NGINX_PORT}/health" > /dev/null 2>&1
+            ;;
+    esac
+}
+
+NGINX_READY_TIMEOUT=90
+NGINX_READY_START=$(date +%s)
+while ! nginx_health_check; do
+    if ! pid_is_running "$NGINX_MASTER_PID"; then
+        wait "$NGINX_MASTER_PID" 2>/dev/null || true
+        echo "[$_H] ERROR: Nginx died before becoming ready"
+        cleanup 1
+    fi
+    if [ "$(($(date +%s) - NGINX_READY_START))" -ge "$NGINX_READY_TIMEOUT" ]; then
+        echo "[$_H] ERROR: Timeout waiting for nginx to become ready"
+        cleanup 1
+    fi
+    sleep 0.2
+done
+echo "[$_H] Nginx ready on port $NGINX_PORT"
 
 # =============================================================================
 # Network blocking
@@ -664,41 +776,41 @@ echo "  uWSGI: processes=$UWSGI_PROCESSES cheaper=${UWSGI_CHEAPER:-disabled}"
 # =============================================================================
 echo "[$_H] Monitoring processes..."
 
-if [ "$IS_MASTER" = "1" ]; then
-    (
-        while true; do
-            sleep 60
-            echo "--- [$_H] Worker Load Stats (Top 10) at $(date) ---"
-            grep "upstream:" /var/log/nginx/access.log 2>/dev/null \
-                | awk -F'upstream: ' '{print $2}' | awk -F' session: ' '{print $1}' \
-                | sort | uniq -c | sort -nr | head -n 10 || echo "No logs yet"
-            echo "--- End Stats ---"
-        done
-    ) &
-fi
-
+MONITOR_ITERATION=0
 while true; do
     for idx in "${!WORKER_PIDS[@]}"; do
         pid=${WORKER_PIDS[$idx]}
         i=$((idx + 1))
-        if ! kill -0 "$pid" 2>/dev/null; then
+        if ! pid_is_running "$pid"; then
+            wait "$pid" 2>/dev/null || true
             echo "[$_H] WARNING: Worker $i (PID $pid) died — restarting..."
             if [ "$NETWORK_BLOCKING_ACTIVE" = "1" ]; then
                 echo "[$_H] WARNING: Network blocking (ld.so.preload) is active. The restarted"
                 echo "[$_H]   worker may fail to bind its port because socket() is blocked for"
                 echo "[$_H]   new processes. Remaining workers continue serving requests."
             fi
-            result=$(start_worker $i)
-            WORKER_PIDS[$idx]="${result%%:*}"
-            ACTUAL_WORKER_PORTS[$idx]="${result##*:}"
+            start_worker $i
+            WORKER_PIDS[$idx]="$STARTED_WORKER_PID"
+            ACTUAL_WORKER_PORTS[$idx]="$STARTED_WORKER_PORT"
         fi
     done
 
-    if ! pgrep nginx > /dev/null; then
+    if ! pid_is_running "$NGINX_MASTER_PID"; then
+        wait "$NGINX_MASTER_PID" 2>/dev/null || true
         echo "[$_H] ERROR: Nginx died unexpectedly"
-        cleanup
-        exit 1
+        cleanup 1
     fi
 
-    sleep 10
+    sleep 10 &
+    MONITOR_SLEEP_PID=$!
+    wait "$MONITOR_SLEEP_PID" || true
+    MONITOR_SLEEP_PID=""
+    MONITOR_ITERATION=$((MONITOR_ITERATION + 1))
+    if [ "$IS_MASTER" = "1" ] && [ $((MONITOR_ITERATION % 6)) -eq 0 ]; then
+        echo "--- [$_H] Worker Load Stats (Top 10) at $(date) ---"
+        grep "upstream:" /var/log/nginx/access.log 2>/dev/null \
+            | awk -F'upstream: ' '{print $2}' | awk -F' session: ' '{print $1}' \
+            | sort | uniq -c | sort -nr | head -n 10 || echo "No logs yet"
+        echo "--- End Stats ---"
+    fi
 done
