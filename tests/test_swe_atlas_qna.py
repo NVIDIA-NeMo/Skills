@@ -21,7 +21,11 @@ from nemo_skills.evaluation.metrics.swe_atlas_qna_metrics import (
     score_swe_atlas_qna_prediction,
 )
 from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask, extract_final_answer
-from nemo_skills.inference.eval.swebench import SupportedAgentFrameworks, SweBenchGenerationTask
+from nemo_skills.inference.eval.swebench import (
+    SupportedAgentFrameworks,
+    SweBenchGenerationTask,
+    _override_mini_swe_agent_cwd,
+)
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.swe_atlas_qna_judge import SweAtlasQnAJudgeTask, _extract_rating
 from nemo_skills.prompt.utils import get_prompt
@@ -38,6 +42,20 @@ RUBRIC = [
         "annotations": {"type": "negative hli verifier", "importance": "must have"},
     },
 ]
+
+
+def test_mini_swe_agent_cwd_override_preserves_yaml_default():
+    config = {"environment": {"cwd": "/app"}}
+
+    _override_mini_swe_agent_cwd(config, None)
+    assert config["environment"]["cwd"] == "/app"
+
+    _override_mini_swe_agent_cwd(config, "/testbed")
+    assert config["environment"]["cwd"] == "/testbed"
+
+    config_without_environment = {}
+    _override_mini_swe_agent_cwd(config_without_environment, "/testbed")
+    assert config_without_environment["environment"]["cwd"] == "/testbed"
 
 
 def _rating(criterion, status):

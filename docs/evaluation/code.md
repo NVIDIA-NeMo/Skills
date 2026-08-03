@@ -417,6 +417,8 @@ ns eval \
 
 Generation-only outputs are written directly to `<OUTPUT_DIR>/ubuntu/eval-results/swe-atlas-qna`. The pipeline does not add judgement fields, launch automatic result summarization, or create `metrics.json` for this benchmark. `--skip_judge` cannot be combined with reference-answer evaluation or explicit `--judge_*` options.
 
+The mini-SWE-agent working directory defaults to the value in its YAML configuration. For compatible datasets whose repositories are stored outside `/app`, pass `++agent_cwd=/testbed`; NeMo-Skills copies each task's `container_repo_dir` to `/testbed` before launching the agent.
+
 #### Scoring
 
 Each rubric criterion is judged independently. Positive criteria pass when the required behavior is present, while negative criteria pass when the prohibited behavior is absent. The reported metrics are:

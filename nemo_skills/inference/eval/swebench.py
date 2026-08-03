@@ -99,6 +99,12 @@ NS_TO_OPENHANDS_PARAM = {
 }
 
 
+def _override_mini_swe_agent_cwd(config: dict, agent_cwd: str | None) -> None:
+    """Override mini-SWE-agent's working directory while preserving its YAML default."""
+    if agent_cwd is not None:
+        config.setdefault("environment", {})["cwd"] = agent_cwd
+
+
 # not inheriting since most parameters are not supported because we don't use our model client here
 # TODO: should we fix that?
 @nested_dataclass(kw_only=True)
@@ -119,6 +125,7 @@ class SweBenchGenerationConfig:
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max iterations for the agent
+    agent_cwd: str | None = None  # Override the working directory from the mini-SWE-agent YAML config
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -685,6 +692,8 @@ class SweBenchGenerationTask(GenerationTask):
         base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
+
+        _override_mini_swe_agent_cwd(full_config, self.cfg.agent_cwd)
 
         if "agent" not in full_config:
             full_config["agent"] = {}
