@@ -389,6 +389,14 @@ class SweBenchGenerationTask(GenerationTask):
     def setup_llm(self):
         return
 
+    def wait_for_server(self):
+        # gold_patch never talks to an LLM; skip the curl handshake that would hang forever
+        # when ns eval is given a dummy --server_address to avoid spinning up vLLM.
+        if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            LOG.info("Skipping server wait for gold_patch (no LLM server required).")
+            return
+        super().wait_for_server()
+
     def setup_litellm_cache(self):
         return
 
