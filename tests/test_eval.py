@@ -360,7 +360,7 @@ def test_eval_skip_judge_omits_judge_and_summarization_for_judge_benchmark(monke
             generation_args="++evaluate=False",
             judge_args="",
             judge_pipeline_args={},
-            requires_sandbox=True,
+            requires_sandbox=False,
             keep_mounts_for_sandbox=False,
             generation_module="nemo_skills.inference.eval.swe_atlas_qna",
             num_samples=0,
@@ -371,6 +371,41 @@ def test_eval_skip_judge_omits_judge_and_summarization_for_judge_benchmark(monke
         )
 
     _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
+    prepared_args = benchmark_args()
+    prepared_args.job_ids = [0]
+    generation_unit = eval_utils.EvalGenerationUnit(
+        output_dir="/tmp/out/eval-results/swe-atlas-qna",
+        input_file=prepared_args.input_file,
+        extra_arguments="++evaluate=False",
+        random_seed=None,
+        chunk_id=None,
+        num_chunks=None,
+        script=prepared_args.generation_module,
+        requirements=[],
+        wandb_parameters=None,
+        with_sandbox=False,
+    )
+    monkeypatch.setattr(
+        eval_pipeline,
+        "prepare_eval_commands",
+        lambda **kwargs: (
+            {"swe-atlas-qna": prepared_args},
+            [([generation_unit], {"swe-atlas-qna"}, False, False, [])],
+        ),
+    )
+    generation_pipelines = []
+
+    def fake_pipeline_run(self, **kwargs):
+        generation_pipelines.append(self)
+        return ["generation-task"]
+
+    monkeypatch.setattr(eval_pipeline.Pipeline, "run", fake_pipeline_run)
+    submitted_experiments = []
+    monkeypatch.setattr(
+        eval_pipeline.pipeline_utils,
+        "run_exp",
+        lambda exp, *args, **kwargs: submitted_experiments.append(exp),
+    )
     monkeypatch.setattr(
         eval_pipeline,
         "_generate",
@@ -391,9 +426,12 @@ def test_eval_skip_judge_omits_judge_and_summarization_for_judge_benchmark(monke
         server_type="openai",
         server_address="http://server",
         skip_judge=True,
+        skip_hf_home_check=True,
     )
 
-    assert result is None
+    assert result is not None
+    assert len(generation_pipelines) == 1
+    assert submitted_experiments == [result]
 
 
 def test_eval_skip_judge_still_summarizes_non_judge_benchmarks(monkeypatch, tmp_path):

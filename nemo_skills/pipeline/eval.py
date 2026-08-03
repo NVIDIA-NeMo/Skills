@@ -786,6 +786,7 @@ def eval(
             job_batch_to_last_job_name[job_idx] = internal_job_name
 
         if jobs:
+            has_tasks = True
             pipeline = Pipeline(
                 name=expname,
                 cluster_config=cluster_config,
