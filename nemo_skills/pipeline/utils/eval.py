@@ -48,6 +48,7 @@ class BenchmarkArgs:
     benchmark_group: str | None = None
     score_module: str | None = None
     reference_answer_key: str | None = None
+    judge_skipped: bool = False
     job_ids: list[int] = field(default_factory=list)
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
@@ -101,6 +102,7 @@ def get_benchmark_args_from_module(
     override_dict=None,
     local_data_path=None,
     data_dir=None,
+    skip_judge=False,
 ):
     if split is None:
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
@@ -174,6 +176,10 @@ def get_benchmark_args_from_module(
         get_arg_from_module_or_dict(benchmark_module, "JUDGE_PIPELINE_ARGS", {}, override_dict)
     )
     judge_args = get_arg_from_module_or_dict(benchmark_module, "JUDGE_ARGS", "", override_dict)
+    judge_skipped = skip_judge and bool(judge_args or judge_pipeline_args or eval_requires_judge)
+    if judge_skipped:
+        judge_args = ""
+        judge_pipeline_args = {}
     num_samples = get_arg_from_module_or_dict(benchmark_module, "NUM_SAMPLES", 0, override_dict)
     num_chunks = get_arg_from_module_or_dict(benchmark_module, "NUM_CHUNKS", 0, override_dict)
     if num_chunks == 0:
@@ -214,6 +220,7 @@ def get_benchmark_args_from_module(
         benchmark_group=benchmark_group,
         metrics_type=metrics_type,
         reference_answer_key=reference_answer_key,
+        judge_skipped=judge_skipped,
         sandbox_env_overrides=sandbox_env_overrides,
     )
 
@@ -228,7 +235,13 @@ def _resolve_data_path(data_path):
 
 
 def add_default_args(
-    cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge, extra_benchmark_map=None
+    cluster_config,
+    benchmark_or_group,
+    split,
+    data_dir,
+    eval_requires_judge,
+    extra_benchmark_map=None,
+    skip_judge=False,
 ):
     benchmark_or_group_module, data_path = get_dataset_module(
         dataset=benchmark_or_group,
@@ -269,6 +282,7 @@ def add_default_args(
                 override_dict=override_dict,
                 local_data_path=local_data_path,
                 data_dir=data_dir,
+                skip_judge=skip_judge,
             )
             if data_dir:
                 benchmark_args.generation_args += f" ++eval_config.data_dir={data_dir} "
@@ -290,6 +304,7 @@ def add_default_args(
         eval_requires_judge=eval_requires_judge,
         local_data_path=local_data_path,
         data_dir=data_dir,
+        skip_judge=skip_judge,
     )
 
     if data_dir:
@@ -319,6 +334,7 @@ def prepare_eval_commands(
     generation_module=None,
     extra_benchmark_map=None,
     evaluate_reference_answer=False,
+    skip_judge=False,
 ):
     """
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
@@ -357,6 +373,7 @@ def prepare_eval_commands(
             data_dir,
             eval_requires_judge=eval_requires_judge,
             extra_benchmark_map=extra_benchmark_map,
+            skip_judge=skip_judge,
         )
         for benchmark_args in cur_benchmarks:
             benchmark = benchmark_args.name

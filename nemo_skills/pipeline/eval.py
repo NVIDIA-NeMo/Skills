@@ -271,6 +271,10 @@ def eval(
         False,
         help="If True, evaluate each benchmark's reference answer without running main model generation.",
     ),
+    skip_judge: bool = typer.Option(
+        False,
+        help="If True, skip configured judge and scoring stages and keep generation-only outputs.",
+    ),
     single_node_mode: SingleNodeMode = typer.Option(
         SingleNodeMode.parallel,
         help="Whether to run benchmarks in parallel or sequentially on a single node. "
@@ -376,6 +380,30 @@ def eval(
     extra_arguments = f"{' '.join(ctx.args)}"
     LOG.info("Starting evaluation job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
+
+    if skip_judge:
+        if evaluate_reference_answer:
+            raise ValueError("--skip-judge cannot be combined with --evaluate-reference-answer")
+        judge_options = {
+            "judge_step_fn": judge_step_fn,
+            "judge_model": judge_model,
+            "judge_server_address": judge_server_address,
+            "judge_server_type": judge_server_type,
+            "judge_server_gpus": judge_server_gpus,
+            "judge_server_nodes": judge_server_nodes,
+            "judge_server_args": judge_server_args,
+            "judge_server_entrypoint": judge_server_entrypoint,
+            "judge_generation_type": judge_generation_type,
+            "judge_generation_module": judge_generation_module,
+            "judge_container": judge_container,
+            "judge_server_container": judge_server_container,
+            "extra_judge_args": extra_judge_args,
+            "judge_pipeline_kwargs": judge_pipeline_kwargs,
+            "judge_sbatch_kwargs": judge_sbatch_kwargs,
+        }
+        conflicting_options = [name for name, value in judge_options.items() if value not in (None, "")]
+        if conflicting_options:
+            raise ValueError("--skip-judge cannot be combined with judge options: " + ", ".join(conflicting_options))
 
     # Convert server_type enum values to strings
     def convert_server_type_to_string(st):
@@ -508,6 +536,7 @@ def eval(
         generation_module=generation_module,
         extra_benchmark_map=extra_benchmark_map,
         evaluate_reference_answer=evaluate_reference_answer,
+        skip_judge=skip_judge,
     )
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
@@ -772,6 +801,8 @@ def eval(
                 all_tasks.append(job_name_to_handle[last_job_name])
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
+            if benchmark_args.judge_skipped:
+                continue
             if not eval_requires_judge and not benchmark_args.requires_judge:
                 continue
             if evaluate_reference_answer:
@@ -887,10 +918,15 @@ def eval(
         group_metric_files = defaultdict(list)
         group_tasks = defaultdict(list)
         group_module = {}
+        skipped_benchmark_groups = set()
 
         # setting summarize results tasks
         if auto_summarize_results:
             for benchmark, benchmark_args in benchmarks_dict.items():
+                if benchmark_args.judge_skipped:
+                    if benchmark_args.benchmark_group:
+                        skipped_benchmark_groups.add(benchmark_args.benchmark_group)
+                    continue
                 # TODO: add logic if metrics.json exists, we don't run this!
                 has_tasks = True
                 metric_file = f"{output_dir}/{benchmark_args.eval_subfolder}/metrics.json"
@@ -957,6 +993,8 @@ def eval(
             # TODO: this should be done by summarize_results directly and we just call it on a group
             #       otherwise behavior is inconsistent when running summarize_results standalone, which isn't great
             for group, metric_files in group_metric_files.items():
+                if group in skipped_benchmark_groups:
+                    continue
                 has_tasks = True
                 command = (
                     f"python -m nemo_skills.evaluation.compute_group_score {' '.join(metric_files)} "

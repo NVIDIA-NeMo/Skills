@@ -54,8 +54,8 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         if cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
             raise ValueError("SWE-Atlas-QnA supports only agent_framework=mini_swe_agent")
         if cfg.evaluate:
-            raise ValueError(
-                "SWE-Atlas-QnA does not support evaluate=True; the judge pipeline scores generations separately"
+            LOG.warning(
+                "SWE-Atlas-QnA does not support inline evaluation; overriding evaluate=True with evaluate=False"
             )
         cfg.evaluate = False
         super().__init__(cfg)

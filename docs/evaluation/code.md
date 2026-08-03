@@ -398,9 +398,24 @@ ns eval "${COMMON_ARGS[@]}" \
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
 
-The benchmark configuration supplies the mini-SWE-agent prompt and defaults to 250 agent turns. `++evaluate=True` is not supported because SWE-Atlas-QnA answers are scored by the separate rubric judge rather than the SWE-bench test harness.
+The benchmark configuration supplies the mini-SWE-agent prompt and defaults to 250 agent turns. SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
 
 The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
+
+To run generation without launching the rubric judge or computing scores, add `--skip-judge`:
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=<MODEL_PATH> \
+    --server_type=<SERVER_TYPE> \
+    --benchmarks=swe-atlas-qna \
+    --split=default.ubuntu \
+    --output_dir=<OUTPUT_DIR>/ubuntu \
+    --skip-judge
+```
+
+Generation-only outputs are written directly to `<OUTPUT_DIR>/ubuntu/eval-results/swe-atlas-qna`. The pipeline does not add judgement fields, launch automatic result summarization, or create `metrics.json` for this benchmark. `--skip-judge` cannot be combined with reference-answer evaluation or explicit `--judge_*` options.
 
 #### Scoring
 
