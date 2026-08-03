@@ -19,10 +19,12 @@ There is also a gated HuggingFace mirror at https://huggingface.co/datasets/data
 this script clones the public GitHub repo by default because HF access requires accepting
 dataset terms.
 
-The repository, Harbor task directories, and JSONL are materialized directly under
+Harbor task directories and JSONL are materialized directly under
 ``$NEMO_SKILLS_DATA_DIR/deep-swe``. The pipeline sets this environment variable from
-``ns prepare_data --data_dir``. At eval time, ``ns eval --data_dir=...`` resolves tests
-from ``{data_dir}/deep-swe/tasks`` automatically (override with ``++eval_config.test_dir``).
+``ns prepare_data --data_dir``. The Harbor git checkout is used only during prepare and
+deleted afterward; eval needs ``tasks/`` and the JSONL only. At eval time,
+``ns eval --data_dir=...`` resolves tests from ``{data_dir}/deep-swe/tasks`` automatically
+(override with ``++eval_config.test_dir``).
 
 Example:
     ns prepare_data deep-swe \\
@@ -241,25 +243,30 @@ def main():
     dataset_dir.mkdir(parents=True, exist_ok=True)
     local_tasks = dataset_dir / "tasks"
     repo_dir = dataset_dir / "deep-swe-repo"
-    _clone_or_update_repo(args.repo_url, repo_dir, args.repo_commit)
-    tasks_root = _sync_tasks(repo_dir / "tasks", local_tasks)
+    try:
+        _clone_or_update_repo(args.repo_url, repo_dir, args.repo_commit)
+        tasks_root = _sync_tasks(repo_dir / "tasks", local_tasks)
 
-    rows = []
-    for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()):
-        if not (task_dir / "task.toml").exists():
-            continue
-        rows.append(_load_task(task_dir, args.container_formatter, dataset_dir))
+        rows = []
+        for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()):
+            if not (task_dir / "task.toml").exists():
+                continue
+            rows.append(_load_task(task_dir, args.container_formatter, dataset_dir))
 
-    if not rows:
-        raise RuntimeError(f"No DeepSWE tasks found under {tasks_root}")
+        if not rows:
+            raise RuntimeError(f"No DeepSWE tasks found under {tasks_root}")
 
-    output_file = dataset_dir / f"{args.setup}.jsonl"
-    with open(output_file, "w") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        output_file = dataset_dir / f"{args.setup}.jsonl"
+        with open(output_file, "w") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-    print(f"Wrote {len(rows)} DeepSWE tasks to {output_file}")
-    print(f"Harbor task dirs ready at {tasks_root}")
+        print(f"Wrote {len(rows)} DeepSWE tasks to {output_file}")
+        print(f"Harbor task dirs ready at {tasks_root}")
+    finally:
+        # Eval only needs tasks/ + JSONL; drop the temporary Harbor checkout.
+        if repo_dir.exists():
+            shutil.rmtree(repo_dir)
 
 
 if __name__ == "__main__":

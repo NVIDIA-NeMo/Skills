@@ -34,8 +34,9 @@ build
 .venv
 *.lock
 
-# Cloned DeepSWE Harbor checkout + materialized task dirs from ns prepare_data deep-swe.
-# Kept under --data_dir on cluster (REQUIRES_DATA_DIR); not packaged with every job.
+# Temporary Harbor checkout (deleted after prepare) and materialized task dirs from
+# ns prepare_data deep-swe. Kept under --data_dir on cluster (REQUIRES_DATA_DIR);
+# not packaged with every job.
 nemo_skills/dataset/deep-swe/deep-swe-repo/
 nemo_skills/dataset/deep-swe/tasks/
 
