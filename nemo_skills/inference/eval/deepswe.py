@@ -432,9 +432,9 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             metrics = await self._run_deepswe_verifier(data_point, str(model_patch))
 
         return {
-            "deep-swe-metrics": metrics,
-            "deep-swe-outputs": trajectory_dict,
-            "generation": "",
+            "swe-bench-metrics": metrics,
+            "swe-bench-outputs": trajectory_dict,
+            "generation": "",  # required TODO: we should fix this
         }
 
 

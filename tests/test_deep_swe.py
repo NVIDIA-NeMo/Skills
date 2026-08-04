@@ -72,7 +72,7 @@ def test_deepswe_metrics_aggregate():
     metrics.update(
         [
             {
-                "deep-swe-metrics": {
+                "swe-bench-metrics": {
                     "resolved": True,
                     "patch_exists": True,
                     "patch_successfully_applied": True,
@@ -87,7 +87,7 @@ def test_deepswe_metrics_aggregate():
     metrics.update(
         [
             {
-                "deep-swe-metrics": {
+                "swe-bench-metrics": {
                     "resolved": False,
                     "patch_exists": True,
                     "patch_successfully_applied": True,
@@ -102,7 +102,7 @@ def test_deepswe_metrics_aggregate():
     # BaseMetrics stores means over updates; spot-check resolved rate semantics via score dict helper.
     score = metrics._get_score_dict(
         {
-            "deep-swe-metrics": {
+            "swe-bench-metrics": {
                 "resolved": True,
                 "patch_exists": True,
                 "patch_successfully_applied": True,
@@ -120,7 +120,7 @@ def test_deepswe_metrics_aggregate():
 def test_deepswe_metrics_none_when_evaluate_false():
     score = DeepSweMetrics()._get_score_dict(
         {
-            "deep-swe-metrics": {
+            "swe-bench-metrics": {
                 "resolved": None,
                 "patch_exists": True,
                 "patch_successfully_applied": None,

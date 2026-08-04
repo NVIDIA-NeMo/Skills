@@ -61,10 +61,14 @@ class SweBenchMetrics(BaseMetrics):
 
 
 class DeepSweMetrics(BaseMetrics):
-    """Aggregate Harbor reward.json fields produced by DeepSWE verification."""
+    """Aggregate Harbor reward.json fields produced by DeepSWE verification.
+
+    Uses the same ``swe-bench-metrics`` / ``swe-bench-outputs`` prediction keys as
+    SWE-bench; Harbor-specific fields (reward/f2p/p2p/partial) live inside metrics.
+    """
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
-        metrics = prediction["deep-swe-metrics"]
+        metrics = prediction["swe-bench-metrics"]
         # Use `is True` / `is False` so evaluate=False (None metrics) does not
         # get counted as unresolved / patch_cant_apply.
         return {
@@ -79,7 +83,7 @@ class DeepSweMetrics(BaseMetrics):
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         return {
-            "deep-swe-metrics": {
+            "swe-bench-metrics": {
                 "resolved": False,
                 "patch_exists": True,
                 "patch_successfully_applied": True,
