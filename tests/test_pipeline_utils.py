@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -19,6 +20,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nemo_skills.pipeline.utils.declarative import Command
+from nemo_skills.pipeline.utils.exp import get_exp
 from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_expected_done_files,
@@ -35,6 +37,18 @@ def create_done_files(output_dir, seed_chunk_pairs):
         os.makedirs(os.path.dirname(done_file), exist_ok=True)
         with open(done_file, "w") as f:
             f.write("")
+
+
+def test_get_exp_reuse_removes_nemo_skills_handlers(monkeypatch):
+    """A nested pipeline must not retain a handler beside nemo-run's root handler."""
+    logger = logging.getLogger("nemo_skills")
+    monkeypatch.setattr(logger, "handlers", [logging.NullHandler()])
+    reused_exp = object()
+
+    with get_exp("nested", {"executor": "local"}, _reuse_exp=reused_exp) as exp:
+        assert exp is reused_exp
+
+    assert logger.handlers == []
 
 
 def test_get_chunked_rs_filename():

@@ -1114,11 +1114,12 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
 
 
 def get_exp(expname, cluster_config, _reuse_exp=None):
+    # nemo-run defines the root handlers, so remove ours before creating or
+    # reusing an experiment to avoid duplicate logs from propagated records.
+    remove_handlers()
     # Use existing experiment if provided, otherwise create a new one
     if _reuse_exp:
         return contextlib.nullcontext(_reuse_exp)
-    # nemo-run redefines the handlers, so removing ours to avoid duplicate logs
-    remove_handlers()
     if cluster_config["executor"] == "slurm":
         return run.Experiment(
             expname,
