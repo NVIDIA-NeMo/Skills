@@ -441,6 +441,101 @@ class SweBenchGenerationTask(GenerationTask):
             else:
                 return
 
+    def _build_apptainer_cmd(self, container_name: str, combined_command: str, extra_apptainer_args: str = "") -> str:
+        """Build a standard Apptainer exec command with NeMo-Skills bind mounts."""
+        return (
+            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
+            f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
+            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
+            f"--mount type=bind,src=/root,dst=/root_mount,ro "
+            f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
+            f"{extra_apptainer_args} "
+            f"{container_name} bash -c {shlex.quote(combined_command)}"
+        )
+
+    async def _run_apptainer_with_retries(
+        self,
+        data_point,
+        apptainer_cmd: str,
+        expected_file_pattern: str,
+        mode: str,
+        timeout: float,
+        *,
+        require_zero_exit: bool = True,
+        select_matched_file=None,
+        failure_label: str = "Job failed",
+    ) -> str:
+        """Run an Apptainer command with retries until an expected output file appears.
+
+        Args:
+            select_matched_file: Optional ``callable(list[str]) -> str`` that picks among
+                ``glob`` matches. Defaults to requiring exactly one match.
+            require_zero_exit: If True, non-zero process exit codes are treated as failures.
+                Harbor verifiers often exit non-zero while still writing reward files, so
+                DeepSWE sets this to False.
+        """
+
+        def _default_select(pred_files: list[str]) -> str:
+            if len(pred_files) == 1:
+                return pred_files[0]
+            raise ValueError(
+                f"Expected exactly one file matching {expected_file_pattern} for "
+                f"{data_point['instance_id']}, found {len(pred_files)}."
+            )
+
+        select_fn = select_matched_file or _default_select
+        logs_dir = self.output_dir / "apptainer_logs"
+        logs_dir.mkdir(exist_ok=True)
+
+        for attempt in range(self.cfg.max_retries):
+            log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
+            LOG.info(
+                "Starting execution of an apptainer command (attempt %d of %d). Logs are available at %s",
+                attempt + 1,
+                self.cfg.max_retries,
+                log_file_path,
+            )
+            pred_files: list[str] = []
+            try:
+                with open(log_file_path, "w") as log_file:
+                    try:
+                        process = await asyncio.create_subprocess_shell(
+                            apptainer_cmd, stdout=log_file, stderr=log_file
+                        )
+                        await asyncio.wait_for(process.communicate(), timeout=timeout)
+
+                        if require_zero_exit and process.returncode != 0:
+                            raise ValueError(f"Command failed with return code {process.returncode}")
+
+                    except asyncio.TimeoutError:
+                        if process.returncode is None:
+                            process.kill()
+                            await process.wait()
+                        attempt = self.cfg.max_retries  # Force exit the loop on timeout
+                        raise ValueError("Command timed out")
+
+                pred_files = glob.glob(expected_file_pattern, recursive=True)
+                return select_fn(pred_files)
+            except Exception:
+                if attempt < self.cfg.max_retries - 1:
+                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
+                    LOG.warning(
+                        "Attempt %d failed for instance %s. Retrying in %d seconds...",
+                        attempt + 1,
+                        data_point["instance_id"],
+                        retry_interval,
+                    )
+                    if retry_interval > 0:
+                        await asyncio.sleep(retry_interval)
+                    continue
+                LOG.error("All %d attempts failed for instance %s", self.cfg.max_retries, data_point["instance_id"])
+                LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
+                raise ValueError(
+                    f"{failure_label} for {data_point['instance_id']}. Check logs at: {log_file_path}. "
+                    f"Expected a file matching {expected_file_pattern}, "
+                    f"found {len(pred_files)}."
+                )
+
     async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
         """Execute a command in an Apptainer container with retry logic."""
         # Commands to be executed in the Apptainer container, in order
@@ -520,87 +615,30 @@ class SweBenchGenerationTask(GenerationTask):
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
-
-        # Launch Apptainer container and execute the command
-        apptainer_cmd = (
-            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
-            f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
-            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
-            f"--mount type=bind,src=/root,dst=/root_mount,ro "
-            f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
-            f"{extra_apptainer_args} "
-            f"{container_name} bash -c {shlex.quote(combined_command)}"
+        apptainer_cmd = self._build_apptainer_cmd(container_name, combined_command, extra_apptainer_args)
+        return await self._run_apptainer_with_retries(
+            data_point,
+            apptainer_cmd,
+            expected_file_pattern,
+            mode,
+            timeout,
+            require_zero_exit=True,
         )
 
-        # Create logs directory if it doesn't exist
-        logs_dir = self.output_dir / "apptainer_logs"
-        logs_dir.mkdir(exist_ok=True)
-
-        # Retry apptainer command up to max_retries times
-        for attempt in range(self.cfg.max_retries):
-            log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
-            LOG.info(
-                "Starting execution of an apptainer command (attempt %d of %d). Logs are available at %s",
-                attempt + 1,
-                self.cfg.max_retries,
-                log_file_path,
-            )
-
-            try:
-                # Stream output to log file as it appears
-                with open(log_file_path, "w") as log_file:
-                    try:
-                        # Create async subprocess
-                        process = await asyncio.create_subprocess_shell(
-                            apptainer_cmd, stdout=log_file, stderr=log_file
-                        )
-                        # Wait for completion with timeout
-                        await asyncio.wait_for(process.communicate(), timeout=timeout)
-
-                        if process.returncode != 0:
-                            raise ValueError(f"Command failed with return code {process.returncode}")
-
-                    except asyncio.TimeoutError:
-                        # Kill the process if it's still running
-                        if process.returncode is None:
-                            process.kill()
-                            await process.wait()
-                        attempt = self.cfg.max_retries  # Force exit the loop on timeout
-                        raise ValueError("Command timed out")
-
-                # Look for the expected file
-                pred_files = glob.glob(expected_file_pattern, recursive=True)
-
-                if len(pred_files) == 1:
-                    # Success, break out of retry loop
-                    return pred_files[0]
-                else:
-                    raise ValueError(
-                        f"Expected exactly one file matching {expected_file_pattern} for {data_point['instance_id']}, "
-                        f"found {len(pred_files)}."
-                    )
-            except Exception:
-                if attempt < self.cfg.max_retries - 1:
-                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
-                    LOG.warning(
-                        "Attempt %d failed for instance %s. Retrying in %d seconds...",
-                        attempt + 1,
-                        data_point["instance_id"],
-                        retry_interval,
-                    )
-                    if retry_interval > 0:
-                        await asyncio.sleep(retry_interval)
-                    continue
-                else:
-                    LOG.error(
-                        "All %d attempts failed for instance %s", self.cfg.max_retries, data_point["instance_id"]
-                    )
-                    LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
-                    raise ValueError(
-                        f"Job failed for {data_point['instance_id']}. Check logs at: {log_file_path}. "
-                        f"Expected exactly one file matching {expected_file_pattern}, "
-                        f"found {len(pred_files) if 'pred_files' in locals() else 'unknown'}."
-                    )
+    async def _run_agent(self, data_point, api_base) -> str:
+        """Dispatch to the configured agent framework and return the prediction file path."""
+        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+            return await self._run_swe_agent(data_point, api_base)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+            return await self._run_mini_swe_agent(data_point, api_base)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+            return await self._run_openhands(data_point, api_base)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            return await self._get_gold_patch(data_point)
+        raise ValueError(
+            f"Unsupported agent framework: {self.cfg.agent_framework}. "
+            f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
+        )
 
     async def _run_swe_agent(self, data_point, api_base):
         """
@@ -937,19 +975,7 @@ class SweBenchGenerationTask(GenerationTask):
         # Run the agent rollout.
         # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
         async with self.semaphore:
-            if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-                pred_file = await self._run_swe_agent(data_point, api_base)
-            elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-                pred_file = await self._run_mini_swe_agent(data_point, api_base)
-            elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-                pred_file = await self._run_openhands(data_point, api_base)
-            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-                pred_file = await self._get_gold_patch(data_point)
-            else:
-                raise ValueError(
-                    f"Unsupported agent framework: {self.cfg.agent_framework}. "
-                    f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
-                )
+            pred_file = await self._run_agent(data_point, api_base)
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
         with open(pred_file, "r") as f:

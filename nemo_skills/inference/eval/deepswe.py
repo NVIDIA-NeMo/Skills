@@ -21,12 +21,8 @@ harness, each task is scored with its Harbor ``tests/test.sh`` verifier.
 
 from __future__ import annotations
 
-import asyncio
-import glob
 import json
 import logging
-import random
-import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -34,7 +30,6 @@ from pathlib import Path
 import hydra
 
 from nemo_skills.inference.eval.swebench import (
-    SupportedAgentFrameworks,
     SweBenchGenerationConfig,
     SweBenchGenerationTask,
 )
@@ -278,69 +273,28 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
         container_name = _resolve_container(data_point)
+        apptainer_cmd = self._build_apptainer_cmd(container_name, combined_command, extra_apptainer_args)
 
-        apptainer_cmd = (
-            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
-            f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
-            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
-            f"--mount type=bind,src=/root,dst=/root_mount,ro "
-            f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
-            f"{extra_apptainer_args} "
-            f"{container_name} bash -c {shlex.quote(combined_command)}"
+        def select_reward_file(pred_files: list[str]) -> str:
+            # DeepSWE may write reward.json and/or crash-sentinel reward.txt.
+            # Prefer reward.json when both exist.
+            if not pred_files:
+                raise ValueError(
+                    f"Expected a file matching {expected_file_pattern} for {data_point['instance_id']}, found 0."
+                )
+            preferred = [p for p in pred_files if p.endswith("reward.json")]
+            return preferred[0] if preferred else pred_files[0]
+
+        return await self._run_apptainer_with_retries(
+            data_point,
+            apptainer_cmd,
+            expected_file_pattern,
+            mode="eval",
+            timeout=timeout,
+            require_zero_exit=False,
+            select_matched_file=select_reward_file,
+            failure_label="DeepSWE verifier failed",
         )
-
-        logs_dir = self.output_dir / "apptainer_logs"
-        logs_dir.mkdir(exist_ok=True)
-
-        for attempt in range(self.cfg.max_retries):
-            log_file_path = logs_dir / f"{data_point['instance_id']}_eval_attempt{attempt + 1}.log"
-            LOG.info(
-                "Starting DeepSWE Harbor verifier (attempt %d of %d). Logs: %s",
-                attempt + 1,
-                self.cfg.max_retries,
-                log_file_path,
-            )
-            pred_files: list[str] = []
-            try:
-                with open(log_file_path, "w") as log_file:
-                    process = await asyncio.create_subprocess_shell(apptainer_cmd, stdout=log_file, stderr=log_file)
-                    try:
-                        await asyncio.wait_for(process.communicate(), timeout=timeout)
-                    except asyncio.TimeoutError:
-                        if process.returncode is None:
-                            process.kill()
-                            await process.wait()
-                        raise ValueError("Command timed out")
-
-                pred_files = glob.glob(expected_file_pattern, recursive=True)
-                # DeepSWE may write reward.json and/or crash-sentinel reward.txt.
-                # Prefer reward.json when both exist.
-                if pred_files:
-                    preferred = [p for p in pred_files if p.endswith("reward.json")]
-                    return preferred[0] if preferred else pred_files[0]
-                raise ValueError(
-                    f"Expected a file matching {expected_file_pattern} for "
-                    f"{data_point['instance_id']}, found {len(pred_files)}."
-                )
-            except Exception:
-                if attempt < self.cfg.max_retries - 1:
-                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
-                    LOG.warning(
-                        "Attempt %d failed for DeepSWE instance %s. Retrying in %d seconds...",
-                        attempt + 1,
-                        data_point["instance_id"],
-                        retry_interval,
-                    )
-                    if retry_interval > 0:
-                        await asyncio.sleep(retry_interval)
-                    continue
-                LOG.error("All %d attempts failed for instance %s", self.cfg.max_retries, data_point["instance_id"])
-                LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
-                raise ValueError(
-                    f"DeepSWE verifier failed for {data_point['instance_id']}. Check logs at: {log_file_path}. "
-                    f"Expected a file matching {expected_file_pattern}, "
-                    f"found {len(pred_files)}."
-                )
 
     async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
         """Apply model.patch in a pristine task image and run tests/test.sh."""
@@ -385,21 +339,6 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
 
         reward = _load_verifier_reward(eval_out)
         return parse_deepswe_reward(reward, patch_exists=True)
-
-    async def _run_agent(self, data_point, api_base) -> str:
-        """Dispatch to the same agent runners as SWE-bench."""
-        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            return await self._run_swe_agent(data_point, api_base)
-        if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-            return await self._run_mini_swe_agent(data_point, api_base)
-        if self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            return await self._run_openhands(data_point, api_base)
-        if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            return await self._get_gold_patch(data_point)
-        raise ValueError(
-            f"Unsupported agent framework: {self.cfg.agent_framework}. "
-            f"Supported: {', '.join(f.value for f in SupportedAgentFrameworks)}."
-        )
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         if "base_url" in self.cfg.server:
