@@ -18,6 +18,6 @@ METRICS_TYPE = "deep-swe"
 # Agent generation reuses SWE-bench (swe_agent / mini_swe_agent / openhands / gold_patch).
 # Grading uses Harbor tests/test.sh via deepswe.py (not the SWE-bench harness).
 GENERATION_MODULE = "nemo_skills.inference.eval.deepswe"
-GENERATION_ARGS = "++agent_framework=mini_swe_agent ++agent_max_turns=250"
+GENERATION_ARGS = "++dataset_type=deepswe ++agent_framework=mini_swe_agent ++agent_max_turns=250"
 # Harbor task trees are large; keep them under --data_dir (do not package with every job).
 REQUIRES_DATA_DIR = True

@@ -41,11 +41,9 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 @nested_dataclass(kw_only=True)
 class DeepSweGenerationConfig(SweBenchGenerationConfig):
-    # DeepSWE does not use the SWE-bench eval harness.
-    eval_harness_repo: str = ""
-    eval_harness_commit: str = ""
-    # Harbor verifier timeout fallback when a row omits verifier_timeout_sec.
-    deepswe_tests_timeout: int = 60 * 30
+    # Whether to apply timeouts on the agent and verifier (evaluation stage) if they are set in the data point.
+    use_agent_timeouts: bool = False
+    use_verifier_timeouts: bool = False
     # eval_config.test_dir: optional root of Harbor task dirs (contains <instance_id>/tests/).
     # If unset, ns eval --data_dir resolves {data_dir}/deep-swe/tasks automatically.
 
@@ -224,76 +222,23 @@ def _load_verifier_reward(eval_out: Path) -> dict | None:
 class DeepSweGenerationTask(SweBenchGenerationTask):
     """SWE-bench agents for generation; Harbor ``tests/test.sh`` for grading."""
 
-    def __init__(self, cfg: DeepSweGenerationConfig):
-        # Parent installs the SWE-bench harness when evaluate=True. DeepSWE grades via
-        # Harbor tests/test.sh instead, so skip that install while still installing agents.
-        evaluate = cfg.evaluate
-        cfg.evaluate = False
-        try:
-            super().__init__(cfg)
-        finally:
-            cfg.evaluate = evaluate
-            self.cfg.evaluate = evaluate
-
-    async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
-        """Agent mode mirrors SWE-bench (/app -> /testbed); eval mode runs Harbor verifier."""
-        if mode == "agent":
-            return await self._execute_agent_container_command(
-                data_point, command, expected_file_pattern, timeout=timeout
-            )
-        if mode == "eval":
-            return await self._execute_harbor_eval_command(data_point, command, expected_file_pattern, timeout=timeout)
-        raise ValueError(f"Unsupported DeepSWE container mode: {mode}")
-
-    async def _execute_agent_container_command(self, data_point, command, expected_file_pattern, timeout=100000):
-        """Same agent Apptainer setup as SWE-bench, with DeepSWE container placeholders."""
-        # Resolve DeepSWE formatter placeholders, then reuse SWE-bench agent mounts/copy-to-/testbed.
-        resolved = {**data_point, "container_formatter": _resolve_container(data_point)}
-        if timeout >= 100000:
-            timeout = int(data_point.get("agent_timeout_sec") or 5400) + 120
+    async def _execute_container_command(
+        self,
+        data_point,
+        command,
+        expected_file_pattern,
+        mode,
+        timeout=100000,
+        extra_apptainer_args="",
+    ):
+        # Wrapper for the parent class's method that injects per-task agent/verifier timeouts if they are enabled.
+        if mode == "agent" and self.cfg.use_agent_timeouts and data_point.get("agent_timeout_sec"):
+            timeout = int(data_point.get("agent_timeout_sec")) + 120
+        if mode == "eval" and self.cfg.use_verifier_timeouts and data_point.get("verifier_timeout_sec"):
+            timeout = int(data_point.get("verifier_timeout_sec")) + 120
+        data_point = {**data_point, "container_formatter": _resolve_container(data_point)}
         return await SweBenchGenerationTask._execute_container_command(
-            self, resolved, command, expected_file_pattern, mode="agent", timeout=timeout
-        )
-
-    async def _execute_harbor_eval_command(self, data_point, command, expected_file_pattern, timeout=100000):
-        """Fresh task image + Harbor tests/ bind-mount; does not reuse the agent /testbed copy."""
-        container_commands = ["echo '127.0.0.1 localhost' >/etc/hosts"]
-        tests_dir = _resolve_tests_dir(data_point, self.cfg.eval_config)
-        if not tests_dir.is_dir():
-            raise ValueError(
-                f"DeepSWE tests dir not found for {data_point['instance_id']}: {tests_dir}. "
-                "Pass --data_dir or ++eval_config.test_dir=<data_dir>/deep-swe/tasks"
-            )
-
-        extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
-        container_commands.append("mkdir -p /logs/artifacts /logs/verifier")
-        container_commands.append(
-            f"cp /trajectories_mount/patches/{data_point['instance_id']}.patch /logs/artifacts/model.patch"
-        )
-        container_commands.append(command)
-        combined_command = " && ".join(container_commands)
-        container_name = _resolve_container(data_point)
-        apptainer_cmd = self._build_apptainer_cmd(container_name, combined_command, extra_apptainer_args)
-
-        def select_reward_file(pred_files: list[str]) -> str:
-            # DeepSWE may write reward.json and/or crash-sentinel reward.txt.
-            # Prefer reward.json when both exist.
-            if not pred_files:
-                raise ValueError(
-                    f"Expected a file matching {expected_file_pattern} for {data_point['instance_id']}, found 0."
-                )
-            preferred = [p for p in pred_files if p.endswith("reward.json")]
-            return preferred[0] if preferred else pred_files[0]
-
-        return await self._run_apptainer_with_retries(
-            data_point,
-            apptainer_cmd,
-            expected_file_pattern,
-            mode="eval",
-            timeout=timeout,
-            require_zero_exit=False,
-            select_matched_file=select_reward_file,
-            failure_label="DeepSWE verifier failed",
+            self, data_point, command, expected_file_pattern, mode, timeout, extra_apptainer_args
         )
 
     async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
@@ -310,7 +255,17 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             shutil.rmtree(eval_out)
         eval_out.mkdir(parents=True, exist_ok=True)
 
+        tests_dir = _resolve_tests_dir(data_point, self.cfg.eval_config)
+        if not tests_dir.is_dir():
+            raise ValueError(
+                f"DeepSWE tests dir not found for {data_point['instance_id']}: {tests_dir}. "
+                "Pass --data_dir or ++eval_config.test_dir=<data_dir>/deep-swe/tasks"
+            )
+        extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
+
         verifier_cmd = (
+            "mkdir -p /logs/artifacts /logs/verifier && "
+            f"cp /trajectories_mount/patches/{data_point['instance_id']}.patch /logs/artifacts/model.patch && "
             "export TESTS_DIR=/tests && "
             "export VERIFIER_DIR=/logs/verifier && "
             "export APP_DIR=/app && "
@@ -321,7 +276,6 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             f"cp -r /logs/verifier/. /trajectories_mount/eval-outputs/{data_point['instance_id']}/"
         )
 
-        timeout = int(data_point.get("verifier_timeout_sec") or self.cfg.deepswe_tests_timeout)
         # Prefer reward.json; DeepSWE crash sentinel only writes reward.txt=-1.
         search_path = str(eval_out / "reward.*")
         try:
@@ -330,7 +284,8 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                 verifier_cmd,
                 search_path,
                 mode="eval",
-                timeout=timeout + 120,
+                timeout=self.cfg.swebench_tests_timeout + 120,
+                extra_apptainer_args=extra_apptainer_args,
             )
         except ValueError:
             if not (eval_out / "reward.json").exists() and not (eval_out / "reward.txt").exists():
