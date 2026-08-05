@@ -61,6 +61,11 @@ def is_ray_backend_name(cluster_config: Dict[str, Any]) -> bool:
     return get_backend_name(cluster_config) in _RAY_BACKEND_NAMES
 
 
+def is_ray_jobs_backend(backend: Any) -> bool:
+    """True only for a resolved Ray backend that can submit through the Jobs API."""
+    return getattr(backend, "name", "") == "ray" and bool(getattr(backend, "dashboard_url", None))
+
+
 def _resolve_selector_keys_with_container_map(
     selectors: Dict[str, Any] | None,
     containers: Dict[str, Any] | None,
@@ -190,6 +195,7 @@ __all__ = [
     "RayBackend",
     "get_backend_name",
     "is_ray_backend_name",
+    "is_ray_jobs_backend",
     "get_execution_backend",
     "track_stage_tasks",
     "stop_stage_tasks",
@@ -201,25 +207,31 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
 
     Resolution priority:
     1. Explicit backend/ execution_backend in cluster config
-    2. Legacy with_ray compatibility flag
-    3. Default backend
+    2. Legacy non-Slurm Ray endpoint compatibility
+    3. Default backend (including embedded Ray-on-Slurm via with_ray=True)
     """
     backend_config = _normalize_backend_config(cluster_config)
     backend_name = str(backend_config.get("name") or "").strip().lower()
     legacy_ray_endpoint = cluster_config.get("ray_endpoint")
+    executor_kind = str(cluster_config.get("executor") or "").strip().lower()
+    legacy_precreated_ray = bool(with_ray and legacy_ray_endpoint and executor_kind != "slurm")
 
     # Import RayBackend lazily -- only when a Ray backend is actually selected -- so the
     # default / Slurm resolution path never imports the heavy ray_backend module.
-    if with_ray or backend_name in _RAY_BACKEND_NAMES:
+    if legacy_precreated_ray or backend_name in _RAY_BACKEND_NAMES:
         from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
     if not backend_name:
-        if with_ray:
+        if legacy_precreated_ray:
             return RayBackend(
                 endpoint=legacy_ray_endpoint,
-                precreated_cluster=bool(legacy_ray_endpoint),
+                precreated_cluster=True,
                 env_vars=get_env_variables(cluster_config),
             )
+        # `with_ray=True` on Slurm is the historical embedded-Ray mode.  It is
+        # metadata on a normal Slurm task, not selection of the Ray Jobs API
+        # backend.  Keeping the default backend here avoids importing Ray,
+        # resolving queue images, or filtering dependencies on that path.
         return ExecutionBackend()
 
     if backend_name in {"default", "none"}:

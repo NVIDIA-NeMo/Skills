@@ -763,9 +763,13 @@ class TestJobDependencies:
                     with patch("nemo_skills.pipeline.utils.declarative.run_exp"):
                         cluster_config = {
                             "executor": "slurm",
-                            # Ray backend (no dashboard) -> backend.name == "ray", so the
-                            # finished-cross-exp drop block is active.
-                            "backend": {"name": "ray"},
+                            # A real Ray Jobs backend owns cross-experiment ordering
+                            # through its queue, so the finished dependency string is
+                            # filtered from nemo-run's local dependency list.
+                            "backend": {
+                                "name": "ray",
+                                "dashboard_url": "http://ray-head:8265",
+                            },
                             "containers": {"nemo-skills": "test/container"},
                             "account": "test",
                             "env_vars": {"HF_HOME": "/mounted/hf_home"},

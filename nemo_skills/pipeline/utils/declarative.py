@@ -31,7 +31,7 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     temporary_env_update,
 )
-from nemo_skills.pipeline.utils.backends import get_backend_name, get_execution_backend
+from nemo_skills.pipeline.utils.backends import get_backend_name, get_execution_backend, is_ray_jobs_backend
 from nemo_skills.pipeline.utils.exp import (
     REUSE_CODE_EXP,
     get_packaging_job_key,
@@ -924,6 +924,7 @@ class Pipeline:
 
         # Ray metadata handling
         backend = get_execution_backend(cluster_config, with_ray=self.with_ray)
+        ray_jobs_active = is_ray_jobs_backend(backend)
         # use_with_ray_cluster (embedded Ray-on-Slurm) is only valid on SlurmExecutor, so gate
         # on executor == "slurm" -- mirrors add_task so a non-Slurm executor never requests an
         # embedded cluster. Precreated Ray Jobs clusters never embed (RayBackend enforces that).
@@ -937,27 +938,29 @@ class Pipeline:
 
         ray_queue_commands = []
         ray_queue_images = []
-        for script, executor in zip(scripts, executors):
-            if not isinstance(script.inline, str):
-                continue
-            ray_queue_commands.append(script.inline)
-            ray_queue_images.append(getattr(executor, "container_image", None))
+        if ray_jobs_active:
+            for script, executor in zip(scripts, executors):
+                if not isinstance(script.inline, str):
+                    continue
+                ray_queue_commands.append(script.inline)
+                ray_queue_images.append(getattr(executor, "container_image", None))
 
         # Forward both internal (same-experiment) and external (cross-experiment
         # run_after) dependencies. Dropping external deps would let Ray jobs submit
         # before their prerequisites finish, since Ray ordering is resolved from
         # the queued dep names rather than the nemo-run executor.
-        queue_ray_job_commands(
-            exp=exp,
-            backend=backend,
-            commands=ray_queue_commands,
-            command_images=ray_queue_images,
-            task_name=groups[0].name,
-            log_dir=log_dir,
-            task_dependencies=internal_deps,
-            external_dependencies=external_deps,
-            should_use_with_ray_cluster=should_use_with_ray_cluster,
-        )
+        if ray_jobs_active:
+            queue_ray_job_commands(
+                exp=exp,
+                backend=backend,
+                commands=ray_queue_commands,
+                command_images=ray_queue_images,
+                task_name=groups[0].name,
+                log_dir=log_dir,
+                task_dependencies=internal_deps,
+                external_dependencies=external_deps,
+                should_use_with_ray_cluster=should_use_with_ray_cluster,
+            )
 
         # A run_after naming another experiment whose tasks have already finished
         # resolves to empty handles and falls through as a bare experiment-name string
@@ -968,9 +971,8 @@ class Pipeline:
         # job in THIS experiment, and that fail-loud behavior is the historical contract.
         # Only filter when exp.jobs is a concrete list (a real nemo-run experiment); a
         # mocked or duck-typed exp leaves deps untouched so valid handles are never dropped.
-        is_ray_backend = getattr(backend, "name", "") == "ray"
         exp_jobs = getattr(exp, "jobs", None)
-        if is_ray_backend and internal_deps and isinstance(exp_jobs, (list, tuple)):
+        if ray_jobs_active and internal_deps and isinstance(exp_jobs, (list, tuple)):
             known_job_ids = {getattr(job, "id", None) for job in exp_jobs}
             kept = []
             for dep in internal_deps:

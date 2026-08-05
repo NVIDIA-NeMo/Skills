@@ -28,7 +28,12 @@ from nemo_run.core.execution.local import LocalExecutor
 from nemo_run.core.execution.slurm import SlurmJobDetails, get_packaging_job_key
 from torchx.specs.api import AppState
 
-from nemo_skills.pipeline.utils.backends import BackendRunOptions, get_execution_backend, is_ray_backend_name
+from nemo_skills.pipeline.utils.backends import (
+    BackendRunOptions,
+    get_execution_backend,
+    is_ray_backend_name,
+    is_ray_jobs_backend,
+)
 from nemo_skills.pipeline.utils.cluster import (
     get_env_variables,
     get_slurm_timeout_str,
@@ -696,11 +701,14 @@ def add_task(
     command_images = []
     executors = []
 
+    backend = get_execution_backend(cluster_config, with_ray=with_ray)
+    ray_jobs_active = is_ray_jobs_backend(backend)
+
     # command_images is consumed only by the Ray Jobs queue (queue_ray_job_commands).
     # Resolving an image can be expensive (e.g. a `docker inspect` for `dockerfile:`
     # specs), so only populate it when a Ray backend is active; the non-Ray path leaves
     # it empty (the queue is a no-op there anyway).
-    collect_command_images = bool(with_ray) or is_ray_backend_name(cluster_config)
+    collect_command_images = ray_jobs_active
 
     def add_server_tasks():
         """Append the server (and its executor) for each requested server replica."""
@@ -923,7 +931,6 @@ def add_task(
             )
             commands[idx] = commands[idx].replace("/nemo_run/code", "./")
 
-    backend = get_execution_backend(cluster_config, with_ray=with_ray)
     first_command_image = command_images[0] if command_images else None
     # use_with_ray_cluster requests an EMBEDDED Ray cluster, which nemo-run only supports on
     # SlurmExecutor (it asserts otherwise). Gate the whole flag on executor == "slurm": legacy
@@ -937,27 +944,29 @@ def add_task(
         use_with_ray_cluster=should_use_with_ray_cluster,
         container_image=first_command_image,
     )
-    LOG.info(
-        "Execution backend resolved to '%s' (dashboard_url=%s).",
-        getattr(backend, "name", "unknown"),
-        getattr(backend, "dashboard_url", None),
-    )
+    if getattr(backend, "name", "default") != "default":
+        LOG.info(
+            "Execution backend resolved to '%s' (dashboard_url=%s).",
+            getattr(backend, "name", "unknown"),
+            getattr(backend, "dashboard_url", None),
+        )
 
     # For Ray Jobs API mode, queue commands on the experiment and let the backend
     # submit/track/cancel them centrally in start_experiment(). `dependencies`
     # holds the resolved external run_after handles; forward them too so the Ray
     # queue waits on cross-experiment prerequisites, not just same-experiment ones.
-    queue_ray_job_commands(
-        exp=exp,
-        backend=backend,
-        commands=commands,
-        command_images=command_images,
-        task_name=task_name,
-        log_dir=log_dir,
-        task_dependencies=task_dependencies,
-        external_dependencies=dependencies,
-        should_use_with_ray_cluster=should_use_with_ray_cluster,
-    )
+    if ray_jobs_active:
+        queue_ray_job_commands(
+            exp=exp,
+            backend=backend,
+            commands=commands,
+            command_images=command_images,
+            task_name=task_name,
+            log_dir=log_dir,
+            task_dependencies=task_dependencies,
+            external_dependencies=dependencies,
+            should_use_with_ray_cluster=should_use_with_ray_cluster,
+        )
 
     if not task_dependencies:  # empty list
         task_dependencies = None
@@ -1114,12 +1123,18 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
 
 
 def get_exp(expname, cluster_config, _reuse_exp=None):
-    # nemo-run defines the root handlers, so remove ours before creating or
-    # reusing an experiment to avoid duplicate logs from propagated records.
-    remove_handlers()
     # Use existing experiment if provided, otherwise create a new one
     if _reuse_exp:
+        # Reused Ray Jobs experiments otherwise retain our handler beside
+        # nemo-run's root handler and duplicate every record.  A reused Slurm
+        # experiment historically kept its handler, so do not mutate it.
+        if is_ray_backend_name(cluster_config):
+            backend = get_execution_backend(cluster_config)
+            if is_ray_jobs_backend(backend):
+                remove_handlers()
         return contextlib.nullcontext(_reuse_exp)
+    # nemo-run redefines the handlers, so removing ours avoids duplicate logs.
+    remove_handlers()
     if cluster_config["executor"] == "slurm":
         return run.Experiment(
             expname,
