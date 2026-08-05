@@ -247,13 +247,12 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         return parse_deepswe_reward(reward, patch_exists=True)
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
-        if "base_url" in self.cfg.server:
-            api_base = self.cfg.server.base_url
-        else:
-            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+        """Will do all necessary generations to get a single answer for the data point."""
 
+        # Run the agent rollout.
+        # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
         async with self.semaphore:
-            pred_file = await self._run_agent(data_point, api_base)
+            pred_file = await self._run_agent(data_point)
 
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read())

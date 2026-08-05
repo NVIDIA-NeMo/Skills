@@ -225,6 +225,13 @@ class SweBenchGenerationTask(GenerationTask):
             self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Set up the LLM API base URL.
+
+        if "base_url" in self.cfg.server:
+            self.api_base = self.cfg.server.base_url
+        else:
+            self.api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
         # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
@@ -612,14 +619,17 @@ class SweBenchGenerationTask(GenerationTask):
                         f"found {len(pred_files) if 'pred_files' in locals() else 'unknown'}."
                     )
 
-    async def _run_agent(self, data_point, api_base) -> str:
-        """Dispatch to the configured agent framework and return the prediction file path."""
+    async def _run_agent(self, data_point) -> str:
+        """
+        Runs the agent on one instance, dispatching to the configured agent framework.
+        Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
+        """
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-            return await self._run_swe_agent(data_point, api_base)
+            return await self._run_swe_agent(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-            return await self._run_mini_swe_agent(data_point, api_base)
+            return await self._run_mini_swe_agent(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-            return await self._run_openhands(data_point, api_base)
+            return await self._run_openhands(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
             return await self._get_gold_patch(data_point)
         raise ValueError(
@@ -627,7 +637,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
         )
 
-    async def _run_swe_agent(self, data_point, api_base):
+    async def _run_swe_agent(self, data_point):
         """
         Runs SWE-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
@@ -663,7 +673,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
             f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
-            f"    --agent.model.api_base {api_base} "
+            f"    --agent.model.api_base {self.api_base} "
             f"    --agent.model.temperature {self.cfg.inference.temperature} "
             f"    --agent.model.top_p {self.cfg.inference.top_p} "
             f"    --agent.model.completion_kwargs {shlex.quote(json.dumps(completion_kwargs))} "
@@ -699,7 +709,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         return pred_jsonl_file
 
-    async def _run_mini_swe_agent(self, data_point, api_base):
+    async def _run_mini_swe_agent(self, data_point):
         """
         Runs mini-swe-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
@@ -731,7 +741,7 @@ class SweBenchGenerationTask(GenerationTask):
         full_config["model"]["model_kwargs"].update(
             {
                 **completion_kwargs,
-                "api_base": api_base,
+                "api_base": self.api_base,
                 "temperature": self.cfg.inference.temperature,
                 "top_p": self.cfg.inference.top_p,
             }
@@ -795,7 +805,7 @@ class SweBenchGenerationTask(GenerationTask):
             if os.path.exists(host_tmp_path):
                 os.remove(host_tmp_path)
 
-    async def _run_openhands(self, data_point, api_base):
+    async def _run_openhands(self, data_point):
         """
         Runs OpenHands on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
@@ -810,7 +820,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         config["llm"]["model"] |= {
             "model": self.cfg.server.model,
-            "base_url": api_base,
+            "base_url": self.api_base,
             "temperature": self.cfg.inference.temperature,
             "top_p": self.cfg.inference.top_p,
         }
@@ -951,18 +961,10 @@ class SweBenchGenerationTask(GenerationTask):
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
 
-        # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
-        # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?
-
-        if "base_url" in self.cfg.server:
-            api_base = self.cfg.server.base_url
-        else:
-            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
-
         # Run the agent rollout.
         # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
         async with self.semaphore:
-            pred_file = await self._run_agent(data_point, api_base)
+            pred_file = await self._run_agent(data_point)
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
         with open(pred_file, "r") as f:
