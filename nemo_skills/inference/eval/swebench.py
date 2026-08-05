@@ -52,7 +52,7 @@ class SupportedAgentFrameworks(str, Enum):
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
-    deepswe = "deepswe"
+    deep_swe = "deep_swe"  # note: deepswe evaluation logic is implemented in deepswe.py
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
