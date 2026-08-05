@@ -44,28 +44,12 @@ class DeepSweGenerationConfig(SweBenchGenerationConfig):
     # Whether to apply timeouts on the agent and verifier (evaluation stage) if they are set in the data point.
     use_agent_timeouts: bool = False
     use_verifier_timeouts: bool = False
-    # eval_config.test_dir: optional root of Harbor task dirs (contains <instance_id>/tests/).
+    # eval_config.tasks_root: optional root of Harbor task dirs (contains <instance_id>/tests/).
     # If unset, ns eval --data_dir resolves {data_dir}/deep-swe/tasks automatically.
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_deepswe_generation_config", node=DeepSweGenerationConfig)
-
-
-def _resolve_container(data_point: dict) -> str:
-    formatter = data_point["container_formatter"]
-    return formatter.format(
-        instance_id=data_point["instance_id"].replace("__", "_1776_"),
-        task_id=data_point.get("task_id", data_point["instance_id"]),
-        docker_image=data_point.get("docker_image", ""),
-        docker_image_tag=str(data_point.get("docker_image", "")).rsplit(":", 1)[-1],
-        ext_id=data_point.get("ext_id", ""),
-    )
-
-
-def _default_packaged_tasks_root() -> Path:
-    # nemo_skills/inference/eval/deepswe.py -> nemo_skills/dataset/deep-swe/tasks
-    return Path(__file__).resolve().parents[2] / "dataset" / "deep-swe" / "tasks"
 
 
 def _get_eval_config_value(eval_config, key: str, default=None):
@@ -84,20 +68,19 @@ def _resolve_tests_dir(data_point: dict, eval_config) -> Path:
     """Resolve Harbor tests/ for one task.
 
     Preference order:
-    1. ``++eval_config.test_dir`` (explicit Harbor tasks root)
+    1. ``++eval_config.tasks_root`` (explicit Harbor tasks root)
     2. ``++eval_config.data_dir``/deep-swe/tasks (set automatically by ``ns eval --data_dir``)
-    3. Packaged / relative / absolute paths from prepare (local-only fallbacks)
     """
     instance_id = data_point["instance_id"]
 
-    test_dir = _get_eval_config_value(eval_config, "test_dir")
-    if test_dir:
-        candidate = _tests_candidate(Path(test_dir), instance_id)
+    tasks_root = _get_eval_config_value(eval_config, "tasks_root")
+    if tasks_root:
+        candidate = _tests_candidate(Path(tasks_root), instance_id)
         if candidate.is_dir():
             return candidate
         raise ValueError(
             f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
-            f"Check ++eval_config.test_dir={test_dir} (expected <test_dir>/<instance_id>/tests)."
+            f"Check ++eval_config.tasks_root={tasks_root} (expected <tasks_root>/<instance_id>/tests)."
         )
 
     # ns eval --data_dir=... injects ++eval_config.data_dir; prefer that over stale
@@ -111,26 +94,12 @@ def _resolve_tests_dir(data_point: dict, eval_config) -> Path:
             f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
             f"Expected tasks under {{data_dir}}/deep-swe/tasks after "
             f"`ns prepare_data deep-swe --data_dir=...`. "
-            f"Or pass ++eval_config.test_dir explicitly."
+            f"Or pass ++eval_config.tasks_root explicitly."
         )
-
-    packaged = _tests_candidate(_default_packaged_tasks_root(), instance_id)
-    if packaged.is_dir():
-        return packaged
-
-    rel = data_point.get("tests_dir_rel")
-    if rel:
-        candidate = Path(__file__).resolve().parents[2] / "dataset" / "deep-swe" / rel
-        if candidate.is_dir():
-            return candidate
-
-    tests_dir = data_point.get("tests_dir")
-    if tests_dir and Path(tests_dir).is_dir():
-        return Path(tests_dir)
 
     raise ValueError(
         f"DeepSWE tests dir not found for {instance_id}. "
-        "Pass --data_dir (recommended) or ++eval_config.test_dir=/path/to/deep-swe/tasks "
+        "Pass --data_dir (recommended) or ++eval_config.tasks_root=/path/to/deep-swe/tasks "
         "after ns prepare_data."
     )
 
@@ -236,7 +205,6 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             timeout = int(data_point.get("agent_timeout_sec")) + 120
         if mode == "eval" and self.cfg.use_verifier_timeouts and data_point.get("verifier_timeout_sec"):
             timeout = int(data_point.get("verifier_timeout_sec")) + 120
-        data_point = {**data_point, "container_formatter": _resolve_container(data_point)}
         return await SweBenchGenerationTask._execute_container_command(
             self, data_point, command, expected_file_pattern, mode, timeout, extra_apptainer_args
         )
@@ -256,11 +224,6 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         eval_out.mkdir(parents=True, exist_ok=True)
 
         tests_dir = _resolve_tests_dir(data_point, self.cfg.eval_config)
-        if not tests_dir.is_dir():
-            raise ValueError(
-                f"DeepSWE tests dir not found for {data_point['instance_id']}: {tests_dir}. "
-                "Pass --data_dir or ++eval_config.test_dir=<data_dir>/deep-swe/tasks"
-            )
         extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
 
         verifier_cmd = (

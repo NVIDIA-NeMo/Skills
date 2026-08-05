@@ -105,8 +105,9 @@ def _clone_or_update_repo(repo_url: str, dest: Path, commit: str | None) -> Path
 
 def _format_container(formatter: str, *, instance_id: str, docker_image: str, ext_id: str) -> str:
     return formatter.format(
-        instance_id=instance_id,
-        task_id=instance_id,
+        # '__' -> '_1776_' replacement for consistency with swe-bench behavior
+        instance_id=instance_id.replace("__", "_1776_"),
+        task_id=instance_id.replace("__", "_1776_"),
         docker_image=docker_image,
         ext_id=ext_id,
         # Convenience: tag portion after the last ":" for sif naming schemes.
@@ -163,22 +164,6 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
     if not (tests_dir / "test.sh").exists():
         raise FileNotFoundError(f"Missing tests/test.sh in {task_dir}")
 
-    # Validate placeholders early so typos fail at prepare time.
-    _format_container(
-        container_formatter,
-        instance_id=instance_id,
-        docker_image=docker_image,
-        ext_id=ext_id,
-    )
-
-    # Paths relative to dataset/deep-swe. Absolute paths are for local prepare only;
-    # after ns prepare_data --data_dir=..., eval resolves via ++eval_config.data_dir
-    # (or explicit ++eval_config.test_dir), not these absolute paths.
-    rel_task_dir = f"tasks/{instance_id}"
-    rel_tests_dir = f"tasks/{instance_id}/tests"
-    abs_task_dir = str((dataset_dir / rel_task_dir).resolve())
-    abs_tests_dir = str((dataset_dir / rel_tests_dir).resolve())
-
     return {
         "instance_id": instance_id,
         "problem_statement": instruction_path.read_text(),
@@ -189,14 +174,14 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
         "display_title": metadata.get("display_title", ""),
         "ext_id": ext_id,
         "docker_image": docker_image,
-        # Keep the template (same as SWE-bench); resolved at eval time.
-        "container_formatter": container_formatter,
+        "container_formatter": _format_container(
+            container_formatter,
+            instance_id=instance_id,
+            docker_image=docker_image,
+            ext_id=ext_id,
+        ),
         # Agent and verifier both run against the task image; tests/ are bind-mounted at grade time.
         "container_repo_dir": "/app",
-        "task_dir": abs_task_dir,
-        "tests_dir": abs_tests_dir,
-        "task_dir_rel": rel_task_dir,
-        "tests_dir_rel": rel_tests_dir,
         "agent_timeout_sec": float(agent.get("timeout_sec", 5400.0)),
         "verifier_timeout_sec": float(verifier.get("timeout_sec", 1800.0)),
         # Used by ++agent_framework=gold_patch
