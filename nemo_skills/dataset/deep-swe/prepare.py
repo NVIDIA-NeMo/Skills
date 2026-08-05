@@ -168,7 +168,7 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
         "instance_id": instance_id,
         "problem_statement": instruction_path.read_text(),
         "base_commit": base_commit,
-        "repo": metadata.get("repository_url", ""),
+        "repo": metadata.get("repository_url", "").removeprefix("https://github.com/"),
         "language": metadata.get("language", ""),
         "category": metadata.get("category", ""),
         "display_title": metadata.get("display_title", ""),
