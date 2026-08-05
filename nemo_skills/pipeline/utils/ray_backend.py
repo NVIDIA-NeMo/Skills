@@ -51,7 +51,12 @@ from typing import Any, Dict, NoReturn
 
 import nemo_run as run
 
-from nemo_skills.pipeline.utils.backends import BackendRunOptions, ExecutionBackend
+from nemo_skills.pipeline.utils.backends import (
+    RAY_JOB_CODE_DIR_ENV,
+    RAY_JOB_NEMO_SKILLS_DIR_ENV,
+    BackendRunOptions,
+    ExecutionBackend,
+)
 from nemo_skills.utils import get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -363,13 +368,41 @@ class RayBackend(ExecutionBackend):
                 exc,
             )
 
-    @staticmethod
-    def _prepare_job_entrypoint_command(command: str) -> str:
-        """Rewrite a command to use local cluster autodiscovery (RAY_ADDRESS=auto)."""
+    def _prepare_job_entrypoint_command(self, command: str) -> str:
+        """Prepare local Ray discovery and stable working-directory roots."""
         # When running *inside* a Ray Job, the driver is already on the cluster.
         # Replace any forwarded Ray Client endpoint with local cluster autodiscovery.
         stripped = re.sub(r"export\s+RAY_ADDRESS=[^&;]+&&\s*", "", command)
-        return f"export RAY_ADDRESS=auto && {stripped.strip()}"
+        exports = []
+        if self.working_dir:
+            # Ray changes cwd to the uploaded working directory before invoking
+            # the entrypoint. Capture it before a workload can `cd` elsewhere.
+            exports.append(f'export {RAY_JOB_CODE_DIR_ENV}="$PWD"')
+            skills_ref = f"${{{RAY_JOB_NEMO_SKILLS_DIR_ENV}}}"
+            if skills_ref in stripped:
+                # The working-dir archive may intentionally contain only the
+                # caller (e.g. NVFlow). Resolve NeMo-Skills from the baked Python
+                # environment instead of assuming source was uploaded alongside it.
+                # Use shell globbing rather than `python -c`: a login shell may
+                # reset PATH even though the selected worker image contains the
+                # package. The ordered roots cover working-dir source and the
+                # baked virtualenv/system layouts used by NVFlow worker images.
+                exports.append(
+                    f'export {RAY_JOB_NEMO_SKILLS_DIR_ENV}="$(for candidate in '
+                    f'"${{{RAY_JOB_CODE_DIR_ENV}}}/nemo_skills" '
+                    "/opt/NeMo-Skills/nemo_skills "
+                    "/opt/nemo-skills/nemo_skills "
+                    "/opt/*/.venv/lib/python*/site-packages/nemo_skills "
+                    "/opt/*venv/lib/python*/site-packages/nemo_skills "
+                    "/usr/local/lib/python*/dist-packages/nemo_skills "
+                    "/usr/local/lib/python*/site-packages/nemo_skills "
+                    "/usr/lib/python*/dist-packages/nemo_skills "
+                    "/usr/lib/python*/site-packages/nemo_skills; "
+                    'do if [ -d "$candidate" ]; then printf "%s" "$candidate"; break; fi; done)"'
+                )
+                exports.append(f'test -n "${{{RAY_JOB_NEMO_SKILLS_DIR_ENV}}}"')
+        exports.append("export RAY_ADDRESS=auto")
+        return " && ".join([*exports, stripped.strip()])
 
     @staticmethod
     def _normalize_image_label_selectors(

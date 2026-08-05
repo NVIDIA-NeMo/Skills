@@ -45,6 +45,82 @@ def _normalize_backend_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
 # Backend names that select a Ray backend (canonical name plus accepted aliases).
 _RAY_BACKEND_NAMES = frozenset({"ray", "kubernetes-ray", "ray-kubernetes", "ray_kubernetes"})
 
+# Stable absolute roots exported by RayBackend before a Ray Job entrypoint can
+# change directory.  Keep the references in one lightweight module so both the
+# legacy and declarative command builders can apply identical path semantics
+# without importing the Ray implementation on the default Slurm path.
+RAY_JOB_CODE_DIR_ENV = "NEMO_RUN_CODE_DIR"
+RAY_JOB_NEMO_SKILLS_DIR_ENV = "NEMO_SKILLS_CODE_DIR"
+
+
+def _replace_shell_path_with_env(command: str, path: str, env_name: str) -> str:
+    """Replace a shell path with an expandable, quoted environment reference.
+
+    A plain ``str.replace(path, "${VAR}")`` is incorrect when ``path`` occurs
+    inside single quotes because the shell would keep ``${VAR}`` literal.  This
+    small scanner preserves the surrounding command and emits a safely quoted
+    reference in unquoted, double-quoted, and single-quoted contexts.
+    """
+    result: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+    env_ref = f"${{{env_name}}}"
+
+    while index < len(command):
+        if command.startswith(path, index):
+            if quote == "'":
+                # Close the single-quoted segment, expand in double quotes, and
+                # reopen it so the rest of the original segment stays literal.
+                result.append(f"'\"{env_ref}\"'")
+            elif quote == '"':
+                # Already protected by the surrounding double quotes.
+                result.append(env_ref)
+            else:
+                result.append(f'"{env_ref}"')
+            index += len(path)
+            continue
+
+        char = command[index]
+        result.append(char)
+
+        if quote == "'":
+            if char == "'":
+                quote = None
+        elif quote == '"':
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quote = None
+        elif escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char in {"'", '"'}:
+            quote = char
+
+        index += 1
+
+    return "".join(result)
+
+
+def rewrite_ray_job_code_paths(command: str) -> str:
+    """Map nemo-run package roots to stable Ray Job runtime directories.
+
+    The more-specific NeMo-Skills path must be handled first because the Ray
+    working directory may contain only the calling project (for example,
+    NVFlow), while NeMo-Skills itself comes from the worker image's baked Python
+    environment.
+    """
+    command = _replace_shell_path_with_env(
+        command,
+        "/nemo_run/code/nemo_skills",
+        RAY_JOB_NEMO_SKILLS_DIR_ENV,
+    )
+    return _replace_shell_path_with_env(command, "/nemo_run/code", RAY_JOB_CODE_DIR_ENV)
+
 
 def get_backend_name(cluster_config: Dict[str, Any]) -> str:
     """Return the normalized (lowercased) backend name, or '' when none is set.
@@ -193,9 +269,12 @@ __all__ = [
     "BackendRunOptions",
     "ExecutionBackend",
     "RayBackend",
+    "RAY_JOB_CODE_DIR_ENV",
+    "RAY_JOB_NEMO_SKILLS_DIR_ENV",
     "get_backend_name",
     "is_ray_backend_name",
     "is_ray_jobs_backend",
+    "rewrite_ray_job_code_paths",
     "get_execution_backend",
     "track_stage_tasks",
     "stop_stage_tasks",

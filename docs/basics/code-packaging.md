@@ -88,3 +88,19 @@ so every dependency must already be present in the Ray worker image. For a
 strict-airgap launch, point it at an immutable source directory or archive baked
 into the launcher image. If the option is absent, Ray Jobs retain their existing
 behavior and no working directory is delivered.
+
+Before starting the command, the backend captures Ray's initial uploaded-code
+directory in `NEMO_RUN_CODE_DIR`. Legacy `/nemo_run/code/...` command paths are
+rewritten to that absolute root, so they continue to work if a workload later
+changes directory (for example, `cd /opt/Gym`). Legacy
+`/nemo_run/code/nemo_skills/...` paths resolve separately from the NeMo-Skills
+package baked into the worker image; the working-directory archive does not need
+to duplicate that package. These rewrites apply only to Ray Jobs with an explicit
+`working_dir`; local `executor: none`, embedded Ray-on-Slurm, and ordinary Slurm
+execution keep their existing path and packaging behavior.
+
+The backend rewrites paths in generated entrypoint command strings. It does not
+edit YAML, JSON, or other files inside the uploaded archive. Configuration files
+that must refer to the delivered source after changing directory should resolve
+`NEMO_RUN_CODE_DIR` themselves (and may retain `/nemo_run/code` as their non-Ray
+default).

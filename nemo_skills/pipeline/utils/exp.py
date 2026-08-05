@@ -33,6 +33,7 @@ from nemo_skills.pipeline.utils.backends import (
     get_execution_backend,
     is_ray_backend_name,
     is_ray_jobs_backend,
+    rewrite_ray_job_code_paths,
 )
 from nemo_skills.pipeline.utils.cluster import (
     get_env_variables,
@@ -923,13 +924,22 @@ def add_task(
 
     # no mounting here, so assuming /nemo_run/code can be replaced with the current dir
     if cluster_config["executor"] == "none":
-        # replacing /nemo_run/code/nemo_skills with the installed location
-
-        for idx in range(len(commands)):
-            commands[idx] = commands[idx].replace(
-                "/nemo_run/code/nemo_skills", str(get_registered_external_repo("nemo_skills").path)
-            )
-            commands[idx] = commands[idx].replace("/nemo_run/code", "./")
+        if ray_jobs_active and getattr(backend, "working_dir", None):
+            # Ray makes working_dir the initial job cwd, but workloads such as
+            # NeMo-RL/Gym may cd elsewhere before consuming a legacy
+            # /nemo_run/code path. Rewrite to absolute roots captured by the Ray
+            # entrypoint rather than cwd-relative paths. NeMo-Skills comes from
+            # the baked worker environment, not necessarily the working-dir ZIP.
+            for idx in range(len(commands)):
+                commands[idx] = rewrite_ray_job_code_paths(commands[idx])
+        else:
+            # Preserve the historical executor:none behavior byte-for-byte when
+            # Ray Jobs code delivery is not explicitly configured.
+            for idx in range(len(commands)):
+                commands[idx] = commands[idx].replace(
+                    "/nemo_run/code/nemo_skills", str(get_registered_external_repo("nemo_skills").path)
+                )
+                commands[idx] = commands[idx].replace("/nemo_run/code", "./")
 
     first_command_image = command_images[0] if command_images else None
     # use_with_ray_cluster requests an EMBEDDED Ray cluster, which nemo-run only supports on

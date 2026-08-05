@@ -31,7 +31,12 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     temporary_env_update,
 )
-from nemo_skills.pipeline.utils.backends import get_backend_name, get_execution_backend, is_ray_jobs_backend
+from nemo_skills.pipeline.utils.backends import (
+    get_execution_backend,
+    is_ray_backend_name,
+    is_ray_jobs_backend,
+    rewrite_ray_job_code_paths,
+)
 from nemo_skills.pipeline.utils.exp import (
     REUSE_CODE_EXP,
     get_packaging_job_key,
@@ -586,27 +591,41 @@ class Pipeline:
         Under the Ray Jobs API backend (``backend.name == "ray"``) the command is
         submitted to a *remote* cluster whose image and Python version need not match
         the driver's, so the driver-side absolute install path (e.g.
-        ``/usr/local/lib/python3.10/dist-packages``) will not exist there. In that
-        case rewrite to relative (cwd) paths instead -- mirroring the add_task path --
-        so the command runs from the job's working directory and ``nemo_skills``
-        resolves via the baked image's ``PYTHONPATH``.
+        ``/usr/local/lib/python3.10/dist-packages``) will not exist there. When an
+        explicit Ray ``working_dir`` is configured, use stable absolute roots that
+        the Ray entrypoint captures before the workload can change directory. Without
+        ``working_dir``, retain the historical cwd-relative Ray rewrite.
         """
         nemo_repo = get_registered_external_repo("nemo_skills")
         # Use the shared parser so the supported bare-string form (``backend: ray``) is
         # handled too -- a direct ``.get("name")`` raises AttributeError on a string.
-        is_ray = get_backend_name(self.cluster_config) == "ray"
+        is_ray = is_ray_backend_name(self.cluster_config)
         if nemo_repo is None and not is_ray:
             return script
 
+        ray_jobs_with_working_dir = False
         if is_ray:
+            backend = get_execution_backend(self.cluster_config, with_ray=self.with_ray)
+            ray_jobs_with_working_dir = is_ray_jobs_backend(backend) and bool(getattr(backend, "working_dir", None))
+
+        if ray_jobs_with_working_dir:
+
+            def _replace(cmd: str) -> str:
+                return rewrite_ray_job_code_paths(cmd)
+
+        elif is_ray:
             pkg_path = "./nemo_skills"
             repo_root = "."
+
+            def _replace(cmd: str) -> str:
+                return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
+
         else:
             pkg_path = str(nemo_repo.path)
             repo_root = str(nemo_repo.path.parent)
 
-        def _replace(cmd: str) -> str:
-            return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
+            def _replace(cmd: str) -> str:
+                return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
 
         inline_cmd = script.inline
         if isinstance(inline_cmd, str):
