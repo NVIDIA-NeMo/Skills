@@ -257,7 +257,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read())
 
-        model_patch = trajectory_dict.get("model_patch")
+        model_patch = trajectory_dict["model_patch"]
         has_patch = bool(model_patch and str(model_patch).strip())
 
         if not has_patch:
