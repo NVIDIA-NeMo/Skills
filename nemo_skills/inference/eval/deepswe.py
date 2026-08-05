@@ -46,7 +46,7 @@ class DeepSweGenerationConfig(SweBenchGenerationConfig):
     use_verifier_timeouts: bool = False
 
     # Custom path to the Harbor tasks root (contains <instance_id>/tests/).
-    # Defaults to {data_dir}/deep-swe/tasks.
+    # Defaults to <data_dir>/deep-swe/tasks.
     tasks_dir: str | None = None
 
 
