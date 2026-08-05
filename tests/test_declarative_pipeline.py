@@ -239,6 +239,66 @@ class TestPipeline:
 class TestPipelineExecution:
     """Test Pipeline execution and job management."""
 
+    @pytest.mark.parametrize("backend_name", ["ray", "kubernetes-ray", "ray-kubernetes", "ray_kubernetes"])
+    def test_ray_working_dir_rewrite_survives_cd_and_quotes(self, backend_name):
+        cluster_config = {
+            "executor": "none",
+            "containers": {},
+            "backend": {
+                "name": backend_name,
+                "dashboard_url": "http://ray-head:8265",
+                "working_dir": "/opt/nvflow-ray-code.zip",
+            },
+        }
+        pipeline = Pipeline(
+            name="ray-paths",
+            cluster_config=cluster_config,
+            jobs=[{"name": "placeholder", "group": CommandGroup(commands=[make_command()], log_dir="/tmp/logs")}],
+            skip_hf_home_check=True,
+        )
+        script = DummyScript(
+            "cd /opt/Gym && python '/nemo_run/code/nvflow/train.py' \"/nemo_run/code/nemo_skills/dataset/test.jsonl\""
+        )
+
+        rewritten = pipeline._rewrite_local_paths(script).inline
+
+        assert rewritten.startswith("cd /opt/Gym && ")
+        assert '"${NEMO_RUN_CODE_DIR}"' in rewritten
+        assert "${NEMO_SKILLS_CODE_DIR}" in rewritten
+        assert "/nemo_run/code" not in rewritten
+
+    @patch("nemo_skills.pipeline.utils.declarative.get_registered_external_repo")
+    def test_declarative_non_ray_executor_none_rewrite_is_unchanged(self, mock_repo):
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        mock_repo.return_value = SimpleNamespace(path=Path("/installed/nemo_skills"))
+        pipeline = Pipeline(
+            name="local-paths",
+            cluster_config={"executor": "none", "containers": {}},
+            jobs=[{"name": "placeholder", "group": CommandGroup(commands=[make_command()], log_dir="/tmp/logs")}],
+            skip_hf_home_check=True,
+        )
+        script = DummyScript("python /nemo_run/code/nvflow/train.py /nemo_run/code/nemo_skills/dataset/test.jsonl")
+
+        assert pipeline._rewrite_local_paths(script).inline == (
+            "python /installed/nvflow/train.py /installed/nemo_skills/dataset/test.jsonl"
+        )
+
+    def test_declarative_slurm_command_is_byte_identical(self):
+        original = "cd /opt/Gym && python '/nemo_run/code/nvflow/train.py'"
+        command = make_command(inline=original)
+        pipeline = Pipeline(
+            name="slurm-paths",
+            cluster_config={"executor": "slurm", "containers": {}},
+            jobs=[{"name": "placeholder", "group": CommandGroup(commands=[command], log_dir="/tmp/logs")}],
+            skip_hf_home_check=True,
+        )
+
+        script, _ = pipeline._prepare_command(command, pipeline.cluster_config)
+
+        assert script.inline == original
+
     @patch("nemo_skills.pipeline.utils.declarative.get_exp")
     @patch("nemo_skills.pipeline.utils.declarative.get_env_variables")
     @patch("nemo_skills.pipeline.utils.declarative.run_exp")

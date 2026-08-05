@@ -603,3 +603,82 @@ def test_add_task_resolves_command_images_only_when_ray_backend_active(mock_port
         reuse_code=False,
     )
     assert mock_resolve.call_count >= 1, "Ray Jobs add_task must resolve command images for the queue"
+
+
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="resolved:image")
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_ray_working_dir_uses_stable_absolute_roots(mock_port, mock_get_executor, mock_resolve):
+    """A later cd must not make executor:none paths relative to /opt/Gym."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock(container_image="resolved:image")
+    exp = SimpleNamespace(add=MagicMock(return_value="h"), jobs=[])
+    original = (
+        "cd /opt/Gym && python /nemo_run/code/nvflow/driver.py "
+        "--dataset '/nemo_run/code/nemo_skills/dataset/secque/test.jsonl'"
+    )
+    cluster_config = {
+        "executor": "none",
+        "containers": {"sandbox": "sandbox:latest"},
+        "backend": {
+            "name": "ray",
+            "dashboard_url": "http://ray-head:8265",
+            "working_dir": "/opt/nvflow-ray-code.zip",
+        },
+    }
+
+    add_task(
+        exp=exp,
+        cmd=original,
+        task_name="grpo-prepare",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    queued = exp._ns_ray_jobs_queue[0]["command"]
+    added = exp.add.call_args.args[0].inline
+    assert queued == added
+    assert queued.startswith("cd /opt/Gym && ")
+    assert '"${NEMO_RUN_CODE_DIR}"/nvflow/driver.py' in queued
+    assert '"${NEMO_SKILLS_CODE_DIR}"' in queued
+    assert "/nemo_run/code" not in queued
+    assert "./nvflow" not in queued
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_registered_external_repo")
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_non_ray_executor_none_path_rewrite_is_unchanged(mock_port, mock_get_executor, mock_repo):
+    """The opt-in Ray working-dir contract must not alter legacy local execution."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_repo.return_value = SimpleNamespace(path=Path("/installed/nemo_skills"))
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="h"))
+
+    add_task(
+        exp=exp,
+        cmd=(
+            "cd /opt/Gym && python /nemo_run/code/nvflow/driver.py "
+            "--dataset /nemo_run/code/nemo_skills/dataset/test.jsonl"
+        ),
+        task_name="legacy-local",
+        cluster_config={"executor": "none", "containers": {"sandbox": "sandbox:latest"}},
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    assert exp.add.call_args.args[0].inline == (
+        "cd /opt/Gym && python .//nvflow/driver.py --dataset /installed/nemo_skills/dataset/test.jsonl"
+    )

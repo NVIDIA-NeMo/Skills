@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import shlex
+import subprocess
+
 import pytest
 
 from nemo_skills.pipeline.utils.backends import get_backend_name, get_execution_backend, is_ray_backend_name
@@ -306,6 +309,58 @@ def test_ray_job_submission_receives_configured_working_dir():
     }
     assert "pip" not in submitted[0]["runtime_env"]
     assert "conda" not in submitted[0]["runtime_env"]
+    prepared_command = shlex.split(submitted[0]["entrypoint"])[2]
+    assert prepared_command.startswith('export NEMO_RUN_CODE_DIR="$PWD" && export RAY_ADDRESS=auto && ')
+
+
+def test_ray_backend_without_working_dir_preserves_entrypoint_command():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265")
+
+    assert backend._prepare_job_entrypoint_command("echo ok") == "export RAY_ADDRESS=auto && echo ok"
+
+
+def test_ray_working_dir_paths_expand_after_cd_in_all_quote_contexts(tmp_path):
+    from nemo_skills.pipeline.utils.backends import rewrite_ray_job_code_paths
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    code_dir = tmp_path / "uploaded code"
+    skills_dir = code_dir / "nemo_skills"
+    gym_dir = tmp_path / "Gym"
+    code_dir.mkdir()
+    skills_dir.mkdir()
+    (skills_dir / "__init__.py").write_text("# packaged test module\n")
+    gym_dir.mkdir()
+
+    command = (
+        f"cd {shlex.quote(str(gym_dir))} && printf '%s\\n' "
+        "/nemo_run/code/nvflow/unquoted "
+        '"/nemo_run/code/nvflow/double quoted" '
+        "'/nemo_run/code/nvflow/single quoted' "
+        "'/nemo_run/code/nemo_skills/dataset/test.jsonl'"
+    )
+    rewritten = rewrite_ray_job_code_paths(command)
+    prepared = RayBackend(
+        dashboard_url="http://ray-head:8265",
+        working_dir="/opt/nvflow-ray-code.zip",
+    )._prepare_job_entrypoint_command(rewritten)
+
+    result = subprocess.run(
+        ["/bin/bash", "-c", prepared],
+        cwd=code_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.splitlines() == [
+        str(code_dir / "nvflow/unquoted"),
+        str(code_dir / "nvflow/double quoted"),
+        str(code_dir / "nvflow/single quoted"),
+        str(skills_dir / "dataset/test.jsonl"),
+    ]
+    assert prepared.index('export NEMO_RUN_CODE_DIR="$PWD"') < prepared.index(f"cd {shlex.quote(str(gym_dir))}")
 
 
 def test_ray_backend_rejects_non_string_working_dir():
