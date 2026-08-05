@@ -4,73 +4,6 @@ More details are coming soon!
 
 ## Supported benchmarks
 
-### deep-swe
-
-- Benchmark is defined in [`nemo_skills/dataset/deep-swe/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/deep-swe/__init__.py)
-- Original benchmark sources: [GitHub tasks](https://github.com/datacurve-ai/deep-swe), gated [HuggingFace dataset](https://huggingface.co/datasets/datacurve/deep-swe)
-
-DeepSWE is a Harbor-format coding-agent benchmark (113 long-horizon tasks). **Generation** reuses the
-same SWE-bench agent stack ([SWE-agent](https://swe-agent.com/latest/), [mini-SWE-agent](https://mini-swe-agent.com/latest/),
-[OpenHands](https://www.all-hands.dev/), or `gold_patch`). The repo lives at `/app` in each task image and is
-copied to `/testbed` for the agent (same as other non-`/testbed` SWE-bench datasets). **Grading** is decoupled:
-each task is scored with its Harbor verifier (`tests/test.sh` + `grader.py` + F2P/P2P in `tests/config.json`),
-not the SWE-bench harness.
-
-Pier/Docker/Modal are **not** required. On rootless Slurm, point `container_formatter` at your prebuilt `.sif`
-task images and keep Harbor `tasks/` under `--data_dir`.
-
-#### Data preparation
-
-DeepSWE sets `REQUIRES_DATA_DIR = True`, so `--cluster` and `--data_dir` are required (same idea as livecodebench-pro).
-
-```bash
-ns prepare_data deep-swe \
-  --cluster=<CLUSTER> \
-  --data_dir=/workspace/ns-data \
-  --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
-```
-
-This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) temporarily to
-build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
-`/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
-`NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. `.sif` images are not
-downloaded; they must already exist at the `container_formatter` paths.
-
-Useful options:
-
-- `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{docker_image_tag}`, `{ext_id}`
-- `--repo_url` / `--repo_commit` — override the DeepSWE Harbor git source
-- `--setup` — output split name (default: `default`)
-
-The HuggingFace dataset is gated (contact form). Prefer the public GitHub task repo for `prepare_data`.
-
-#### Evaluation
-
-```bash
-ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
-  --data_dir=/workspace/ns-data \
-  --model=... --server_type=vllm --server_gpus=8 \
-  --output_dir=/path/out \
-  ++agent_framework=mini_swe_agent
-```
-
-`--data_dir` is required (same as prepare). Harbor tests are resolved from
-`{data_dir}/deep-swe/tasks/<instance_id>/tests` automatically. Override with
-`++eval_config.test_dir=/path/to/deep-swe/tasks` only if tasks live elsewhere.
-
-Supported `++agent_framework` values (same as SWE-bench): `mini_swe_agent`, `swe_agent`, `openhands`, `gold_patch`.
-Default agent configs are the SWE-bench ones (override with `++agent_config=...` if needed).
-Prefer `mini_swe_agent` or `swe_agent`; OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows.
-
-Optional:
-
-- `++agent_framework=gold_patch` — grade reference `solution/solution.patch` without an agent rollout
-- `++evaluate=False` — agent/patch generation only
-- `++agent_max_turns=...` — override the default turn limit
-- `++eval_config.test_dir=.../deep-swe/tasks` — optional override of the Harbor tasks root
-
-Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
-Verifier crashes that only write the DeepSWE `reward.txt=-1` sentinel are counted as unresolved / not successfully applied.
 ### swe-bench
 
 !!! note
@@ -299,6 +232,57 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
+
+### deep-swe
+
+- Benchmark is defined in [`nemo_skills/dataset/deep-swe/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/deep-swe/__init__.py)
+- Original benchmark sources: [GitHub tasks](https://github.com/datacurve-ai/deep-swe), gated [HuggingFace dataset](https://huggingface.co/datasets/datacurve/deep-swe)
+
+DeepSWE is a Harbor-format coding-agent benchmark (113 long-horizon tasks). It reuses the SWE-bench agent logic for generation and scores each task with its Harbor verifier (`tests/test.sh` + `grader.py` + F2P/P2P in `tests/config.json`).
+
+DeepSWE uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well.
+The differences are described below.
+
+#### Data preparation
+
+DeepSWE requires a Harbor-style tasks folder to operate, so the data needs to be prepared on the cluster with `--cluster` and `--data_dir` arguments.
+
+```bash
+ns prepare_data deep-swe \
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
+```
+
+This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) temporarily to
+build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
+`/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
+`NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Note that this does not download the `.sif` images
+themselves, for instructions on that see the SWE-bench docs above.
+
+Useful options:
+
+- `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{docker_image_tag}`, `{ext_id}`
+- `--repo_url` / `--repo_commit` — override the DeepSWE Harbor git source
+- `--setup` — output split name (default: `default`)
+
+#### Evaluation
+
+```bash
+ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
+  --data_dir=/workspace/ns-data \
+  --model=... --server_type=vllm --server_gpus=8 \
+  --output_dir=/path/out \
+  ++agent_framework=mini_swe_agent
+```
+
+Note that `--data_dir` is required, same as for data preparation. For `++agent_framework`, prefer `mini_swe_agent` or `swe_agent`; OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows. All other regular SWE-bench options are supported. Additionally, there are some DeepSWE-specific options:
+- **++tasks_dir:** custom path to the Harbor tasks root on the cluster. This is used to run tests. Defaults to `{data_dir}/deep-swe/tasks`, which is the expected path after standard data preparation.
+- **++use_agent_timeouts:** if enabled, limit the agent trajectory duration to the timeout embedded in each task. This is disabled by default since trajectory duration is heavily dependent on the hardware setup when hosting LLMs locally.
+- **++use_verifier_timeouts:** if enabled, limit the verifier (evaluation) duration to the timeout embedded in each task. Disabled by default.
+
+Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
+Verifier crashes that only write the DeepSWE `reward.txt=-1` sentinel are counted as unresolved / not successfully applied.
 
 ### swe-bench-pro
 
