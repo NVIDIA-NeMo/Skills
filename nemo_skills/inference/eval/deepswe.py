@@ -44,64 +44,14 @@ class DeepSweGenerationConfig(SweBenchGenerationConfig):
     # Whether to apply timeouts on the agent and verifier (evaluation stage) if they are set in the data point.
     use_agent_timeouts: bool = False
     use_verifier_timeouts: bool = False
-    # eval_config.tasks_root: optional root of Harbor task dirs (contains <instance_id>/tests/).
-    # If unset, ns eval --data_dir resolves {data_dir}/deep-swe/tasks automatically.
+
+    # Custom path to the Harbor tasks root (contains <instance_id>/tests/).
+    # Defaults to {data_dir}/deep-swe/tasks.
+    tasks_dir: str | None = None
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_deepswe_generation_config", node=DeepSweGenerationConfig)
-
-
-def _get_eval_config_value(eval_config, key: str, default=None):
-    if eval_config is None:
-        return default
-    if isinstance(eval_config, dict):
-        return eval_config.get(key, default)
-    return eval_config.get(key, default) if hasattr(eval_config, "get") else default
-
-
-def _tests_candidate(tasks_root: Path, instance_id: str) -> Path:
-    return Path(tasks_root) / instance_id / "tests"
-
-
-def _resolve_tests_dir(data_point: dict, eval_config) -> Path:
-    """Resolve Harbor tests/ for one task.
-
-    Preference order:
-    1. ``++eval_config.tasks_root`` (explicit Harbor tasks root)
-    2. ``++eval_config.data_dir``/deep-swe/tasks (set automatically by ``ns eval --data_dir``)
-    """
-    instance_id = data_point["instance_id"]
-
-    tasks_root = _get_eval_config_value(eval_config, "tasks_root")
-    if tasks_root:
-        candidate = _tests_candidate(Path(tasks_root), instance_id)
-        if candidate.is_dir():
-            return candidate
-        raise ValueError(
-            f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
-            f"Check ++eval_config.tasks_root={tasks_root} (expected <tasks_root>/<instance_id>/tests)."
-        )
-
-    # ns eval --data_dir=... injects ++eval_config.data_dir; prefer that over stale
-    # absolute paths baked into JSONL during prepare (those point at the prepare host).
-    data_dir = _get_eval_config_value(eval_config, "data_dir")
-    if data_dir:
-        candidate = _tests_candidate(Path(data_dir) / "deep-swe" / "tasks", instance_id)
-        if candidate.is_dir():
-            return candidate
-        raise ValueError(
-            f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
-            f"Expected tasks under {{data_dir}}/deep-swe/tasks after "
-            f"`ns prepare_data deep-swe --data_dir=...`. "
-            f"Or pass ++eval_config.tasks_root explicitly."
-        )
-
-    raise ValueError(
-        f"DeepSWE tests dir not found for {instance_id}. "
-        "Pass --data_dir (recommended) or ++eval_config.tasks_root=/path/to/deep-swe/tasks "
-        "after ns prepare_data."
-    )
 
 
 def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
@@ -209,6 +159,44 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             self, data_point, command, expected_file_pattern, mode, timeout, extra_apptainer_args
         )
 
+    def _resolve_tests_dir(self, data_point: dict) -> Path:
+        """Resolve Harbor tests/ for one task.
+
+        Preference order:
+        1. ``++tasks_dir``/<instance_id>/tests (explicit Harbor tasks root override if passed)
+        2. ``++eval_config.data_dir``/deep-swe/tasks/<instance_id>/tests (set automatically by ``ns eval --data_dir``)
+        """
+        instance_id = data_point["instance_id"]
+
+        tasks_dir = self.cfg.tasks_dir
+        if tasks_dir:
+            candidate = Path(tasks_dir) / instance_id / "tests"
+            if candidate.is_dir():
+                return candidate
+            raise ValueError(
+                f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
+                f"Check ++tasks_dir={tasks_dir} (expected <tasks_dir>/<instance_id>/tests)."
+            )
+
+        # ns eval --data_dir=... injects ++eval_config.data_dir
+        data_dir = self.cfg.eval_config.get("data_dir")
+        if data_dir:
+            candidate = Path(data_dir) / "deep-swe" / "tasks" / instance_id / "tests"
+            if candidate.is_dir():
+                return candidate
+            raise ValueError(
+                f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
+                f"Expected tasks under {{data_dir}}/deep-swe/tasks after "
+                f"`ns prepare_data deep-swe --data_dir=...`. "
+                f"Or pass ++tasks_dir explicitly."
+            )
+
+        raise ValueError(
+            f"DeepSWE tests dir not found for {instance_id}. "
+            "Pass --data_dir (recommended) or ++tasks_dir=/path/to/deep-swe/tasks "
+            "after ns prepare_data."
+        )
+
     async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
         """Apply model.patch in a pristine task image and run tests/test.sh."""
         patches_dir = self.output_dir / "patches"
@@ -223,7 +211,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             shutil.rmtree(eval_out)
         eval_out.mkdir(parents=True, exist_ok=True)
 
-        tests_dir = _resolve_tests_dir(data_point, self.cfg.eval_config)
+        tests_dir = self._resolve_tests_dir(data_point)
         extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
 
         verifier_cmd = (
