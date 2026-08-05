@@ -242,7 +242,108 @@ def test_ray_backend_runtime_env_sets_override_even_with_no_env():
     backend = RayBackend(dashboard_url="http://ray-head:8265", env_vars={})
 
     # Even with no forwarded env vars the runtime_env still carries the override flag (never None).
-    assert backend._build_runtime_env() == {"env_vars": {"RAY_OVERRIDE_JOB_RUNTIME_ENV": "1"}}
+    runtime_env = backend._build_runtime_env()
+    assert runtime_env == {"env_vars": {"RAY_OVERRIDE_JOB_RUNTIME_ENV": "1"}}
+    assert {"working_dir", "py_modules", "pip", "conda"}.isdisjoint(runtime_env)
+
+
+def test_ray_backend_working_dir_enables_install_free_code_delivery():
+    """The opt-in working dir is the only runtime-env code-delivery field.
+
+    Ray packages this already-present directory/archive and changes the job cwd;
+    no dependency installer configuration is synthesized.
+    """
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(
+        dashboard_url="http://ray-head:8265",
+        env_vars={"AIRGAP": "1"},
+        working_dir="  /opt/nvflow  ",
+    )
+
+    assert backend._build_runtime_env() == {
+        "env_vars": {"AIRGAP": "1", "RAY_OVERRIDE_JOB_RUNTIME_ENV": "1"},
+        "working_dir": "/opt/nvflow",
+    }
+
+
+def test_ray_job_submission_receives_configured_working_dir():
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    submitted = []
+
+    class RecordingClient:
+        def submit_job(self, **kwargs):
+            submitted.append(kwargs)
+            return "job-1"
+
+        def get_job_status(self, job_id):
+            assert job_id == "job-1"
+            return "SUCCEEDED"
+
+        def get_job_logs(self, job_id):
+            assert job_id == "job-1"
+            return ""
+
+    backend = RayBackend(
+        dashboard_url="http://ray-head:8265",
+        working_dir="/opt/nvflow",
+    )
+    exp = SimpleNamespace(_title="airgap-code-delivery")
+
+    backend._submit_jobs_concurrently(
+        RecordingClient(),
+        exp,
+        [{"task_name": "prepare-data", "command": "python -m nvflow.prepare_data"}],
+    )
+
+    assert len(submitted) == 1
+    assert submitted[0]["runtime_env"] == {
+        "env_vars": {"RAY_OVERRIDE_JOB_RUNTIME_ENV": "1"},
+        "working_dir": "/opt/nvflow",
+    }
+    assert "pip" not in submitted[0]["runtime_env"]
+    assert "conda" not in submitted[0]["runtime_env"]
+
+
+def test_ray_backend_rejects_non_string_working_dir():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    with pytest.raises(ValueError, match="working_dir must be a string"):
+        RayBackend(dashboard_url="http://ray-head:8265", working_dir=["/opt/nvflow"])
+
+
+@pytest.mark.parametrize("backend_name", ["ray", "kubernetes-ray"])
+def test_ray_backend_resolves_working_dir_from_cluster_config(backend_name):
+    cluster_config = {
+        "executor": "none",
+        "backend": {
+            "name": backend_name,
+            "dashboard_url": "http://ray-head:8265",
+            "working_dir": "/opt/nvflow-source.zip",
+        },
+    }
+
+    backend = get_execution_backend(cluster_config)
+
+    assert backend.working_dir == "/opt/nvflow-source.zip"
+    assert backend._build_runtime_env()["working_dir"] == "/opt/nvflow-source.zip"
+
+
+def test_default_slurm_backend_ignores_ray_working_dir_and_stays_lazy():
+    """Ray-only code delivery must not alter the default Slurm backend."""
+    backend = get_execution_backend(
+        {
+            "executor": "slurm",
+            "backend": {"name": "default", "working_dir": "/opt/nvflow"},
+        }
+    )
+
+    assert backend.name == "default"
+    assert backend.stage_metadata() is None
+    assert not hasattr(backend, "working_dir")
 
 
 # ---------------------------------------------------------------------------

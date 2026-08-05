@@ -274,6 +274,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
         selector = backend_config.get("entrypoint_label_selector") or k8s_cfg.get("entrypoint_label_selector")
         image_label_key = backend_config.get("image_label_key") or k8s_cfg.get("image_label_key")
         image_label_selectors = backend_config.get("image_label_selectors") or k8s_cfg.get("image_label_selectors")
+        working_dir = backend_config.get("working_dir") or k8s_cfg.get("working_dir")
         image_label_selectors = _resolve_selector_keys_with_container_map(
             image_label_selectors, cluster_config.get("containers")
         )
@@ -290,6 +291,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
                 image_label_key=image_label_key,
                 image_label_selectors=image_label_selectors,
                 env_vars=get_env_variables(cluster_config),
+                working_dir=working_dir,
             )
         return RayBackend(
             endpoint=endpoint,
@@ -300,6 +302,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             image_label_key=image_label_key,
             image_label_selectors=image_label_selectors,
             env_vars=get_env_variables(cluster_config),
+            working_dir=working_dir,
         )
     if backend_name in {"kubernetes-ray", "ray-kubernetes", "ray_kubernetes"}:
         k8s_cfg = backend_config.get("kubernetes") or {}
@@ -307,6 +310,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
         selector = backend_config.get("entrypoint_label_selector") or k8s_cfg.get("entrypoint_label_selector")
         image_label_key = backend_config.get("image_label_key") or k8s_cfg.get("image_label_key")
         image_label_selectors = backend_config.get("image_label_selectors") or k8s_cfg.get("image_label_selectors")
+        working_dir = backend_config.get("working_dir") or k8s_cfg.get("working_dir")
         image_label_selectors = _resolve_selector_keys_with_container_map(
             image_label_selectors, cluster_config.get("containers")
         )
@@ -333,6 +337,7 @@ def get_execution_backend(cluster_config: Dict[str, Any], *, with_ray: bool = Fa
             image_label_key=image_label_key,
             image_label_selectors=image_label_selectors,
             env_vars=get_env_variables(cluster_config),
+            working_dir=working_dir,
         )
 
     raise ValueError(
