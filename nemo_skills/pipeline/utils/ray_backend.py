@@ -93,6 +93,7 @@ class RayBackend(ExecutionBackend):
         image_label_key: str | None = None,
         image_label_selectors: Dict[str, Dict[str, str]] | None = None,
         env_vars: Dict[str, str] | None = None,
+        working_dir: str | None = None,
     ):
         """Configure connection, placement, and env-forwarding options for the backend."""
         self.endpoint = endpoint.strip() if endpoint else None
@@ -107,6 +108,13 @@ class RayBackend(ExecutionBackend):
         # Forwarded to each job's runtime_env so cluster env vars (API keys,
         # HF_TOKEN, ...) reach the job regardless of the cluster head's env.
         self.env_vars = {str(k): str(v) for k, v in (env_vars or {}).items() if v is not None}
+        if working_dir is not None and not isinstance(working_dir, str):
+            raise ValueError("working_dir must be a string when provided")
+        # Ray Jobs packages a local directory (or local .zip archive) and makes
+        # it the job's working directory.  This is intentionally the only
+        # configurable runtime-env code-delivery field: dependency-installing
+        # fields such as pip and conda are not accepted by this backend.
+        self.working_dir = (working_dir or "").strip() or None
         self.kubernetes_mode = None
         if self.control_plane == "kubernetes":
             normalized_mode = (kubernetes_mode or "offline").strip().lower()
@@ -200,8 +208,15 @@ class RayBackend(ExecutionBackend):
             ) from exc
         return JobSubmissionClient(self.dashboard_url)
 
-    def _build_runtime_env(self) -> Dict[str, Any] | None:
-        """runtime_env that forwards cluster env vars (API keys, HF_TOKEN, ...) to a job.
+    def _build_runtime_env(self) -> Dict[str, Any]:
+        """Build the install-free runtime env for a Ray Job.
+
+        ``working_dir`` is an opt-in code-delivery mechanism. Ray uploads the
+        configured local directory or local .zip archive through the Jobs API
+        and makes it the entrypoint's current directory; it does not install a
+        Python package or resolve dependencies. This lets an airgapped launcher
+        deliver source already baked into its image without a host checkout,
+        ``PYTHONPATH`` overlay, or runtime pip/uv operation.
 
         Always sets RAY_OVERRIDE_JOB_RUNTIME_ENV=1. A job whose driver calls ray.init()
         again with its own runtime_env (e.g. NeMo-RL GRPO/rollout) would otherwise hit
@@ -212,7 +227,10 @@ class RayBackend(ExecutionBackend):
         """
         env_vars = dict(self.env_vars)
         env_vars["RAY_OVERRIDE_JOB_RUNTIME_ENV"] = "1"
-        return {"env_vars": env_vars}
+        runtime_env: Dict[str, Any] = {"env_vars": env_vars}
+        if self.working_dir:
+            runtime_env["working_dir"] = self.working_dir
+        return runtime_env
 
     def _stop_jobs_best_effort(
         self,
