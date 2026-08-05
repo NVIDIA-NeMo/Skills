@@ -190,8 +190,8 @@ def get_benchmark_args_from_module(
     # when running locally swe-bench launches apptainer inside docker and this required elevated privileges
     # TODO: is there a better way to handle this?
     # TODO: handle properly without polluting environment for future calls
-    if benchmark == "swe-bench" and cluster_config["executor"] == "local":
-        LOG.info("Swe-bench requires extra docker privileges, setting NEMO_SKILLS_PRIVILEGED_DOCKER=1")
+    if benchmark in ("swe-bench", "hil-swe-bench") and cluster_config["executor"] == "local":
+        LOG.info("%s requires extra docker privileges, setting NEMO_SKILLS_PRIVILEGED_DOCKER=1", benchmark)
         os.environ["NEMO_SKILLS_PRIVILEGED_DOCKER"] = "1"
 
     metrics_type = get_arg_from_module_or_dict(benchmark_module, "METRICS_TYPE", None, override_dict)

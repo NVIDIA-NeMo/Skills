@@ -173,6 +173,46 @@ all you need to do is replace `openhands` with `swe_agent` or `mini_swe_agent` i
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### hil-swe-bench
+
+- Benchmark is defined in [`nemo_skills/dataset/hil-swe-bench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/hil-swe-bench/__init__.py)
+- Original benchmark: [HiL-Bench](https://github.com/hilbenchauthors/hil-bench) (SWE subset only; SQL is not included)
+
+HiL-Bench SWE measures whether coding agents ask for help on tasks with intentional blockers.
+NeMo-Skills runs **hil-bench's SWE-agent** for rollouts and scores patches with each task's Harbor
+`tests/test.sh` verifier (not the SWE-bench harness). Modes: `baseline`, `ask_human`, `full_info`.
+
+#### Data preparation
+
+```bash
+ns prepare_data hil-swe-bench \
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/path/to/hil-bench-swe/images/{attempt_id}.sif"
+```
+
+This materializes Harbor task dirs under `{data_dir}/hil-swe-bench/tasks/<swe_i>__<mode>/`
+and writes `default.jsonl`. Useful options: `--harbor_swe_dir`, `--modes`, `--tasks`.
+
+Download SWE Docker image archives from Hugging Face (`ScaleAI/hil-bench-swe-images`) and convert
+to `.sif` as needed before eval.
+
+#### Evaluation
+
+```bash
+ns eval --cluster=<CLUSTER> --benchmarks=hil-swe-bench \
+  --data_dir=/workspace/ns-data \
+  --model=... --server_type=vllm --server_gpus=8 \
+  --output_dir=/path/out
+```
+
+`--data_dir` is required. Only `++agent_framework=swe_agent` is supported (default).
+Optional: `++tasks_dir=...`, `++ask_human_server_url=...` (for ask_human mode),
+`++use_agent_timeouts`, `++use_verifier_timeouts`.
+
+Metrics: Harbor `resolved` / `reward` (pass@k) and optional `ask_f1` when ask_human sidecar
+metrics are present in `reward.json`.
+
 ### swe-bench-multilingual
 
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench-multilingual/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-multilingual/__init__.py)

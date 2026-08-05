@@ -60,6 +60,42 @@ class SweBenchMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions=predictions)
 
 
+class HiLSweBenchMetrics(BaseMetrics):
+    """Aggregate Harbor reward fields produced by HiL-Bench SWE verification.
+
+    Uses the same ``swe-bench-metrics`` / ``swe-bench-outputs`` prediction keys as
+    SWE-bench; Harbor-specific fields live inside metrics.
+    """
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["swe-bench-metrics"]
+        score = {
+            "issues_resolved": metrics.get("resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
+            "reward": float(metrics.get("reward") or 0.0),
+        }
+        if metrics.get("ask_f1") is not None or metrics.get("f1") is not None:
+            score["ask_f1"] = float(metrics.get("ask_f1", metrics.get("f1")) or 0.0)
+            score["ask_precision"] = float(metrics.get("precision") or 0.0)
+            score["ask_recall"] = float(metrics.get("recall") or 0.0)
+        return score
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+                "reward": 0,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
 class SciCodeMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         subtask_status_list = prediction["eval_status"]

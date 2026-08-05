@@ -16,10 +16,9 @@
 #
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
 EVAL_SPLIT = "default"
-# Metrics / generation module will be finalized with inference/eval/hil_bench.py.
-# swe-bench metrics keys are compatible with Harbor reward "resolved" for now.
-METRICS_TYPE = "swe-bench"
+METRICS_TYPE = "hil-swe-bench"
+# Generation uses hil-bench SWE-agent; grading uses Harbor tests/test.sh via hil_bench.py.
 GENERATION_MODULE = "nemo_skills.inference.eval.hil_bench"
-GENERATION_ARGS = ""
+GENERATION_ARGS = "++agent_framework=swe_agent ++dataset_type=hil_bench ++agent_max_turns=100"
 # Harbor task trees are large; keep them under --data_dir (do not package with every job).
 REQUIRES_DATA_DIR = True

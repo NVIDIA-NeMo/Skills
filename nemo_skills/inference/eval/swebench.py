@@ -52,6 +52,7 @@ class SupportedAgentFrameworks(str, Enum):
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
+    hil_bench = "hil_bench"  # Harbor verifier scoring is implemented in hil_bench.py
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
@@ -362,8 +363,12 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        if self.cfg.evaluate:
-            # Install the SWE-bench evaluation harness.
+        if self.cfg.evaluate and self.cfg.dataset_type in [
+            SupportedDatasetTypes.swe_bench,
+            SupportedDatasetTypes.swe_bench_pro,
+        ]:
+            # Install the SWE-bench / SWE-bench-Pro evaluation harness.
+            # HiL-Bench uses Harbor tests/test.sh instead (see hil_bench.py).
             setup_commands.append(
                 # clone the swe-bench repo
                 "rm -rf /root/SWE-bench && "
@@ -433,15 +438,21 @@ class SweBenchGenerationTask(GenerationTask):
             else:
                 return
 
-    async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
+    async def _execute_container_command(
+        self,
+        data_point,
+        command,
+        expected_file_pattern,
+        mode,
+        timeout=100000,
+        extra_apptainer_args="",
+    ):
         """Execute a command in an Apptainer container with retry logic."""
         # Commands to be executed in the Apptainer container, in order
         container_commands = []
 
         # Fix localhost URLs not working sometimes
         container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
-
-        extra_apptainer_args = ""
 
         if self.cfg.swe_zero_container is not None and mode == "agent":
             container_name = self.cfg.swe_zero_container
