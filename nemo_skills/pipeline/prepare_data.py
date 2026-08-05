@@ -212,6 +212,9 @@ def prepare_data(
     )
 
     if data_dir:
+        # Ensure prepare.py scripts that key off NEMO_SKILLS_DATA_DIR (e.g. Harbor task
+        # materialization for hil-swe-bench) write into --data_dir rather than the package tree.
+        command = f"export NEMO_SKILLS_DATA_DIR={shlex.quote(data_dir)} && {command}"
         command += f" && mkdir -p {data_dir}"
         for dataset in requested_datasets:
             name = get_dataset_name(dataset)
