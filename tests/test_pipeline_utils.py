@@ -39,13 +39,32 @@ def create_done_files(output_dir, seed_chunk_pairs):
             f.write("")
 
 
-def test_get_exp_reuse_removes_nemo_skills_handlers(monkeypatch):
-    """A nested pipeline must not retain a handler beside nemo-run's root handler."""
+def test_get_exp_reuse_preserves_slurm_handlers(monkeypatch):
+    """Reusing a Slurm experiment preserves the historical logger state."""
     logger = logging.getLogger("nemo_skills")
     monkeypatch.setattr(logger, "handlers", [logging.NullHandler()])
     reused_exp = object()
 
-    with get_exp("nested", {"executor": "local"}, _reuse_exp=reused_exp) as exp:
+    with get_exp("nested", {"executor": "slurm"}, _reuse_exp=reused_exp) as exp:
+        assert exp is reused_exp
+
+    assert len(logger.handlers) == 1
+
+
+def test_get_exp_reuse_removes_ray_jobs_handlers(monkeypatch):
+    """A nested Ray Jobs pipeline must not duplicate propagated log records."""
+    logger = logging.getLogger("nemo_skills")
+    monkeypatch.setattr(logger, "handlers", [logging.NullHandler()])
+    reused_exp = object()
+    cluster_config = {
+        # A pre-created Ray Jobs backend can use Slurm as the surrounding
+        # scheduler; backend selection, not the executor label, controls the
+        # duplicate-handler cleanup.
+        "executor": "slurm",
+        "backend": {"name": "ray", "dashboard_url": "http://ray-head:8265"},
+    }
+
+    with get_exp("nested", cluster_config, _reuse_exp=reused_exp) as exp:
         assert exp is reused_exp
 
     assert logger.handlers == []
@@ -544,17 +563,43 @@ def test_add_task_resolves_command_images_only_when_ray_backend_active(mock_port
     )
     assert mock_resolve.call_count == 0, "non-Ray add_task must not resolve command images"
 
-    # Ray-active path (legacy with_ray): images ARE resolved for the Ray queue.
+    # Legacy embedded Ray-on-Slurm is not the Jobs API backend and must not
+    # resolve images or prepare a queue.
     mock_resolve.reset_mock()
+    captured = {}
+
+    def _add(script, **kwargs):
+        captured["metadata"] = script.metadata
+        return "h"
+
     add_task(
-        exp=SimpleNamespace(add=MagicMock(return_value="h")),
+        exp=SimpleNamespace(add=_add),
         cmd="echo hello",
         task_name="t",
-        cluster_config=cluster_config,
+        cluster_config={"executor": "slurm", "containers": {"sandbox": "sandbox:latest"}},
         container="main:latest",
         log_dir="/tmp/logs",
         with_ray=True,
         skip_hf_home_check=True,
         reuse_code=False,
     )
-    assert mock_resolve.call_count >= 1, "Ray-active add_task must resolve command images for the queue"
+    assert mock_resolve.call_count == 0
+    assert captured["metadata"] == {"use_with_ray_cluster": True}
+
+    # An explicit Ray Jobs backend does need the resolved image for its queue.
+    ray_jobs_config = {
+        "executor": "none",
+        "containers": {"sandbox": "sandbox:latest"},
+        "backend": {"name": "ray", "dashboard_url": "http://ray-head:8265"},
+    }
+    add_task(
+        exp=SimpleNamespace(add=MagicMock(return_value="h"), jobs=[]),
+        cmd="echo hello",
+        task_name="t",
+        cluster_config=ray_jobs_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+    assert mock_resolve.call_count >= 1, "Ray Jobs add_task must resolve command images for the queue"
