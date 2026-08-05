@@ -59,7 +59,8 @@ RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
 
-RUN pip install langdetect absl-py immutabledict nltk ipython && \
+# NLTK 3.10's import-safety hook is incompatible with this image's Python 3.10 runtime.
+RUN pip install langdetect absl-py immutabledict "nltk==3.9.2" ipython && \
     python -I -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
     nltk.download('stopwords'); nltk.download('averaged_perceptron_tagger_eng'); download('en_core_web_sm')"
 
