@@ -80,9 +80,9 @@ override-dependencies = [
     # 0.7.0 (a transitive dep of nemo_run) pins urllib3<1.27, but in practice
     # urllib3>=2 works at runtime, so override the constraint.
     "urllib3>=2.6.3",
-    # Container scans found msgpack 1.1.2 (GHSA-6v7p-g79w-8964) and setuptools
-    # 70.3.0 (CVE-2025-47273) after transitive resolution. Keep the complete
+    # Container scans found vulnerable transitive versions. Keep the complete
     # environment above the first fixed releases.
+    "aiohttp>=3.14.3",
     "msgpack>=1.2.1",
     "setuptools>=78.1.1",
 ]

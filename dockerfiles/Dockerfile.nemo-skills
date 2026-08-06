@@ -111,12 +111,27 @@ RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
 
-# Guard the final resolved environment against the two High findings seen in
-# the July 31 multi-architecture image scan.
+# Ray's runtime-env agent prepends its bundled aiohttp 3.14.1 over the fixed
+# environment package. Replace that private copy with the resolved 3.14.3 files
+# from the same architecture (CVE-2026-69244). uv also packages a build SBOM
+# containing msgpack 1.1.2 and setuptools 70.3.0; remove that non-runtime SBOM so
+# scanners do not report uv's build dependencies as installed packages.
+RUN site_packages="$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" && \
+    ray_thirdparty="${site_packages}/ray/_private/runtime_env/agent/thirdparty_files" && \
+    rm -rf "${ray_thirdparty}/aiohttp" "${ray_thirdparty}"/aiohttp-*.dist-info && \
+    cp -a "${site_packages}/aiohttp" "${ray_thirdparty}/" && \
+    cp -a "${site_packages}"/aiohttp-*.dist-info "${ray_thirdparty}/" && \
+    find "${site_packages}" -type d -path '*/uv-*.dist-info/sboms' -prune -exec rm -rf {} +
+
+# Guard the final resolved environment and Ray's private import path against the
+# High findings seen in the multi-architecture image scans.
 RUN python -c "from importlib.metadata import version as v; from packaging.version import Version as V; \
+               assert V(v('aiohttp')) >= V('3.14.3'), v('aiohttp'); \
                assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
                assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
-               print('msgpack/setuptools security floors OK')"
+               print('aiohttp/msgpack/setuptools security floors OK')" && \
+    python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohttp, ray; assert Path(aiohttp.__file__).is_relative_to(thirdparty), aiohttp.__file__; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp OK:', ray.__version__, aiohttp.__version__)" && \
+    ! find /usr/local/lib/python3*/dist-packages -type d -path '*/uv-*.dist-info/sboms' | grep -q .
 
 # nSpect's global policy flags Git metadata left by uv's source-distribution
 # cache. The cache is build-only, so remove it from the published image.
