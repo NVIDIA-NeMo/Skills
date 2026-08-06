@@ -20,6 +20,7 @@ This PR bumps several dependency floors/pins to close known CVEs:
   * datamodel-code-generator -> >=0.64.0 (fixes eight High findings)
   * wandb            -> ==0.28.1, paired with a patched wandb-core
   * lxml             -> >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw)
+  * aiohttp          -> >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
   * setuptools       -> >=78.1.1 (fixes CVE-2025-47273)
   * typer            -> >=0.16   (click 8.2 compatible)
@@ -174,9 +175,14 @@ class TestPatchedWandbCoreDockerBuild:
     def test_uv_git_cache_is_removed_from_final_image(self, dockerfile):
         assert "RUN rm -rf /root/.cache/uv" in dockerfile
 
-    def test_final_image_asserts_msgpack_and_setuptools_floors(self, dockerfile):
+    def test_final_image_asserts_python_security_floors(self, dockerfile):
+        assert "V(v('aiohttp')) >= V('3.14.3')" in dockerfile
         assert "V(v('msgpack')) >= V('1.2.1')" in dockerfile
         assert "V(v('setuptools')) >= V('78.1.1')" in dockerfile
+
+    def test_ray_private_aiohttp_and_uv_build_sbom_are_remediated(self, dockerfile):
+        assert "ray/_private/runtime_env/agent/thirdparty_files" in dockerfile
+        assert "uv-*.dist-info/sboms" in dockerfile
 
 
 class TestPipelineRequirements:
@@ -272,7 +278,7 @@ class TestPyprojectUvOverrides:
 
     @pytest.mark.parametrize(
         ("package", "minimum"),
-        [("msgpack", "1.2.1"), ("setuptools", "78.1.1")],
+        [("aiohttp", "3.14.3"), ("msgpack", "1.2.1"), ("setuptools", "78.1.1")],
     )
     def test_container_security_override_present(self, uv_overrides, package, minimum):
         assert package in uv_overrides
