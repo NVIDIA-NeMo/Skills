@@ -19,6 +19,7 @@ import logging
 import os
 import random
 import shlex
+import socket
 import sys
 from dataclasses import field
 from enum import Enum
@@ -226,11 +227,18 @@ class SweBenchGenerationTask(GenerationTask):
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Set up the LLM API base URL.
-
+        # Agent containers are launched with `--no-mount bind-paths`, so they have no
+        # /etc/resolv.conf and cannot resolve node hostnames. Resolve the host here, where
+        # DNS works, so the agent only ever receives a literal address.
         if "base_url" in self.cfg.server:
             self.api_base = self.cfg.server.base_url
         else:
-            self.api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+            host = self.cfg.server.host
+            try:
+                host = socket.gethostbyname(host)
+            except OSError:
+                LOG.warning("Could not resolve server host %s, passing it through unchanged", host)
+            self.api_base = f"http://{host}:{self.cfg.server.port}/v1"
 
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
