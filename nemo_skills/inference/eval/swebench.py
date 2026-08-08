@@ -19,6 +19,7 @@ import logging
 import os
 import random
 import shlex
+import socket
 import sys
 from dataclasses import field
 from enum import Enum
@@ -928,16 +929,31 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return str(out_file)
 
+    def get_api_base(self):
+        """Build the LLM endpoint URL that agents use from inside their Apptainer containers.
+
+        Agent containers are launched with `--no-mount bind-paths`, so they have no
+        /etc/resolv.conf and cannot resolve node hostnames. Resolve the host here, where
+        DNS works, so the agent only ever receives a literal address.
+        """
+        if "base_url" in self.cfg.server:
+            return self.cfg.server.base_url
+
+        host = self.cfg.server.host
+        try:
+            host = socket.gethostbyname(host)
+        except OSError:
+            LOG.warning("Could not resolve server host %s, passing it through unchanged", host)
+
+        return f"http://{host}:{self.cfg.server.port}/v1"
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
 
         # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
         # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?
 
-        if "base_url" in self.cfg.server:
-            api_base = self.cfg.server.base_url
-        else:
-            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+        api_base = self.get_api_base()
 
         # Run the agent rollout.
         # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.

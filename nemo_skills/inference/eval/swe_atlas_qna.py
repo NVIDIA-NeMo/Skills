@@ -68,10 +68,7 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         return trajectory_info
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
-        if "base_url" in self.cfg.server:
-            api_base = self.cfg.server.base_url
-        else:
-            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+        api_base = self.get_api_base()
 
         async with self.semaphore:
             output_file = await self._run_mini_swe_agent(data_point, api_base)
