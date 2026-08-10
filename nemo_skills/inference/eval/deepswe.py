@@ -41,6 +41,8 @@ LOG = logging.getLogger(get_logger_name(__file__))
 NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
     {
         "anko-default-function-arguments",
+        "httpx-multipart-response-parsing",
+        "httpx-streaming-json-iteration",
         "prometheus-transactional-reload-status",
         "testem-bail-on-test-failure",
         "testem-per-launcher-reports",
