@@ -273,7 +273,8 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                 "partial": None,
             }
         else:
-            metrics = await self._run_deepswe_verifier(data_point, str(model_patch))
+            async with self.semaphore:
+                metrics = await self._run_deepswe_verifier(data_point, str(model_patch))
 
         return {
             "swe-bench-metrics": metrics,
