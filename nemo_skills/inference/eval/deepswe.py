@@ -38,6 +38,15 @@ from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclas
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
+    {
+        "anko-default-function-arguments",
+        "prometheus-transactional-reload-status",
+        "testem-bail-on-test-failure",
+        "testem-per-launcher-reports",
+    }
+)
+
 
 @nested_dataclass(kw_only=True)
 class DeepSweGenerationConfig(SweBenchGenerationConfig):
@@ -213,6 +222,8 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
 
         tests_dir = self._resolve_tests_dir(data_point)
         extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
+        if data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
+            extra_apptainer_args += " --net --network none "
 
         verifier_cmd = (
             "mkdir -p /logs/artifacts /logs/verifier && "
