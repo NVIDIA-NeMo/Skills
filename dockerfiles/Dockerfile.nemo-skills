@@ -1,10 +1,12 @@
 # W&B 0.28.1 still bundles Go 1.26.4, grpc-go 1.82.0, x/text 0.38.0, and
-# go-git 5.19.1. W&B commit 16af7d3 includes the prior dependency updates plus
-# go-git 5.19.2, which fixes CVE-2026-71556. Build only wandb-core here so the
-# final image gets the fixed binary without retaining the Go toolchain or source.
-ARG WANDB_CORE_COMMIT=16af7d3b52deacaa7c1ed521ffb5c5941d9df9f4
+# go-git 5.19.1. Keep the qualified W&B dependency-update commit and minimally
+# backport W&B PR #12326's go-git 5.19.2 fix for CVE-2026-71556. Build only
+# wandb-core so the final image does not retain the Go toolchain or source.
+ARG WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7
+ARG WANDB_GO_GIT_VERSION=5.19.2
 FROM golang:1.26.5 AS wandb-core-builder
 ARG WANDB_CORE_COMMIT
+ARG WANDB_GO_GIT_VERSION
 RUN git init /src/wandb && \
     cd /src/wandb && \
     git remote add origin https://github.com/wandb/wandb.git && \
@@ -13,6 +15,10 @@ RUN git init /src/wandb && \
     git fetch --depth 1 origin "${WANDB_CORE_COMMIT}" && \
     git checkout --detach FETCH_HEAD
 RUN cd /src/wandb/core && \
+    go get "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}" && \
+    go mod vendor && \
+    grep -E "^[[:space:]]*github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" go.mod && \
+    grep -E "^# github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" vendor/modules.txt && \
     CGO_ENABLED=0 go build \
         -tags "disable_grpc_modules parquet_read_only" \
         -ldflags "-s -w -X main.commit=${WANDB_CORE_COMMIT}" \
@@ -20,7 +26,7 @@ RUN cd /src/wandb/core && \
         -o /wandb-core \
         ./cmd/wandb-core && \
     go version -m /wandb-core | grep -F "go1.26.5" && \
-    go version -m /wandb-core | grep -E "github\.com/go-git/go-git/v5[[:space:]]+v5\.19\.2([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" && \
     go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v1\.82\.1([[:space:]]|$)" && \
     go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v0\.40\.0([[:space:]]|$)"
 
