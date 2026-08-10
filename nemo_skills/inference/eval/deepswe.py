@@ -38,6 +38,9 @@ from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclas
 
 LOG = logging.getLogger(get_logger_name(__file__))
 
+# These verifiers use fixed localhost ports (Anko, HTTPX, and Testem) or require isolated IPv6 loopback
+# behavior (Prometheus). Concurrent runs can otherwise collide or hang when they share the host network
+# namespace, so run them with private, network-disabled namespaces.
 NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
     {
         "anko-default-function-arguments",
