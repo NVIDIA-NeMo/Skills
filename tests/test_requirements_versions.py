@@ -153,14 +153,19 @@ class TestPatchedWandbCoreDockerBuild:
         return NEMO_SKILLS_DOCKERFILE.read_text()
 
     def test_immutable_upstream_security_commit_is_pinned(self, dockerfile):
-        assert "WANDB_CORE_COMMIT=16af7d3b52deacaa7c1ed521ffb5c5941d9df9f4" in dockerfile
+        assert "WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7" in dockerfile
+        assert "WANDB_GO_GIT_VERSION=5.19.2" in dockerfile
 
     @pytest.mark.parametrize(
         "expected",
         [
             "FROM golang:1.26.5 AS wandb-core-builder",
+            'go get "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}"',
+            "go mod vendor",
+            "go.mod",
+            "vendor/modules.txt",
             'go version -m /wandb-core | grep -F "go1.26.5"',
-            "github\\.com/go-git/go-git/v5[[:space:]]+v5\\.19\\.2",
+            "github\\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}",
             "google\\.golang\\.org/grpc[[:space:]]+v1\\.82\\.1",
             "golang\\.org/x/text[[:space:]]+v0\\.40\\.0",
         ],
