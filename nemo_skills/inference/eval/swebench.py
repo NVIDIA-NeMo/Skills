@@ -20,6 +20,7 @@ import os
 import random
 import shlex
 import shutil
+import socket
 import sys
 from dataclasses import field
 from enum import Enum
@@ -938,7 +939,13 @@ class SweBenchGenerationTask(GenerationTask):
         if "base_url" in self.cfg.server:
             api_base = self.cfg.server.base_url
         else:
-            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
+            # Fix multinode hostname issue
+            host = self.cfg.server.host
+            try:
+                host = socket.gethostbyname(host)
+            except OSError:
+                LOG.warning("Could not resolve server host %s, passing it through unchanged", host)
+            api_base = f"http://{host}:{self.cfg.server.port}/v1"
 
         if self.cfg.skip_inference:
             # Skip running the agent, get the patch from a previously generated output file
