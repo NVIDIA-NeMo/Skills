@@ -109,6 +109,16 @@ agent:
     - If you modify patch.txt after verifying, you SHOULD verify again before submitting.
     - You CANNOT continue working (reading, editing, testing) in any way on this task after submitting.
     </CRITICAL>
+
+    ## Solution Originality
+
+    Implement your own original solution to the task.
+    As an expert software engineer, your unique skills and judgement are needed to create the best solution.
+    Therefore, your own implementation is strongly preferred over a copy or modification of an existing solution.
+    Because you are working independently, you **MUST NOT** attempt to:
+    - clone, download files from or otherwise access the upstream repository,
+    - use git commands to access any commits, tags or references outside of the current branch,
+    for ANY reason at all, even if it's just "for reference" or to verify your own solution.
     </instructions>
   cost_limit: 0.  # no limit
 
