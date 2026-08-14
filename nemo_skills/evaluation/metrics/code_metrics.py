@@ -99,6 +99,43 @@ class DeepSweMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions=predictions)
 
 
+class SeniorSweBenchMetrics(BaseMetrics):
+    """Aggregate Harbor reward fields produced by Senior SWE-Bench verification.
+
+    Uses the same ``swe-bench-metrics`` / ``swe-bench-outputs`` prediction keys as
+    SWE-bench. Invalid trials (empty reward / infra crash) are tracked separately
+    and do not count as solves.
+    """
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["swe-bench-metrics"]
+        return {
+            "issues_resolved": metrics.get("resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
+            "reward": float(metrics.get("reward") or 0.0),
+            "invalid_trial": metrics.get("invalid_trial") is True,
+            "verifier_score": float(metrics.get("verifier_score") or 0.0),
+            "rubric_score": float(metrics.get("rubric_score") or 0.0),
+            "validation_score": float(metrics.get("validation_score") or 0.0),
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+                "reward": 0,
+                "invalid_trial": False,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
 class SciCodeMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         subtask_status_list = prediction["eval_status"]

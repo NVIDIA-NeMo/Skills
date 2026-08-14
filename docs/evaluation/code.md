@@ -284,6 +284,64 @@ Note that `--data_dir` is required, same as for data preparation. For `++agent_f
 Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
 Verifier crashes that only write the DeepSWE `reward.txt=-1` sentinel are counted as unresolved / not successfully applied.
 
+### senior-swe-bench
+
+- Benchmark is defined in [`nemo_skills/dataset/senior-swe-bench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/senior-swe-bench/__init__.py)
+- Original benchmark source: [snorkel-ai/senior-swe-bench-v2026.06](https://github.com/snorkel-ai/senior-swe-bench-v2026.06) ([Senior SWE-Bench site](https://senior-swe-bench.snorkel.ai/tasks))
+
+Senior SWE-Bench is a Harbor-format coding-agent benchmark (50 public tasks in v2026.06). It reuses the SWE-bench agent logic for generation and scores each task with its full Harbor verifier (`tests/test.sh`: native verify + LLM rubric/taste judges + optional validation agent).
+
+It follows the same fused agent+Harbor grading pattern as [DeepSWE](#deep-swe). Differences versus DeepSWE:
+
+1. Task repos live under `/repo/{REPO_NAME}` (not `/app`). The agent still works in `/testbed` (copied from the task repo); grading applies `model.patch` into `/repo/$REPO_NAME` before running `test.sh`.
+2. The full verifier needs outbound network and judge API keys (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `PORTKEY_API_KEY`, plus optional `SSB_OVERRIDE_*`).
+3. Empty `reward.txt` (no `reward.json`) marks an **invalid trial** (infra/validation crash) and must not count as a solve.
+4. Gold patches are `solution/oracle.patch` (used with `++agent_framework=gold_patch`).
+
+#### Data preparation
+
+```bash
+ns prepare_data senior-swe-bench \
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/swe-bench-images/senior-swe-bench/{instance_id}.sif"
+```
+
+This clones [snorkel-ai/senior-swe-bench-v2026.06](https://github.com/snorkel-ai/senior-swe-bench-v2026.06) temporarily,
+writes `default.jsonl`, materializes Harbor task dirs under
+`/workspace/ns-data/senior-swe-bench/tasks/`, then deletes the temporary checkout.
+Building / converting task Docker images to `.sif` is separate (pass paths via `--container_formatter`).
+
+Useful options:
+
+- `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{base_image}`, `{docker_image_tag}`
+- `--repo_url` / `--repo_commit` — override the Harbor git source
+- `--setup` — output split name (default: `default`)
+
+#### Evaluation
+
+```bash
+# Export judge keys required by the full Senior SWE-Bench verifier
+# export ANTHROPIC_API_KEY=...
+# export OPENAI_API_KEY=...
+# export PORTKEY_API_KEY=...
+
+ns eval --cluster=<CLUSTER> --benchmarks=senior-swe-bench \
+  --data_dir=/workspace/ns-data \
+  --model=... --server_type=vllm --server_gpus=8 \
+  --output_dir=/path/out \
+  ++agent_framework=mini_swe_agent
+```
+
+`--data_dir` is required. Prefer `mini_swe_agent` or `swe_agent` for `++agent_framework`. Shared DeepSWE-style options also apply:
+
+- **++tasks_dir:** custom Harbor tasks root (default `{data_dir}/senior-swe-bench/tasks`)
+- **++use_agent_timeouts** / **++use_verifier_timeouts:** honor per-task timeouts from `task.toml`
+
+Smoke-test grading with `++agent_framework=gold_patch` on a single instance before full agent runs.
+
+Metrics include `issues_resolved` / `reward` / `invalid_trial` / optional `verifier_score` / `rubric_score` / `validation_score`.
+
 ### swe-bench-pro
 
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-pro/__init__.py)

@@ -29,6 +29,7 @@ from pathlib import Path
 
 import hydra
 
+from nemo_skills.inference.eval.harbor_utils import load_verifier_reward, resolve_tests_dir
 from nemo_skills.inference.eval.swebench import (
     SweBenchGenerationConfig,
     SweBenchGenerationTask,
@@ -37,6 +38,20 @@ from nemo_skills.inference.model import server_params
 from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+# Re-export for tests / external callers.
+_load_verifier_reward = load_verifier_reward
+
+
+def _resolve_tests_dir(data_point: dict, eval_config: dict | None = None, *, tasks_dir: str | None = None):
+    """Module-level tests-dir resolver (used by unit tests)."""
+    return resolve_tests_dir(
+        data_point,
+        eval_config,
+        tasks_dir=tasks_dir,
+        benchmark_name="deep-swe",
+    )
+
 
 # These verifiers use fixed localhost ports (Anko, HTTPX, and Testem) or require isolated IPv6 loopback
 # behavior (Prometheus). Concurrent runs can otherwise collide or hang when they share the host network
@@ -133,25 +148,6 @@ def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
     }
 
 
-def _load_verifier_reward(eval_out: Path) -> dict | None:
-    reward_json = eval_out / "reward.json"
-    if reward_json.exists():
-        try:
-            return json.loads(reward_json.read_text())
-        except json.JSONDecodeError:
-            LOG.warning("Invalid reward.json at %s", reward_json)
-            return None
-
-    reward_txt = eval_out / "reward.txt"
-    if reward_txt.exists():
-        raw = reward_txt.read_text().strip()
-        try:
-            return {"reward": float(raw)}
-        except ValueError:
-            return {"reward": 0}
-    return None
-
-
 class DeepSweGenerationTask(SweBenchGenerationTask):
     """SWE-bench agents for generation; Harbor ``tests/test.sh`` for grading."""
 
@@ -174,41 +170,11 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         )
 
     def _resolve_tests_dir(self, data_point: dict) -> Path:
-        """Resolve Harbor tests/ for one task.
-
-        Preference order:
-        1. ``++tasks_dir``/<instance_id>/tests (explicit Harbor tasks root override if passed)
-        2. ``++eval_config.data_dir``/deep-swe/tasks/<instance_id>/tests (set automatically by ``ns eval --data_dir``)
-        """
-        instance_id = data_point["instance_id"]
-
-        tasks_dir = self.cfg.tasks_dir
-        if tasks_dir:
-            candidate = Path(tasks_dir) / instance_id / "tests"
-            if candidate.is_dir():
-                return candidate
-            raise ValueError(
-                f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
-                f"Check ++tasks_dir={tasks_dir} (expected <tasks_dir>/<instance_id>/tests)."
-            )
-
-        # ns eval --data_dir=... injects ++eval_config.data_dir
-        data_dir = self.cfg.eval_config.get("data_dir")
-        if data_dir:
-            candidate = Path(data_dir) / "deep-swe" / "tasks" / instance_id / "tests"
-            if candidate.is_dir():
-                return candidate
-            raise ValueError(
-                f"DeepSWE tests dir not found for {instance_id}: {candidate}. "
-                f"Expected tasks under {{data_dir}}/deep-swe/tasks after "
-                f"`ns prepare_data deep-swe --data_dir=...`. "
-                f"Or pass ++tasks_dir explicitly."
-            )
-
-        raise ValueError(
-            f"DeepSWE tests dir not found for {instance_id}. "
-            "Pass --data_dir (recommended) or ++tasks_dir=/path/to/deep-swe/tasks "
-            "after ns prepare_data."
+        return resolve_tests_dir(
+            data_point,
+            self.cfg.eval_config,
+            tasks_dir=self.cfg.tasks_dir,
+            benchmark_name="deep-swe",
         )
 
     async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
@@ -259,7 +225,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                 LOG.error("DeepSWE verifier failed for %s", data_point["instance_id"])
                 return parse_deepswe_reward(None, patch_exists=True)
 
-        reward = _load_verifier_reward(eval_out)
+        reward = load_verifier_reward(eval_out)
         return parse_deepswe_reward(reward, patch_exists=True)
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
