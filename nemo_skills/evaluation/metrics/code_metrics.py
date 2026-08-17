@@ -103,14 +103,18 @@ class SeniorSweBenchMetrics(BaseMetrics):
     """Aggregate Harbor reward fields produced by Senior SWE-Bench verification.
 
     Uses the same ``swe-bench-metrics`` / ``swe-bench-outputs`` prediction keys as
-    SWE-bench. Invalid trials (empty reward / infra crash) are tracked separately
-    and do not count as solves.
+    SWE-bench. ``issues_resolved`` is the basic solve (verifiers + validation).
+    ``tasteful_issues_resolved`` requires the official tasteful gates as well
+    (rubric / bloat / practice / relative taste). Both participate in pass@k.
+    Invalid trials (empty reward / infra crash) are tracked separately and do
+    not count as solves.
     """
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         metrics = prediction["swe-bench-metrics"]
         return {
             "issues_resolved": metrics.get("resolved") is True,
+            "tasteful_issues_resolved": metrics.get("tasteful_resolved") is True,
             "no_patch": metrics.get("patch_exists") is False,
             "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
             "reward": float(metrics.get("reward") or 0.0),
@@ -124,6 +128,7 @@ class SeniorSweBenchMetrics(BaseMetrics):
         return {
             "swe-bench-metrics": {
                 "resolved": False,
+                "tasteful_resolved": False,
                 "patch_exists": True,
                 "patch_successfully_applied": True,
                 "reward": 0,

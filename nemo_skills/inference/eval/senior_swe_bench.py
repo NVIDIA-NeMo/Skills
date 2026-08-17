@@ -86,15 +86,87 @@ cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_senior_swe_bench_generation_config", node=SeniorSweBenchGenerationConfig)
 
 
+# Official Senior SWE-Bench "tasteful solve" gates
+# (https://senior-swe-bench.snorkel.ai/):
+#   Verifiers pass, Validation pass, Rubric > 0.5, Bloat < 2x,
+#   Practice > 2/5, Relative taste > 2/5.
+TASTEFUL_RUBRIC_MIN = 0.5
+TASTEFUL_BLOAT_MAX = 2.0
+TASTEFUL_PRACTICE_MIN = 2.0
+TASTEFUL_RELATIVE_TASTE_MIN = 2.0
+
+# Flat reward.json keys written by SSB run_aggregate.py for taste / quality.
+_SSB_OPTIONAL_REWARD_KEYS = (
+    "verifier_score",
+    "rubric_score",
+    "validation_score",
+    "fail_to_pass_score",
+    "pass_to_pass_score",
+    "rubric_f2p_score",
+    "rubric_p2p_score",
+    "taste_score",
+    "taste_patch_bloat",
+    "taste_practice_alignment",
+    "taste_relative_taste",
+    "rubric_judge_ok",
+    "taste_judge_ok",
+)
+
+
+def _as_optional_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def compute_tasteful_resolved(*, basic_resolved: bool, reward: dict | None) -> bool:
+    """Return whether a trial is a tasteful solve under official SSB gates.
+
+    Requires a basic solve (``reward >= 1`` ⇒ verifiers + validation when present)
+    plus rubric / bloat / practice / relative-taste thresholds. Missing taste or
+    rubric fields fail closed (not tasteful).
+    """
+    if not basic_resolved or not isinstance(reward, dict):
+        return False
+
+    # If judges were attempted and failed, do not count as tasteful.
+    for ok_key in ("rubric_judge_ok", "taste_judge_ok"):
+        if ok_key in reward and int(reward[ok_key]) != 1:
+            return False
+
+    rubric = _as_optional_float(reward.get("rubric_score"))
+    bloat = _as_optional_float(reward.get("taste_patch_bloat"))
+    practice = _as_optional_float(reward.get("taste_practice_alignment"))
+    relative = _as_optional_float(reward.get("taste_relative_taste"))
+
+    if rubric is None or rubric <= TASTEFUL_RUBRIC_MIN:
+        return False
+    if bloat is None or bloat >= TASTEFUL_BLOAT_MAX:
+        return False
+    if practice is None or practice <= TASTEFUL_PRACTICE_MIN:
+        return False
+    if relative is None or relative <= TASTEFUL_RELATIVE_TASTE_MIN:
+        return False
+    return True
+
+
 def parse_senior_swe_bench_reward(reward: dict | None, *, patch_exists: bool) -> dict:
     """Normalize Senior SWE-Bench Harbor reward artifacts into metrics fields.
 
     Empty ``reward.txt`` / missing structured reward after a verifier run is an
     invalid trial (infra or validation crash) and must not count as a solve.
+
+    ``resolved`` is the basic solve (verifiers + validation). ``tasteful_resolved``
+    additionally requires the official tasteful gates (rubric / bloat / practice /
+    relative taste).
     """
     if not patch_exists:
         return {
             "resolved": False,
+            "tasteful_resolved": False,
             "patch_exists": False,
             "patch_successfully_applied": False,
             "reward": 0,
@@ -104,6 +176,7 @@ def parse_senior_swe_bench_reward(reward: dict | None, *, patch_exists: bool) ->
     if not isinstance(reward, dict):
         return {
             "resolved": False,
+            "tasteful_resolved": False,
             "patch_exists": True,
             "patch_successfully_applied": False,
             "reward": 0,
@@ -113,6 +186,7 @@ def parse_senior_swe_bench_reward(reward: dict | None, *, patch_exists: bool) ->
     if reward.get("invalid_trial"):
         return {
             "resolved": False,
+            "tasteful_resolved": False,
             "patch_exists": True,
             "patch_successfully_applied": True,
             "reward": 0,
@@ -127,8 +201,10 @@ def parse_senior_swe_bench_reward(reward: dict | None, *, patch_exists: bool) ->
     except (TypeError, ValueError):
         reward_value = 0.0
 
+    basic_resolved = (not apply_failed) and reward_value >= 1.0
     metrics = {
-        "resolved": (not apply_failed) and reward_value >= 1.0,
+        "resolved": basic_resolved,
+        "tasteful_resolved": compute_tasteful_resolved(basic_resolved=basic_resolved, reward=reward),
         "patch_exists": True,
         "patch_successfully_applied": not apply_failed,
         "reward": reward_value,
@@ -136,14 +212,7 @@ def parse_senior_swe_bench_reward(reward: dict | None, *, patch_exists: bool) ->
         "raw_reward": reward,
     }
     # Preserve optional flat SSB fields when present.
-    for key in (
-        "verifier_score",
-        "rubric_score",
-        "validation_score",
-        "fail_to_pass_score",
-        "pass_to_pass_score",
-        "taste_score",
-    ):
+    for key in _SSB_OPTIONAL_REWARD_KEYS:
         if key in reward and reward[key] is not None:
             try:
                 metrics[key] = float(reward[key])
@@ -275,6 +344,7 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
         elif not self.cfg.evaluate:
             metrics = {
                 "resolved": None,
+                "tasteful_resolved": None,
                 "patch_exists": True,
                 "patch_successfully_applied": None,
                 "reward": None,

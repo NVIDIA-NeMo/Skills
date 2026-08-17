@@ -19,12 +19,32 @@ import pytest
 
 from nemo_skills.evaluation.metrics.code_metrics import SeniorSweBenchMetrics
 from nemo_skills.inference.eval.harbor_utils import load_verifier_reward, resolve_tests_dir
-from nemo_skills.inference.eval.senior_swe_bench import parse_senior_swe_bench_reward
+from nemo_skills.inference.eval.senior_swe_bench import (
+    compute_tasteful_resolved,
+    parse_senior_swe_bench_reward,
+)
+
+
+def _tasteful_reward(**overrides):
+    reward = {
+        "reward": 1,
+        "verifier_score": 1.0,
+        "validation_score": 1.0,
+        "rubric_score": 0.9,
+        "taste_patch_bloat": 1.2,
+        "taste_practice_alignment": 3.0,
+        "taste_relative_taste": 3.0,
+        "rubric_judge_ok": 1,
+        "taste_judge_ok": 1,
+    }
+    reward.update(overrides)
+    return reward
 
 
 def test_parse_ssb_reward_no_patch():
     assert parse_senior_swe_bench_reward(None, patch_exists=False) == {
         "resolved": False,
+        "tasteful_resolved": False,
         "patch_exists": False,
         "patch_successfully_applied": False,
         "reward": 0,
@@ -35,11 +55,12 @@ def test_parse_ssb_reward_no_patch():
 def test_parse_ssb_reward_apply_failed():
     metrics = parse_senior_swe_bench_reward({"reward": 0, "apply_failed": 1}, patch_exists=True)
     assert metrics["resolved"] is False
+    assert metrics["tasteful_resolved"] is False
     assert metrics["patch_successfully_applied"] is False
     assert metrics["invalid_trial"] is False
 
 
-def test_parse_ssb_reward_success():
+def test_parse_ssb_reward_basic_success_not_tasteful_without_taste_fields():
     metrics = parse_senior_swe_bench_reward(
         {
             "reward": 1,
@@ -50,6 +71,7 @@ def test_parse_ssb_reward_success():
         patch_exists=True,
     )
     assert metrics["resolved"] is True
+    assert metrics["tasteful_resolved"] is False  # missing bloat/practice/relative taste
     assert metrics["patch_exists"] is True
     assert metrics["patch_successfully_applied"] is True
     assert metrics["reward"] == 1.0
@@ -57,9 +79,31 @@ def test_parse_ssb_reward_success():
     assert metrics["invalid_trial"] is False
 
 
+def test_parse_ssb_reward_tasteful_success():
+    metrics = parse_senior_swe_bench_reward(_tasteful_reward(), patch_exists=True)
+    assert metrics["resolved"] is True
+    assert metrics["tasteful_resolved"] is True
+    assert metrics["taste_patch_bloat"] == 1.2
+    assert metrics["taste_practice_alignment"] == 3.0
+    assert metrics["taste_relative_taste"] == 3.0
+
+
+def test_compute_tasteful_gates():
+    assert compute_tasteful_resolved(basic_resolved=True, reward=_tasteful_reward()) is True
+    assert compute_tasteful_resolved(basic_resolved=False, reward=_tasteful_reward()) is False
+    assert compute_tasteful_resolved(basic_resolved=True, reward=_tasteful_reward(rubric_score=0.5)) is False
+    assert compute_tasteful_resolved(basic_resolved=True, reward=_tasteful_reward(taste_patch_bloat=2.0)) is False
+    assert (
+        compute_tasteful_resolved(basic_resolved=True, reward=_tasteful_reward(taste_practice_alignment=2.0)) is False
+    )
+    assert compute_tasteful_resolved(basic_resolved=True, reward=_tasteful_reward(taste_relative_taste=2.0)) is False
+    assert compute_tasteful_resolved(basic_resolved=True, reward=_tasteful_reward(taste_judge_ok=0)) is False
+
+
 def test_parse_ssb_reward_invalid_trial():
     metrics = parse_senior_swe_bench_reward({"invalid_trial": True}, patch_exists=True)
     assert metrics["resolved"] is False
+    assert metrics["tasteful_resolved"] is False
     assert metrics["invalid_trial"] is True
     assert metrics["reward"] == 0
 
@@ -67,6 +111,7 @@ def test_parse_ssb_reward_invalid_trial():
 def test_parse_ssb_reward_missing_is_invalid():
     metrics = parse_senior_swe_bench_reward(None, patch_exists=True)
     assert metrics["resolved"] is False
+    assert metrics["tasteful_resolved"] is False
     assert metrics["invalid_trial"] is True
 
 
@@ -87,17 +132,40 @@ def test_ssb_metrics_aggregate():
         {
             "swe-bench-metrics": {
                 "resolved": True,
+                "tasteful_resolved": True,
                 "patch_exists": True,
                 "patch_successfully_applied": True,
                 "reward": 1,
                 "invalid_trial": False,
                 "verifier_score": 1.0,
+                "rubric_score": 0.9,
+                "taste_patch_bloat": 1.1,
+                "taste_practice_alignment": 3.0,
+                "taste_relative_taste": 3.0,
             }
         }
     )
     assert score["issues_resolved"] is True
+    assert score["tasteful_issues_resolved"] is True
     assert score["reward"] == 1.0
     assert score["invalid_trial"] is False
+
+
+def test_ssb_metrics_basic_not_tasteful():
+    score = SeniorSweBenchMetrics()._get_score_dict(
+        {
+            "swe-bench-metrics": {
+                "resolved": True,
+                "tasteful_resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+                "reward": 1,
+                "invalid_trial": False,
+            }
+        }
+    )
+    assert score["issues_resolved"] is True
+    assert score["tasteful_issues_resolved"] is False
 
 
 def test_ssb_metrics_none_when_evaluate_false():
@@ -105,6 +173,7 @@ def test_ssb_metrics_none_when_evaluate_false():
         {
             "swe-bench-metrics": {
                 "resolved": None,
+                "tasteful_resolved": None,
                 "patch_exists": True,
                 "patch_successfully_applied": None,
                 "reward": None,
@@ -113,6 +182,7 @@ def test_ssb_metrics_none_when_evaluate_false():
         }
     )
     assert score["issues_resolved"] is False
+    assert score["tasteful_issues_resolved"] is False
     assert score["no_patch"] is False
     assert score["patch_cant_apply"] is False
     assert score["invalid_trial"] is False

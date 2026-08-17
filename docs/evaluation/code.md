@@ -340,7 +340,13 @@ ns eval --cluster=<CLUSTER> --benchmarks=senior-swe-bench \
 
 Smoke-test grading with `++agent_framework=gold_patch` on a single instance before full agent runs.
 
-Metrics include `issues_resolved` / `reward` / `invalid_trial` / optional `verifier_score` / `rubric_score` / `validation_score`.
+Metrics:
+
+- **`issues_resolved`** — basic solve (`reward >= 1`: verifiers + validation when present). Participates in pass@k.
+- **`tasteful_issues_resolved`** — official [tasteful solve](https://senior-swe-bench.snorkel.ai/): basic solve **and** rubric `> 0.5`, bloat `< 2×`, practice alignment `> 2/5`, relative taste `> 2/5`. Participates in pass@k separately from basic solve.
+- Also reported: `reward` / `invalid_trial` / `verifier_score` / `rubric_score` / `validation_score` / taste field averages when present.
+
+Missing rubric/taste fields fail closed for tasteful solve (counted as not tasteful).
 
 ### swe-bench-pro
 
