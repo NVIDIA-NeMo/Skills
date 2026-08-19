@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.inference.eval.swebench import OPENCODE_PROVIDER_ID, build_opencode_config
+from nemo_skills.inference.eval.swebench import (
+    OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX,
+    OPENCODE_PROVIDER_ID,
+    build_opencode_config,
+)
 
 
 def test_build_opencode_config_points_at_local_openai_server():
@@ -61,4 +65,6 @@ def test_build_opencode_config_merges_user_keys():
     assert config["agent"]["custom"]["top_p"] == 0.8
     assert config["agent"]["custom"]["steps"] == 250
     assert config["agent"]["custom"]["prompt"] == "Custom agent prompt"
-    assert "options" not in config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
+    model = config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
+    assert model["limit"]["output"] == OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
+    assert "options" not in model

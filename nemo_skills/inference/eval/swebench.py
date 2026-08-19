@@ -57,6 +57,7 @@ OPENCODE_NPM_PACKAGE = "opencode-ai"
 OPENCODE_DEFAULT_VERSION = "1.17.11"
 OPENCODE_NODE_VERSION = "22.15.0"
 OPENCODE_PROVIDER_ID = "nemo"
+OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
 
 
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
@@ -117,7 +118,9 @@ def build_opencode_config(
             "tool_call": True,
             "limit": {
                 "context": 262144,
-                "output": tokens_to_generate if tokens_to_generate is not None else 131072,
+                "output": (
+                    tokens_to_generate if tokens_to_generate is not None else OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
+                ),
             },
         },
     )
@@ -1078,6 +1081,11 @@ class SweBenchGenerationTask(GenerationTask):
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
 
+        output_token_max = (
+            self.cfg.inference.tokens_to_generate
+            if self.cfg.inference.tokens_to_generate is not None
+            else OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
+        )
         opencode_config = build_opencode_config(
             agent_config=agent_config,
             api_base=self.api_base,
@@ -1086,7 +1094,7 @@ class SweBenchGenerationTask(GenerationTask):
             top_p=self.cfg.inference.top_p,
             top_k=self.cfg.inference.top_k,
             agent_max_turns=self.cfg.agent_max_turns,
-            tokens_to_generate=self.cfg.inference.tokens_to_generate,
+            tokens_to_generate=output_token_max,
         )
         config_json = json.dumps(opencode_config)
         instruction = data_point["problem_statement"]
@@ -1102,6 +1110,7 @@ class SweBenchGenerationTask(GenerationTask):
             "export OPENCODE_DISABLE_MODELS_FETCH=1 && "
             "export OPENCODE_PURE=1 && "
             "export OPENCODE_FAKE_VCS=git && "
+            f"export OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX={output_token_max} && "
             "export OPENAI_API_KEY=EMPTY && "
             f"export OPENAI_BASE_URL={shlex.quote(self.api_base)} && "
             "mkdir -p /root/.config/opencode && "
