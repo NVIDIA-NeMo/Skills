@@ -430,20 +430,17 @@ def main():
         master_config,
     ) = setup(config, tokenizer, dataset, val_dataset)
 
-    # Newer NeMo-RL dropped sft_task_spec from sft_train(); the checkpointer context
-    # manager flushes async checkpoint finalization threads on exit.
-    with checkpointer:
-        sft_train(
-            policy,
-            train_dataloader,
-            val_dataloader,
-            tokenizer,
-            loss_fn,
-            master_config,
-            logger,
-            checkpointer,
-            sft_save_state,
-        )
+    sft_train(
+        policy,
+        train_dataloader,
+        val_dataloader,
+        tokenizer,
+        loss_fn,
+        master_config,
+        logger,
+        checkpointer,
+        sft_save_state,
+    )
 
 
 if __name__ == "__main__":
