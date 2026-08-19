@@ -53,7 +53,7 @@ class NemoGymRolloutsScript(BaseJobScript):
     server: Optional["ServerScript"] = None
     server_address: Optional[str] = None
     sandbox: Optional["SandboxScript"] = None
-    gym_path: str = "/nemo-rl/3rdparty/Gym-workspace/Gym"
+    gym_path: str = "/opt/nemo-rl/3rdparty/Gym-workspace/Gym"
     policy_api_key: str = "dummy"
     policy_model_name: Optional[str] = None
 

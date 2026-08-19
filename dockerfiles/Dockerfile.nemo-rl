@@ -64,7 +64,7 @@ ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
 
 FROM base AS hermetic
 
-WORKDIR /nemo-rl
+WORKDIR /opt/nemo-rl
 
 # Variables to control the build of TE. If there are issues with parallelization, consider
 # setting these to 1.
@@ -114,7 +114,7 @@ EOF
 ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
 ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
 
-WORKDIR /nemo-rl
+WORKDIR /opt/nemo-rl
 
 FROM hermetic AS release
 
@@ -131,7 +131,7 @@ ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
 
 # Copy in source from build context (defaults to cloned repo, can be overridden)
 # Exclude pyproject.toml and uv.lock since those may be altered by build-custom-vllm.sh
-COPY --from=nemo-rl --exclude=pyproject.toml --exclude=uv.lock . /nemo-rl
+COPY --from=nemo-rl --exclude=pyproject.toml --exclude=uv.lock . /opt/nemo-rl
 # Unshallow the repo to get the full history (in the case it was from the scratch layer).
 # Potentially not necessary if the repo is passed in as a complete repository (w/ full git history),
 # so do a quick check before trying to unshallow.
@@ -139,7 +139,7 @@ RUN git rev-parse --is-shallow-repository | grep -q true && git fetch --unshallo
 RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py
 
 # Generate container fingerprint for frozen environment support
-# Store outside /nemo-rl to avoid being overwritten by user mounts
+# Store outside /opt/nemo-rl to avoid being overwritten by user mounts
 RUN python tools/generate_fingerprint.py > /opt/nemo_rl_container_fingerprint
 
 # NOTICES.txt file points to where the OSS source code is archived

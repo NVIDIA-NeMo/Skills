@@ -115,7 +115,7 @@ def nemo_gym_rollouts(
         "cluster_config['containers']['nemo-rl'].",
     ),
     gym_path: str = typer.Option(
-        "/nemo-rl/3rdparty/Gym-workspace/Gym",
+        "/opt/nemo-rl/3rdparty/Gym-workspace/Gym",
         help="Path to NeMo Gym installation. Defaults to container built-in. Use for mounted/custom Gym.",
     ),
     policy_api_key: str = typer.Option(

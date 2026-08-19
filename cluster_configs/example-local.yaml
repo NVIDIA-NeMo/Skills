@@ -35,7 +35,7 @@ containers:
 #   - /mnt/datadrive/data:/data
 #   - /home/<username>/workspace:/workspace
 #   you can also override container libraries by directly mounting over them. E.g. to override NeMo-RL do
-#   - <...>/NeMo-RL:/nemo-rl
+#   - <...>/NeMo-RL:/opt/nemo-rl
 
 # define any environment variables. Note that HF_HOME is required by default and needs to be a mounted path!
 # env_vars:
