@@ -25,7 +25,7 @@ Bumps under test:
   * litellm[caching] ==1.84.10  (fixes GHSA-4xpc-pv4p-pm3w — the pre-1.84 client
                                  could leak the configured api_key to an
                                  attacker-controlled Host header)
-  * GitPython        >=3.1.55
+  * GitPython        >=3.1.58
   * datamodel-code-generator >=0.64.0
   * wandb            ==0.28.1, with a patched core in the container
   * typer            >=0.16 / click cap removed  (typer<0.16 broke on click 8.2's
@@ -49,7 +49,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# GitPython >=3.1.55 and datamodel-code-generator >=0.64.0
+# GitPython >=3.1.58 and datamodel-code-generator >=0.64.0
 # ---------------------------------------------------------------------------
 
 
@@ -57,7 +57,7 @@ def test_gitpython_can_initialize_and_inspect_repository(tmp_path):
     import git
     from packaging.version import Version
 
-    assert Version(version("GitPython")) >= Version("3.1.55")
+    assert Version(version("GitPython")) >= Version("3.1.58")
     repo = git.Repo.init(tmp_path)
     assert not repo.bare
     assert repo.git_dir == str(tmp_path / ".git")
