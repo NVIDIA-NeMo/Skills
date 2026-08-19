@@ -343,7 +343,9 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
             max_seq_length=data_config["max_input_seq_length"],
         )
 
-    return train_dataset, val_dataset, sft_task_spec
+    # TaskDataSpec is only needed while building AllTaskProcessedDataset above.
+    # Newer NeMo-RL sft_train() no longer accepts sft_task_spec.
+    return train_dataset, val_dataset
 
 
 def main():
@@ -414,11 +416,7 @@ def main():
     tokenizer = get_tokenizer(config["policy"]["tokenizer"])
 
     # setup data
-    (
-        dataset,
-        val_dataset,
-        sft_task_spec,
-    ) = setup_data(tokenizer, config["data"])
+    dataset, val_dataset = setup_data(tokenizer, config["data"])
 
     (
         policy,
@@ -431,18 +429,21 @@ def main():
         sft_save_state,
         master_config,
     ) = setup(config, tokenizer, dataset, val_dataset)
-    sft_train(
-        policy,
-        train_dataloader,
-        val_dataloader,
-        tokenizer,
-        loss_fn,
-        master_config,
-        logger,
-        sft_task_spec,
-        checkpointer,
-        sft_save_state,
-    )
+
+    # Newer NeMo-RL dropped sft_task_spec from sft_train(); the checkpointer context
+    # manager flushes async checkpoint finalization threads on exit.
+    with checkpointer:
+        sft_train(
+            policy,
+            train_dataloader,
+            val_dataloader,
+            tokenizer,
+            loss_fn,
+            master_config,
+            logger,
+            checkpointer,
+            sft_save_state,
+        )
 
 
 if __name__ == "__main__":
