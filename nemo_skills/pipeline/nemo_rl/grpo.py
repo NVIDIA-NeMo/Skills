@@ -136,8 +136,8 @@ class NemoRLTask:
         self.logging_params = self.format_wandb_args()
         nsight_cmd = get_nsight_cmd(self.profile_step_range)
         cmd = (
-            f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:/opt/NeMo-RL && "
-            f"export UV_PROJECT=/opt/NeMo-RL && "
+            f"export PYTHONPATH=$PYTHONPATH:/nemo_run/code:/nemo-rl && "
+            f"export UV_PROJECT=/nemo-rl && "
             f"{nsight_cmd}"
             f"echo 'Starting training' && "
             f"uv run --active python /nemo_run/code/nemo_skills/training/nemo_rl/start_grpo.py "
@@ -193,7 +193,7 @@ def get_training_cmd(
 
 
 def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_position_embeddings=None):
-    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
+    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/nemo-rl && cd /nemo_run/code && "
     if backend == "fsdp":
         cmd += "uv run --extra automodel python -m nemo_skills.training.nemo_rl.convert_dcp_to_hf "
     elif backend == "megatron":
@@ -218,7 +218,7 @@ def get_checkpoint_convert_cmd(output_dir, final_hf_path, step, backend, max_pos
 
 
 def get_checkpoint_average_cmd(output_dir, average_steps, backend, remove_checkpoints_after_average):
-    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/opt/NeMo-RL && cd /nemo_run/code && "
+    cmd = "export PYTHONPATH=$PYTHONPATH:/nemo_run/code && export UV_PROJECT=/nemo-rl && cd /nemo_run/code && "
 
     if backend in ["fsdp", "megatron"]:
         cmd += "uv run python -m nemo_skills.pipeline.nemo_rl.average_checkpoints "
