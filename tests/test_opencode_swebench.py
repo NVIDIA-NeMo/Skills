@@ -20,6 +20,10 @@ def test_build_opencode_config_points_at_local_openai_server():
         agent_config={"permission": {"bash": "allow"}},
         api_base="http://10.0.0.1:5000/v1",
         model="/models/Qwen3-Coder",
+        temperature=1.0,
+        top_p=0.95,
+        top_k=20,
+        agent_max_turns=400,
         tokens_to_generate=4096,
     )
 
@@ -28,15 +32,33 @@ def test_build_opencode_config_points_at_local_openai_server():
     assert provider["options"]["baseURL"] == "http://10.0.0.1:5000/v1"
     assert provider["options"]["apiKey"] == "EMPTY"
     assert provider["models"]["/models/Qwen3-Coder"]["id"] == "/models/Qwen3-Coder"
+    assert provider["models"]["/models/Qwen3-Coder"]["temperature"] is True
+    assert provider["models"]["/models/Qwen3-Coder"]["options"]["top_k"] == 20
     assert provider["models"]["/models/Qwen3-Coder"]["limit"]["output"] == 4096
+    assert config["agent"]["build"]["temperature"] == 1.0
+    assert config["agent"]["build"]["top_p"] == 0.95
+    assert config["agent"]["build"]["steps"] == 400
 
 
 def test_build_opencode_config_merges_user_keys():
     config = build_opencode_config(
-        agent_config={"experimental": {"continue_loop_on_deny": True}},
+        agent_config={
+            "experimental": {"continue_loop_on_deny": True},
+            "default_agent": "custom",
+            "agent": {"custom": {"temperature": 0.2, "prompt": "Custom agent prompt"}},
+        },
         api_base="http://127.0.0.1:8000/v1",
         model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        temperature=0.7,
+        top_p=0.8,
+        top_k=None,
+        agent_max_turns=250,
     )
 
     assert config["experimental"]["continue_loop_on_deny"] is True
     assert "Qwen/Qwen3-Coder-30B-A3B-Instruct" in config["provider"][OPENCODE_PROVIDER_ID]["models"]
+    assert config["agent"]["custom"]["temperature"] == 0.7
+    assert config["agent"]["custom"]["top_p"] == 0.8
+    assert config["agent"]["custom"]["steps"] == 250
+    assert config["agent"]["custom"]["prompt"] == "Custom agent prompt"
+    assert "options" not in config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]

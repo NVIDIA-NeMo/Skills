@@ -73,6 +73,10 @@ def build_opencode_config(
     agent_config: dict,
     api_base: str,
     model: str,
+    temperature: float,
+    top_p: float,
+    top_k: int | None,
+    agent_max_turns: int,
     tokens_to_generate: int | None = None,
 ) -> dict:
     """Build the OpenCode JSON config used to point the CLI at a local OpenAI-compatible server."""
@@ -107,6 +111,9 @@ def build_opencode_config(
         {
             "id": model,
             "name": model,
+            # OpenCode only forwards an agent temperature for models that declare
+            # temperature support.
+            "temperature": True,
             "tool_call": True,
             "limit": {
                 "context": 262144,
@@ -114,7 +121,20 @@ def build_opencode_config(
             },
         },
     )
+    if top_k is not None:
+        model_entry.setdefault("options", {})["top_k"] = top_k
     models[model] = model_entry
+    agents = config.setdefault("agent", {})
+    agent_name = config.get("default_agent") or "build"
+    primary_agent = agents.get(agent_name, {}) if isinstance(agents.get(agent_name), dict) else {}
+    primary_agent.update(
+        {
+            "temperature": temperature,
+            "top_p": top_p,
+            "steps": agent_max_turns,
+        }
+    )
+    agents[agent_name] = primary_agent
     return config
 
 
@@ -191,7 +211,7 @@ class SweBenchGenerationConfig:
     # SWE-agent/OpenHands/OpenCode configuration file path. Can be specified in the same way as ns prompt configs
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
-    agent_max_turns: int = 100  # Max iterations for the agent. Not applied for OpenCode.
+    agent_max_turns: int = 100  # Max agent iterations
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -1055,13 +1075,6 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.agent_config is None:
             self.cfg.agent_config = "eval/swe-bench/opencode/default"
 
-        if not getattr(self, "_opencode_max_turns_warned", False):
-            LOG.info(
-                "OpenCode does not support ++agent_max_turns=%s; the flag is ignored.",
-                self.cfg.agent_max_turns,
-            )
-            self._opencode_max_turns_warned = True
-
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
 
@@ -1069,6 +1082,10 @@ class SweBenchGenerationTask(GenerationTask):
             agent_config=agent_config,
             api_base=self.api_base,
             model=self.cfg.server.model,
+            temperature=self.cfg.inference.temperature,
+            top_p=self.cfg.inference.top_p,
+            top_k=self.cfg.inference.top_k,
+            agent_max_turns=self.cfg.agent_max_turns,
             tokens_to_generate=self.cfg.inference.tokens_to_generate,
         )
         config_json = json.dumps(opencode_config)
