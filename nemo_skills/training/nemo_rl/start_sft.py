@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import pprint
+import re
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -296,6 +297,36 @@ def sft_preprocessor(
     return output
 
 
+_NO_USER_QUERY_MESSAGE = "No user query found in messages."
+# Matches both `{{- raise_exception(...) }}` and `{{ raise_exception(...) }}`, with any spacing.
+_NO_USER_QUERY_RAISE = re.compile(
+    r"\{\{-?\s*raise_exception\(\s*(['\"])" + re.escape(_NO_USER_QUERY_MESSAGE) + r"\1\s*\)\s*-?\}\}"
+)
+
+
+def relax_no_user_query_template_guard(tokenizer) -> None:
+    """Strip the Qwen-style guard that rejects prompts without a plain user message.
+
+    SFT renders message prefixes (system-only or ending in tool results), which trips the
+    template's `raise_exception('No user query found in messages.')` guard.
+    """
+    template = getattr(tokenizer, "chat_template", None)
+    if not isinstance(template, str) or _NO_USER_QUERY_MESSAGE not in template:
+        return
+
+    patched, num_replacements = _NO_USER_QUERY_RAISE.subn("", template)
+    if not num_replacements:
+        print(
+            f"WARNING: chat template mentions '{_NO_USER_QUERY_MESSAGE}' but no raise_exception "
+            "call matched, so it was left unchanged. Templating may fail on prompts without a "
+            "plain user message."
+        )
+        return
+
+    tokenizer.chat_template = patched
+    print(f"Patched chat template: removed {num_replacements} '{_NO_USER_QUERY_MESSAGE}' raise_exception call(s)")
+
+
 def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
     print("\n▶ Setting up data...")
     assert data_config["dataset_name"] == "prompt_response_dataset"
@@ -414,6 +445,8 @@ def main():
 
     # setup tokenizer
     tokenizer = get_tokenizer(config["policy"]["tokenizer"])
+
+    relax_no_user_query_template_guard(tokenizer)
 
     # setup data
     dataset, val_dataset = setup_data(tokenizer, config["data"])
