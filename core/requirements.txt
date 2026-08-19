@@ -15,8 +15,8 @@ faiss-cpu
 fire
 flask
 func-timeout
-# Fixes six High GitPython advisories through GHSA-94p4-4cq8-9g67.
-GitPython>=3.1.55
+# Fixes all High GitPython advisories reported through GHSA-wvpp-8hx9-p66j.
+GitPython>=3.1.58
 gradio
 httpx
 huggingface_hub

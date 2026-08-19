@@ -16,10 +16,10 @@
 
 This PR bumps several dependency floors/pins to close known CVEs:
   * litellm[caching] -> ==1.84.10 (fixes GHSA-4xpc-pv4p-pm3w)
-  * GitPython        -> >=3.1.55  (fixes six High findings)
+  * GitPython        -> >=3.1.58  (fixes all currently reported High findings)
   * datamodel-code-generator -> >=0.64.0 (fixes eight High findings)
   * wandb            -> ==0.28.1, paired with a patched wandb-core
-                         (fixes CVE-2026-71556 in bundled go-git)
+                         (fixes bundled go-git and Go stdlib findings)
   * lxml             -> >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw)
   * aiohttp          -> >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
@@ -116,11 +116,11 @@ class TestCoreRequirements:
         content = CORE_REQUIREMENTS.read_text()
         assert "litellm[caching]==1.83.14" not in content
 
-    def test_gitpython_floor_fixes_all_six_high_findings(self):
+    def test_gitpython_floor_fixes_all_reported_high_findings(self):
         req, _ = _find_requirement(CORE_REQUIREMENTS, "GitPython")
         specs = {spec.operator: spec.version for spec in req.specifier}
         assert ">=" in specs, f"expected a floor (>=) specifier for GitPython, got {req.specifier}"
-        assert Version(specs[">="]) >= Version("3.1.55")
+        assert Version(specs[">="]) >= Version("3.1.58")
 
     def test_datamodel_code_generator_floor_fixes_all_eight_high_findings(self):
         req, _ = _find_requirement(CORE_REQUIREMENTS, "datamodel-code-generator")
@@ -159,12 +159,12 @@ class TestPatchedWandbCoreDockerBuild:
     @pytest.mark.parametrize(
         "expected",
         [
-            "FROM golang:1.26.5 AS wandb-core-builder",
+            "FROM golang:1.26.6 AS wandb-core-builder",
             'go get "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}"',
             "go mod vendor",
             "go.mod",
             "vendor/modules.txt",
-            'go version -m /wandb-core | grep -F "go1.26.5"',
+            'go version -m /wandb-core | grep -F "go1.26.6"',
             "github\\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}",
             "google\\.golang\\.org/grpc[[:space:]]+v1\\.82\\.1",
             "golang\\.org/x/text[[:space:]]+v0\\.40\\.0",
