@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import copy
 import glob
 import json
 import logging
@@ -47,7 +48,74 @@ class SupportedAgentFrameworks(str, Enum):
     swe_agent = "swe_agent"
     openhands = "openhands"
     mini_swe_agent = "mini_swe_agent"
+    opencode = "opencode"
     gold_patch = "gold_patch"
+
+
+# OpenCode is installed from npm (not git). Pin matches NeMo Gym v0.5.0's default.
+OPENCODE_NPM_PACKAGE = "opencode-ai"
+OPENCODE_DEFAULT_VERSION = "1.17.11"
+OPENCODE_NODE_VERSION = "22.15.0"
+OPENCODE_PROVIDER_ID = "nemo"
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    """Merge *override* into *base* in place, recursing into nested dicts."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge_dicts(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def build_opencode_config(
+    agent_config: dict,
+    api_base: str,
+    model: str,
+    tokens_to_generate: int | None = None,
+) -> dict:
+    """Build the OpenCode JSON config used to point the CLI at a local OpenAI-compatible server."""
+    config = _deep_merge_dicts({}, copy.deepcopy(agent_config) if agent_config else {})
+    config.setdefault(
+        "permission",
+        {
+            "bash": "allow",
+            "edit": "allow",
+            "webfetch": "allow",
+        },
+    )
+    providers = config.setdefault("provider", {})
+    nemo = providers.setdefault(
+        OPENCODE_PROVIDER_ID,
+        {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "Nemo-Skills LLM server",
+        },
+    )
+    nemo.setdefault("npm", "@ai-sdk/openai-compatible")
+    nemo.setdefault("options", {}).update(
+        {
+            "baseURL": api_base,
+            "apiKey": "EMPTY",
+        }
+    )
+    models = nemo.setdefault("models", {})
+    model_entry = models.get(model, {}) if isinstance(models.get(model), dict) else {}
+    _deep_merge_dicts(
+        model_entry,
+        {
+            "id": model,
+            "name": model,
+            "tool_call": True,
+            "limit": {
+                "context": 262144,
+                "output": tokens_to_generate if tokens_to_generate is not None else 131072,
+            },
+        },
+    )
+    models[model] = model_entry
+    return config
 
 
 class SupportedDatasetTypes(str, Enum):
@@ -111,17 +179,19 @@ class SweBenchGenerationConfig:
 
     agent_framework: SupportedAgentFrameworks  # Which agentic framework to use
 
-    # SWE-agent/OpenHands repo URL & commit. Passed to git clone & git checkout respectively.
+    # SWE-agent/OpenHands/mini-SWE-agent repo URL & commit. Passed to git clone & git checkout respectively.
     # Default behavior:
     # - If multilingual=True, will use a branch in our fork of SWE-agent/OpenHands with better multilingual support.
     # - Otherwise, will use the HEAD commit in the official SWE-agent/OpenHands repo.
+    # For OpenCode, agent_framework_repo is unused (npm install). agent_framework_commit is the npm version
+    # of opencode-ai (default 1.17.11).
     agent_framework_repo: str | None = None
     agent_framework_commit: str | None = None
 
-    # SWE-agent/OpenHands configuration file path. Can be specified in the same way as ns prompt configs
+    # SWE-agent/OpenHands/OpenCode configuration file path. Can be specified in the same way as ns prompt configs
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
-    agent_max_turns: int = 100  # Max iterations for the agent
+    agent_max_turns: int = 100  # Max iterations for the agent. Not applied for OpenCode.
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -368,6 +438,33 @@ class SweBenchGenerationTask(GenerationTask):
                 # we no longer use 'make build' because it installs lots of unnecessary dependencies, e.g. frontend
                 "make install-python-dependencies && "
                 "poetry run python -m pip install datasets"
+            )
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
+            if self.cfg.agent_framework_repo is not None:
+                raise ValueError(
+                    "OpenCode is installed from npm (opencode-ai), not git. "
+                    "Unset ++agent_framework_repo and pin the package with "
+                    f"++agent_framework_commit (default {OPENCODE_DEFAULT_VERSION})."
+                )
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = OPENCODE_DEFAULT_VERSION
+            setup_commands.append(
+                "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
+                "    export NODE_ARCH=linux-arm64; "
+                "else "
+                "    export NODE_ARCH=linux-x64; "
+                "fi && "
+                f"export NODE_VERSION={OPENCODE_NODE_VERSION} && "
+                "rm -rf /root/node && "
+                "mkdir -p /root/node && "
+                "curl -Lf "
+                '"https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" '
+                "-o /tmp/node.tar.gz && "
+                "tar -xzf /tmp/node.tar.gz -C /root/node --strip-components=1 && "
+                "export PATH=/root/node/bin:$PATH && "
+                f"npm install -g {OPENCODE_NPM_PACKAGE}@{self.cfg.agent_framework_commit} && "
+                "opencode --version"
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
@@ -639,6 +736,8 @@ class SweBenchGenerationTask(GenerationTask):
             return await self._run_mini_swe_agent(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
             return await self._run_openhands(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
+            return await self._run_opencode(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
             return await self._get_gold_patch(data_point)
         raise ValueError(
@@ -942,6 +1041,85 @@ class SweBenchGenerationTask(GenerationTask):
                     {
                         "model_name_or_path": out_dict["metadata"]["llm_config"]["model"],
                         "instance_id": out_dict["instance_id"],
+                        "model_patch": patch,
+                    }
+                )
+            )
+        return pred_file
+
+    async def _run_opencode(self, data_point):
+        """
+        Runs OpenCode on one instance.
+        Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
+        """
+        if self.cfg.agent_config is None:
+            self.cfg.agent_config = "eval/swe-bench/opencode/default"
+
+        if not getattr(self, "_opencode_max_turns_warned", False):
+            LOG.info(
+                "OpenCode does not support ++agent_max_turns=%s; the flag is ignored.",
+                self.cfg.agent_max_turns,
+            )
+            self._opencode_max_turns_warned = True
+
+        with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
+            agent_config = json.load(f)
+
+        opencode_config = build_opencode_config(
+            agent_config=agent_config,
+            api_base=self.api_base,
+            model=self.cfg.server.model,
+            tokens_to_generate=self.cfg.inference.tokens_to_generate,
+        )
+        config_json = json.dumps(opencode_config)
+        instruction = data_point["problem_statement"]
+        instance_id = data_point["instance_id"]
+        # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
+        model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"
+
+        opencode_cmd = (
+            "export PATH=/root_mount/node/bin:$PATH && "
+            "export HOME=/root && "
+            "export XDG_CONFIG_HOME=/root/.config && "
+            "export OPENCODE_DISABLE_AUTOUPDATE=1 && "
+            "export OPENCODE_DISABLE_MODELS_FETCH=1 && "
+            "export OPENCODE_PURE=1 && "
+            "export OPENCODE_FAKE_VCS=git && "
+            "export OPENAI_API_KEY=EMPTY && "
+            f"export OPENAI_BASE_URL={shlex.quote(self.api_base)} && "
+            "mkdir -p /root/.config/opencode && "
+            f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
+            "cd /testbed && "
+            "git config --global --add safe.directory /testbed && "
+            "git config --global user.email opencode@nemo-skills.local && "
+            "git config --global user.name OpenCode && "
+            "START_COMMIT=$(git rev-parse HEAD) && "
+            f"mkdir -p /trajectories_mount/trajectories/{shlex.quote(instance_id)} && "
+            f"opencode --model={shlex.quote(model_arg)} run --format=json "
+            f"--thinking --dangerously-skip-permissions -- {shlex.quote(instruction)} "
+            f"</dev/null > /trajectories_mount/trajectories/{shlex.quote(instance_id)}/opencode.txt 2>&1 && "
+            "git add -A && "
+            f'git diff --binary --cached "$START_COMMIT" '
+            f">/trajectories_mount/trajectories/{shlex.quote(instance_id)}/model.patch"
+        )
+
+        search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
+        patch_file = await self._execute_container_command(data_point, opencode_cmd, search_path, mode="agent")
+
+        with open(patch_file, "r") as f:
+            patch = f.read()
+        if not patch.strip():
+            patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
+
+        pred_file = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
+        with open(pred_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": self.cfg.server.model,
+                        "instance_id": instance_id,
                         "model_patch": patch,
                     }
                 )

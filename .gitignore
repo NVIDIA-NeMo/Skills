@@ -16,6 +16,7 @@
 !greptile.json
 !tests/data/dummy_external_benchmark/benchmark_map.json
 !nemo_skills/mcp/servers/exclude_domains_hle_opus.json
+!nemo_skills/prompt/config/eval/swe-bench/opencode/default.json
 *.tar.gz
 *.tar
 *.npy
