@@ -327,6 +327,11 @@ def relax_no_user_query_template_guard(tokenizer) -> None:
     print(f"Patched chat template: removed {num_replacements} '{_NO_USER_QUERY_MESSAGE}' raise_exception call(s)")
 
 
+def count_oversized(dataset: AllTaskProcessedDataset) -> int:
+    """Number of samples masked out by sft_preprocessor for exceeding max_seq_length."""
+    return sum(1 for i in range(len(dataset)) if dataset[i]["loss_multiplier"] == 0.0)
+
+
 def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
     print("\n▶ Setting up data...")
     assert data_config["dataset_name"] == "prompt_response_dataset"
@@ -372,6 +377,15 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
                 add_generation_prompt=data_config["add_generation_prompt"],
             ),
             max_seq_length=data_config["max_input_seq_length"],
+        )
+
+    max_seq_length = data_config["max_input_seq_length"]
+    num_ignored = count_oversized(train_dataset)
+    print(f"  ⚠ train: {num_ignored} / {len(train_dataset)} samples over {max_seq_length} tokens will be ignored")
+    if val_dataset is not None:
+        num_ignored = count_oversized(val_dataset)
+        print(
+            f"  ⚠ validation: {num_ignored} / {len(val_dataset)} samples over {max_seq_length} tokens will be ignored"
         )
 
     # TaskDataSpec is only needed while building AllTaskProcessedDataset above.
