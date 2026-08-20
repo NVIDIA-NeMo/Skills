@@ -349,28 +349,6 @@ def _example_token_length(
     return sum(len(m["token_ids"]) for m in message_log)
 
 
-def _keep_if_within_max_seq_length(
-    example: dict[str, Any],
-    tokenizer,
-    task_data_spec: TaskDataSpec,
-    max_seq_length: int,
-    add_bos: bool,
-    add_eos: bool,
-    add_generation_prompt: bool,
-) -> bool:
-    return (
-        _example_token_length(
-            example,
-            tokenizer,
-            task_data_spec,
-            add_bos,
-            add_eos,
-            add_generation_prompt,
-        )
-        <= max_seq_length
-    )
-
-
 def drop_oversized_examples(
     dataset: Dataset,
     tokenizer,
@@ -380,26 +358,35 @@ def drop_oversized_examples(
     add_bos: bool,
     add_eos: bool,
     add_generation_prompt: bool,
-    num_proc: int,
 ) -> Dataset:
-    """Drop examples longer than max_seq_length. Stub+zero-loss in sft_preprocessor stays as backup."""
+    """Drop examples longer than max_seq_length. Stub+zero-loss in sft_preprocessor stays as backup.
+
+    Runs single-process: Ray is already initialized and the tokenizer holds background
+    threads, so forking dataset.filter workers can deadlock.
+    """
     before = len(dataset)
-    filtered = dataset.filter(
-        _keep_if_within_max_seq_length,
-        num_proc=num_proc,
-        desc=f"drop oversized {split_name}",
-        fn_kwargs={
-            "tokenizer": tokenizer,
-            "task_data_spec": task_data_spec,
-            "max_seq_length": max_seq_length,
-            "add_bos": add_bos,
-            "add_eos": add_eos,
-            "add_generation_prompt": add_generation_prompt,
-        },
-    )
-    dropped = before - len(filtered)
-    print(f"  ✓ {split_name}: kept {len(filtered)} / {before} (dropped {dropped} over {max_seq_length} tokens)")
-    return filtered
+    print(f"  Measuring {split_name} lengths ({before} examples)...", flush=True)
+
+    keep_indices = []
+    for idx, example in enumerate(dataset):
+        length = _example_token_length(
+            example,
+            tokenizer,
+            task_data_spec,
+            add_bos,
+            add_eos,
+            add_generation_prompt,
+        )
+        if length <= max_seq_length:
+            keep_indices.append(idx)
+        if (idx + 1) % 500 == 0:
+            print(f"    {idx + 1}/{before} measured, {len(keep_indices)} kept so far", flush=True)
+
+    dropped = before - len(keep_indices)
+    print(f"  ✓ {split_name}: kept {len(keep_indices)} / {before} (dropped {dropped} over {max_seq_length} tokens)")
+    if not dropped:
+        return dataset
+    return dataset.select(keep_indices)
 
 
 def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
@@ -422,7 +409,6 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
         add_bos=data_config["add_bos"],
         add_eos=data_config["add_eos"],
         add_generation_prompt=data_config["add_generation_prompt"],
-        num_proc=data.num_proc,
     )
     train_dataset = drop_oversized_examples(data.formatted_ds["train"], split_name="train", **filter_kwargs)
     val_raw = data.formatted_ds["validation"]
