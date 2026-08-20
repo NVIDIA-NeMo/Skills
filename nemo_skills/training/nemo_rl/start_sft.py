@@ -327,68 +327,6 @@ def relax_no_user_query_template_guard(tokenizer) -> None:
     print(f"Patched chat template: removed {num_replacements} '{_NO_USER_QUERY_MESSAGE}' raise_exception call(s)")
 
 
-def _example_token_length(
-    example: dict[str, Any],
-    tokenizer,
-    task_data_spec: TaskDataSpec,
-    add_bos: bool,
-    add_eos: bool,
-    add_generation_prompt: bool,
-) -> int:
-    """Token count after chat-template formatting, matching sft_preprocessor."""
-    messages = ensure_dict_args(example["messages"])
-    message_log = get_formatted_message_log(
-        messages,
-        tokenizer,
-        task_data_spec,
-        add_bos_token=add_bos,
-        add_eos_token=add_eos,
-        add_generation_prompt=add_generation_prompt,
-        tools=example.get("tools", None),
-    )
-    return sum(len(m["token_ids"]) for m in message_log)
-
-
-def drop_oversized_examples(
-    dataset: Dataset,
-    tokenizer,
-    task_data_spec: TaskDataSpec,
-    max_seq_length: int,
-    split_name: str,
-    add_bos: bool,
-    add_eos: bool,
-    add_generation_prompt: bool,
-) -> Dataset:
-    """Drop examples longer than max_seq_length. Stub+zero-loss in sft_preprocessor stays as backup.
-
-    Runs single-process: Ray is already initialized and the tokenizer holds background
-    threads, so forking dataset.filter workers can deadlock.
-    """
-    before = len(dataset)
-    print(f"  Measuring {split_name} lengths ({before} examples)...", flush=True)
-
-    keep_indices = []
-    for idx, example in enumerate(dataset):
-        length = _example_token_length(
-            example,
-            tokenizer,
-            task_data_spec,
-            add_bos,
-            add_eos,
-            add_generation_prompt,
-        )
-        if length <= max_seq_length:
-            keep_indices.append(idx)
-        if (idx + 1) % 500 == 0:
-            print(f"    {idx + 1}/{before} measured, {len(keep_indices)} kept so far", flush=True)
-
-    dropped = before - len(keep_indices)
-    print(f"  ✓ {split_name}: kept {len(keep_indices)} / {before} (dropped {dropped} over {max_seq_length} tokens)")
-    if not dropped:
-        return dataset
-    return dataset.select(keep_indices)
-
-
 def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
     print("\n▶ Setting up data...")
     assert data_config["dataset_name"] == "prompt_response_dataset"
@@ -400,23 +338,13 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
         force_reprocess=data_config.get("force_reprocess", False),
         input_template_path=data_config.get("input_template_path", None),
     )
-
-    max_seq_length = data_config["max_input_seq_length"]
-    filter_kwargs = dict(
-        tokenizer=tokenizer,
-        task_data_spec=data.task_spec,
-        max_seq_length=max_seq_length,
-        add_bos=data_config["add_bos"],
-        add_eos=data_config["add_eos"],
-        add_generation_prompt=data_config["add_generation_prompt"],
-    )
-    train_dataset = drop_oversized_examples(data.formatted_ds["train"], split_name="train", **filter_kwargs)
-    val_raw = data.formatted_ds["validation"]
-    if val_raw is not None:
-        val_raw = drop_oversized_examples(val_raw, split_name="validation", **filter_kwargs)
+    print(f"  ✓ Training dataset loaded with {len(data.formatted_ds['train'])} samples.")
+    if data.formatted_ds["validation"] is not None:
+        print(f"  ✓ Validation dataset loaded with {len(data.formatted_ds['validation'])} samples.")
     else:
         print("  ⚠ No validation dataset provided.")
 
+    train_dataset = data.formatted_ds["train"]
     sft_task_spec = data.task_spec
 
     train_dataset = AllTaskProcessedDataset(
@@ -429,12 +357,12 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
             add_eos=data_config["add_eos"],
             add_generation_prompt=data_config["add_generation_prompt"],
         ),
-        max_seq_length=max_seq_length,
+        max_seq_length=data_config["max_input_seq_length"],
     )
     val_dataset: Optional[AllTaskProcessedDataset] = None
-    if val_raw is not None:
+    if data.formatted_ds["validation"] is not None:
         val_dataset = AllTaskProcessedDataset(
-            val_raw,
+            data.formatted_ds["validation"],
             tokenizer,
             sft_task_spec,
             partial(
@@ -443,7 +371,7 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
                 add_eos=data_config["add_eos"],
                 add_generation_prompt=data_config["add_generation_prompt"],
             ),
-            max_seq_length=max_seq_length,
+            max_seq_length=data_config["max_input_seq_length"],
         )
 
     # TaskDataSpec is only needed while building AllTaskProcessedDataset above.
