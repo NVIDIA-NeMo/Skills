@@ -20,7 +20,7 @@ session-export variant in SREGym.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -28,7 +28,7 @@ def _millis_to_iso(timestamp_ms: int | float | None) -> str | None:
     if timestamp_ms is None:
         return None
     try:
-        return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat()
+        return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
     except (OSError, TypeError, ValueError, OverflowError):
         return None
 
