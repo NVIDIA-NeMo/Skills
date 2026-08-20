@@ -59,6 +59,8 @@ OPENCODE_DEFAULT_VERSION = "1.17.11"
 OPENCODE_NODE_VERSION = "22.15.0"
 OPENCODE_PROVIDER_ID = "nemo"
 OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
+OPENCODE_SOLUTION_ORIGINALITY_CONFIG = "eval/swe-bench/opencode/solution-originality"
+OPENCODE_SOLUTION_ORIGINALITY_PATH = "/root/.config/opencode/solution-originality.md"
 
 
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
@@ -146,6 +148,11 @@ def build_opencode_config(
         }
     )
     agents[agent_name] = primary_agent
+    instructions = config.setdefault("instructions", [])
+    if not isinstance(instructions, list):
+        raise ValueError("OpenCode instructions must be a list.")
+    if OPENCODE_SOLUTION_ORIGINALITY_PATH not in instructions:
+        instructions.append(OPENCODE_SOLUTION_ORIGINALITY_PATH)
     return config
 
 
@@ -1089,6 +1096,8 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
+        with open(get_config_path(OPENCODE_SOLUTION_ORIGINALITY_CONFIG, config_extension="md"), "r") as f:
+            solution_originality = f.read()
 
         output_token_max = (
             self.cfg.inference.tokens_to_generate
@@ -1142,6 +1151,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"export OPENAI_BASE_URL={shlex.quote(self.api_base)} && "
             "mkdir -p /root/.config/opencode && "
             f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
+            f"printf %s {shlex.quote(solution_originality)} >{OPENCODE_SOLUTION_ORIGINALITY_PATH} && "
             "cd /testbed && "
             "git config --global --add safe.directory /testbed && "
             "git config --global user.email opencode@nemo-skills.local && "
