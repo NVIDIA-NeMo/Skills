@@ -78,6 +78,7 @@ def build_opencode_config(
     temperature: float,
     top_p: float,
     top_k: int | None,
+    extra_body: dict,
     agent_max_turns: int,
     tokens_to_generate: int | None = None,
 ) -> dict:
@@ -125,8 +126,13 @@ def build_opencode_config(
             },
         },
     )
-    if top_k is not None:
-        model_entry.setdefault("options", {})["top_k"] = top_k
+    if extra_body or top_k is not None:
+        model_options = model_entry.setdefault("options", {})
+        if not isinstance(model_options, dict):
+            raise ValueError("OpenCode model options must be a dictionary.")
+        _deep_merge_dicts(model_options, copy.deepcopy(extra_body))
+        if top_k is not None:
+            model_options["top_k"] = top_k
     models[model] = model_entry
     agents = config.setdefault("agent", {})
     agent_name = config.get("default_agent") or "build"
@@ -1103,6 +1109,7 @@ class SweBenchGenerationTask(GenerationTask):
             temperature=self.cfg.inference.temperature,
             top_p=self.cfg.inference.top_p,
             top_k=self.cfg.inference.top_k,
+            extra_body=OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True),
             agent_max_turns=self.cfg.agent_max_turns,
             tokens_to_generate=output_token_max,
         )
