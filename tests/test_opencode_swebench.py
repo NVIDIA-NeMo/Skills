@@ -24,6 +24,7 @@ def test_build_opencode_config_points_at_local_openai_server():
         agent_config={"permission": {"bash": "allow"}},
         api_base="http://10.0.0.1:5000/v1",
         model="/models/Qwen3-Coder",
+        context_window=393216,
         temperature=1.0,
         top_p=0.95,
         top_k=20,
@@ -38,6 +39,7 @@ def test_build_opencode_config_points_at_local_openai_server():
     assert provider["models"]["/models/Qwen3-Coder"]["id"] == "/models/Qwen3-Coder"
     assert provider["models"]["/models/Qwen3-Coder"]["temperature"] is True
     assert provider["models"]["/models/Qwen3-Coder"]["options"]["top_k"] == 20
+    assert provider["models"]["/models/Qwen3-Coder"]["limit"]["context"] == 393216
     assert provider["models"]["/models/Qwen3-Coder"]["limit"]["output"] == 4096
     assert config["agent"]["build"]["temperature"] == 1.0
     assert config["agent"]["build"]["top_p"] == 0.95
@@ -53,6 +55,7 @@ def test_build_opencode_config_merges_user_keys():
         },
         api_base="http://127.0.0.1:8000/v1",
         model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        context_window=262144,
         temperature=0.7,
         top_p=0.8,
         top_k=None,

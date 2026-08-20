@@ -74,6 +74,7 @@ def build_opencode_config(
     agent_config: dict,
     api_base: str,
     model: str,
+    context_window: int,
     temperature: float,
     top_p: float,
     top_k: int | None,
@@ -117,7 +118,7 @@ def build_opencode_config(
             "temperature": True,
             "tool_call": True,
             "limit": {
-                "context": 262144,
+                "context": context_window,
                 "output": (
                     tokens_to_generate if tokens_to_generate is not None else OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
                 ),
@@ -215,6 +216,7 @@ class SweBenchGenerationConfig:
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
+    opencode_context_window: int = 262144  # Context window advertised to OpenCode
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -1086,10 +1088,18 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.inference.tokens_to_generate is not None
             else OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
         )
+        if self.cfg.opencode_context_window <= 0:
+            raise ValueError("opencode_context_window must be greater than zero.")
+        if output_token_max > self.cfg.opencode_context_window:
+            raise ValueError(
+                f"OpenCode output-token limit ({output_token_max}) cannot exceed its context window "
+                f"({self.cfg.opencode_context_window})."
+            )
         opencode_config = build_opencode_config(
             agent_config=agent_config,
             api_base=self.api_base,
             model=self.cfg.server.model,
+            context_window=self.cfg.opencode_context_window,
             temperature=self.cfg.inference.temperature,
             top_p=self.cfg.inference.top_p,
             top_k=self.cfg.inference.top_k,
