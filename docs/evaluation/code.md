@@ -110,6 +110,8 @@ Most inference parameters are not passed to the LLM by default if you don't expl
 
 For OpenCode, the per-turn output-token limit defaults to 131072. Set `++inference.tokens_to_generate` to override it. Nemo-Skills applies the value to both the model's OpenCode config and `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`; without the latter, OpenCode imposes its own 32000-token runtime cap.
 
+Each OpenCode rollout stores four trajectory artifacts under `trajectories/<instance_id>/`: `opencode.txt` contains only the JSONL event stream from stdout, `opencode.stderr.log` contains diagnostics from stderr, `opencode-session.json` is OpenCode's native root-session export, and `trajectory.json` is that export converted to ATIF v1.7. The native and ATIF exports describe the top-level agent session; delegated subagent sessions are not included.
+
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
 #### Tool calling

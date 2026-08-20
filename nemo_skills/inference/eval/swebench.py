@@ -31,6 +31,7 @@ import tomlkit
 import yaml
 from omegaconf import OmegaConf
 
+from nemo_skills.inference.eval.opencode_trajectory import convert_opencode_session_to_atif
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.model import server_params
 from nemo_skills.prompt.utils import get_config_path
@@ -1118,6 +1119,15 @@ class SweBenchGenerationTask(GenerationTask):
         instance_id = data_point["instance_id"]
         # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
         model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"
+        trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
+        # OpenCode's JSONL stream contains the root session ID. Node is guaranteed to be
+        # available here because it is also used to install and run OpenCode.
+        session_id_script = (
+            "const fs=require('fs');"
+            "for(const line of fs.readFileSync(process.argv[1],'utf8').split(/\\r?\\n/)){"
+            "try{const event=JSON.parse(line);"
+            "if(event.sessionID){process.stdout.write(event.sessionID);break;}}catch{}}"
+        )
 
         opencode_cmd = (
             "export PATH=/root_mount/node/bin:$PATH && "
@@ -1137,13 +1147,27 @@ class SweBenchGenerationTask(GenerationTask):
             "git config --global user.email opencode@nemo-skills.local && "
             "git config --global user.name OpenCode && "
             "START_COMMIT=$(git rev-parse HEAD) && "
-            f"mkdir -p /trajectories_mount/trajectories/{shlex.quote(instance_id)} && "
+            f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
+            'mkdir -p "$TRAJECTORY_DIR" && '
             f"opencode --model={shlex.quote(model_arg)} run --format=json "
             f"--thinking --dangerously-skip-permissions -- {shlex.quote(instruction)} "
-            f"</dev/null > /trajectories_mount/trajectories/{shlex.quote(instance_id)}/opencode.txt 2>&1 && "
+            '</dev/null >"$TRAJECTORY_DIR/opencode.txt" 2>"$TRAJECTORY_DIR/opencode.stderr.log" && '
+            f'SESSION_ID=$(node -e {shlex.quote(session_id_script)} "$TRAJECTORY_DIR/opencode.txt") && '
+            'if [ -n "$SESSION_ID" ]; then '
+            '    if opencode export "$SESSION_ID" >"$TRAJECTORY_DIR/opencode-session.json.tmp" '
+            '        2>>"$TRAJECTORY_DIR/opencode.stderr.log"; then '
+            '        mv "$TRAJECTORY_DIR/opencode-session.json.tmp" "$TRAJECTORY_DIR/opencode-session.json"; '
+            "    else "
+            '        rm -f "$TRAJECTORY_DIR/opencode-session.json.tmp"; '
+            '        echo "Warning: failed to export OpenCode session $SESSION_ID" '
+            '            >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
+            "    fi; "
+            "else "
+            '    echo "Warning: no OpenCode session ID found in stdout" '
+            '        >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
+            "fi && "
             "git add -A && "
-            f'git diff --binary --cached "$START_COMMIT" '
-            f">/trajectories_mount/trajectories/{shlex.quote(instance_id)}/model.patch"
+            'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"'
         )
 
         search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
@@ -1155,6 +1179,26 @@ class SweBenchGenerationTask(GenerationTask):
             patch = None
         elif not patch.endswith("\n"):
             patch += "\n"
+
+        session_file = os.path.join(self.output_dir, "trajectories", instance_id, "opencode-session.json")
+        if os.path.exists(session_file):
+            try:
+                with open(session_file, "r") as f:
+                    session = json.load(f)
+                trajectory = convert_opencode_session_to_atif(
+                    session,
+                    model_name=self.cfg.server.model,
+                    agent_version=self.cfg.agent_framework_commit,
+                )
+                if trajectory is not None:
+                    trajectory_file = os.path.join(self.output_dir, "trajectories", instance_id, "trajectory.json")
+                    with open(trajectory_file, "w") as f:
+                        json.dump(trajectory, f, indent=2)
+                        f.write("\n")
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                LOG.exception("Failed to convert OpenCode session export for %s to ATIF.", instance_id)
+        else:
+            LOG.warning("OpenCode did not produce a native session export for %s.", instance_id)
 
         pred_file = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
         with open(pred_file, "w") as f:
