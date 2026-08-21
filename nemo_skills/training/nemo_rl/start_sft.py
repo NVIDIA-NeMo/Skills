@@ -266,7 +266,7 @@ def sft_preprocessor(
 
     # ==================== START: BLOCK FOR DEBUGGING ====================
     global _call_counter
-    if _call_counter < 1:  # Only print for the first 3 samples
+    if _call_counter < 3:  # Only print for the first 3 samples
         print(f"\n--- 🐛 Debugging invocation #{_call_counter + 1} (for original sample idx: {idx}) ---")
         # Loop through up to the first 5 messages in the log
         for i, message in enumerate(message_log[:5]):
