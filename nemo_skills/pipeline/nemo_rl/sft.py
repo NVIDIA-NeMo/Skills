@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
+import shlex
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
@@ -51,12 +53,29 @@ class SupportedBackends(str, Enum):
     megatron = "megatron"
 
 
+def _resolve_data_paths(cluster_config: dict, data_paths: str | list[str]) -> str | list[str]:
+    """Resolve mounted paths while preserving single-path or list input."""
+    if isinstance(data_paths, str):
+        return get_mounted_path(cluster_config, data_paths) if data_paths.startswith("/") else data_paths
+    return [
+        get_mounted_path(cluster_config, data_path) if data_path.startswith("/") else data_path
+        for data_path in data_paths
+    ]
+
+
+def _format_data_paths(data_paths: str | list[str]) -> str:
+    """Serialize data paths as a Hydra-compatible string or list value."""
+    if isinstance(data_paths, str):
+        return data_paths
+    return shlex.quote(json.dumps(data_paths, separators=(",", ":")))
+
+
 @dataclass
 class NemoRLTask:
     model: str
     output_dir: str
-    prompt_data: str
-    eval_data: str
+    prompt_data: str | list[str]
+    eval_data: str | list[str] | None
     num_gpus: int
     num_nodes: int
     expname: str
@@ -86,9 +105,9 @@ class NemoRLTask:
         return cmd
 
     def format_data_args(self):
-        cmd = f"+data.train_data_path={self.prompt_data} "
+        cmd = f"+data.train_data_path={_format_data_paths(self.prompt_data)} "
         if self.eval_data is not None:
-            cmd += f"+data.val_data_path={self.eval_data} "
+            cmd += f"+data.val_data_path={_format_data_paths(self.eval_data)} "
         return cmd
 
     def format_wandb_args(self):
@@ -233,8 +252,12 @@ def sft_nemo_rl(
     ),
     expname: str = typer.Option("openrlhf-ppo", help="Nemo run experiment name"),
     hf_model: str = typer.Option(..., help="Path to the HF model"),
-    training_data: str = typer.Option(None, help="Path to the training data"),
-    validation_data: Optional[str] = typer.Option(None, help="Path to the validation data"),
+    training_data: List[str] = typer.Option(
+        None, help="Path to training data. Repeat --training-data to provide multiple files."
+    ),
+    validation_data: Optional[List[str]] = typer.Option(
+        None, help="Path to validation data. Repeat --validation-data to provide multiple files."
+    ),
     num_nodes: int = typer.Option(1, help="Number of nodes"),
     num_gpus: int = typer.Option(..., help="Number of GPUs per node"),
     dependent_jobs: int = typer.Option(0, help="Number of dependent jobs"),
@@ -368,10 +391,9 @@ def sft_nemo_rl(
     if dependent_jobs >= 0:
         if training_data is None:
             raise ValueError("training_data is required when dependent_jobs >= 0")
-        if training_data.startswith("/"):  # could ask to download from HF
-            training_data = get_mounted_path(cluster_config, training_data)
+        training_data = _resolve_data_paths(cluster_config, training_data)
         if validation_data is not None:
-            validation_data = get_mounted_path(cluster_config, validation_data)
+            validation_data = _resolve_data_paths(cluster_config, validation_data)
 
     train_cmd = get_training_cmd(
         cluster_config=cluster_config,
