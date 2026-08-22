@@ -46,48 +46,62 @@ TokenizerType = PreTrainedTokenizerBase
 _call_counter = 0
 
 
-def detect_data_format(data_path: str) -> str:
-    """Detect the format of the dataset by examining the first line.
+def _normalize_data_paths(data_paths: str | list[str]) -> list[Path]:
+    """Normalize a single data path or a list of paths."""
+    paths = [data_paths] if isinstance(data_paths, str) else data_paths
+    if not paths:
+        raise ValueError("At least one dataset file must be provided")
+    return [Path(path) for path in paths]
+
+
+def detect_data_format(data_paths: str | list[str]) -> str:
+    """Detect the common format of one or more datasets by examining their first lines.
 
     Args:
-        data_path: Path to the dataset file
+        data_paths: Path to a dataset file or a list of paths
 
     Returns:
         str: "input_output" if data has input/output keys, "messages" if it has messages key,
              "mixed" if it has both (error case)
     """
-    try:
-        with open(data_path, "r") as f:
-            first_line = f.readline().strip()
-            if not first_line:
-                raise ValueError(f"Dataset at {data_path} is empty")
+    detected_formats = set()
+    for data_path in _normalize_data_paths(data_paths):
+        try:
+            with open(data_path, "r") as f:
+                first_line = f.readline().strip()
+                if not first_line:
+                    raise ValueError(f"Dataset at {data_path} is empty")
 
-            sample = json.loads(first_line)
-            has_input_output = "input" in sample and "output" in sample
-            has_messages = "messages" in sample
+                sample = json.loads(first_line)
+                has_input_output = "input" in sample and "output" in sample
+                has_messages = "messages" in sample
 
-            if has_input_output and has_messages:
-                return "mixed"
-            elif has_input_output:
-                return "input_output"
-            elif has_messages:
-                return "messages"
-            else:
-                raise ValueError(
-                    f"Dataset at {data_path} has neither 'input'/'output' keys nor 'messages' key. "
-                    f"Available keys: {list(sample.keys())}"
-                )
-    except FileNotFoundError:
-        raise ValueError(f"Dataset file not found: {data_path}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in dataset file {data_path}: {e}")
+                if has_input_output and has_messages:
+                    detected_formats.add("mixed")
+                elif has_input_output:
+                    detected_formats.add("input_output")
+                elif has_messages:
+                    detected_formats.add("messages")
+                else:
+                    raise ValueError(
+                        f"Dataset at {data_path} has neither 'input'/'output' keys nor 'messages' key. "
+                        f"Available keys: {list(sample.keys())}"
+                    )
+        except FileNotFoundError:
+            raise ValueError(f"Dataset file not found: {data_path}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in dataset file {data_path}: {e}")
+
+    if len(detected_formats) != 1:
+        raise ValueError(f"Dataset files use inconsistent formats: {sorted(detected_formats)}")
+    return detected_formats.pop()
 
 
 class PromptResponseDataset:
     def __init__(
         self,
-        train_ds_path: str,
-        val_ds_path: str | None = None,
+        train_ds_path: str | list[str],
+        val_ds_path: str | list[str] | None = None,
         input_key: str = "input",
         output_key: str = "output",
         num_proc: int | None = None,
@@ -125,38 +139,51 @@ class PromptResponseDataset:
 
         self.task_spec = TaskDataSpec("json_dataset")
 
-    def _processing_cache_signature(self, data_path: Path) -> dict[str, Any]:
-        """Stable fingerprint for processed cache: data file size, keys, and template file contents."""
+    def _processing_cache_signature(self, data_paths: list[Path]) -> dict[str, Any]:
+        """Stable fingerprint for processed cache: data files, keys, and template file contents."""
         sig: dict[str, Any] = {
-            "sig_version": 2,
-            "data_size": str(data_path.stat().st_size),
+            "sig_version": 2 if len(data_paths) == 1 else 3,
             "input_key": self.input_key,
             "output_key": self.output_key,
             "input_template_path": None,
             "input_template_sha256": None,
         }
+        if len(data_paths) == 1:
+            # Preserve compatibility with existing single-file caches.
+            sig["data_size"] = str(data_paths[0].stat().st_size)
+        else:
+            sig["data_files"] = [
+                {"path": str(data_path.expanduser().resolve()), "size": str(data_path.stat().st_size)}
+                for data_path in data_paths
+            ]
         if self.input_template_path:
             template_path = Path(self.input_template_path).expanduser().resolve()
             sig["input_template_path"] = str(template_path)
             sig["input_template_sha256"] = hashlib.sha256(template_path.read_bytes()).hexdigest()
         return sig
 
-    def load_or_process_split(self, path: str, split_name: str) -> Dataset:
-        data_path = Path(path)
-        cache_dir = data_path.parent / ".cache" / f"{split_name}_{data_path.stem}"
+    def load_or_process_split(self, paths: str | list[str], split_name: str) -> Dataset:
+        data_paths = _normalize_data_paths(paths)
+        cache_name = f"{split_name}_{data_paths[0].stem}"
+        if len(data_paths) > 1:
+            paths_hash = hashlib.sha256(
+                json.dumps([str(path.expanduser().resolve()) for path in data_paths]).encode()
+            ).hexdigest()[:12]
+            cache_name = f"{cache_name}_{paths_hash}"
+        cache_dir = data_paths[0].parent / ".cache" / cache_name
         sig_file = cache_dir / "signature.json"
-        expected_sig = self._processing_cache_signature(data_path)
+        expected_sig = self._processing_cache_signature(data_paths)
         if cache_dir.exists() and sig_file.exists() and not self.force_reprocess:
             with open(sig_file) as f:
                 old_sig = json.load(f)
             if old_sig == expected_sig:
                 print(f"[Cache] Loading {split_name} dataset from: {cache_dir}")
                 return load_from_disk(str(cache_dir))
-            print(f"[Cache] Invalidated (signature mismatch): {path}")
+            print(f"[Cache] Invalidated (signature mismatch): {paths}")
 
         # Re-process dataset
-        print(f"[Map] Processing {split_name} dataset from: {path}")
-        dataset = load_dataset("json", data_files=str(path))["train"]
+        print(f"[Map] Processing {split_name} dataset from: {paths}")
+        dataset = load_dataset("json", data_files=[str(path) for path in data_paths])["train"]
 
         current_input_key = self.input_key
         if self.input_template:
