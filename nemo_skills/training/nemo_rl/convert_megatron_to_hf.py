@@ -22,7 +22,7 @@ import re
 import yaml
 from nemo_rl.models.megatron.community_import import export_model_from_megatron
 
-from nemo_skills.training.nemo_rl.convert_dcp_to_hf import resolve_tokenizer_path
+from nemo_skills.training.nemo_rl.convert_dcp_to_hf import copy_tokenizer_files, resolve_tokenizer_path
 
 
 def parse_args():
@@ -130,6 +130,10 @@ def main():
         overwrite=True,
         hf_overrides=hf_overrides,
     )
+    # NeMo-RL's Megatron exporter currently accepts hf_tokenizer_path but does not
+    # copy it into the exported model. Overlay the saved runtime tokenizer so custom
+    # chat templates and tokenizer settings are preserved.
+    copy_tokenizer_files(tokenizer_name, args.hf_ckpt_path)
 
 
 if __name__ == "__main__":

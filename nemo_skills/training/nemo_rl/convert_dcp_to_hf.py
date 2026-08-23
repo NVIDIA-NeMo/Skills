@@ -121,7 +121,7 @@ def copy_tokenizer_files(tokenizer_path, hf_ckpt_path):
         print(f"Copied {entry}")
 
 
-def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, tokenizer_path, hf_overrides=None):
+def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, hf_overrides=None):
     """Convert safetensors checkpoint to HF format using offline_hf_consolidation.py."""
     model_dir = os.path.join(weights_path, "model")
 
@@ -149,11 +149,6 @@ def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, tokenizer_
 
     print(f"Running consolidation: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
-
-    # Copy tokenizer files (not handled by offline consolidation)
-    # TODO: this will fail if config["policy"]["model_name"] isn't a path, but that's not common and we should
-    # anyway remove this logic when it's properly handled in nemo-rl
-    copy_tokenizer_files(tokenizer_path, hf_ckpt_path)
 
     # Apply hf_overrides to config.json if provided
     if hf_overrides:
@@ -210,7 +205,6 @@ def main():
             weights_path=dcp_ckpt_path,
             hf_ckpt_path=args.hf_ckpt_path,
             model_name=model_name_or_path,
-            tokenizer_path=tokenizer_name_or_path,
             hf_overrides=hf_overrides if hf_overrides else None,
         )
     else:
@@ -225,6 +219,9 @@ def main():
             overwrite=True,
             hf_overrides=hf_overrides,
         )
+    # Overlay the saved runtime tokenizer after either conversion path. External
+    # converters may otherwise regenerate tokenizer files from the base HF model.
+    copy_tokenizer_files(tokenizer_name_or_path, args.hf_ckpt_path)
     print(f"Saved HF checkpoint to: {hf_ckpt}")
 
 
