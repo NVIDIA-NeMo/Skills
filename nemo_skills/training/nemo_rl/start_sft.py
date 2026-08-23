@@ -272,19 +272,34 @@ def ensure_dict_args(messages):
 
 def ensure_tools_list(tools):
     """Convert JSON-encoded tool definitions into a list of dictionaries."""
-    if tools is None or isinstance(tools, list):
-        return tools
+    if tools is None:
+        return None
 
-    if isinstance(tools, str):
-        try:
-            tools = json.loads(tools)
-        except json.JSONDecodeError as error:
-            raise ValueError("Tools field contains invalid JSON") from error
+    def decode_json_string(value, location):
+        while isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"{location} contains invalid JSON") from error
+        return value
 
+    tools = decode_json_string(tools, "Tools field")
     if isinstance(tools, dict):
-        return [tools]
+        tools = [tools]
+    if not isinstance(tools, list):
+        raise TypeError(f"Unsupported tools type: {type(tools).__name__}")
 
-    raise TypeError(f"Unsupported tools type: {type(tools).__name__}")
+    normalized_tools = []
+    for index, tool in enumerate(tools):
+        try:
+            tool = decode_json_string(tool, f"Tool at index {index}")
+        except ValueError as error:
+            raise ValueError(f"Could not parse tool at index {index}") from error
+        if not isinstance(tool, dict):
+            raise TypeError(f"Tool at index {index} must be a dictionary, got {type(tool).__name__}")
+        normalized_tools.append(tool)
+
+    return normalized_tools
 
 
 def sft_preprocessor(
