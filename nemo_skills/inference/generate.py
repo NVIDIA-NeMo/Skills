@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from copy import deepcopy
 from dataclasses import asdict, field, is_dataclass
 from pathlib import Path
@@ -121,6 +122,8 @@ class GenerationTaskConfig:
 
     max_samples: int = -1  # If > 0, will stop after generating this many samples. Useful for debugging
     skip_filled: bool = False  # If True, will skip the generations that are already in the output file
+    # If True, record per-datapoint failures and continue processing the remaining inputs.
+    continue_on_error: bool = False
 
     # maximum number of concurrent requests to the server for the async loop
     # if sync loop is used, this is the batch size
@@ -839,26 +842,46 @@ class GenerationTask:
 
     async def _generate_and_save_datapoint(self, data_point, all_data, fout, pbar):
         """Starts generation, evaluation and saves the output for a single data point."""
-        # Generate output for this single data point
-        start_time = time.time()
-        output = await self.process_single_datapoint(data_point, all_data)
-        end_time = time.time()
+        try:
+            # Generate output for this single data point
+            start_time = time.time()
+            output = await self.process_single_datapoint(data_point, all_data)
+            end_time = time.time()
 
-        if self.cfg.add_generation_stats:
-            output["generation_start_time"] = start_time
-            output["generation_end_time"] = end_time
-            output["generation_time"] = end_time - start_time
+            if self.cfg.add_generation_stats:
+                output["generation_start_time"] = start_time
+                output["generation_end_time"] = end_time
+                output["generation_time"] = end_time - start_time
 
-        await self.postprocess_single_output(output, data_point)
+            await self.postprocess_single_output(output, data_point)
 
-        # evaluate single-data point if requested and evaluator supports that
-        if self.should_run_evaluation and self.evaluator:
-            output = await self.evaluate_single_datapoint({**data_point, **output})
+            # evaluate single-data point if requested and evaluator supports that
+            if self.should_run_evaluation and self.evaluator:
+                output = await self.evaluate_single_datapoint({**data_point, **output})
 
-        # Thread-safe output writing
-        async with self.output_lock:
-            self.dump_outputs([output], [data_point], fout)
-            pbar.update(1)
+            # Thread-safe output writing
+            async with self.output_lock:
+                self.dump_outputs([output], [data_point], fout)
+                pbar.update(1)
+        except Exception as error:
+            if not self.cfg.continue_on_error:
+                raise
+
+            LOG.exception(
+                "Generation failed for data point %s; continuing", data_point.get("instance_id", "<unknown>")
+            )
+            error_record = {
+                self.cfg.async_position_key: data_point.get(self.cfg.async_position_key),
+                "instance_id": data_point.get("instance_id"),
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+                "traceback": traceback.format_exc(),
+            }
+            async with self.output_lock:
+                error_file = Path(self.cfg.output_file).with_suffix(".errors.jsonl")
+                with open(error_file, "at", encoding="utf-8") as error_output:
+                    error_output.write(json.dumps(error_record) + "\n")
+                pbar.update(1)
 
     async def async_loop(self, data):
         """Async loop to generate generations using asyncio."""
@@ -908,17 +931,22 @@ class GenerationTask:
         self.restore_async_order()
 
     def restore_async_order(self):
-        # After we are done, need to restore the order and resave without position ids
+        # After we are done, restore the order and resave without position IDs.
+        # Positions may contain gaps when continue_on_error=True.
         with open(self.cfg.output_file + "-async", "rt", encoding="utf-8") as fin:
             generations = [json.loads(line) for line in fin]
 
-        ordered_generations = [None] * len(generations)
+        positioned_generations = []
+        seen_positions = set()
         for gen_dict in generations:
             async_pos = gen_dict.pop(self.cfg.async_position_key)
-            ordered_generations[async_pos] = gen_dict
+            if async_pos in seen_positions:
+                raise ValueError(f"Duplicate async position {async_pos} in {self.cfg.output_file}-async")
+            seen_positions.add(async_pos)
+            positioned_generations.append((async_pos, gen_dict))
 
         with open(self.cfg.output_file, "wt", encoding="utf-8") as fout:
-            for gen_dict in ordered_generations:
+            for _, gen_dict in sorted(positioned_generations):
                 fout.write(json.dumps(gen_dict) + "\n")
 
         Path(self.cfg.output_file + "-async").unlink()
@@ -973,7 +1001,11 @@ class GenerationTask:
                 return
 
             if not self.cfg.skip_filled:
-                for output_path in [Path(self.cfg.output_file), Path(self.cfg.output_file + "-async")]:
+                for output_path in [
+                    Path(self.cfg.output_file),
+                    Path(self.cfg.output_file + "-async"),
+                    Path(self.cfg.output_file).with_suffix(".errors.jsonl"),
+                ]:
                     if output_path.exists():
                         output_path.unlink()
 

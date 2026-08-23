@@ -35,7 +35,7 @@ from nemo_skills.inference.eval.swebench import (
     SweBenchGenerationTask,
     _override_mini_swe_agent_cwd,
 )
-from nemo_skills.inference.generate import GenerationTask
+from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig
 from nemo_skills.inference.swe_atlas_qna_judge import SweAtlasQnAJudgeTask, _extract_rating
 from nemo_skills.prompt.utils import get_config_path, get_prompt
 
@@ -65,6 +65,64 @@ def test_mini_swe_agent_cwd_override_preserves_yaml_default():
     config_without_environment = {}
     _override_mini_swe_agent_cwd(config_without_environment, "/testbed")
     assert config_without_environment["environment"]["cwd"] == "/testbed"
+
+
+def test_continue_on_error_defaults_to_false():
+    cfg = GenerationTaskConfig(
+        input_file="input.jsonl",
+        output_file="output.jsonl",
+        prompt_format="openai",
+        server={"server_type": "openai"},
+    )
+
+    assert cfg.continue_on_error is False
+
+
+def test_continue_on_error_writes_successful_subset_and_error_sidecar(tmp_path):
+    async def run():
+        task = object.__new__(GenerationTask)
+        task.cfg = SimpleNamespace(
+            output_file=str(tmp_path / "output.jsonl"),
+            continue_on_error=True,
+            async_position_key="_async_position",
+            add_generation_stats=False,
+            generation_key="generation",
+            parse_reasoning=False,
+            end_reasoning_string="</think>",
+            drop_content_types=[],
+            enable_litellm_cache=False,
+        )
+        task.output_lock = None
+        task.should_run_evaluation = False
+        task.evaluator = None
+        task._reasoning_warning_shown = False
+
+        async def process_single_datapoint(data_point, all_data, prompt_format=None):
+            if data_point["instance_id"] == "failed":
+                raise RuntimeError("context length exceeded")
+            return {"generation": f"answer-{data_point['instance_id']}"}
+
+        task.process_single_datapoint = process_single_datapoint
+        data = [
+            {"instance_id": "first", "_async_position": 0},
+            {"instance_id": "failed", "_async_position": 1},
+            {"instance_id": "last", "_async_position": 2},
+        ]
+        await task.async_loop(data)
+
+    asyncio.run(run())
+
+    output_rows = [json.loads(line) for line in (tmp_path / "output.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [row["instance_id"] for row in output_rows] == ["first", "last"]
+    assert [row["generation"] for row in output_rows] == ["answer-first", "answer-last"]
+
+    error_rows = [
+        json.loads(line) for line in (tmp_path / "output.errors.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert error_rows[0]["instance_id"] == "failed"
+    assert error_rows[0]["error_type"] == "RuntimeError"
+    assert error_rows[0]["error_message"] == "context length exceeded"
+    assert "RuntimeError: context length exceeded" in error_rows[0]["traceback"]
 
 
 def _rating(criterion, status):

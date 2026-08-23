@@ -410,6 +410,8 @@ NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You ca
 
 SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
 
+By default, an unhandled error for one instance fails its generation job. Add `++continue_on_error=True` to record failed instances in an `*.errors.jsonl` sidecar and continue processing the rest of the chunk. The finalized output, rubric judge, and metrics then include only successful instances. This mode is best suited to greedy or single-seed runs because independently missing instances across multiple seeds cannot be aligned reliably for pass@k.
+
 The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
 
 To run generation without launching the rubric judge or computing scores, add `--skip_judge`:

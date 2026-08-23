@@ -179,6 +179,8 @@ class SweBenchGenerationConfig:
 
     max_samples: int = -1  # If > 0, will stop after generating this many samples. Useful for debugging
     skip_filled: bool = False  # If True, will skip the generations that are already in the output file
+    # If True, record per-datapoint failures and continue processing the remaining inputs.
+    continue_on_error: bool = False
 
     # Maximum number of concurrent agent rollouts in each job.
     # Each rollout sends 1 request to the LLM server at a time, so this is also the max number of concurrent requests.
