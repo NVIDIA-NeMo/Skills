@@ -61,8 +61,8 @@ def detect_data_format(data_paths: str | list[str]) -> str:
         data_paths: Path to a dataset file or a list of paths
 
     Returns:
-        str: "input_output" if data has input/output keys, "messages" if it has messages key,
-             "mixed" if it has both (error case)
+        str: "input_output" if data has input/output keys, "messages" if it has a messages
+             or trajectory key, "mixed" if it has both formats (error case)
     """
     detected_formats = set()
     for data_path in _normalize_data_paths(data_paths):
@@ -74,7 +74,7 @@ def detect_data_format(data_paths: str | list[str]) -> str:
 
                 sample = json.loads(first_line)
                 has_input_output = "input" in sample and "output" in sample
-                has_messages = "messages" in sample
+                has_messages = "messages" in sample or "trajectory" in sample
 
                 if has_input_output and has_messages:
                     detected_formats.add("mixed")
@@ -84,7 +84,7 @@ def detect_data_format(data_paths: str | list[str]) -> str:
                     detected_formats.add("messages")
                 else:
                     raise ValueError(
-                        f"Dataset at {data_path} has neither 'input'/'output' keys nor 'messages' key. "
+                        f"Dataset at {data_path} has neither 'input'/'output' keys nor a 'messages'/'trajectory' key. "
                         f"Available keys: {list(sample.keys())}"
                     )
         except FileNotFoundError:
@@ -184,6 +184,8 @@ class PromptResponseDataset:
         # Re-process dataset
         print(f"[Map] Processing {split_name} dataset from: {paths}")
         dataset = load_dataset("json", data_files=[str(path) for path in data_paths])["train"]
+        if "messages" not in dataset.column_names and "trajectory" in dataset.column_names:
+            dataset = dataset.rename_column("trajectory", "messages")
 
         current_input_key = self.input_key
         if self.input_template:
