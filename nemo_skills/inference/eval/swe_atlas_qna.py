@@ -32,6 +32,7 @@ FINAL_ANSWER_TAG = "<<FINAL_ANSWER>>"
 DEFAULT_AGENT_CONFIGS = {
     SupportedAgentFrameworks.mini_swe_agent: "eval/swe-atlas-qna/mini-swe-agent/default",
     SupportedAgentFrameworks.swe_agent: "eval/swe-atlas-qna/swe-agent/default",
+    SupportedAgentFrameworks.opencode: "eval/swe-atlas-qna/opencode/default",
 }
 
 
@@ -81,6 +82,14 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         trajectory_info["generation"] = extract_final_answer(trajectory_info.pop("model_patch", None))
         return trajectory_info
 
+    def _format_opencode_output(self, prediction_dict, data_point):
+        trajectory_info = prediction_dict.copy()
+        trajectory_info["model_name_or_path"] = self.cfg.server.model
+        trajectory_info["instance_id"] = data_point["instance_id"]
+        trajectory_info["generation"] = extract_final_answer(trajectory_info.pop("final_response", None))
+        trajectory_info.pop("model_patch", None)
+        return trajectory_info
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         api_base = self.get_api_base()
 
@@ -89,6 +98,8 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
                 output_file = await self._run_mini_swe_agent(data_point, api_base)
             elif self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
                 output_file = await self._run_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
+                output_file = await self._run_opencode(data_point, api_base)
             else:
                 raise ValueError(f"Unsupported agent framework: {self.cfg.agent_framework}")
 
@@ -96,6 +107,8 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
             trajectory_info = json.load(fin)
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             trajectory_info = self._format_swe_agent_output(trajectory_info, data_point)
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
+            trajectory_info = self._format_opencode_output(trajectory_info, data_point)
 
         return {
             "generation": trajectory_info["generation"],

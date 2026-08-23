@@ -398,7 +398,17 @@ ns eval "${COMMON_ARGS[@]}" \
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
 
-The benchmark defaults to mini-SWE-agent and 250 agent turns. To use SWE-agent instead, add `++agent_framework=swe_agent`; NeMo-Skills selects the corresponding read-only Q&A prompt automatically. You can override either framework's default with `++agent_config=<PROMPT_CONFIG>`. SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
+The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent and OpenCode are also supported:
+
+```
+# Select one of these overrides.
+++agent_framework=swe_agent
+++agent_framework=opencode
+```
+
+NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You can override a framework's default with `++agent_config=<PROMPT_CONFIG>`. OpenCode is pinned to version 1.17.11 by default; override it with `++agent_framework_commit=<VERSION>`. Its installer selects x86_64 or ARM64 and uses the native musl package in Alpine containers. The model server must support native tool calls for OpenCode.
+
+SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
 
 The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
 

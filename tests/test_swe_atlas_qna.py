@@ -16,11 +16,18 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from nemo_skills.evaluation.metrics.swe_atlas_qna_metrics import (
     SweAtlasQnAMetrics,
     score_swe_atlas_qna_prediction,
+)
+from nemo_skills.inference.eval.opencode_utils import (
+    build_opencode_config,
+    build_opencode_install_command,
+    extract_final_assistant_text,
+    extract_final_assistant_text_from_jsonl,
 )
 from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask, extract_final_answer
 from nemo_skills.inference.eval.swebench import (
@@ -332,6 +339,25 @@ def test_swe_atlas_qna_maps_swe_agent_submission_to_generation():
     assert "model_patch" not in output
 
 
+def test_swe_atlas_qna_maps_opencode_response_to_generation():
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(server=SimpleNamespace(model="test-model"))
+    output = task._format_opencode_output(
+        {
+            "final_response": "<<FINAL_ANSWER>>\nOpenCode answer\n<<FINAL_ANSWER>>",
+            "model_patch": None,
+            "extra_field": "preserved",
+        },
+        {"instance_id": "task-1"},
+    )
+    assert output["generation"] == "OpenCode answer"
+    assert output["instance_id"] == "task-1"
+    assert output["model_name_or_path"] == "test-model"
+    assert output["extra_field"] == "preserved"
+    assert "final_response" not in output
+    assert "model_patch" not in output
+
+
 def test_swe_atlas_qna_generation_disables_inline_evaluation(monkeypatch, caplog):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.mini_swe_agent,
@@ -360,6 +386,19 @@ def test_swe_atlas_qna_selects_swe_agent_config(monkeypatch):
     assert cfg.agent_config == "eval/swe-atlas-qna/swe-agent/default"
 
 
+def test_swe_atlas_qna_selects_opencode_config(monkeypatch):
+    cfg = SimpleNamespace(
+        agent_framework=SupportedAgentFrameworks.opencode,
+        agent_config=None,
+        evaluate=False,
+    )
+    monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
+
+    SweAtlasQnAGenerationTask(cfg)
+
+    assert cfg.agent_config == "eval/swe-atlas-qna/opencode/default"
+
+
 def test_swe_atlas_qna_swe_agent_prompt_submits_prose_answer():
     with open(get_config_path("eval/swe-atlas-qna/swe-agent/default"), encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
@@ -370,6 +409,17 @@ def test_swe_atlas_qna_swe_agent_prompt_submits_prose_answer():
     assert "cat <<'ANSWER_EOF' > /root/model.patch" in instance_template
     assert "echo '<<SWE_AGENT_SUBMISSION>>'" in instance_template
     assert bundles == [{"path": "tools/registry"}]
+
+
+def test_swe_atlas_qna_opencode_prompt_is_read_only_qna():
+    with open(get_config_path("eval/swe-atlas-qna/opencode/default"), encoding="utf-8") as config_file:
+        config = yaml.safe_load(config_file)
+
+    assert config["permission"]["bash"] == "allow"
+    assert config["permission"]["edit"] == "deny"
+    prompt = config["agent"]["build"]["prompt"]
+    assert "do not modify repository files" in prompt
+    assert "<<FINAL_ANSWER>>" in prompt
 
 
 def test_swe_atlas_qna_processes_swe_agent_output(tmp_path):
@@ -401,6 +451,149 @@ def test_swe_atlas_qna_processes_swe_agent_output(tmp_path):
 
     assert output["generation"] == "Final response"
     assert output["swe-atlas-qna-outputs"]["instance_id"] == "task-1"
+
+
+def test_swe_atlas_qna_processes_opencode_output(tmp_path):
+    async def run():
+        prediction_file = tmp_path / "prediction.jsonl"
+        prediction_file.write_text(
+            json.dumps(
+                {
+                    "final_response": "<<FINAL_ANSWER>>\nFinal response\n<<FINAL_ANSWER>>",
+                    "model_patch": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        task = object.__new__(SweAtlasQnAGenerationTask)
+        task.cfg = SimpleNamespace(
+            agent_framework=SupportedAgentFrameworks.opencode,
+            server=SimpleNamespace(model="test-model"),
+        )
+        task.semaphore = asyncio.Semaphore(1)
+        task.get_api_base = lambda: "http://127.0.0.1:8000/v1"
+
+        async def fake_run_opencode(data_point, api_base):
+            assert data_point["instance_id"] == "task-1"
+            assert api_base == "http://127.0.0.1:8000/v1"
+            return str(prediction_file)
+
+        task._run_opencode = fake_run_opencode
+        return await task.process_single_datapoint({"instance_id": "task-1"}, [])
+
+    output = asyncio.run(run())
+
+    assert output["generation"] == "Final response"
+    assert output["swe-atlas-qna-outputs"]["instance_id"] == "task-1"
+
+
+def test_opencode_config_injects_model_and_sampling_parameters():
+    config = build_opencode_config(
+        agent_config={"permission": {"edit": "deny"}},
+        api_base="http://127.0.0.1:8000/v1",
+        model="org/model",
+        context_window=32768,
+        temperature=0.7,
+        top_p=0.9,
+        top_k=40,
+        extra_body={"chat_template_kwargs": {"enable_thinking": True}},
+        agent_max_turns=25,
+        tokens_to_generate=4096,
+    )
+
+    provider = config["provider"]["nemo"]
+    model = provider["models"]["org/model"]
+    assert provider["options"]["baseURL"] == "http://127.0.0.1:8000/v1"
+    assert model["limit"] == {"context": 32768, "output": 4096}
+    assert model["options"]["top_k"] == 40
+    assert model["options"]["chat_template_kwargs"]["enable_thinking"] is True
+    assert config["agent"]["build"] == {"temperature": 0.7, "top_p": 0.9, "steps": 25}
+    assert config["permission"]["edit"] == "deny"
+
+
+def test_opencode_config_clamps_default_output_to_context_window():
+    config = build_opencode_config(
+        agent_config={},
+        api_base="http://127.0.0.1:8000/v1",
+        model="test-model",
+        context_window=32768,
+        temperature=0.0,
+        top_p=0.95,
+        top_k=None,
+        extra_body={},
+        agent_max_turns=25,
+    )
+
+    assert config["provider"]["nemo"]["models"]["test-model"]["limit"] == {
+        "context": 32768,
+        "output": 32768,
+    }
+
+
+def test_opencode_config_rejects_null_extra_body_with_clear_error():
+    with pytest.raises(
+        ValueError,
+        match=r"OpenCode inference\.extra_body cannot be null; omit it or set it to \{\}\.",
+    ):
+        build_opencode_config(
+            agent_config={},
+            api_base="http://127.0.0.1:8000/v1",
+            model="test-model",
+            context_window=32768,
+            temperature=0.0,
+            top_p=0.95,
+            top_k=40,
+            extra_body=None,
+            agent_max_turns=25,
+        )
+
+
+def test_opencode_installer_selects_native_musl_package_for_alpine():
+    command = build_opencode_install_command("1.17.11")
+
+    assert "opencode-linux-arm64-musl" in command
+    assert "opencode-linux-x64-baseline-musl" in command
+    assert "${OPENCODE_MUSL_PACKAGE}@1.17.11" in command
+    assert "ln -sf opencode-native /root/opencode/bin/opencode" in command
+    assert "ld-musl-${OPENCODE_MUSL_ARCH}.so.1" in command
+    assert "libstdc++.so.6" in command
+    assert "node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" in command
+
+
+def test_opencode_extracts_last_assistant_response_and_jsonl_fallback(tmp_path):
+    session = {
+        "messages": [
+            {"info": {"role": "assistant"}, "parts": [{"type": "text", "text": "Earlier"}]},
+            {"info": {"role": "user"}, "parts": [{"type": "text", "text": "Continue"}]},
+            {
+                "info": {"role": "assistant", "finish": "tool-calls"},
+                "parts": [{"type": "text", "text": "Calling another tool"}],
+            },
+            {
+                "info": {"role": "assistant", "finish": "stop"},
+                "parts": [
+                    {"type": "reasoning", "text": "Private reasoning"},
+                    {"type": "text", "text": "Final answer"},
+                ],
+            },
+        ]
+    }
+    assert extract_final_assistant_text(session) == "Final answer"
+
+    event_file = tmp_path / "opencode.txt"
+    event_file.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "text", "part": {"messageID": "first", "id": "1", "text": "Earlier"}}),
+                "not json",
+                json.dumps({"type": "text", "part": {"messageID": "final", "id": "1", "text": "Fallback"}}),
+                json.dumps({"type": "text", "part": {"messageID": "final", "id": "2", "text": "answer"}}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert extract_final_assistant_text_from_jsonl(event_file) == "Fallback\nanswer"
 
 
 def test_swe_atlas_qna_final_answer_extraction_falls_back_to_plain_submission():
