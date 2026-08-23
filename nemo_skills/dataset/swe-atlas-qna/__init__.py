@@ -19,12 +19,7 @@ EVAL_SPLIT = "default.ubuntu"
 METRICS_TYPE = "swe-atlas-qna"
 REFERENCE_ANSWER_KEY = "reference_answer"
 GENERATION_MODULE = "nemo_skills.inference.eval.swe_atlas_qna"
-GENERATION_ARGS = (
-    "++agent_framework=mini_swe_agent "
-    "++agent_config=eval/swe-atlas-qna/mini-swe-agent/default "
-    "++agent_max_turns=250 "
-    "++evaluate=False"
-)
+GENERATION_ARGS = "++agent_framework=mini_swe_agent ++agent_max_turns=250 ++evaluate=False"
 
 # SWE-Atlas-QnA uses an LLM to grade each answer against its task-specific rubric.
 # Claude Opus 4.5 is the judge used by the official benchmark. The server address

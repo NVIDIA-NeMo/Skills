@@ -16,6 +16,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import yaml
+
 from nemo_skills.evaluation.metrics.swe_atlas_qna_metrics import (
     SweAtlasQnAMetrics,
     score_swe_atlas_qna_prediction,
@@ -28,7 +30,7 @@ from nemo_skills.inference.eval.swebench import (
 )
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.swe_atlas_qna_judge import SweAtlasQnAJudgeTask, _extract_rating
-from nemo_skills.prompt.utils import get_prompt
+from nemo_skills.prompt.utils import get_config_path, get_prompt
 
 RUBRIC = [
     {
@@ -313,14 +315,91 @@ def test_swe_atlas_qna_maps_agent_submission_to_generation():
     assert output["model_name_or_path"] == "test-model"
 
 
+def test_swe_atlas_qna_maps_swe_agent_submission_to_generation():
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(server=SimpleNamespace(model="test-model"))
+    output = task._format_swe_agent_output(
+        {
+            "model_patch": "<<FINAL_ANSWER>>\nSWE-agent answer\n<<FINAL_ANSWER>>",
+            "extra_field": "preserved",
+        },
+        {"instance_id": "task-1"},
+    )
+    assert output["generation"] == "SWE-agent answer"
+    assert output["instance_id"] == "task-1"
+    assert output["model_name_or_path"] == "test-model"
+    assert output["extra_field"] == "preserved"
+    assert "model_patch" not in output
+
+
 def test_swe_atlas_qna_generation_disables_inline_evaluation(monkeypatch, caplog):
-    cfg = SimpleNamespace(agent_framework=SupportedAgentFrameworks.mini_swe_agent, evaluate=True)
+    cfg = SimpleNamespace(
+        agent_framework=SupportedAgentFrameworks.mini_swe_agent,
+        agent_config=None,
+        evaluate=True,
+    )
     monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
 
     SweAtlasQnAGenerationTask(cfg)
 
     assert cfg.evaluate is False
+    assert cfg.agent_config == "eval/swe-atlas-qna/mini-swe-agent/default"
     assert "overriding evaluate=True with evaluate=False" in caplog.text
+
+
+def test_swe_atlas_qna_selects_swe_agent_config(monkeypatch):
+    cfg = SimpleNamespace(
+        agent_framework=SupportedAgentFrameworks.swe_agent,
+        agent_config=None,
+        evaluate=False,
+    )
+    monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
+
+    SweAtlasQnAGenerationTask(cfg)
+
+    assert cfg.agent_config == "eval/swe-atlas-qna/swe-agent/default"
+
+
+def test_swe_atlas_qna_swe_agent_prompt_submits_prose_answer():
+    with open(get_config_path("eval/swe-atlas-qna/swe-agent/default"), encoding="utf-8") as config_file:
+        config = yaml.safe_load(config_file)
+
+    instance_template = config["agent"]["templates"]["instance_template"]
+    bundles = config["agent"]["tools"]["bundles"]
+    assert "Do NOT modify any files" in instance_template
+    assert "cat <<'ANSWER_EOF' > /root/model.patch" in instance_template
+    assert "echo '<<SWE_AGENT_SUBMISSION>>'" in instance_template
+    assert bundles == [{"path": "tools/registry"}]
+
+
+def test_swe_atlas_qna_processes_swe_agent_output(tmp_path):
+    async def run():
+        prediction_file = tmp_path / "prediction.jsonl"
+        prediction_file.write_text(
+            json.dumps({"model_patch": "<<FINAL_ANSWER>>\nFinal response\n<<FINAL_ANSWER>>"}),
+            encoding="utf-8",
+        )
+
+        task = object.__new__(SweAtlasQnAGenerationTask)
+        task.cfg = SimpleNamespace(
+            agent_framework=SupportedAgentFrameworks.swe_agent,
+            server=SimpleNamespace(model="test-model"),
+        )
+        task.semaphore = asyncio.Semaphore(1)
+        task.get_api_base = lambda: "http://127.0.0.1:8000/v1"
+
+        async def fake_run_swe_agent(data_point, api_base):
+            assert data_point["instance_id"] == "task-1"
+            assert api_base == "http://127.0.0.1:8000/v1"
+            return str(prediction_file)
+
+        task._run_swe_agent = fake_run_swe_agent
+        return await task.process_single_datapoint({"instance_id": "task-1"}, [])
+
+    output = asyncio.run(run())
+
+    assert output["generation"] == "Final response"
+    assert output["swe-atlas-qna-outputs"]["instance_id"] == "task-1"
 
 
 def test_swe_atlas_qna_final_answer_extraction_falls_back_to_plain_submission():

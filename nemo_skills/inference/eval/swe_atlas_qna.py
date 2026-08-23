@@ -29,6 +29,10 @@ from nemo_skills.utils import get_help_message, get_logger_name, setup_logging
 LOG = logging.getLogger(get_logger_name(__file__))
 
 FINAL_ANSWER_TAG = "<<FINAL_ANSWER>>"
+DEFAULT_AGENT_CONFIGS = {
+    SupportedAgentFrameworks.mini_swe_agent: "eval/swe-atlas-qna/mini-swe-agent/default",
+    SupportedAgentFrameworks.swe_agent: "eval/swe-atlas-qna/swe-agent/default",
+}
 
 
 def extract_final_answer(submission: str | None) -> str:
@@ -48,11 +52,14 @@ def extract_final_answer(submission: str | None) -> str:
 
 
 class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
-    """Run mini-swe-agent in a repository and return its submitted prose answer."""
+    """Run a repository agent and return its submitted prose answer."""
 
     def __init__(self, cfg: SweBenchGenerationConfig):
-        if cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
-            raise ValueError("SWE-Atlas-QnA supports only agent_framework=mini_swe_agent")
+        if cfg.agent_framework not in DEFAULT_AGENT_CONFIGS:
+            supported_frameworks = ", ".join(framework.value for framework in DEFAULT_AGENT_CONFIGS)
+            raise ValueError(f"SWE-Atlas-QnA supports only these agent frameworks: {supported_frameworks}")
+        if cfg.agent_config is None:
+            cfg.agent_config = DEFAULT_AGENT_CONFIGS[cfg.agent_framework]
         if cfg.evaluate:
             LOG.warning(
                 "SWE-Atlas-QnA does not support inline evaluation; overriding evaluate=True with evaluate=False"
@@ -67,14 +74,28 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         trajectory_info["generation"] = extract_final_answer(trajectory_info.pop("submission", None))
         return trajectory_info
 
+    def _format_swe_agent_output(self, prediction_dict, data_point):
+        trajectory_info = prediction_dict.copy()
+        trajectory_info["model_name_or_path"] = self.cfg.server.model
+        trajectory_info["instance_id"] = data_point["instance_id"]
+        trajectory_info["generation"] = extract_final_answer(trajectory_info.pop("model_patch", None))
+        return trajectory_info
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         api_base = self.get_api_base()
 
         async with self.semaphore:
-            output_file = await self._run_mini_swe_agent(data_point, api_base)
+            if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+                output_file = await self._run_mini_swe_agent(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+                output_file = await self._run_swe_agent(data_point, api_base)
+            else:
+                raise ValueError(f"Unsupported agent framework: {self.cfg.agent_framework}")
 
         with open(output_file, "rt", encoding="utf-8") as fin:
             trajectory_info = json.load(fin)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+            trajectory_info = self._format_swe_agent_output(trajectory_info, data_point)
 
         return {
             "generation": trajectory_info["generation"],
