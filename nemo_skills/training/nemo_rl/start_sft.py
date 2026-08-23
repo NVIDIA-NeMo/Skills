@@ -494,6 +494,9 @@ def main():
     tokenizer = get_tokenizer(config["policy"]["tokenizer"])
 
     relax_no_user_query_template_guard(tokenizer)
+    tokenizer_path = Path(config["checkpointing"]["checkpoint_dir"]) / "tokenizer"
+    tokenizer.save_pretrained(tokenizer_path)
+    print(f"Saved runtime tokenizer to: {tokenizer_path}")
 
     # setup data
     dataset, val_dataset = setup_data(tokenizer, config["data"])

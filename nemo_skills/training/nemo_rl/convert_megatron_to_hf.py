@@ -22,6 +22,8 @@ import re
 import yaml
 from nemo_rl.models.megatron.community_import import export_model_from_megatron
 
+from nemo_skills.training.nemo_rl.convert_dcp_to_hf import resolve_tokenizer_path
+
 
 def parse_args():
     """Parse command line arguments."""
@@ -111,7 +113,7 @@ def main():
         config = yaml.safe_load(f)
 
     model_name = config["policy"]["model_name"]
-    tokenizer_name = config["policy"]["tokenizer"]["name"]
+    tokenizer_name = resolve_tokenizer_path(config, config_path)
 
     print(f"Converting checkpoint from {megatron_ckpt_path} to {args.hf_ckpt_path}")
     print(f"Using tokenizer from: {tokenizer_name}")

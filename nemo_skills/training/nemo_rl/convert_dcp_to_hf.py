@@ -88,27 +88,37 @@ def is_safetensors_checkpoint(weights_path):
     return os.path.isdir(hf_metadata_path)
 
 
+def resolve_tokenizer_path(config, config_path):
+    """Prefer the tokenizer saved at runtime, falling back to the configured tokenizer."""
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    for candidate in (
+        os.path.join(config_dir, "tokenizer"),
+        os.path.join(os.path.dirname(config_dir), "tokenizer"),
+    ):
+        if os.path.isdir(candidate):
+            return candidate
+
+    return config["policy"].get("tokenizer", {}).get("name") or config["policy"]["model_name"]
+
+
 def copy_tokenizer_files(tokenizer_path, hf_ckpt_path):
-    """Copy tokenizer files from the original model to the HF checkpoint directory.
+    """Copy all files from a local tokenizer directory to the HF checkpoint.
 
     Args:
         tokenizer_path: Path to directory containing tokenizer files
         hf_ckpt_path: Path to the HF checkpoint directory
     """
-    tokenizer_files = [
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "vocab.json",
-        "merges.txt",
-        "added_tokens.json",
-        "chat_template.jinja",
-    ]
-    for fname in tokenizer_files:
-        src = os.path.join(tokenizer_path, fname)
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(hf_ckpt_path, fname))
-            print(f"Copied {fname}")
+    if not os.path.isdir(tokenizer_path):
+        return
+
+    for entry in os.listdir(tokenizer_path):
+        src = os.path.join(tokenizer_path, entry)
+        dst = os.path.join(hf_ckpt_path, entry)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
+        print(f"Copied {entry}")
 
 
 def convert_safetensors_to_hf(weights_path, hf_ckpt_path, model_name, tokenizer_path, hf_overrides=None):
@@ -184,13 +194,7 @@ def main():
         config = yaml.safe_load(f)
 
     model_name_or_path = config["policy"]["model_name"]
-    # TODO: After the following PR gets merged:
-    # https://github.com/NVIDIA/NeMo-RL/pull/148/files
-    # tokenizer should be copied from policy/tokenizer/* instead of relying on the model name
-    # We can expose a arg at the top level --tokenizer_path to plumb that through.
-    # This is more stable than relying on the current NeMo-RL get_tokenizer() which can
-    # change release to release.
-    tokenizer_name_or_path = config["policy"]["model_name"]
+    tokenizer_name_or_path = resolve_tokenizer_path(config, config_path)
 
     print(f"Converting checkpoint from {dcp_ckpt_path} to {args.hf_ckpt_path}")
     print(f"Using tokenizer from: {tokenizer_name_or_path}")
