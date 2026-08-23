@@ -88,11 +88,7 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
             if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
                 output_file = await self._run_mini_swe_agent(data_point, api_base)
             elif self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-                swe_agent_data_point = data_point.copy()
-                swe_agent_data_point["base_commit"] = (
-                    data_point.get("base_commit") or data_point.get("repository_base_commit") or "HEAD"
-                )
-                output_file = await self._run_swe_agent(swe_agent_data_point, api_base)
+                output_file = await self._run_swe_agent(data_point, api_base)
             else:
                 raise ValueError(f"Unsupported agent framework: {self.cfg.agent_framework}")
 

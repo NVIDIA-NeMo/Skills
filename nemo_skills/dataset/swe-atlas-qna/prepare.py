@@ -103,6 +103,7 @@ if __name__ == "__main__":
 
     dataset = dataset.rename_column("prompt", "problem_statement")
     dataset = dataset.rename_column("task_id", "instance_id")
+    dataset = dataset.rename_column("repository_base_commit", "base_commit")
     dataset = dataset.map(lambda x: {"language": LANGUAGE_MAP[x["language"]]})
 
     dataset = dataset.add_column(

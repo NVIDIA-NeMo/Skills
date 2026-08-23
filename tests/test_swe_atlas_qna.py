@@ -390,12 +390,12 @@ def test_swe_atlas_qna_processes_swe_agent_output(tmp_path):
 
         async def fake_run_swe_agent(data_point, api_base):
             assert data_point["instance_id"] == "task-1"
-            assert data_point["base_commit"] == "HEAD"
+            assert data_point["base_commit"] == "test-commit"
             assert api_base == "http://127.0.0.1:8000/v1"
             return str(prediction_file)
 
         task._run_swe_agent = fake_run_swe_agent
-        return await task.process_single_datapoint({"instance_id": "task-1"}, [])
+        return await task.process_single_datapoint({"instance_id": "task-1", "base_commit": "test-commit"}, [])
 
     output = asyncio.run(run())
 
