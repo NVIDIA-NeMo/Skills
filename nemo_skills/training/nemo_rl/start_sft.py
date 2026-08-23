@@ -270,6 +270,23 @@ def ensure_dict_args(messages):
     return messages
 
 
+def ensure_tools_list(tools):
+    """Convert JSON-encoded tool definitions into a list of dictionaries."""
+    if tools is None or isinstance(tools, list):
+        return tools
+
+    if isinstance(tools, str):
+        try:
+            tools = json.loads(tools)
+        except json.JSONDecodeError as error:
+            raise ValueError("Tools field contains invalid JSON") from error
+
+    if isinstance(tools, dict):
+        return [tools]
+
+    raise TypeError(f"Unsupported tools type: {type(tools).__name__}")
+
+
 def sft_preprocessor(
     datum_dict: Dict[str, Any],
     task_data_spec: TaskDataSpec,
@@ -283,6 +300,7 @@ def sft_preprocessor(
     """Process a datum dictionary for SFT training."""
 
     messages = ensure_dict_args(datum_dict["messages"])
+    tools = ensure_tools_list(datum_dict.get("tools"))
     message_log = get_formatted_message_log(
         messages,
         tokenizer,
@@ -290,7 +308,7 @@ def sft_preprocessor(
         add_bos_token=add_bos,
         add_eos_token=add_eos,
         add_generation_prompt=add_generation_prompt,
-        tools=datum_dict.get("tools", None),
+        tools=tools,
     )
 
     # ==================== START: BLOCK FOR DEBUGGING ====================
