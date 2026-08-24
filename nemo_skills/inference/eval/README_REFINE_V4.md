@@ -50,14 +50,15 @@ Use:
 ++refine_attempt0_bank_file=/path/to/fixed_attempt0_bank.jsonl
 ```
 
-In the batch launcher:
+The checked-in Slurm launcher accepts the same configuration:
 
 ```bash
-submit_refine_swebench_batch.sh \
+launchers/swebench_refine/submit_refine_swebench_batch.sh \
   --context-k 64 \
-  --turns 200 \
+  --turns 100 \
   --max-refine-rounds 2 \
-  --subset eval100 \
   --refine-strategy failure_aware \
   --refine-attempt0-bank-file /path/to/fixed_attempt0_bank.jsonl
 ```
+
+See [`launchers/swebench_refine/README.md`](launchers/swebench_refine/README.md) for the required model, input, image, runtime-cache, and cluster options.
