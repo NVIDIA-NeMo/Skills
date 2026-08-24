@@ -20,7 +20,9 @@ import os
 import random
 import re
 import shlex
+import signal
 import sys
+import time
 from dataclasses import field
 from enum import Enum
 from pathlib import Path
@@ -41,6 +43,67 @@ from nemo_skills.utils import (
 )
 
 LOG = logging.getLogger(get_logger_name(__file__))
+
+
+def _descendant_pids(root_pid: int) -> set[int]:
+    descendants: set[int] = set()
+    pending = [root_pid]
+    while pending:
+        pid = pending.pop()
+        try:
+            children = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        for child_text in children:
+            child_pid = int(child_text)
+            if child_pid not in descendants:
+                descendants.add(child_pid)
+                pending.append(child_pid)
+    return descendants
+
+
+def _session_member_pids(session_id: int) -> set[int]:
+    members: set[int] = set()
+    for proc_dir in Path("/proc").iterdir():
+        if not proc_dir.name.isdigit():
+            continue
+        try:
+            stat = (proc_dir / "stat").read_text()
+            fields = stat[stat.rfind(")") + 2 :].split()
+            if int(fields[3]) == session_id:
+                members.add(int(proc_dir.name))
+        except (FileNotFoundError, PermissionError, ProcessLookupError, ValueError, IndexError):
+            continue
+    return members
+
+
+def _kill_process_tree(root_pid: int) -> None:
+    """Terminate an Apptainer tree, allowing it to unmount before forcing cleanup."""
+    descendants = _descendant_pids(root_pid)
+
+    # The subprocess shell is a session leader. Apptainer runtime processes share
+    # its process group and can cleanly unmount FUSE filesystems when terminated.
+    try:
+        os.killpg(root_pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and _session_member_pids(root_pid):
+        time.sleep(0.1)
+
+    remaining = descendants | _session_member_pids(root_pid) | {root_pid}
+    LOG.warning("Force-killing %d remaining processes in timed-out tree rooted at %d", len(remaining), root_pid)
+    for pid in remaining:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    try:
+        os.killpg(root_pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 class SupportedAgentFrameworks(str, Enum):
@@ -184,10 +247,15 @@ class SweBenchGenerationConfig:
     eval_harness_commit: str = "HEAD"  # Which commit to use when cloning the eval harness repo
 
     setup_timeout: int = 60 * 20  # Timeout to download & install the agent framework and the eval harness, in seconds
+    agent_timeout: int = 60 * 30  # Timeout for one agent container attempt, aligned with training.
     swebench_tests_timeout: int = 60 * 30  # Timeout for the tests after applying the patch, in seconds
 
     # How many times to try running inference & evaluation commands until they produce a valid output file
     max_retries: int = 3
+
+    # Reuse a prebuilt /root containing SWE-agent and SWE-bench instead of cloning
+    # and installing them for every chunk. The launcher is responsible for mounting it.
+    reuse_preinstalled_setup: bool = False
 
     # Interval between retries, in seconds.
     # Selected randomly between min_retry_interval and max_retry_interval every time an instance is retried,
@@ -284,6 +352,18 @@ class SweBenchGenerationTask(GenerationTask):
         #
         # The goal is to run inference & evaluation inside of the SWE-bench containers,
         # but avoid having to download & install everything in each container separately.
+
+        if self.cfg.reuse_preinstalled_setup:
+            required = [
+                Path("/root/SWE-agent/venv/bin/python"),
+                Path("/root/SWE-bench/venv/bin/python"),
+                Path("/root/.swebench_setup_ready"),
+            ]
+            missing = [str(path) for path in required if not path.exists()]
+            if missing:
+                raise FileNotFoundError(f"Preinstalled SWE setup is incomplete: {missing}")
+            LOG.info("Reusing preinstalled SWE-agent and SWE-bench setup from /root")
+            return
 
         setup_commands = []
 
@@ -656,7 +736,10 @@ class SweBenchGenerationTask(GenerationTask):
                     try:
                         # Create async subprocess
                         process = await asyncio.create_subprocess_shell(
-                            apptainer_cmd, stdout=log_file, stderr=log_file
+                            apptainer_cmd,
+                            stdout=log_file,
+                            stderr=log_file,
+                            start_new_session=True,
                         )
                         # Wait for completion with timeout
                         await asyncio.wait_for(process.communicate(), timeout=timeout)
@@ -665,11 +748,11 @@ class SweBenchGenerationTask(GenerationTask):
                             raise ValueError(f"Command failed with return code {process.returncode}")
 
                     except asyncio.TimeoutError:
-                        # Kill the process if it's still running
+                        # Apptainer FUSE helpers create their own process groups, so killing only
+                        # the shell's group leaves orphaned mounts behind and can poison retries.
                         if process.returncode is None:
-                            process.kill()
+                            _kill_process_tree(process.pid)
                             await process.wait()
-                        attempt = self.cfg.max_retries  # Force exit the loop on timeout
                         raise ValueError("Command timed out")
 
                 # Look for the expected file
@@ -765,17 +848,23 @@ class SweBenchGenerationTask(GenerationTask):
 
         if attempt_tag:
             traj_dir_name = f"trajectories{attempt_tag}"
-            # Per-attempt dir isolates attempts of the SAME instance. Merge the contents WITHOUT
-            # rm -rf: the dir is shared by all instances of the chunk (each writes its own
-            # instance_id subtree), so a global rm -rf would let concurrent instances clobber each
-            # other. This mirrors the concurrency-safe merge of the default `trajectories` copy.
+            # Copy only this instance. SWE-agent ships demonstration trajectories in the same
+            # tree; copying the whole directory can touch stale mounts during container shutdown
+            # and incorrectly turn a successful agent run into a failed job.
             copy_trajectories_cmd = (
                 f"mkdir -p /trajectories_mount/{traj_dir_name} && "
-                f"cp -r trajectories/. /trajectories_mount/{traj_dir_name}/"
+                f"(cd trajectories && cp -r --parents "
+                f"*/*/{shlex.quote(str(data_point['instance_id']))} "
+                f"/trajectories_mount/{traj_dir_name}/)"
             )
         else:
             traj_dir_name = "trajectories"
-            copy_trajectories_cmd = "cp -r trajectories /trajectories_mount/"
+            copy_trajectories_cmd = (
+                "mkdir -p /trajectories_mount/trajectories && "
+                f"(cd trajectories && cp -r --parents "
+                f"*/*/{shlex.quote(str(data_point['instance_id']))} "
+                "/trajectories_mount/trajectories/)"
+            )
 
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
@@ -808,7 +897,13 @@ class SweBenchGenerationTask(GenerationTask):
         search_path = os.path.join(
             self.output_dir, traj_dir_name, "*", "*", data_point["instance_id"], f"{data_point['instance_id']}.pred"
         )
-        pred_file = await self._execute_container_command(data_point, swe_agent_cmd, search_path, mode="agent")
+        pred_file = await self._execute_container_command(
+            data_point,
+            swe_agent_cmd,
+            search_path,
+            mode="agent",
+            timeout=self.cfg.agent_timeout,
+        )
 
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read().strip())
@@ -1144,7 +1239,7 @@ class SweBenchGenerationTask(GenerationTask):
             return verify_feedback[traceback_idx:][-max_chars:]
 
         lines = verify_feedback.splitlines()
-        interesting = []
+        windows = []
         needles = (
             "assertionerror",
             "assert ",
@@ -1162,8 +1257,19 @@ class SweBenchGenerationTask(GenerationTask):
             if any(needle in lower_line for needle in needles):
                 start = max(0, idx - 3)
                 end = min(len(lines), idx + 8)
-                interesting.extend(lines[start:end])
-                interesting.append("...")
+                windows.append((start, end))
+
+        merged_windows = []
+        for start, end in windows:
+            if not merged_windows or start > merged_windows[-1][1]:
+                merged_windows.append([start, end])
+            else:
+                merged_windows[-1][1] = max(merged_windows[-1][1], end)
+
+        interesting = []
+        for start, end in merged_windows:
+            interesting.extend(lines[start:end])
+            interesting.append("...")
 
         snippet = "\n".join(interesting).strip()
         if not snippet:

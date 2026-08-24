@@ -9,9 +9,9 @@ each SWE-bench instance container.
 
 Refine rounds can also carry very long prior diffs/test logs. SWE-agent reads
 the full prompt from a file, but still mirrors it into a `PROBLEM_STATEMENT`
-environment variable for the repo shell. Extremely large env values can exceed
-the OS exec limit before the agent even starts, so we cap only that env mirror;
-the model prompt still receives the full problem statement from the file.
+environment variable for the repo shell. Large env values can exceed process
+limits or stall the SWE-ReX session RPC, so we cap only that env mirror; the
+model prompt still receives the full problem statement from the file.
 """
 
 from __future__ import annotations
@@ -103,14 +103,55 @@ def patch_agents_py(swe_agent_root: Path) -> None:
         )
         replacement = (
             r'\g<indent>problem_statement_env = self._problem_statement.get_problem_statement_for_env()' + "\n"
-            r'\g<indent>if len(problem_statement_env) > 32000:' + "\n"
+            r'\g<indent>if len(problem_statement_env) > 4000:' + "\n"
             r'\g<indent>    problem_statement_env = (' + "\n"
-            r'\g<indent>        problem_statement_env[:32000]' + "\n"
+            r'\g<indent>        problem_statement_env[:4000]' + "\n"
             r'\g<indent>        + "\\n...[PROBLEM_STATEMENT env var truncated; full prompt was loaded from file]..."' + "\n"
             r'\g<indent>    )' + "\n"
             r'\g<indent>self._env.set_env_variables({"PROBLEM_STATEMENT": problem_statement_env})' + "\n"
         )
         _replace_once(path, pattern, replacement, "long PROBLEM_STATEMENT env guard")
+
+
+def patch_tools_py(swe_agent_root: Path) -> None:
+    """Avoid SWE-ReX file RPC hangs while resetting the tool environment."""
+    path = swe_agent_root / "sweagent" / "tools" / "tools.py"
+    text = path.read_text()
+    if "Tools reset complete" in text:
+        return
+
+    if "import shlex\n" not in text:
+        _replace_once(path, r"^import re\n", "import re\nimport shlex\n", "tools shlex import")
+
+    pattern = (
+        r'^(?P<indent>    )def reset\(self, env: SWEEnv\) -> None:\n'
+        r'(?P=indent)    self\.logger\.info\("Resetting tools"\)\n'
+        r'(?P=indent)    env_variables = self\.config\.env_variables\.copy\(\) \| \{\n'
+        r'(?P=indent)        var: os\.getenv\(var\) for var in self\.config\.propagate_env_variables\n'
+        r'(?P=indent)    \}\n'
+        r'(?P=indent)    env\.set_env_variables\(env_variables\)\n'
+        r'(?P=indent)    env\.write_file\("/root/\.swe-agent-env", json\.dumps\(self\.config\.registry_variables\)\)\n'
+        r'(?P=indent)    env\.write_file\("/root/state\.json", "\{\}"\)\n'
+        r'(?P=indent)    env\.communicate\(" && "\.join\(self\._reset_commands\), check="raise", timeout=self\.config\.install_timeout\)\n'
+    )
+    replacement = (
+        r'\g<indent>def reset(self, env: SWEEnv) -> None:' + "\n"
+        r'\g<indent>    self.logger.info("Resetting tools")' + "\n"
+        r'\g<indent>    env_variables = self.config.env_variables.copy() | {' + "\n"
+        r'\g<indent>        var: os.getenv(var) for var in self.config.propagate_env_variables' + "\n"
+        r'\g<indent>    }' + "\n"
+        r'\g<indent>    reset_commands = [' + "\n"
+        r'\g<indent>        *(f"export {key}={shlex.quote(str(value))}" for key, value in env_variables.items()),' + "\n"
+        r'\g<indent>        f"printf %s {shlex.quote(json.dumps(self.config.registry_variables))} > /root/.swe-agent-env",' + "\n"
+        r'\g<indent>        "printf %s \'{}\' > /root/state.json",' + "\n"
+        r'\g<indent>        *self._reset_commands,' + "\n"
+        r'\g<indent>    ]' + "\n"
+        r'\g<indent>    env.communicate(' + "\n"
+        r'\g<indent>        " && ".join(reset_commands), check="raise", timeout=self.config.install_timeout' + "\n"
+        r'\g<indent>    )' + "\n"
+        r'\g<indent>    self.logger.info("Tools reset complete")' + "\n"
+    )
+    _replace_once(path, pattern, replacement, "single-RPC tool reset")
 
 
 def main() -> None:
@@ -121,6 +162,7 @@ def main() -> None:
     patch_models_py(args.swe_agent_root)
     patch_types_py(args.swe_agent_root)
     patch_agents_py(args.swe_agent_root)
+    patch_tools_py(args.swe_agent_root)
     print(f"Patched SWE-agent reasoning_content preservation under {args.swe_agent_root}")
 
 
