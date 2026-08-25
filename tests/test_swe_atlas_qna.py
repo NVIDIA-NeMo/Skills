@@ -125,6 +125,81 @@ def test_continue_on_error_writes_successful_subset_and_error_sidecar(tmp_path):
     assert "RuntimeError: context length exceeded" in error_rows[0]["traceback"]
 
 
+def test_swe_atlas_qna_continue_on_error_persists_terminal_failure(tmp_path):
+    async def run():
+        task = object.__new__(SweAtlasQnAGenerationTask)
+        task.cfg = SimpleNamespace(
+            output_file=str(tmp_path / "output.jsonl"),
+            continue_on_error=True,
+            async_position_key="_async_position",
+            add_generation_stats=False,
+            generation_key="generation",
+            parse_reasoning=False,
+            end_reasoning_string="</think>",
+            drop_content_types=[],
+            enable_litellm_cache=False,
+        )
+        task.output_lock = None
+        task.should_run_evaluation = False
+        task.evaluator = None
+        task._reasoning_warning_shown = False
+
+        async def process_single_datapoint(data_point, all_data, prompt_format=None):
+            if data_point["instance_id"] == "failed":
+                raise RuntimeError("context length exceeded")
+            return {"generation": f"answer-{data_point['instance_id']}"}
+
+        task.process_single_datapoint = process_single_datapoint
+        data = [
+            {"instance_id": "first", "_async_position": 0},
+            {"instance_id": "failed", "_async_position": 1},
+            {"instance_id": "last", "_async_position": 2},
+        ]
+        await task.async_loop(data)
+
+    asyncio.run(run())
+
+    output_rows = [json.loads(line) for line in (tmp_path / "output.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [row["instance_id"] for row in output_rows] == ["first", "failed", "last"]
+    assert output_rows[1]["generation"] == ""
+    assert output_rows[1]["generation_error"] == {
+        "error_type": "RuntimeError",
+        "error_message": "context length exceeded",
+    }
+
+
+def test_swe_atlas_qna_resume_skips_terminal_failure_in_async_output(tmp_path):
+    output_file = tmp_path / "output.jsonl"
+    async_rows = [
+        {"instance_id": "first", "_async_position": 0, "generation": "answer"},
+        {
+            "instance_id": "failed",
+            "_async_position": 1,
+            "generation": "",
+            "generation_error": {"error_type": "RuntimeError"},
+        },
+    ]
+    (tmp_path / "output.jsonl-async").write_text(
+        "".join(json.dumps(row) + "\n" for row in async_rows),
+        encoding="utf-8",
+    )
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(
+        output_file=str(output_file),
+        skip_filled=True,
+        num_chunks=None,
+        prompt_format=None,
+        async_position_key="_async_position",
+    )
+    data = [
+        {"instance_id": "first"},
+        {"instance_id": "failed"},
+        {"instance_id": "remaining"},
+    ]
+
+    assert task.skip_completed_samples(data) == [{"instance_id": "remaining", "_async_position": 2}]
+
+
 def _rating(criterion, status):
     return {
         "criterion_id": criterion["id"],
@@ -184,6 +259,30 @@ def test_swe_atlas_qna_metrics_aggregate_task_resolve_rate():
     assert result["task_resolved"] == 50.0
     assert result["rubric_score"] == 75.0
     assert result["judgement_parse_error"] == 0.0
+
+
+def test_swe_atlas_qna_metrics_count_generation_errors_in_denominator():
+    metrics = SweAtlasQnAMetrics()
+    metrics.update([_prediction()])
+    metrics.update([{"generation_error": {"error_type": "RuntimeError"}}])
+
+    result = metrics.get_metrics()["pass@1"]
+    assert result["num_entries"] == 2
+    assert result["task_resolved"] == 50.0
+    assert result["rubric_score"] == 50.0
+    assert result["judgement_parse_error"] == 0.0
+    assert result["generation_error"] == 50.0
+
+
+def test_swe_atlas_qna_judge_prefills_generation_errors():
+    generation_error = {"error_type": "RuntimeError", "error_message": "failed"}
+    task = object.__new__(SweAtlasQnAJudgeTask)
+
+    assert task.prefill_generation({"generation_error": generation_error}) == {
+        "generation": "",
+        "generation_error": generation_error,
+    }
+    assert task.prefill_generation({"generation": "answer"}) is None
 
 
 def test_swe_atlas_qna_judge_rating_parser():

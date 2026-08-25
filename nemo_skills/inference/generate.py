@@ -781,6 +781,10 @@ class GenerationTask:
         # Override this method to customize the prefilling behavior.
         return None
 
+    def get_error_output(self, error: Exception) -> dict | None:
+        """Return an output to persist for a failed datapoint, or None to keep only the error sidecar."""
+        return None
+
     async def process_single_datapoint(self, data_point, all_data, prompt_format=None):
         # Handle inference config - check if it's a dataclass or already a dict
         if is_dataclass(self.cfg.inference):
@@ -877,10 +881,17 @@ class GenerationTask:
                 "error_message": str(error),
                 "traceback": traceback.format_exc(),
             }
+            error_output = self.get_error_output(error)
+            if error_output is not None:
+                await self.postprocess_single_output(error_output, data_point)
             async with self.output_lock:
+                # Persist the terminal output first so an interrupted process resumes
+                # past this datapoint even if writing the diagnostic sidecar is interrupted.
+                if error_output is not None:
+                    self.dump_outputs([error_output], [data_point], fout)
                 error_file = Path(self.cfg.output_file).with_suffix(".errors.jsonl")
-                with open(error_file, "at", encoding="utf-8") as error_output:
-                    error_output.write(json.dumps(error_record) + "\n")
+                with open(error_file, "at", encoding="utf-8") as error_fout:
+                    error_fout.write(json.dumps(error_record) + "\n")
                 pbar.update(1)
 
     async def async_loop(self, data):

@@ -28,6 +28,13 @@ def _load_json_field(value, field_name):
 
 def score_swe_atlas_qna_prediction(prediction: dict) -> dict[str, bool | float]:
     """Score one judged prediction using SWE-Atlas-QnA rubric polarity."""
+    if prediction.get("generation_error"):
+        return {
+            "task_resolved": False,
+            "rubric_score": 0.0,
+            "judgement_parse_error": False,
+        }
+
     try:
         rubric = _load_json_field(prediction["rubric"], "rubric")
         judgement = _load_json_field(prediction["judgement"], "judgement")
@@ -92,6 +99,11 @@ class SweAtlasQnAMetrics(BaseMetrics):
         prediction["judgement"] = ""
         return prediction
 
+    def _update_metrics_for_pass(self, eval_dict, k, predictions, predicted_answers):
+        generation_errors = [bool(prediction.get("generation_error")) for prediction in predictions[:k]]
+        eval_dict[f"pass@{k}"]["generation_error"] += all(generation_errors)
+        eval_dict[f"pass@1[avg-of-{k}]"]["generation_error"] += sum(generation_errors) / k
+
     def update(self, predictions):
         super().update(predictions)
         self._compute_pass_at_k(predictions=predictions)
@@ -107,4 +119,5 @@ class SweAtlasQnAMetrics(BaseMetrics):
             "task_resolved": as_percentage,
             "rubric_score": as_percentage,
             "judgement_parse_error": as_percentage,
+            "generation_error": as_percentage,
         }

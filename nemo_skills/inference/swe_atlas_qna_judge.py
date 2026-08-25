@@ -132,6 +132,15 @@ def _extract_rating(text: str, criterion: dict) -> dict:
 class SweAtlasQnAJudgeTask(GenerationTask):
     """Judge every SWE-Atlas-QnA rubric criterion with an independent request."""
 
+    def prefill_generation(self, data_point) -> dict | None:
+        """Carry generation failures forward without sending them to the judge."""
+        if data_point.get("generation_error"):
+            return {
+                "generation": "",
+                "generation_error": data_point["generation_error"],
+            }
+        return None
+
     @staticmethod
     def _parse_rubric(data_point):
         rubric = data_point.get("rubric")

@@ -410,7 +410,7 @@ NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You ca
 
 SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
 
-By default, an unhandled error for one instance fails its generation job. Add `++continue_on_error=True` to record failed instances in an `*.errors.jsonl` sidecar and continue processing the rest of the chunk. The finalized output, rubric judge, and metrics then include only successful instances. This mode is best suited to greedy or single-seed runs because independently missing instances across multiple seeds cannot be aligned reliably for pass@k.
+By default, an unhandled error for one instance fails its generation job. Add `++continue_on_error=True` to record diagnostic details in an `*.errors.jsonl` sidecar and continue processing the rest of the chunk. After an instance exhausts its retries, a terminal placeholder is also retained in the finalized output, so resumed jobs do not retry it and pass@k files remain aligned. The rubric judge skips LLM calls for these placeholders; metrics retain them in the denominator as unresolved tasks with zero rubric score.
 
 The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
 
@@ -438,6 +438,8 @@ Each rubric criterion is judged independently. Positive criteria pass when the r
 - **task_resolved:** Percentage of tasks for which every rubric criterion passed.
 - **rubric_score:** Mean percentage of passed rubric criteria.
 - **judgement_parse_error:** Percentage of tasks containing at least one judge response that could not be parsed after retries.
+- **generation_error:** Percentage of tasks whose agent rollout exhausted its retries. These tasks are not sent to
+  the judge and count as unresolved with a zero rubric score.
 
 Results for each subset are written to `<OUTPUT_DIR>/<SUBSET>/eval-results/swe-atlas-qna/metrics.json`. To report one score over all 124 tasks, concatenate the judged Ubuntu and Alpine `output.jsonl` files into a single `eval-results/swe-atlas-qna/output.jsonl`, then run:
 

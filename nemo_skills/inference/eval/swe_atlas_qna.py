@@ -68,6 +68,16 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         cfg.evaluate = False
         super().__init__(cfg)
 
+    def get_error_output(self, error: Exception) -> dict:
+        """Persist terminal rollout failures so resume and scoring retain the task."""
+        return {
+            "generation": "",
+            "generation_error": {
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+            },
+        }
+
     def _format_mini_swe_agent_output(self, trajectory_dict, data_point):
         trajectory_info = trajectory_dict["info"].copy()
         trajectory_info["model_name_or_path"] = self.cfg.server.model
