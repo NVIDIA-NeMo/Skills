@@ -161,6 +161,7 @@ class SupportedDatasetTypes(str, Enum):
     swe_bench_pro = "swe_bench_pro"
     deep_swe = "deep_swe"  # note: deepswe evaluation logic is implemented in deepswe.py
     senior_swe_bench = "senior_swe_bench"  # Harbor grading in senior_swe_bench.py
+    scale_swe = "scale_swe"  # Native F2P/P2P grading in scale_swe.py
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default

@@ -60,6 +60,37 @@ class SweBenchMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions=predictions)
 
 
+class ScaleSweMetrics(BaseMetrics):
+    """Aggregate native Scale-SWE's binary F2P/P2P grading results."""
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["swe-bench-metrics"]
+        details = metrics.get("details") if isinstance(metrics.get("details"), dict) else {}
+        error = details.get("error")
+        return {
+            "issues_resolved": metrics.get("resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": (
+                metrics.get("patch_exists") is True and metrics.get("patch_successfully_applied") is False
+            ),
+            "f2p_patch_cant_apply": error == "f2p_patch_failed",
+            "evaluation_error": error in {"evaluation_error", "invalid_report"},
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
 class DeepSweMetrics(BaseMetrics):
     """Aggregate Harbor reward.json fields produced by DeepSWE verification.
 

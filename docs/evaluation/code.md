@@ -182,6 +182,54 @@ all you need to do is replace `openhands` with `swe_agent` or `mini_swe_agent` i
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### scale-swe
+
+[Scale-SWE](https://github.com/AweAI-Team/ScaleSWE) uses the SWE-bench agent
+interfaces for rollout generation, but has its own native evaluation protocol.
+NeMo-Skills applies the generated patch in a fresh instance container, injects
+the dataset's `f2p_patch` and `f2p_script`, and runs the combined
+`FAIL_TO_PASS` and `PASS_TO_PASS` pytest IDs. An instance is resolved only when
+every expected test passes. AweAgent is not installed or used at runtime.
+
+Prepare the released dataset with:
+
+```
+ns prepare_data scale-swe
+```
+
+This loads `AweAI-Team/Scale-SWE` and its `train` split by default. The
+generated data preserves each instance's `image_url`, `workdir`,
+`parent_commit`, `pre_commands`, and F2P/P2P fields. The default container
+formatter lets Apptainer pull `image_url` directly. For larger evaluations,
+pre-convert the required images to SIF files and pass a formatter that uses
+`{image_url}` or `{instance_id}` to address the mounted files.
+
+Run rollout generation and evaluation with the same agent options as
+SWE-bench:
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=<MODEL> \
+    --server_type=vllm \
+    --benchmarks=scale-swe \
+    --output_dir=<OUTPUT_DIR> \
+    ++agent_framework=mini_swe_agent \
+    ++agent_max_turns=200
+```
+
+Use `++agent_framework=gold_patch ++max_samples=5` as an initial environment
+and evaluator smoke test. `++evaluate=False` runs rollout generation without
+grading, and `++swebench_tests_timeout` controls the per-instance test timeout
+(1800 seconds by default). SWE-Zero is not supported because valid Scale-SWE
+rollouts require each instance's native image, `parent_commit`, and
+`pre_commands`.
+
+Results are written to
+`<OUTPUT_DIR>/eval-results/scale-swe/metrics.json`. The primary metric is
+`issues_resolved`; additional counters distinguish empty patches, model patch
+application failures, F2P patch application failures, and evaluator errors.
+
 ### swe-bench-multilingual
 
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench-multilingual/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-multilingual/__init__.py)
