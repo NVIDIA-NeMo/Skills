@@ -67,6 +67,8 @@ def normalize_scale_swe_data_point(data_point: dict) -> dict:
     checkout_commit = normalized.get("parent_commit")
     if not checkout_commit and normalized.get("base_commit") not in {None, "", "HEAD"}:
         checkout_commit = normalized["base_commit"]
+    if not normalized.get("base_commit") and checkout_commit:
+        normalized["base_commit"] = checkout_commit
     if not normalized.get("container_repo_dir") and normalized.get("workdir"):
         normalized["container_repo_dir"] = normalized["workdir"]
     if not normalized.get("container_formatter"):
@@ -84,9 +86,6 @@ def normalize_scale_swe_data_point(data_point: dict) -> dict:
         checkout_command = f"git checkout --force {quoted_commit} && git reset --hard {quoted_commit}"
         pre_commands = f"{checkout_command} && {pre_commands}" if pre_commands else checkout_command
     normalized["pre_commands"] = f"{pre_commands} && {_PRE_AGENT_GIT_SETUP}" if pre_commands else _PRE_AGENT_GIT_SETUP
-    # Agents should diff against the post-setup snapshot rather than resetting
-    # to the raw parent commit.
-    normalized["base_commit"] = "HEAD"
     return normalized
 
 

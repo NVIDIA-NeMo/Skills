@@ -26,9 +26,7 @@ def prepare_example(example, container_formatter):
     repo = str(example["repo"])
     full_repo = f"{example['user']}/{repo}" if example.get("user") and "/" not in repo else repo
     return {
-        # Agent frameworks should use the snapshot created after pre_commands.
-        # parent_commit remains the source of truth for the initial checkout.
-        "base_commit": "HEAD",
+        "base_commit": example["parent_commit"],
         "repo": full_repo,
         "scale_swe_repo": repo,
         "container_formatter": container_formatter.format(
@@ -52,7 +50,7 @@ def main():
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="AweAI-Team/Scale-SWE",
+        default="PrimeIntellect/Scale-SWE-Verified",
         help="Dataset name to load",
     )
     parser.add_argument("--split", type=str, default="train", help="Scale-SWE dataset split to use")
@@ -62,7 +60,10 @@ def main():
     args = parser.parse_args()
 
     dataset = datasets.load_dataset(path=args.dataset_name, split=args.split)
-    dataset = dataset.map(lambda example: prepare_example(example, args.container_formatter))
+    dataset = dataset.map(
+        lambda example: prepare_example(example, args.container_formatter),
+        remove_columns=["parent_commit"],
+    )
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [args.dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [args.split] * len(dataset))

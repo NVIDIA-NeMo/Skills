@@ -197,9 +197,10 @@ Prepare the released dataset with:
 ns prepare_data scale-swe
 ```
 
-This loads `AweAI-Team/Scale-SWE` and its `train` split by default. The
+This loads `PrimeIntellect/Scale-SWE-Verified` and its `train` split by default. The
 generated data preserves each instance's `image_url`, `workdir`,
-`parent_commit`, `pre_commands`, and F2P/P2P fields. The default container
+`pre_commands`, and F2P/P2P fields, and renames `parent_commit` to
+`base_commit`. The default container
 formatter lets Apptainer pull `image_url` directly. For larger evaluations,
 pre-convert the required images to SIF files and pass a formatter that uses
 `{image_url}` or `{instance_id}` to address the mounted files.

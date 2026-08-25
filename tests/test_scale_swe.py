@@ -38,7 +38,7 @@ def test_normalize_data_point_uses_post_setup_head_and_native_image():
             "pre_commands": "git clean -fdx",
         }
     )
-    assert normalized["base_commit"] == "HEAD"
+    assert normalized["base_commit"] == "abc123"
     assert normalized["repo"] == "owner/repo"
     assert normalized["container_formatter"] == "docker://aweaiteam/scaleswe:owner_repo_pr1"
     assert normalized["container_repo_dir"] == "/workspace/repo"
