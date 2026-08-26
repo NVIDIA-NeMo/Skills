@@ -67,6 +67,8 @@ class SherlocMetrics(BaseMetrics):
         self.total_pred_locations = 0
         self.successful_samples = 0
         self.failed_samples = 0
+        self.skipped_samples = 0
+        self._processing_stats_loaded = False
         self.no_gt_samples = 0  # Instances whose gold patch yielded no locations.
 
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
@@ -142,18 +144,14 @@ class SherlocMetrics(BaseMetrics):
         # The base class tracks entry counts and token statistics.
         super().update(predictions)
 
-        # Adopt the evaluator's own success/failure counts, which are attached to the first
-        # entry of the generation file. Only read them once, so that a second batch does not
-        # overwrite the totals already collected.
-        if (
-            predictions
-            and "processing_stats" in predictions[0]
-            and self.successful_samples == 0
-            and self.failed_samples == 0
-        ):
+        # Evaluator totals are attached to the first entry and are the sole source for
+        # processing counters when present.
+        if predictions and "processing_stats" in predictions[0] and not self._processing_stats_loaded:
             processing_stats = predictions[0]["processing_stats"]
             self.successful_samples = processing_stats.get("successful_samples", 0)
             self.failed_samples = processing_stats.get("failed_samples", 0)
+            self.skipped_samples = processing_stats.get("skipped_samples", 0)
+            self._processing_stats_loaded = True
 
         # Collect the per-instance scores that the aggregate averages are computed over.
         for prediction in predictions:
@@ -168,30 +166,36 @@ class SherlocMetrics(BaseMetrics):
                     self.no_gt_samples += 1
                     continue
 
-                # Fall back to counting successes and failures here when processing_stats was
-                # absent or covered fewer entries than have been seen.
-                if self.successful_samples + self.failed_samples < self.total:
-                    # Prefer the explicit marker written by the evaluator; otherwise infer.
-                    is_failed_sample = eval_result.get("is_failed_sample", False)
-                    if not is_failed_sample:
-                        # The generation status, when present, is the next best signal.
-                        if "status" in prediction and prediction["status"] != "success":
-                            is_failed_sample = True
-                        else:
-                            # Last resort: a generation that predicted nothing and scored zero.
-                            predicted_count = eval_result.get("predicted_count", 0)
-                            file_metrics = eval_result.get("file_level", {})
-                            is_failed_sample = (
-                                predicted_count == 0
-                                and file_metrics.get("precision", 0) == 0
-                                and file_metrics.get("recall", 0) == 0
-                                and file_metrics.get("f1", 0) == 0
-                            )
-
-                    if is_failed_sample:
-                        self.failed_samples += 1
+                # Fall back to per-entry processing counters only when evaluator totals
+                # were not provided.
+                if not self._processing_stats_loaded:
+                    is_skipped_sample = (
+                        eval_result.get("is_skipped_sample", False) or prediction.get("status") == "skipped"
+                    )
+                    if is_skipped_sample:
+                        self.skipped_samples += 1
                     else:
-                        self.successful_samples += 1
+                        # Prefer the explicit marker written by the evaluator; otherwise infer.
+                        is_failed_sample = eval_result.get("is_failed_sample", False)
+                        if not is_failed_sample:
+                            # The generation status, when present, is the next best signal.
+                            if "status" in prediction and prediction["status"] != "success":
+                                is_failed_sample = True
+                            else:
+                                # Last resort: a generation that predicted nothing and scored zero.
+                                predicted_count = eval_result.get("predicted_count", 0)
+                                file_metrics = eval_result.get("file_level", {})
+                                is_failed_sample = (
+                                    predicted_count == 0
+                                    and file_metrics.get("precision", 0) == 0
+                                    and file_metrics.get("recall", 0) == 0
+                                    and file_metrics.get("f1", 0) == 0
+                                )
+
+                        if is_failed_sample:
+                            self.failed_samples += 1
+                        else:
+                            self.successful_samples += 1
 
                 # Keep the raw score dictionaries; they are averaged in get_metrics.
                 if "file_level" in eval_result:
@@ -236,6 +240,8 @@ class SherlocMetrics(BaseMetrics):
         self.total_pred_locations = 0
         self.successful_samples = 0
         self.failed_samples = 0
+        self.skipped_samples = 0
+        self._processing_stats_loaded = False
         self.no_gt_samples = 0
 
     def metrics_to_print(self):
@@ -280,14 +286,9 @@ class SherlocMetrics(BaseMetrics):
             # Instances with no gold locations are excluded from every average.
             effective_total = total_samples - self.no_gt_samples
 
-            # Prefer explicit success/failure counts when present.
-            if self.successful_samples > 0 or self.failed_samples > 0:
-                counted_samples = self.successful_samples + self.failed_samples
-                # If the counts cover only part of the run, report the rate over that part.
-                if counted_samples < effective_total:
-                    success_rate = (self.successful_samples / counted_samples * 100) if counted_samples > 0 else 0.0
-                else:
-                    success_rate = (self.successful_samples / effective_total * 100) if effective_total > 0 else 0.0
+            counted_samples = self.successful_samples + self.failed_samples + self.skipped_samples
+            if counted_samples > 0:
+                success_rate = self.successful_samples / counted_samples * 100
             else:
                 # Without explicit counts, treat every scored instance as successful.
                 success_rate = 100.0 if effective_total > 0 else 0.0
@@ -300,6 +301,7 @@ class SherlocMetrics(BaseMetrics):
                     "samples_no_gt": self.no_gt_samples,
                     "successful_samples": self.successful_samples,
                     "failed_samples": self.failed_samples,
+                    "skipped_samples": self.skipped_samples,
                     "success_rate": success_rate,
                     # Summary statistics, under the shorter names used by the table.
                     "total_gt_locs": self.total_gt_locations,

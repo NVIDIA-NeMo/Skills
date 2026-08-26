@@ -25,9 +25,9 @@ free of side effects. Four tools are exposed:
 
 Every tool returns its rendered output together with a token count. The served
 model's tokenizer is used when available; otherwise the same four-characters-
-per-token estimate as the initial repository prompt is used. Failures are
-returned as text for the model to read rather than raised, so a bad tool call
-costs a turn instead of the trajectory.
+per-token estimate as the initial repository prompt is used. Expected malformed
+tool arguments are returned as text so the model can recover; unexpected
+snapshot or programming errors propagate and fail the sample.
 """
 
 import logging
@@ -168,9 +168,17 @@ class ToolExecutor:
                 error_msg = "Error: No file path provided for the 'view' tool."
                 return error_msg, self._count_tokens(error_msg)
             view_range = extracted_block.get("view_range")
+            if view_range is not None and (
+                not isinstance(view_range, list)
+                or len(view_range) != 2
+                or not all(isinstance(line_number, int) for line_number in view_range)
+            ):
+                LOG.error(f"Invalid view_range format: {view_range}. Expected [start, end] or [start, -1]")
+                error_msg = f"Error: Invalid view_range format. Expected [start, end] or [start, -1], got {view_range}"
+                return error_msg, self._count_tokens(error_msg)
 
             LOG.info(f"Viewing file: {file_path}")
-            if view_range:
+            if view_range is not None:
                 LOG.info(f"Range: lines {view_range[0]}-{view_range[1]}")
 
             file_node = self._get_node_from_path(repo_dict, file_path)
@@ -200,16 +208,6 @@ class ToolExecutor:
                 start_line, end_line = 1, len(lines)
                 LOG.info(f"Showing entire file ({len(lines)} lines)")
             else:
-                if (
-                    not isinstance(view_range, list)
-                    or len(view_range) != 2
-                    or not all(isinstance(line_number, int) for line_number in view_range)
-                ):
-                    LOG.error(f"Invalid view_range format: {view_range}. Expected [start, end] or [start, -1]")
-                    error_msg = (
-                        f"Error: Invalid view_range format. Expected [start, end] or [start, -1], got {view_range}"
-                    )
-                    return error_msg, self._count_tokens(error_msg)
                 start_line, end_line = view_range[0], view_range[1]
                 if end_line == -1:
                     end_line = len(lines)
@@ -271,28 +269,18 @@ class ToolExecutor:
 
     def _execute_repo_tree_tool(self, repo_dict: dict) -> Tuple[str, int]:
         """Generates a tree view of the repository from the nested dictionary."""
-        try:
-            show_line_counts = self.cfg.show_line_counts if self.cfg else True
-            tree_output = RepoManager.tree_repo_dict(repo_dict, show_line_counts)
-            return tree_output, self._count_tokens(tree_output)
-        except Exception as e:
-            LOG.error(f"Error executing repo_tree tool: {str(e)}")
-            error_msg = f"Error executing repo_tree tool: {str(e)}"
-            return error_msg, self._count_tokens(error_msg)
+        show_line_counts = self.cfg.show_line_counts
+        tree_output = RepoManager.tree_repo_dict(repo_dict, show_line_counts)
+        return tree_output, self._count_tokens(tree_output)
 
     def _execute_connected_tree_tool(self, extracted_block: dict, repo_dict: dict) -> Tuple[str, int]:
         """Generates a connected tree view showing import dependencies."""
-        try:
-            file_path = extracted_block.get("file", None)
-            show_line_counts = self.cfg.show_line_counts if self.cfg else True
+        file_path = extracted_block.get("file", None)
+        show_line_counts = self.cfg.show_line_counts
 
-            LOG.info(f"Generating connected tree for file: {file_path or 'entire repository'}")
-            tree_output = RepoManager.connected_tree_repo_dict(repo_dict, file_path, show_line_counts)
-            return tree_output, self._count_tokens(tree_output)
-        except Exception as e:
-            LOG.error(f"Error executing connected_tree tool: {str(e)}")
-            error_msg = f"Error executing connected_tree tool: {str(e)}"
-            return error_msg, self._count_tokens(error_msg)
+        LOG.info(f"Generating connected tree for file: {file_path or 'entire repository'}")
+        tree_output = RepoManager.connected_tree_repo_dict(repo_dict, file_path, show_line_counts)
+        return tree_output, self._count_tokens(tree_output)
 
     def _execute_codebase_search_tool(self, extracted_block: dict, repo_dict: dict) -> Tuple[str, int]:
         """Executes a codebase search on the nested dictionary, showing context around matches."""
@@ -303,98 +291,92 @@ class ToolExecutor:
 
         LOG.info(f"Searching codebase for: {query}")
 
-        try:
-            results = []
-            query_lower = query.lower()
+        results = []
+        query_lower = query.lower()
 
-            def search_recursive(current_dict: dict, current_path: str):
-                for name, node in current_dict.items():
-                    new_path = f"{current_path}/{name}" if current_path else name
+        def search_recursive(current_dict: dict, current_path: str):
+            for name, node in current_dict.items():
+                new_path = f"{current_path}/{name}" if current_path else name
 
-                    if self._is_dir_node(node):
-                        search_recursive(node, new_path)
+                if self._is_dir_node(node):
+                    search_recursive(node, new_path)
 
-                    elif self._is_file_node(node):
-                        lines = node["text"]
-                        # Find all lines containing the query (using 0-based indexing)
-                        match_indices = [i for i, line in enumerate(lines) if query_lower in line.lower()]
+                elif self._is_file_node(node):
+                    lines = node["text"]
+                    # Find all lines containing the query (using 0-based indexing)
+                    match_indices = [i for i, line in enumerate(lines) if query_lower in line.lower()]
 
-                        # If no matches were found in this file, skip it
-                        if not match_indices:
+                    # If no matches were found in this file, skip it
+                    if not match_indices:
+                        continue
+
+                    file_result_parts = [f"File: {new_path}"]
+                    total_matches_in_file = len(match_indices)
+
+                    # Use a set to track lines already shown in a snippet to avoid overlaps
+                    # for matches that are close to each other.
+                    shown_indices = set()
+
+                    MAX_SNIPPETS_PER_FILE = 3  # Limit the number of context blocks per file
+                    snippets_created = 0
+
+                    for match_idx in match_indices:
+                        if snippets_created >= MAX_SNIPPETS_PER_FILE:
+                            break
+
+                        # If this match was already included in a previous snippet's context, skip it.
+                        if match_idx in shown_indices:
                             continue
 
-                        file_result_parts = [f"File: {new_path}"]
-                        total_matches_in_file = len(match_indices)
+                        snippets_created += 1
 
-                        # Use a set to track lines already shown in a snippet to avoid overlaps
-                        # for matches that are close to each other.
-                        shown_indices = set()
+                        # Define the context window: 20 lines before, the match, 20 lines after
+                        start_idx = max(0, match_idx - 20)
+                        end_idx = min(len(lines), match_idx + 21)
 
-                        MAX_SNIPPETS_PER_FILE = 3  # Limit the number of context blocks per file
-                        snippets_created = 0
+                        file_result_parts.append(
+                            f"\n--- Snippet {snippets_created} (match on line {match_idx + 1}) ---"
+                        )
 
-                        for match_idx in match_indices:
-                            if snippets_created >= MAX_SNIPPETS_PER_FILE:
-                                break
+                        for i in range(start_idx, end_idx):
+                            line_num = i + 1
+                            line_content = lines[i].rstrip()
 
-                            # If this match was already included in a previous snippet's context, skip it.
-                            if match_idx in shown_indices:
-                                continue
+                            # Highlight the specific matching line with a '>'
+                            if i == match_idx:
+                                prefix = f"> {line_num:4d}"
+                            else:
+                                prefix = f"  {line_num:4d}"
 
-                            snippets_created += 1
+                            file_result_parts.append(f"{prefix}: {line_content}")
+                            shown_indices.add(i)
 
-                            # Define the context window: 20 lines before, the match, 20 lines after
-                            start_idx = max(0, match_idx - 20)
-                            end_idx = min(len(lines), match_idx + 21)
+                    # Add a summary if some matches were not shown in detail
+                    if total_matches_in_file > snippets_created:
+                        remaining_matches = total_matches_in_file - snippets_created
+                        file_result_parts.append(f"\n... and {remaining_matches} more match(es) in this file.")
 
-                            file_result_parts.append(
-                                f"\n--- Snippet {snippets_created} (match on line {match_idx + 1}) ---"
-                            )
+                    # The -total_matches_in_file is used to sort results by relevance (most matches first)
+                    results.append((-total_matches_in_file, "\n".join(file_result_parts)))
 
-                            for i in range(start_idx, end_idx):
-                                line_num = i + 1
-                                line_content = lines[i].rstrip()
+        search_recursive(repo_dict["structure"], "")
 
-                                # Highlight the specific matching line with a '>'
-                                if i == match_idx:
-                                    prefix = f"> {line_num:4d}"
-                                else:
-                                    prefix = f"  {line_num:4d}"
+        # Sort results by match count (descending), then by file path (ascending)
+        results.sort()
+        results = results[:5]
 
-                                file_result_parts.append(f"{prefix}: {line_content}")
-                                shown_indices.add(i)
+        # Extract just the formatted string part for the final output
+        final_results = [res[1] for res in results]
 
-                        # Add a summary if some matches were not shown in detail
-                        if total_matches_in_file > snippets_created:
-                            remaining_matches = total_matches_in_file - snippets_created
-                            file_result_parts.append(f"\n... and {remaining_matches} more match(es) in this file.")
+        if not final_results:
+            no_results_msg = f"No results found for query: '{query}'"
+            return no_results_msg, self._count_tokens(no_results_msg)
 
-                        # The -total_matches_in_file is used to sort results by relevance (most matches first)
-                        results.append((-total_matches_in_file, "\n".join(file_result_parts)))
+        # Add a brief header to indicate these are search results
+        header = f"Search results for: '{query}' (showing top {len(final_results)} files with most matches)\n"
+        header += "=" * 50
 
-            search_recursive(repo_dict["structure"], "")
-
-            # Sort results by match count (descending), then by file path (ascending)
-            results.sort()
-            results = results[:5]
-
-            # Extract just the formatted string part for the final output
-            final_results = [res[1] for res in results]
-
-            if not final_results:
-                no_results_msg = f"No results found for query: '{query}'"
-                return no_results_msg, self._count_tokens(no_results_msg)
-
-            # Add a brief header to indicate these are search results
-            header = f"Search results for: '{query}' (showing top {len(final_results)} files with most matches)\n"
-            header += "=" * 50
-
-            # Join the results from different files with a clear separator
-            results_text = "\n\n==================================================\n\n".join(final_results)
-            full_output = header + "\n\n" + results_text
-            return full_output, self._count_tokens(full_output)
-
-        except Exception as e:
-            LOG.error(f"Error executing codebase_search tool: {str(e)}")
-            error_msg = f"Error executing codebase_search tool: {str(e)}"
-            return error_msg, self._count_tokens(error_msg)
+        # Join the results from different files with a clear separator
+        results_text = "\n\n==================================================\n\n".join(final_results)
+        full_output = header + "\n\n" + results_text
+        return full_output, self._count_tokens(full_output)

@@ -107,6 +107,9 @@ def test_reset_clears_state():
     assert metrics.chunk_containment_metrics == []
     assert metrics.total_gt_locations == 0
     assert metrics.total_pred_locations == 0
+    assert metrics.successful_samples == 0
+    assert metrics.failed_samples == 0
+    assert metrics.skipped_samples == 0
     assert metrics.no_gt_samples == 0
     assert metrics.get_metrics() == {}
 
@@ -142,3 +145,25 @@ def test_metrics_to_print_keys():
 
 def test_aggregate_of_empty_list_is_empty():
     assert SherlocMetrics()._compute_aggregate_metrics([]) == {}
+
+
+def test_processing_stats_are_the_only_source_for_run_counters():
+    successful = _make_prediction(1.0)
+    successful["processing_stats"] = {
+        "total_samples": 2,
+        "successful_samples": 1,
+        "failed_samples": 0,
+        "skipped_samples": 1,
+    }
+    skipped = _make_prediction(0.0, status="skipped")
+    skipped["eval_status"][0]["is_skipped_sample"] = True
+
+    metrics = SherlocMetrics()
+    metrics.update([successful])
+    metrics.update([skipped])
+    result = metrics.get_metrics()["pass@1"]
+
+    assert result["successful_samples"] == 1
+    assert result["failed_samples"] == 0
+    assert result["skipped_samples"] == 1
+    assert result["success_rate"] == 50.0

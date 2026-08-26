@@ -14,6 +14,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from recipes.sherloc.inference.sherloc_utils.tool_executor import ToolExecutor
 
 
@@ -59,6 +61,19 @@ def test_view_tool_truncates_and_rejects_non_integer_ranges():
 
     output, _ = executor._execute_view_tool({"path": "big.py", "view_range": [1, 50]}, repo)
     invalid, _ = executor._execute_view_tool({"path": "big.py", "view_range": ["1", "50"]}, repo)
+    invalid_mapping, _ = executor._execute_view_tool({"path": "big.py", "view_range": {"start": 1}}, repo)
 
     assert "TRUNCATED" in output
     assert invalid.startswith("Error: Invalid view_range format")
+    assert invalid_mapping.startswith("Error: Invalid view_range format")
+
+
+def test_unexpected_snapshot_errors_propagate():
+    executor = _executor()
+
+    with pytest.raises(KeyError):
+        executor._execute_repo_tree_tool({})
+    with pytest.raises(KeyError):
+        executor._execute_connected_tree_tool({}, {})
+    with pytest.raises(KeyError):
+        executor._execute_codebase_search_tool({"query": "cache"}, {})

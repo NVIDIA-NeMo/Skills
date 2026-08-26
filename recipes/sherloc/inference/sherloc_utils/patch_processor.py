@@ -119,18 +119,19 @@ class PatchProcessor:
                             )
                     else:
                         # For existing files, track where the addition would be inserted
+                        insertion_line = max(1, original_line)
                         if (
                             not locations
                             or locations[-1]["file_path"] != current_file
-                            or locations[-1]["end_line"] != original_line - 1
+                            or locations[-1]["end_line"] != insertion_line - 1
                         ):
                             # Pure addition at current position in original
                             locations.append(
                                 {
                                     "file_path": current_file,
-                                    "start_line": original_line,
-                                    "end_line": original_line,
-                                    "raw": f"{current_file}:L{original_line}-L{original_line}",
+                                    "start_line": insertion_line,
+                                    "end_line": insertion_line,
+                                    "raw": f"{current_file}:L{insertion_line}-L{insertion_line}",
                                 }
                             )
                     new_line += 1

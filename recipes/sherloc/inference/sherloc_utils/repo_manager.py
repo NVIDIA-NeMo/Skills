@@ -361,71 +361,69 @@ class RepoManager:
 
             for line in lines:
                 line = line.strip()
-                # Match various import patterns
-                if line.startswith("import ") or line.startswith("from "):
-                    # Handle "from module import ..." and "import module"
-                    if line.startswith("from "):
-                        # Handle relative imports
-                        if line.startswith("from ."):
-                            # Relative import - always internal
-                            match = re.match(r"from\s+(\.[^\s]+)\s+import", line)
-                            if match:
-                                imports.add(match.group(1))
-                        else:
-                            # Absolute import
-                            match = re.match(r"from\s+([^\s]+)\s+import", line)
-                            if match:
-                                module = match.group(1)
-                                # Only keep if it's an internal module
-                                if any(module.startswith(internal) for internal in internal_modules):
-                                    imports.add(module)
-                    elif line.startswith("import "):
-                        # import module, module2
-                        match = re.match(r"import\s+(.+)", line)
-                        if match:
-                            modules = match.group(1).split(",")
-                            for module in modules:
-                                module = module.strip().split(" as ")[0]  # Remove 'as alias'
-                                # Only keep if it's an internal module
-                                if any(module.startswith(internal) for internal in internal_modules):
-                                    imports.add(module)
+                if line.startswith("from "):
+                    match = re.match(r"from\s+([^\s]+)\s+import\s+(.+)", line)
+                    if not match:
+                        continue
+                    module, imported_names = match.groups()
+                    is_internal = module.startswith(".") or any(
+                        module == internal or module.startswith(f"{internal}.") for internal in internal_modules
+                    )
+                    if not is_internal:
+                        continue
+
+                    imports.add(module)
+                    for imported_name in imported_names.split(","):
+                        imported_name = imported_name.strip().split(" as ")[0]
+                        if not imported_name or imported_name == "*" or not imported_name.isidentifier():
+                            continue
+                        separator = "" if module.endswith(".") else "."
+                        imports.add(f"{module}{separator}{imported_name}")
+                elif line.startswith("import "):
+                    match = re.match(r"import\s+(.+)", line)
+                    if match:
+                        modules = match.group(1).split(",")
+                        for module in modules:
+                            module = module.strip().split(" as ")[0]
+                            if any(
+                                module == internal or module.startswith(f"{internal}.")
+                                for internal in internal_modules
+                            ):
+                                imports.add(module)
 
             return list(imports)
 
-        def normalize_module_to_file(module, all_files):
-            """Convert internal module name to actual file paths in the repo."""
-            matches = []
-
-            # Handle relative imports
-            if module.startswith("."):
-                # A relative import cannot be resolved to a path without knowing the
-                # importing package. Such imports are internal by construction, so they
-                # are reported as imports but are not linked to a specific file.
-                return matches
-
-            # Convert module path to file path patterns
-            # e.g., 'nemo_skills.inference.eval' -> 'nemo_skills/inference/eval'
-            module_path = module.replace(".", "/")
-
+        def build_module_index(all_files):
+            """Map Python module paths to files once for dependency resolution."""
+            module_index = {}
             for file_path in all_files:
-                # Check for exact module match with .py extension
-                if file_path == module_path + ".py":
-                    matches.append(file_path)
-                # Check for __init__.py in package
-                elif file_path == module_path + "/__init__.py":
-                    matches.append(file_path)
-                # Check if the module path is part of the file path
-                elif module_path in file_path:
-                    # Make sure it's a proper path component match
-                    # e.g., 'utils' shouldn't match 'myutils.py'
-                    path_parts = file_path.split("/")
-                    module_parts = module_path.split("/")
-                    for i in range(len(path_parts) - len(module_parts) + 1):
-                        if path_parts[i : i + len(module_parts)] == module_parts:
-                            matches.append(file_path)
-                            break
+                if file_path == "__init__.py":
+                    continue
+                if file_path.endswith("/__init__.py"):
+                    module_path = file_path[: -len("/__init__.py")]
+                else:
+                    module_path = file_path[:-3]
+                module_index.setdefault(module_path, []).append(file_path)
+            return module_index
 
-            return list(set(matches))  # Remove duplicates
+        def normalize_module_to_file(module, importing_file, module_index):
+            """Convert internal module name to actual file paths in the repo."""
+            if module.startswith("."):
+                leading_dots = len(module) - len(module.lstrip("."))
+                package_parts = importing_file.split("/")[:-1]
+                levels_up = leading_dots - 1
+                if levels_up > len(package_parts):
+                    return []
+                if levels_up:
+                    package_parts = package_parts[:-levels_up]
+                remainder = module[leading_dots:]
+                if remainder:
+                    package_parts.extend(remainder.split("."))
+                module_path = "/".join(package_parts)
+            else:
+                module_path = module.replace(".", "/")
+
+            return module_index.get(module_path, [])
 
         def collect_file_dependencies(structure, internal_modules):
             """Collect all files with their dependencies."""
@@ -465,13 +463,12 @@ class RepoManager:
                         # It's a file - only process Python files
                         if key.endswith(".py"):
                             imports = extract_imports_from_file(value, internal_modules)
-                            if imports:  # Only include files that have internal imports
-                                files_data[current_file_path] = {
-                                    "imports": imports,
-                                    "line_count": len(value["text"]) if show_line_counts else None,
-                                    "dependencies": [],  # Will be filled later
-                                    "dependents": [],  # Will be filled later
-                                }
+                            files_data[current_file_path] = {
+                                "imports": imports,
+                                "line_count": len(value["text"]) if show_line_counts else None,
+                                "dependencies": [],  # Will be filled later
+                                "dependents": [],  # Will be filled later
+                            }
                     elif isinstance(value, dict):
                         # It's a directory
                         traverse(value, current_file_path)
@@ -480,9 +477,10 @@ class RepoManager:
 
             # Now resolve imports to actual files
             all_files = list(files_data.keys())
+            module_index = build_module_index(all_files)
             for file_path, file_info in files_data.items():
                 for imported_module in file_info["imports"]:
-                    matching_files = normalize_module_to_file(imported_module, all_files)
+                    matching_files = normalize_module_to_file(imported_module, file_path, module_index)
                     for match in matching_files:
                         if match != file_path:  # Don't self-reference
                             file_info["dependencies"].append(match)

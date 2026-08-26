@@ -91,8 +91,9 @@ def build(root):
     return {"instance_id": INSTANCE_ID, "structure": structure}
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
+snapshot = build(REPO)
 with open(OUT_DIR / f"{INSTANCE_ID}.pkl", "wb") as f:
-    pickle.dump(build(REPO), f)
+    pickle.dump(snapshot, f)
 ```
 
 ### 2. Write the input file

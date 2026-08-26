@@ -60,3 +60,25 @@ def test_no_newline_marker_does_not_advance_patch_coordinates():
             "raw": "example.py:L1-L1",
         }
     ]
+
+
+def test_insertion_before_first_line_uses_one_based_location():
+    patch = "\n".join(
+        [
+            "--- a/example.py",
+            "+++ b/example.py",
+            "@@ -0,0 +1 @@",
+            "+new first line",
+        ]
+    )
+
+    locations = PatchProcessor.extract_locations_from_patch(patch)
+
+    assert locations == [
+        {
+            "file_path": "example.py",
+            "start_line": 1,
+            "end_line": 1,
+            "raw": "example.py:L1-L1",
+        }
+    ]
