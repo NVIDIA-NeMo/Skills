@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from nemo_skills.inference.eval.scale_swe import ScaleSweGenerationTask, format_scale_swe_user_prompt
 from nemo_skills.inference.eval.scale_swe_utils import (
@@ -52,6 +54,50 @@ def test_openhands_uses_scale_swe_user_template():
     assert "We are addressing the following issue in our repository" in template
     assert "/workspace/{{ workspace_dir_name }}" in template
     assert "non-test files" not in template
+
+
+def test_scale_swe_enables_resolver_only_for_evaluation(tmp_path):
+    resolver = tmp_path / "resolv.conf"
+    resolver.write_text("nameserver 192.0.2.53\n")
+    task = object.__new__(ScaleSweGenerationTask)
+    task.output_dir = tmp_path / "outputs"
+    task.cfg = SimpleNamespace(
+        input_file="/datasets/scale-swe.jsonl",
+        scale_swe_verifier_network=True,
+        scale_swe_eval_resolv_conf=str(resolver),
+    )
+
+    data_point = {"instance_id": "owner_repo_pr1"}
+    token = hashlib.sha256(data_point["instance_id"].encode()).hexdigest()[:20]
+    agent_mounts = task._get_apptainer_mounts("agent", data_point)
+    eval_mounts = task._get_apptainer_mounts("eval", data_point)
+
+    assert "type=bind,src=/nemo_run/code,dst=/nemo_run/code" in agent_mounts
+    assert "type=bind,src=/root,dst=/root_mount,ro" in agent_mounts
+    assert not any("resolv.conf" in mount for mount in agent_mounts)
+    assert eval_mounts == [
+        f"type=bind,src={task.output_dir}/scale-swe-eval/{token},dst=/scale_swe_eval,ro",
+        f"type=bind,src={task.output_dir}/eval-outputs/{token},dst=/scale_swe_report",
+        f"type=bind,src={resolver.resolve()},dst=/etc/resolv.conf,ro",
+    ]
+    assert not any("/root_mount" in mount or "/input_mount" in mount for mount in eval_mounts)
+
+
+def test_scale_swe_evaluation_network_can_be_disabled(tmp_path):
+    task = object.__new__(ScaleSweGenerationTask)
+    task.output_dir = tmp_path / "outputs"
+    task.cfg = SimpleNamespace(
+        input_file="/datasets/scale-swe.jsonl",
+        scale_swe_verifier_network=False,
+        scale_swe_eval_resolv_conf=None,
+    )
+
+    data_point = {"instance_id": "owner_repo_pr1"}
+    token = hashlib.sha256(data_point["instance_id"].encode()).hexdigest()[:20]
+    assert task._get_apptainer_mounts("eval", data_point) == [
+        f"type=bind,src={task.output_dir}/scale-swe-eval/{token},dst=/scale_swe_eval,ro",
+        f"type=bind,src={task.output_dir}/eval-outputs/{token},dst=/scale_swe_report",
+    ]
 
 
 def test_normalize_data_point_uses_post_setup_head_and_native_image():

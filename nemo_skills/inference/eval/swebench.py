@@ -247,6 +247,13 @@ class SweBenchGenerationConfig:
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
 
+    # Native Scale-SWE evaluation runs with the host network, matching AweAgent's Docker bridge behavior.
+    # When enabled, mount a usable resolver configuration into the verifier container. Agent inference and
+    # other benchmarks retain their existing network behavior. Set scale_swe_eval_resolv_conf to override
+    # automatic resolver discovery on clusters with a non-standard systemd-resolved setup.
+    scale_swe_verifier_network: bool = True
+    scale_swe_eval_resolv_conf: str | None = None
+
     # Which dataset type we're running on. This determines which evaluation harness is used.
     dataset_type: SupportedDatasetTypes = SupportedDatasetTypes.swe_bench
 
@@ -685,12 +692,12 @@ class SweBenchGenerationTask(GenerationTask):
         combined_command = " && ".join(container_commands)
 
         # Launch Apptainer container and execute the command
+        mount_args = " ".join(
+            f"--mount {shlex.quote(mount_spec)}" for mount_spec in self._get_apptainer_mounts(mode, data_point)
+        )
         apptainer_cmd = (
             f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
-            f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
-            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
-            f"--mount type=bind,src=/root,dst=/root_mount,ro "
-            f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
+            f"{mount_args} "
             f"{extra_apptainer_args} "
             f"{container_name} bash -c {shlex.quote(combined_command)}"
         )
@@ -764,6 +771,15 @@ class SweBenchGenerationTask(GenerationTask):
                         f"Expected exactly one file matching {expected_file_pattern}, "
                         f"found {len(pred_files) if 'pred_files' in locals() else 'unknown'}."
                     )
+
+    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
+        """Return the standard mounts used by agent and evaluation containers."""
+        return [
+            "type=bind,src=/nemo_run/code,dst=/nemo_run/code",
+            f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro",
+            "type=bind,src=/root,dst=/root_mount,ro",
+            f"type=bind,src={self.output_dir},dst=/trajectories_mount",
+        ]
 
     async def _run_agent(self, data_point) -> str:
         """

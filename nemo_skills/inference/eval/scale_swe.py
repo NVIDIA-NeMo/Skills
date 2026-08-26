@@ -67,6 +67,11 @@ _DEFAULT_AGENT_CONFIGS = {
     SupportedAgentFrameworks.mini_swe_agent: "eval/scale-swe/mini-swe-agent/swebench",
 }
 
+_RESOLVER_CANDIDATES = (
+    Path("/run/systemd/resolve/resolv.conf"),
+    Path("/etc/resolv.conf"),
+)
+
 
 def format_scale_swe_user_prompt(problem_statement: str, workspace_dir: str = "/testbed") -> str:
     """Format the benchmark-level user message used by the official AweAgent recipe."""
@@ -102,6 +107,33 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
         """Return the Scale-SWE user template rendered by OpenHands."""
         return get_config_path("eval/scale-swe/openhands/swe_default", config_extension="j2")
 
+    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
+        """Use minimal mounts and a real resolver only for native Scale-SWE grading."""
+        if mode != "eval":
+            return super()._get_apptainer_mounts(mode, data_point)
+
+        token = hashlib.sha256(str(data_point["instance_id"]).encode()).hexdigest()[:20]
+        artifact_dir = self.output_dir / "scale-swe-eval" / token
+        report_dir = self.output_dir / "eval-outputs" / token
+        mounts = [
+            f"type=bind,src={artifact_dir},dst=/scale_swe_eval,ro",
+            f"type=bind,src={report_dir},dst=/scale_swe_report",
+        ]
+        if self.cfg.scale_swe_verifier_network:
+            resolver = self._get_scale_swe_resolver()
+            mounts.append(f"type=bind,src={resolver},dst=/etc/resolv.conf,ro")
+        return mounts
+
+    def _get_scale_swe_resolver(self) -> Path:
+        """Select a resolver with upstream nameservers rather than a loopback-only stub."""
+        configured = self.cfg.scale_swe_eval_resolv_conf
+        candidates = (Path(configured),) if configured else _RESOLVER_CANDIDATES
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate.resolve()
+        candidate_list = ", ".join(str(candidate) for candidate in candidates)
+        raise FileNotFoundError(f"No Scale-SWE evaluation resolver found. Checked: {candidate_list}")
+
     async def _run_scale_swe_verifier(self, data_point: dict, model_patch: str) -> dict:
         instance_id = str(data_point["instance_id"])
         token = hashlib.sha256(instance_id.encode()).hexdigest()[:20]
@@ -119,7 +151,7 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
 
         config = {
             "workdir": data_point.get("workdir") or data_point.get("container_repo_dir", "/testbed"),
-            "model_patch": f"/trajectories_mount/scale-swe-eval/{token}/model.patch",
+            "model_patch": "/scale_swe_eval/model.patch",
             "FAIL_TO_PASS": data_point.get("FAIL_TO_PASS"),
             "PASS_TO_PASS": data_point.get("PASS_TO_PASS"),
             "timeout": self.cfg.swebench_tests_timeout,
@@ -129,15 +161,15 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
             if value and str(value).strip():
                 path = artifact_dir / filename
                 path.write_text(str(value))
-                config[field] = f"/trajectories_mount/scale-swe-eval/{token}/{filename}"
+                config[field] = f"/scale_swe_eval/{filename}"
 
         config_path = artifact_dir / "config.json"
         config_path.write_text(json.dumps(config))
         (artifact_dir / "runner.py").write_text(_RUNNER)
         shutil.copyfile(Path(scale_swe_utils.__file__), artifact_dir / "scale_swe_utils.py")
 
-        mounted_artifacts = f"/trajectories_mount/scale-swe-eval/{token}"
-        mounted_report = f"/trajectories_mount/eval-outputs/{token}/report.json"
+        mounted_artifacts = "/scale_swe_eval"
+        mounted_report = "/scale_swe_report/report.json"
         command = f"python {mounted_artifacts}/runner.py {mounted_artifacts}/config.json {mounted_report}"
         report_path = eval_dir / "report.json"
         try:
