@@ -62,6 +62,18 @@ OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
 OPENCODE_SOLUTION_ORIGINALITY_CONFIG = "eval/swe-bench/opencode/solution-originality"
 OPENCODE_SOLUTION_ORIGINALITY_PATH = "/root/.config/opencode/solution-originality.md"
 
+# These verifiers bind fixed localhost ports. Run only their verifier
+# containers in private, network-disabled namespaces so concurrent
+# multilingual evaluations cannot collide on the host network.
+NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
+    {
+        "axios__axios-4731",
+        "axios__axios-4738",
+        "caddyserver__caddy-5995",
+        "valkey-io__valkey-928",
+    }
+)
+
 
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
     """Merge *override* into *base* in place, recursing into nested dicts."""
@@ -690,6 +702,9 @@ class SweBenchGenerationTask(GenerationTask):
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
+
+        if mode == "eval" and data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
+            extra_apptainer_args += " --net --network none "
 
         # Launch Apptainer container and execute the command
         mount_args = " ".join(
