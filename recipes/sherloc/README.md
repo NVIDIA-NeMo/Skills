@@ -36,47 +36,25 @@ by 36.7% and 23.1%.
   <img width="750" alt="sherloc-schema" src="teaser.png">
 </p>
 
-SHERLOC ships as a self-contained
-[external benchmark](../../docs/evaluation/external-benchmarks.md): a generation task, evaluator,
-metrics class and prompt configs. It adds no code to `nemo_skills/`.
+This recipe is self-contained under `recipes/sherloc/`: the exploration loop, repository tools,
+prompts, and optional SWE-bench scoring. It adds no code to `nemo_skills/`.
 
 ## What is here
 
 ```
 recipes/sherloc/
-├── benchmark_map.json                      benchmark name -> dataset directory
-├── dataset/swe-bench-{lite,verified}/      benchmark definitions and prepare scripts
 ├── inference/sherloc.py                    SherlocGenerationTask: the exploration loop
 ├── inference/sherloc_utils/                repository view, tools, dialogue, context, patches
-├── evaluation/sherloc.py                   scores predicted locations against the gold patch
-├── metrics/sherloc.py                      SherlocMetrics: Accuracy@1, Recall@1, chunk coverage
 ├── prompt/eval/sherloc/system.yaml         the localization prompt
 ├── prompt/generic/sherloc.yaml             locations-only variant, without the findings block
+├── dataset/swe-bench-{lite,verified}/      optional SWE-bench prepare scripts
+├── evaluation/sherloc.py                   scores predicted locations against the gold patch
+├── metrics/sherloc.py                      SherlocMetrics: Accuracy@1, Recall@1, chunk coverage
 └── tests/                                  unit tests for the evaluator, metrics and parser
 ```
 
-## Running the benchmarks
-
-Register them, then use them like any other benchmark:
-
-```bash
-export NEMO_SKILLS_EXTRA_BENCHMARK_MAP=recipes/sherloc/benchmark_map.json
-
-ns prepare_data sherloc-swe-bench-lite sherloc-swe-bench-verified
-
-ns eval \
-    --cluster=local \
-    --benchmarks=sherloc-swe-bench-verified \
-    --server_type=vllm \
-    --model=<model-name-or-path> \
-    --server_gpus=8 \
-    --output_dir=/workspace/sherloc-run
-```
-
-Evaluation additionally needs per-instance repository snapshots named `<instance_id>.pkl` under
-`++mount_directory` (default `/repos/`), built at each instance's base commit. Those are not
-distributed here, so this recipe does not by itself reproduce the paper's tables end to
-end. The next section covers building a snapshot for your own code.
+The next section is the intended entry point: run SHERLOC on a repository snapshot.
+SWE-bench scoring is optional and is covered after that.
 
 ## Running it on your own repository
 
@@ -173,6 +151,7 @@ Each output line is the input record plus:
 | Field | Meaning |
 | --- | --- |
 | `locations` | The answer: `{file_path, start_line, end_line, raw}` entries |
+| `findings` | The `<findings>` diagnosis as a string, or `null` if the model omitted that block |
 | `turns` | Full transcript: tool calls, tool outputs, per-turn token counts |
 | `status` | `success`, `failed` or `skipped` |
 | `reason` | Why a run ended early, e.g. `context_length_exceeded`, `max_steps_exceeded` |
@@ -191,11 +170,36 @@ src/mypkg/locale.py:L44
 </locations>
 ```
 
-Only `<locations>` is parsed into structured fields. Both `path:L<start>-L<end>` and single
-`path:L<line>` forms are accepted; a line matching neither is preserved verbatim under `raw`.
+`<locations>` is parsed into structured fields and `<findings>` is stored as the block text.
+Both `path:L<start>-L<end>` and single `path:L<line>` forms are accepted; a line matching
+neither is preserved verbatim under `raw`. The locations-only prompt omits `<findings>`, so
+that field is then `null`.
 
 `prompt/generic/sherloc.yaml` is the same protocol without the `<findings>`
 block — select it with `++prompt_config=recipes/sherloc/prompt/generic/sherloc.yaml`.
+
+## Scoring on SWE-bench (optional)
+
+The `dataset/`, `evaluation/` and `metrics/` directories score SHERLOC locations against the
+gold SWE-bench patch. They are not a built-in Nemo-Skills benchmark; pass the dataset directory
+as the `--benchmarks` path:
+
+```bash
+ns prepare_data recipes/sherloc/dataset/swe-bench-lite recipes/sherloc/dataset/swe-bench-verified
+
+ns eval \
+    --cluster=local \
+    --benchmarks=recipes/sherloc/dataset/swe-bench-verified \
+    --server_type=vllm \
+    --model=<model-name-or-path> \
+    --server_gpus=8 \
+    --output_dir=/workspace/sherloc-run
+```
+
+Evaluation additionally needs per-instance repository snapshots named `<instance_id>.pkl` under
+`++mount_directory` (default `/repos/`), built at each instance's base commit. Those are not
+distributed here, so this recipe does not by itself reproduce the paper's tables end to
+end.
 
 ## Choosing a model
 
@@ -249,3 +253,7 @@ Please use the following citation:
 ## Links
 
 [NeMo-Skills](https://github.com/NVIDIA-NeMo/Skills) | [SWE-Bench](https://www.swebench.com/) | [arXiv](https://arxiv.org/abs/2606.24820)
+
+## Disclaimer
+
+> This repository contains experimental software and is published for the sole purpose of giving additional background details on the respective publication.

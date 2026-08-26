@@ -29,38 +29,6 @@ class PatchProcessor:
     """Git patch processing utilities."""
 
     @staticmethod
-    def extract_files_from_patch(patch: str) -> List[str]:
-        """Collect the unique file paths a git patch touches.
-
-        Args:
-            patch: Unified diff text
-
-        Returns:
-            Sorted file paths with any ``a/`` or ``b/`` prefix stripped. The
-            ``/dev/null`` markers used for created and deleted files are ignored.
-        """
-        if not patch:
-            return []
-
-        files = set()
-
-        for line in patch.splitlines():
-            if line.startswith("--- "):
-                file_path = line[4:]
-                if file_path != "/dev/null":  # Skip /dev/null for new files
-                    if file_path.startswith(("a/", "b/")):
-                        file_path = file_path[2:]
-                    files.add(file_path)
-            elif line.startswith("+++ "):
-                file_path = line[4:]
-                if file_path != "/dev/null":  # Skip /dev/null (shouldn't happen for +++)
-                    if file_path.startswith(("a/", "b/")):
-                        file_path = file_path[2:]
-                    files.add(file_path)
-
-        return sorted(list(files))
-
-    @staticmethod
     def extract_locations_from_patch(patch: str, exclude_new_files: bool = True) -> List[Dict[str, Any]]:
         """Extract changed line ranges from a git patch, in pre-patch coordinates.
 

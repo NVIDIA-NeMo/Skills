@@ -68,6 +68,35 @@ def test_extract_locations_missing_block():
     assert DialogProcessor._extract_locations("no tags here")["locations"] == []
 
 
+def test_extract_findings_returns_block_text():
+    text = "<findings>\n- Root cause: locale omitted from the cache key.\n</findings>"
+    assert DialogProcessor.extract_findings(text) == "- Root cause: locale omitted from the cache key."
+
+
+def test_extract_findings_missing_block():
+    assert DialogProcessor.extract_findings("no tags here") is None
+
+
+def test_extract_findings_empty_block():
+    assert DialogProcessor.extract_findings("<findings>\n\n</findings>") is None
+
+
+def test_extract_response_includes_findings_with_locations():
+    text = (
+        "<findings>\n- Root cause: locale omitted from the cache key.\n</findings>\n"
+        "<locations>\na.py:L10-L20\n</locations>"
+    )
+    response = DialogProcessor.extract_response(text)
+    assert response["type"] == "locations"
+    assert response["findings"] == "- Root cause: locale omitted from the cache key."
+    assert response["locations"][0]["file_path"] == "a.py"
+
+
+def test_extract_response_locations_without_findings():
+    response = DialogProcessor.extract_response(_locations_block("a.py:L1-L2"))
+    assert response["findings"] is None
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [

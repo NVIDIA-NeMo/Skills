@@ -16,7 +16,8 @@
 
 Every assistant turn is expected to carry either a ``<tool_call>`` block that
 requests more evidence from the repository, or a ``<locations>`` block that
-submits the suspected edit locations. Models deviate from that contract in
+submits the suspected edit locations. A sibling ``<findings>`` block, when
+present, is the free-form diagnosis stored alongside those locations. Models deviate from that contract in
 recurring ways, so the parser also recovers unclosed tags, XML-wrapped tool
 names, CDATA sections, Python ``dict`` reprs, and bare JSON emitted after a
 ``</think>`` block. Recovering a malformed response keeps a trajectory alive
@@ -51,8 +52,9 @@ class DialogProcessor:
 
         Returns:
             ``{"type": "tool_calls", "tool_call": {...}}`` for a tool call,
-            ``{"type": "locations", "locations": [...]}`` for a submission, or
-            ``None`` when nothing could be recovered.
+            ``{"type": "locations", "locations": [...], "findings": ...}`` for a
+            submission (``findings`` is the ``<findings>`` block text, or ``None``
+            when that block is absent), or ``None`` when nothing could be recovered.
         """
         # First check if this is a Python dict representation (single quotes)
         # This handles cases like: {'type': 'locations', 'locations': '...'}
@@ -359,9 +361,14 @@ class DialogProcessor:
                                     }
                                 )
 
-                    return {"type": "locations", "locations": parsed_locations}
+                    return {
+                        "type": "locations",
+                        "locations": parsed_locations,
+                        "findings": data.get("findings"),
+                    }
                 else:
                     # Already structured
+                    data.setdefault("findings", None)
                     return data
 
             elif data.get("type") == "tool_calls":
@@ -418,7 +425,23 @@ class DialogProcessor:
                     else:
                         locations.append({"raw": line})
 
-        return {"type": "locations", "locations": locations}
+        return {
+            "type": "locations",
+            "locations": locations,
+            "findings": DialogProcessor.extract_findings(dialog_text),
+        }
+
+    @staticmethod
+    def extract_findings(dialog_text: str) -> str | None:
+        """Return the text of a ``<findings>`` block, or ``None`` if there is none.
+
+        The block is free-form diagnosis meant for a downstream repair agent.
+        Unclosed tags are recovered the same way as ``<locations>``.
+        """
+        findings_text = DialogProcessor._extract_tag_content(dialog_text, "findings")
+        if not findings_text:
+            return None
+        return findings_text
 
     @staticmethod
     def _extract_implicit_tool_calls(dialog_text: str, config=None) -> Dict:

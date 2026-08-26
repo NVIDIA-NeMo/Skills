@@ -48,10 +48,11 @@ The loop (one iteration per step, up to ``total_steps``)
          * a tool call is executed read-only against the snapshot (view a file range, print the
            repository tree, print the import-connected tree around a file, or search the
            codebase) and its output becomes the next user turn;
-         * a locations block ends the episode successfully.
+         * a locations block ends the episode successfully. A sibling ``<findings>``
+           block, when present, is stored as the free-form diagnosis.
 
 What it emits
-    One record per instance containing the predicted ``locations`` inside the dialogue turns, the
+    One record per instance containing the predicted ``locations`` and ``findings``, the
     full turn-by-turn transcript (model reply, tool call, tool output, per-turn token counts,
     retry count, and which turns were in context), aggregate token usage, and a terminal
     ``status`` / ``reason`` pair. Every exit path is labelled, so failures can be separated by
@@ -628,18 +629,6 @@ class SherlocGenerationTask(GenerationTask):
                 if cur_step == total_steps - 1:
                     response_type = "final_turn"
 
-                safe_generation_limit = None
-                if self.cfg.enable_response_length_management:
-                    if self.cfg.max_seq_length:
-                        current_tokens = ContextManager.count_dialogue_tokens(prepared_data_point["turns"])
-                        safe_generation_limit = ContextManager.calculate_safe_token_limit(
-                            current_tokens,
-                            self.cfg.max_seq_length,
-                            self.cfg.context_safety_margin,
-                            max_generation_tokens=self.cfg.inference.tokens_to_generate,
-                        )
-                        log_debug(f"Safe generation limit: {safe_generation_limit} tokens", indent=12)
-
                 retry_count = 0
                 actual_generated_tokens = 0
                 while retry_count <= self.cfg.max_retries:
@@ -849,6 +838,7 @@ class SherlocGenerationTask(GenerationTask):
                                     current_turn["tool_call"] = extracted_block.get("tool_call", None)
                                 elif extracted_block.get("type") == "locations":
                                     current_turn["locations"] = extracted_block.get("locations", [])
+                                    current_turn["findings"] = extracted_block.get("findings")
                         else:
                             log_error(f"Current turn is not a dict: {type(current_turn)}", indent=16)
                             status = "failed"
@@ -927,6 +917,7 @@ class SherlocGenerationTask(GenerationTask):
                         break
                     # The model committed to an answer, which ends the episode.
                     data_point["locations"] = extracted_block["locations"]
+                    data_point["findings"] = extracted_block.get("findings")
                     status = "success"
                     reason = None
                     break
@@ -1012,6 +1003,8 @@ class SherlocGenerationTask(GenerationTask):
             "status": status,
             "reason": reason,
             "turns": data_point.get("turns", []),
+            "locations": data_point.get("locations"),
+            "findings": data_point.get("findings"),
             "ground_truth_in_repo_percentage": ground_truth_in_repo_percentage,
             "missing_ground_truth_files": missing_ground_truth_files,
         }

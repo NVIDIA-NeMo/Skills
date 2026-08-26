@@ -22,12 +22,13 @@ window and intervenes when the agent stops making progress:
 * a first-and-recent truncation strategy for the dialogue history
 * injection of the final-turn instruction that requests the location submission
 * detection of repeated tool calls and interventions that break such loops
-* budgeting of the next generation and diagnosis of over-long responses
+* diagnosis of over-long responses
 
-Token accounting relies on measured counts only: the number of tokens the
-inference server reports for a generation, and the tiktoken count of a tool
-output produced by the tool executor. Nothing here estimates token counts, so a
-turn that carries no recorded count contributes zero to the total.
+Token accounting here only sums counts already stored on a turn
+(``_llm_tokens``, ``_tool_tokens``, ``_input_tokens``). This module does not
+estimate those values. A missing count contributes zero. The generation loop
+may have written an estimate onto a turn before calling into this module
+(turn 0's ``_input_tokens`` is ``len(inputs) // 4``).
 """
 
 import copy
@@ -47,8 +48,8 @@ class ContextManager:
     def count_dialogue_tokens(turns: List[Dict]) -> int:
         """Sum the recorded token counts of a dialogue history.
 
-        Only counts recorded when a turn was built are summed. A turn without
-        recorded counts contributes zero, because no count is ever estimated.
+        Only counts already stored on a turn are summed. This method does not
+        estimate. A turn without recorded counts contributes zero.
 
         Args:
             turns: Dialogue turns, each optionally carrying token counts
@@ -488,33 +489,6 @@ Please try a different approach. The current strategy is not working."""
         return modified_turns
 
     @staticmethod
-    def prevent_loop_generation(current_prompt: str, loop_info: Dict) -> str:
-        """
-        Modify the prompt to prevent the agent from generating the same tool call again.
-
-        Args:
-            current_prompt: The current prompt being sent to the model
-            loop_info: Information about the detected loop
-
-        Returns:
-            Modified prompt that discourages repetition
-        """
-        try:
-            repeated_call = json.loads(loop_info["repeated_call"])
-            tool_name = list(repeated_call.keys())[0]
-
-            loop_warning = f"""\n\nIMPORTANT: You have already tried {tool_name} with these exact parameters {loop_info["total_repetitions"]} times.
-DO NOT repeat this command. You MUST try a different approach or tool.
-Previous attempts have not yielded useful results - the output may be truncated or the approach may be wrong.
-Think creatively about alternative ways to solve this problem.\n\n"""
-
-            # Prepend the warning to the prompt
-            return loop_warning + current_prompt
-        except Exception as e:
-            LOG.debug(f"Failed to create specific loop warning: {e}")
-            return "\n\nWARNING: Loop detected. Do not repeat the previous command.\n\n" + current_prompt
-
-    @staticmethod
     def analyze_loop_patterns(generations: List[Dict]) -> Dict:
         """
         Analyze patterns in tool call generations to identify potential issues.
@@ -598,41 +572,6 @@ Think creatively about alternative ways to solve this problem.\n\n"""
         }
 
         return turns + [warning_turn]
-
-    @staticmethod
-    def calculate_safe_token_limit(
-        current_context_tokens: int,
-        max_context_length: int,
-        safety_margin: float = 0.9,
-        min_generation_tokens: int = 1024,
-        max_generation_tokens: Optional[int] = None,
-    ) -> int:
-        """
-        Calculate a safe token limit for the next generation.
-
-        Args:
-            current_context_tokens: Tokens used by current context
-            max_context_length: Maximum context length
-            safety_margin: Safety margin (0.9 = use only 90% of max)
-            min_generation_tokens: Minimum tokens to allow for generation
-            max_generation_tokens: Maximum tokens to allow for generation (optional cap)
-
-        Returns:
-            Safe token limit for next generation
-        """
-        safe_max = int(max_context_length * safety_margin)
-        available = safe_max - current_context_tokens
-
-        # Ensure at least the minimum generation space remains.
-        if available < min_generation_tokens:
-            LOG.warning(f"Very limited generation space: {available} tokens available")
-            return min_generation_tokens
-
-        # Apply max cap if provided
-        if max_generation_tokens is not None:
-            return min(available, max_generation_tokens)
-
-        return available
 
     @staticmethod
     def analyze_response_failure(
