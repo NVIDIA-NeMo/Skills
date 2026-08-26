@@ -299,7 +299,7 @@ class RepoManager:
         Generate a concise connected tree showing ONLY internal project dependencies.
 
         Key features:
-        - Shows ONLY internal imports (nemo_skills.*, relative imports)
+        - Shows ONLY imports from detected top-level project packages and relative imports
         - Excludes ALL external libraries (no numpy, torch, hydra, etc.)
         - Skips test/docs/build/cache directories
         - Only analyzes Python files (.py)
@@ -315,15 +315,14 @@ class RepoManager:
             Concise string showing internal project structure and dependencies
 
         Example output for specific file:
-            ═══ nemo_skills/inference/eval/sherloc.py ═══
+            ═══ src/service.py ═══
 
-            → IMPORTS (3):
-               • nemo_skills.inference.generate
-               • nemo_skills.utils
-               • .sherloc_utils.dialog_processor
+            → IMPORTS (2):
+               • src.utils
+               • .models
 
             ← IMPORTED BY (1):
-               • nemo_skills/cli/eval.py
+               • src/app.py
         """
 
         def detect_internal_modules(structure):
@@ -346,12 +345,7 @@ class RepoManager:
                     if check_for_python(value) or (key + ".py" in structure):
                         internal_modules.add(key)
 
-            # When the repository is this project itself, treat both the package
-            # name and its namespace prefix as internal.
-            if "nemo_skills" in internal_modules or any("nemo" in m for m in internal_modules):
-                internal_modules.update(["nemo_skills", "nemo"])
-
-            return tuple(internal_modules) if internal_modules else ("nemo_skills", "nemo")
+            return tuple(internal_modules)
 
         def extract_imports_from_file(file_node, internal_modules=None):
             """Extract ONLY internal import statements from a file node."""
@@ -361,9 +355,9 @@ class RepoManager:
             imports = set()
             lines = file_node["text"]
 
-            # Use provided internal modules or default patterns
+            # Use the detected internal modules.
             if internal_modules is None:
-                internal_modules = ("nemo_skills", "nemo")
+                internal_modules = ()
 
             for line in lines:
                 line = line.strip()

@@ -26,9 +26,9 @@ window and intervenes when the agent stops making progress:
 
 Token accounting here only sums counts already stored on a turn
 (``_llm_tokens``, ``_tool_tokens``, ``_input_tokens``). This module does not
-estimate those values. A missing count contributes zero. The generation loop
-may have written an estimate onto a turn before calling into this module
-(turn 0's ``_input_tokens`` is ``len(inputs) // 4``).
+estimate those values. A missing count contributes zero. Callers may store an
+estimate when no tokenizer count is available; the initial input and fallback
+tool-output estimate both use four characters per token.
 """
 
 import copy
@@ -57,26 +57,7 @@ class ContextManager:
         Returns:
             Total number of tokens in the dialogue
         """
-        total_tokens = 0
-
-        for i, turn in enumerate(turns):
-            if not isinstance(turn, dict):
-                continue
-
-            # A turn may carry any of these measured counts:
-            # - _llm_tokens: tokens the model generated for the assistant response
-            # - _tool_tokens: tokens in the tool output appended to the turn
-            # - _input_tokens: tokens in the turn input (the problem statement on turn 0)
-            if "_llm_tokens" in turn:
-                total_tokens += turn["_llm_tokens"]
-
-            if "_tool_tokens" in turn:
-                total_tokens += turn["_tool_tokens"]
-
-            if "_input_tokens" in turn:
-                total_tokens += turn["_input_tokens"]
-
-        return total_tokens
+        return sum(ContextManager.get_turn_tokens(turn) for turn in turns if isinstance(turn, dict))
 
     @staticmethod
     def check_context_before_generation(data_point: Dict, cfg) -> Tuple[bool, Optional[str], Dict]:
@@ -91,7 +72,7 @@ class ContextManager:
             Tuple of (will_fit, error_message, stats). ``error_message`` is
             ``None`` when the dialogue fits.
         """
-        turns = data_point.get("turns", [])
+        turns = data_point["turns"]
         current_tokens = ContextManager.count_dialogue_tokens(turns)
 
         safe_max = int(cfg.max_seq_length * cfg.context_safety_margin)
@@ -168,9 +149,15 @@ class ContextManager:
         # The first turn is mandatory, so an oversized first turn cannot be salvaged
         if first_turn_tokens > target_tokens:
             LOG.error(f"First turn alone ({first_turn_tokens} tokens) exceeds target ({target_tokens} tokens)")
+            original_tokens = sum(ContextManager.get_turn_tokens(turn) for turn in turns)
             return [first_turn], {
+                "original_turns": len(turns),
+                "kept_turns": 1,
                 "removed_turns": len(turns) - 1,
+                "original_tokens": original_tokens,
+                "final_tokens": first_turn_tokens,
                 "token_reduction": 100.0,
+                "kept_indices": [0],
                 "warning": "First turn exceeds token limit",
             }
 
@@ -390,7 +377,7 @@ class ContextManager:
                         tool_call_obj = json.loads(tool_call_json)
                         tool_call_normalized = json.dumps(tool_call_obj, sort_keys=True)
                         tool_calls.append(tool_call_normalized)
-                    except (json.JSONDecodeError, Exception) as e:
+                    except json.JSONDecodeError as e:
                         LOG.debug(f"Failed to parse tool call JSON: {e}")
                         tool_calls.append(gen_text[start:end].strip())
 
@@ -437,8 +424,16 @@ class ContextManager:
         # Parse the repeated call to provide specific guidance
         try:
             repeated_call = json.loads(loop_info["repeated_call"])
-            tool_name = list(repeated_call.keys())[0]
-            tool_params = repeated_call[tool_name]
+            if "tool" in repeated_call:
+                tool_name = repeated_call["tool"]
+                tool_params = {key: value for key, value in repeated_call.items() if key != "tool"}
+            elif len(repeated_call) == 1:
+                tool_name, tool_params = next(iter(repeated_call.items()))
+            else:
+                raise ValueError("Unrecognized tool-call format")
+
+            if not isinstance(tool_params, dict):
+                raise TypeError("Tool parameters must be a dictionary")
 
             # Create specific guidance based on the tool
             if tool_name == "view_file":
@@ -448,9 +443,9 @@ class ContextManager:
 
 The file appears to be too large or the output is being truncated. Please try a different approach:
 1. View a specific section using line numbers (e.g., view_range: [1000, 1200])
-2. Search for specific content using grep or find
-3. Look at the file structure first with list_directory
-4. Check if there's a more specific file related to your task
+2. Search for specific content with codebase_search
+3. Inspect the repository structure with repo_tree
+4. Inspect related imports with connected_tree
 
 DO NOT repeat the same view_file command. Think of an alternative strategy."""
             else:
@@ -463,7 +458,7 @@ This suggests the current approach isn't working. Please:
 4. Consider if you're looking in the wrong place
 
 DO NOT repeat the same command. Think of an alternative strategy."""
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             LOG.debug(f"Failed to parse repeated call for specific guidance: {e}")
             intervention = f"""SYSTEM INTERVENTION: Loop detected! You have repeated the same command {loop_info["total_repetitions"]} times.
 

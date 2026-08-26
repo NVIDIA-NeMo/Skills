@@ -41,12 +41,11 @@ prompts, and optional SWE-bench scoring. It adds no code to `nemo_skills/`.
 
 ## What is here
 
-```
+```text
 recipes/sherloc/
 ├── inference/sherloc.py                    SherlocGenerationTask: the exploration loop
 ├── inference/sherloc_utils/                repository view, tools, dialogue, context, patches
 ├── prompt/eval/sherloc/system.yaml         the localization prompt
-├── prompt/generic/sherloc.yaml             locations-only variant, without the findings block
 ├── dataset/swe-bench-{lite,verified}/      optional SWE-bench prepare scripts
 ├── evaluation/sherloc.py                   scores predicted locations against the gold patch
 ├── metrics/sherloc.py                      SherlocMetrics: Accuracy@1, Recall@1, chunk coverage
@@ -158,7 +157,7 @@ Each output line is the input record plus:
 
 The model answers with a `<findings>` block (free-form diagnosis) followed by a `<locations>` block:
 
-```
+```text
 <findings>
 - Root cause: make_key() omits the active locale, so entries written under one
   locale are served under another.
@@ -172,11 +171,7 @@ src/mypkg/locale.py:L44
 
 `<locations>` is parsed into structured fields and `<findings>` is stored as the block text.
 Both `path:L<start>-L<end>` and single `path:L<line>` forms are accepted; a line matching
-neither is preserved verbatim under `raw`. The locations-only prompt omits `<findings>`, so
-that field is then `null`.
-
-`prompt/generic/sherloc.yaml` is the same protocol without the `<findings>`
-block — select it with `++prompt_config=recipes/sherloc/prompt/generic/sherloc.yaml`.
+neither is preserved verbatim under `raw`. If the model omits `<findings>`, that field is `null`.
 
 ## Scoring on SWE-bench (optional)
 
@@ -235,7 +230,7 @@ pytest recipes/sherloc/tests/
 
 Please use the following citation:
 
-```
+```bibtex
 @inproceedings{tamoyan-etal-2026-sherloc,
     title = "{SHERLOC}: Structured Diagnostic Localization for Code Repair Agents",
     author = "Tamoyan, Hovhannes  and

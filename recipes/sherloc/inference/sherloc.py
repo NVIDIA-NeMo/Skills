@@ -74,6 +74,11 @@ from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig,
 from nemo_skills.inference.model import server_params
 from nemo_skills.utils import get_help_message, get_logger_name, nested_dataclass, parse_reasoning, setup_logging
 from recipes.sherloc.inference.sherloc_utils.context_manager import ContextManager
+from recipes.sherloc.inference.sherloc_utils.defaults import (
+    DEFAULT_COMMON_WORDS_FILTER,
+    DEFAULT_EXCLUDE_DIRS,
+    DEFAULT_FILE_EXTENSIONS,
+)
 from recipes.sherloc.inference.sherloc_utils.dialog_processor import DialogProcessor
 from recipes.sherloc.inference.sherloc_utils.patch_processor import PatchProcessor
 from recipes.sherloc.inference.sherloc_utils.repo_manager import RepoManager
@@ -154,136 +159,12 @@ class SherlocGenerationConfig(GenerationTaskConfig):
     total_steps: int = 20
 
     # Repository filtering settings
-    file_extensions: list = field(default_factory=lambda: ["py", "cfg"])
-    exclude_dirs: list = field(
-        default_factory=lambda: [
-            "test",
-            "tests",
-            "testing",
-            "test_",
-            "_test",
-            "__pycache__",
-            ".git",
-            ".github",
-            "docs",
-            "examples",
-            "scripts",
-            "tools",
-            "venv",
-            "env",
-            "node_modules",
-            "dist",
-            "build",
-            "target",
-            "bin",
-            "obj",
-            "coverage",
-            ".pytest_cache",
-            ".tox",
-            ".mypy_cache",
-            "locale",
-            "translations",
-            "i18n",
-            "l10n",
-            "static",
-            "assets",
-            "media",
-            "uploads",
-            "logs",
-            "tmp",
-            "temp",
-            "vendor",
-            "libs",
-            "dependencies",
-            "settings",
-            "local_settings",
-            "fixtures",
-            "data",
-            "datasets",
-            "notebooks",
-            "jupyter",
-            "ipynb_checkpoints",
-            "deploy",
-            "deployment",
-            "docker",
-            "kubernetes",
-            "ci",
-            "cd",
-            "github",
-            "gitlab",
-            "bitbucket",
-            "readme",
-            "license",
-            "changelog",
-            "contributing",
-        ]
-    )
+    file_extensions: list = field(default_factory=lambda: list(DEFAULT_FILE_EXTENSIONS))
+    exclude_dirs: list = field(default_factory=lambda: list(DEFAULT_EXCLUDE_DIRS))
 
     # Tool detection settings
     enable_implicit_tool_detection: bool = True
-    common_words_filter: list = field(
-        default_factory=lambda: [
-            "the",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "is",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "have",
-            "has",
-            "had",
-            "do",
-            "does",
-            "did",
-            "will",
-            "would",
-            "could",
-            "should",
-            "may",
-            "might",
-            "can",
-            "this",
-            "that",
-            "these",
-            "those",
-            "a",
-            "an",
-            "as",
-            "if",
-            "then",
-            "else",
-            "when",
-            "where",
-            "why",
-            "how",
-            "what",
-            "which",
-            "who",
-            "whom",
-            "whose",
-            "need",
-            "find",
-            "search",
-            "look",
-            "function",
-            "class",
-            "method",
-            "variable",
-            "query",
-        ]
-    )
+    common_words_filter: list = field(default_factory=lambda: list(DEFAULT_COMMON_WORDS_FILTER))
 
     max_seq_length: int = 262144
     show_line_counts: bool = False
@@ -319,7 +200,8 @@ class SherlocGenerationTask(GenerationTask):
 
     def __init__(self, cfg: SherlocGenerationConfig):
         super().__init__(cfg)
-        self.tool_executor = ToolExecutor(cfg)
+        tokenizer = self.prompt.tokenizer if self.prompt else None
+        self.tool_executor = ToolExecutor(cfg, tokenizer)
 
     def log_example_prompt(self, data):
         # The first prompt embeds an entire repository tree, which is not useful as a log sample.
@@ -546,15 +428,16 @@ class SherlocGenerationTask(GenerationTask):
                     # Keep the opening turn (problem statement plus repository tree) and the most
                     # recent turns, dropping the middle of the dialogue when the budget is tight.
                     log_debug("Using first-and-recent truncation strategy", indent=8)
+                    safe_max = int(self.cfg.max_seq_length * self.cfg.context_safety_margin)
 
                     preview = ContextManager.get_truncation_preview(
-                        data_point["turns"], self.cfg.max_seq_length, self.cfg.inference.tokens_to_generate
+                        data_point["turns"], safe_max, self.cfg.inference.tokens_to_generate
                     )
                     if "No truncation needed" not in preview:
                         log_debug(f"Truncation preview:\n{preview}", indent=12)
 
                     data_point["turns"], truncation_stats = ContextManager.first_and_recent_truncate(
-                        data_point["turns"], self.cfg.max_seq_length, self.cfg.inference.tokens_to_generate
+                        data_point["turns"], safe_max, self.cfg.inference.tokens_to_generate
                     )
 
                     if truncation_stats["removed_turns"] > 0:
@@ -746,6 +629,9 @@ class SherlocGenerationTask(GenerationTask):
                         status = "failed"
                         reason = f"bad_request_error: {str(e)}"
                         break
+
+                if status == "failed":
+                    break
 
                 total_generated_tokens += actual_generated_tokens
 

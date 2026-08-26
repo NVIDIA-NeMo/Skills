@@ -113,8 +113,12 @@ def test_reset_clears_state():
 
 def test_get_incorrect_sample_scores_zero():
     metrics = SherlocMetrics()
-    metrics.update([SherlocMetrics.get_incorrect_sample({})])
+    incorrect = SherlocMetrics.get_incorrect_sample(_make_prediction(1.0, gt_count=2))
+    metrics.update([incorrect])
     result = metrics.get_metrics()["pass@1"]
+    assert result["samples_no_gt"] == 0
+    assert result["samples_with_gt"] == 1
+    assert result["total_gt_locs"] == 2
     assert result["file_recall"] == 0.0
     assert result["chunk_coverage_recall"] == 0.0
 

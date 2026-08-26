@@ -44,9 +44,10 @@ keys are then scaled to percentages:
 * ``chunk_coverage_recall`` - mean fraction of gold hunks fully enclosed by some predicted
   line range in the same file.
 * ``chunk_precision`` - mean fraction of predicted ranges that enclose at least one gold hunk.
-* ``chunk_avg_tightness`` - mean ratio of gold-hunk length to the length of the tightest
-  enclosing prediction, averaged over enclosed hunks only. 100% means predictions matched the
-  gold ranges exactly; lower values mean they were padded with surrounding context.
+* ``chunk_avg_tightness`` - mean of the per-instance tightness scores. Within each instance,
+  tightness is the mean ratio of gold-hunk length to the tightest enclosing prediction over
+  enclosed hunks; an instance with no enclosed hunk contributes 0. 100% means predictions
+  matched the gold ranges exactly; lower values mean misses or padded ranges.
 
 The ``@1`` in the paper's metric names refers to a single generation per instance, i.e. the
 ``pass@1`` aggregation mode.
@@ -112,25 +113,29 @@ class SherlocMetrics(BaseMetrics):
         Used by length-based filtering to grade an over-long generation as incorrect without
         re-running the evaluator on it.
         """
-        return {
-            "eval_status": [
-                {
-                    "file_level": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "exact_match": 0.0, "accuracy": 0.0},
-                    "chunk_containment": {
-                        "coverage_recall": 0.0,
-                        "avg_prediction_tightness": 0.0,
-                        "precision": 0.0,
-                        "covered_chunks": 0,
-                        "total_chunks": 0,
-                        "useful_predictions": 0,
-                        "total_predictions": 0,
-                    },
-                    "ground_truth_count": 0,
-                    "predicted_count": 0,
-                    "is_failed_sample": True,
-                }
-            ]
-        }
+        original_eval = prediction["eval_status"][0]
+        incorrect = prediction.copy()
+        incorrect["eval_status"] = [
+            {
+                "file_level": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "exact_match": 0.0, "accuracy": 0.0},
+                "chunk_containment": {
+                    "coverage_recall": 0.0,
+                    "avg_prediction_tightness": 0.0,
+                    "precision": 0.0,
+                    "covered_chunks": 0,
+                    "total_chunks": original_eval["ground_truth_count"],
+                    "useful_predictions": 0,
+                    "total_predictions": 0,
+                },
+                "ground_truth_locations": original_eval.get("ground_truth_locations", []),
+                "ground_truth_count": original_eval["ground_truth_count"],
+                "predicted_count": 0,
+                "ground_truth_files": original_eval.get("ground_truth_files", []),
+                "predicted_files": [],
+                "is_failed_sample": True,
+            }
+        ]
+        return incorrect
 
     def update(self, predictions):
         """Accumulate the scores of one instance, given as its list of generations."""
@@ -203,39 +208,23 @@ class SherlocMetrics(BaseMetrics):
         """Average a list of per-instance score dictionaries entry by entry.
 
         The set of keys to average is inferred from the first dictionary, so the same helper
-        serves the file-level, chunk-containment and line-level score shapes. Each average is
+        serves the file-level and chunk-containment score shapes. Each average is
         taken over the entries that actually carry the key, and the result stays in ``[0, 1]``
         (``get_metrics`` scales it to a percentage).
         """
         if not metrics_list:
             return {}
 
-        aggregate = {}
-
-        # File-level score keys.
-        file_metric_names = ["precision", "recall", "f1", "exact_match", "accuracy"]
-
-        # Chunk-containment score keys.
-        chunk_metric_names = ["coverage_recall", "avg_prediction_tightness", "precision"]
-
         # Infer which score shape this list holds from a marker key of the first entry.
-        if metrics_list and len(metrics_list) > 0:
-            first_item = metrics_list[0]
-            if "accuracy" in first_item:
-                # File-level scores.
-                for metric in file_metric_names:
-                    values = [m.get(metric, 0.0) for m in metrics_list if metric in m]
-                    aggregate[metric] = sum(values) / len(values) if values else 0.0
-            elif "coverage_recall" in first_item:
-                # Chunk-containment scores.
-                for metric in chunk_metric_names:
-                    values = [m.get(metric, 0.0) for m in metrics_list if metric in m]
-                    aggregate[metric] = sum(values) / len(values) if values else 0.0
-            else:
-                # Any other score shape.
-                for metric in ["precision", "recall", "f1", "exact_match"]:
-                    values = [m.get(metric, 0.0) for m in metrics_list if metric in m]
-                    aggregate[metric] = sum(values) / len(values) if values else 0.0
+        if "coverage_recall" in metrics_list[0]:
+            metric_names = ["coverage_recall", "avg_prediction_tightness", "precision"]
+        else:
+            metric_names = ["precision", "recall", "f1", "exact_match", "accuracy"]
+
+        aggregate = {}
+        for metric in metric_names:
+            values = [metrics[metric] for metrics in metrics_list if metric in metrics]
+            aggregate[metric] = sum(values) / len(values) if values else 0.0
         return aggregate
 
     def reset(self):

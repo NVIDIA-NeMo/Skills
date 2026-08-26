@@ -88,6 +88,8 @@ class PatchProcessor:
                 # Defensive: the --- and +++ branches above already resolve /dev/null
                 if current_file == "/dev/null":
                     continue
+                if line == r"\ No newline at end of file":
+                    continue
 
                 # Track changes in original file
                 if line.startswith("-") and not line.startswith("---"):
@@ -117,7 +119,11 @@ class PatchProcessor:
                             )
                     else:
                         # For existing files, track where the addition would be inserted
-                        if not locations or locations[-1]["end_line"] != original_line - 1:
+                        if (
+                            not locations
+                            or locations[-1]["file_path"] != current_file
+                            or locations[-1]["end_line"] != original_line - 1
+                        ):
                             # Pure addition at current position in original
                             locations.append(
                                 {

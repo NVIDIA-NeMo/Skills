@@ -395,7 +395,11 @@ class DialogProcessor:
         # Use unified tag extraction
         locations_text = DialogProcessor._extract_tag_content(dialog_text, "locations")
         if not locations_text:
-            return {"type": "locations", "locations": []}
+            return {
+                "type": "locations",
+                "locations": [],
+                "findings": DialogProcessor.extract_findings(dialog_text),
+            }
 
         # Parse location lines
         locations = []
@@ -464,22 +468,9 @@ class DialogProcessor:
                     json_str = json_str.replace("\\", "")
                     tool_data = json.loads(json_str)
 
-                    # Determine tool type based on content
-                    if "path" in tool_data:
-                        tool_data["tool"] = "view_file"
-                        # Add view_range if not present
-                        if "view_range" not in tool_data:
-                            tool_data["view_range"] = None
-                    elif "query" in tool_data:
-                        tool_data["tool"] = "codebase_search"
-                        # Check if query is empty or whitespace
-                        if not tool_data.get("query", "").strip():
-                            LOG.warning("Empty query in codebase_search tool call")
-                            return None
-                    elif "repo_tree" in tool_data or len(tool_data) == 0:
-                        tool_data["tool"] = "repo_tree"
-                    else:
-                        tool_data["tool"] = "unknown"
+                    # This pattern requires a path, so it always represents a file view.
+                    tool_data["tool"] = "view_file"
+                    tool_data.setdefault("view_range", None)
                     LOG.info(f"Found JSON tool call after </think>: {tool_data}")
                     return {"type": "tool_calls", "tool_call": tool_data}
                 except json.JSONDecodeError as e:

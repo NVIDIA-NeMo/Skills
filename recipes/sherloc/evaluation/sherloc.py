@@ -55,11 +55,9 @@ class SherlocEvaluatorConfig:
     """Configuration for the SHERLOC evaluator.
 
     Attributes:
-        timeout: Reserved per-instance time budget, in seconds.
         num_parallel_requests: Size of the thread pool used to score instances concurrently.
     """
 
-    timeout: float = 30.0
     num_parallel_requests: int = 20
 
 
@@ -114,14 +112,8 @@ def evaluate_file_level_accuracy(
 
     # "accuracy" is the Jaccard index (intersection over union) of the two file sets, which
     # degrades gracefully when a prediction is a superset or subset of the gold files.
-    if len(ground_truth_files) == 0 and len(predicted_files) == 0:
-        accuracy = 1.0  # Both sets empty.
-    elif len(ground_truth_files.union(predicted_files)) == 0:
-        accuracy = 0.0  # Unreachable given the guards above; kept as a safeguard.
-    else:
-        accuracy = len(ground_truth_files.intersection(predicted_files)) / len(
-            ground_truth_files.union(predicted_files)
-        )
+    union = ground_truth_files | predicted_files
+    accuracy = len(ground_truth_files & predicted_files) / len(union) if union else 1.0
 
     return {"precision": precision, "recall": recall, "f1": f1, "exact_match": exact_match, "accuracy": accuracy}
 
@@ -201,47 +193,7 @@ def evaluate_chunk_containment_metrics(
         * ``partial_covered_chunks``, ``near_miss_chunks``, ``all_matched_chunks``,
           ``partial_useful_predictions``: the corresponding counts.
     """
-    if not ground_truth_locations and not predicted_locations:
-        return {
-            # Strict containment metrics.
-            "coverage_recall": 0.0,
-            "avg_prediction_tightness": 0.0,
-            "precision": 0.0,
-            "covered_chunks": 0,
-            "total_chunks": 0,
-            "useful_predictions": 0,
-            "total_predictions": 0,
-            # Overlap-based metrics.
-            "overlap_recall": 0.0,
-            "avg_overlap_score": 0.0,
-            "partial_precision": 0.0,
-            "partial_covered_chunks": 0,
-            "near_miss_chunks": 0,
-            "all_matched_chunks": 0,
-            "partial_useful_predictions": 0,
-        }
-
-    if not ground_truth_locations:
-        return {
-            # Strict containment metrics.
-            "coverage_recall": 0.0,
-            "avg_prediction_tightness": 0.0,
-            "precision": 0.0,
-            "covered_chunks": 0,
-            "total_chunks": 0,
-            "useful_predictions": 0,
-            "total_predictions": len(predicted_locations),
-            # Overlap-based metrics.
-            "overlap_recall": 0.0,
-            "avg_overlap_score": 0.0,
-            "partial_precision": 0.0,
-            "partial_covered_chunks": 0,
-            "near_miss_chunks": 0,
-            "all_matched_chunks": 0,
-            "partial_useful_predictions": 0,
-        }
-
-    if not predicted_locations:
+    if not ground_truth_locations or not predicted_locations:
         return {
             # Strict containment metrics.
             "coverage_recall": 0.0,
@@ -250,7 +202,7 @@ def evaluate_chunk_containment_metrics(
             "covered_chunks": 0,
             "total_chunks": len(ground_truth_locations),
             "useful_predictions": 0,
-            "total_predictions": 0,
+            "total_predictions": len(predicted_locations),
             # Overlap-based metrics.
             "overlap_recall": 0.0,
             "avg_overlap_score": 0.0,
@@ -284,6 +236,7 @@ def evaluate_chunk_containment_metrics(
         found_coverage = False
         found_partial = False
         found_near_miss = False
+        near_miss_pred_indices = set()
 
         for pred_idx, pred_loc in enumerate(predicted_locations):
             if "file_path" not in pred_loc or "start_line" not in pred_loc or "end_line" not in pred_loc:
@@ -320,13 +273,13 @@ def evaluate_chunk_containment_metrics(
                     best_overlap = overlap_ratio
 
             # Degree 3: close to the gold boundaries without enough overlap.
-            elif not found_partial and not found_coverage:
+            else:
                 start_distance = abs(pred_start - gt_start)
                 end_distance = abs(pred_end - gt_end)
 
                 if start_distance <= near_miss_tolerance or end_distance <= near_miss_tolerance:
                     found_near_miss = True
-                    partial_useful_pred_indices.add(pred_idx)
+                    near_miss_pred_indices.add(pred_idx)
 
                     # Score the near miss by how close it came.
                     if overlap_ratio > 0:
@@ -349,6 +302,7 @@ def evaluate_chunk_containment_metrics(
             overlap_scores.append(best_overlap)
         elif found_near_miss:
             near_miss_gt_indices.add(gt_idx)
+            partial_useful_pred_indices.update(near_miss_pred_indices)
             overlap_scores.append(best_overlap)
 
     # Denominators count only locations that carry a full file path and line range.
@@ -395,7 +349,7 @@ def evaluate_chunk_containment_metrics(
 
 def _execute_single_test(args):
     """Score one instance. Runs on a worker thread of the evaluator's thread pool."""
-    eval_config, elem_idx, ground_truth_locations, locations = args
+    elem_idx, ground_truth_locations, locations = args
 
     file_level_metrics = evaluate_file_level_accuracy(ground_truth_locations, locations)
     chunk_containment_metrics = evaluate_chunk_containment_metrics(ground_truth_locations, locations)
@@ -511,6 +465,7 @@ def eval_metrics(eval_config, sherloc_data):
                 "skip_reason": elem.get("reason", "unknown"),
             }
             status_lists[elem_idx].append(skip_metrics)
+            continue
         elif elem["status"] != "success":
             failed_samples += 1
             # Failed instances score zero, but still report their gold-location counts.
@@ -544,7 +499,7 @@ def eval_metrics(eval_config, sherloc_data):
             continue
         successful_samples += 1
         ground_truth_locations = PatchProcessor.extract_locations_from_patch(elem["patch"])
-        tasks.append((eval_config, elem_idx, ground_truth_locations, elem["locations"]))
+        tasks.append((elem_idx, ground_truth_locations, elem["locations"]))
 
     # Summarise how much of the ground truth survived pruning across the whole file.
     ground_truth_stats = {}

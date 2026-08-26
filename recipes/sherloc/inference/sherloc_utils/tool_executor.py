@@ -23,16 +23,15 @@ free of side effects. Four tools are exposed:
 * ``connected_tree`` prints intra-project import dependencies
 * ``codebase_search`` prints context windows around literal matches
 
-Every tool returns its rendered output together with the tiktoken count of that
-output, so the dialogue's context budget is tracked with measured token counts
-rather than estimates. Failures are returned as text for the model to read
-rather than raised, so a bad tool call costs a turn instead of the trajectory.
+Every tool returns its rendered output together with a token count. The served
+model's tokenizer is used when available; otherwise the same four-characters-
+per-token estimate as the initial repository prompt is used. Failures are
+returned as text for the model to read rather than raised, so a bad tool call
+costs a turn instead of the trajectory.
 """
 
 import logging
 from typing import Tuple
-
-import tiktoken
 
 from nemo_skills.utils import get_logger_name
 from recipes.sherloc.inference.sherloc_utils.repo_manager import RepoManager
@@ -43,31 +42,24 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class ToolExecutor:
     """Handles tool execution for the assistant against a nested dictionary representation of a repository."""
 
-    def __init__(self, cfg=None):
+    def __init__(self, cfg, tokenizer=None):
         """Create an executor bound to a generation config.
 
         Args:
-            cfg: Generation config. ``model`` selects the tiktoken encoding used
-                to measure tool output, ``max_view_lines`` caps the view_file
-                output, and ``show_line_counts`` controls tree rendering.
+            cfg: Generation config. ``max_view_lines`` caps the view_file output,
+                and ``show_line_counts`` controls tree rendering.
+            tokenizer: Tokenizer used to count tool output when available.
         """
         self.cfg = cfg
-        # Initialize tiktoken for counting tokens in tool outputs
-        try:
-            # Try to get encoding for the specific model
-            model_name = getattr(cfg, "model", "gpt-4") if cfg else "gpt-4"
-            self.encoding = tiktoken.encoding_for_model(model_name)
-            LOG.info(f"Using tiktoken for model: {model_name}")
-        except Exception as e:
-            LOG.warning(f"Failed to get tiktoken encoding: {e}, using cl100k_base")
-            # Fall back to cl100k_base encoding (used by GPT-4 and most modern models)
-            self.encoding = tiktoken.get_encoding("cl100k_base")
+        self.tokenizer = tokenizer
 
     def _count_tokens(self, text: str) -> int:
-        """Count tokens in text using tiktoken."""
+        """Count tokens with the model tokenizer, or estimate when unavailable."""
         if not text:
             return 0
-        return len(self.encoding.encode(text))
+        if self.tokenizer is not None:
+            return len(self.tokenizer.encode(text, add_special_tokens=False))
+        return len(text) // 4
 
     def execute_tool(self, extracted_block: dict, repo_dict: dict) -> Tuple[str, int]:
         """Execute a parsed tool call against the repository snapshot.
@@ -170,6 +162,7 @@ class ToolExecutor:
     def _execute_view_tool(self, extracted_block: dict, repo_dict: dict) -> Tuple[str, int]:
         """Execute the view tool to show file contents from the dictionary."""
         try:
+            max_lines = self.cfg.max_view_lines
             file_path = extracted_block.get("path", "")
             if not file_path:
                 error_msg = "Error: No file path provided for the 'view' tool."
@@ -207,7 +200,11 @@ class ToolExecutor:
                 start_line, end_line = 1, len(lines)
                 LOG.info(f"Showing entire file ({len(lines)} lines)")
             else:
-                if not isinstance(view_range, list) or len(view_range) != 2:
+                if (
+                    not isinstance(view_range, list)
+                    or len(view_range) != 2
+                    or not all(isinstance(line_number, int) for line_number in view_range)
+                ):
                     LOG.error(f"Invalid view_range format: {view_range}. Expected [start, end] or [start, -1]")
                     error_msg = (
                         f"Error: Invalid view_range format. Expected [start, end] or [start, -1], got {view_range}"
@@ -233,7 +230,6 @@ class ToolExecutor:
                 error_msg += "=" * 80 + "\n"
 
                 # Show entire file with line numbers
-                max_lines = self.cfg.max_view_lines if self.cfg and hasattr(self.cfg, "max_view_lines") else 1000
                 if max_lines > 0 and len(lines) > max_lines:
                     # Truncate if file is too large
                     result_lines = [f"{i + 1:4d}: {lines[i]}" for i in range(max_lines)]
@@ -246,7 +242,6 @@ class ToolExecutor:
                 return error_msg, self._count_tokens(error_msg)
 
             # Check if file content needs truncation
-            max_lines = self.cfg.max_view_lines if self.cfg and hasattr(self.cfg, "max_view_lines") else 1000
             total_lines_to_show = end_line - start_line + 1
             truncated = False
             truncation_message = ""
@@ -269,7 +264,7 @@ class ToolExecutor:
             file_content = file_header + truncation_message + "\n" + "\n".join(result_lines)
             return file_content, self._count_tokens(file_content)
 
-        except Exception as e:
+        except (IndexError, TypeError) as e:
             LOG.error(f"Error executing view tool: {str(e)}")
             error_msg = f"Error executing view tool: {str(e)}"
             return error_msg, self._count_tokens(error_msg)
@@ -377,7 +372,7 @@ class ToolExecutor:
                         # The -total_matches_in_file is used to sort results by relevance (most matches first)
                         results.append((-total_matches_in_file, "\n".join(file_result_parts)))
 
-            search_recursive(repo_dict, "")
+            search_recursive(repo_dict["structure"], "")
 
             # Sort results by match count (descending), then by file path (ascending)
             results.sort()

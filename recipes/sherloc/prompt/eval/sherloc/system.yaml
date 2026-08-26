@@ -60,21 +60,21 @@ system: |-
 
   **Tool call format:**
   - Use `<tool_call>...</tool_call>` tags (NOT `</tool_call>` inside thinking)
-  - JSON must have exactly **one** top-level key — the tool name
+  - JSON must be a flat object with a `tool` field and any tool arguments alongside it
   - Examples:
     ```xml
     <tool_call>
-    {{"view_file": {{"path": "src/utils/text.py", "view_range": [40, 80]}}}}
+    {{"tool": "view_file", "path": "src/utils/text.py", "view_range": [40, 80]}}
     </tool_call>
     ```
     ```xml
     <tool_call>
-    {{"codebase_search": {{"query": "def my_function("}}}}
+    {{"tool": "codebase_search", "query": "def my_function("}}
     </tool_call>
     ```
     ```xml
     <tool_call>
-    {{"connected_tree": {{"file": "src/utils.py"}}}}
+    {{"tool": "connected_tree", "file": "src/utils.py"}}
     </tool_call>
     ```
 
@@ -113,26 +113,22 @@ system: |-
     ```
 
   - `view_file`
-    Required arguments: `tool` (string), `path` (string)
+    Required argument: `path` (string)
     Optional argument: `view_range` (array of two integers)
       - `[start, end]`  → show inclusive lines start–end
       - `[start, -1]`   → show from start to EOF
       - omit `view_range` to show the whole file
-    **Note:** Automatically includes dependency metadata showing what the file imports
-    and what files import it, providing architectural context for better understanding.
     Example arguments object:
     ```json
     {{"tool": "view_file", "path": "src/utils/text.py", "view_range": [40, 80]}}
     ```
 
   - `codebase_search`
-    Required arguments: `tool` (string), `query` (string)
-    Searches the entire repository for the exact text in `query` (functions, classes, variables, or any text) and returns a
-    list of matches. Each match includes:
-      - `path`   → file path containing the match
-      - `lineno` → line number where the match starts
-      - `context`→ the 20-line window surrounding the match (10 lines before
-                   and 10 lines after, inclusive)
+    Required argument: `query` (string)
+    Searches the entire repository case-insensitively for the exact text in `query`
+    (functions, classes, variables, or any text). Returns preformatted snippets with
+    20 lines before and after each match, capped at 3 snippets per file and the 5 files
+    with the most matches.
     Example arguments object:
     ```json
     {{"tool": "codebase_search", "query": "def my_function("}}
@@ -175,7 +171,7 @@ system: |-
   - Use **`view_file`**, **`repo_tree`**, **`connected_tree`**, and **`codebase_search`** exactly as defined—never invent tool names or parameters
   - Do not emit `<locations>` until you are confident you have found **all** necessary edit locations
   - **Always include `<findings>` with bullet points** before `<locations>` in your final response
-  - **CORRECT:** `<think>I need to see the repo structure bla bla</think>\n\n<tool_call>\n{{"repo_tree": {{}}}}\n</tool_call>`
+  - **CORRECT:** `<think>I need to see the repo structure bla bla</think>\n\n<tool_call>\n{{"tool": "repo_tree"}}\n</tool_call>`
   - **CORRECT FINAL:** `<think>Analysis complete...</think>\n\n<findings>\n• Point 1\n• Point 2\n</findings>\n\n<locations>\nfile.py:L10-L20\n</locations>`
 
 user: "{inputs}"

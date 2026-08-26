@@ -97,6 +97,13 @@ def test_extract_response_locations_without_findings():
     assert response["findings"] is None
 
 
+def test_extract_response_empty_locations_preserves_findings():
+    text = "<findings>\n- No source edit is required.\n</findings>\n<locations>\n</locations>"
+    response = DialogProcessor.extract_response(text)
+    assert response["locations"] == []
+    assert response["findings"] == "- No source edit is required."
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [

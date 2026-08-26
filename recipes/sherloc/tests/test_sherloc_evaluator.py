@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import SimpleNamespace
+
 import pytest
 
 from recipes.sherloc.evaluation.sherloc import (
     calculate_line_overlap,
+    eval_metrics,
     evaluate_chunk_containment_metrics,
     evaluate_file_level_accuracy,
 )
@@ -133,3 +136,35 @@ def test_chunk_tightness_is_conditioned_on_covered_chunks():
     scores = evaluate_chunk_containment_metrics(gold, [_loc("a.py", 10, 20)])
     assert scores["coverage_recall"] == pytest.approx(1 / 3)
     assert scores["avg_prediction_tightness"] == 1.0
+
+
+def test_near_miss_precision_is_prediction_order_independent():
+    gold = [_loc("a.py", 10, 20)]
+    near_miss = _loc("a.py", 9, 15)
+    containing = _loc("a.py", 10, 20)
+
+    near_first = evaluate_chunk_containment_metrics(gold, [near_miss, containing])
+    containing_first = evaluate_chunk_containment_metrics(gold, [containing, near_miss])
+
+    assert near_first["partial_precision"] == 0.5
+    assert containing_first["partial_precision"] == 0.5
+
+
+def test_skipped_sample_is_not_scored_as_success():
+    patch = "\n".join(
+        [
+            "--- a/pkg/cache.py",
+            "+++ b/pkg/cache.py",
+            "@@ -1 +1 @@",
+            "-old",
+            "+new",
+        ]
+    )
+    sample = {"status": "skipped", "reason": "empty_problem_statement", "patch": patch}
+
+    status_lists, stats = eval_metrics(SimpleNamespace(num_parallel_requests=1), [sample])
+
+    assert len(status_lists[0]) == 1
+    assert status_lists[0][0]["is_skipped_sample"] is True
+    assert stats["skipped_samples"] == 1
+    assert stats["successful_samples"] == 0
