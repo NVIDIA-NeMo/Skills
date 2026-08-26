@@ -386,7 +386,7 @@ class SweBenchGenerationTask(GenerationTask):
         setup_commands.append(
             # install uv
             "curl -Lf https://astral.sh/uv/install.sh | sh && "
-            "source /root/.local/bin/env && "
+            "export PATH=/root/.local/bin:$PATH && "
             # tell uv to store its data in /root/uv
             "export UV_PYTHON_INSTALL_DIR=/root/uv/python && "
             "export UV_TOOL_DIR=/root/uv/tool && "
