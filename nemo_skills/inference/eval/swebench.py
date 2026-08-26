@@ -812,6 +812,7 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.multilingual:
             extra_fields["language"] = data_point["language"]
 
+        problem_statement = self._get_agent_problem_statement(data_point)
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
@@ -830,7 +831,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"    --env.repo.type preexisting "
             f"    --env.repo.repo_name testbed "
             f"    --env.repo.base_commit {data_point['base_commit']} "
-            f"    --problem_statement.text {shlex.quote(data_point['problem_statement'])} "
+            f"    --problem_statement.text {shlex.quote(problem_statement)} "
             f"    --problem_statement.id {data_point['instance_id']} "
             f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
             # move trajectories to the mounted directory
@@ -905,6 +906,7 @@ class SweBenchGenerationTask(GenerationTask):
         with open(host_tmp_path, "w") as f:
             yaml.dump(full_config, f)
 
+        problem_statement = self._get_agent_problem_statement(data_point)
         try:
             mini_swe_agent_cmd = (
                 "cp -r /root_mount/mini-swe-agent /root && "
@@ -915,7 +917,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
-                f"--task {shlex.quote(data_point['problem_statement'])} "
+                f"--task {shlex.quote(problem_statement)} "
                 f"--output trajectories/{data_point['instance_id']}.traj.json "
                 f"--yolo "
                 f"--exit-immediately && "
@@ -1015,6 +1017,16 @@ class SweBenchGenerationTask(GenerationTask):
                 f" train "  # dataset split (always "train" for local datasets)
             )
 
+        instruction_template = self._get_openhands_instruction_template()
+        instruction_template_setup = ""
+        if instruction_template is not None:
+            instruction_template_setup = (
+                f"cp {shlex.quote(instruction_template)} "
+                "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 && "
+                f"cp {shlex.quote(instruction_template)} "
+                "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 && "
+            )
+
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -1030,6 +1042,7 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/tmux /root && "
             "cp -r /root_mount/jq /root && "
             "cd /root/OpenHands && "
+            f"{instruction_template_setup}"
             # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
@@ -1087,6 +1100,14 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return pred_file
 
+    def _get_agent_problem_statement(self, data_point: dict) -> str:
+        """Return the benchmark problem passed to direct-prompt agent harnesses."""
+        return data_point["problem_statement"]
+
+    def _get_openhands_instruction_template(self) -> str | None:
+        """Return an optional replacement for OpenHands' user instruction template."""
+        return None
+
     async def _run_opencode(self, data_point):
         """
         Runs OpenCode on one instance.
@@ -1125,7 +1146,7 @@ class SweBenchGenerationTask(GenerationTask):
             tokens_to_generate=output_token_max,
         )
         config_json = json.dumps(opencode_config)
-        instruction = data_point["problem_statement"]
+        instruction = self._get_agent_problem_statement(data_point)
         instance_id = data_point["instance_id"]
         # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
         model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"

@@ -31,8 +31,13 @@ from nemo_skills.inference.eval.scale_swe_utils import (
     normalize_scale_swe_data_point,
     normalize_scale_swe_report,
 )
-from nemo_skills.inference.eval.swebench import SweBenchGenerationConfig, SweBenchGenerationTask
+from nemo_skills.inference.eval.swebench import (
+    SupportedAgentFrameworks,
+    SweBenchGenerationConfig,
+    SweBenchGenerationTask,
+)
 from nemo_skills.inference.model import server_params
+from nemo_skills.prompt.utils import get_config_path
 from nemo_skills.utils import get_help_message, get_logger_name, setup_logging
 
 LOG = logging.getLogger(get_logger_name(__file__))
@@ -47,6 +52,29 @@ import sys
 run_scale_swe_evaluation(sys.argv[1], sys.argv[2])
 """
 
+SCALE_SWE_USER_PROMPT = """\
+We are addressing the following issue in our repository. Please review the issue details below:
+
+--- BEGIN ISSUE ---
+{problem_statement}
+--- END ISSUE ---
+
+The repository is located at `{workspace_dir}`, and all your operations must be confined to this directory.
+"""
+
+_DEFAULT_AGENT_CONFIGS = {
+    SupportedAgentFrameworks.swe_agent: "eval/scale-swe/swe-agent/default",
+    SupportedAgentFrameworks.mini_swe_agent: "eval/scale-swe/mini-swe-agent/swebench",
+}
+
+
+def format_scale_swe_user_prompt(problem_statement: str, workspace_dir: str = "/testbed") -> str:
+    """Format the benchmark-level user message used by the official AweAgent recipe."""
+    return SCALE_SWE_USER_PROMPT.format(
+        problem_statement=problem_statement,
+        workspace_dir=workspace_dir,
+    )
+
 
 class ScaleSweGenerationTask(SweBenchGenerationTask):
     """Reuse SWE-bench agents, then grade with Scale-SWE's F2P/P2P protocol."""
@@ -57,12 +85,22 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
                 "Scale-SWE does not support swe_zero_container because native pre_commands and "
                 "the per-instance parent_commit are required for valid rollouts."
             )
+        if cfg.agent_config is None:
+            cfg.agent_config = _DEFAULT_AGENT_CONFIGS.get(cfg.agent_framework)
         super().__init__(cfg)
 
     @staticmethod
     def _normalize_data_point(data_point: dict) -> dict:
         """Map native Scale-SWE aliases onto fields expected by the shared launcher."""
         return normalize_scale_swe_data_point(data_point)
+
+    def _get_agent_problem_statement(self, data_point: dict) -> str:
+        """Return the official Scale-SWE user message for direct-prompt harnesses."""
+        return format_scale_swe_user_prompt(data_point.get("problem_statement", ""))
+
+    def _get_openhands_instruction_template(self) -> str:
+        """Return the Scale-SWE user template rendered by OpenHands."""
+        return get_config_path("eval/scale-swe/openhands/swe_default", config_extension="j2")
 
     async def _run_scale_swe_verifier(self, data_point: dict, model_patch: str) -> dict:
         instance_id = str(data_point["instance_id"])

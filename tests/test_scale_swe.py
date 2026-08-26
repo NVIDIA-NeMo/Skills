@@ -14,7 +14,9 @@
 
 import json
 import subprocess
+from pathlib import Path
 
+from nemo_skills.inference.eval.scale_swe import ScaleSweGenerationTask, format_scale_swe_user_prompt
 from nemo_skills.inference.eval.scale_swe_utils import (
     build_scale_swe_metrics,
     normalize_scale_swe_data_point,
@@ -24,6 +26,32 @@ from nemo_skills.inference.eval.scale_swe_utils import (
     parse_test_ids,
     run_scale_swe_evaluation,
 )
+
+
+def test_format_scale_swe_user_prompt_matches_official_recipe():
+    prompt = format_scale_swe_user_prompt("Fix the parser.")
+    assert prompt == (
+        "We are addressing the following issue in our repository. Please review the issue details below:\n\n"
+        "--- BEGIN ISSUE ---\n"
+        "Fix the parser.\n"
+        "--- END ISSUE ---\n\n"
+        "The repository is located at `/testbed`, and all your operations must be confined to this directory.\n"
+    )
+
+
+def test_scale_swe_formats_problem_statement_for_direct_prompt_harnesses():
+    task = object.__new__(ScaleSweGenerationTask)
+    prompt = task._get_agent_problem_statement({"problem_statement": "Fix the parser."})
+    assert "--- BEGIN ISSUE ---\nFix the parser.\n--- END ISSUE ---" in prompt
+    assert "`/testbed`" in prompt
+
+
+def test_openhands_uses_scale_swe_user_template():
+    task = object.__new__(ScaleSweGenerationTask)
+    template = Path(task._get_openhands_instruction_template()).read_text()
+    assert "We are addressing the following issue in our repository" in template
+    assert "/workspace/{{ workspace_dir_name }}" in template
+    assert "non-test files" not in template
 
 
 def test_normalize_data_point_uses_post_setup_head_and_native_image():
