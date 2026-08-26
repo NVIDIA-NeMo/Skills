@@ -74,6 +74,12 @@ NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
     }
 )
 
+# This instance can deadlock its Gradle daemon under ARM emulation. Bound the
+# failure cost without shortening verification for any other task.
+VERIFIER_TEST_TIMEOUT_OVERRIDES = {
+    "reactivex__rxjava-7597": 5 * 60,
+}
+
 
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
     """Merge *override* into *base* in place, recursing into nested dicts."""
@@ -1327,6 +1333,14 @@ class SweBenchGenerationTask(GenerationTask):
                 }
             }
         else:
+            tests_timeout = min(
+                self.cfg.swebench_tests_timeout,
+                VERIFIER_TEST_TIMEOUT_OVERRIDES.get(
+                    data_point["instance_id"],
+                    self.cfg.swebench_tests_timeout,
+                ),
+            )
+
             # Run full evaluation with streaming output
             if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
                 swe_bench_cmd = (
@@ -1353,7 +1367,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --predictions_path {pred_mounted_path} "
                     f"    --instance_ids {data_point['instance_id']} "
                     f"    --run_id eval-outputs "
-                    f"    --timeout {self.cfg.swebench_tests_timeout} "
+                    f"    --timeout {tests_timeout} "
                     f"    --dataset_name /input_mount/{Path(self.cfg.input_file).name} && "
                     f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
                 )
@@ -1367,7 +1381,7 @@ class SweBenchGenerationTask(GenerationTask):
                     swe_bench_cmd,
                     search_path,
                     mode="eval",
-                    timeout=self.cfg.swebench_tests_timeout + 120,
+                    timeout=tests_timeout + 120,
                 )
             except ValueError:
                 LOG.error("Failed to execute SWE-bench evaluation command for %s", data_point["instance_id"])
