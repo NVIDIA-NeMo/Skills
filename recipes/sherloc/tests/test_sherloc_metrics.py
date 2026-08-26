@@ -167,3 +167,14 @@ def test_processing_stats_are_the_only_source_for_run_counters():
     assert result["failed_samples"] == 0
     assert result["skipped_samples"] == 1
     assert result["success_rate"] == 50.0
+
+
+def test_processing_stats_require_all_counters():
+    prediction = _make_prediction(1.0)
+    prediction["processing_stats"] = {
+        "successful_samples": 1,
+        "failed_samples": 0,
+    }
+
+    with pytest.raises(KeyError, match="skipped_samples"):
+        SherlocMetrics().update([prediction])

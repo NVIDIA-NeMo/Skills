@@ -148,9 +148,9 @@ class SherlocMetrics(BaseMetrics):
         # processing counters when present.
         if predictions and "processing_stats" in predictions[0] and not self._processing_stats_loaded:
             processing_stats = predictions[0]["processing_stats"]
-            self.successful_samples = processing_stats.get("successful_samples", 0)
-            self.failed_samples = processing_stats.get("failed_samples", 0)
-            self.skipped_samples = processing_stats.get("skipped_samples", 0)
+            self.successful_samples = processing_stats["successful_samples"]
+            self.failed_samples = processing_stats["failed_samples"]
+            self.skipped_samples = processing_stats["skipped_samples"]
             self._processing_stats_loaded = True
 
         # Collect the per-instance scores that the aggregate averages are computed over.
