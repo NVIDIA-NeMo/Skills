@@ -14,6 +14,7 @@
 import enum
 import logging
 import os
+import shlex
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -172,7 +173,7 @@ def eval(
         help="Server address(es). CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     server_type: List[pipeline_utils.SupportedServers] = typer.Option(
-        ...,
+        None,
         help="Server type(s). CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     server_gpus: List[int] = typer.Option(
@@ -265,6 +266,14 @@ def eval(
     mount_paths: str = typer.Option(None, help="Comma separated list of paths to mount on the remote machine"),
     auto_summarize_results: bool = typer.Option(
         True, help="If True, will automatically launch summarize results tasks"
+    ),
+    evaluate_reference_answer: bool = typer.Option(
+        False,
+        help="If True, evaluate each benchmark's reference answer without running main model generation.",
+    ),
+    skip_judge: bool = typer.Option(
+        False,
+        help="If True, skip configured judge and scoring stages and keep generation-only outputs.",
     ),
     single_node_mode: SingleNodeMode = typer.Option(
         SingleNodeMode.parallel,
@@ -372,6 +381,30 @@ def eval(
     LOG.info("Starting evaluation job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
 
+    if skip_judge:
+        if evaluate_reference_answer:
+            raise ValueError("--skip_judge cannot be combined with --evaluate_reference_answer")
+        judge_options = {
+            "judge_step_fn": judge_step_fn,
+            "judge_model": judge_model,
+            "judge_server_address": judge_server_address,
+            "judge_server_type": judge_server_type,
+            "judge_server_gpus": judge_server_gpus,
+            "judge_server_nodes": judge_server_nodes,
+            "judge_server_args": judge_server_args,
+            "judge_server_entrypoint": judge_server_entrypoint,
+            "judge_generation_type": judge_generation_type,
+            "judge_generation_module": judge_generation_module,
+            "judge_container": judge_container,
+            "judge_server_container": judge_server_container,
+            "extra_judge_args": extra_judge_args,
+            "judge_pipeline_kwargs": judge_pipeline_kwargs,
+            "judge_sbatch_kwargs": judge_sbatch_kwargs,
+        }
+        conflicting_options = [name for name, value in judge_options.items() if value not in (None, "")]
+        if conflicting_options:
+            raise ValueError("--skip_judge cannot be combined with judge options: " + ", ".join(conflicting_options))
+
     # Convert server_type enum values to strings
     def convert_server_type_to_string(st):
         return st.value if hasattr(st, "value") else st
@@ -399,8 +432,33 @@ def eval(
     else:
         wandb_parameters = None
 
-    # Normalize model configuration to list
-    models_list = pipeline_utils.normalize_models_config(model)
+    # Reference-answer evaluation uses only the judge model, so there is no main model to normalize or host.
+    if evaluate_reference_answer:
+        unsupported_main_args = []
+        for arg_name, arg_value in (
+            ("model", model),
+            ("server_address", server_address),
+            ("server_type", server_type),
+            ("server_gpus", server_gpus),
+            ("server_entrypoint", server_entrypoint),
+            ("server_container", server_container),
+        ):
+            if arg_value is not None:
+                unsupported_main_args.append(arg_name)
+        if server_nodes not in (None, 1, [1]):
+            unsupported_main_args.append("server_nodes")
+        if any(server_args) if isinstance(server_args, list) else bool(server_args):
+            unsupported_main_args.append("server_args")
+        if unsupported_main_args:
+            raise ValueError(
+                "--evaluate-reference-answer does not use main model/server arguments: "
+                + ", ".join(unsupported_main_args)
+            )
+        models_list = []
+    else:
+        if server_type is None:
+            raise ValueError("Must specify --server-type")
+        models_list = pipeline_utils.normalize_models_config(model)
     num_models = len(models_list)
 
     LOG.info(f"Number of models: {num_models}")
@@ -477,6 +535,8 @@ def eval(
         generation_type=generation_type,
         generation_module=generation_module,
         extra_benchmark_map=extra_benchmark_map,
+        evaluate_reference_answer=evaluate_reference_answer,
+        skip_judge=skip_judge,
     )
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
@@ -485,13 +545,44 @@ def eval(
 
     has_tasks = False
     job_id_to_tasks = {}
+    benchmark_to_reference_tasks = {}
     benchmark_to_judge_tasks = {}
     all_tasks = []
     if _task_dependencies is None:
         _task_dependencies = []
     with pipeline_utils.get_exp(expname, cluster_config, _reuse_exp) as exp:
+        if evaluate_reference_answer:
+            for benchmark, benchmark_args in benchmarks_dict.items():
+                reference_output_file = str(Path(output_dir) / benchmark_args.eval_subfolder / "output.jsonl")
+                command = (
+                    "python -m nemo_skills.pipeline.materialize_reference_answers "
+                    f"--input-file {shlex.quote(benchmark_args.input_file)} "
+                    f"--output-file {shlex.quote(reference_output_file)} "
+                    f"--reference-answer-key {shlex.quote(benchmark_args.reference_answer_key)}"
+                )
+                reference_task = pipeline_utils.add_task(
+                    exp,
+                    cmd=command,
+                    task_name=f"{expname}-{benchmark}-materialize-reference-answers",
+                    log_dir=f"{output_dir}/{benchmark_args.eval_subfolder}/materialize-reference-answers",
+                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    cluster_config=cluster_config,
+                    num_gpus=0,
+                    partition=partition,
+                    account=account,
+                    run_after=run_after,
+                    reuse_code_exp=reuse_code_exp,
+                    reuse_code=reuse_code,
+                    task_dependencies=_task_dependencies,
+                    installation_command=installation_command,
+                    skip_hf_home_check=skip_hf_home_check,
+                    sbatch_kwargs=sbatch_kwargs,
+                )
+                benchmark_to_reference_tasks[benchmark] = [reference_task]
+                all_tasks.append(reference_task)
+
         # scheduling main eval jobs
-        has_tasks = True
+        has_tasks = evaluate_reference_answer
 
         # Validate that pre-hosted models have server addresses (applies to both single & multi-model)
         for model_idx in range(num_models):
@@ -695,6 +786,7 @@ def eval(
             job_batch_to_last_job_name[job_idx] = internal_job_name
 
         if jobs:
+            has_tasks = True
             pipeline = Pipeline(
                 name=expname,
                 cluster_config=cluster_config,
@@ -710,12 +802,17 @@ def eval(
                 all_tasks.append(job_name_to_handle[last_job_name])
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
+            if benchmark_args.judge_skipped:
+                continue
             if not eval_requires_judge and not benchmark_args.requires_judge:
                 continue
-            dependent_job_ids = benchmark_args.job_ids
-            dependent_tasks = []
-            for job_id in dependent_job_ids:
-                dependent_tasks.extend(job_id_to_tasks[job_id])
+            if evaluate_reference_answer:
+                dependent_tasks = benchmark_to_reference_tasks[benchmark]
+            else:
+                dependent_job_ids = benchmark_args.job_ids
+                dependent_tasks = []
+                for job_id in dependent_job_ids:
+                    dependent_tasks.extend(job_id_to_tasks[job_id])
             judge_wrap_args, judge_pipeline_args = benchmark_args.judge_args, benchmark_args.judge_pipeline_args
 
             benchmark_seeds = benchmark_args.num_samples
@@ -822,10 +919,15 @@ def eval(
         group_metric_files = defaultdict(list)
         group_tasks = defaultdict(list)
         group_module = {}
+        skipped_benchmark_groups = set()
 
         # setting summarize results tasks
         if auto_summarize_results:
             for benchmark, benchmark_args in benchmarks_dict.items():
+                if benchmark_args.judge_skipped:
+                    if benchmark_args.benchmark_group:
+                        skipped_benchmark_groups.add(benchmark_args.benchmark_group)
+                    continue
                 # TODO: add logic if metrics.json exists, we don't run this!
                 has_tasks = True
                 metric_file = f"{output_dir}/{benchmark_args.eval_subfolder}/metrics.json"
@@ -892,6 +994,8 @@ def eval(
             # TODO: this should be done by summarize_results directly and we just call it on a group
             #       otherwise behavior is inconsistent when running summarize_results standalone, which isn't great
             for group, metric_files in group_metric_files.items():
+                if group in skipped_benchmark_groups:
+                    continue
                 has_tasks = True
                 command = (
                     f"python -m nemo_skills.evaluation.compute_group_score {' '.join(metric_files)} "
