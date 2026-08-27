@@ -60,7 +60,10 @@ class SupportedDatasetTypes(str, Enum):
 class SweBenchInferenceConfig:
     temperature: float = 0.0  # Temperature of 0 means greedy decoding
     top_k: int | None = None
-    top_p: float = 0.95
+    # Optional so it can be set to null (e.g. ++inference.top_p=null) to match upstream configs
+    # that omit top_p entirely. nemo_skills.inference.eval.hilbench drops the --agent.model.top_p
+    # flag when this is None. Default stays 0.95 so non-HIL SWE-bench behavior is unchanged.
+    top_p: float | None = 0.95
     min_p: float | None = None
     random_seed: int | None = None
     tokens_to_generate: int | None = None
