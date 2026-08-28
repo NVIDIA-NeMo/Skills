@@ -693,18 +693,19 @@ class SweBenchGenerationTask(GenerationTask):
                 instance_id=data_point["instance_id"].replace("__", "_1776_")
             )
 
-            # Get the folder where the repo is cloned inside the container
-            container_repo_dir = data_point.get("container_repo_dir", "/testbed")
+            if mode == "agent":
+                # Get the folder where the repo is cloned inside the container
+                container_repo_dir = data_point.get("container_repo_dir", "/testbed")
 
-            # If pre_commands are specified, execute them before running the agent
-            pre_commands = data_point.get("pre_commands", "").strip()
-            if pre_commands:
-                container_commands.append(f"cd {container_repo_dir}")
-                container_commands.append(pre_commands)
+                # If pre_commands are specified, execute them before running the agent
+                pre_commands = data_point.get("pre_commands", "").strip()
+                if pre_commands:
+                    container_commands.append(f"cd {container_repo_dir}")
+                    container_commands.append(pre_commands)
 
-            # If the repo is not in /testbed, copy it before running the agent
-            if mode == "agent" and container_repo_dir != "/testbed":
-                container_commands.append(f"cp -r {container_repo_dir} /testbed")
+                # If the repo is not in /testbed, copy it before running the agent
+                if container_repo_dir != "/testbed":
+                    container_commands.append(f"cp -r {container_repo_dir} /testbed")
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
