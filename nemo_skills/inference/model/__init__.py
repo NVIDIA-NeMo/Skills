@@ -26,6 +26,7 @@ from .audio_utils import (
     chunk_audio,
     load_audio_file,
     make_audio_content_block,
+    make_audio_url_content_block,
     save_audio_chunk_to_base64,
 )
 from .azure import AzureOpenAIModel
