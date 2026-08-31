@@ -25,6 +25,12 @@ from pathlib import Path
 import soundfile as sf
 from tqdm import tqdm
 
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
+
 COVOST_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/covost/covost_v2.{src_lang}_{tgt_lang}.tsv.tar.gz"
 SPLITS = ["validation", "test"]
 
@@ -144,8 +150,8 @@ def get_audio_duration(audio_file: str) -> float:
     return float(info.frames / info.samplerate)
 
 
-def get_container_audio_path(src_lang: str, split: str, audio_id: str) -> str:
-    return f"/dataset/covost2/audio/{src_lang}/{split}/{audio_id}.wav"
+def get_container_audio_path(src_lang: str, split: str, audio_id: str, audio_root: str) -> str:
+    return build_container_audio_path("covost2", "audio", src_lang, split, f"{audio_id}.wav", audio_prefix=audio_root)
 
 
 def copy_audio_file(src_wav: Path, audio_dir: Path, src_lang: str, split: str) -> Path:
@@ -202,6 +208,7 @@ def _collect_asr_records(
     cv_data_dir: Path,
     sentences: dict,
     split: str,
+    audio_root: str,
 ) -> list[dict]:
     records: list[dict] = []
     for src_lang in languages:
@@ -211,7 +218,7 @@ def _collect_asr_records(
             sentence = sentences[(wav_file.name, split, src_lang)]
             duration = get_audio_duration(str(wav_file))
             copy_audio_file(wav_file, audio_dir, src_lang, split)
-            cpath = get_container_audio_path(src_lang, split, wav_file.stem)
+            cpath = get_container_audio_path(src_lang, split, wav_file.stem, audio_root=audio_root)
             records.append(
                 _build_record(
                     expected_answer=sentence,
@@ -238,6 +245,7 @@ def _collect_st_records(
     local_dir: Path,
     sentences: dict,
     split: str,
+    audio_root: str,
 ) -> list[dict]:
     lang_set = set(languages)
     pairs = [p for p in VALID_PAIRS if set(p) & lang_set]
@@ -248,7 +256,7 @@ def _collect_st_records(
         for item in tqdm(dataset, desc=f"st:{tag}"):
             duration = get_audio_duration(item["audio_file"])
             copy_audio_file(Path(item["audio_file"]), audio_dir, src_lang, split)
-            cpath = get_container_audio_path(src_lang, split, item["id"])
+            cpath = get_container_audio_path(src_lang, split, item["id"], audio_root=audio_root)
             records.append(
                 _build_record(
                     expected_answer=item["translation"],
@@ -284,6 +292,7 @@ def prepare_covost2(
     languages: list[str],
     cv_data_dir: Path,
     validated_tsv: Path,
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
 ) -> None:
     if not languages:
         raise ValueError("No languages to process")
@@ -303,8 +312,10 @@ def prepare_covost2(
 
     sentences = load_validated_sentences(validated_tsv)
 
-    asr_records = _collect_asr_records(languages, audio_dir, cv_data_dir, sentences, split)
-    st_records = _collect_st_records(languages, audio_dir, cv_data_dir, local_dir, sentences, split)
+    asr_records = _collect_asr_records(languages, audio_dir, cv_data_dir, sentences, split, audio_root=audio_root)
+    st_records = _collect_st_records(
+        languages, audio_dir, cv_data_dir, local_dir, sentences, split, audio_root=audio_root
+    )
 
     _dump_jsonl(asr_jsonl, asr_records)
     _dump_jsonl(st_jsonl, st_records)
@@ -348,6 +359,12 @@ def main():
         default=ALL_LANGUAGES,
         help="Languages to process (all valid pairs with English are included)",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
     if args.data_dir:
@@ -355,6 +372,8 @@ def main():
     else:
         data_dir = Path(__file__).parent
     data_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
+    print(f"Audio paths in JSONL will use: {audio_root}/covost2/audio/...")
 
     prepare_covost2(
         data_dir=data_dir,
@@ -362,6 +381,7 @@ def main():
         languages=args.languages,
         cv_data_dir=Path(args.cv_data_dir),
         validated_tsv=Path(args.validated_tsv),
+        audio_root=audio_root,
     )
 
 

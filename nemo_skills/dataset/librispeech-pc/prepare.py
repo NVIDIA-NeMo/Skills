@@ -33,6 +33,12 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
+
 
 def download_with_progress(url: str, output_path: Path, desc: str):
     """Download file with tqdm progress bar."""
@@ -100,7 +106,13 @@ def download_audio(split: str, audio_dir: Path):
     os.remove(tar_path)
 
 
-def process_split(split: str, data_dir: Path, audio_dir: Path, with_audio: bool) -> int:
+def process_split(
+    split: str,
+    data_dir: Path,
+    audio_dir: Path,
+    with_audio: bool,
+    audio_root: str = DEFAULT_CONTAINER_AUDIO_ROOT,
+) -> int:
     """Process one LibriSpeech-PC split into nemo-skills format."""
 
     output_file = data_dir / f"{split}.jsonl"
@@ -129,11 +141,12 @@ def process_split(split: str, data_dir: Path, audio_dir: Path, with_audio: bool)
 
             audio_id = Path(audio_filepath).stem
 
-            audio_root = os.getenv("NEMO_SKILLS_AUDIO_ROOT", "/data")
             rel_audio_path = audio_filepath.lstrip("/")
             if rel_audio_path.startswith("LibriSpeech/"):
                 rel_audio_path = rel_audio_path[len("LibriSpeech/") :]
-            container_path = f"{audio_root}/librispeech-pc/LibriSpeech/{rel_audio_path}"
+            container_path = build_container_audio_path(
+                "librispeech-pc", "LibriSpeech", rel_audio_path, audio_prefix=audio_root
+            )
 
             user_message = {
                 "role": "user",
@@ -185,6 +198,12 @@ def main():
         action="store_true",
         help="Skip audio download",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
     if args.data_dir:
@@ -202,11 +221,15 @@ def main():
 
     audio_dir = data_dir
     audio_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = get_container_audio_root(args.audio_prefix)
+    print(f"Audio paths in JSONL will use: {audio_root}/librispeech-pc/LibriSpeech/...")
 
     download_manifests(data_dir)
 
     splits = ["test-clean", "test-other"] if args.split == "all" else [args.split]
-    total = sum(process_split(split, data_dir, audio_dir, not args.no_audio) for split in splits)
+    total = sum(
+        process_split(split, data_dir, audio_dir, not args.no_audio, audio_root=audio_root) for split in splits
+    )
 
     print(f"\n✓ Complete: {total} samples")
 
