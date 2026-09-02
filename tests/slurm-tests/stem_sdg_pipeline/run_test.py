@@ -112,10 +112,10 @@ def build_overrides(
         "stages.generate_solutions.generation_kwargs.args.num_chunks=null",
         "stages.generate_solutions.judge_kwargs.args.num_random_seeds=2",
         "stages.generate_solutions.judge_kwargs.args.num_chunks=null",
-        "stages.difficulty_estimation.generation_kwargs.args.num_random_seeds=2",
-        "stages.difficulty_estimation.generation_kwargs.args.num_chunks=null",
-        "stages.difficulty_estimation.judge_kwargs.args.num_random_seeds=2",
-        "stages.difficulty_estimation.judge_kwargs.args.num_chunks=null",
+        "stages.profiling.models.0.generation_kwargs.args.num_random_seeds=2",
+        "stages.profiling.models.0.generation_kwargs.args.num_chunks=null",
+        "stages.profiling.judge_kwargs.args.num_random_seeds=2",
+        "stages.profiling.judge_kwargs.args.num_chunks=null",
     ] + overrides
 
 

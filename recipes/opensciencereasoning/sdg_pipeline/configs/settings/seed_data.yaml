@@ -18,7 +18,7 @@ stages:
     solutions_path: null
     dependencies:
       - topics_labeling
-      - difficulty_estimation
+      - profiling
   filter_solutions:
     input_file: ${directories.step-4-aggregate}/final_result.jsonl
     output_dir: ${directories.step-5-filter-solutions}
