@@ -150,6 +150,7 @@ class VLLMModel(BaseModel):
         assert reasoning_effort is None, "reasoning_effort is not supported for text completion requests"
         assert tools is None, "tools are not supported for text completion requests"
         assert response_format is None, "response_format is not supported for text completion requests"
+        request_extra_body = self._build_request_body(top_k, min_p, repetition_penalty, extra_body=extra_body)
         return {
             "prompt": prompt,
             "max_tokens": tokens_to_generate,
@@ -160,13 +161,16 @@ class VLLMModel(BaseModel):
             "logprobs": top_logprobs,
             "stream": stream,
             "echo": False,
-            "skip_special_tokens": False,
+            # Single source for skip_special_tokens: honor a value passed via
+            # inference.extra_body (default False = keep), instead of hardcoding it
+            # here while also leaving it in extra_body, which would duplicate the field.
+            "skip_special_tokens": request_extra_body.pop("skip_special_tokens", False),
             "n": 1,
             "logit_bias": None,
             "frequency_penalty": frequency_penalty,
             "presence_penalty": presence_penalty,
             "timeout": timeout,
-            "extra_body": self._build_request_body(top_k, min_p, repetition_penalty, extra_body=extra_body),
+            "extra_body": request_extra_body,
         }
 
     def _build_chat_request_params(
