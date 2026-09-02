@@ -39,6 +39,7 @@ from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
 from nemo_skills.evaluation.metrics.hotpotqa_metrics import HotpotQAMetrics
 from nemo_skills.evaluation.metrics.icpc_metrics import ICPCMetrics
 from nemo_skills.evaluation.metrics.if_metrics import IFMetrics
+from nemo_skills.evaluation.metrics.iheval_metrics import IHEvalMetrics
 from nemo_skills.evaluation.metrics.ioi_metrics import IOIMetrics
 from nemo_skills.evaluation.metrics.lean4_metrics import Lean4Metrics
 from nemo_skills.evaluation.metrics.math_metrics import MathMetrics
@@ -107,6 +108,7 @@ METRICS_MAP = {
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
     "graphwalks": GraphWalksMetrics,
     "weighted-math": WeightedMathMetrics,
+    "iheval": IHEvalMetrics,
 }
 
 
