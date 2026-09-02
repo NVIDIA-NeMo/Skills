@@ -1,0 +1,125 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This config is a sample for running NeMo Skills and NVFlow recipes against a
+# pre-created Ray cluster running on Kubernetes.
+#
+# Notes:
+# - SLURM remains the scheduler used by nemo_run.
+# - The execution backend is Ray; jobs connect to an existing Ray endpoint.
+# - Replace all CHANGE_ME values before use.
+
+executor: slurm
+
+containers:
+  # Point to images available on your SLURM cluster.
+  trtllm: nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc8
+  vllm: nvcr.io/nvidia/pytorch:25.02-py3
+  sglang: lmsysorg/sglang:v0.5.10.post1
+  megatron: nvcr.io/nvidia/pytorch:25.02-py3
+  sandbox: nvcr.io/nvidia/pytorch:25.02-py3
+  nemo-skills: nvcr.io/nvidia/pytorch:25.02-py3
+  verl: nvcr.io/nvidia/pytorch:25.02-py3
+  nemo-rl: nvcr.io/nvidia/pytorch:25.02-py3
+
+job_name_prefix: "nemo_skills:"
+
+# If launching from outside cluster, configure ssh_tunnel and remove top-level job_dir.
+# ssh_tunnel:
+#   host: CHANGE_ME.cluster.company.com
+#   user: CHANGE_ME
+#   job_dir: /lustre/CHANGE_ME/nemo_run/jobs
+#   identity: /home/CHANGE_ME/.ssh/id_rsa
+
+# If launching from within cluster, use job_dir directly.
+job_dir: /lustre/CHANGE_ME/nemo_run/jobs
+
+account: CHANGE_ME_ACCOUNT
+partition: CHANGE_ME_GPU_PARTITION
+cpu_partition: CHANGE_ME_CPU_PARTITION
+
+# Optional timeout mapping by partition.
+default_timeout: "2-00:00:00"
+timeouts:
+  CHANGE_ME_GPU_PARTITION: "2-00:00:00"
+  CHANGE_ME_CPU_PARTITION: "1-00:00:00"
+
+# Backend config: pre-created Ray cluster on Kubernetes.
+# This sample targets ONE cluster. For NVFlow's 2-cluster (CPU + GPU) setup that
+# auto-routes each stage by its num_gpus, see NVFlow's
+# docs/recipes/finance/install-ray.md (backend.dashboard_url + cpu_dashboard_url).
+backend:
+  name: ray
+  control_plane: kubernetes
+  precreated_cluster: true
+  # Ray Client endpoint to connect to existing cluster.
+  endpoint: ray://ray-head.ray.svc.cluster.local:10001
+  kubernetes:
+    # offline: batch style, online: service style lifecycle hints
+    mode: offline
+    # Optional labels forwarded to Ray job entrypoint placement for pre-created clusters.
+    # Example equivalent in Ray client API:
+    #   client.submit_job(..., entrypoint_label_selector={"type": "worker"})
+    # entrypoint_label_selector:
+    #   type: worker
+    # Optionally append a label derived from the selected NeMo Skills container image.
+    # image_label_key: nemo/image
+    # Optionally provide explicit labels keyed by container name from cluster_config.containers.
+    # These labels are merged into entrypoint_label_selector for ray job submit.
+    # image_label_selectors:
+    #   nemo-skills:
+    #     nemo/workload: skills
+    #   nemo-rl:
+    #     key: nemo/workload
+    #     value: rl
+
+# Optional preflight checks run before Ray-backed experiment start.
+# Read from the TOP LEVEL of the cluster config (a sibling of `backend:`), not
+# from under `backend:`. Useful for failing fast when endpoint, labels, or
+# cluster capacity are not aligned with the job requirements.
+# preflight:
+#   enabled: true
+#   # If true, require Ray endpoint connectivity and at least one live node.
+#   require_ray_endpoint: true
+#   # If true, fail if label inspection cannot be performed.
+#   strict_label_check: true
+#   # Require at least one live node matching each key/value pair.
+#   required_node_labels:
+#     - key: nemo/has-nemo-rl
+#       value: "true"
+#     - key: workload
+#       value: "training"
+#   # Require minimum total live-cluster resources before submission.
+#   # Supported aliases: gpu|gpus -> GPU, cpu|cpus -> CPU, mem|memory -> memory.
+#   min_cluster_resources:
+#     gpu: 16
+#     cpu: 64
+
+# Required mounts for models/data/workspace.
+mounts:
+  - /lustre/CHANGE_ME/models:/models
+  - /lustre/CHANGE_ME/data:/data
+  - /lustre/CHANGE_ME/workspace:/workspace
+
+# HF_HOME must be mounted when skip_hf_home_check is false (default).
+env_vars:
+  - HF_HOME=/models/hf-cache
+  # Optional but often useful for large checkpoint IO.
+  - NCCL_DEBUG=warn
+  - TORCH_DISTRIBUTED_DEBUG=off
+
+# Optional extra vars to pass through from launcher environment:
+# required_env_vars:
+#   - WANDB_API_KEY
+#   - NVIDIA_API_KEY

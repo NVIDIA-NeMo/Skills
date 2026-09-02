@@ -239,6 +239,66 @@ class TestPipeline:
 class TestPipelineExecution:
     """Test Pipeline execution and job management."""
 
+    @pytest.mark.parametrize("backend_name", ["ray", "kubernetes-ray", "ray-kubernetes", "ray_kubernetes"])
+    def test_ray_working_dir_rewrite_survives_cd_and_quotes(self, backend_name):
+        cluster_config = {
+            "executor": "none",
+            "containers": {},
+            "backend": {
+                "name": backend_name,
+                "dashboard_url": "http://ray-head:8265",
+                "working_dir": "/opt/nvflow-ray-code.zip",
+            },
+        }
+        pipeline = Pipeline(
+            name="ray-paths",
+            cluster_config=cluster_config,
+            jobs=[{"name": "placeholder", "group": CommandGroup(commands=[make_command()], log_dir="/tmp/logs")}],
+            skip_hf_home_check=True,
+        )
+        script = DummyScript(
+            "cd /opt/Gym && python '/nemo_run/code/nvflow/train.py' \"/nemo_run/code/nemo_skills/dataset/test.jsonl\""
+        )
+
+        rewritten = pipeline._rewrite_local_paths(script).inline
+
+        assert rewritten.startswith("cd /opt/Gym && ")
+        assert '"${NEMO_RUN_CODE_DIR}"' in rewritten
+        assert "${NEMO_SKILLS_CODE_DIR}" in rewritten
+        assert "/nemo_run/code" not in rewritten
+
+    @patch("nemo_skills.pipeline.utils.declarative.get_registered_external_repo")
+    def test_declarative_non_ray_executor_none_rewrite_is_unchanged(self, mock_repo):
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        mock_repo.return_value = SimpleNamespace(path=Path("/installed/nemo_skills"))
+        pipeline = Pipeline(
+            name="local-paths",
+            cluster_config={"executor": "none", "containers": {}},
+            jobs=[{"name": "placeholder", "group": CommandGroup(commands=[make_command()], log_dir="/tmp/logs")}],
+            skip_hf_home_check=True,
+        )
+        script = DummyScript("python /nemo_run/code/nvflow/train.py /nemo_run/code/nemo_skills/dataset/test.jsonl")
+
+        assert pipeline._rewrite_local_paths(script).inline == (
+            "python /installed/nvflow/train.py /installed/nemo_skills/dataset/test.jsonl"
+        )
+
+    def test_declarative_slurm_command_is_byte_identical(self):
+        original = "cd /opt/Gym && python '/nemo_run/code/nvflow/train.py'"
+        command = make_command(inline=original)
+        pipeline = Pipeline(
+            name="slurm-paths",
+            cluster_config={"executor": "slurm", "containers": {}},
+            jobs=[{"name": "placeholder", "group": CommandGroup(commands=[command], log_dir="/tmp/logs")}],
+            skip_hf_home_check=True,
+        )
+
+        script, _ = pipeline._prepare_command(command, pipeline.cluster_config)
+
+        assert script.inline == original
+
     @patch("nemo_skills.pipeline.utils.declarative.get_exp")
     @patch("nemo_skills.pipeline.utils.declarative.get_env_variables")
     @patch("nemo_skills.pipeline.utils.declarative.run_exp")
@@ -721,6 +781,164 @@ class TestJobDependencies:
                         # Job 2: should have internal deps (task_handle_1 from job1)
                         call2_kwargs = mock_exp.add.call_args_list[1][1]
                         assert call2_kwargs["dependencies"] == ["task_handle_1"]
+
+    def test_finished_cross_experiment_dep_filtered_from_exp_add_on_ray_backend(self):
+        """On the RAY backend, a run_after naming another experiment whose tasks already
+        finished resolves to empty handles and falls through as a bare experiment-name
+        string in internal_deps (the _reuse_exp path). The Ray backend resolves
+        cross-experiment ordering from the queued dep names (not nemo-run handles), so that
+        finished-cross-exp string is dropped from exp.add while same-experiment handles are
+        kept. Reproduces the bug the legacy cross-experiment dependency patch fixed, now
+        handled natively. The default backend must NOT drop it -- see the sibling test.
+        """
+        import nemo_run as run
+
+        # Empty handles -> the upstream experiment already finished / does not exist.
+        with patch("nemo_skills.pipeline.utils.declarative.get_exp_handles") as mock_get_handles:
+            mock_get_handles.return_value = []
+
+            with patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp:
+                mock_exp = MagicMock(spec=run.Experiment)
+                mock_exp.__enter__ = MagicMock(return_value=mock_exp)
+                mock_exp.__exit__ = MagicMock(return_value=False)
+                # Simulate nemo-run: each add() appends a Job (id == handle) to exp.jobs.
+                mock_exp.jobs = []
+
+                def fake_add(*args, **kwargs):
+                    handle = f"task_handle_{len(mock_exp.jobs) + 1}"
+                    job = MagicMock()
+                    job.id = handle
+                    mock_exp.jobs.append(job)
+                    return handle
+
+                mock_exp.add = MagicMock(side_effect=fake_add)
+                mock_get_exp.return_value = mock_exp
+
+                def mock_get_executor(**kwargs):
+                    mock_executor = MagicMock()
+                    mock_executor.packager = MagicMock()
+                    return mock_executor
+
+                with patch("nemo_skills.pipeline.utils.declarative.get_executor", side_effect=mock_get_executor):
+                    with patch("nemo_skills.pipeline.utils.declarative.run_exp"):
+                        cluster_config = {
+                            "executor": "slurm",
+                            # A real Ray Jobs backend owns cross-experiment ordering
+                            # through its queue, so the finished dependency string is
+                            # filtered from nemo-run's local dependency list.
+                            "backend": {
+                                "name": "ray",
+                                "dashboard_url": "http://ray-head:8265",
+                            },
+                            "containers": {"nemo-skills": "test/container"},
+                            "account": "test",
+                            "env_vars": {"HF_HOME": "/mounted/hf_home"},
+                            "mounts": ["/mounted/hf_home:/mounted/hf_home"],
+                        }
+
+                        cmd1 = make_command(inline="echo job1", name="job1")
+                        group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/tmp/logs")
+                        cmd2 = make_command(inline="echo job2", name="job2")
+                        group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/tmp/logs")
+
+                        job1_spec = {"name": "job1", "group": group1}
+                        # job2 depends on job1 (internal) AND a finished external experiment (string).
+                        job2_spec = {
+                            "name": "job2",
+                            "group": group2,
+                            "dependencies": [job1_spec, "finished_external_experiment"],
+                        }
+
+                        pipeline = Pipeline(
+                            name="test_pipeline",
+                            cluster_config=cluster_config,
+                            jobs=[job1_spec, job2_spec],
+                            skip_hf_home_check=True,
+                            reuse_code=False,
+                        )
+
+                        # _reuse_exp set -> empty-handle string deps take the internal path.
+                        pipeline.run(dry_run=True, _reuse_exp=mock_exp)
+
+                        assert mock_exp.add.call_count == 2
+                        # job1: no dependencies.
+                        assert mock_exp.add.call_args_list[0][1]["dependencies"] is None
+                        # job2: same-experiment handle kept, finished cross-exp string dropped.
+                        assert mock_exp.add.call_args_list[1][1]["dependencies"] == ["task_handle_1"]
+
+    def test_finished_cross_experiment_dep_kept_on_default_backend(self):
+        """The default (non-Ray) backend must NOT silently drop a finished cross-experiment
+        string dep. nemo-run's real exp.add asserts every dependency is a job in THIS
+        experiment and raises "Dependency <x> not found" -- that fail-loud behavior is the
+        historical contract, so the string must reach exp.add unchanged (here exp.add is
+        mocked, so we assert the string is passed through rather than silently dropped).
+        """
+        import nemo_run as run
+
+        with patch("nemo_skills.pipeline.utils.declarative.get_exp_handles") as mock_get_handles:
+            mock_get_handles.return_value = []
+
+            with patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp:
+                mock_exp = MagicMock(spec=run.Experiment)
+                mock_exp.__enter__ = MagicMock(return_value=mock_exp)
+                mock_exp.__exit__ = MagicMock(return_value=False)
+                mock_exp.jobs = []
+
+                def fake_add(*args, **kwargs):
+                    handle = f"task_handle_{len(mock_exp.jobs) + 1}"
+                    job = MagicMock()
+                    job.id = handle
+                    mock_exp.jobs.append(job)
+                    return handle
+
+                mock_exp.add = MagicMock(side_effect=fake_add)
+                mock_get_exp.return_value = mock_exp
+
+                def mock_get_executor(**kwargs):
+                    mock_executor = MagicMock()
+                    mock_executor.packager = MagicMock()
+                    return mock_executor
+
+                with patch("nemo_skills.pipeline.utils.declarative.get_executor", side_effect=mock_get_executor):
+                    with patch("nemo_skills.pipeline.utils.declarative.run_exp"):
+                        cluster_config = {
+                            # No backend key -> default ExecutionBackend (the non-Ray path).
+                            "executor": "slurm",
+                            "containers": {"nemo-skills": "test/container"},
+                            "account": "test",
+                            "env_vars": {"HF_HOME": "/mounted/hf_home"},
+                            "mounts": ["/mounted/hf_home:/mounted/hf_home"],
+                        }
+
+                        cmd1 = make_command(inline="echo job1", name="job1")
+                        group1 = CommandGroup(commands=[cmd1], name="group1", log_dir="/tmp/logs")
+                        cmd2 = make_command(inline="echo job2", name="job2")
+                        group2 = CommandGroup(commands=[cmd2], name="group2", log_dir="/tmp/logs")
+
+                        job1_spec = {"name": "job1", "group": group1}
+                        job2_spec = {
+                            "name": "job2",
+                            "group": group2,
+                            "dependencies": [job1_spec, "finished_external_experiment"],
+                        }
+
+                        pipeline = Pipeline(
+                            name="test_pipeline",
+                            cluster_config=cluster_config,
+                            jobs=[job1_spec, job2_spec],
+                            skip_hf_home_check=True,
+                            reuse_code=False,
+                        )
+
+                        pipeline.run(dry_run=True, _reuse_exp=mock_exp)
+
+                        assert mock_exp.add.call_count == 2
+                        assert mock_exp.add.call_args_list[0][1]["dependencies"] is None
+                        # job2: the finished cross-exp string is NOT dropped on the default backend.
+                        deps = mock_exp.add.call_args_list[1][1]["dependencies"]
+                        assert deps is not None
+                        assert "task_handle_1" in deps
+                        assert "finished_external_experiment" in deps
 
     def test_run_after_dependencies_across_experiments(self, tmp_path):
         """Test that run_after dependencies work when chaining multiple generate/run_cmd calls.

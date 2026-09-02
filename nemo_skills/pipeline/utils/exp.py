@@ -28,6 +28,13 @@ from nemo_run.core.execution.local import LocalExecutor
 from nemo_run.core.execution.slurm import SlurmJobDetails, get_packaging_job_key
 from torchx.specs.api import AppState
 
+from nemo_skills.pipeline.utils.backends import (
+    BackendRunOptions,
+    get_execution_backend,
+    is_ray_backend_name,
+    is_ray_jobs_backend,
+    rewrite_ray_job_code_paths,
+)
 from nemo_skills.pipeline.utils.cluster import (
     get_env_variables,
     get_slurm_timeout_str,
@@ -241,6 +248,10 @@ def get_executor(
         Raised if a non-SLURM executor is requested with `num_nodes > 1`.
     """
     env_vars = get_env_variables(cluster_config)
+    backend = get_execution_backend(cluster_config, with_ray=with_ray)
+    backend_env = backend.get_env_overrides()
+    if backend_env:
+        env_vars.update(backend_env)
     config_mounts = get_mounts_from_config(cluster_config)
 
     if mounts is None:
@@ -249,9 +260,22 @@ def get_executor(
         extra_package_dirs = tuple(extra_package_dirs)
     packager = get_packager(extra_package_dirs=extra_package_dirs)
 
+    # Ray backend with a precreated cluster allows multi-node without SLURM. Use the
+    # resolved backend so precreated mode inferred from a dashboard_url, endpoint, or
+    # Kubernetes alias is honored, not just an explicit precreated_cluster flag.
+    is_ray_precreated = getattr(backend, "name", "") == "ray" and bool(getattr(backend, "precreated_cluster", False))
+    if is_ray_precreated and not (getattr(backend, "endpoint", None) or getattr(backend, "dashboard_url", None)):
+        raise ValueError(
+            "Invalid cluster_config: backend.precreated_cluster=true requires "
+            "backend.endpoint or backend.dashboard_url to be set."
+        )
+
     if cluster_config["executor"] != "slurm":
-        if num_nodes > 1:
-            raise ValueError("Local executor does not support multi-node execution")
+        if num_nodes > 1 and not is_ray_precreated:
+            raise ValueError(
+                "Local executor does not support multi-node execution. "
+                "Use executor: slurm or backend: ray with precreated_cluster: true"
+            )
 
     if cluster_config["executor"] == "none":
         return LocalExecutor()
@@ -675,9 +699,20 @@ def add_task(
     LOG.info("Adding a task with commands:")
 
     commands = []
+    command_images = []
     executors = []
 
+    backend = get_execution_backend(cluster_config, with_ray=with_ray)
+    ray_jobs_active = is_ray_jobs_backend(backend)
+
+    # command_images is consumed only by the Ray Jobs queue (queue_ray_job_commands).
+    # Resolving an image can be expensive (e.g. a `docker inspect` for `dockerfile:`
+    # specs), so only populate it when a Ray backend is active; the non-Ray path leaves
+    # it empty (the queue is a no-op there anyway).
+    collect_command_images = ray_jobs_active
+
     def add_server_tasks():
+        """Append the server (and its executor) for each requested server replica."""
         nonlocal het_group
         # avoid mutating server_config, as it may be used again later in dependent jobs
         _server_config = copy.deepcopy(server_config)
@@ -720,6 +755,8 @@ def add_task(
             if cluster_config["executor"] != "slurm" and num_server_tasks > 1:
                 cmd_to_add = f"mpirun --allow-run-as-root -np {num_server_tasks} bash -c {shlex.quote(server_cmd)}"
             commands.append(cmd_to_add)
+            if collect_command_images:
+                command_images.append(resolve_container_image(server_container, cluster_config))
             executors.append(server_executor)
             het_group_indices.append(het_group)
             het_group += 1
@@ -757,6 +794,8 @@ def add_task(
             with temporary_env_update(cluster_config, main_env_updates):
                 cur_cmd = install_packages_wrap(cur_cmd, installation_command)
                 commands.append(cur_cmd)
+                if collect_command_images:
+                    command_images.append(resolve_container_image(cur_container, cluster_config))
                 executors.append(
                     get_executor(
                         cluster_config=cluster_config,
@@ -805,13 +844,16 @@ def add_task(
 
         with temporary_env_update(cluster_config, sandbox_env_updates):
             commands.append(get_sandbox_command(cluster_config))
+            sandbox_image = sandbox_container or cluster_config["containers"]["sandbox"]
+            if collect_command_images:
+                command_images.append(resolve_container_image(sandbox_image, cluster_config))
             if sandbox_mounts is not None:
                 sandbox_exec_mounts = normalize_mounts_list(sandbox_mounts, allow_rw_mode=True)
             else:
                 sandbox_exec_mounts = None if keep_mounts_for_sandbox else []
             sandbox_executor = get_executor(
                 cluster_config=cluster_config,
-                container=sandbox_container or cluster_config["containers"]["sandbox"],
+                container=sandbox_image,
                 num_nodes=executors[0].nodes if cluster_config["executor"] == "slurm" else 1,
                 tasks_per_node=1,
                 gpus_per_node=0,
@@ -882,18 +924,59 @@ def add_task(
 
     # no mounting here, so assuming /nemo_run/code can be replaced with the current dir
     if cluster_config["executor"] == "none":
-        # replacing /nemo_run/code/nemo_skills with the installed location
+        if ray_jobs_active and getattr(backend, "working_dir", None):
+            # Ray makes working_dir the initial job cwd, but workloads such as
+            # NeMo-RL/Gym may cd elsewhere before consuming a legacy
+            # /nemo_run/code path. Rewrite to absolute roots captured by the Ray
+            # entrypoint rather than cwd-relative paths. NeMo-Skills comes from
+            # the baked worker environment, not necessarily the working-dir ZIP.
+            for idx in range(len(commands)):
+                commands[idx] = rewrite_ray_job_code_paths(commands[idx])
+        else:
+            # Preserve the historical executor:none behavior byte-for-byte when
+            # Ray Jobs code delivery is not explicitly configured.
+            for idx in range(len(commands)):
+                commands[idx] = commands[idx].replace(
+                    "/nemo_run/code/nemo_skills", str(get_registered_external_repo("nemo_skills").path)
+                )
+                commands[idx] = commands[idx].replace("/nemo_run/code", "./")
 
-        for idx in range(len(commands)):
-            commands[idx] = commands[idx].replace(
-                "/nemo_run/code/nemo_skills", str(get_registered_external_repo("nemo_skills").path)
-            )
-            commands[idx] = commands[idx].replace("/nemo_run/code", "./")
+    first_command_image = command_images[0] if command_images else None
+    # use_with_ray_cluster requests an EMBEDDED Ray cluster, which nemo-run only supports on
+    # SlurmExecutor (it asserts otherwise). Gate the whole flag on executor == "slurm": legacy
+    # with_ray on a non-Slurm executor (and the compat RayBackend it resolves to, whose name is
+    # also "ray") must NOT request it -- the old code silently no-op'd that combo. A precreated
+    # Ray Jobs cluster (executor: none) never embeds; RayBackend.stage_metadata enforces that.
+    should_use_with_ray_cluster = bool(
+        cluster_config["executor"] == "slurm" and (with_ray or getattr(backend, "name", "") == "ray")
+    )
+    metadata = backend.stage_metadata(
+        use_with_ray_cluster=should_use_with_ray_cluster,
+        container_image=first_command_image,
+    )
+    if getattr(backend, "name", "default") != "default":
+        LOG.info(
+            "Execution backend resolved to '%s' (dashboard_url=%s).",
+            getattr(backend, "name", "unknown"),
+            getattr(backend, "dashboard_url", None),
+        )
 
-    if with_ray and cluster_config["executor"] == "slurm":
-        metadata = {"use_with_ray_cluster": True}
-    else:
-        metadata = None
+    # For Ray Jobs API mode, queue commands on the experiment and let the backend
+    # submit/track/cancel them centrally in start_experiment(). `dependencies`
+    # holds the resolved external run_after handles; forward them too so the Ray
+    # queue waits on cross-experiment prerequisites, not just same-experiment ones.
+    if ray_jobs_active:
+        queue_ray_job_commands(
+            exp=exp,
+            backend=backend,
+            commands=commands,
+            command_images=command_images,
+            task_name=task_name,
+            log_dir=log_dir,
+            task_dependencies=task_dependencies,
+            external_dependencies=dependencies,
+            should_use_with_ray_cluster=should_use_with_ray_cluster,
+        )
 
     if not task_dependencies:  # empty list
         task_dependencies = None
@@ -920,16 +1003,90 @@ def add_task(
         )
 
 
+def queue_ray_job_commands(
+    *,
+    exp,
+    backend,
+    commands: list[str],
+    command_images: list[str | None] | None,
+    task_name: str,
+    log_dir: str | None,
+    task_dependencies,
+    should_use_with_ray_cluster: bool,
+    external_dependencies=None,
+) -> int:
+    """Queue commands for Ray Jobs API submission when the Ray backend is active.
+
+    Both within-experiment ``task_dependencies`` and cross-experiment
+    ``external_dependencies`` (resolved ``run_after`` handles) are forwarded so
+    the Ray queue can order submissions on all declared prerequisites.
+    """
+    if getattr(backend, "name", "") != "ray" or not getattr(backend, "dashboard_url", None):
+        return 0
+
+    queued_jobs = list(getattr(exp, "_ns_ray_jobs_queue", []))
+    before_count = len(queued_jobs)
+
+    def _dep_name(dep):
+        """Return a dependency's name, accepting either a string or a handle object."""
+        return dep if isinstance(dep, str) else getattr(dep, "name", str(dep))
+
+    all_deps = list(task_dependencies or []) + list(external_dependencies or [])
+    dep_names = [_dep_name(dep) for dep in all_deps]
+
+    # Predict the nemo-run handle exp.add() will assign this stage ("nemo-run",
+    # then "nemo-run_<n>") so dep resolution can match deps named by handle.
+    base_handle_name = "nemo-run"
+    existing_jobs = len(getattr(exp, "jobs", []) or [])
+    task_handle = base_handle_name if existing_jobs == 0 else f"{base_handle_name}_{existing_jobs}"
+
+    for idx, command in enumerate(commands):
+        img = command_images[idx] if command_images and idx < len(command_images) else None
+        cmd_meta = (
+            backend.stage_metadata(
+                use_with_ray_cluster=should_use_with_ray_cluster,
+                container_image=img,
+            )
+            or {}
+        )
+        queued_task_name = task_name if len(commands) == 1 else f"{task_name}-{idx}"
+        selector = cmd_meta.get("entrypoint_label_selector") or cmd_meta.get("ray_entrypoint_label_selector")
+        job_log_file = f"{log_dir}/ray-jobs/{queued_task_name}.log" if log_dir else None
+        stage_manifest_file = f"{log_dir}/ray-jobs/manifest.jsonl" if log_dir else None
+        queued_jobs.append(
+            {
+                "task_name": queued_task_name,
+                "command": command,
+                "submission_id": queued_task_name,
+                "entrypoint_label_selector": selector,
+                "dep_task_names": dep_names,
+                "task_handle": task_handle,
+                "job_log_file": job_log_file,
+                "stage_run_id": task_name,
+                "stage_manifest_file": stage_manifest_file,
+            }
+        )
+
+    setattr(exp, "_ns_ray_jobs_queue", queued_jobs)
+    queued_count = len(queued_jobs) - before_count
+    LOG.info(
+        "Queued %d Ray Job command(s) for submission via %s.",
+        queued_count,
+        backend.dashboard_url,
+    )
+    return queued_count
+
+
 def run_exp(exp, cluster_config, sequential=False, dry_run=False):
     """If sequential is not specified, using True locally and False otherwise.
 
     If it is specified, it will be used as is.
     """
-    if dry_run:
-        LOG.info("Dry run mode is enabled, not running the experiment.")
-        return
-
-    if "mounts" in cluster_config:
+    # Skip the live mount check on a dry run: check_remote_mount_directories opens an SSH
+    # tunnel and stats each source on the cluster, so honoring --dry_run here keeps a dry
+    # run free of remote I/O (and runnable fully offline), matching historical behavior.
+    # The backend's start_experiment() handles its own dry-run logging below.
+    if not dry_run and "mounts" in cluster_config:
         # Can only check cluster mounts here, not those added to add_task
         mounts = get_mounts_from_config(cluster_config)
         mount_sources = [m.split(":")[0] for m in mounts]
@@ -942,11 +1099,12 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
         )
         check_remote_mount_directories(mount_sources, cluster_config, exit_on_failure=exit_if_failure)
 
-    if cluster_config["executor"] != "slurm":
-        exp.run(detach=False, tail_logs=True, sequential=sequential)
-    else:
+    backend = get_execution_backend(cluster_config)
+    run_options = BackendRunOptions(sequential=sequential, dry_run=dry_run)
+
+    if cluster_config["executor"] == "slurm":
         try:
-            exp.run(detach=True, sequential=sequential)
+            backend.start_experiment(exp, cluster_config, run_options)
         except RuntimeError as e:
             if "Your repo has uncommitted changes." in str(e):
                 raise RuntimeError(
@@ -960,8 +1118,14 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
                 )
             else:
                 raise
+    else:
+        backend.start_experiment(exp, cluster_config, run_options)
 
-        # caching the experiment code for reuse
+    if dry_run:
+        return
+
+    # caching the experiment code for reuse
+    if cluster_config["executor"] == "slurm":
         tunnel = get_tunnel(cluster_config)
         cur_tunnel_hash = tunnel_hash(tunnel)
         if cur_tunnel_hash not in REUSE_CODE_EXP:
@@ -971,8 +1135,15 @@ def run_exp(exp, cluster_config, sequential=False, dry_run=False):
 def get_exp(expname, cluster_config, _reuse_exp=None):
     # Use existing experiment if provided, otherwise create a new one
     if _reuse_exp:
+        # Reused Ray Jobs experiments otherwise retain our handler beside
+        # nemo-run's root handler and duplicate every record.  A reused Slurm
+        # experiment historically kept its handler, so do not mutate it.
+        if is_ray_backend_name(cluster_config):
+            backend = get_execution_backend(cluster_config)
+            if is_ray_jobs_backend(backend):
+                remove_handlers()
         return contextlib.nullcontext(_reuse_exp)
-    # nemo-run redefines the handlers, so removing ours to avoid duplicate logs
+    # nemo-run redefines the handlers, so removing ours avoids duplicate logs.
     remove_handlers()
     if cluster_config["executor"] == "slurm":
         return run.Experiment(

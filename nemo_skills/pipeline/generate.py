@@ -22,6 +22,7 @@ import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.dataset.utils import import_from_path
 from nemo_skills.inference import GENERATION_MODULE_MAP, GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
+from nemo_skills.pipeline.utils.backends import get_backend_name
 from nemo_skills.pipeline.utils.cluster import parse_kwargs
 from nemo_skills.pipeline.utils.declarative import (
     Command,
@@ -649,6 +650,8 @@ def generate(
     if not jobs:
         return None
 
+    with_ray_pipeline = get_backend_name(cluster_config) == "ray"
+
     # Create and run pipeline
     pipeline = Pipeline(
         name=expname,
@@ -657,10 +660,11 @@ def generate(
         reuse_code=reuse_code,
         reuse_code_exp=reuse_code_exp,
         skip_hf_home_check=skip_hf_home_check,
+        with_ray=with_ray_pipeline,
     )
 
     # TODO: remove after https://github.com/NVIDIA-NeMo/Skills/issues/578 is resolved as default will be single job
-    sequential = True if cluster_config["executor"] in ["local", "none"] else False
+    sequential = True if cluster_config["executor"] in ["local", "none"] and not with_ray_pipeline else False
 
     # Pass _reuse_exp to pipeline.run() to add jobs to existing experiment
     result = pipeline.run(dry_run=dry_run, _reuse_exp=_reuse_exp, sequential=sequential)

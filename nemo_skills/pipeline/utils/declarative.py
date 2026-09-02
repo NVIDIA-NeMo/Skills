@@ -31,9 +31,16 @@ from nemo_skills.pipeline.utils import (
     run_exp,
     temporary_env_update,
 )
+from nemo_skills.pipeline.utils.backends import (
+    get_execution_backend,
+    is_ray_backend_name,
+    is_ray_jobs_backend,
+    rewrite_ray_job_code_paths,
+)
 from nemo_skills.pipeline.utils.exp import (
     REUSE_CODE_EXP,
     get_packaging_job_key,
+    queue_ray_job_commands,
     tunnel_hash,
 )
 from nemo_skills.pipeline.utils.mounts import get_mounts_from_config, is_mounted_filepath, normalize_mounts_list
@@ -579,16 +586,46 @@ class Pipeline:
         return script, exec_config
 
     def _rewrite_local_paths(self, script: run.Script) -> run.Script:
-        """For executor='none', replace /nemo_run/code paths with local repo paths."""
+        """For executor='none', replace /nemo_run/code paths with local repo paths.
+
+        Under the Ray Jobs API backend (``backend.name == "ray"``) the command is
+        submitted to a *remote* cluster whose image and Python version need not match
+        the driver's, so the driver-side absolute install path (e.g.
+        ``/usr/local/lib/python3.10/dist-packages``) will not exist there. When an
+        explicit Ray ``working_dir`` is configured, use stable absolute roots that
+        the Ray entrypoint captures before the workload can change directory. Without
+        ``working_dir``, retain the historical cwd-relative Ray rewrite.
+        """
         nemo_repo = get_registered_external_repo("nemo_skills")
-        if nemo_repo is None:
+        # Use the shared parser so the supported bare-string form (``backend: ray``) is
+        # handled too -- a direct ``.get("name")`` raises AttributeError on a string.
+        is_ray = is_ray_backend_name(self.cluster_config)
+        if nemo_repo is None and not is_ray:
             return script
 
-        pkg_path = str(nemo_repo.path)
-        repo_root = str(nemo_repo.path.parent)
+        ray_jobs_with_working_dir = False
+        if is_ray:
+            backend = get_execution_backend(self.cluster_config, with_ray=self.with_ray)
+            ray_jobs_with_working_dir = is_ray_jobs_backend(backend) and bool(getattr(backend, "working_dir", None))
 
-        def _replace(cmd: str) -> str:
-            return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
+        if ray_jobs_with_working_dir:
+
+            def _replace(cmd: str) -> str:
+                return rewrite_ray_job_code_paths(cmd)
+
+        elif is_ray:
+            pkg_path = "./nemo_skills"
+            repo_root = "."
+
+            def _replace(cmd: str) -> str:
+                return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
+
+        else:
+            pkg_path = str(nemo_repo.path)
+            repo_root = str(nemo_repo.path.parent)
+
+            def _replace(cmd: str) -> str:
+                return cmd.replace("/nemo_run/code/nemo_skills", pkg_path).replace("/nemo_run/code", repo_root)
 
         inline_cmd = script.inline
         if isinstance(inline_cmd, str):
@@ -812,6 +849,7 @@ class Pipeline:
         shared_packager = None
 
         # Build commands and executors using prepared data
+        metadata_container_image: Optional[str] = None
         for entry_idx, entry in enumerate(prepared_commands):
             het_idx = entry["het_idx"]
             comp_idx = entry["comp_idx"]
@@ -830,6 +868,8 @@ class Pipeline:
 
             # Resolve container and create executor
             container_image = self._resolve_container(exec_config, command, cluster_config)
+            if metadata_container_image is None:
+                metadata_container_image = container_image
             # Pass external dependencies only to the first executor in iteration order.
             # We use entry_idx rather than het_idx/comp_idx because prepared_commands may
             # have been reordered (e.g., to put spanning components first for allocation).
@@ -902,10 +942,69 @@ class Pipeline:
         # Note: Path replacements for executor="none" are no longer needed with Script interface
 
         # Ray metadata handling
-        if self.with_ray and cluster_config["executor"] == "slurm":
-            metadata = {"use_with_ray_cluster": True}
-        else:
-            metadata = None
+        backend = get_execution_backend(cluster_config, with_ray=self.with_ray)
+        ray_jobs_active = is_ray_jobs_backend(backend)
+        # use_with_ray_cluster (embedded Ray-on-Slurm) is only valid on SlurmExecutor, so gate
+        # on executor == "slurm" -- mirrors add_task so a non-Slurm executor never requests an
+        # embedded cluster. Precreated Ray Jobs clusters never embed (RayBackend enforces that).
+        should_use_with_ray_cluster = bool(
+            self.cluster_config["executor"] == "slurm" and (self.with_ray or getattr(backend, "name", "") == "ray")
+        )
+        metadata = backend.stage_metadata(
+            use_with_ray_cluster=should_use_with_ray_cluster,
+            container_image=metadata_container_image,
+        )
+
+        ray_queue_commands = []
+        ray_queue_images = []
+        if ray_jobs_active:
+            for script, executor in zip(scripts, executors):
+                if not isinstance(script.inline, str):
+                    continue
+                ray_queue_commands.append(script.inline)
+                ray_queue_images.append(getattr(executor, "container_image", None))
+
+        # Forward both internal (same-experiment) and external (cross-experiment
+        # run_after) dependencies. Dropping external deps would let Ray jobs submit
+        # before their prerequisites finish, since Ray ordering is resolved from
+        # the queued dep names rather than the nemo-run executor.
+        if ray_jobs_active:
+            queue_ray_job_commands(
+                exp=exp,
+                backend=backend,
+                commands=ray_queue_commands,
+                command_images=ray_queue_images,
+                task_name=groups[0].name,
+                log_dir=log_dir,
+                task_dependencies=internal_deps,
+                external_dependencies=external_deps,
+                should_use_with_ray_cluster=should_use_with_ray_cluster,
+            )
+
+        # A run_after naming another experiment whose tasks have already finished
+        # resolves to empty handles and falls through as a bare experiment-name string
+        # in internal_deps. Only the Ray backend resolves cross-experiment ordering from
+        # the queued dep names (external_deps + the Ray queue), so only it needs those
+        # finished-cross-experiment strings dropped from exp.add(). On the default backend
+        # we must NOT silently drop them: nemo-run's exp.add asserts every dependency is a
+        # job in THIS experiment, and that fail-loud behavior is the historical contract.
+        # Only filter when exp.jobs is a concrete list (a real nemo-run experiment); a
+        # mocked or duck-typed exp leaves deps untouched so valid handles are never dropped.
+        exp_jobs = getattr(exp, "jobs", None)
+        if ray_jobs_active and internal_deps and isinstance(exp_jobs, (list, tuple)):
+            known_job_ids = {getattr(job, "id", None) for job in exp_jobs}
+            kept = []
+            for dep in internal_deps:
+                if not isinstance(dep, str) or dep in known_job_ids:
+                    kept.append(dep)
+                else:
+                    LOG.warning(
+                        "Dropping dependency '%s' from exp.add: not a job in this "
+                        "experiment (cross-experiment ordering preserved via external "
+                        "deps / Ray queue).",
+                        dep,
+                    )
+            internal_deps = kept or None
 
         # Add to experiment and return task ID
         # Note: Internal dependencies (task handles from same experiment) go to exp.add()

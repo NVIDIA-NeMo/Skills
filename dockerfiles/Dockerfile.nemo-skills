@@ -1,5 +1,31 @@
+# W&B 0.28.1 still bundles Go 1.26.4, grpc-go 1.82.0, and x/text 0.38.0.
+# W&B commit e118409 is its focused July 17 dependency update to Go 1.26.5,
+# grpc-go 1.82.1, and x/text 0.40.0. Build only wandb-core here so the final
+# image gets the fixed binary without retaining the Go toolchain or source.
+ARG WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7
+FROM golang:1.26.5 AS wandb-core-builder
+ARG WANDB_CORE_COMMIT
+RUN git init /src/wandb && \
+    cd /src/wandb && \
+    git remote add origin https://github.com/wandb/wandb.git && \
+    git sparse-checkout init --cone && \
+    git sparse-checkout set core && \
+    git fetch --depth 1 origin "${WANDB_CORE_COMMIT}" && \
+    git checkout --detach FETCH_HEAD
+RUN cd /src/wandb/core && \
+    CGO_ENABLED=0 go build \
+        -tags "disable_grpc_modules parquet_read_only" \
+        -ldflags "-s -w -X main.commit=${WANDB_CORE_COMMIT}" \
+        -mod=vendor \
+        -o /wandb-core \
+        ./cmd/wandb-core && \
+    go version -m /wandb-core | grep -F "go1.26.5" && \
+    go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v1\.82\.1([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v0\.40\.0([[:space:]]|$)"
+
 # using ubuntu instead of debian for easier apptainer installation on arm64
 FROM ubuntu:22.04
+ARG WANDB_CORE_COMMIT
 
 # Install Python and other dependencies
 RUN apt-get update && \
@@ -14,7 +40,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools "uv>=0.11.10"
+RUN pip install --upgrade pip "setuptools>=78.1.1" "uv>=0.11.10"
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -59,8 +85,9 @@ RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
 
-RUN pip install langdetect absl-py immutabledict nltk ipython && \
-    python -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
+# NLTK 3.10's import-safety hook is incompatible with this image's Python 3.10 runtime.
+RUN pip install langdetect absl-py immutabledict "nltk==3.9.2" ipython && \
+    python -I -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
     nltk.download('stopwords'); nltk.download('averaged_perceptron_tagger_eng'); download('en_core_web_sm')"
 
 # we aren't copying main nemo_skills folder as it will always be mounted from host
@@ -73,9 +100,25 @@ COPY core/requirements.txt /opt/NeMo-Skills/core/requirements.txt
 RUN pip install git+https://github.com/NVIDIA/NeMo-speech-data-processor@29b9b1ec0ceaf3ffa441c1d01297371b3f8e11d2
 ARG CACHEBUST=4
 # Install via `uv pip` from the project directory so [tool.uv].override-dependencies
-# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x
+# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.84.x
 # can be installed) is picked up. Plain pip ignores [tool.uv] and the resolver fails.
 RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
     -r core/requirements.txt -r requirements/pipeline.txt
+# Replace W&B's vulnerable release binary with the source-compatible patched core
+# built and module-verified above. The copy preserves its executable mode.
+COPY --from=wandb-core-builder /wandb-core /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core
+RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
+    grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
+
+# Guard the final resolved environment against the two High findings seen in
+# the July 31 multi-architecture image scan.
+RUN python -c "from importlib.metadata import version as v; from packaging.version import Version as V; \
+               assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
+               assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
+               print('msgpack/setuptools security floors OK')"
+
+# nSpect's global policy flags Git metadata left by uv's source-distribution
+# cache. The cache is build-only, so remove it from the published image.
+RUN rm -rf /root/.cache/uv

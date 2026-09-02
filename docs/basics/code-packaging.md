@@ -68,3 +68,39 @@ If you want to have more fine-grained control over code reuse, you can directly 
 While our job submission is somewhat complicated and goes through NeMo-Run, at the end, we simply execute a particular sbatch file
 that is uploaded to the cluster. It is helpful sometimes to see what's in it and modify directly. You can find sbatch file(s)
 for each job inside `ssh_tunnel.job_dir` cluster folder that is defined in your cluster config.
+
+## Ray Jobs code delivery
+
+The Ray Jobs backend can optionally deliver source code with Ray's native
+`runtime_env.working_dir` packaging:
+
+```yaml
+executor: none
+backend:
+  name: ray
+  dashboard_url: http://<ray-head>:8265
+  working_dir: /opt/my-project  # local directory or local .zip on the submitter
+```
+
+When `working_dir` is set, Ray uploads that directory or archive and makes it
+the submitted job's current directory. It does not run `pip`, `conda`, or `uv`,
+so every dependency must already be present in the Ray worker image. For a
+strict-airgap launch, point it at an immutable source directory or archive baked
+into the launcher image. If the option is absent, Ray Jobs retain their existing
+behavior and no working directory is delivered.
+
+Before starting the command, the backend captures Ray's initial uploaded-code
+directory in `NEMO_RUN_CODE_DIR`. Legacy `/nemo_run/code/...` command paths are
+rewritten to that absolute root, so they continue to work if a workload later
+changes directory (for example, `cd /opt/Gym`). Legacy
+`/nemo_run/code/nemo_skills/...` paths resolve separately from the NeMo-Skills
+package baked into the worker image; the working-directory archive does not need
+to duplicate that package. These rewrites apply only to Ray Jobs with an explicit
+`working_dir`; local `executor: none`, embedded Ray-on-Slurm, and ordinary Slurm
+execution keep their existing path and packaging behavior.
+
+The backend rewrites paths in generated entrypoint command strings. It does not
+edit YAML, JSON, or other files inside the uploaded archive. Configuration files
+that must refer to the delivered source after changing directory should resolve
+`NEMO_RUN_CODE_DIR` themselves (and may retain `/nemo_run/code` as their non-Ray
+default).

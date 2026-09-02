@@ -14,6 +14,13 @@
 
 # importing every utility function here to make them available in the pipeline.utils namespace
 
+from nemo_skills.pipeline.utils.backends import (
+    BackendRunOptions,
+    ExecutionBackend,
+    get_execution_backend,
+    stop_stage_tasks,
+    track_stage_tasks,
+)
 from nemo_skills.pipeline.utils.cluster import (
     _get_tunnel_cached,
     cluster_download_dir,
