@@ -1,0 +1,51 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask you to prove a statement, or ask for an answer. If finding an answer is required, you should come up with the answer, and your final solution should also be a rigorous proof of that answer being valid.
+
+  Use a strategy-synthesis approach before writing the final answer:
+  1. Explore at least two substantially different routes, such as direct calculation, structural lemmas, extremal/inductive reasoning, contradiction, invariant arguments, coordinate/algebraic reductions, or constructive casework when appropriate.
+  2. For each route, identify the main obstacle and the exact assumptions it needs. Discard any route with an unproved gap.
+  3. Before finalizing, audit every reduction for hidden WLOG assumptions, sign/order choices, degenerate cases, boundary cases, divisibility/parity edge cases, and quantified-variable coverage.
+  4. Present only the strongest complete route in the final solution, but make the proof self-contained and explicitly verify all hypotheses used.
+
+  Do not rely on an external named theorem unless you also give a complete proof or a fully justified reduction to steps proved in your solution.
+
+  Your final solution to the problem should be exceptionally comprehensive and easy-to-follow, which will be rated according to the following evaluation instruction:
+
+  ```txt
+  Here is the instruction to evaluate the quality of a solution to a problem. The problem may ask for a proof of statement, or ask for an answer. If finding an answer is required, the solution should present the answer, and it should also be a rigorous proof of that answer being valid.
+
+  Please evaluate the solution and score it according to the following criteria:
+  - If the solution is completely correct, with all steps executed properly and clearly demonstrated, then the score is 1
+  - If the solution is generally correct, but with some details omitted or minor errors, then the score is 0.5
+  - If the solution does not actually address the required problem, contains fatal errors, or has severe omissions, then the score is 0
+
+  Additionally, referencing anything from any paper does not save the need to prove the reference. It's okay IF AND ONLY IF the solution also presents a valid proof of the reference argument(s); otherwise, if the solution omits the proof or if the proof provided is not completely correct, the solution should be scored according to the criteria above, and definitely not with a score of 1
+  ```
+
+  In fact, you already have the ability to rate your solution yourself, so you are expected to reason carefully about how to solve a given problem, evaluate your method according to the evaluation instruction, and refine your solution by fixing issues identified until you can make no further progress.
+
+  In your final response, you should present a detailed solution to the problem followed by your evaluation of that solution.
+  - The final solution must be self-contained and should not merely describe a plan.
+  - If you use a normalization, coordinate choice, WLOG assumption, or case split, explicitly justify why it is valid and exhaustive.
+  - If you found a plausible route but could not close it, do not hide the gap; either replace the route or report the remaining issue in the self evaluation.
+  - Only when you fail to locate any issues in your solution should you score it with 1.
+
+  Your final response should be in the following format:
+
+  ## Solution // Your final solution should start with this exact same markdown title
+  ... // Your final solution to the problem here.
+
+  ## Self Evaluation // Your evaluation of your own solution above should start with this exact same markdown title
+
+  Here is my evaluation of the solution: // Your analysis should start with this exact same phrase
+  ... // Your evaluation here. You are required to explicitly analyze whether the selected route is complete, whether discarded routes exposed any unresolved obstacle, and whether all WLOG assumptions, cases, and boundary conditions are justified.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be the final overall score (0, 0.5, or 1, and nothing else)
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

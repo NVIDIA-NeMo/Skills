@@ -1,0 +1,95 @@
+# The pipeline submitted to IMO 2026 (report Section 4): three Nemotron 3 Ultra checkpoints generate and
+# refine, two of them verify, all three judge the finalists. Fill in every <your-...> placeholder.
+#
+# Counts derived from this file and checked at launch: 8 prompts x 3 checkpoints x 16 = 384 round-1 attempts,
+# 2 verifiers x 8 = 16 judgments per proof, 16 prompts x 3 checkpoints x 4 = 192 refinements per round,
+# 3 judges x 16 = 48 IMO-style judgments per finalist.
+
+endpoint:                     # defaults for every model entry below; any entry may override base_url / api_key_env
+  base_url: <your-openai-compatible-base-url>   # e.g. https://integrate.api.nvidia.com/v1 or http://localhost:8000/v1
+  api_key_env: NVIDIA_API_KEY # environment variable holding the API key; null means the server needs no key
+  timeout_s: 14400            # per request, client side
+  retry_window_s: 3600        # transient failures (429, 5xx, timeouts) are retried until this much time has elapsed
+  backoff_base_s: 5           # jittered exponential backoff between retries: uniform(0, min(max, base * 2^(n-1)))
+  backoff_max_s: 120
+  extra_body: {}              # merged into every request body (for example chat_template_kwargs); pinned by the run manifest
+
+checkpoints:                  # generation and refinement roles, in report order (GA, RL, SFT)
+  - id: ga
+    model: <your-ga-model-name>
+    max_len: 524288           # server context window (prompt + completion)
+    max_tokens: 393216        # completion budget for generation and refinement
+    generation_samples_per_prompt: 16
+    refinement_samples_per_prompt: 4
+  - id: rl
+    model: <your-rl-model-name>
+    max_len: 524288
+    max_tokens: 393216
+    generation_samples_per_prompt: 16
+    refinement_samples_per_prompt: 4
+  - id: sft
+    model: <your-sft-model-name>
+    max_len: 524288
+    max_tokens: 512000
+    generation_samples_per_prompt: 16
+    refinement_samples_per_prompt: 4
+
+verifiers:                    # search-time verification panel; a proof is accepted only when all 16 judgments are 1
+  - id: rl
+    model: <your-rl-model-name>
+    max_len: 524288
+    max_tokens: 320000
+    judgments_per_proof: 8
+  - id: sft
+    model: <your-sft-model-name>
+    max_len: 524288
+    max_tokens: 320000
+    judgments_per_proof: 8
+
+judges:                       # final-selection panel (IMO-style 0-7 judge prompt); set to null to skip the stage
+  - id: ga
+    model: <your-ga-model-name>
+    max_len: 524288
+    max_tokens: 320000
+    judgments_per_finalist: 16
+  - id: rl
+    model: <your-rl-model-name>
+    max_len: 524288
+    max_tokens: 320000
+    judgments_per_finalist: 16
+  - id: sft
+    model: <your-sft-model-name>
+    max_len: 524288
+    max_tokens: 320000
+    judgments_per_finalist: 16
+
+search:
+  generation_prompts:         # ordered; file stems under prompts/ (report Appendix B.1)
+    - proof_generation
+    - proof_generation_lemma_first
+    - proof_generation_route_compare
+    - proof_generation_counterexample_guard
+    - proof_generation_formal_sanity
+    - proof_generation_gap_resistant
+    - proof_generation_invariant_extremal
+    - proof_generation_strategy_audit
+  max_rounds: 8               # round 1 generates, rounds 2 to 8 refine
+  refinement_prompts_per_round: 16   # the top-16 pool proofs each get one refinement prompt
+
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+
+concurrency:                  # in-flight request lanes; size these to the serving capacity behind the endpoint
+  problems: 30                # problems advanced concurrently
+  generation: 320
+  verification: 1280
+  refinement: 320
+  judging: 256
+
+context_budget:               # optional; remove the block to send max_tokens unmodified
+  tokenizer: <your-tokenizer-id-or-path>   # one tokenizer for every model (all are Nemotron 3 Ultra variants)
+  safety_margin_tokens: 4096
+
+input:
+  path: <your-problems.jsonl> # one row per problem with problem_idx and problem (or question)
