@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import copy
 import json
 import logging
@@ -49,6 +50,7 @@ class ToolCallingWrapper:
         additional_config: dict | None = None,
         schema_overrides: dict | None = None,
         max_tool_calls: int = -1,
+        tool_call_timeout_s: float | None = 300.0,
     ):
         self.model = model
         additional_config = additional_config or {}
@@ -63,6 +65,9 @@ class ToolCallingWrapper:
         self.schema_overrides = load_schema_overrides(schema_overrides)
         self.schema_mappings = {}  # Built when tools are listed
         self.max_tool_calls = max_tool_calls
+        if tool_call_timeout_s is not None and tool_call_timeout_s <= 0:
+            raise ValueError("tool_call_timeout_s must be a positive number of seconds, or None to disable.")
+        self.tool_call_timeout_s = tool_call_timeout_s
 
     async def _execute_tool_call(self, tool_call, request_id: str, endpoint_type: EndpointType):
         ## TODO(sanyamk): The correct key format needs to be cohesive with other formatters.
@@ -85,9 +90,16 @@ class ToolCallingWrapper:
 
         try:
             # Allow providers to specify extra_args behavior internally if needed in the future
-            result = await self.tool_manager.execute_tool(
+            tool_future = self.tool_manager.execute_tool(
                 original_tool_name, tool_args, extra_args={"request_id": request_id}
             )
+            if self.tool_call_timeout_s is None:
+                result = await tool_future
+            else:
+                result = await asyncio.wait_for(tool_future, timeout=self.tool_call_timeout_s)
+        except asyncio.TimeoutError:
+            LOG.error("Tool execution timed out after %s seconds: %s", self.tool_call_timeout_s, original_tool_name)
+            return {"error": f"Tool execution timed out after {self.tool_call_timeout_s} seconds."}
         except FatalToolError:
             # Fatal errors should propagate up and stop the process
             raise
