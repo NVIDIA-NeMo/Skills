@@ -58,6 +58,7 @@ DATASETS = [
     ("mmau-pro", ["test"]),
     ("contextasr-bench", ["test"]),
     ("contextual-earnings22", ["test"]),
+    ("apptek-callcenter-dialogues", ["test"]),
     ("audiobench", ["test"]),
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),
