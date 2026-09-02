@@ -48,7 +48,7 @@ def _inject_single_server_overrides(
     server_type: str,
     model_name: str,
     host: str | None = None,
-    port: int | None = None,
+    port: int | str | None = None,
     base_url: str | None = None,
 ) -> str:
     """Inject single-model server config overrides (like configure_client does).
