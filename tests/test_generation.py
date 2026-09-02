@@ -28,6 +28,22 @@ from nemo_skills.pipeline.utils.generation import configure_client
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
 
+def test_generation_task_shutdown_awaits_async_llm_shutdown():
+    class LLM:
+        def __init__(self):
+            self.shutdown_called = False
+
+        async def shutdown(self):
+            self.shutdown_called = True
+
+    task = GenerationTask.__new__(GenerationTask)
+    task.llm = LLM()
+
+    task.shutdown()
+
+    assert task.llm.shutdown_called
+
+
 @pytest.mark.timeout(300)
 def test_eval_gsm8k_api(tmp_path):
     cmd = (
