@@ -15,6 +15,7 @@
 """NVEmbed judge implementation for embedding-based similarity matching."""
 
 import logging
+import shlex
 
 from nemo_skills.pipeline.utils import add_task
 from nemo_skills.pipeline.utils.generation import get_remaining_jobs
@@ -35,6 +36,8 @@ def create_judge_tasks(
     judge_server_gpus,
     judge_server_nodes,
     partition,
+    account,
+    judge_container,
     run_after,
     reuse_code_exp,
     reuse_code,
@@ -59,6 +62,8 @@ def create_judge_tasks(
         judge_server_gpus: Number of GPUs for judge
         judge_server_nodes: Number of nodes for judge
         partition: SLURM partition
+        account: SLURM account
+        judge_container: Container to use for the judge
         run_after: Dependencies to run after
         reuse_code_exp: Experiment to reuse code from
         reuse_code: Whether to reuse code
@@ -72,7 +77,12 @@ def create_judge_tasks(
     Returns:
         List of judge tasks created
     """
-    output_dir_path = judge_pipeline_args.get("output_dir")
+    try:
+        output_dir_path = judge_pipeline_args["output_dir"]
+    except KeyError as exc:
+        raise ValueError("NVEmbed judge requires judge_pipeline_args['output_dir']") from exc
+    if output_dir_path is None:
+        raise ValueError("NVEmbed judge requires a non-null output_dir")
     input_file = judge_pipeline_args.get("input_file")
 
     # Determine seeds to check
@@ -95,20 +105,38 @@ def create_judge_tasks(
         return []
 
     # Build command to run NVEmbed judge script
-    script_args = [f"--output-dir {output_dir_path}"]
+    script_args = ["--output-dir", str(output_dir_path)]
 
     if input_file is None:
-        input_dir = judge_pipeline_args.get("input_dir")
-        script_args.append(f"--input-dir {input_dir}")
-        script_args.append(f"--num-seeds {num_seeds}")
+        try:
+            input_dir = judge_pipeline_args["input_dir"]
+        except KeyError as exc:
+            raise ValueError(
+                "NVEmbed judge requires judge_pipeline_args['input_dir'] when input_file is unset"
+            ) from exc
+        if input_dir is None:
+            raise ValueError("NVEmbed judge requires a non-null input_dir when input_file is unset")
+        script_args.extend(["--input-dir", str(input_dir)])
+        script_args.extend(["--num-seeds", str(num_seeds)])
     else:
-        script_args.append(f"--input-file {input_file}")
+        script_args.extend(["--input-file", str(input_file)])
 
     # Add skip-existing flag unless rerun_done is set
     if not rerun_done:
         script_args.append("--skip-existing")
+    script_args.append("--skip-install")
 
-    run_cmd = f"python3 -I /nemo_run/code/nemo_skills/evaluation/evaluator/nvembed_judge.py {' '.join(script_args)}"
+    run_cmd = (
+        "NVEMBED_DEPS_DIR=/tmp/nvembed_deps_${SLURM_JOB_ID:-$$} && "
+        'mkdir -p "$NVEMBED_DEPS_DIR" && '
+        'python3 -m pip install -q --upgrade --target "$NVEMBED_DEPS_DIR" '
+        # Keep this pin compatible with the evaluator script's numpy<2 constraint.
+        "'numpy==1.26.4' datasets einops transformers==4.42.4 tqdm && "
+        'export PYTHONPATH="$NVEMBED_DEPS_DIR:${PYTHONPATH:-}" && '
+        "export HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 HF_DATASETS_OFFLINE=0 && "
+        "python3 /nemo_run/code/nemo_skills/evaluation/evaluator/nvembed_judge.py "
+        f"{' '.join(shlex.quote(arg) for arg in script_args)}"
+    )
 
     # Create task with GPU support for NVEmbed
     judge_task = add_task(
@@ -116,11 +144,12 @@ def create_judge_tasks(
         cmd=run_cmd,
         task_name=f"{expname}-{benchmark}-nvembed-judge",
         log_dir=log_dir + "/judge",
-        container=cluster_config["containers"]["vllm"],
+        container=judge_container or cluster_config["containers"]["vllm"],
         cluster_config=cluster_config,
         num_gpus=judge_server_gpus or 1,
         num_nodes=judge_server_nodes or 1,
         partition=partition,
+        account=account,
         run_after=run_after,
         reuse_code_exp=reuse_code_exp,
         reuse_code=reuse_code,

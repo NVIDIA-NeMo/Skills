@@ -42,7 +42,20 @@ def install_packages():
     """Install required packages for NVEmbed evaluation."""
     LOG.info("Installing required packages...")
     subprocess.run(
-        ["pip", "install", "-q", "datasets", "einops", "transformers==4.42.4", "tqdm"],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            # Keep this constraint compatible with the pinned runtime install in
+            # nemo_skills/pipeline/judges/nvembed_judge.py.
+            "numpy<2",
+            "datasets",
+            "einops",
+            "transformers==4.42.4",
+            "tqdm",
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -113,6 +126,22 @@ def evaluate_with_nvembed_similarity(
     return matched_choice, confidence
 
 
+def _coerce_text(value: Any) -> str:
+    """Convert loose NVEmbed generation payloads to plain text."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("text", "expected_answer", "answer", "transcript", "reference", "generation"):
+            if key in value and value[key] is not None:
+                return _coerce_text(value[key])
+        return " ".join(_coerce_text(item) for item in value.values() if item is not None).strip()
+    if isinstance(value, (list, tuple)):
+        return " ".join(_coerce_text(item) for item in value if item is not None).strip()
+    return str(value).strip()
+
+
 def evaluate_sample_with_nvembed(sample: dict[str, Any], model_name: str = "nvidia/NV-Embed-v2") -> dict[str, Any]:
     """Evaluate a single sample using NVEmbed similarity matching."""
     sample = sample.copy()
@@ -120,15 +149,22 @@ def evaluate_sample_with_nvembed(sample: dict[str, Any], model_name: str = "nvid
     if "nvembed_confidence" in sample:
         return sample
 
-    generation = sample.get("generation", "").strip()
-    choices = sample.get("choices", [])
-    expected_answer = sample.get("expected_answer", "")
+    generation = _coerce_text(sample.get("generation", ""))
+    choices = sample["choices"]
+    expected_answer = sample["expected_answer"]
 
-    # Fail fast if data is malformed - this indicates a pipeline error
+    # Empty model outputs are valid failed predictions. Keep malformed-data
+    # checks strict, but do not let one blank generation abort the whole eval.
     if not generation:
-        raise ValueError(
-            f"Sample missing generation field or has empty generation. Sample ID: {sample.get('id', 'unknown')}"
+        sample.update(
+            {
+                "nvembed_matched_choice": "",
+                "nvembed_confidence": 0.0,
+                "is_correct": False,
+                "nvembed_error": "empty_generation",
+            }
         )
+        return sample
 
     if not choices:
         raise ValueError(
