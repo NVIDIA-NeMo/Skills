@@ -31,7 +31,7 @@ math-verify[antlr4_9_3]
 # Unpin once those call sites move to streamable_http_client and the 2.0 API is verified.
 mcp<2.0
 numpy
-openai
+openai[aiohttp]
 openpyxl>=3.1.0
 pandas>=2.0.0
 pyxlsb>=1.0.10

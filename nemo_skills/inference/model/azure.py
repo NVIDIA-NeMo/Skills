@@ -19,6 +19,9 @@ from .openai import OpenAIModel
 
 class AzureOpenAIModel(OpenAIModel):
     MODEL_PROVIDER = "azure"
+    # Azure requires provider-specific endpoint and authentication handling
+    # from litellm.
+    SUPPORTS_NATIVE_OPENAI = False
 
     def __init__(
         self,

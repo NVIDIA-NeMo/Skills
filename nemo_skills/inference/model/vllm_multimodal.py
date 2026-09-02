@@ -69,6 +69,10 @@ class VLLMMultimodalModel(VLLMModel):
         )
     """
 
+    # Multimodal request and response transformations require litellm, so this
+    # overrides VLLMModel's native-client support.
+    SUPPORTS_NATIVE_OPENAI = False
+
     def __init__(
         self,
         model: str | None = None,
