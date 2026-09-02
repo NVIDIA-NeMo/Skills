@@ -1,0 +1,6 @@
+# FACTS Grounding judge prompt config
+# This is a placeholder to satisfy prompt_config validation.
+# The actual evaluation prompts are loaded at runtime from the dataset's
+# evaluation_prompts split (stored locally as eval_prompts.json).
+
+user: "{user_request}"
