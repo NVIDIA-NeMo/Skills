@@ -13,9 +13,9 @@
 # limitations under the License.
 
 from nemo_skills.inference.eval.swebench import (
+    OPENCODE_AGENT_PROMPT_PATH,
     OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX,
     OPENCODE_PROVIDER_ID,
-    OPENCODE_SOLUTION_ORIGINALITY_PATH,
     build_opencode_config,
 )
 
@@ -65,7 +65,7 @@ def test_build_opencode_config_points_at_local_openai_server():
     assert config["agent"]["build"]["temperature"] == 1.0
     assert config["agent"]["build"]["top_p"] == 0.95
     assert config["agent"]["build"]["steps"] == 400
-    assert config["instructions"] == [OPENCODE_SOLUTION_ORIGINALITY_PATH]
+    assert config["instructions"] == [OPENCODE_AGENT_PROMPT_PATH]
 
 
 def test_build_opencode_config_merges_user_keys():
@@ -84,6 +84,7 @@ def test_build_opencode_config_merges_user_keys():
         top_k=None,
         extra_body={},
         agent_max_turns=250,
+        instruction_path="/root/.config/opencode/custom-prompt.md",
     )
 
     assert config["experimental"]["continue_loop_on_deny"] is True
@@ -92,7 +93,7 @@ def test_build_opencode_config_merges_user_keys():
     assert config["agent"]["custom"]["top_p"] == 0.8
     assert config["agent"]["custom"]["steps"] == 250
     assert config["agent"]["custom"]["prompt"] == "Custom agent prompt"
-    assert config["instructions"] == ["custom-instructions.md", OPENCODE_SOLUTION_ORIGINALITY_PATH]
+    assert config["instructions"] == ["custom-instructions.md", "/root/.config/opencode/custom-prompt.md"]
     model = config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
     assert model["limit"]["output"] == OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
     assert "options" not in model

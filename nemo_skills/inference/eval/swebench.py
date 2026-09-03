@@ -61,14 +61,14 @@ OPENCODE_DEFAULT_VERSION = "1.17.11"
 OPENCODE_NODE_VERSION = "22.15.0"
 OPENCODE_PROVIDER_ID = "nemo"
 OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
-OPENCODE_SOLUTION_ORIGINALITY_CONFIG = "eval/swe-bench/opencode/solution-originality"
-OPENCODE_SOLUTION_ORIGINALITY_PATH = "/root/.config/opencode/solution-originality.md"
+DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/opencode/solution-originality"
+OPENCODE_AGENT_PROMPT_PATH = "/root/.config/opencode/nemo-skills-prompt.md"
 
 # Claude Code is installed from npm so benchmark runs can pin the harness version.
 CLAUDE_CODE_NPM_PACKAGE = "@anthropic-ai/claude-code"
 CLAUDE_CODE_DEFAULT_VERSION = "2.1.259"
 CLAUDE_CODE_NODE_VERSION = "22.15.0"
-CLAUDE_CODE_SOLUTION_ORIGINALITY_PATH = "/root/.claude/solution-originality.md"
+CLAUDE_CODE_AGENT_PROMPT_PATH = "/root/.claude/nemo-skills-prompt.md"
 CLAUDE_CODE_ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
 
 # These verifiers bind fixed localhost ports. Run only their verifier
@@ -152,6 +152,7 @@ def build_opencode_config(
     extra_body: dict,
     agent_max_turns: int,
     tokens_to_generate: int | None = None,
+    instruction_path: str = OPENCODE_AGENT_PROMPT_PATH,
 ) -> dict:
     """Build the OpenCode JSON config used to point the CLI at a local OpenAI-compatible server."""
     config = _deep_merge_dicts({}, copy.deepcopy(agent_config) if agent_config else {})
@@ -219,8 +220,8 @@ def build_opencode_config(
     instructions = config.setdefault("instructions", [])
     if not isinstance(instructions, list):
         raise ValueError("OpenCode instructions must be a list.")
-    if OPENCODE_SOLUTION_ORIGINALITY_PATH not in instructions:
-        instructions.append(OPENCODE_SOLUTION_ORIGINALITY_PATH)
+    if instruction_path not in instructions:
+        instructions.append(instruction_path)
     return config
 
 
@@ -298,6 +299,9 @@ class SweBenchGenerationConfig:
     # SWE-agent/OpenHands/OpenCode/Claude Code configuration file path.
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
+    # Markdown prompt appended to the native system prompt for OpenCode and Claude Code.
+    # Defaults to the solution-originality prompt.
+    agent_prompt_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
@@ -1238,8 +1242,9 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        with open(get_config_path(OPENCODE_SOLUTION_ORIGINALITY_CONFIG, config_extension="md"), "r") as f:
-            solution_originality = f.read()
+        agent_prompt_config = self.cfg.agent_prompt_config or DEFAULT_AGENT_PROMPT_CONFIG
+        with open(get_config_path(agent_prompt_config, config_extension="md"), "r") as f:
+            agent_prompt = f.read()
 
         output_token_max = (
             self.cfg.inference.tokens_to_generate
@@ -1264,6 +1269,7 @@ class SweBenchGenerationTask(GenerationTask):
             extra_body=OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True),
             agent_max_turns=self.cfg.agent_max_turns,
             tokens_to_generate=output_token_max,
+            instruction_path=OPENCODE_AGENT_PROMPT_PATH,
         )
         config_json = json.dumps(opencode_config)
         instruction = self._get_agent_problem_statement(data_point)
@@ -1293,7 +1299,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"export OPENAI_BASE_URL={shlex.quote(self.api_base)} && "
             "mkdir -p /root/.config/opencode && "
             f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
-            f"printf %s {shlex.quote(solution_originality)} >{OPENCODE_SOLUTION_ORIGINALITY_PATH} && "
+            f"printf %s {shlex.quote(agent_prompt)} >{OPENCODE_AGENT_PROMPT_PATH} && "
             "cd /testbed && "
             "git config --global --add safe.directory /testbed && "
             "git config --global user.email opencode@nemo-skills.local && "
@@ -1372,8 +1378,9 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        with open(get_config_path(OPENCODE_SOLUTION_ORIGINALITY_CONFIG, config_extension="md"), "r") as f:
-            solution_originality = f.read()
+        agent_prompt_config = self.cfg.agent_prompt_config or DEFAULT_AGENT_PROMPT_CONFIG
+        with open(get_config_path(agent_prompt_config, config_extension="md"), "r") as f:
+            agent_prompt = f.read()
 
         model = self.cfg.claude_code_model or self.cfg.server.model
         if "/" in model:
@@ -1400,7 +1407,7 @@ class SweBenchGenerationTask(GenerationTask):
             "export HOME=/root && "
             "mkdir -p /root/.claude && "
             f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
-            f"printf %s {shlex.quote(solution_originality)} >{CLAUDE_CODE_SOLUTION_ORIGINALITY_PATH} && "
+            f"printf %s {shlex.quote(agent_prompt)} >{CLAUDE_CODE_AGENT_PROMPT_PATH} && "
             "cd /testbed && "
             "git config --global --add safe.directory /testbed && "
             "git config --global user.email claude-code@nemo-skills.local && "
@@ -1412,7 +1419,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"claude --bare -p {shlex.quote(instruction)} "
             f"--model {shlex.quote(model)} "
             f"--settings /root/.claude/settings.json "
-            f"--append-system-prompt-file {CLAUDE_CODE_SOLUTION_ORIGINALITY_PATH} "
+            f"--append-system-prompt-file {CLAUDE_CODE_AGENT_PROMPT_PATH} "
             f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
             f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
             "--permission-mode dontAsk "
