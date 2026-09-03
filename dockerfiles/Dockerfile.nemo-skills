@@ -67,7 +67,8 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1"
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" && \
+    rm -f /usr/local/lib/python3*/dist-packages/pip/_vendor/bom.cdx.json
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -138,10 +139,11 @@ RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
     -r core/requirements.txt -r requirements/pipeline.txt && \
     rm -f /usr/local/bin/uv && rm -rf /root/.cache/uv
 
-# Copy the resolved environment, not the uv layer that created it. This keeps
-# uv's embedded build SBOM out of the final image while retaining all wheels,
-# console scripts, and package data under /usr/local.
+# Replace /usr/local with the resolved environment, not the uv layer that
+# created it. Replacement prevents metadata from older pre-resolution packages
+# from surviving alongside the resolved versions.
 FROM runtime-base
+RUN rm -rf /usr/local
 COPY --from=dependency-installer /usr/local/ /usr/local/
 # Replace W&B's vulnerable release binary with the source-compatible patched core
 # built and module-verified above. The copy preserves its executable mode.
@@ -172,6 +174,7 @@ RUN python -c "from importlib.metadata import version as v; from packaging.versi
     python -c "from fastapi import FastAPI; FastAPI(); print('FastAPI/Starlette compatibility OK')" && \
     python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohttp, ray; assert Path(aiohttp.__file__).is_relative_to(thirdparty), aiohttp.__file__; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp OK:', ray.__version__, aiohttp.__version__)" && \
     [ ! -e /usr/local/bin/uv ] && \
+    [ ! -e /usr/local/lib/python3.10/dist-packages/pip/_vendor/bom.cdx.json ] && \
     [ -z "$(find /usr/local/lib/python3*/dist-packages -maxdepth 1 -type d -name 'uv-*.dist-info' 2>/dev/null)" ]
 
 # nSpect's global policy flags Git metadata left by uv's source-distribution

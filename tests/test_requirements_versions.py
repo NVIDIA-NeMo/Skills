@@ -204,6 +204,8 @@ class TestPatchedWandbCoreDockerBuild:
         assert "uv --version | grep -E '^uv 0\\.12\\.9([[:space:]]|$)'" in dockerfile
         assert "FROM runtime-base AS dependency-installer" in dockerfile
         assert "rm -f /usr/local/bin/uv" in dockerfile
+        assert "rm -f /usr/local/lib/python3*/dist-packages/pip/_vendor/bom.cdx.json" in dockerfile
+        assert "RUN rm -rf /usr/local" in dockerfile
         assert "COPY --from=dependency-installer /usr/local/ /usr/local/" in dockerfile
         assert '"uv>=0.11.10"' not in dockerfile
 
@@ -370,4 +372,5 @@ def test_container_drops_non_runtime_scan_inputs():
     assert "ray/jars" in dockerfile
     assert "FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer" in dockerfile
     assert "COPY --from=uv-installer /uv /usr/local/bin/uv" in dockerfile
+    assert "RUN rm -rf /usr/local" in dockerfile
     assert "COPY --from=dependency-installer /usr/local/ /usr/local/" in dockerfile
