@@ -63,7 +63,11 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip "setuptools>=78.1.1" "uv>=0.11.10"
+# uv's wheel carries a build-environment SBOM containing old msgpack/setuptools
+# records. Delete it in the installation layer so scanners cannot mistake those
+# build-only records for packages in the final runtime image.
+RUN pip install --upgrade pip "setuptools>=78.1.1" "uv>=0.11.10" && \
+    find /usr/local/lib/python3*/dist-packages -type d -path '*/uv-*.dist-info/sboms' -prune -exec rm -rf {} +
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -85,10 +89,13 @@ RUN apt-get update && \
         gir1.2-packagekitglib-1.0 && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-# for ifeval benchmark
-# TODO: can we get just a single dir?
+# IFEval imports this module from the repository root. Retain only the benchmark
+# it executes; unrelated manifests elsewhere in google-research describe Julia
+# and Rust projects that are neither installed nor used by this image.
 RUN mkdir /opt/benchmarks
-RUN git clone https://github.com/google-research/google-research.git /opt/benchmarks/google-research --depth=1
+RUN git clone https://github.com/google-research/google-research.git /opt/benchmarks/google-research --depth=1 && \
+    cd /opt/benchmarks/google-research && \
+    find . -mindepth 1 -maxdepth 1 ! -name instruction_following_eval -exec rm -rf {} +
 
 RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
 RUN cd /opt/gorilla && git checkout 86d0374d0db52623c5092a73f82c22b87b7e9a25
@@ -137,8 +144,8 @@ RUN pip install ddgs
 # Ray's runtime-env agent prepends its bundled aiohttp 3.14.1 over the fixed
 # environment package. Replace that private copy with the resolved 3.14.3 files
 # from the same architecture (CVE-2026-69244). uv also packages a build SBOM
-# containing msgpack 1.1.2 and setuptools 70.3.0; remove that non-runtime SBOM so
-# scanners do not report uv's build dependencies as installed packages.
+# containing msgpack 1.1.2 and setuptools 70.3.0; its install-layer removal above
+# prevents scanners from reporting uv's build dependencies as installed packages.
 RUN site_packages="$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" && \
     ray_thirdparty="${site_packages}/ray/_private/runtime_env/agent/thirdparty_files" && \
     rm -rf "${ray_thirdparty}/aiohttp" "${ray_thirdparty}"/aiohttp-*.dist-info && \
@@ -152,11 +159,17 @@ RUN python -c "from importlib.metadata import version as v; from packaging.versi
                assert V(v('aiohttp')) >= V('3.14.3'), v('aiohttp'); \
                assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
                assert V(v('nltk')) >= V('3.10.3'), v('nltk'); \
+               assert V(v('starlette')) >= V('1.3.1'), v('starlette'); \
                assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
-               print('aiohttp/msgpack/nltk/setuptools security floors OK')" && \
+               print('aiohttp/msgpack/nltk/starlette/setuptools security floors OK')" && \
+    python -c "from fastapi import FastAPI; FastAPI(); print('FastAPI/Starlette compatibility OK')" && \
     python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohttp, ray; assert Path(aiohttp.__file__).is_relative_to(thirdparty), aiohttp.__file__; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp OK:', ray.__version__, aiohttp.__version__)" && \
     ! find /usr/local/lib/python3*/dist-packages -type d -path '*/uv-*.dist-info/sboms' | grep -q .
 
 # nSpect's global policy flags Git metadata left by uv's source-distribution
-# cache. The cache is build-only, so remove it from the published image.
-RUN rm -rf /root/.cache/uv
+# cache. Ray's Java runtime is not used by the Python jobs in this image, and
+# linux-libc-dev provides build-only headers. Remove all three after builds.
+RUN apt-get purge -y linux-libc-dev && \
+    rm -rf /root/.cache/uv /usr/local/lib/python3*/dist-packages/ray/jars && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/* && \
+    [ -z "$(find /usr/local/lib/python3*/dist-packages -path '*/ray/jars/*' -type f 2>/dev/null)" ]
