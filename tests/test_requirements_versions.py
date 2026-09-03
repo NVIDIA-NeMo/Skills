@@ -201,7 +201,7 @@ class TestPatchedWandbCoreDockerBuild:
         assert "ray/_private/runtime_env/agent/thirdparty_files" in dockerfile
         assert "FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer" in dockerfile
         assert "COPY --from=uv-installer /uv /usr/local/bin/uv" in dockerfile
-        assert "uv --version | grep -Fx 'uv 0.12.9'" in dockerfile
+        assert "uv --version | grep -E '^uv 0\\.12\\.9([[:space:]]|$)'" in dockerfile
         assert '"uv>=0.11.10"' not in dockerfile
 
 
