@@ -24,6 +24,7 @@ This PR bumps several dependency floors/pins to close known CVEs:
   * aiohttp          -> >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
   * nltk             -> >=3.10.3 (fixes CVE-2026-79675 and related High findings)
+  * starlette        -> >=1.3.1  (fixes CVE-2026-48818 and CVE-2026-54283)
   * setuptools       -> >=78.1.1 (fixes CVE-2025-47273)
   * typer            -> >=0.16   (click 8.2 compatible)
   * click            -> pin removed from requirements/pipeline.txt
@@ -187,12 +188,13 @@ class TestPatchedWandbCoreDockerBuild:
         assert 'grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"' in dockerfile
 
     def test_uv_git_cache_is_removed_from_final_image(self, dockerfile):
-        assert "RUN rm -rf /root/.cache/uv" in dockerfile
+        assert "rm -rf /root/.cache/uv" in dockerfile
 
     def test_final_image_asserts_python_security_floors(self, dockerfile):
         assert "V(v('aiohttp')) >= V('3.14.3')" in dockerfile
         assert "V(v('msgpack')) >= V('1.2.1')" in dockerfile
         assert "V(v('nltk')) >= V('3.10.3')" in dockerfile
+        assert "V(v('starlette')) >= V('1.3.1')" in dockerfile
         assert "V(v('setuptools')) >= V('78.1.1')" in dockerfile
 
     def test_ray_private_aiohttp_and_uv_build_sbom_are_remediated(self, dockerfile):
@@ -300,7 +302,13 @@ class TestPyprojectUvOverrides:
 
     @pytest.mark.parametrize(
         ("package", "minimum"),
-        [("aiohttp", "3.14.3"), ("msgpack", "1.2.1"), ("nltk", "3.10.3"), ("setuptools", "78.1.1")],
+        [
+            ("aiohttp", "3.14.3"),
+            ("msgpack", "1.2.1"),
+            ("nltk", "3.10.3"),
+            ("starlette", "1.3.1"),
+            ("setuptools", "78.1.1"),
+        ],
     )
     def test_container_security_override_present(self, uv_overrides, package, minimum):
         assert package in uv_overrides
@@ -347,3 +355,11 @@ def test_setuptools_build_floor_fixes_cve_2025_47273(pyproject):
     specs = {spec.operator: spec.version for spec in requirement.specifier}
     assert ">=" in specs
     assert Version(specs[">="]) >= Version("78.1.1")
+
+
+def test_container_drops_non_runtime_scan_inputs():
+    dockerfile = NEMO_SKILLS_DOCKERFILE.read_text()
+    assert "! -name instruction_following_eval" in dockerfile
+    assert "apt-get purge -y linux-libc-dev" in dockerfile
+    assert "ray/jars" in dockerfile
+    assert dockerfile.index("uv-*.dist-info/sboms") > dockerfile.index("pip install --upgrade pip")
