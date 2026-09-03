@@ -66,7 +66,7 @@ RUN apt-get update && \
 # uv's wheel carries a build-environment SBOM containing old msgpack/setuptools
 # records. Delete it in the installation layer so scanners cannot mistake those
 # build-only records for packages in the final runtime image.
-RUN pip install --upgrade pip "setuptools>=78.1.1" "uv>=0.11.10" && \
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" "uv>=0.11.10" && \
     find /usr/local/lib/python3*/dist-packages -type d -path '*/uv-*.dist-info/sboms' -prune -exec rm -rf {} +
 
 # Update package lists and install apptainer for arm64

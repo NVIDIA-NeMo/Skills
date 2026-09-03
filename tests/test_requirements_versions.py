@@ -362,4 +362,5 @@ def test_container_drops_non_runtime_scan_inputs():
     assert "! -name instruction_following_eval" in dockerfile
     assert "apt-get purge -y linux-libc-dev" in dockerfile
     assert "ray/jars" in dockerfile
-    assert dockerfile.index("uv-*.dist-info/sboms") > dockerfile.index("pip install --upgrade pip")
+    uv_bootstrap = dockerfile.index("pip install --no-cache-dir --upgrade pip")
+    assert dockerfile.index("uv-*.dist-info/sboms") > uv_bootstrap
