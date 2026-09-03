@@ -197,9 +197,12 @@ class TestPatchedWandbCoreDockerBuild:
         assert "V(v('starlette')) >= V('1.3.1')" in dockerfile
         assert "V(v('setuptools')) >= V('78.1.1')" in dockerfile
 
-    def test_ray_private_aiohttp_and_uv_build_sbom_are_remediated(self, dockerfile):
+    def test_ray_private_aiohttp_and_uv_wheel_are_remediated(self, dockerfile):
         assert "ray/_private/runtime_env/agent/thirdparty_files" in dockerfile
-        assert "uv-*.dist-info/sboms" in dockerfile
+        assert "FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer" in dockerfile
+        assert "COPY --from=uv-installer /uv /usr/local/bin/uv" in dockerfile
+        assert "uv --version | grep -Fx 'uv 0.12.9'" in dockerfile
+        assert '"uv>=0.11.10"' not in dockerfile
 
 
 class TestPipelineRequirements:
@@ -362,5 +365,5 @@ def test_container_drops_non_runtime_scan_inputs():
     assert "! -name instruction_following_eval" in dockerfile
     assert "apt-get purge -y linux-libc-dev" in dockerfile
     assert "ray/jars" in dockerfile
-    uv_bootstrap = dockerfile.index("pip install --no-cache-dir --upgrade pip")
-    assert dockerfile.index("uv-*.dist-info/sboms") > uv_bootstrap
+    assert "FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer" in dockerfile
+    assert "COPY --from=uv-installer /uv /usr/local/bin/uv" in dockerfile
