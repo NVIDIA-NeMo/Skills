@@ -75,6 +75,7 @@ nav:
     - Starting a Server: pipelines/start-server.md
   - Recipes:
     - LibTrace: recipes/libtrace.md
+    - SHERLOC: recipes/sherloc.md
   - Evaluation:
     - evaluation/index.md
     - evaluation/natural-math.md

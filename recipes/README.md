@@ -9,3 +9,5 @@
 * [OpenMathInstruct-2](https://nvidia-nemo.github.io/Skills/releases/openmathinstruct2/)
 
 * [LibTrace](https://nvidia-nemo.github.io/Skills/recipes/libtrace/)
+
+* [SHERLOC](https://nvidia-nemo.github.io/Skills/recipes/sherloc/)
