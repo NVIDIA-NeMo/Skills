@@ -84,6 +84,7 @@ override-dependencies = [
     # environment above the first fixed releases.
     "aiohttp>=3.14.3",
     "msgpack>=1.2.1",
+    "nltk>=3.10.3",
     "setuptools>=78.1.1",
 ]
 
