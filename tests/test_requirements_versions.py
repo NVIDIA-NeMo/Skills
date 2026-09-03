@@ -158,6 +158,7 @@ class TestPatchedWandbCoreDockerBuild:
         assert "WANDB_GO_GIT_VERSION=5.19.2" in dockerfile
         assert "WANDB_GO_CRYPTO_VERSION=0.55.0" in dockerfile
         assert "WANDB_GO_IMAGE_VERSION=0.45.0" in dockerfile
+        assert "WANDB_GO_TEXT_VERSION=0.41.0" in dockerfile
         assert "WANDB_GRPC_VERSION=1.83.1" in dockerfile
 
     @pytest.mark.parametrize(
@@ -173,7 +174,7 @@ class TestPatchedWandbCoreDockerBuild:
             "golang\\.org/x/crypto[[:space:]]+v${WANDB_GO_CRYPTO_VERSION}",
             "golang\\.org/x/image[[:space:]]+v${WANDB_GO_IMAGE_VERSION}",
             "google\\.golang\\.org/grpc[[:space:]]+v${WANDB_GRPC_VERSION}",
-            "golang\\.org/x/text[[:space:]]+v0\\.40\\.0",
+            "golang\\.org/x/text[[:space:]]+v${WANDB_GO_TEXT_VERSION}",
         ],
     )
     def test_fixed_go_components_are_build_time_verified(self, dockerfile, expected):
