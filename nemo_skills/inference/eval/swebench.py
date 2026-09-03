@@ -31,6 +31,7 @@ import tomlkit
 import yaml
 from omegaconf import OmegaConf
 
+from nemo_skills.inference.eval.claude_code_trajectory import convert_claude_code_stream_to_atif
 from nemo_skills.inference.eval.opencode_trajectory import convert_opencode_session_to_atif
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.model import server_params
@@ -50,6 +51,7 @@ class SupportedAgentFrameworks(str, Enum):
     openhands = "openhands"
     mini_swe_agent = "mini_swe_agent"
     opencode = "opencode"
+    claude_code = "claude_code"
     gold_patch = "gold_patch"
 
 
@@ -61,6 +63,13 @@ OPENCODE_PROVIDER_ID = "nemo"
 OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
 OPENCODE_SOLUTION_ORIGINALITY_CONFIG = "eval/swe-bench/opencode/solution-originality"
 OPENCODE_SOLUTION_ORIGINALITY_PATH = "/root/.config/opencode/solution-originality.md"
+
+# Claude Code is installed from npm so benchmark runs can pin the harness version.
+CLAUDE_CODE_NPM_PACKAGE = "@anthropic-ai/claude-code"
+CLAUDE_CODE_DEFAULT_VERSION = "2.1.259"
+CLAUDE_CODE_NODE_VERSION = "22.15.0"
+CLAUDE_CODE_SOLUTION_ORIGINALITY_PATH = "/root/.claude/solution-originality.md"
+CLAUDE_CODE_ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
 
 # These verifiers bind fixed localhost ports. Run only their verifier
 # containers in private, network-disabled namespaces so concurrent
@@ -89,6 +98,47 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
         else:
             base[key] = value
     return base
+
+
+def get_claude_code_api_base(api_base: str) -> str:
+    """Return the server root expected by ANTHROPIC_BASE_URL."""
+    normalized = api_base.rstrip("/")
+    if normalized.endswith("/v1"):
+        normalized = normalized[:-3]
+    return normalized
+
+
+def build_claude_code_settings(
+    agent_config: dict,
+    *,
+    api_base: str,
+    model: str,
+    context_window: int,
+) -> dict:
+    """Build explicit settings for a deterministic, unattended Claude Code run."""
+    if context_window <= 0:
+        raise ValueError("claude_code_context_window must be greater than zero.")
+    settings = _deep_merge_dicts({}, copy.deepcopy(agent_config) if agent_config else {})
+    env = settings.setdefault("env", {})
+    if not isinstance(env, dict):
+        raise ValueError("Claude Code settings env must be a dictionary.")
+    env.update(
+        {
+            "ANTHROPIC_BASE_URL": get_claude_code_api_base(api_base),
+            "ANTHROPIC_API_KEY": "EMPTY",
+            "ANTHROPIC_AUTH_TOKEN": "EMPTY",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS": str(context_window),
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+            "CLAUDE_CODE_MAX_RETRIES": "2",
+            "DISABLE_AUTOUPDATER": "1",
+            "DISABLE_UPDATES": "1",
+        }
+    )
+    return settings
 
 
 def build_opencode_config(
@@ -240,16 +290,19 @@ class SweBenchGenerationConfig:
     # Default behavior:
     # - If multilingual=True, will use a branch in our fork of SWE-agent/OpenHands with better multilingual support.
     # - Otherwise, will use the HEAD commit in the official SWE-agent/OpenHands repo.
-    # For OpenCode, agent_framework_repo is unused (npm install). agent_framework_commit is the npm version
-    # of opencode-ai (default 1.17.11).
+    # For OpenCode and Claude Code, agent_framework_repo is unused (npm install).
+    # agent_framework_commit is the npm package version.
     agent_framework_repo: str | None = None
     agent_framework_commit: str | None = None
 
-    # SWE-agent/OpenHands/OpenCode configuration file path. Can be specified in the same way as ns prompt configs
+    # SWE-agent/OpenHands/OpenCode/Claude Code configuration file path.
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
+    claude_code_context_window: int = 262144  # Context window advertised to Claude Code
+    claude_code_model: str | None = None  # Slash-free vLLM served-model-name used by Claude Code
+    agent_timeout: int = 60 * 60  # Wall-clock timeout for agent rollouts, in seconds
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -530,6 +583,33 @@ class SweBenchGenerationTask(GenerationTask):
                 "export PATH=/root/node/bin:$PATH && "
                 f"npm install -g {OPENCODE_NPM_PACKAGE}@{self.cfg.agent_framework_commit} && "
                 "opencode --version"
+            )
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.claude_code:
+            if self.cfg.agent_framework_repo is not None:
+                raise ValueError(
+                    "Claude Code is installed from npm (@anthropic-ai/claude-code), not git. "
+                    "Unset ++agent_framework_repo and pin the package with "
+                    f"++agent_framework_commit (default {CLAUDE_CODE_DEFAULT_VERSION})."
+                )
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = CLAUDE_CODE_DEFAULT_VERSION
+            setup_commands.append(
+                "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
+                "    export NODE_ARCH=linux-arm64; "
+                "else "
+                "    export NODE_ARCH=linux-x64; "
+                "fi && "
+                f"export NODE_VERSION={CLAUDE_CODE_NODE_VERSION} && "
+                "rm -rf /root/node && "
+                "mkdir -p /root/node && "
+                "curl -Lf "
+                '"https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" '
+                "-o /tmp/node.tar.gz && "
+                "tar -xzf /tmp/node.tar.gz -C /root/node --strip-components=1 && "
+                "export PATH=/root/node/bin:$PATH && "
+                f"npm install -g {CLAUDE_CODE_NPM_PACKAGE}@{self.cfg.agent_framework_commit} && "
+                "claude --version"
             )
 
         elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
@@ -816,6 +896,8 @@ class SweBenchGenerationTask(GenerationTask):
             return await self._run_openhands(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
             return await self._run_opencode(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.claude_code:
+            return await self._run_claude_code(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
             return await self._get_gold_patch(data_point)
         raise ValueError(
@@ -1269,6 +1351,133 @@ class SweBenchGenerationTask(GenerationTask):
                 LOG.exception("Failed to convert OpenCode session export for %s to ATIF.", instance_id)
         else:
             LOG.warning("OpenCode did not produce a native session export for %s.", instance_id)
+
+        pred_file = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
+        with open(pred_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": self.cfg.server.model,
+                        "instance_id": instance_id,
+                        "model_patch": patch,
+                    }
+                )
+            )
+        return pred_file
+
+    async def _run_claude_code(self, data_point):
+        """Run Claude Code and return a prediction in the SWE-bench evaluation format."""
+        if self.cfg.agent_config is None:
+            self.cfg.agent_config = "eval/swe-bench/claude-code/default"
+
+        with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
+            agent_config = json.load(f)
+        with open(get_config_path(OPENCODE_SOLUTION_ORIGINALITY_CONFIG, config_extension="md"), "r") as f:
+            solution_originality = f.read()
+
+        model = self.cfg.claude_code_model or self.cfg.server.model
+        if "/" in model:
+            raise ValueError(
+                "Claude Code requires a slash-free vLLM model alias. Start vLLM with "
+                "'--served-model-name <alias>' and set ++claude_code_model=<alias>."
+            )
+        if self.cfg.agent_timeout <= 0:
+            raise ValueError("agent_timeout must be greater than zero.")
+
+        instruction = self._get_agent_problem_statement(data_point)
+        instance_id = data_point["instance_id"]
+        trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
+        settings = build_claude_code_settings(
+            agent_config,
+            api_base=self.api_base,
+            model=model,
+            context_window=self.cfg.claude_code_context_window,
+        )
+        settings_json = json.dumps(settings)
+
+        claude_code_cmd = (
+            "export PATH=/root_mount/node/bin:$PATH && "
+            "export HOME=/root && "
+            "mkdir -p /root/.claude && "
+            f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
+            f"printf %s {shlex.quote(solution_originality)} >{CLAUDE_CODE_SOLUTION_ORIGINALITY_PATH} && "
+            "cd /testbed && "
+            "git config --global --add safe.directory /testbed && "
+            "git config --global user.email claude-code@nemo-skills.local && "
+            "git config --global user.name 'Claude Code' && "
+            "START_COMMIT=$(git rev-parse HEAD) && "
+            f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
+            'mkdir -p "$TRAJECTORY_DIR" && '
+            "{ set +e; "
+            f"claude --bare -p {shlex.quote(instruction)} "
+            f"--model {shlex.quote(model)} "
+            f"--settings /root/.claude/settings.json "
+            f"--append-system-prompt-file {CLAUDE_CODE_SOLUTION_ORIGINALITY_PATH} "
+            f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
+            f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
+            "--permission-mode dontAsk "
+            "--permission-prompts none "
+            "--output-format stream-json "
+            "--verbose "
+            f"--max-turns {self.cfg.agent_max_turns} "
+            "--no-session-persistence "
+            '</dev/null >"$TRAJECTORY_DIR/claude-code.jsonl" '
+            '2>"$TRAJECTORY_DIR/claude-code.stderr.log"; '
+            "CLAUDE_EXIT_CODE=$?; "
+            "set -e; "
+            'printf "%s\\n" "$CLAUDE_EXIT_CODE" >"$TRAJECTORY_DIR/claude-code.exit-code"; '
+            "git add -A; "
+            'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"; }'
+        )
+
+        search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
+        patch_file = await self._execute_container_command(
+            data_point,
+            claude_code_cmd,
+            search_path,
+            mode="agent",
+            timeout=self.cfg.agent_timeout,
+        )
+
+        with open(patch_file, "r") as f:
+            patch = f.read()
+        if not patch.strip():
+            patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
+
+        exit_code_file = os.path.join(self.output_dir, "trajectories", instance_id, "claude-code.exit-code")
+        with open(exit_code_file, "r") as f:
+            claude_exit_code = int(f.read().strip())
+        if claude_exit_code != 0:
+            if patch is None:
+                raise ValueError(
+                    f"Claude Code exited with code {claude_exit_code} and did not produce a patch for {instance_id}."
+                )
+            LOG.warning(
+                "Claude Code exited with code %d for %s; preserving and evaluating its partial patch.",
+                claude_exit_code,
+                instance_id,
+            )
+
+        stream_file = os.path.join(self.output_dir, "trajectories", instance_id, "claude-code.jsonl")
+        if os.path.exists(stream_file):
+            try:
+                with open(stream_file, "r") as f:
+                    events = [json.loads(line) for line in f if line.strip()]
+                trajectory = convert_claude_code_stream_to_atif(
+                    events,
+                    model_name=model,
+                    agent_version=self.cfg.agent_framework_commit,
+                    initial_prompt=instruction,
+                )
+                if trajectory is not None:
+                    trajectory_file = os.path.join(self.output_dir, "trajectories", instance_id, "trajectory.json")
+                    with open(trajectory_file, "w") as f:
+                        json.dump(trajectory, f, indent=2)
+                        f.write("\n")
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                LOG.exception("Failed to convert Claude Code stream for %s to ATIF.", instance_id)
 
         pred_file = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
         with open(pred_file, "w") as f:

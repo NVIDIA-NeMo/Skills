@@ -14,7 +14,7 @@ More details are coming soon!
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench/__init__.py)
 - Original benchmark source is [here](https://github.com/SWE-bench/SWE-bench).
 
-Nemo-Skills can run inference (rollout) on SWE-bench-style datasets using 3 agent frameworks: [SWE-agent](https://swe-agent.com/latest/), [mini-SWE-agent](https://mini-swe-agent.com/latest/) and [OpenHands](https://www.all-hands.dev/). It can then evaluate the generated patches on SWE-bench Verified/Lite/Full using the [official SWE-bench harness](https://www.swebench.com/SWE-bench/guides/evaluation/).
+Nemo-Skills can run inference (rollout) on SWE-bench-style datasets using [SWE-agent](https://swe-agent.com/latest/), [mini-SWE-agent](https://mini-swe-agent.com/latest/), [OpenHands](https://www.all-hands.dev/), [OpenCode](https://opencode.ai/), and [Claude Code](https://github.com/anthropics/claude-code). It can then evaluate the generated patches on SWE-bench Verified/Lite/Full using the [official SWE-bench harness](https://www.swebench.com/SWE-bench/guides/evaluation/).
 
 #### Data preparation
 
@@ -66,22 +66,29 @@ When this path is accessed during evaluation, `{instance_id}` will be replaced b
 
 There are a few parameters specific to SWE-bench. They have to be specified with the `++` prefix. All of them are optional, except for ++agent_framework.
 
-- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands`, `opencode` or `gold_patch`. The latter option runs evaluation of gold (ground truth) patches from the dataset, skipping the agent rollout. No default, must be specified explicitly.
+- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands`, `opencode`, `claude_code` or `gold_patch`. The latter option runs evaluation of gold (ground truth) patches from the dataset, skipping the agent rollout. No default, must be specified explicitly.
 
-- **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands. Not used for OpenCode (installed from npm).
+- **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands. Not used for OpenCode or Claude Code, which are installed from npm.
 
-- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/mini-SWE-agent/OpenHands to a specific version. Defaults to `HEAD` for SWE-agent, `1.2.1` for OpenHands and `v2.0` for mini-SWE-agent. For OpenCode this is the npm version of [`opencode-ai`](https://www.npmjs.com/package/opencode-ai) (default `1.17.11`).
+- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/mini-SWE-agent/OpenHands to a specific version. Defaults to `HEAD` for SWE-agent, `1.2.1` for OpenHands and `v2.0` for mini-SWE-agent. For OpenCode this is the npm version of [`opencode-ai`](https://www.npmjs.com/package/opencode-ai) (default `1.17.11`); for Claude Code it is the npm version of [`@anthropic-ai/claude-code`](https://www.npmjs.com/package/@anthropic-ai/claude-code) (default `2.1.259`).
 
 - **++agent_config:** The config file to use for the agent framework.
     - For SWE-agent and mini-SWE-agent, this is a YAML file. See the docs: [SWE-agent](https://swe-agent.com/latest/config/config/), [mini-SWE-agent](https://mini-swe-agent.com/latest/advanced/yaml_configuration/).
     - For OpenHands, this is a TOML file. Nemo-Skills runs OpenHands via their SWE-bench evaluation script, so the only settings you can set are the LLM settings under the `[llm.model]` section. For more details, see the [OpenHands evaluation README](https://github.com/All-Hands-AI/OpenHands/blob/main/evaluation/README.md). Note that Nemo-Skills always uses the `[llm.model]` config section and therefore does not support multiple LLM configurations in one TOML file.
     - For OpenCode, this is a JSON file merged into `~/.config/opencode/opencode.json`. Nemo-Skills always injects a `provider.nemo` block that points at the same OpenAI-compatible `/v1` URL used by the other harnesses (`baseURL` / dummy `apiKey`). It also configures OpenCode's default agent with `++inference.temperature`, `++inference.top_p`, and `++agent_max_turns`. When set, `++inference.top_k` is added to the model's provider options and forwarded as the nonstandard `top_k` request field supported by vLLM. Nemo-Skills additionally installs the same solution-originality restrictions used by the default mini-SWE-agent configuration as an OpenCode instruction file, placing them in system-level context for OpenCode only. You do not need to change how the model is served (`--model` / `--server_type=vllm` stay the same).
+    - For Claude Code, this is a JSON settings file passed explicitly to the CLI. Nemo-Skills runs Claude Code in bare, non-interactive mode, points it at vLLM's Anthropic Messages API, disables session persistence and background tasks, and allows its local coding tools. The solution-originality restrictions are appended to Claude Code's system prompt.
     - Nemo-Skills overrides certain parameters, even if they are specified in the config file. These parameters are listed in a comment in the default config files below.
-    - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/mini-swe-agent/swebench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench.yaml) for mini-SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands, [eval/swe-bench/opencode/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/opencode/default.json) for OpenCode. Note that if you store your configs in your local Nemo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
+    - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/mini-swe-agent/swebench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench.yaml) for mini-SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands, [eval/swe-bench/opencode/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/opencode/default.json) for OpenCode, and `eval/swe-bench/claude-code/default` for Claude Code. Note that if you store your configs in your local Nemo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
 
-- **++agent_max_turns:** The maximum number of turns the agent is allowed to take. Defaults to 100. For OpenCode, this is written to `agent.<default_agent>.steps`; after the limit, OpenCode forces a final text-only response instead of allowing more tool calls. It is not a hard process timeout.
+- **++agent_max_turns:** The maximum number of turns the agent is allowed to take. Defaults to 100. For OpenCode, this is written to `agent.<default_agent>.steps`; after the limit, OpenCode forces a final text-only response instead of allowing more tool calls. For Claude Code, this is passed as `--max-turns`.
+
+- **++agent_timeout:** Hard wall-clock timeout for a Claude Code rollout, in seconds. Defaults to 3600.
 
 - **++opencode_context_window:** The context window advertised to OpenCode for request budgeting and automatic compaction. Defaults to 262144. Set this to the effective context length of the model server, for example `++opencode_context_window=393216` when vLLM is launched with `--max-model-len 393216`. This option only affects OpenCode; the model server enforces its own context limit separately.
+
+- **++claude_code_context_window:** The context window advertised to Claude Code. Defaults to 262144 and should match the effective vLLM context length.
+
+- **++claude_code_model:** A slash-free vLLM served-model alias used by Claude Code. This is required when `--model` is a Hugging Face name or filesystem path containing `/`. Add `--served-model-name <ALIAS>` to `--server_args` and set `++claude_code_model=<ALIAS>` to the same value.
 
 - **++swe_zero_container:** Mounted path to the container to use for SWE-Zero in .sif format. If this option is set, SWE-Zero mode will be enabled. During inference, this will override the `container_formatter` field from the dataset file and run all instances in this container instead, cloning the repo from GitHub before running the agent. The recommended dockerfile for this container is provided [here](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.swe-zero).
     - In SWE-Zero, the agent is prompted not to run tests or execute any code, instead relying only on basic Bash commands and file editing. Therefore, it does not have access to instance-specific Docker environments. For more details, see the [SWE-Zero-to-Hero paper](https://arxiv.org/abs/2604.01496).
@@ -108,9 +115,13 @@ For this benchmark, inference parameters work a bit differently. This is because
 
 Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). These two parameters are passed to OpenCode through its default agent configuration as well. OpenCode also forwards top_k when `++inference.top_k` is explicitly set; because `top_k` is not part of the standard OpenAI API, this requires a compatible server such as vLLM. Custom request parameters can be set via extra_body, for example `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. OpenCode merges `extra_body` into its model provider options, so the OpenAI-compatible adapter forwards fields such as `chat_template_kwargs` to vLLM unchanged. Keep in mind that some parameters may not be supported by your LLM server.
 
+Claude Code controls its own sampling parameters and does not expose NeMo-Skills' `inference.temperature`, `inference.top_p`, `inference.top_k`, `inference.tokens_to_generate`, or `inference.extra_body` settings. Use the vLLM server configuration or a gateway policy if these values must be overridden.
+
 For OpenCode, the per-turn output-token limit defaults to 131072. Set `++inference.tokens_to_generate` to override it. Nemo-Skills applies the value to both the model's OpenCode config and `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`; without the latter, OpenCode imposes its own 32000-token runtime cap.
 
 Each OpenCode rollout stores four trajectory artifacts under `trajectories/<instance_id>/`: `opencode.txt` contains only the JSONL event stream from stdout, `opencode.stderr.log` contains diagnostics from stderr, `opencode-session.json` is OpenCode's native root-session export, and `trajectory.json` is that export converted to ATIF v1.7. The native and ATIF exports describe the top-level agent session; delegated subagent sessions are not included.
+
+Each Claude Code rollout stores `claude-code.jsonl`, `claude-code.stderr.log`, `claude-code.exit-code`, `model.patch`, and an ATIF v1.7 `trajectory.json` under the same per-instance trajectory directory. Partial patches are retained when Claude Code reaches its turn limit or exits nonzero.
 
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
@@ -130,6 +141,19 @@ In addition, all supported agent frameworks can run without native tool calling.
 - for OpenHands: [eval/swe-bench/openhands/no-native-tool-calling](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/no-native-tool-calling.toml). This simply sets `native_tool_calling` to `false`.
 
 OpenCode expects native tool calling (same as the default OpenHands setup). There is no XML/backtick fallback config.
+
+Claude Code also requires native tool calling. A typical self-hosted invocation uses a slash-free alias shared by vLLM and the harness:
+
+```
+ns eval \
+    --model=Qwen/Qwen3-Coder-30B-A3B-Instruct \
+    --server_type=vllm \
+    --server_args="--served-model-name qwen3-coder --enable-auto-tool-choice --tool-call-parser <PARSER_NAME>" \
+    --benchmarks=swe-bench \
+    --output_dir=<OUTPUT_DIR> \
+    ++agent_framework=claude_code \
+    ++claude_code_model=qwen3-coder
+```
 
 Keep in mind that by default the tool call format expected by these frameworks will likely be different from the one that the model was trained on.
 
