@@ -7,12 +7,14 @@ ARG WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7
 ARG WANDB_GO_GIT_VERSION=5.19.2
 ARG WANDB_GO_CRYPTO_VERSION=0.55.0
 ARG WANDB_GO_IMAGE_VERSION=0.45.0
+ARG WANDB_GO_TEXT_VERSION=0.41.0
 ARG WANDB_GRPC_VERSION=1.83.1
 FROM golang:1.26.6 AS wandb-core-builder
 ARG WANDB_CORE_COMMIT
 ARG WANDB_GO_GIT_VERSION
 ARG WANDB_GO_CRYPTO_VERSION
 ARG WANDB_GO_IMAGE_VERSION
+ARG WANDB_GO_TEXT_VERSION
 ARG WANDB_GRPC_VERSION
 RUN git init /src/wandb && \
     cd /src/wandb && \
@@ -26,6 +28,7 @@ RUN cd /src/wandb/core && \
         "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}" \
         "golang.org/x/crypto@v${WANDB_GO_CRYPTO_VERSION}" \
         "golang.org/x/image@v${WANDB_GO_IMAGE_VERSION}" \
+        "golang.org/x/text@v${WANDB_GO_TEXT_VERSION}" \
         "google.golang.org/grpc@v${WANDB_GRPC_VERSION}" && \
     go mod vendor && \
     grep -E "^[[:space:]]*github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" go.mod && \
@@ -41,7 +44,7 @@ RUN cd /src/wandb/core && \
     go version -m /wandb-core | grep -E "golang\.org/x/crypto[[:space:]]+v${WANDB_GO_CRYPTO_VERSION}([[:space:]]|$)" && \
     go version -m /wandb-core | grep -E "golang\.org/x/image[[:space:]]+v${WANDB_GO_IMAGE_VERSION}([[:space:]]|$)" && \
     go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v${WANDB_GRPC_VERSION}([[:space:]]|$)" && \
-    go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v0\.40\.0([[:space:]]|$)"
+    go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v${WANDB_GO_TEXT_VERSION}([[:space:]]|$)"
 
 # using ubuntu instead of debian for easier apptainer installation on arm64
 FROM ubuntu:22.04
