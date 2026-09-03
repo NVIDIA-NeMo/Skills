@@ -34,6 +34,7 @@ Bumps under test:
                                so guarded by importorskip)
   * aiohttp          >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
+  * nltk             >=3.10.3 (fixes CVE-2026-79675 and related High findings)
   * setuptools       >=78.1.1 (fixes CVE-2025-47273)
 
 All tests are CPU-only, hermetic (no sandbox container, no live LLM endpoint, no
@@ -71,11 +72,12 @@ def test_datamodel_code_generator_imports_at_fixed_version():
     assert Version(version("datamodel-code-generator")) >= Version("0.64.0")
 
 
-def test_aiohttp_msgpack_and_setuptools_security_floors():
+def test_python_security_floors():
     from packaging.version import Version
 
     assert Version(version("aiohttp")) >= Version("3.14.3")
     assert Version(version("msgpack")) >= Version("1.2.1")
+    assert Version(version("nltk")) >= Version("3.10.3")
     assert Version(version("setuptools")) >= Version("78.1.1")
 
 

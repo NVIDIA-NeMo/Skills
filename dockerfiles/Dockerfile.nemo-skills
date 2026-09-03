@@ -1,13 +1,19 @@
 # W&B 0.28.1 still bundles Go 1.26.4, grpc-go 1.82.0, x/text 0.38.0, and
-# go-git 5.19.1. Keep the qualified W&B dependency-update commit and minimally
-# backport W&B PR #12326's go-git 5.19.2 fix for CVE-2026-71556. Go 1.26.6
-# also clears the reported Go standard-library findings. Build only wandb-core
-# so the final image does not retain the Go toolchain or source.
+# go-git 5.19.1. Keep the qualified W&B dependency-update commit and raise only
+# the modules with fixable Critical/High findings. Go 1.26.6 also clears the
+# reported Go standard-library findings. Build only wandb-core so the final
+# image does not retain the Go toolchain or source.
 ARG WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7
 ARG WANDB_GO_GIT_VERSION=5.19.2
+ARG WANDB_GO_CRYPTO_VERSION=0.55.0
+ARG WANDB_GO_IMAGE_VERSION=0.45.0
+ARG WANDB_GRPC_VERSION=1.83.1
 FROM golang:1.26.6 AS wandb-core-builder
 ARG WANDB_CORE_COMMIT
 ARG WANDB_GO_GIT_VERSION
+ARG WANDB_GO_CRYPTO_VERSION
+ARG WANDB_GO_IMAGE_VERSION
+ARG WANDB_GRPC_VERSION
 RUN git init /src/wandb && \
     cd /src/wandb && \
     git remote add origin https://github.com/wandb/wandb.git && \
@@ -16,7 +22,11 @@ RUN git init /src/wandb && \
     git fetch --depth 1 origin "${WANDB_CORE_COMMIT}" && \
     git checkout --detach FETCH_HEAD
 RUN cd /src/wandb/core && \
-    go get "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}" && \
+    go get \
+        "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}" \
+        "golang.org/x/crypto@v${WANDB_GO_CRYPTO_VERSION}" \
+        "golang.org/x/image@v${WANDB_GO_IMAGE_VERSION}" \
+        "google.golang.org/grpc@v${WANDB_GRPC_VERSION}" && \
     go mod vendor && \
     grep -E "^[[:space:]]*github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" go.mod && \
     grep -E "^# github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" vendor/modules.txt && \
@@ -28,7 +38,9 @@ RUN cd /src/wandb/core && \
         ./cmd/wandb-core && \
     go version -m /wandb-core | grep -F "go1.26.6" && \
     go version -m /wandb-core | grep -E "github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" && \
-    go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v1\.82\.1([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/crypto[[:space:]]+v${WANDB_GO_CRYPTO_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/image[[:space:]]+v${WANDB_GO_IMAGE_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v${WANDB_GRPC_VERSION}([[:space:]]|$)" && \
     go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v0\.40\.0([[:space:]]|$)"
 
 # using ubuntu instead of debian for easier apptainer installation on arm64
@@ -93,7 +105,7 @@ RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
 
-RUN pip install langdetect absl-py immutabledict nltk ipython && \
+RUN pip install langdetect absl-py immutabledict "nltk>=3.10.3" ipython && \
     python -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
     nltk.download('stopwords'); nltk.download('averaged_perceptron_tagger_eng'); download('en_core_web_sm')"
 
@@ -136,8 +148,9 @@ RUN site_packages="$(python -c "import sysconfig; print(sysconfig.get_paths()['p
 RUN python -c "from importlib.metadata import version as v; from packaging.version import Version as V; \
                assert V(v('aiohttp')) >= V('3.14.3'), v('aiohttp'); \
                assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
+               assert V(v('nltk')) >= V('3.10.3'), v('nltk'); \
                assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
-               print('aiohttp/msgpack/setuptools security floors OK')" && \
+               print('aiohttp/msgpack/nltk/setuptools security floors OK')" && \
     python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohttp, ray; assert Path(aiohttp.__file__).is_relative_to(thirdparty), aiohttp.__file__; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp OK:', ray.__version__, aiohttp.__version__)" && \
     ! find /usr/local/lib/python3*/dist-packages -type d -path '*/uv-*.dist-info/sboms' | grep -q .
 

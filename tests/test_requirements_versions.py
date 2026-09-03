@@ -23,6 +23,7 @@ This PR bumps several dependency floors/pins to close known CVEs:
   * lxml             -> >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw)
   * aiohttp          -> >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
+  * nltk             -> >=3.10.3 (fixes CVE-2026-79675 and related High findings)
   * setuptools       -> >=78.1.1 (fixes CVE-2025-47273)
   * typer            -> >=0.16   (click 8.2 compatible)
   * click            -> pin removed from requirements/pipeline.txt
@@ -155,18 +156,23 @@ class TestPatchedWandbCoreDockerBuild:
     def test_immutable_upstream_security_commit_is_pinned(self, dockerfile):
         assert "WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7" in dockerfile
         assert "WANDB_GO_GIT_VERSION=5.19.2" in dockerfile
+        assert "WANDB_GO_CRYPTO_VERSION=0.55.0" in dockerfile
+        assert "WANDB_GO_IMAGE_VERSION=0.45.0" in dockerfile
+        assert "WANDB_GRPC_VERSION=1.83.1" in dockerfile
 
     @pytest.mark.parametrize(
         "expected",
         [
             "FROM golang:1.26.6 AS wandb-core-builder",
-            'go get "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}"',
+            '"github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}"',
             "go mod vendor",
             "go.mod",
             "vendor/modules.txt",
             'go version -m /wandb-core | grep -F "go1.26.6"',
             "github\\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}",
-            "google\\.golang\\.org/grpc[[:space:]]+v1\\.82\\.1",
+            "golang\\.org/x/crypto[[:space:]]+v${WANDB_GO_CRYPTO_VERSION}",
+            "golang\\.org/x/image[[:space:]]+v${WANDB_GO_IMAGE_VERSION}",
+            "google\\.golang\\.org/grpc[[:space:]]+v${WANDB_GRPC_VERSION}",
             "golang\\.org/x/text[[:space:]]+v0\\.40\\.0",
         ],
     )
@@ -185,6 +191,7 @@ class TestPatchedWandbCoreDockerBuild:
     def test_final_image_asserts_python_security_floors(self, dockerfile):
         assert "V(v('aiohttp')) >= V('3.14.3')" in dockerfile
         assert "V(v('msgpack')) >= V('1.2.1')" in dockerfile
+        assert "V(v('nltk')) >= V('3.10.3')" in dockerfile
         assert "V(v('setuptools')) >= V('78.1.1')" in dockerfile
 
     def test_ray_private_aiohttp_and_uv_build_sbom_are_remediated(self, dockerfile):
@@ -235,7 +242,7 @@ class TestPipelineRequirements:
 
 
 class TestStemRequirements:
-    """requirements/stem.txt: lxml security floor."""
+    """requirements/stem.txt security floors."""
 
     def test_lxml_pin_fixes_ghsa_vfmq_68hx_4jfw(self):
         req, comment = _find_requirement(STEM_REQUIREMENTS, "lxml")
@@ -252,6 +259,13 @@ class TestStemRequirements:
         for raw_line, code_part, _ in _iter_requirement_lines(STEM_REQUIREMENTS):
             if code_part == "lxml":
                 pytest.fail(f"lxml requirement has no version floor: {raw_line!r}")
+
+    def test_nltk_floor_fixes_current_critical_and_high_findings(self):
+        req, comment = _find_requirement(STEM_REQUIREMENTS, "nltk")
+        specs = {spec.operator: spec.version for spec in req.specifier}
+        assert ">=" in specs, f"expected a floor (>=) specifier for nltk, got {req.specifier}"
+        assert Version(specs[">="]) >= Version("3.10.3")
+        assert "CVE-2026-79675" in comment
 
 
 class TestPyprojectUvOverrides:
@@ -285,7 +299,7 @@ class TestPyprojectUvOverrides:
 
     @pytest.mark.parametrize(
         ("package", "minimum"),
-        [("aiohttp", "3.14.3"), ("msgpack", "1.2.1"), ("setuptools", "78.1.1")],
+        [("aiohttp", "3.14.3"), ("msgpack", "1.2.1"), ("nltk", "3.10.3"), ("setuptools", "78.1.1")],
     )
     def test_container_security_override_present(self, uv_overrides, package, minimum):
         assert package in uv_overrides
