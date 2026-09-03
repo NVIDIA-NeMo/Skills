@@ -51,7 +51,7 @@ RUN cd /src/wandb/core && \
 FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer
 
 # using ubuntu instead of debian for easier apptainer installation on arm64
-FROM ubuntu:22.04
+FROM ubuntu:22.04 AS runtime-base
 ARG WANDB_CORE_COMMIT
 
 # Install Python and other dependencies
@@ -67,9 +67,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-COPY --from=uv-installer /uv /usr/local/bin/uv
-RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" && \
-    uv --version | grep -E '^uv 0\.12\.9([[:space:]]|$)'
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1"
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -133,8 +131,18 @@ ARG CACHEBUST=4
 # Install via `uv pip` from the project directory so [tool.uv].override-dependencies
 # in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.84.x
 # can be installed) is picked up. Plain pip ignores [tool.uv] and the resolver fails.
+FROM runtime-base AS dependency-installer
+COPY --from=uv-installer /uv /usr/local/bin/uv
+RUN uv --version | grep -E '^uv 0\.12\.9([[:space:]]|$)'
 RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
-    -r core/requirements.txt -r requirements/pipeline.txt
+    -r core/requirements.txt -r requirements/pipeline.txt && \
+    rm -f /usr/local/bin/uv && rm -rf /root/.cache/uv
+
+# Copy the resolved environment, not the uv layer that created it. This keeps
+# uv's embedded build SBOM out of the final image while retaining all wheels,
+# console scripts, and package data under /usr/local.
+FROM runtime-base
+COPY --from=dependency-installer /usr/local/ /usr/local/
 # Replace W&B's vulnerable release binary with the source-compatible patched core
 # built and module-verified above. The copy preserves its executable mode.
 COPY --from=wandb-core-builder /wandb-core /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core
@@ -163,12 +171,13 @@ RUN python -c "from importlib.metadata import version as v; from packaging.versi
                print('aiohttp/msgpack/nltk/starlette/setuptools security floors OK')" && \
     python -c "from fastapi import FastAPI; FastAPI(); print('FastAPI/Starlette compatibility OK')" && \
     python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohttp, ray; assert Path(aiohttp.__file__).is_relative_to(thirdparty), aiohttp.__file__; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp OK:', ray.__version__, aiohttp.__version__)" && \
+    [ ! -e /usr/local/bin/uv ] && \
     [ -z "$(find /usr/local/lib/python3*/dist-packages -maxdepth 1 -type d -name 'uv-*.dist-info' 2>/dev/null)" ]
 
 # nSpect's global policy flags Git metadata left by uv's source-distribution
 # cache. Ray's Java runtime is not used by the Python jobs in this image, and
 # linux-libc-dev provides build-only headers. Remove all three after builds.
 RUN apt-get purge -y linux-libc-dev && \
-    rm -rf /root/.cache/uv /usr/local/lib/python3*/dist-packages/ray/jars && \
+    rm -rf /usr/local/lib/python3*/dist-packages/ray/jars && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/* && \
     [ -z "$(find /usr/local/lib/python3*/dist-packages -path '*/ray/jars/*' -type f 2>/dev/null)" ]
