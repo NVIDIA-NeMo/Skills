@@ -12,10 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import SimpleNamespace
+
 from nemo_skills.inference.eval.swebench import (
     OPENCODE_AGENT_PROMPT_PATH,
     OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX,
     OPENCODE_PROVIDER_ID,
+    SupportedAgentFrameworks,
+    SweBenchGenerationTask,
+    append_agent_prompt,
     build_opencode_config,
 )
 
@@ -97,3 +102,23 @@ def test_build_opencode_config_merges_user_keys():
     model = config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
     assert model["limit"]["output"] == OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
     assert "options" not in model
+
+
+def test_append_agent_prompt_keeps_prompt_inside_instruction_tags():
+    combined = append_agent_prompt("Task instructions\n</instructions>\n", "Shared prompt")
+
+    assert combined == "Task instructions\n\nShared prompt\n</instructions>\n"
+
+
+def test_mini_swe_agent_cheats_allowed_config_preserves_legacy_prompt_selection():
+    task = object.__new__(SweBenchGenerationTask)
+    task.cfg = SimpleNamespace(
+        agent_framework=SupportedAgentFrameworks.mini_swe_agent,
+        agent_config="eval/swe-bench/mini-swe-agent/swebench_cheats_allowed",
+        agent_prompt_config=None,
+    )
+
+    prompt = task._get_agent_prompt()
+
+    assert "Solution Originality" not in prompt
+    assert "Do not create a Git commit" in prompt

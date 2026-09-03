@@ -61,7 +61,9 @@ OPENCODE_DEFAULT_VERSION = "1.17.11"
 OPENCODE_NODE_VERSION = "22.15.0"
 OPENCODE_PROVIDER_ID = "nemo"
 OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
-DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/opencode/solution-originality"
+DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/solution-originality"
+CHEATS_ALLOWED_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/cheats-allowed"
+MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG = "swebench_cheats_allowed"
 OPENCODE_AGENT_PROMPT_PATH = "/root/.config/opencode/nemo-skills-prompt.md"
 
 # Claude Code is installed from npm so benchmark runs can pin the harness version.
@@ -98,6 +100,17 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
         else:
             base[key] = value
     return base
+
+
+def append_agent_prompt(template: str, agent_prompt: str) -> str:
+    """Append a shared prompt, keeping it inside an ``<instructions>`` block when present."""
+    template = template.rstrip()
+    agent_prompt = agent_prompt.strip()
+    closing_tag = "</instructions>"
+    if closing_tag in template:
+        prefix, suffix = template.rsplit(closing_tag, maxsplit=1)
+        return f"{prefix.rstrip()}\n\n{agent_prompt}\n{closing_tag}{suffix}\n"
+    return f"{template}\n\n{agent_prompt}\n"
 
 
 def get_claude_code_api_base(api_base: str) -> str:
@@ -299,7 +312,7 @@ class SweBenchGenerationConfig:
     # SWE-agent/OpenHands/OpenCode/Claude Code configuration file path.
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
-    # Markdown prompt appended to the native system prompt for OpenCode and Claude Code.
+    # Markdown prompt added to the native task instructions for every agent framework.
     # Defaults to the solution-originality prompt.
     agent_prompt_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
@@ -909,6 +922,21 @@ class SweBenchGenerationTask(GenerationTask):
             f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
         )
 
+    def _get_agent_prompt(self) -> str:
+        """Load the shared prompt selected for the current agent framework."""
+        prompt_config = self.cfg.agent_prompt_config
+        if prompt_config is None:
+            agent_config_name = Path(self.cfg.agent_config or "").stem
+            if (
+                self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent
+                and agent_config_name == MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG
+            ):
+                prompt_config = CHEATS_ALLOWED_AGENT_PROMPT_CONFIG
+            else:
+                prompt_config = DEFAULT_AGENT_PROMPT_CONFIG
+        with open(get_config_path(prompt_config, config_extension="md"), "r") as f:
+            return f.read()
+
     async def _run_swe_agent(self, data_point):
         """
         Runs SWE-agent on one instance.
@@ -919,6 +947,14 @@ class SweBenchGenerationTask(GenerationTask):
                 self.cfg.agent_config = "eval/swe-bench/swe-agent/multilingual"
             else:
                 self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
+
+        with open(get_config_path(self.cfg.agent_config), "r") as f:
+            swe_agent_config = yaml.safe_load(f)
+        try:
+            instance_template = swe_agent_config["agent"]["templates"]["instance_template"]
+        except (KeyError, TypeError) as error:
+            raise ValueError("SWE-agent config must define agent.templates.instance_template.") from error
+        instance_template = append_agent_prompt(instance_template, self._get_agent_prompt())
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -945,6 +981,7 @@ class SweBenchGenerationTask(GenerationTask):
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
+            f"    --agent.templates.instance_template {shlex.quote(instance_template)} "
             f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
             f"    --agent.model.api_base {self.api_base} "
             f"    --agent.model.temperature {self.cfg.inference.temperature} "
@@ -1004,6 +1041,12 @@ class SweBenchGenerationTask(GenerationTask):
 
         if "agent" not in full_config:
             full_config["agent"] = {}
+        if "instance_template" not in full_config["agent"]:
+            raise ValueError("mini-SWE-agent config must define agent.instance_template.")
+        full_config["agent"]["instance_template"] = append_agent_prompt(
+            full_config["agent"]["instance_template"],
+            self._get_agent_prompt(),
+        )
         full_config["agent"]["step_limit"] = self.cfg.agent_max_turns
 
         if "model" not in full_config:
@@ -1091,6 +1134,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="toml"), "r") as f:
             config = tomlkit.parse(f.read())
+        agent_prompt = self._get_agent_prompt()
 
         config["llm"]["model"] |= {
             "model": self.cfg.server.model,
@@ -1150,6 +1194,11 @@ class SweBenchGenerationTask(GenerationTask):
                 f"cp {shlex.quote(instruction_template)} "
                 "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 && "
             )
+        instruction_template_setup += (
+            f"printf '\\n%s\\n' {shlex.quote(agent_prompt)} | tee -a "
+            "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 "
+            "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 >/dev/null && "
+        )
 
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
@@ -1242,9 +1291,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        agent_prompt_config = self.cfg.agent_prompt_config or DEFAULT_AGENT_PROMPT_CONFIG
-        with open(get_config_path(agent_prompt_config, config_extension="md"), "r") as f:
-            agent_prompt = f.read()
+        agent_prompt = self._get_agent_prompt()
 
         output_token_max = (
             self.cfg.inference.tokens_to_generate
@@ -1378,9 +1425,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        agent_prompt_config = self.cfg.agent_prompt_config or DEFAULT_AGENT_PROMPT_CONFIG
-        with open(get_config_path(agent_prompt_config, config_extension="md"), "r") as f:
-            agent_prompt = f.read()
+        agent_prompt = self._get_agent_prompt()
 
         model = self.cfg.claude_code_model or self.cfg.server.model
         if "/" in model:
