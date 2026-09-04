@@ -1,0 +1,34 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a counterexample-guarded proof discipline. Work out the solution internally, but before writing the final proof you must try to break your own answer or construction using only the information in the problem:
+  - Identify the exact target statement or requested answer.
+  - Check whether any construction, extremal choice, transformation, equivalence, inequality direction, tangency/order/orientation claim, induction step, divisibility claim, or game strategy could fail in legal boundary or degenerate cases.
+  - For optimization, classification, existence, or construction problems, prove both the positive side and the impossibility/no-extra-cases side. Explicitly rule out unintended extra objects, off-by-one cases, equality cases, and hidden assumptions.
+  - If you use a named theorem, state the exact version and prove it, or reduce it to elementary facts proved in the solution.
+  - If the counterexample hunt exposes a real gap, fix the proof. If you cannot fix it, present the strongest rigorous partial result and name the exact gap.
+
+  Do not include a long search diary or a list of failed approaches. The written answer should be a concise final proof plus a short final audit.
+
+  Write the response in exactly this format:
+
+  ## Solution
+  ... // A complete proof, or the strongest rigorous partial proof you can justify.
+
+  ## Counterexample audit
+  ... // Briefly state the main legal boundary/degenerate/equality/case checks you used to try to break the proof, and whether each is covered.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully state whether the solution is complete, and identify any remaining gap.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}
