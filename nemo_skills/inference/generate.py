@@ -579,7 +579,7 @@ class GenerationTask:
             except FileNotFoundError:
                 LOG.warning(f"File `{self.cfg.output_file}-async` not found, starting from scratch")
             try:
-                error_file = Path(self.cfg.output_file).with_suffix(".errors.jsonl")
+                error_file = Path(self.cfg.output_file).with_suffix(".errors")
                 with open(error_file, "rt", encoding="utf-8") as fin:
                     for line in fin:
                         async_position = json.loads(line).get(self.cfg.async_position_key)
@@ -880,7 +880,7 @@ class GenerationTask:
             # this datapoint even if the diagnostic sidecar write is interrupted.
             if error_output is not None:
                 self.dump_outputs([error_output], [original_data_point], fout)
-            error_file = Path(self.cfg.output_file).with_suffix(".errors.jsonl")
+            error_file = Path(self.cfg.output_file).with_suffix(".errors")
             with open(error_file, "at", encoding="utf-8") as error_fout:
                 error_fout.write(json.dumps(error_record) + "\n")
 
@@ -1074,7 +1074,7 @@ class GenerationTask:
                 for output_path in [
                     Path(self.cfg.output_file),
                     Path(self.cfg.output_file + "-async"),
-                    Path(self.cfg.output_file).with_suffix(".errors.jsonl"),
+                    Path(self.cfg.output_file).with_suffix(".errors"),
                 ]:
                     if output_path.exists():
                         output_path.unlink()

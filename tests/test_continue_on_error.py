@@ -88,7 +88,7 @@ def test_async_loop_is_fail_fast_by_default(tmp_path):
         asyncio.run(task.async_loop(data))
 
     assert not output_file.exists()
-    assert not (tmp_path / "output.errors.jsonl").exists()
+    assert not (tmp_path / "output.errors").exists()
 
 
 def test_async_loop_continues_and_persists_terminal_error_rows(tmp_path):
@@ -111,7 +111,7 @@ def test_async_loop_continues_and_persists_terminal_error_rows(tmp_path):
     assert task.completed == [0, 2]
     assert not (tmp_path / "output.jsonl-async").exists()
 
-    errors = _read_jsonl(tmp_path / "output.errors.jsonl")
+    errors = _read_jsonl(tmp_path / "output.errors")
     assert errors[0]["_async_position"] == 1
     assert errors[0]["instance_id"] is None
     assert errors[0]["error_type"] == "RuntimeError"
@@ -153,7 +153,7 @@ def test_output_persistence_errors_remain_fail_fast(tmp_path):
     with pytest.raises(OSError, match="disk full"):
         asyncio.run(task.async_loop([{"id": 0, "_async_position": 0}]))
 
-    assert not (tmp_path / "output.errors.jsonl").exists()
+    assert not (tmp_path / "output.errors").exists()
 
 
 def test_sidecar_only_errors_restore_sparse_order_and_resume(tmp_path):
@@ -173,7 +173,7 @@ def test_sidecar_only_errors_restore_sparse_order_and_resume(tmp_path):
     asyncio.run(task.async_loop(data))
 
     assert [row["id"] for row in _read_jsonl(output_file)] == [0, 2]
-    error = _read_jsonl(tmp_path / "output.errors.jsonl")[0]
+    error = _read_jsonl(tmp_path / "output.errors")[0]
     assert error["error_output_error"]["error_type"] == "ValueError"
 
     # An interrupted run has no final output but does have async/error sidecars.
