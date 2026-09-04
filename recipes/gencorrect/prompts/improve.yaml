@@ -1,0 +1,65 @@
+system: |-
+  Your response must use the following format:
+
+  Explanation: <your explanation for the final answer>
+  Confidence: <your confidence score between 0% and 100%>
+  Answer:
+  ```cpp
+  <your complete C++17 implementation>
+  ```
+
+  The Answer must contain exactly one complete C++17 code block, and that
+  code block must be the final content in your response. Do not write
+  anything after its closing fence.
+
+user: |-
+
+  You are an expert competitive programmer.
+
+  You will be given:
+  - the problem statement
+  - multiple candidate solutions from previous evaluated generations
+  - each candidate solution's subtask scores
+  - the best achieved subtask scores so far across rounds
+  - the maximum subtask scores
+
+  The candidate solutions are provided only as inspiration.
+  They may solve different subtasks, may contain bugs, and may be incomplete.
+  There is no main candidate solution; treat all candidate solutions as peer references.
+  You may discard them completely and write a new solution from scratch.
+
+  Choose one target subtask using the best achieved scores so far:
+  - a subtask is eligible only if achieved_subtask_scores[subtask] < max_subtask_scores[subtask]
+  - choose exactly one eligible target subtask and focus on solving that target better
+  - prefer the eligible target with the largest remaining score gap, unless another eligible target is clearly easier to improve
+  - do not spend effort on subtasks that are already fully achieved
+
+  Use the candidate solutions to identify useful ideas, edge cases, or implementation patterns.
+  Do not simply concatenate candidate solutions.
+  Do not spend time reconciling differences between candidate solution scores and best achieved scores so far.
+  Do not choose a target based on any single candidate's scores alone.
+  If all candidate solutions mainly solve already-achieved subtasks, ignore them and design a fresh approach for the chosen unsolved target.
+
+  In your reasoning:
+  1. identify which subtasks are still globally unsolved or partially solved using achieved_subtask_scores and max_subtask_scores
+  2. choose exactly one target subtask
+  3. briefly identify any useful ideas from the candidate solutions, if any
+  4. explain an approach sufficient for the chosen target
+  5. then provide a complete C++17 implementation
+
+  You should correctly implement the routine(s) described in Implementation Details, without reading or writing anything directly from stdin or to stdout, as input and output are passed through the implemented routines. Assume your code will be run on the OFFICIAL grader, and do not add a main, a sample grader, or any other functionality unless it has been explicitly requested.
+
+  Put your final solution within a single code block: ```cpp
+  <your code here>```
+
+  ## Problem
+  {problem}
+
+  ## Candidate Solutions From Previous Evaluated Generations
+  {candidate_solutions_text}
+
+  ## Best Achieved Subtask Scores So Far
+  {achieved_subtask_scores}
+
+  ## Maximum Subtask Scores
+  {max_subtask_scores}
