@@ -86,6 +86,8 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++agent_timeout:** Hard wall-clock timeout for a Claude Code rollout, in seconds. Defaults to 3600.
 
+- **++continue_on_error:** Continue the shard after an individual instance raises during agent generation, output postprocessing, or per-instance evaluation. Defaults to `False` (fail-fast). When enabled, failures are written to `<output>.errors.jsonl` with their async position, exception, and traceback. SWE-bench, SWE-bench Pro, Scale-SWE, DeepSWE, and Senior SWE-Bench also emit an unresolved terminal output row with no patch, so the failed instance remains in metric denominators and `++skip_filled=True` does not retry it. Output-persistence failures remain fail-fast.
+
 - **++opencode_context_window:** The context window advertised to OpenCode for request budgeting and automatic compaction. Defaults to 262144. Set this to the effective context length of the model server, for example `++opencode_context_window=393216` when vLLM is launched with `--max-model-len 393216`. This option only affects OpenCode; the model server enforces its own context limit separately.
 
 - **++claude_code_context_window:** The context window advertised to Claude Code. Defaults to 262144 and should match the effective vLLM context length.

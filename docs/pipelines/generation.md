@@ -78,6 +78,12 @@ ns generate \
 Note the `++skip_filled=False` which you need to add if you're rerunning some generation and don't want
 to reuse existing output.
 
+For large asynchronous jobs, `++continue_on_error=True` keeps processing other datapoints when one datapoint
+raises during generation, postprocessing, or per-datapoint evaluation. The default is `False`, preserving
+fail-fast behavior. Errors are recorded in an `*.errors.jsonl` sidecar with the async position and traceback;
+output-write failures still stop the job. With `++skip_filled=True`, positions recorded in either the async
+output or error sidecar are treated as completed.
+
 Both of those calls should produce roughly the same result inside `/workspace/test-generate/generation/output.jsonl`
 
 ```jsonl

@@ -228,6 +228,15 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         reward = load_verifier_reward(eval_out)
         return parse_deepswe_reward(reward, patch_exists=True)
 
+    def _get_terminal_error_metrics(self, error: Exception) -> dict:
+        """Represent an agent failure as a terminal unresolved DeepSWE trial."""
+        metrics = parse_deepswe_reward(None, patch_exists=False)
+        metrics["generation_error"] = {
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+        return metrics
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
 

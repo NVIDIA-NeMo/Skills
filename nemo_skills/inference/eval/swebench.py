@@ -381,6 +381,8 @@ class SweBenchGenerationConfig:
 
     max_samples: int = -1  # If > 0, will stop after generating this many samples. Useful for debugging
     skip_filled: bool = False  # If True, will skip the generations that are already in the output file
+    # If True, persist failed instances and continue processing the rest of the shard.
+    continue_on_error: bool = False
 
     # Maximum number of concurrent agent rollouts in each job.
     # Each rollout sends 1 request to the LLM server at a time, so this is also the max number of concurrent requests.
@@ -950,6 +952,32 @@ class SweBenchGenerationTask(GenerationTask):
                 prompt_config = DEFAULT_AGENT_PROMPT_CONFIG
         with open(get_config_path(prompt_config, config_extension="md"), "r") as f:
             return f.read()
+
+    def _get_terminal_error_metrics(self, error: Exception) -> dict:
+        """Return fail-closed metrics for an agent rollout that raised."""
+        return {
+            "resolved": False,
+            "patch_exists": False,
+            "patch_successfully_applied": False,
+        }
+
+    def get_error_output(self, error: Exception, data_point: dict) -> dict:
+        """Persist a stable SWE-bench row when one instance fails terminally."""
+        error_details = {
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+        return {
+            "generation": "",
+            "generation_error": error_details,
+            "swe-bench-metrics": self._get_terminal_error_metrics(error),
+            "swe-bench-outputs": {
+                "model_name_or_path": self.cfg.server.get("model"),
+                "instance_id": data_point.get("instance_id"),
+                "model_patch": None,
+                "generation_error": error_details,
+            },
+        }
 
     async def _run_swe_agent(self, data_point):
         """

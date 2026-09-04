@@ -191,6 +191,19 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
             report = None
         return normalize_scale_swe_report(report)
 
+    def _get_terminal_error_metrics(self, error: Exception) -> dict:
+        """Represent an agent failure as a terminal unresolved Scale-SWE trial."""
+        return build_scale_swe_metrics(
+            patch_exists=False,
+            patch_applied=False,
+            resolved=False,
+            details={
+                "error": "generation_error",
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+            },
+        )
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         data_point = self._normalize_data_point(data_point)
         async with self.semaphore:

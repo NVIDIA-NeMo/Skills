@@ -329,6 +329,16 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
         reward = load_verifier_reward(eval_out)
         return parse_senior_swe_bench_reward(reward, patch_exists=True)
 
+    def _get_terminal_error_metrics(self, error: Exception) -> dict:
+        """Represent an agent failure as an invalid, unresolved Senior SWE-Bench trial."""
+        metrics = parse_senior_swe_bench_reward(None, patch_exists=False)
+        metrics["invalid_trial"] = True
+        metrics["generation_error"] = {
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+        return metrics
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         async with self.semaphore:
             pred_file = await self._run_agent(data_point)
