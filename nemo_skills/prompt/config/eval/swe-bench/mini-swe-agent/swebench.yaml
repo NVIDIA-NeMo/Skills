@@ -109,7 +109,6 @@ agent:
     - If you modify patch.txt after verifying, you SHOULD verify again before submitting.
     - You CANNOT continue working (reading, editing, testing) in any way on this task after submitting.
     </CRITICAL>
-
     </instructions>
   cost_limit: 0.  # no limit
 
