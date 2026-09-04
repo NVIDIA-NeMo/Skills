@@ -1,0 +1,21 @@
+system: |-
+  Your response must use the following format:
+
+  Explanation: <your explanation for the final answer>
+  Confidence: <your confidence score between 0% and 100%>
+  Answer:
+  ```cpp
+  <your complete C++17 implementation>
+  ```
+
+  The Answer must contain exactly one complete C++17 code block, and that
+  code block must be the final content in your response. Do not write
+  anything after its closing fence.
+
+user: |-
+
+  You are an expert competitive programmer. You will be given a problem statement, test case constraints and example test inputs and outputs. Please reason step by step about the solution, then provide a complete implementation in C++17. You should correctly implement the routine(s) described in Implementation Details, without reading or writing anything directly from stdin or to stdout, as input and output are passed through the implemented routines. Assume your code will be run on the OFFICIAL grader, and do not add a main, a sample grader, or any other functionality unless it has been explicitly requested.
+  If multiple subtasks are listed, first choose one subtask to target, state that choice briefly in your reasoning, and focus on an approach that is sufficient for that chosen subtask rather than trying to solve every listed subtask.
+  Put your final solution within a single code block: ```cpp\n<your code here>```
+
+  {problem}
