@@ -126,20 +126,6 @@ def get_claude_code_api_base(api_base: str) -> str:
     return normalized
 
 
-def save_agent_user_prompt_artifact(
-    output_dir: Path,
-    instance_id: str,
-    *,
-    user_prompt: str,
-) -> None:
-    """Save the exact user prompt supplied to a direct-prompt agent rollout."""
-    trajectory_dir = output_dir / "trajectories" / instance_id
-    trajectory_dir.mkdir(parents=True, exist_ok=True)
-    # Do not retain the system-prompt artifact emitted by the earlier layout.
-    (trajectory_dir / "system-prompt.md").unlink(missing_ok=True)
-    (trajectory_dir / "user-prompt.md").write_text(user_prompt, encoding="utf-8")
-
-
 def build_claude_code_settings(
     agent_config: dict,
     *,
@@ -1345,6 +1331,8 @@ class SweBenchGenerationTask(GenerationTask):
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
+        for legacy_prompt_file in ("system-prompt.md", "user-prompt.md"):
+            (capture_file.parent / legacy_prompt_file).unlink(missing_ok=True)
         async with capture_first_llm_request(self.api_base, capture_file) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,
@@ -1380,7 +1368,6 @@ class SweBenchGenerationTask(GenerationTask):
             )
         instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
-        save_agent_user_prompt_artifact(self.output_dir, instance_id, user_prompt=instruction)
         # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
         model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
@@ -1516,11 +1503,6 @@ class SweBenchGenerationTask(GenerationTask):
         instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
-        save_agent_user_prompt_artifact(
-            self.output_dir,
-            instance_id,
-            user_prompt=instruction,
-        )
 
         def build_claude_code_command(proxy_api_base):
             settings = build_claude_code_settings(
