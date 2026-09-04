@@ -32,6 +32,7 @@ import yaml
 from omegaconf import OmegaConf
 
 from nemo_skills.inference.eval.claude_code_trajectory import convert_claude_code_stream_to_atif
+from nemo_skills.inference.eval.first_request_proxy import capture_first_llm_request
 from nemo_skills.inference.eval.opencode_trajectory import convert_opencode_session_to_atif
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.model import server_params
@@ -1334,6 +1335,25 @@ class SweBenchGenerationTask(GenerationTask):
         """Return an optional replacement for OpenHands' user instruction template."""
         return None
 
+    async def _execute_agent_command_with_capture(
+        self,
+        data_point,
+        command_builder,
+        expected_file_pattern,
+        *,
+        timeout=100000,
+    ):
+        """Run an agent command through a proxy that saves its first LLM request."""
+        capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
+        async with capture_first_llm_request(self.api_base, capture_file) as proxy_api_base:
+            return await self._execute_container_command(
+                data_point,
+                command_builder(proxy_api_base),
+                expected_file_pattern,
+                mode="agent",
+                timeout=timeout,
+            )
+
     async def _run_opencode(self, data_point):
         """
         Runs OpenCode on one instance.
@@ -1358,19 +1378,6 @@ class SweBenchGenerationTask(GenerationTask):
                 f"OpenCode output-token limit ({output_token_max}) cannot exceed its context window "
                 f"({self.cfg.opencode_context_window})."
             )
-        opencode_config = build_opencode_config(
-            agent_config=agent_config,
-            api_base=self.api_base,
-            model=self.cfg.server.model,
-            context_window=self.cfg.opencode_context_window,
-            temperature=self.cfg.inference.temperature,
-            top_p=self.cfg.inference.top_p,
-            top_k=self.cfg.inference.top_k,
-            extra_body=OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True),
-            agent_max_turns=self.cfg.agent_max_turns,
-            tokens_to_generate=output_token_max,
-        )
-        config_json = json.dumps(opencode_config)
         instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
         save_agent_user_prompt_artifact(self.output_dir, instance_id, user_prompt=instruction)
@@ -1386,49 +1393,67 @@ class SweBenchGenerationTask(GenerationTask):
             "if(event.sessionID){process.stdout.write(event.sessionID);break;}}catch{}}"
         )
 
-        opencode_cmd = (
-            "export PATH=/root_mount/node/bin:$PATH && "
-            "export HOME=/root && "
-            "export XDG_CONFIG_HOME=/root/.config && "
-            "export OPENCODE_DISABLE_AUTOUPDATE=1 && "
-            "export OPENCODE_DISABLE_MODELS_FETCH=1 && "
-            "export OPENCODE_PURE=1 && "
-            "export OPENCODE_FAKE_VCS=git && "
-            f"export OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX={output_token_max} && "
-            "export OPENAI_API_KEY=EMPTY && "
-            f"export OPENAI_BASE_URL={shlex.quote(self.api_base)} && "
-            "mkdir -p /root/.config/opencode && "
-            f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
-            "cd /testbed && "
-            "git config --global --add safe.directory /testbed && "
-            "git config --global user.email opencode@nemo-skills.local && "
-            "git config --global user.name OpenCode && "
-            "START_COMMIT=$(git rev-parse HEAD) && "
-            f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
-            'mkdir -p "$TRAJECTORY_DIR" && '
-            f"opencode --model={shlex.quote(model_arg)} run --format=json "
-            f"--thinking --dangerously-skip-permissions -- {shlex.quote(instruction)} "
-            '</dev/null >"$TRAJECTORY_DIR/opencode.txt" 2>"$TRAJECTORY_DIR/opencode.stderr.log" && '
-            f'SESSION_ID=$(node -e {shlex.quote(session_id_script)} "$TRAJECTORY_DIR/opencode.txt") && '
-            'if [ -n "$SESSION_ID" ]; then '
-            '    if opencode export "$SESSION_ID" >"$TRAJECTORY_DIR/opencode-session.json.tmp" '
-            '        2>>"$TRAJECTORY_DIR/opencode.stderr.log"; then '
-            '        mv "$TRAJECTORY_DIR/opencode-session.json.tmp" "$TRAJECTORY_DIR/opencode-session.json"; '
-            "    else "
-            '        rm -f "$TRAJECTORY_DIR/opencode-session.json.tmp"; '
-            '        echo "Warning: failed to export OpenCode session $SESSION_ID" '
-            '            >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
-            "    fi; "
-            "else "
-            '    echo "Warning: no OpenCode session ID found in stdout" '
-            '        >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
-            "fi && "
-            "git add -A && "
-            'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"'
-        )
+        def build_opencode_command(proxy_api_base):
+            opencode_config = build_opencode_config(
+                agent_config=agent_config,
+                api_base=proxy_api_base,
+                model=self.cfg.server.model,
+                context_window=self.cfg.opencode_context_window,
+                temperature=self.cfg.inference.temperature,
+                top_p=self.cfg.inference.top_p,
+                top_k=self.cfg.inference.top_k,
+                extra_body=OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True),
+                agent_max_turns=self.cfg.agent_max_turns,
+                tokens_to_generate=output_token_max,
+            )
+            config_json = json.dumps(opencode_config)
+            return (
+                "export PATH=/root_mount/node/bin:$PATH && "
+                "export HOME=/root && "
+                "export XDG_CONFIG_HOME=/root/.config && "
+                "export OPENCODE_DISABLE_AUTOUPDATE=1 && "
+                "export OPENCODE_DISABLE_MODELS_FETCH=1 && "
+                "export OPENCODE_PURE=1 && "
+                "export OPENCODE_FAKE_VCS=git && "
+                f"export OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX={output_token_max} && "
+                "export OPENAI_API_KEY=EMPTY && "
+                f"export OPENAI_BASE_URL={shlex.quote(proxy_api_base)} && "
+                "mkdir -p /root/.config/opencode && "
+                f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
+                "cd /testbed && "
+                "git config --global --add safe.directory /testbed && "
+                "git config --global user.email opencode@nemo-skills.local && "
+                "git config --global user.name OpenCode && "
+                "START_COMMIT=$(git rev-parse HEAD) && "
+                f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
+                'mkdir -p "$TRAJECTORY_DIR" && '
+                f"opencode --model={shlex.quote(model_arg)} run --format=json "
+                f"--thinking --dangerously-skip-permissions -- {shlex.quote(instruction)} "
+                '</dev/null >"$TRAJECTORY_DIR/opencode.txt" 2>"$TRAJECTORY_DIR/opencode.stderr.log" && '
+                f'SESSION_ID=$(node -e {shlex.quote(session_id_script)} "$TRAJECTORY_DIR/opencode.txt") && '
+                'if [ -n "$SESSION_ID" ]; then '
+                '    if opencode export "$SESSION_ID" >"$TRAJECTORY_DIR/opencode-session.json.tmp" '
+                '        2>>"$TRAJECTORY_DIR/opencode.stderr.log"; then '
+                '        mv "$TRAJECTORY_DIR/opencode-session.json.tmp" "$TRAJECTORY_DIR/opencode-session.json"; '
+                "    else "
+                '        rm -f "$TRAJECTORY_DIR/opencode-session.json.tmp"; '
+                '        echo "Warning: failed to export OpenCode session $SESSION_ID" '
+                '            >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
+                "    fi; "
+                "else "
+                '    echo "Warning: no OpenCode session ID found in stdout" '
+                '        >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
+                "fi && "
+                "git add -A && "
+                'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"'
+            )
 
         search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
-        patch_file = await self._execute_container_command(data_point, opencode_cmd, search_path, mode="agent")
+        patch_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_opencode_command,
+            search_path,
+        )
 
         with open(patch_file, "r") as f:
             patch = f.read()
@@ -1491,59 +1516,59 @@ class SweBenchGenerationTask(GenerationTask):
         instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
-        settings = build_claude_code_settings(
-            agent_config,
-            api_base=self.api_base,
-            model=model,
-            context_window=self.cfg.claude_code_context_window,
-            effort=self.cfg.claude_code_effort,
-        )
         save_agent_user_prompt_artifact(
             self.output_dir,
             instance_id,
             user_prompt=instruction,
         )
-        settings_json = json.dumps(settings)
 
-        claude_code_cmd = (
-            "export PATH=/root_mount/node/bin:$PATH && "
-            "export HOME=/root && "
-            "mkdir -p /root/.claude && "
-            f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
-            "cd /testbed && "
-            "git config --global --add safe.directory /testbed && "
-            "git config --global user.email claude-code@nemo-skills.local && "
-            "git config --global user.name 'Claude Code' && "
-            "START_COMMIT=$(git rev-parse HEAD) && "
-            f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
-            'mkdir -p "$TRAJECTORY_DIR" && '
-            "{ set +e; "
-            f"claude --bare -p {shlex.quote(instruction)} "
-            f"--model {shlex.quote(model)} "
-            f"--settings /root/.claude/settings.json "
-            f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
-            f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
-            "--permission-mode dontAsk "
-            "--permission-prompts none "
-            "--output-format stream-json "
-            "--verbose "
-            f"--max-turns {self.cfg.agent_max_turns} "
-            "--no-session-persistence "
-            '</dev/null >"$TRAJECTORY_DIR/claude-code.jsonl" '
-            '2>"$TRAJECTORY_DIR/claude-code.stderr.log"; '
-            "CLAUDE_EXIT_CODE=$?; "
-            "set -e; "
-            'printf "%s\\n" "$CLAUDE_EXIT_CODE" >"$TRAJECTORY_DIR/claude-code.exit-code"; '
-            "git add -A; "
-            'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"; }'
-        )
+        def build_claude_code_command(proxy_api_base):
+            settings = build_claude_code_settings(
+                agent_config,
+                api_base=proxy_api_base,
+                model=model,
+                context_window=self.cfg.claude_code_context_window,
+                effort=self.cfg.claude_code_effort,
+            )
+            settings_json = json.dumps(settings)
+            return (
+                "export PATH=/root_mount/node/bin:$PATH && "
+                "export HOME=/root && "
+                "mkdir -p /root/.claude && "
+                f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
+                "cd /testbed && "
+                "git config --global --add safe.directory /testbed && "
+                "git config --global user.email claude-code@nemo-skills.local && "
+                "git config --global user.name 'Claude Code' && "
+                "START_COMMIT=$(git rev-parse HEAD) && "
+                f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
+                'mkdir -p "$TRAJECTORY_DIR" && '
+                "{ set +e; "
+                f"claude --bare -p {shlex.quote(instruction)} "
+                f"--model {shlex.quote(model)} "
+                f"--settings /root/.claude/settings.json "
+                f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
+                f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
+                "--permission-mode dontAsk "
+                "--permission-prompts none "
+                "--output-format stream-json "
+                "--verbose "
+                f"--max-turns {self.cfg.agent_max_turns} "
+                "--no-session-persistence "
+                '</dev/null >"$TRAJECTORY_DIR/claude-code.jsonl" '
+                '2>"$TRAJECTORY_DIR/claude-code.stderr.log"; '
+                "CLAUDE_EXIT_CODE=$?; "
+                "set -e; "
+                'printf "%s\\n" "$CLAUDE_EXIT_CODE" >"$TRAJECTORY_DIR/claude-code.exit-code"; '
+                "git add -A; "
+                'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"; }'
+            )
 
         search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
-        patch_file = await self._execute_container_command(
+        patch_file = await self._execute_agent_command_with_capture(
             data_point,
-            claude_code_cmd,
+            build_claude_code_command,
             search_path,
-            mode="agent",
             timeout=self.cfg.agent_timeout,
         )
 
