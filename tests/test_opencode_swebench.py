@@ -15,12 +15,12 @@
 from types import SimpleNamespace
 
 from nemo_skills.inference.eval.swebench import (
-    OPENCODE_AGENT_PROMPT_PATH,
     OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX,
     OPENCODE_PROVIDER_ID,
     SupportedAgentFrameworks,
     SweBenchGenerationTask,
     append_agent_prompt,
+    build_direct_agent_user_prompt,
     build_opencode_config,
 )
 
@@ -70,7 +70,7 @@ def test_build_opencode_config_points_at_local_openai_server():
     assert config["agent"]["build"]["temperature"] == 1.0
     assert config["agent"]["build"]["top_p"] == 0.95
     assert config["agent"]["build"]["steps"] == 400
-    assert config["instructions"] == [OPENCODE_AGENT_PROMPT_PATH]
+    assert "instructions" not in config
 
 
 def test_build_opencode_config_merges_user_keys():
@@ -89,7 +89,6 @@ def test_build_opencode_config_merges_user_keys():
         top_k=None,
         extra_body={},
         agent_max_turns=250,
-        instruction_path="/root/.config/opencode/custom-prompt.md",
     )
 
     assert config["experimental"]["continue_loop_on_deny"] is True
@@ -98,7 +97,7 @@ def test_build_opencode_config_merges_user_keys():
     assert config["agent"]["custom"]["top_p"] == 0.8
     assert config["agent"]["custom"]["steps"] == 250
     assert config["agent"]["custom"]["prompt"] == "Custom agent prompt"
-    assert config["instructions"] == ["custom-instructions.md", "/root/.config/opencode/custom-prompt.md"]
+    assert config["instructions"] == ["custom-instructions.md"]
     model = config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
     assert model["limit"]["output"] == OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
     assert "options" not in model
@@ -108,6 +107,12 @@ def test_append_agent_prompt_keeps_prompt_inside_instruction_tags():
     combined = append_agent_prompt("Task instructions\n</instructions>\n", "Shared prompt")
 
     assert combined == "Task instructions\n\nShared prompt\n</instructions>\n"
+
+
+def test_build_direct_agent_user_prompt_appends_shared_instructions():
+    combined = build_direct_agent_user_prompt("Fix parser.py\n", "## Solution Originality\nDo not use solutions.\n")
+
+    assert combined == "Fix parser.py\n\n## Solution Originality\nDo not use solutions.\n"
 
 
 def test_mini_swe_agent_cheats_allowed_config_preserves_legacy_prompt_selection():

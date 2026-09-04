@@ -14,7 +14,11 @@
 
 import pytest
 
-from nemo_skills.inference.eval.swebench import build_claude_code_settings, get_claude_code_api_base
+from nemo_skills.inference.eval.swebench import (
+    build_claude_code_settings,
+    get_claude_code_api_base,
+    save_agent_user_prompt_artifact,
+)
 
 
 @pytest.mark.parametrize(
@@ -28,6 +32,22 @@ from nemo_skills.inference.eval.swebench import build_claude_code_settings, get_
 )
 def test_get_claude_code_api_base(api_base, expected):
     assert get_claude_code_api_base(api_base) == expected
+
+
+def test_save_agent_user_prompt_artifact_preserves_exact_content_and_removes_stale_system_prompt(tmp_path):
+    user_prompt = "Fix the bug in `parser.py`.\n\nDo not remove λ support.\n"
+    trajectory_dir = tmp_path / "trajectories" / "repo__issue-1"
+    trajectory_dir.mkdir(parents=True)
+    (trajectory_dir / "system-prompt.md").write_text("stale", encoding="utf-8")
+
+    save_agent_user_prompt_artifact(
+        tmp_path,
+        "repo__issue-1",
+        user_prompt=user_prompt,
+    )
+
+    assert not (trajectory_dir / "system-prompt.md").exists()
+    assert (trajectory_dir / "user-prompt.md").read_text(encoding="utf-8") == user_prompt
 
 
 def test_build_claude_code_settings_merges_user_environment():

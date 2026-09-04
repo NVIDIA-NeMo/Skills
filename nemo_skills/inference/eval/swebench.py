@@ -64,13 +64,11 @@ OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
 DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/solution-originality"
 CHEATS_ALLOWED_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/cheats-allowed"
 MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG = "swebench_cheats_allowed"
-OPENCODE_AGENT_PROMPT_PATH = "/root/.config/opencode/nemo-skills-prompt.md"
 
 # Claude Code is installed from npm so benchmark runs can pin the harness version.
 CLAUDE_CODE_NPM_PACKAGE = "@anthropic-ai/claude-code"
 CLAUDE_CODE_DEFAULT_VERSION = "2.1.259"
 CLAUDE_CODE_NODE_VERSION = "22.15.0"
-CLAUDE_CODE_AGENT_PROMPT_PATH = "/root/.claude/nemo-skills-prompt.md"
 CLAUDE_CODE_ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
 CLAUDE_CODE_EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max", "auto"})
 
@@ -114,12 +112,31 @@ def append_agent_prompt(template: str, agent_prompt: str) -> str:
     return f"{template}\n\n{agent_prompt}\n"
 
 
+def build_direct_agent_user_prompt(problem_statement: str, agent_prompt: str) -> str:
+    """Combine a benchmark problem and shared instructions into one user prompt."""
+    return f"{problem_statement.rstrip()}\n\n{agent_prompt.strip()}\n"
+
+
 def get_claude_code_api_base(api_base: str) -> str:
     """Return the server root expected by ANTHROPIC_BASE_URL."""
     normalized = api_base.rstrip("/")
     if normalized.endswith("/v1"):
         normalized = normalized[:-3]
     return normalized
+
+
+def save_agent_user_prompt_artifact(
+    output_dir: Path,
+    instance_id: str,
+    *,
+    user_prompt: str,
+) -> None:
+    """Save the exact user prompt supplied to a direct-prompt agent rollout."""
+    trajectory_dir = output_dir / "trajectories" / instance_id
+    trajectory_dir.mkdir(parents=True, exist_ok=True)
+    # Do not retain the system-prompt artifact emitted by the earlier layout.
+    (trajectory_dir / "system-prompt.md").unlink(missing_ok=True)
+    (trajectory_dir / "user-prompt.md").write_text(user_prompt, encoding="utf-8")
 
 
 def build_claude_code_settings(
@@ -178,7 +195,6 @@ def build_opencode_config(
     extra_body: dict,
     agent_max_turns: int,
     tokens_to_generate: int | None = None,
-    instruction_path: str = OPENCODE_AGENT_PROMPT_PATH,
 ) -> dict:
     """Build the OpenCode JSON config used to point the CLI at a local OpenAI-compatible server."""
     config = _deep_merge_dicts({}, copy.deepcopy(agent_config) if agent_config else {})
@@ -243,11 +259,6 @@ def build_opencode_config(
         }
     )
     agents[agent_name] = primary_agent
-    instructions = config.setdefault("instructions", [])
-    if not isinstance(instructions, list):
-        raise ValueError("OpenCode instructions must be a list.")
-    if instruction_path not in instructions:
-        instructions.append(instruction_path)
     return config
 
 
@@ -1358,11 +1369,11 @@ class SweBenchGenerationTask(GenerationTask):
             extra_body=OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True),
             agent_max_turns=self.cfg.agent_max_turns,
             tokens_to_generate=output_token_max,
-            instruction_path=OPENCODE_AGENT_PROMPT_PATH,
         )
         config_json = json.dumps(opencode_config)
-        instruction = self._get_agent_problem_statement(data_point)
+        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
+        save_agent_user_prompt_artifact(self.output_dir, instance_id, user_prompt=instruction)
         # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
         model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
@@ -1388,7 +1399,6 @@ class SweBenchGenerationTask(GenerationTask):
             f"export OPENAI_BASE_URL={shlex.quote(self.api_base)} && "
             "mkdir -p /root/.config/opencode && "
             f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
-            f"printf %s {shlex.quote(agent_prompt)} >{OPENCODE_AGENT_PROMPT_PATH} && "
             "cd /testbed && "
             "git config --global --add safe.directory /testbed && "
             "git config --global user.email opencode@nemo-skills.local && "
@@ -1478,7 +1488,7 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.agent_timeout <= 0:
             raise ValueError("agent_timeout must be greater than zero.")
 
-        instruction = self._get_agent_problem_statement(data_point)
+        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
         settings = build_claude_code_settings(
@@ -1488,6 +1498,11 @@ class SweBenchGenerationTask(GenerationTask):
             context_window=self.cfg.claude_code_context_window,
             effort=self.cfg.claude_code_effort,
         )
+        save_agent_user_prompt_artifact(
+            self.output_dir,
+            instance_id,
+            user_prompt=instruction,
+        )
         settings_json = json.dumps(settings)
 
         claude_code_cmd = (
@@ -1495,7 +1510,6 @@ class SweBenchGenerationTask(GenerationTask):
             "export HOME=/root && "
             "mkdir -p /root/.claude && "
             f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
-            f"printf %s {shlex.quote(agent_prompt)} >{CLAUDE_CODE_AGENT_PROMPT_PATH} && "
             "cd /testbed && "
             "git config --global --add safe.directory /testbed && "
             "git config --global user.email claude-code@nemo-skills.local && "
@@ -1507,7 +1521,6 @@ class SweBenchGenerationTask(GenerationTask):
             f"claude --bare -p {shlex.quote(instruction)} "
             f"--model {shlex.quote(model)} "
             f"--settings /root/.claude/settings.json "
-            f"--append-system-prompt-file {CLAUDE_CODE_AGENT_PROMPT_PATH} "
             f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
             f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
             "--permission-mode dontAsk "
