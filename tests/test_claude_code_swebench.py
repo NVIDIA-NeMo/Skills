@@ -68,3 +68,27 @@ def test_build_claude_code_settings_rejects_invalid_values():
             model="model",
             context_window=262144,
         )
+
+
+def test_build_claude_code_settings_applies_runtime_effort():
+    settings = build_claude_code_settings(
+        {"env": {"CLAUDE_CODE_EFFORT_LEVEL": "high"}},
+        api_base="http://localhost:8000/v1",
+        model="qwen",
+        context_window=262144,
+        effort="xhigh",
+    )
+
+    assert settings["env"]["CLAUDE_CODE_EFFORT_LEVEL"] == "xhigh"
+    assert settings["env"]["CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"] == "1"
+
+
+def test_build_claude_code_settings_rejects_invalid_effort():
+    with pytest.raises(ValueError, match="Unsupported claude_code_effort"):
+        build_claude_code_settings(
+            {},
+            api_base="http://localhost:8000/v1",
+            model="qwen",
+            context_window=262144,
+            effort="extreme",
+        )

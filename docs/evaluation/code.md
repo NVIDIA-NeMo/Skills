@@ -92,6 +92,8 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++claude_code_model:** A slash-free vLLM served-model alias used by Claude Code. This is required when `--model` is a Hugging Face name or filesystem path containing `/`. Add `--served-model-name <ALIAS>` to `--server_args` and set `++claude_code_model=<ALIAS>` to the same value.
 
+- **++claude_code_effort:** Claude Code reasoning effort selected at runtime. Supported values are `low`, `medium`, `high`, `xhigh`, `max`, and `auto`. When set, Nemo-Skills also enables effort transmission for custom vLLM model aliases. The runtime option overrides `CLAUDE_CODE_EFFORT_LEVEL` from the Claude Code agent config.
+
 - **++swe_zero_container:** Mounted path to the container to use for SWE-Zero in .sif format. If this option is set, SWE-Zero mode will be enabled. During inference, this will override the `container_formatter` field from the dataset file and run all instances in this container instead, cloning the repo from GitHub before running the agent. The recommended dockerfile for this container is provided [here](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.swe-zero).
     - In SWE-Zero, the agent is prompted not to run tests or execute any code, instead relying only on basic Bash commands and file editing. Therefore, it does not have access to instance-specific Docker environments. For more details, see the [SWE-Zero-to-Hero paper](https://arxiv.org/abs/2604.01496).
     - For OpenHands only, this will also switch the default `agent_framework_commit` to our SWE-Zero branch where the agent is prompted not to use tests or other code execution. For other frameworks this is not supported automatically, though you may modify the prompt yourself in the agent config.
@@ -117,7 +119,7 @@ For this benchmark, inference parameters work a bit differently. This is because
 
 Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). These two parameters are passed to OpenCode through its default agent configuration as well. OpenCode also forwards top_k when `++inference.top_k` is explicitly set; because `top_k` is not part of the standard OpenAI API, this requires a compatible server such as vLLM. Custom request parameters can be set via extra_body, for example `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. OpenCode merges `extra_body` into its model provider options, so the OpenAI-compatible adapter forwards fields such as `chat_template_kwargs` to vLLM unchanged. Keep in mind that some parameters may not be supported by your LLM server.
 
-Claude Code controls its own sampling parameters and does not expose NeMo-Skills' `inference.temperature`, `inference.top_p`, `inference.top_k`, `inference.tokens_to_generate`, or `inference.extra_body` settings. Use the vLLM server configuration or a gateway policy if these values must be overridden.
+Claude Code controls its own sampling parameters and does not expose NeMo-Skills' `inference.temperature`, `inference.top_p`, `inference.top_k`, `inference.tokens_to_generate`, or `inference.extra_body` settings. Use `++claude_code_effort` for reasoning effort. Use the vLLM server configuration or a gateway policy for other overrides.
 
 For OpenCode, the per-turn output-token limit defaults to 131072. Set `++inference.tokens_to_generate` to override it. Nemo-Skills applies the value to both the model's OpenCode config and `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`; without the latter, OpenCode imposes its own 32000-token runtime cap.
 
@@ -154,7 +156,8 @@ ns eval \
     --benchmarks=swe-bench \
     --output_dir=<OUTPUT_DIR> \
     ++agent_framework=claude_code \
-    ++claude_code_model=qwen3-coder
+    ++claude_code_model=qwen3-coder \
+    ++claude_code_effort=xhigh
 ```
 
 Keep in mind that by default the tool call format expected by these frameworks will likely be different from the one that the model was trained on.

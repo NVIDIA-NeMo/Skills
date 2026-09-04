@@ -72,6 +72,7 @@ CLAUDE_CODE_DEFAULT_VERSION = "2.1.259"
 CLAUDE_CODE_NODE_VERSION = "22.15.0"
 CLAUDE_CODE_AGENT_PROMPT_PATH = "/root/.claude/nemo-skills-prompt.md"
 CLAUDE_CODE_ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
+CLAUDE_CODE_EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max", "auto"})
 
 # These verifiers bind fixed localhost ports. Run only their verifier
 # containers in private, network-disabled namespaces so concurrent
@@ -127,6 +128,7 @@ def build_claude_code_settings(
     api_base: str,
     model: str,
     context_window: int,
+    effort: str | None = None,
 ) -> dict:
     """Build explicit settings for a deterministic, unattended Claude Code run."""
     if context_window <= 0:
@@ -151,6 +153,17 @@ def build_claude_code_settings(
             "DISABLE_UPDATES": "1",
         }
     )
+    if effort is not None:
+        if effort not in CLAUDE_CODE_EFFORT_LEVELS:
+            raise ValueError(
+                f"Unsupported claude_code_effort: {effort}. "
+                f"Choose one of: {', '.join(sorted(CLAUDE_CODE_EFFORT_LEVELS))}."
+            )
+        env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+    if "CLAUDE_CODE_EFFORT_LEVEL" in env:
+        # Model aliases used with vLLM are not recognized as Claude models, so
+        # explicitly enable effort transmission for those custom identifiers.
+        env["CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"] = "1"
     return settings
 
 
@@ -319,6 +332,7 @@ class SweBenchGenerationConfig:
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
     claude_code_model: str | None = None  # Slash-free vLLM served-model-name used by Claude Code
+    claude_code_effort: str | None = None  # Runtime Claude Code effort level
     agent_timeout: int = 60 * 60  # Wall-clock timeout for agent rollouts, in seconds
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
@@ -1444,6 +1458,7 @@ class SweBenchGenerationTask(GenerationTask):
             api_base=self.api_base,
             model=model,
             context_window=self.cfg.claude_code_context_window,
+            effort=self.cfg.claude_code_effort,
         )
         settings_json = json.dumps(settings)
 
