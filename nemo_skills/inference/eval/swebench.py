@@ -252,6 +252,7 @@ def build_opencode_config(
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
+    swe_rebench_v2 = "swe_rebench_v2"
     deep_swe = "deep_swe"  # note: deepswe evaluation logic is implemented in deepswe.py
     senior_swe_bench = "senior_swe_bench"  # Harbor grading in senior_swe_bench.py
     scale_swe = "scale_swe"  # Native F2P/P2P grading in scale_swe.py
@@ -655,19 +656,21 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.evaluate and self.cfg.dataset_type in [
             SupportedDatasetTypes.swe_bench,
             SupportedDatasetTypes.swe_bench_pro,
+            SupportedDatasetTypes.swe_rebench_v2,
         ]:
-            # Install the SWE-bench/SWE-bench-Pro evaluation harness.
+            # Install the SWE-bench/SWE-bench-Pro/SWE-rebench-V2 evaluation harness.
             setup_commands.append(
-                # clone the swe-bench repo
+                # clone the repo
                 "rm -rf /root/SWE-bench && "
                 f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
                 "cd /root/SWE-bench && "
                 f"git checkout {self.cfg.eval_harness_commit} && "
-                # make venv & install swe-bench dependencies
-                "uv venv --python 3.12 --managed-python venv && "
-                "source venv/bin/activate && "
-                "uv pip install -e ."
+                # make venv
+                "uv venv --python 3.12 --managed-python venv"
             )
+            if self.cfg.dataset_type != SupportedDatasetTypes.swe_rebench_v2:
+                # install dependencies (not needed for swe-rebench-v2)
+                setup_commands.append("source venv/bin/activate && uv pip install -e .")
 
         # Run all commands with retries and timeout
         combined_setup_command = " && ".join(setup_commands)
@@ -1680,6 +1683,21 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --output_dir eval-outputs "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
                     f"cp -r eval-outputs /trajectories_mount/"
+                )
+            elif self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2:
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python scripts/local_eval.py "
+                    f"    --json /input_mount/{Path(self.cfg.input_file).name} "
+                    f"    --patches {pred_mounted_path} "
+                    f"    --instance-ids {data_point['instance_id']} "
+                    f"    --report-json logs/report.json && "
+                    f"mkdir -p /trajectories_mount/eval-outputs/results/{data_point['instance_id']} && "
+                    f"cp logs/* /trajectories_mount/eval-outputs/results/{data_point['instance_id']}"
                 )
             else:
                 swe_bench_cmd = (

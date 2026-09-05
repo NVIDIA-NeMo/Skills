@@ -46,6 +46,8 @@ EXCLUDED_DATASETS = {
     "swe-bench-pro",
     "deep-swe",
     "senior-swe-bench",
+    "scale-swe",
+    "swe-rebench-v2",
     "aai",
     "human-eval",
     "human-eval-infilling",
