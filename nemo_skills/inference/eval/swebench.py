@@ -62,6 +62,7 @@ OPENCODE_DEFAULT_VERSION = "1.17.11"
 OPENCODE_NODE_VERSION = "22.15.0"
 OPENCODE_PROVIDER_ID = "nemo"
 OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
+OPENCODE_TITLE_REQUEST_MARKER = "Generate a title for this conversation:"
 DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/solution-originality"
 CHEATS_ALLOWED_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/cheats-allowed"
 MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG = "swebench_cheats_allowed"
@@ -1331,12 +1332,17 @@ class SweBenchGenerationTask(GenerationTask):
         expected_file_pattern,
         *,
         timeout=100000,
+        skip_request_body_substrings=(),
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
         for legacy_prompt_file in ("system-prompt.md", "user-prompt.md"):
             (capture_file.parent / legacy_prompt_file).unlink(missing_ok=True)
-        async with capture_first_llm_request(self.api_base, capture_file) as proxy_api_base:
+        async with capture_first_llm_request(
+            self.api_base,
+            capture_file,
+            skip_body_substrings=skip_request_body_substrings,
+        ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,
                 command_builder(proxy_api_base),
@@ -1443,6 +1449,7 @@ class SweBenchGenerationTask(GenerationTask):
             data_point,
             build_opencode_command,
             search_path,
+            skip_request_body_substrings=(OPENCODE_TITLE_REQUEST_MARKER,),
         )
 
         with open(patch_file, "r") as f:

@@ -29,14 +29,31 @@ LOG = logging.getLogger(__name__)
 _LLM_ENDPOINT_SUFFIXES = ("/messages", "/chat/completions", "/responses")
 
 
+def _contains_string(value, substring: str) -> bool:
+    if isinstance(value, str):
+        return substring in value
+    if isinstance(value, list):
+        return any(_contains_string(item, substring) for item in value)
+    if isinstance(value, dict):
+        return any(_contains_string(item, substring) for item in value.values())
+    return False
+
+
 class FirstRequestCaptureProxy:
     """Forward HTTP traffic and persist the first JSON inference request unchanged."""
 
-    def __init__(self, upstream_base_url: str, output_file: Path):
+    def __init__(
+        self,
+        upstream_base_url: str,
+        output_file: Path,
+        *,
+        skip_body_substrings: tuple[str, ...] = (),
+    ):
         self.upstream = urlsplit(upstream_base_url)
         if self.upstream.scheme not in {"http", "https"} or not self.upstream.hostname:
             raise ValueError(f"Unsupported upstream URL: {upstream_base_url}")
         self.output_file = output_file
+        self.skip_body_substrings = skip_body_substrings
         self.server: asyncio.AbstractServer | None = None
         self._capture_lock = asyncio.Lock()
         self._captured = False
@@ -63,8 +80,10 @@ class FirstRequestCaptureProxy:
         if not request_path.endswith(_LLM_ENDPOINT_SUFFIXES):
             return
         try:
-            json.loads(body)
+            request_json = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if any(_contains_string(request_json, substring) for substring in self.skip_body_substrings):
             return
 
         async with self._capture_lock:
@@ -186,9 +205,18 @@ class FirstRequestCaptureProxy:
 
 
 @asynccontextmanager
-async def capture_first_llm_request(upstream_base_url: str, output_file: Path):
+async def capture_first_llm_request(
+    upstream_base_url: str,
+    output_file: Path,
+    *,
+    skip_body_substrings: tuple[str, ...] = (),
+):
     """Yield a local proxy URL and close all proxy resources afterward."""
-    proxy = FirstRequestCaptureProxy(upstream_base_url, output_file)
+    proxy = FirstRequestCaptureProxy(
+        upstream_base_url,
+        output_file,
+        skip_body_substrings=skip_body_substrings,
+    )
     proxy_base_url = await proxy.start()
     try:
         yield proxy_base_url

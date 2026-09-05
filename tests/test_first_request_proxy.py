@@ -124,3 +124,52 @@ def test_proxy_ignores_non_inference_requests(tmp_path):
         assert not capture_file.exists()
 
     asyncio.run(run_test())
+
+
+def test_proxy_skips_internal_request_before_capturing_coding_turn(tmp_path):
+    async def run_test():
+        async def upstream_handler(reader, writer):
+            raw_headers = await reader.readuntil(b"\r\n\r\n")
+            content_length = next(
+                int(line.split(b":", maxsplit=1)[1].strip())
+                for line in raw_headers.split(b"\r\n")
+                if line.lower().startswith(b"content-length:")
+            )
+            await reader.readexactly(content_length)
+            writer.write(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+
+        upstream = await asyncio.start_server(upstream_handler, "127.0.0.1", 0)
+        upstream_port = upstream.sockets[0].getsockname()[1]
+        capture_file = tmp_path / "first-llm-request.json"
+        title_body = json.dumps(
+            {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Generate a title for this conversation:\n"}],
+            }
+        ).encode()
+        coding_body = json.dumps(
+            {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Fix the parser bug"}],
+            }
+        ).encode()
+
+        try:
+            async with capture_first_llm_request(
+                f"http://127.0.0.1:{upstream_port}/v1",
+                capture_file,
+                skip_body_substrings=("Generate a title for this conversation:",),
+            ) as proxy_base:
+                await _send_json_request(proxy_base, "chat/completions", title_body)
+                assert not capture_file.exists()
+                await _send_json_request(proxy_base, "chat/completions", coding_body)
+        finally:
+            upstream.close()
+            await upstream.wait_closed()
+
+        assert capture_file.read_bytes() == coding_body
+
+    asyncio.run(run_test())
