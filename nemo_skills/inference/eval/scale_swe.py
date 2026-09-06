@@ -105,7 +105,7 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
 
     def _get_openhands_instruction_template(self) -> str:
         """Return the Scale-SWE user template rendered by OpenHands."""
-        return get_config_path("eval/scale-swe/openhands/swe_default", config_extension="j2")
+        return str(get_config_path("eval/scale-swe/openhands/swe_default", config_extension="j2"))
 
     def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
         """Use minimal mounts and a real resolver only for native Scale-SWE grading."""

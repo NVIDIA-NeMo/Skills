@@ -50,7 +50,9 @@ def test_scale_swe_formats_problem_statement_for_direct_prompt_harnesses():
 
 def test_openhands_uses_scale_swe_user_template():
     task = object.__new__(ScaleSweGenerationTask)
-    template = Path(task._get_openhands_instruction_template()).read_text()
+    template_path = task._get_openhands_instruction_template()
+    assert isinstance(template_path, str)
+    template = Path(template_path).read_text()
     assert "We are addressing the following issue in our repository" in template
     assert "/workspace/{{ workspace_dir_name }}" in template
     assert "non-test files" not in template
