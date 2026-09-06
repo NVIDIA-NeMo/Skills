@@ -14,7 +14,7 @@ More details are coming soon!
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench/__init__.py)
 - Original benchmark source is [here](https://github.com/SWE-bench/SWE-bench).
 
-Nemo-Skills can run inference (rollout) on SWE-bench-style datasets using 3 agent frameworks: [SWE-agent](https://swe-agent.com/latest/), [mini-SWE-agent](https://mini-swe-agent.com/latest/) and [OpenHands](https://www.all-hands.dev/). It can then evaluate the generated patches on SWE-bench Verified/Lite/Full using the [official SWE-bench harness](https://www.swebench.com/SWE-bench/guides/evaluation/).
+Nemo-Skills can run inference (rollout) on SWE-bench-style datasets using [SWE-agent](https://swe-agent.com/latest/), [mini-SWE-agent](https://mini-swe-agent.com/latest/), [OpenHands](https://www.all-hands.dev/), [OpenCode](https://opencode.ai/), and [Claude Code](https://github.com/anthropics/claude-code). It can then evaluate the generated patches on SWE-bench Verified/Lite/Full using the [official SWE-bench harness](https://www.swebench.com/SWE-bench/guides/evaluation/).
 
 #### Data preparation
 
@@ -66,19 +66,35 @@ When this path is accessed during evaluation, `{instance_id}` will be replaced b
 
 There are a few parameters specific to SWE-bench. They have to be specified with the `++` prefix. All of them are optional, except for ++agent_framework.
 
-- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands` or `gold_patch`. The latter option runs evaluation of gold (ground truth) patches from the dataset, skipping the agent rollout. No default, must be specified explicitly.
+- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands`, `opencode`, `claude_code` or `gold_patch`. The latter option runs evaluation of gold (ground truth) patches from the dataset, skipping the agent rollout. No default, must be specified explicitly.
 
-- **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands.
+- **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands. Not used for OpenCode or Claude Code, which are installed from npm.
 
-- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/mini-SWE-agent/OpenHands to a specific version. Defaults to `HEAD` for SWE-agent, `1.2.1` for OpenHands and `v2.0` for mini-SWE-agent.
+- **++agent_framework_commit:** The commit hash, branch or tag to checkout after cloning agent_framework_repo. Allows you to pin SWE-agent/mini-SWE-agent/OpenHands to a specific version. Defaults to `HEAD` for SWE-agent, `1.2.1` for OpenHands and `v2.0` for mini-SWE-agent. For OpenCode this is the npm version of [`opencode-ai`](https://www.npmjs.com/package/opencode-ai) (default `1.17.11`); for Claude Code it is the npm version of [`@anthropic-ai/claude-code`](https://www.npmjs.com/package/@anthropic-ai/claude-code) (default `2.1.259`).
 
 - **++agent_config:** The config file to use for the agent framework.
     - For SWE-agent and mini-SWE-agent, this is a YAML file. See the docs: [SWE-agent](https://swe-agent.com/latest/config/config/), [mini-SWE-agent](https://mini-swe-agent.com/latest/advanced/yaml_configuration/).
     - For OpenHands, this is a TOML file. Nemo-Skills runs OpenHands via their SWE-bench evaluation script, so the only settings you can set are the LLM settings under the `[llm.model]` section. For more details, see the [OpenHands evaluation README](https://github.com/All-Hands-AI/OpenHands/blob/main/evaluation/README.md). Note that Nemo-Skills always uses the `[llm.model]` config section and therefore does not support multiple LLM configurations in one TOML file.
+    - For OpenCode, this is a JSON file merged into `~/.config/opencode/opencode.json`. Nemo-Skills always injects a `provider.nemo` block that points at the same OpenAI-compatible `/v1` URL used by the other harnesses (`baseURL` / dummy `apiKey`). It also configures OpenCode's default agent with `++inference.temperature`, `++inference.top_p`, and `++agent_max_turns`. When set, `++inference.top_k` is added to the model's provider options and forwarded as the nonstandard `top_k` request field supported by vLLM. Nemo-Skills appends the selected `++agent_prompt_config` to the task's user prompt. You do not need to change how the model is served (`--model` / `--server_type=vllm` stay the same).
+    - For Claude Code, this is a JSON settings file passed explicitly to the CLI. Nemo-Skills runs Claude Code in bare, non-interactive mode, points it at vLLM's Anthropic Messages API, disables session persistence and background tasks, and allows its local coding tools. The selected `++agent_prompt_config` is appended to the task passed through `claude -p`, not to Claude Code's system prompt.
     - Nemo-Skills overrides certain parameters, even if they are specified in the config file. These parameters are listed in a comment in the default config files below.
-    - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/mini-swe-agent/swebench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench.yaml) for mini-SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands. Note that if you store your configs in your local Nemo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
+    - Defaults to [eval/swe-bench/swe-agent/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/default.yaml) for SWE-agent, [eval/swe-bench/mini-swe-agent/swebench](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench.yaml) for mini-SWE-agent, [eval/swe-bench/openhands/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/default.toml) for OpenHands, [eval/swe-bench/opencode/default](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/opencode/default.json) for OpenCode, and `eval/swe-bench/claude-code/default` for Claude Code. Note that if you store your configs in your local Nemo-Skills repo, then the path can be relative to the `nemo_skills/prompt` folder and the file extension is added automatically (same as how it works with regular [prompt configs](../basics/prompt-format.md)).
 
-- **++agent_max_turns:** The maximum number of turns the agent is allowed to take before the trajectory is forcibly terminated. Defaults to 100 for all agent frameworks.
+- **++agent_prompt_config:** Markdown prompt added to the task instructions for SWE-agent, mini-SWE-agent, OpenHands, OpenCode, and Claude Code. The path is resolved relative to `nemo_skills/prompt` and the `.md` extension is added automatically. Defaults to `eval/swe-bench/common/solution-originality`. Use `++agent_prompt_config=eval/swe-bench/common/cheats-allowed` for prompting without the solution-originality restrictions, or point it at another Markdown config to add future prompting variants without changing the harness code. For backward compatibility, selecting mini-SWE-agent's `swebench_cheats_allowed` agent config without this option also selects the cheats-allowed prompt.
+
+- **++agent_max_turns:** The maximum number of turns the agent is allowed to take. Defaults to 100. For OpenCode, this is written to `agent.<default_agent>.steps`; after the limit, OpenCode forces a final text-only response instead of allowing more tool calls. For Claude Code, this is passed as `--max-turns`.
+
+- **++agent_timeout:** Hard wall-clock timeout for a Claude Code rollout, in seconds. Defaults to 3600.
+
+- **++continue_on_error:** Continue the shard after an individual instance raises during agent generation, output postprocessing, or per-instance evaluation. Defaults to `False` (fail-fast). When enabled, failures are written to `<output>.errors` with their async position, exception, and traceback. SWE-bench, SWE-bench Pro, Scale-SWE, DeepSWE, and Senior SWE-Bench also emit an unresolved terminal output row with no patch, so the failed instance remains in metric denominators and `++skip_filled=True` does not retry it. Output-persistence failures remain fail-fast.
+
+- **++opencode_context_window:** The context window advertised to OpenCode for request budgeting and automatic compaction. Defaults to 262144. Set this to the effective context length of the model server, for example `++opencode_context_window=393216` when vLLM is launched with `--max-model-len 393216`. This option only affects OpenCode; the model server enforces its own context limit separately.
+
+- **++claude_code_context_window:** The context window advertised to Claude Code. Defaults to 262144 and should match the effective vLLM context length.
+
+- **++claude_code_model:** A slash-free vLLM served-model alias used by Claude Code. This is required when `--model` is a Hugging Face name or filesystem path containing `/`. Add `--served-model-name <ALIAS>` to `--server_args` and set `++claude_code_model=<ALIAS>` to the same value.
+
+- **++claude_code_effort:** Claude Code reasoning effort selected at runtime. Supported values are `low`, `medium`, `high`, `xhigh`, `max`, and `auto`. When set, Nemo-Skills also enables effort transmission for custom vLLM model aliases. The runtime option overrides `CLAUDE_CODE_EFFORT_LEVEL` from the Claude Code agent config.
 
 - **++swe_zero_container:** Mounted path to the container to use for SWE-Zero in .sif format. If this option is set, SWE-Zero mode will be enabled. During inference, this will override the `container_formatter` field from the dataset file and run all instances in this container instead, cloning the repo from GitHub before running the agent. The recommended dockerfile for this container is provided [here](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.swe-zero).
     - In SWE-Zero, the agent is prompted not to run tests or execute any code, instead relying only on basic Bash commands and file editing. Therefore, it does not have access to instance-specific Docker environments. For more details, see the [SWE-Zero-to-Hero paper](https://arxiv.org/abs/2604.01496).
@@ -103,7 +119,15 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 For this benchmark, inference parameters work a bit differently. This is because it does not use the Nemo-Skills LLM client, instead the interaction with the LLM server is handled by the agent framework.
 
-Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). Any parameters you set explicitly will be passed. Custom parameters can be set via extra_body like this: `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. However, keep in mind certain parameters may not be supported by your LLM server.
+Most inference parameters are not passed to the LLM by default if you don't explicitly specify them, with the exception of temperature (defaults to 0) and top_p (defaults to 0.95). These two parameters are passed to OpenCode through its default agent configuration as well. OpenCode also forwards top_k when `++inference.top_k` is explicitly set; because `top_k` is not part of the standard OpenAI API, this requires a compatible server such as vLLM. Custom request parameters can be set via extra_body, for example `++inference.extra_body.chat_template_kwargs.enable_thinking=False`. OpenCode merges `extra_body` into its model provider options, so the OpenAI-compatible adapter forwards fields such as `chat_template_kwargs` to vLLM unchanged. Keep in mind that some parameters may not be supported by your LLM server.
+
+Claude Code controls its own sampling parameters and does not expose NeMo-Skills' `inference.temperature`, `inference.top_p`, `inference.top_k`, `inference.tokens_to_generate`, or `inference.extra_body` settings. Use `++claude_code_effort` for reasoning effort. Use the vLLM server configuration or a gateway policy for other overrides.
+
+For OpenCode, the per-turn output-token limit defaults to 131072. Set `++inference.tokens_to_generate` to override it. Nemo-Skills applies the value to both the model's OpenCode config and `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`; without the latter, OpenCode imposes its own 32000-token runtime cap.
+
+Each OpenCode rollout stores four trajectory artifacts under `trajectories/<instance_id>/`: `opencode.txt` contains only the JSONL event stream from stdout, `opencode.stderr.log` contains diagnostics from stderr, `opencode-session.json` is OpenCode's native root-session export, and `trajectory.json` is that export converted to ATIF v1.7. The native and ATIF exports describe the top-level agent session; delegated subagent sessions are not included.
+
+Each OpenCode and Claude Code rollout transparently forwards its JSON inference requests to the configured model server and saves the first task-bearing request unchanged as `first-llm-request.json` in the per-instance trajectory directory. For OpenCode, NeMo-Skills skips the preliminary internal request whose user content starts with `Generate a title for this conversation:` and captures the following coding request. This artifact contains the runtime context assembled by the harness, including its system/developer messages, the exact combined task and `++agent_prompt_config` user content, tools, model, and request parameters. Treat it as sensitive. Claude Code additionally stores `claude-code.jsonl`, `claude-code.stderr.log`, `claude-code.exit-code`, `model.patch`, and an ATIF v1.7 `trajectory.json`. NeMo-Skills does not create separate `system-prompt.md` or `user-prompt.md` artifacts; extract those messages from `first-llm-request.json` when needed. Partial Claude Code patches are retained when it reaches its turn limit or exits nonzero.
 
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
@@ -121,6 +145,22 @@ In addition, all supported agent frameworks can run without native tool calling.
 - for SWE-agent: [eval/swe-bench/swe-agent/swe-agent-lm-32b](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/swe-agent-lm-32b.yaml). This was the config used for [SWE-agent-LM-32B](https://huggingface.co/SWE-bench/SWE-agent-LM-32B). Note that there are significant differences with the default config.
 - for mini-SWE-agent: [eval/swe-bench/mini-swe-agent/swebench_xml](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench_xml.yaml) or [eval/swe-bench/mini-swe-agent/swebench_backticks](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench_backticks.yaml).
 - for OpenHands: [eval/swe-bench/openhands/no-native-tool-calling](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/no-native-tool-calling.toml). This simply sets `native_tool_calling` to `false`.
+
+OpenCode expects native tool calling (same as the default OpenHands setup). There is no XML/backtick fallback config.
+
+Claude Code also requires native tool calling. A typical self-hosted invocation uses a slash-free alias shared by vLLM and the harness:
+
+```
+ns eval \
+    --model=Qwen/Qwen3-Coder-30B-A3B-Instruct \
+    --server_type=vllm \
+    --server_args="--served-model-name qwen3-coder --enable-auto-tool-choice --tool-call-parser <PARSER_NAME>" \
+    --benchmarks=swe-bench \
+    --output_dir=<OUTPUT_DIR> \
+    ++agent_framework=claude_code \
+    ++claude_code_model=qwen3-coder \
+    ++claude_code_effort=xhigh
+```
 
 Keep in mind that by default the tool call format expected by these frameworks will likely be different from the one that the model was trained on.
 
@@ -172,6 +212,55 @@ all you need to do is replace `openhands` with `swe_agent` or `mini_swe_agent` i
 
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
+
+### scale-swe
+
+[Scale-SWE](https://github.com/AweAI-Team/ScaleSWE) uses the SWE-bench agent
+interfaces for rollout generation, but has its own native evaluation protocol.
+NeMo-Skills applies the generated patch in a fresh instance container, injects
+the dataset's `f2p_patch` and `f2p_script`, and runs the combined
+`FAIL_TO_PASS` and `PASS_TO_PASS` pytest IDs. An instance is resolved only when
+every expected test passes. AweAgent is not installed or used at runtime.
+
+Prepare the released dataset with:
+
+```
+ns prepare_data scale-swe
+```
+
+This loads `PrimeIntellect/Scale-SWE-Verified` and its `train` split by default. The
+generated data preserves each instance's `image_url`, `workdir`,
+`pre_commands`, and F2P/P2P fields, and renames `parent_commit` to
+`base_commit`. The default container
+formatter lets Apptainer pull `image_url` directly. For larger evaluations,
+pre-convert the required images to SIF files and pass a formatter that uses
+`{image_url}` or `{instance_id}` to address the mounted files.
+
+Run rollout generation and evaluation with the same agent options as
+SWE-bench:
+
+```
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=<MODEL> \
+    --server_type=vllm \
+    --benchmarks=scale-swe \
+    --output_dir=<OUTPUT_DIR> \
+    ++agent_framework=mini_swe_agent \
+    ++agent_max_turns=200
+```
+
+Use `++agent_framework=gold_patch ++max_samples=5` as an initial environment
+and evaluator smoke test. `++evaluate=False` runs rollout generation without
+grading, and `++swebench_tests_timeout` controls the per-instance test timeout
+(1800 seconds by default). SWE-Zero is not supported because valid Scale-SWE
+rollouts require each instance's native image, `parent_commit`, and
+`pre_commands`.
+
+Results are written to
+`<OUTPUT_DIR>/eval-results/scale-swe/metrics.json`. The primary metric is
+`issues_resolved`; additional counters distinguish empty patches, model patch
+application failures, F2P patch application failures, and evaluator errors.
 
 ### swe-bench-multilingual
 
@@ -233,6 +322,121 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 !!! note
     For evaluation, we use a [custom fork](https://github.com/Kipok/SWE-bench) of the SWE-bench repository that supports running evaluation inside of an existing container. It may not always have the latest updates from the upstream repo.
 
+### deep-swe
+
+- Benchmark is defined in [`nemo_skills/dataset/deep-swe/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/deep-swe/__init__.py)
+- Original benchmark sources: [GitHub tasks](https://github.com/datacurve-ai/deep-swe), gated [HuggingFace dataset](https://huggingface.co/datasets/datacurve/deep-swe)
+
+DeepSWE is a Harbor-format coding-agent benchmark (113 long-horizon tasks). It reuses the SWE-bench agent logic for generation and scores each task with its Harbor verifier (`tests/test.sh` + `grader.py` + F2P/P2P in `tests/config.json`).
+
+DeepSWE uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well.
+The differences are described below.
+
+#### Data preparation
+
+DeepSWE requires a Harbor-style tasks folder to operate, so the data needs to be prepared on the cluster with `--cluster` and `--data_dir` arguments.
+
+```bash
+ns prepare_data deep-swe \
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
+```
+
+This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) temporarily to
+build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
+`/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
+`NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Note that this does not download the `.sif` images
+themselves, for instructions on that see the SWE-bench docs above.
+
+Useful options:
+
+- `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{docker_image_tag}`, `{ext_id}`
+- `--repo_url` / `--repo_commit` — override the DeepSWE Harbor git source
+- `--setup` — output split name (default: `default`)
+
+#### Evaluation
+
+```bash
+ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
+  --data_dir=/workspace/ns-data \
+  --model=... --server_type=vllm --server_gpus=8 \
+  --output_dir=/path/out \
+  ++agent_framework=mini_swe_agent
+```
+
+Note that `--data_dir` is required, same as for data preparation. For `++agent_framework`, prefer `mini_swe_agent`, `swe_agent` or `opencode`; OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows. All other regular SWE-bench options are supported. Additionally, there are some DeepSWE-specific options:
+- **++tasks_dir:** custom path to the Harbor tasks root on the cluster. This is used to run tests. Defaults to `{data_dir}/deep-swe/tasks`, which is the expected path after standard data preparation.
+- **++use_agent_timeouts:** if enabled, limit the agent trajectory duration to the timeout embedded in each task. This is disabled by default since trajectory duration is heavily dependent on the hardware setup when hosting LLMs locally.
+- **++use_verifier_timeouts:** if enabled, limit the verifier (evaluation) duration to the timeout embedded in each task. Disabled by default.
+
+Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
+Verifier crashes that only write the DeepSWE `reward.txt=-1` sentinel are counted as unresolved / not successfully applied.
+
+### senior-swe-bench
+
+- Benchmark is defined in [`nemo_skills/dataset/senior-swe-bench/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/senior-swe-bench/__init__.py)
+- Original benchmark source: [snorkel-ai/senior-swe-bench-v2026.06](https://github.com/snorkel-ai/senior-swe-bench-v2026.06) ([Senior SWE-Bench site](https://senior-swe-bench.snorkel.ai/tasks))
+
+Senior SWE-Bench is a Harbor-format coding-agent benchmark (50 public tasks in v2026.06). It reuses the SWE-bench agent logic for generation and scores each task with its full Harbor verifier (`tests/test.sh`: native verify + LLM rubric/taste judges + optional validation agent).
+
+It follows the same fused agent+Harbor grading pattern as [DeepSWE](#deep-swe). Differences versus DeepSWE:
+
+1. Task repos live under `/repo/{REPO_NAME}` (not `/app`). The agent still works in `/testbed` (copied from the task repo); grading applies `model.patch` into `/repo/$REPO_NAME` before running `test.sh`.
+2. The full verifier needs outbound network and judge API keys (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `PORTKEY_API_KEY`, plus optional `SSB_OVERRIDE_*`).
+3. Empty `reward.txt` (no `reward.json`) marks an **invalid trial** (infra/validation crash) and must not count as a solve.
+4. Gold patches are `solution/oracle.patch` (used with `++agent_framework=gold_patch`).
+
+#### Data preparation
+
+```bash
+ns prepare_data senior-swe-bench \
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/swe-bench-images/senior-swe-bench/{instance_id}.sif"
+```
+
+This clones [snorkel-ai/senior-swe-bench-v2026.06](https://github.com/snorkel-ai/senior-swe-bench-v2026.06) temporarily,
+writes `default.jsonl`, materializes Harbor task dirs under
+`/workspace/ns-data/senior-swe-bench/tasks/`, then deletes the temporary checkout.
+Building / converting task Docker images to `.sif` is separate (pass paths via `--container_formatter`).
+
+Useful options:
+
+- `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{base_image}`, `{docker_image_tag}`
+- `--repo_url` / `--repo_commit` — override the Harbor git source
+- `--setup` — output split name (default: `default`)
+
+#### Evaluation
+
+```bash
+# Export judge keys required by the full Senior SWE-Bench verifier
+# export ANTHROPIC_API_KEY=...
+# export OPENAI_API_KEY=...
+# export PORTKEY_API_KEY=...
+
+ns eval --cluster=<CLUSTER> --benchmarks=senior-swe-bench \
+  --data_dir=/workspace/ns-data \
+  --model=... --server_type=vllm --server_gpus=8 \
+  --output_dir=/path/out \
+  ++agent_framework=mini_swe_agent
+```
+
+`--data_dir` is required. Prefer `mini_swe_agent`, `swe_agent` or `opencode` for `++agent_framework`. Shared DeepSWE-style options also apply:
+
+- **++tasks_dir:** custom Harbor tasks root (default `{data_dir}/senior-swe-bench/tasks`)
+- **++use_agent_timeouts** / **++use_verifier_timeouts:** honor per-task timeouts from `task.toml`
+
+Smoke-test grading with `++agent_framework=gold_patch` on a single instance before full agent runs.
+
+Metrics:
+
+- **`issues_resolved`** — basic solve (`reward >= 1`: verifiers + validation when present). Participates in pass@k.
+- **`tasteful_issues_resolved`** — official [tasteful solve](https://senior-swe-bench.snorkel.ai/): basic solve **and** rubric `> 0.5`, bloat `< 2×`, practice alignment `> 2/5`, relative taste `> 2/5`. Participates in pass@k separately from basic solve.
+- Also reported: `reward` / `invalid_trial` / `verifier_score` / `rubric_score` / `validation_score` / taste field averages when present.
+
+Missing rubric/taste fields fail closed for tasteful solve (counted as not tasteful).
+
 ### swe-bench-pro
 
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-pro/__init__.py)
@@ -242,7 +446,7 @@ SWE-bench Pro uses mostly the same logic as regular SWE-bench, so most of the [S
 
 1. Since it is a multilingual benchmark, we use the multilingual inference logic for it, same as for [SWE-bench Multilingual](#swe-bench-multilingual).
 2. 88 of 731 instances have to be run in a separate evaluation job with a different Nemo-Skills container based on Alpine Linux. The dockerfile for this container is provided [here](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine). You can use the `--main_container` option of Nemo-Skills to change the container for this subset of instances, and run the rest as usual. See below for an example.
-3. Due to technical issues, OpenHands is not supported for this benchmark. Only SWE-agent and mini-SWE-agent are supported.
+3. Due to technical issues, OpenHands is not supported for this benchmark. SWE-agent, mini-SWE-agent and OpenCode are supported on the Ubuntu subset. OpenCode needs a glibc Node.js runtime, so it is not expected to work on the Alpine subset.
 
 #### Sample run
 
@@ -315,8 +519,8 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR_ALPINE>/e
 
 Keep in mind there is some variance between runs, so we recommend running evaluation multiple times and averaging out the resolve rate. To do that automatically, you can set `--benchmarks=swe-bench-pro:N`, where N is your desired number of repeats.
 
-To evaluate the same model with mini-SWE-agent,
-all you need to do is replace `swe_agent` with `mini_swe_agent` in the command above. OpenHands is not supported for this benchmark.
+To evaluate the same model with mini-SWE-agent or OpenCode,
+replace `swe_agent` with `mini_swe_agent` or `opencode` in the Ubuntu command. OpenHands is not supported for this benchmark. OpenCode is not expected to work on the Alpine subset.
 
 !!! note
     There are some instances where the gold (ground truth) patches do not pass the evaluation tests. Therefore, it's likely that on those instances even patches that resolve the issue will be incorrectly evaluated as "unresolved". We have observed 18 such instances in SWE-bench Pro:
