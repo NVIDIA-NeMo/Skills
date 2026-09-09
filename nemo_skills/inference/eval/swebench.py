@@ -105,8 +105,10 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
 
 def append_agent_prompt(template: str, agent_prompt: str) -> str:
     """Append a shared prompt, keeping it inside an ``<instructions>`` block when present."""
-    template = template.rstrip()
     agent_prompt = agent_prompt.strip()
+    if not agent_prompt:
+        return template
+    template = template.rstrip()
     closing_tag = "</instructions>"
     if closing_tag in template:
         prefix, suffix = template.rsplit(closing_tag, maxsplit=1)
@@ -116,7 +118,11 @@ def append_agent_prompt(template: str, agent_prompt: str) -> str:
 
 def build_direct_agent_user_prompt(problem_statement: str, agent_prompt: str) -> str:
     """Combine a benchmark problem and shared instructions into one user prompt."""
-    return f"{problem_statement.rstrip()}\n\n{agent_prompt.strip()}\n"
+    agent_prompt = agent_prompt.strip()
+    if not agent_prompt:
+        return problem_statement
+    else:
+        return f"{problem_statement.rstrip()}\n\n{agent_prompt}\n"
 
 
 def get_claude_code_api_base(api_base: str) -> str:
