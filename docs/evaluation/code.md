@@ -66,7 +66,8 @@ When this path is accessed during evaluation, `{instance_id}` will be replaced b
 
 There are a few parameters specific to SWE-bench. They have to be specified with the `++` prefix. All of them are optional, except for ++agent_framework.
 
-- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands`, `opencode`, `claude_code` or `gold_patch`. The latter option runs evaluation of gold (ground truth) patches from the dataset, skipping the agent rollout. No default, must be specified explicitly.
+- **++agent_framework:** which agent framework to use. Must be one of `swe_agent`, `mini_swe_agent`, `openhands`, `opencode`, `claude_code`, `gold_patch`, or `model_patch`. `gold_patch` evaluates ground-truth patches from the dataset. `model_patch` evaluates pre-generated patches from `++model_patch_file`. Both skip the agent rollout. No default, must be specified explicitly.
+- **++model_patch_file:** JSONL file used with `++agent_framework=model_patch`. Each row must contain `instance_id` and `model_patch`, either directly or under `swe-bench-outputs` as emitted by NeMo-Skills.
 
 - **++agent_framework_repo:** URL of the repository to use for SWE-agent/mini-SWE-agent/OpenHands. Allows you to pass in a custom fork of these repositories. If you do this, you may find it helpful to check [nemo_skills/inference/eval/swebench.py](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/inference/eval/swebench.py) to understand how the frameworks are used internally. This is passed directly as an argument to `git clone`. Defaults to the official repositories: [`https://github.com/SWE-agent/SWE-agent.git`](https://github.com/SWE-agent/SWE-agent) for SWE-agent, [`https://github.com/SWE-agent/mini-swe-agent.git`](https://github.com/SWE-agent/mini-swe-agent) for mini-SWE-agent, [`https://github.com/All-Hands-AI/OpenHands.git`](https://github.com/All-Hands-AI/OpenHands) for OpenHands. Not used for OpenCode or Claude Code, which are installed from npm.
 
@@ -240,6 +241,12 @@ grading, and `++swebench_tests_timeout` controls the per-instance test timeout
 (1800 seconds by default). SWE-Zero is not supported because valid Scale-SWE
 rollouts require each instance's native image, `parent_commit`, and
 `pre_commands`.
+
+To evaluate patches generated previously, use
+`++agent_framework=model_patch ++model_patch_file=<GENERATIONS_JSONL>`.
+Scale-SWE matches rows by `instance_id` and runs the same native F2P/P2P
+evaluation used for newly generated patches. Benchmark instances absent from
+the patch file are skipped and do not contribute to metrics.
 
 Results are written to
 `<OUTPUT_DIR>/eval-results/scale-swe/metrics.json`. The primary metric is

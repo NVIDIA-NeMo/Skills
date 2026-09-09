@@ -54,6 +54,7 @@ class SupportedAgentFrameworks(str, Enum):
     opencode = "opencode"
     claude_code = "claude_code"
     gold_patch = "gold_patch"
+    model_patch = "model_patch"
 
 
 # OpenCode is installed from npm (not git). Pin matches NeMo Gym v0.5.0's default.
@@ -318,6 +319,8 @@ class SweBenchGenerationConfig:
     output_file: str  # Where to save the generations
 
     agent_framework: SupportedAgentFrameworks  # Which agentic framework to use
+    # JSONL output containing pre-generated patches, keyed by instance_id. Required for model_patch.
+    model_patch_file: str | None = None
 
     # SWE-agent/OpenHands/mini-SWE-agent repo URL & commit. Passed to git clone & git checkout respectively.
     # Default behavior:
@@ -656,8 +659,11 @@ class SweBenchGenerationTask(GenerationTask):
                 "claude --version"
             )
 
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            pass  # no installation needed for gold patches
+        elif self.cfg.agent_framework in {
+            SupportedAgentFrameworks.gold_patch,
+            SupportedAgentFrameworks.model_patch,
+        }:
+            pass  # no installation needed for supplied patches
 
         else:
             raise ValueError(
@@ -698,10 +704,13 @@ class SweBenchGenerationTask(GenerationTask):
         return
 
     def wait_for_server(self):
-        # gold_patch never talks to an LLM; skip the curl handshake that would hang forever
+        # Supplied patches never talk to an LLM; skip the curl handshake that would hang forever
         # when ns eval is given a dummy --server_address to avoid spinning up vLLM.
-        if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            LOG.info("Skipping server wait for gold_patch (no LLM server required).")
+        if self.cfg.agent_framework in {
+            SupportedAgentFrameworks.gold_patch,
+            SupportedAgentFrameworks.model_patch,
+        }:
+            LOG.info("Skipping server wait for %s (no LLM server required).", self.cfg.agent_framework)
             return
         super().wait_for_server()
 
@@ -710,6 +719,21 @@ class SweBenchGenerationTask(GenerationTask):
 
     def cleanup_litellm_cache(self):
         return
+
+    def preprocess_data(self, data):
+        """For model_patch evaluation, keep only instances supplied in the patch file."""
+        if self.cfg.agent_framework != SupportedAgentFrameworks.model_patch:
+            return data
+
+        if not hasattr(self, "_model_patches"):
+            self._model_patches = self._load_model_patches()
+        filtered_data = [
+            data_point for data_point in data if str(data_point.get("instance_id")) in self._model_patches
+        ]
+        skipped = len(data) - len(filtered_data)
+        if skipped:
+            LOG.info("Skipping %d instances without entries in %s.", skipped, self.cfg.model_patch_file)
+        return filtered_data
 
     async def evaluate_single_datapoint(self, data_point):
         # currently evaluation is done directly after generation already
@@ -946,6 +970,8 @@ class SweBenchGenerationTask(GenerationTask):
             return await self._run_claude_code(data_point)
         if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
             return await self._get_gold_patch(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.model_patch:
+            return await self._get_model_patch(data_point)
         raise ValueError(
             f"Unsupported agent framework: {self.cfg.agent_framework}. "
             f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
@@ -1641,6 +1667,57 @@ class SweBenchGenerationTask(GenerationTask):
                     }
                 )
             )
+        return str(out_file)
+
+    def _load_model_patches(self) -> dict[str, dict]:
+        """Load pre-generated patches from direct SWE-bench or NeMo-Skills JSONL output."""
+        model_patch_file = self.cfg.model_patch_file
+        if not model_patch_file:
+            raise ValueError("++model_patch_file is required when ++agent_framework=model_patch")
+
+        patches = {}
+        with open(model_patch_file) as f:
+            for line_number, line in enumerate(f, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSON on line {line_number} of {model_patch_file}") from exc
+
+                patch_record = row.get("swe-bench-outputs", row)
+                if not isinstance(patch_record, dict):
+                    raise ValueError(
+                        f"Expected an object with instance_id and model_patch on line {line_number} "
+                        f"of {model_patch_file}"
+                    )
+                instance_id = patch_record.get("instance_id") or row.get("instance_id")
+                if not instance_id or "model_patch" not in patch_record:
+                    raise ValueError(f"Missing instance_id or model_patch on line {line_number} of {model_patch_file}")
+                if instance_id in patches:
+                    raise ValueError(f"Duplicate instance_id {instance_id!r} in {model_patch_file}")
+                patches[str(instance_id)] = patch_record
+        return patches
+
+    async def _get_model_patch(self, data_point):
+        """Save a pre-generated model patch in the format consumed by evaluation."""
+        if not hasattr(self, "_model_patches"):
+            self._model_patches = self._load_model_patches()
+
+        instance_id = str(data_point["instance_id"])
+        if instance_id not in self._model_patches:
+            raise ValueError(f"No model patch found for instance_id {instance_id!r} in {self.cfg.model_patch_file}")
+
+        patch_record = self._model_patches[instance_id]
+        output = {
+            "model_name_or_path": patch_record.get("model_name_or_path", "model_patch"),
+            "instance_id": instance_id,
+            "model_patch": patch_record["model_patch"],
+        }
+        output_dir = self.output_dir / "model_patches"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_file = output_dir / f"{instance_id}.jsonl"
+        out_file.write_text(json.dumps(output))
         return str(out_file)
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
