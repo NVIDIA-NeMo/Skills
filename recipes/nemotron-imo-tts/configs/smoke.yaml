@@ -1,0 +1,82 @@
+# Smoke configuration: the same shape as imo2026-ensemble.yaml with tiny counts, for a first run against a
+# new endpoint. 2 prompts x 3 checkpoints x 1 = 6 round-1 attempts, 2 x 1 = 2 judgments per proof,
+# 2 prompts x 3 x 1 = 6 refinements per round, 3 x 1 = 3 judgments per finalist.
+
+endpoint:
+  base_url: <your-openai-compatible-base-url>
+  api_key_env: NVIDIA_API_KEY
+  timeout_s: 3600
+  retry_window_s: 600
+  backoff_base_s: 2
+  backoff_max_s: 30
+  extra_body: {}
+
+checkpoints:
+  - id: ga
+    model: <your-ga-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    generation_samples_per_prompt: 1
+    refinement_samples_per_prompt: 1
+  - id: rl
+    model: <your-rl-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    generation_samples_per_prompt: 1
+    refinement_samples_per_prompt: 1
+  - id: sft
+    model: <your-sft-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    generation_samples_per_prompt: 1
+    refinement_samples_per_prompt: 1
+
+verifiers:
+  - id: rl
+    model: <your-rl-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    judgments_per_proof: 1
+  - id: sft
+    model: <your-sft-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    judgments_per_proof: 1
+
+judges:
+  - id: ga
+    model: <your-ga-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    judgments_per_finalist: 1
+  - id: rl
+    model: <your-rl-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    judgments_per_finalist: 1
+  - id: sft
+    model: <your-sft-model-name>
+    max_len: 131072
+    max_tokens: 65536
+    judgments_per_finalist: 1
+
+search:
+  generation_prompts:
+    - proof_generation
+    - proof_generation_lemma_first
+  max_rounds: 2
+  refinement_prompts_per_round: 2
+
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+
+concurrency:
+  problems: 2
+  generation: 8
+  verification: 8
+  refinement: 8
+  judging: 8
+
+input:
+  path: <your-problems.jsonl>

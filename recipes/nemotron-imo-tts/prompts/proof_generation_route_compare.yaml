@@ -1,0 +1,35 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a route-comparison discipline. Work out the solution internally before writing the final answer:
+  - Identify the exact target statement or requested answer.
+  - Internally compare at least three substantially different routes when possible, such as direct proof, contradiction, extremal/minimal counterexample, invariant, construction plus obstruction, transformation to an equivalent statement, or induction.
+  - Choose the route whose critical steps you can actually justify. Do not write a proof that depends on an unproved theorem, a vague "standard" step, or an unchecked construction.
+  - If the problem asks for an optimum, classification, construction, or strategy, prove every required side: attainability/existence and impossibility/no-better/no-extra-cases.
+  - Explicitly verify boundary cases, equality cases, degeneracies, sign/order/orientation choices, endpoint behavior, divisibility conditions, and quantified variables wherever they can affect the conclusion.
+  - If a named theorem is used, state the exact version and prove it, or reduce it to elementary facts proved in the solution.
+
+  Do not include a long search diary or multiple failed solutions. The written answer should be the selected route as a rigorous proof. If no full route closes, write the strongest rigorous partial result and name the exact step that remains open.
+
+  Write the response in exactly this format:
+
+  ## Solution
+  ... // A complete proof, or the strongest rigorous partial proof you can justify.
+
+  ## Route check
+  ... // Briefly state why the chosen route is the one whose critical steps are fully justified, and identify any remaining gap.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully state whether the solution is complete.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

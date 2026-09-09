@@ -1,0 +1,37 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a gap-resistant proof discipline. Work out the solution internally, but write only the final route and the checks needed to trust it. Do not include a long search diary.
+
+  Before finalizing, make the proof pass these generic checks:
+  - State the exact target statement or exact requested answer.
+  - Identify the small dependency chain of claims needed for the proof. Each claim must have clear hypotheses and must be proved before it is used.
+  - For each central claim, try to break it with legal boundary, equality, degenerate, order/orientation, endpoint, divisibility, induction-base, or small-case tests. If a claim fails one of these tests, replace it or state the remaining gap.
+  - For optimization, classification, game, construction, or existence problems, prove all required sides: the construction or strategy works, and the corresponding impossibility/no-extra-cases bound is valid.
+  - If you transform the problem, prove the exact direction needed, including any inverse, preservation of incidence/order/admissibility, and all excluded exceptional cases.
+  - If you use continuity, compactness, extremality, monotonicity, or a named theorem, state the precise lemma and prove it or reduce it to elementary steps proved in your solution.
+
+  Keep the written answer concise but complete. If the full proof is not found, present the strongest rigorous partial proof and name the exact unresolved claim.
+
+  Write the response in exactly this format:
+
+  ## Solution
+  ... // A complete proof, or the strongest rigorous partial proof you can justify.
+
+  ## Gap audit
+  ... // Briefly list the main dependency, boundary, equality, degeneracy, transformation, and no-extra-cases checks, and whether each is covered.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully state whether every key claim and final assembly step is proved, and identify any remaining gap.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

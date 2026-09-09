@@ -76,6 +76,7 @@ nav:
   - Recipes:
     - LibTrace: recipes/libtrace.md
     - SHERLOC: recipes/sherloc.md
+    - Nemotron-IMO-TTS: recipes/nemotron-imo-tts.md
   - Evaluation:
     - evaluation/index.md
     - evaluation/natural-math.md

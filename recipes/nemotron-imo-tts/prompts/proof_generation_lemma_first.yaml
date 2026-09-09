@@ -1,0 +1,45 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask you to prove a statement, or ask for an answer. If finding an answer is required, you should come up with the answer, and your final solution should also be a rigorous proof of that answer being valid.
+
+  Use a lemma-first approach. Before committing to a final proof, identify the smallest intermediate claims that would make the problem easy. Then prove those claims completely and assemble them into the final solution. Prefer elementary reductions, exact definitions, and short claims whose hypotheses are easy to verify. Do not rely on an external named theorem unless you also give a complete proof or a fully justified reduction to steps proved in your solution.
+
+  Your final solution to the problem should be exceptionally comprehensive and easy-to-follow, which will be rated according to the following evaluation instruction:
+
+  ```txt
+  Here is the instruction to evaluate the quality of a solution to a problem. The problem may ask for a proof of statement, or ask for an answer. If finding an answer is required, the solution should present the answer, and it should also be a rigorous proof of that answer being valid.
+
+  Please evaluate the solution and score it according to the following criteria:
+  - If the solution is completely correct, with all steps executed properly and clearly demonstrated, then the score is 1
+  - If the solution is generally correct, but with some details omitted or minor errors, then the score is 0.5
+  - If the solution does not actually address the required problem, contains fatal errors, or has severe omissions, then the score is 0
+
+  Additionally, referencing anything from any paper does not save the need to prove the reference. It's okay IF AND ONLY IF the solution also presents a valid proof of the reference argument(s); otherwise, if the solution omits the proof or if the proof provided is not completely correct, the solution should be scored according to the criteria above, and definitely not with a score of 1
+  ```
+
+  In fact, you already have the ability to rate your solution yourself, so you are expected to reason carefully about how to solve a given problem, evaluate your method according to the evaluation instruction, and refine your solution by fixing issues identified until you can make no further progress.
+
+  In your final response, you should present a detailed solution to the problem followed by your evaluation of that solution.
+  - Start by choosing a small set of lemmas or claims; in the final solution, state and prove each one before using it.
+  - Check boundary cases, degeneracies, sign/order assumptions, and all quantified variables before finalizing.
+  - If a lemma cannot be fully proved, do not hide that gap; either replace the route or report the remaining issue in the self evaluation.
+  - Only when you fail to locate any issues in your solution should you score it with 1.
+
+  Your final response should be in the following format:
+
+  ## Solution // Your final solution should start with this exact same markdown title
+  ... // Your final solution to the problem here.
+
+  ## Self Evaluation // Your evaluation of your own solution above should start with this exact same markdown title
+
+  Here is my evaluation of the solution: // Your analysis should start with this exact same phrase
+  ... // Your evaluation here. You are required to explicitly analyze whether each key lemma and final assembly step is accurate.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be the final overall score (0, 0.5, or 1, and nothing else)
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}

@@ -1,0 +1,35 @@
+user: |-
+  Your task is to solve a given problem. The problem may ask for a proof of a statement, or ask for an answer together with proof.
+
+  Use a formalization-first discipline. Before writing the final proof, internally translate the problem into exact mathematical objects and constraints:
+  - State precisely what must be shown, including all quantifiers and any requested extremal value or construction.
+  - Track the original hypotheses without strengthening them. Do not assume generic position, orientation, positivity, convexity, monotonicity, distinctness, boundedness, parity, or nondegeneracy unless it is stated or proved.
+  - For every transformation, normalization, equivalence, construction, or strategy, prove that it preserves the original problem in the direction being used.
+  - For every counting, continuity, geometry, game, or number-theory argument, check endpoints, equality cases, degenerate legal cases, sign/order/orientation choices, divisibility constraints, and off-by-one cases.
+  - If a construction is meant to have exactly some property, prove both that all intended objects occur and that no unintended extra objects occur.
+  - If a named theorem is used, state the exact version and verify its hypotheses, or replace it by an elementary proof.
+
+  Do not include a long formalization diary. The written answer should be a concise final proof plus a compact sanity check. If you cannot complete the proof, write the best rigorous partial proof and name the exact unproved constraint.
+
+  Write the response in exactly this format:
+
+  ## Solution
+  ... // A complete proof, or the strongest rigorous partial proof you can justify.
+
+  ## Sanity check
+  ... // Briefly verify that the proof uses only the original hypotheses and covers the legal edge cases relevant to the conclusion.
+
+  ## Self Evaluation
+
+  Here is my evaluation of the solution:
+  ... // Faithfully state whether the solution is complete.
+
+  Based on my evaluation, the final overal score should be:
+  \boxed{{...}} // where ... should be 0, 0.5, or 1.
+
+  ---
+
+  Here is your task input:
+
+  ## Problem
+  {question}
