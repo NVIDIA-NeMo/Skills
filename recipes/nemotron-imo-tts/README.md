@@ -1,7 +1,7 @@
 # Nemotron-IMO-TTS: the IMO 2026 ensemble proof pipeline
 
 This recipe is the inference pipeline described in
-[*An Open Recipe for IMO Gold: Training Nemotron for Olympiad Mathematics*](paper.pdf) (Section 4). Three Nemotron 3 Ultra
+[*An Open Recipe for IMO Gold: Training Nemotron for Olympiad Mathematics*](paper.pdf) (Section 5). Three Nemotron 3 Ultra
 checkpoints (the general-availability model and the released RL and SFT specialists) search for a proof of each
 problem in natural language, and a separate high-compute stage selects the proof to submit. The pipeline uses no
 formal prover, no tools, and no internet access; it only needs the checkpoints served behind an OpenAI-compatible

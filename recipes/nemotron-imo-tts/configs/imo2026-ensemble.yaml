@@ -1,4 +1,4 @@
-# The pipeline submitted to IMO 2026 (report Section 4): three Nemotron 3 Ultra checkpoints generate and
+# The pipeline submitted to IMO 2026 (report Section 5): three Nemotron 3 Ultra checkpoints generate and
 # refine, two of them verify, all three judge the finalists. Fill in every <your-...> placeholder.
 #
 # Counts derived from this file and checked at launch: 8 prompts x 3 checkpoints x 16 = 384 round-1 attempts,
