@@ -338,13 +338,13 @@ class SweBenchGenerationConfig:
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
+
     # Served model name used by Claude Code. Only set this if you are using a custom --served-model-name in vllm args.
     # Deprecated, you don't need to override --served-model-name or pass this anymore.
     claude_code_model: str | None = None
     # Claude Code effort level. Defaults to reusing ++inference.extra_body.chat_template_kwargs.reasoning_effort.
     # Deprecated, set via ++inference instead.
     claude_code_effort: str | None = None
-    agent_timeout: int = 60 * 60  # Wall-clock timeout for agent rollouts, in seconds
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -1342,7 +1342,6 @@ class SweBenchGenerationTask(GenerationTask):
         command_builder,
         expected_file_pattern,
         *,
-        timeout=100000,
         skip_request_body_substrings=(),
         served_model_name=None,
     ):
@@ -1361,7 +1360,6 @@ class SweBenchGenerationTask(GenerationTask):
                 command_builder(proxy_api_base),
                 expected_file_pattern,
                 mode="agent",
-                timeout=timeout,
             )
 
     async def _run_opencode(self, data_point):
@@ -1516,8 +1514,6 @@ class SweBenchGenerationTask(GenerationTask):
 
         served_model_name = self.cfg.claude_code_model or self.cfg.server.model
         claude_model_name = served_model_name.replace("/", "__")
-        if self.cfg.agent_timeout <= 0:
-            raise ValueError("agent_timeout must be greater than zero.")
 
         instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
@@ -1572,7 +1568,6 @@ class SweBenchGenerationTask(GenerationTask):
             data_point,
             build_claude_code_command,
             search_path,
-            timeout=self.cfg.agent_timeout,
             served_model_name=served_model_name,
         )
 
