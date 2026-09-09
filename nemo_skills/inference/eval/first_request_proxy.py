@@ -40,7 +40,7 @@ def _contains_string(value, substring: str) -> bool:
 
 
 class FirstRequestCaptureProxy:
-    """Forward HTTP traffic and persist the first JSON inference request unchanged."""
+    """Forward HTTP traffic and persist the first JSON inference request."""
 
     def __init__(
         self,
@@ -48,12 +48,14 @@ class FirstRequestCaptureProxy:
         output_file: Path,
         *,
         skip_body_substrings: tuple[str, ...] = (),
+        served_model_name: str | None = None,
     ):
         self.upstream = urlsplit(upstream_base_url)
         if self.upstream.scheme not in {"http", "https"} or not self.upstream.hostname:
             raise ValueError(f"Unsupported upstream URL: {upstream_base_url}")
         self.output_file = output_file
         self.skip_body_substrings = skip_body_substrings
+        self.served_model_name = served_model_name
         self.server: asyncio.AbstractServer | None = None
         self._capture_lock = asyncio.Lock()
         self._captured = False
@@ -93,7 +95,17 @@ class FirstRequestCaptureProxy:
             self.output_file.write_bytes(body)
             self._captured = True
 
-    def _rewrite_headers(self, header_lines: list[bytes]) -> bytes:
+    def _override_model(self, body: bytes) -> bytes:
+        try:
+            request_json = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return body
+        if not isinstance(request_json, dict):
+            return body
+        request_json["model"] = self.served_model_name
+        return json.dumps(request_json, ensure_ascii=False).encode()
+
+    def _rewrite_headers(self, header_lines: list[bytes], *, content_length: int | None = None) -> bytes:
         upstream_host = self.upstream.hostname
         default_port = 443 if self.upstream.scheme == "https" else 80
         upstream_port = self.upstream.port or default_port
@@ -101,15 +113,27 @@ class FirstRequestCaptureProxy:
 
         rewritten = []
         host_seen = False
+        content_length_seen = False
         for line in header_lines:
             name, separator, _ = line.partition(b":")
-            if separator and name.strip().lower() == b"host":
+            if not separator:
+                rewritten.append(line)
+                continue
+            normalized_name = name.strip().lower()
+            if normalized_name == b"host":
                 rewritten.append(f"Host: {host_value}".encode())
                 host_seen = True
+            elif content_length is not None and normalized_name == b"content-length":
+                rewritten.append(f"Content-Length: {content_length}".encode())
+                content_length_seen = True
+            elif content_length is not None and normalized_name == b"transfer-encoding":
+                continue
             else:
                 rewritten.append(line)
         if not host_seen:
             rewritten.append(f"Host: {host_value}".encode())
+        if content_length is not None and not content_length_seen:
+            rewritten.append(f"Content-Length: {content_length}".encode())
         return b"\r\n".join(rewritten)
 
     async def _relay(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -173,6 +197,11 @@ class FirstRequestCaptureProxy:
             else:
                 wire_body = await client_reader.readexactly(content_length) if content_length else b""
                 decoded_body = wire_body
+            override_content_length = None
+            if self.served_model_name is not None:
+                decoded_body = self._override_model(decoded_body)
+                wire_body = decoded_body
+                override_content_length = len(wire_body)
             await self._capture(raw_target.decode("ascii", errors="replace"), decoded_body)
 
             ssl_context = ssl.create_default_context() if self.upstream.scheme == "https" else None
@@ -185,7 +214,7 @@ class FirstRequestCaptureProxy:
             )
             self._writers.add(upstream_writer)
 
-            rewritten_headers = self._rewrite_headers(lines[1:])
+            rewritten_headers = self._rewrite_headers(lines[1:], content_length=override_content_length)
             upstream_writer.write(b" ".join((method, raw_target, version)) + b"\r\n")
             upstream_writer.write(rewritten_headers + b"\r\n\r\n" + wire_body)
             await upstream_writer.drain()
@@ -210,12 +239,14 @@ async def capture_first_llm_request(
     output_file: Path,
     *,
     skip_body_substrings: tuple[str, ...] = (),
+    served_model_name: str | None = None,
 ):
     """Yield a local proxy URL and close all proxy resources afterward."""
     proxy = FirstRequestCaptureProxy(
         upstream_base_url,
         output_file,
         skip_body_substrings=skip_body_substrings,
+        served_model_name=served_model_name,
     )
     proxy_base_url = await proxy.start()
     try:

@@ -92,7 +92,7 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++claude_code_context_window:** The context window advertised to Claude Code. Defaults to 262144 and should match the effective vLLM context length.
 
-- **++claude_code_model:** A slash-free vLLM served-model alias used by Claude Code. This is required when `--model` is a Hugging Face name or filesystem path containing `/`. Add `--served-model-name <ALIAS>` to `--server_args` and set `++claude_code_model=<ALIAS>` to the same value.
+- **++claude_code_model:** The served model name. This should only be used if `--served-model-name` is customized in the server arguments, and should be set to the same value. It is recommended not to pass either parameter and just use the defaults. It will work even with model names containing slashes.
 
 - **++claude_code_effort:** Claude Code reasoning effort selected at runtime. Supported values are `low`, `medium`, `high`, `xhigh`, `max`, and `auto`. If omitted, falls back to `++inference.extra_body.chat_template_kwargs.reasoning_effort`. If neither is set, no effort level is passed. When set, Nemo-Skills also enables effort transmission for custom vLLM model aliases. The runtime option overrides `CLAUDE_CODE_EFFORT_LEVEL` from the Claude Code agent config.
 
@@ -127,7 +127,7 @@ For OpenCode, the per-turn output-token limit defaults to 131072. Set `++inferen
 
 Each OpenCode rollout stores four trajectory artifacts under `trajectories/<instance_id>/`: `opencode.txt` contains only the JSONL event stream from stdout, `opencode.stderr.log` contains diagnostics from stderr, `opencode-session.json` is OpenCode's native root-session export, and `trajectory.json` is that export converted to ATIF v1.7. The native and ATIF exports describe the top-level agent session; delegated subagent sessions are not included.
 
-Each OpenCode and Claude Code rollout transparently forwards its JSON inference requests to the configured model server and saves the first task-bearing request unchanged as `first-llm-request.json` in the per-instance trajectory directory. For OpenCode, NeMo-Skills skips the preliminary internal request whose user content starts with `Generate a title for this conversation:` and captures the following coding request. This artifact contains the runtime context assembled by the harness, including its system/developer messages, the exact combined task and `++agent_prompt_config` user content, tools, model, and request parameters. Treat it as sensitive. Claude Code additionally stores `claude-code.jsonl`, `claude-code.stderr.log`, `claude-code.exit-code`, `model.patch`, and an ATIF v1.7 `trajectory.json`. NeMo-Skills does not create separate `system-prompt.md` or `user-prompt.md` artifacts; extract those messages from `first-llm-request.json` when needed. Partial Claude Code patches are retained when it reaches its turn limit or exits nonzero.
+Each OpenCode and Claude Code rollout transparently forwards its JSON inference requests to the configured model server and saves the first task-bearing request as `first-llm-request.json` in the per-instance trajectory directory. For OpenCode, NeMo-Skills skips the preliminary internal request whose user content starts with `Generate a title for this conversation:` and captures the following coding request. This artifact contains the runtime context assembled by the harness, including its system/developer messages, the exact combined task and `++agent_prompt_config` user content, tools, model, and request parameters. Treat it as sensitive. Claude Code additionally stores `claude-code.jsonl`, `claude-code.stderr.log`, `claude-code.exit-code`, `model.patch`, and an ATIF v1.7 `trajectory.json`. NeMo-Skills does not create separate `system-prompt.md` or `user-prompt.md` artifacts; extract those messages from `first-llm-request.json` when needed. Partial Claude Code patches are retained when it reaches its turn limit or exits nonzero.
 
 It's worth noting that when using VLLM with a HuggingFace model, any parameters that are not passed to the server will be taken from the model's config on HuggingFace by default. This may or may not be what you want. To disable this, you can add `--generation-config vllm` to the `--server_args` parameter. See [VLLM docs](https://docs.vllm.ai/en/latest/configuration/engine_args.html#-generation-config).
 
@@ -140,27 +140,11 @@ SWE-bench requires models to call custom tools. By default agent frameworks expe
 
 For more details and the list of supported parsers, see the docs: [VLLM](https://docs.vllm.ai/en/stable/features/tool_calling.html#automatic-function-calling), [SGLang](https://docs.sglang.ai/advanced_features/function_calling.html).
 
-In addition, all supported agent frameworks can run without native tool calling. This means the tool calls will be parsed by the agent framework itself. To try this out, you can use the following configs with the `++agent_config` parameter:
+In addition, some supported agent frameworks can run without native tool calling. This means the tool calls will be parsed by the agent framework itself. To try this out, you can use the following configs with the `++agent_config` parameter:
 
 - for SWE-agent: [eval/swe-bench/swe-agent/swe-agent-lm-32b](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/swe-agent/swe-agent-lm-32b.yaml). This was the config used for [SWE-agent-LM-32B](https://huggingface.co/SWE-bench/SWE-agent-LM-32B). Note that there are significant differences with the default config.
 - for mini-SWE-agent: [eval/swe-bench/mini-swe-agent/swebench_xml](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench_xml.yaml) or [eval/swe-bench/mini-swe-agent/swebench_backticks](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/mini-swe-agent/swebench_backticks.yaml).
 - for OpenHands: [eval/swe-bench/openhands/no-native-tool-calling](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/prompt/config/eval/swe-bench/openhands/no-native-tool-calling.toml). This simply sets `native_tool_calling` to `false`.
-
-OpenCode expects native tool calling (same as the default OpenHands setup). There is no XML/backtick fallback config.
-
-Claude Code also requires native tool calling. A typical self-hosted invocation uses a slash-free alias shared by vLLM and the harness:
-
-```
-ns eval \
-    --model=Qwen/Qwen3-Coder-30B-A3B-Instruct \
-    --server_type=vllm \
-    --server_args="--served-model-name qwen3-coder --enable-auto-tool-choice --tool-call-parser <PARSER_NAME>" \
-    --benchmarks=swe-bench \
-    --output_dir=<OUTPUT_DIR> \
-    ++agent_framework=claude_code \
-    ++claude_code_model=qwen3-coder \
-    ++claude_code_effort=xhigh
-```
 
 Keep in mind that by default the tool call format expected by these frameworks will likely be different from the one that the model was trained on.
 

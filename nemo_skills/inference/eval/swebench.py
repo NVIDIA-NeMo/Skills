@@ -332,9 +332,11 @@ class SweBenchGenerationConfig:
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
-    claude_code_model: str | None = None  # Slash-free vLLM served-model-name used by Claude Code
-    # Override Claude Code effort level. Defaults to reusing inference.extra_body.chat_template_kwargs.reasoning_effort.
-    # If neither are passed, no reasoning effort is used.
+    # Served model name used by Claude Code. Only set this if you are using a custom --served-model-name in vllm args.
+    # Deprecated, you don't need to override --served-model-name or pass this anymore.
+    claude_code_model: str | None = None
+    # Claude Code effort level. Defaults to reusing ++inference.extra_body.chat_template_kwargs.reasoning_effort.
+    # Deprecated, set via ++inference instead.
     claude_code_effort: str | None = None
     agent_timeout: int = 60 * 60  # Wall-clock timeout for agent rollouts, in seconds
 
@@ -1336,6 +1338,7 @@ class SweBenchGenerationTask(GenerationTask):
         *,
         timeout=100000,
         skip_request_body_substrings=(),
+        served_model_name=None,
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
@@ -1345,6 +1348,7 @@ class SweBenchGenerationTask(GenerationTask):
             self.api_base,
             capture_file,
             skip_body_substrings=skip_request_body_substrings,
+            served_model_name=served_model_name,
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,
@@ -1504,12 +1508,8 @@ class SweBenchGenerationTask(GenerationTask):
             agent_config = json.load(f)
         agent_prompt = self._get_agent_prompt()
 
-        model = self.cfg.claude_code_model or self.cfg.server.model
-        if "/" in model:
-            raise ValueError(
-                "Claude Code requires a slash-free vLLM model alias. Start vLLM with "
-                "'--served-model-name <alias>' and set ++claude_code_model=<alias>."
-            )
+        served_model_name = self.cfg.claude_code_model or self.cfg.server.model
+        claude_model_name = served_model_name.replace("/", "__")
         if self.cfg.agent_timeout <= 0:
             raise ValueError("agent_timeout must be greater than zero.")
 
@@ -1523,7 +1523,7 @@ class SweBenchGenerationTask(GenerationTask):
             settings = build_claude_code_settings(
                 agent_config,
                 api_base=proxy_api_base,
-                model=model,
+                model=claude_model_name,
                 context_window=self.cfg.claude_code_context_window,
                 effort=effort,
             )
@@ -1542,7 +1542,7 @@ class SweBenchGenerationTask(GenerationTask):
                 'mkdir -p "$TRAJECTORY_DIR" && '
                 "{ set +e; "
                 f"claude --bare -p {shlex.quote(instruction)} "
-                f"--model {shlex.quote(model)} "
+                f"--model {shlex.quote(claude_model_name)} "
                 f"--settings /root/.claude/settings.json "
                 f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
                 f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
@@ -1567,6 +1567,7 @@ class SweBenchGenerationTask(GenerationTask):
             build_claude_code_command,
             search_path,
             timeout=self.cfg.agent_timeout,
+            served_model_name=served_model_name,
         )
 
         with open(patch_file, "r") as f:
@@ -1597,7 +1598,7 @@ class SweBenchGenerationTask(GenerationTask):
                     events = [json.loads(line) for line in f if line.strip()]
                 trajectory = convert_claude_code_stream_to_atif(
                     events,
-                    model_name=model,
+                    model_name=served_model_name,
                     agent_version=self.cfg.agent_framework_commit,
                     initial_prompt=instruction,
                 )
