@@ -329,10 +329,13 @@ class SweBenchGenerationConfig:
     # Defaults to the solution-originality prompt.
     agent_prompt_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
+
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
     claude_code_model: str | None = None  # Slash-free vLLM served-model-name used by Claude Code
-    claude_code_effort: str | None = None  # Runtime Claude Code effort level
+    # Override Claude Code effort level. Defaults to reusing inference.extra_body.chat_template_kwargs.reasoning_effort.
+    # If neither are passed, no reasoning effort is used.
+    claude_code_effort: str | None = None
     agent_timeout: int = 60 * 60  # Wall-clock timeout for agent rollouts, in seconds
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
@@ -1515,12 +1518,14 @@ class SweBenchGenerationTask(GenerationTask):
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
 
         def build_claude_code_command(proxy_api_base):
+            extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
+            effort = self.cfg.claude_code_effort or extra_body.get("chat_template_kwargs", {}).get("reasoning_effort")
             settings = build_claude_code_settings(
                 agent_config,
                 api_base=proxy_api_base,
                 model=model,
                 context_window=self.cfg.claude_code_context_window,
-                effort=self.cfg.claude_code_effort,
+                effort=effort,
             )
             settings_json = json.dumps(settings)
             return (
