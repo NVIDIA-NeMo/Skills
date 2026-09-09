@@ -75,7 +75,9 @@ def test_proxy_captures_first_llm_request_and_forwards_it(tmp_path):
             },
             ensure_ascii=False,
         ).encode()
-        second_body = b'{"model":"test-model","messages":[{"role":"user","content":"second turn"}]}'
+        second_body = json.dumps(
+            {"model": "test-model", "messages": [{"role": "user", "content": "second turn"}]}
+        ).encode()
 
         try:
             async with capture_first_llm_request(
@@ -171,5 +173,86 @@ def test_proxy_skips_internal_request_before_capturing_coding_turn(tmp_path):
             await upstream.wait_closed()
 
         assert capture_file.read_bytes() == coding_body
+
+    asyncio.run(run_test())
+
+
+def test_proxy_rewrites_model_on_keep_alive_requests(tmp_path):
+    async def run_test():
+        received = []
+
+        async def upstream_handler(reader, writer):
+            for _ in range(2):
+                raw_headers = await reader.readuntil(b"\r\n\r\n")
+                content_length = next(
+                    int(line.split(b":", maxsplit=1)[1].strip())
+                    for line in raw_headers.split(b"\r\n")
+                    if line.lower().startswith(b"content-length:")
+                )
+                body = await reader.readexactly(content_length)
+                received.append(json.loads(body))
+                response_body = b'{"ok":true}'
+                writer.write(
+                    b"HTTP/1.1 200 OK\r\n"
+                    + f"Content-Length: {len(response_body)}\r\n".encode()
+                    + b"Content-Type: application/json\r\nConnection: keep-alive\r\n\r\n"
+                    + response_body
+                )
+                await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+
+        async def send_keep_alive(writer, target, host, body):
+            writer.write(
+                (
+                    f"POST {target} HTTP/1.1\r\n"
+                    f"Host: {host}\r\n"
+                    "Content-Type: application/json\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    "Connection: keep-alive\r\n"
+                    "\r\n"
+                ).encode()
+                + body
+            )
+            await writer.drain()
+
+        async def read_response(reader):
+            raw_headers = await reader.readuntil(b"\r\n\r\n")
+            content_length = next(
+                int(line.split(b":", maxsplit=1)[1].strip())
+                for line in raw_headers.split(b"\r\n")
+                if line.lower().startswith(b"content-length:")
+            )
+            return await reader.readexactly(content_length)
+
+        upstream = await asyncio.start_server(upstream_handler, "127.0.0.1", 0)
+        upstream_port = upstream.sockets[0].getsockname()[1]
+        capture_file = tmp_path / "first-llm-request.json"
+        first_body = b'{"model":"harness-model","messages":[{"role":"user","content":"first"}]}'
+        second_body = b'{"model":"harness-model","messages":[{"role":"user","content":"second"}]}'
+
+        try:
+            async with capture_first_llm_request(
+                f"http://127.0.0.1:{upstream_port}/v1",
+                capture_file,
+                served_model_name="served-model",
+            ) as proxy_base:
+                parsed = urlsplit(proxy_base)
+                reader, writer = await asyncio.open_connection(parsed.hostname, parsed.port)
+                target = f"{parsed.path.rstrip('/')}/messages"
+                try:
+                    await send_keep_alive(writer, target, parsed.netloc, first_body)
+                    assert await read_response(reader) == b'{"ok":true}'
+                    await send_keep_alive(writer, target, parsed.netloc, second_body)
+                    assert await read_response(reader) == b'{"ok":true}'
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+        finally:
+            upstream.close()
+            await upstream.wait_closed()
+
+        assert [item["model"] for item in received] == ["served-model", "served-model"]
+        assert json.loads(capture_file.read_bytes())["model"] == "served-model"
 
     asyncio.run(run_test())

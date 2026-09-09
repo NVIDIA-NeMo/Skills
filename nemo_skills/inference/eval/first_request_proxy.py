@@ -95,15 +95,19 @@ class FirstRequestCaptureProxy:
             self.output_file.write_bytes(body)
             self._captured = True
 
-    def _override_model(self, body: bytes) -> bytes:
+    def _edit_request(self, body: bytes) -> bytes:
         try:
-            request_json = json.loads(body)
+            request = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError):
             return body
-        if not isinstance(request_json, dict):
+        if not isinstance(request, dict):
             return body
-        request_json["model"] = self.served_model_name
-        return json.dumps(request_json, ensure_ascii=False).encode()
+
+        # Any edits to the request body go here.
+        if self.served_model_name is not None:
+            request["model"] = self.served_model_name
+
+        return json.dumps(request, ensure_ascii=False).encode()
 
     def _rewrite_headers(self, header_lines: list[bytes], *, content_length: int | None = None) -> bytes:
         upstream_host = self.upstream.hostname
@@ -170,67 +174,68 @@ class FirstRequestCaptureProxy:
         self, client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter
     ) -> None:
         upstream_writer = None
+        response_relay = None
         self._writers.add(client_writer)
         try:
-            raw_headers = await client_reader.readuntil(b"\r\n\r\n")
-            header_block = raw_headers[:-4]
-            lines = header_block.split(b"\r\n")
-            request_line = lines[0]
-            request_parts = request_line.split(b" ", maxsplit=2)
-            if len(request_parts) != 3:
-                raise ValueError("Malformed HTTP request line")
-            method, raw_target, version = request_parts
+            while True:
+                raw_headers = await client_reader.readuntil(b"\r\n\r\n")
+                header_block = raw_headers[:-4]
+                lines = header_block.split(b"\r\n")
+                request_line = lines[0]
+                request_parts = request_line.split(b" ", maxsplit=2)
+                if len(request_parts) != 3:
+                    raise ValueError("Malformed HTTP request line")
+                method, raw_target, version = request_parts
 
-            content_length = 0
-            is_chunked = False
-            for line in lines[1:]:
-                name, separator, value = line.partition(b":")
-                if not separator:
-                    continue
-                normalized_name = name.strip().lower()
-                if normalized_name == b"content-length":
-                    content_length = int(value.strip())
-                elif normalized_name == b"transfer-encoding" and b"chunked" in value.lower():
-                    is_chunked = True
-            if is_chunked:
-                wire_body, decoded_body = await self._read_chunked_body(client_reader)
-            else:
-                wire_body = await client_reader.readexactly(content_length) if content_length else b""
-                decoded_body = wire_body
-            override_content_length = None
-            if self.served_model_name is not None:
-                decoded_body = self._override_model(decoded_body)
+                content_length = 0
+                is_chunked = False
+                for line in lines[1:]:
+                    name, separator, value = line.partition(b":")
+                    if not separator:
+                        continue
+                    normalized_name = name.strip().lower()
+                    if normalized_name == b"content-length":
+                        content_length = int(value.strip())
+                    elif normalized_name == b"transfer-encoding" and b"chunked" in value.lower():
+                        is_chunked = True
+                if is_chunked:
+                    wire_body, decoded_body = await self._read_chunked_body(client_reader)
+                else:
+                    wire_body = await client_reader.readexactly(content_length) if content_length else b""
+                    decoded_body = wire_body
+
+                decoded_body = self._edit_request(decoded_body)
                 wire_body = decoded_body
-                override_content_length = len(wire_body)
-            await self._capture(raw_target.decode("ascii", errors="replace"), decoded_body)
+                new_content_length = len(wire_body)
 
-            ssl_context = ssl.create_default_context() if self.upstream.scheme == "https" else None
-            upstream_port = self.upstream.port or (443 if self.upstream.scheme == "https" else 80)
-            upstream_reader, upstream_writer = await asyncio.open_connection(
-                self.upstream.hostname,
-                upstream_port,
-                ssl=ssl_context,
-                server_hostname=self.upstream.hostname if ssl_context else None,
-            )
-            self._writers.add(upstream_writer)
+                await self._capture(raw_target.decode("ascii", errors="replace"), decoded_body)
 
-            rewritten_headers = self._rewrite_headers(lines[1:], content_length=override_content_length)
-            upstream_writer.write(b" ".join((method, raw_target, version)) + b"\r\n")
-            upstream_writer.write(rewritten_headers + b"\r\n\r\n" + wire_body)
-            await upstream_writer.drain()
+                if upstream_writer is None:
+                    ssl_context = ssl.create_default_context() if self.upstream.scheme == "https" else None
+                    upstream_port = self.upstream.port or (443 if self.upstream.scheme == "https" else 80)
+                    upstream_reader, upstream_writer = await asyncio.open_connection(
+                        self.upstream.hostname,
+                        upstream_port,
+                        ssl=ssl_context,
+                        server_hostname=self.upstream.hostname if ssl_context else None,
+                    )
+                    self._writers.add(upstream_writer)
+                    response_relay = asyncio.create_task(self._relay(upstream_reader, client_writer))
 
-            await asyncio.gather(
-                self._relay(client_reader, upstream_writer),
-                self._relay(upstream_reader, client_writer),
-            )
+                rewritten_headers = self._rewrite_headers(lines[1:], content_length=new_content_length)
+                upstream_writer.write(b" ".join((method, raw_target, version)) + b"\r\n")
+                upstream_writer.write(rewritten_headers + b"\r\n\r\n" + wire_body)
+                await upstream_writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError, OSError, ValueError) as error:
             LOG.warning("First-request capture proxy connection failed: %s", error)
         finally:
-            client_writer.close()
-            self._writers.discard(client_writer)
             if upstream_writer is not None:
                 upstream_writer.close()
                 self._writers.discard(upstream_writer)
+            if response_relay is not None:
+                await asyncio.gather(response_relay, return_exceptions=True)
+            client_writer.close()
+            self._writers.discard(client_writer)
 
 
 @asynccontextmanager
