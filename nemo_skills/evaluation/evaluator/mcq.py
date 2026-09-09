@@ -52,11 +52,14 @@ class MCQEvaluatorConfig(BaseEvaluatorConfig):
     # only used if extract_from_boxed is False
     extract_regex: str | list[str] = r"The final answer is (.+)$"
     # if relaxed is True:
-    #   extract from regex FIRST, if not found, extract from boxed
+    #   extract from boxed FIRST, if not found, extract from regex
+    #   (or regex FIRST, then boxed, if regex_first is True)
     # if relaxed is False:
     #   if extract_from_boxed is True -> extract from boxed{} ONLY
     #   else extract from regex ONLY
     relaxed: bool = True
+    # only used if relaxed is True
+    regex_first: bool = False
 
 
 def eval_mcq(cfg):
@@ -67,19 +70,28 @@ def eval_mcq(cfg):
         extract_from_boxed: bool = True,
         extract_regex: str | list[str] = r"The final answer is (.+)$",
         relaxed=False,
+        regex_first=False,
     ):
         # extract prediction from boxed{} or regex
         extracted_answer = None
         if isinstance(extract_regex, list):
             for regex in extract_regex:
                 extracted_answer = extract_answer(
-                    text, extract_from_boxed=extract_from_boxed, extract_regex=regex, relaxed=relaxed
+                    text,
+                    extract_from_boxed=extract_from_boxed,
+                    extract_regex=regex,
+                    relaxed=relaxed,
+                    regex_first=regex_first,
                 )
                 if extracted_answer is not None:
                     break
         else:
             extracted_answer = extract_answer(
-                text, extract_from_boxed=extract_from_boxed, extract_regex=extract_regex, relaxed=relaxed
+                text,
+                extract_from_boxed=extract_from_boxed,
+                extract_regex=extract_regex,
+                relaxed=relaxed,
+                regex_first=regex_first,
             )
 
         if extracted_answer is not None:
@@ -103,7 +115,8 @@ def eval_mcq(cfg):
 
         LOG.info(
             f"Final parsed letter: {parsed_letter}, extract_from_boxed: {extract_from_boxed}, "
-            f"extract_regex: {extract_regex}, extracted_answer: {extracted_answer}, relaxed: {relaxed}"
+            f"extract_regex: {extract_regex}, extracted_answer: {extracted_answer}, relaxed: {relaxed}, "
+            f"regex_first: {regex_first}"
         )
 
         return parsed_letter
@@ -117,11 +130,13 @@ def eval_mcq(cfg):
             extract_from_boxed = sample.get("extract_from_boxed", eval_config.extract_from_boxed)
             extract_regex = sample.get("extract_regex", eval_config.extract_regex)
             relaxed = sample.get("relaxed", eval_config.relaxed)
+            regex_first = sample.get("regex_first", eval_config.regex_first)
             sample["predicted_answer"] = extract_letter(
                 sample["generation"],
                 extract_from_boxed=extract_from_boxed,
                 extract_regex=extract_regex,
                 relaxed=relaxed,
+                regex_first=regex_first,
             )
             sample["symbolic_correct"] = sample["predicted_answer"] == sample["expected_answer"]
             fout.write(json.dumps(sample) + "\n")
