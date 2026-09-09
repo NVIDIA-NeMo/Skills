@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Transparent HTTP proxy that captures the first LLM request body."""
+"""HTTP proxy that captures the first LLM request and can rewrite request bodies."""
 
 from __future__ import annotations
 
@@ -40,8 +40,6 @@ def _contains_string(value, substring: str) -> bool:
 
 
 class FirstRequestCaptureProxy:
-    """Forward HTTP traffic and persist the first JSON inference request."""
-
     def __init__(
         self,
         upstream_base_url: str,
@@ -73,21 +71,18 @@ class FirstRequestCaptureProxy:
             await self.server.wait_closed()
         for writer in list(self._writers):
             writer.close()
-        if self._writers:
-            await asyncio.gather(*(writer.wait_closed() for writer in list(self._writers)), return_exceptions=True)
+        await asyncio.gather(*(writer.wait_closed() for writer in list(self._writers)), return_exceptions=True)
         self._writers.clear()
 
     async def _capture(self, request_target: str, body: bytes) -> None:
-        request_path = urlsplit(request_target).path
-        if not request_path.endswith(_LLM_ENDPOINT_SUFFIXES):
+        if not urlsplit(request_target).path.endswith(_LLM_ENDPOINT_SUFFIXES):
             return
         try:
-            request_json = json.loads(body)
+            request = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError):
             return
-        if any(_contains_string(request_json, substring) for substring in self.skip_body_substrings):
+        if any(_contains_string(request, substring) for substring in self.skip_body_substrings):
             return
-
         async with self._capture_lock:
             if self._captured:
                 return
@@ -109,35 +104,14 @@ class FirstRequestCaptureProxy:
 
         return json.dumps(request, ensure_ascii=False).encode()
 
-    def _rewrite_headers(self, header_lines: list[bytes], *, content_length: int | None = None) -> bytes:
-        upstream_host = self.upstream.hostname
+    def _rewrite_headers(self, header_lines: list[bytes], content_length: int) -> bytes:
         default_port = 443 if self.upstream.scheme == "https" else 80
-        upstream_port = self.upstream.port or default_port
-        host_value = upstream_host if upstream_port == default_port else f"{upstream_host}:{upstream_port}"
-
-        rewritten = []
-        host_seen = False
-        content_length_seen = False
+        port = self.upstream.port or default_port
+        host = self.upstream.hostname if port == default_port else f"{self.upstream.hostname}:{port}"
+        rewritten = [f"Host: {host}".encode(), f"Content-Length: {content_length}".encode()]
         for line in header_lines:
-            name, separator, _ = line.partition(b":")
-            if not separator:
+            if line.partition(b":")[0].strip().lower() not in {b"host", b"content-length", b"transfer-encoding"}:
                 rewritten.append(line)
-                continue
-            normalized_name = name.strip().lower()
-            if normalized_name == b"host":
-                rewritten.append(f"Host: {host_value}".encode())
-                host_seen = True
-            elif content_length is not None and normalized_name == b"content-length":
-                rewritten.append(f"Content-Length: {content_length}".encode())
-                content_length_seen = True
-            elif content_length is not None and normalized_name == b"transfer-encoding":
-                continue
-            else:
-                rewritten.append(line)
-        if not host_seen:
-            rewritten.append(f"Host: {host_value}".encode())
-        if content_length is not None and not content_length_seen:
-            rewritten.append(f"Content-Length: {content_length}".encode())
         return b"\r\n".join(rewritten)
 
     async def _relay(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -150,25 +124,27 @@ class FirstRequestCaptureProxy:
         finally:
             writer.close()
 
-    async def _read_chunked_body(self, reader: asyncio.StreamReader) -> tuple[bytes, bytes]:
-        """Read one chunked request body, returning wire bytes and decoded content."""
-        wire_body = bytearray()
-        decoded_body = bytearray()
+    async def _read_body(self, reader: asyncio.StreamReader, header_lines: list[bytes]) -> bytes:
+        content_length = 0
+        chunked = False
+        for line in header_lines:
+            name, _, value = line.partition(b":")
+            name = name.strip().lower()
+            if name == b"content-length":
+                content_length = int(value.strip())
+            elif name == b"transfer-encoding" and b"chunked" in value.lower():
+                chunked = True
+        if not chunked:
+            return await reader.readexactly(content_length) if content_length else b""
+        body = bytearray()
         while True:
-            size_line = await reader.readuntil(b"\r\n")
-            wire_body.extend(size_line)
-            size = int(size_line.split(b";", maxsplit=1)[0].strip(), 16)
+            size = int((await reader.readuntil(b"\r\n")).split(b";", 1)[0].strip(), 16)
             if size == 0:
-                while True:
-                    trailer_line = await reader.readuntil(b"\r\n")
-                    wire_body.extend(trailer_line)
-                    if trailer_line == b"\r\n":
-                        return bytes(wire_body), bytes(decoded_body)
-            chunk = await reader.readexactly(size + 2)
-            if not chunk.endswith(b"\r\n"):
-                raise ValueError("Malformed chunked HTTP request")
-            wire_body.extend(chunk)
-            decoded_body.extend(chunk[:-2])
+                while await reader.readuntil(b"\r\n") != b"\r\n":
+                    pass
+                return bytes(body)
+            body.extend(await reader.readexactly(size))
+            await reader.readexactly(2)
 
     async def _handle_connection(
         self, client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter
@@ -179,36 +155,10 @@ class FirstRequestCaptureProxy:
         try:
             while True:
                 raw_headers = await client_reader.readuntil(b"\r\n\r\n")
-                header_block = raw_headers[:-4]
-                lines = header_block.split(b"\r\n")
-                request_line = lines[0]
-                request_parts = request_line.split(b" ", maxsplit=2)
-                if len(request_parts) != 3:
-                    raise ValueError("Malformed HTTP request line")
-                method, raw_target, version = request_parts
-
-                content_length = 0
-                is_chunked = False
-                for line in lines[1:]:
-                    name, separator, value = line.partition(b":")
-                    if not separator:
-                        continue
-                    normalized_name = name.strip().lower()
-                    if normalized_name == b"content-length":
-                        content_length = int(value.strip())
-                    elif normalized_name == b"transfer-encoding" and b"chunked" in value.lower():
-                        is_chunked = True
-                if is_chunked:
-                    wire_body, decoded_body = await self._read_chunked_body(client_reader)
-                else:
-                    wire_body = await client_reader.readexactly(content_length) if content_length else b""
-                    decoded_body = wire_body
-
-                decoded_body = self._edit_request(decoded_body)
-                wire_body = decoded_body
-                new_content_length = len(wire_body)
-
-                await self._capture(raw_target.decode("ascii", errors="replace"), decoded_body)
+                lines = raw_headers[:-4].split(b"\r\n")
+                method, raw_target, version = lines[0].split(b" ", maxsplit=2)
+                body = self._edit_request(await self._read_body(client_reader, lines[1:]))
+                await self._capture(raw_target.decode("ascii", errors="replace"), body)
 
                 if upstream_writer is None:
                     ssl_context = ssl.create_default_context() if self.upstream.scheme == "https" else None
@@ -222,12 +172,12 @@ class FirstRequestCaptureProxy:
                     self._writers.add(upstream_writer)
                     response_relay = asyncio.create_task(self._relay(upstream_reader, client_writer))
 
-                rewritten_headers = self._rewrite_headers(lines[1:], content_length=new_content_length)
                 upstream_writer.write(b" ".join((method, raw_target, version)) + b"\r\n")
-                upstream_writer.write(rewritten_headers + b"\r\n\r\n" + wire_body)
+                upstream_writer.write(self._rewrite_headers(lines[1:], len(body)) + b"\r\n\r\n" + body)
                 await upstream_writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError, OSError, ValueError) as error:
-            LOG.warning("First-request capture proxy connection failed: %s", error)
+            if not isinstance(error, asyncio.IncompleteReadError):
+                LOG.warning("First-request capture proxy connection failed: %s", error)
         finally:
             if upstream_writer is not None:
                 upstream_writer.close()
