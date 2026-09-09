@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -170,7 +171,14 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
 
         mounted_artifacts = "/scale_swe_eval"
         mounted_report = "/scale_swe_report/report.json"
-        command = f"python {mounted_artifacts}/runner.py {mounted_artifacts}/config.json {mounted_report}"
+        workdir = str(data_point.get("workdir") or data_point.get("container_repo_dir", "/testbed"))
+        verifier_command = f"python {mounted_artifacts}/runner.py {mounted_artifacts}/config.json {mounted_report}"
+        command_parts = [f"cd {shlex.quote(workdir)}"]
+        pre_commands = str(data_point.get("pre_commands") or "").strip()
+        if pre_commands:
+            command_parts.append(pre_commands)
+        command_parts.append(verifier_command)
+        command = " && ".join(command_parts)
         report_path = eval_dir / "report.json"
         try:
             await self._execute_container_command(

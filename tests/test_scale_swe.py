@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import hashlib
 import json
 import subprocess
@@ -100,6 +101,39 @@ def test_scale_swe_evaluation_network_can_be_disabled(tmp_path):
         f"type=bind,src={task.output_dir}/scale-swe-eval/{token},dst=/scale_swe_eval,ro",
         f"type=bind,src={task.output_dir}/eval-outputs/{token},dst=/scale_swe_report",
     ]
+
+
+def test_scale_swe_replays_pre_commands_before_verification(tmp_path):
+    task = object.__new__(ScaleSweGenerationTask)
+    task.output_dir = tmp_path / "outputs"
+    task.cfg = SimpleNamespace(swebench_tests_timeout=60)
+    captured = {}
+
+    async def fake_execute(data_point, command, expected_file_pattern, mode, timeout):
+        captured.update(command=command, mode=mode)
+        Path(expected_file_pattern).write_text(json.dumps({"resolved": True, "patch_successfully_applied": True}))
+        return expected_file_pattern
+
+    task._execute_container_command = fake_execute
+    metrics = asyncio.run(
+        task._run_scale_swe_verifier(
+            {
+                "instance_id": "owner_repo_pr1",
+                "workdir": "/workspace/repo with spaces",
+                "pre_commands": "git checkout --force abc123 && git reset --hard abc123",
+            },
+            "diff --git a/file.py b/file.py\n",
+        )
+    )
+
+    assert captured["mode"] == "eval"
+    assert captured["command"].startswith(
+        "cd '/workspace/repo with spaces' && git checkout --force abc123 && git reset --hard abc123 && "
+    )
+    assert captured["command"].endswith(
+        "python /scale_swe_eval/runner.py /scale_swe_eval/config.json /scale_swe_report/report.json"
+    )
+    assert metrics["resolved"] is True
 
 
 def test_normalize_data_point_uses_post_setup_head_and_native_image():
