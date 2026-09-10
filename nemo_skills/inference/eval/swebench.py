@@ -400,8 +400,8 @@ class SweBenchGenerationConfig:
     # If True, persist failed instances and continue processing the rest of the shard.
     continue_on_error: bool = False
 
-    # Maximum number of concurrent agent rollouts in each job.
-    # Each rollout sends 1 request to the LLM server at a time, so this is also the max number of concurrent requests.
+    # Maximum number of concurrent agent rollouts and per-instance evaluations in each job.
+    # Each rollout sends 1 request to the LLM server at a time, so this also limits concurrent model requests.
     max_concurrent_requests: int = 512
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
@@ -1811,13 +1811,14 @@ class SweBenchGenerationTask(GenerationTask):
             search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
             # TODO: should we fail on errors here? Seems that json isn't always generated
             try:
-                report_file = await self._execute_container_command(
-                    data_point,
-                    swe_bench_cmd,
-                    search_path,
-                    mode="eval",
-                    timeout=tests_timeout + 120,
-                )
+                async with self.semaphore:
+                    report_file = await self._execute_container_command(
+                        data_point,
+                        swe_bench_cmd,
+                        search_path,
+                        mode="eval",
+                        timeout=tests_timeout + 120,
+                    )
             except ValueError:
                 LOG.error("Failed to execute SWE-bench evaluation command for %s", data_point["instance_id"])
                 report_json = {

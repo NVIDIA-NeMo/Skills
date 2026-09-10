@@ -85,6 +85,8 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++agent_max_turns:** The maximum number of turns the agent is allowed to take. Defaults to 100. For OpenCode, this is written to `agent.<default_agent>.steps`; after the limit, OpenCode forces a final text-only response instead of allowing more tool calls. For Claude Code, this is passed as `--max-turns`.
 
+- **++max_concurrent_requests:** Maximum concurrent agent rollouts and per-instance evaluations within each chunk job. Defaults to 512. Reduce this for memory-heavy evaluation containers, especially with `model_patch`.
+
 - **++agent_timeout:** Hard wall-clock timeout for a Claude Code rollout, in seconds. Defaults to 3600.
 
 - **++continue_on_error:** Continue the shard after an individual instance raises during agent generation, output postprocessing, or per-instance evaluation. Defaults to `False` (fail-fast). When enabled, failures are written to `<output>.errors` with their async position, exception, and traceback. SWE-bench, SWE-bench Pro, Scale-SWE, DeepSWE, and Senior SWE-Bench also emit an unresolved terminal output row with no patch, so the failed instance remains in metric denominators and `++skip_filled=True` does not retry it. Output-persistence failures remain fail-fast.

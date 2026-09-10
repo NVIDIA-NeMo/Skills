@@ -19,7 +19,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from nemo_skills.inference.eval.swebench import SupportedAgentFrameworks, SweBenchGenerationTask
+from nemo_skills.inference.eval.swebench import (
+    SupportedAgentFrameworks,
+    SupportedDatasetTypes,
+    SweBenchGenerationTask,
+)
 
 
 def _task(tmp_path, rows):
@@ -88,3 +92,55 @@ def test_model_patch_rejects_duplicate_instances(tmp_path):
 
     with pytest.raises(ValueError, match="Duplicate instance_id"):
         asyncio.run(task._get_model_patch({"instance_id": "owner__repo-1"}))
+
+
+def test_model_patch_limits_standard_swe_evaluation_concurrency(tmp_path):
+    instance_ids = [f"owner__repo-{index}" for index in range(5)]
+    task = _task(
+        tmp_path,
+        [{"instance_id": instance_id, "model_patch": "patch"} for instance_id in instance_ids],
+    )
+    task.cfg.evaluate = True
+    task.cfg.dataset_type = SupportedDatasetTypes.swe_rebench_v2
+    task.cfg.swebench_tests_timeout = 60
+    task.cfg.input_file = str(tmp_path / "dataset.jsonl")
+
+    active_evaluations = 0
+    max_active_evaluations = 0
+
+    async def fake_run_agent(data_point):
+        return await task._get_model_patch(data_point)
+
+    async def fake_execute(data_point, command, expected_file_pattern, mode, timeout):
+        nonlocal active_evaluations, max_active_evaluations
+        active_evaluations += 1
+        max_active_evaluations = max(max_active_evaluations, active_evaluations)
+        await asyncio.sleep(0.01)
+        active_evaluations -= 1
+
+        report_file = tmp_path / f"{data_point['instance_id']}-report.json"
+        report_file.write_text(
+            json.dumps(
+                {
+                    data_point["instance_id"]: {
+                        "resolved": True,
+                        "patch_exists": True,
+                        "patch_successfully_applied": True,
+                    }
+                }
+            )
+        )
+        return str(report_file)
+
+    task._run_agent = fake_run_agent
+    task._execute_container_command = fake_execute
+
+    async def run_all():
+        task.semaphore = asyncio.Semaphore(2)
+        await asyncio.gather(
+            *(task.process_single_datapoint({"instance_id": instance_id}, []) for instance_id in instance_ids)
+        )
+
+    asyncio.run(run_all())
+
+    assert max_active_evaluations == 2
