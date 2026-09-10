@@ -126,6 +126,13 @@ def _assistant_step(
                         "content": str(state["output"]),
                     }
                 )
+            elif state.get("error") is not None:
+                observation_results.append(
+                    {
+                        "source_call_id": call_id or None,
+                        "content": str(state["error"]),
+                    }
+                )
 
     time_info = info.get("time", {}) if isinstance(info.get("time"), dict) else {}
     step: dict[str, Any] = {
