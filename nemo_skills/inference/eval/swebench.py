@@ -945,13 +945,15 @@ class SweBenchGenerationTask(GenerationTask):
                     )
 
     def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
-        """Return the standard mounts used by agent and evaluation containers."""
-        return [
+        """Return the mounts used by agent and evaluation containers."""
+        mounts = [
             "type=bind,src=/nemo_run/code,dst=/nemo_run/code",
-            f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro",
             "type=bind,src=/root,dst=/root_mount,ro",
             f"type=bind,src={self.output_dir},dst=/trajectories_mount",
         ]
+        if mode == "eval" or self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+            mounts.append(f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro")
+        return mounts
 
     async def _run_agent(self, data_point) -> str:
         """
