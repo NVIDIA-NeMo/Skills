@@ -70,6 +70,7 @@ def test_build_opencode_config_points_at_local_openai_server():
     assert config["agent"]["build"]["temperature"] == 1.0
     assert config["agent"]["build"]["top_p"] == 0.95
     assert config["agent"]["build"]["steps"] == 400
+    assert config["agent"]["title"]["disable"] is True
     assert "instructions" not in config
 
 
@@ -78,7 +79,10 @@ def test_build_opencode_config_merges_user_keys():
         agent_config={
             "experimental": {"continue_loop_on_deny": True},
             "default_agent": "custom",
-            "agent": {"custom": {"temperature": 0.2, "prompt": "Custom agent prompt"}},
+            "agent": {
+                "custom": {"temperature": 0.2, "prompt": "Custom agent prompt"},
+                "title": {"disable": False, "model": "nemo/title-model"},
+            },
             "instructions": ["custom-instructions.md"],
         },
         api_base="http://127.0.0.1:8000/v1",
@@ -97,6 +101,7 @@ def test_build_opencode_config_merges_user_keys():
     assert config["agent"]["custom"]["top_p"] == 0.8
     assert config["agent"]["custom"]["steps"] == 250
     assert config["agent"]["custom"]["prompt"] == "Custom agent prompt"
+    assert config["agent"]["title"] == {"disable": True, "model": "nemo/title-model"}
     assert config["instructions"] == ["custom-instructions.md"]
     model = config["provider"][OPENCODE_PROVIDER_ID]["models"]["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
     assert model["limit"]["output"] == OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
