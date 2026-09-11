@@ -27,21 +27,25 @@ from nemo_skills.pipeline.generate import _create_job_unified
 from nemo_skills.pipeline.utils.generation import configure_client
 from nemo_skills.pipeline.utils.scripts import ServerScript
 
+NVIDIA_TEST_API_BASE_URL = "https://inference-api.nvidia.com/v1"
+NVIDIA_TEST_API_KEY_ENV_VAR = "NV_INFERENCE_API_KEY"
+NVIDIA_TEST_API_MODEL = "gcp/google/gemini-2.5-flash-lite"
+
 
 @pytest.mark.timeout(300)
 def test_eval_gsm8k_api(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=openai/gpt-oss-20b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
         f"    ++max_concurrent_requests=1 "
-        f"    ++inference.temperature=1.0 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
+        f"    ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR} "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -65,20 +69,20 @@ def test_eval_judge_api(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=openai/gpt-oss-20b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --benchmarks=math-500 "
         f"    --output_dir={tmp_path} "
-        f"    --judge_model=openai/gpt-oss-20b "
-        f"    --judge_server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --judge_model={NVIDIA_TEST_API_MODEL} "
+        f"    --judge_server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --judge_server_type=openai "
         f"    --judge_generation_type=math_judge "
-        f"    --extra_judge_args='++max_concurrent_requests=1 ++inference.temperature=1.0 ++inference.timeout=120 ++server.max_retries=1' "
+        f"    --extra_judge_args='++max_concurrent_requests=1 ++inference.timeout=120 ++server.max_retries=1 ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR}' "
         f"    ++max_samples=2 "
         f"    ++max_concurrent_requests=1 "
-        f"    ++inference.temperature=1.0 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
+        f"    ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR} "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -102,8 +106,8 @@ def test_fail_on_api_key_env_var(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=openai/gpt-oss-20b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
@@ -120,17 +124,16 @@ def test_fail_on_api_key_env_var(tmp_path):
 @pytest.mark.timeout(300)
 def test_succeed_on_api_key_env_var(tmp_path):
     cmd = (
-        f"export MY_CUSTOM_KEY=$NVIDIA_API_KEY && "
-        f"unset NVIDIA_API_KEY && "
+        f"export MY_CUSTOM_KEY=${NVIDIA_TEST_API_KEY_ENV_VAR} && "
+        f"unset NVIDIA_API_KEY {NVIDIA_TEST_API_KEY_ENV_VAR} && "
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=openai/gpt-oss-20b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={tmp_path} "
         f"    ++max_samples=2 "
         f"    ++max_concurrent_requests=1 "
-        f"    ++inference.temperature=1.0 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
         f"    ++server.api_key_env_var=MY_CUSTOM_KEY "
@@ -158,15 +161,15 @@ def test_generate_openai_format(tmp_path, format):
     cmd = (
         f"ns generate "
         f"    --server_type=openai "
-        f"    --model=openai/gpt-oss-20b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --input_file=/nemo_run/code/tests/data/openai-input-{format}.test "
         f"    --output_dir={tmp_path} "
         f"    ++prompt_format=openai "
         f"    ++max_concurrent_requests=1 "
-        f"    ++inference.temperature=1.0 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
+        f"    ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR} "
     )
     subprocess.run(cmd, shell=True, check=True)
 
@@ -374,20 +377,20 @@ def test_judge_generations_with_structured_output(tmp_path):
     cmd = (
         f"ns eval "
         f"    --server_type=openai "
-        f"    --model=openai/gpt-oss-20b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --benchmarks=hle "
         f"    --output_dir={tmp_path} "
-        f"    --judge_model=openai/gpt-oss-20b "
-        f"    --judge_server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --judge_model={NVIDIA_TEST_API_MODEL} "
+        f"    --judge_server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --judge_server_type=openai "
         f"    --metric_type=hle-aa "
-        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA ++max_concurrent_requests=1 ++inference.temperature=1.0 ++inference.timeout=120 ++server.max_retries=1" '
+        f'    --extra_judge_args="++structured_output=HLE_JUDGE_AA ++max_concurrent_requests=1 ++inference.timeout=120 ++server.max_retries=1 ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR}" '
         f"    ++max_samples=2 "
         f"    ++max_concurrent_requests=1 "
-        f"    ++inference.temperature=1.0 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
+        f"    ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR} "
         f"    ++inference.tokens_to_generate=1024 "  # to make test go fast
     )
     subprocess.run(cmd, shell=True, check=True)
