@@ -6,6 +6,8 @@
 bs4
 compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@e01a5d2
 contractions
+# Fixes eight High findings through CVE-2026-55415.
+datamodel-code-generator>=0.64.0
 datasets
 editdistance
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f
@@ -13,6 +15,8 @@ faiss-cpu
 fire
 flask
 func-timeout
+# Fixes all High GitPython advisories reported through GHSA-wvpp-8hx9-p66j.
+GitPython>=3.1.58
 gradio
 httpx
 huggingface_hub
@@ -47,6 +51,6 @@ sympy
 torchcodec
 tqdm
 transformers
-# Floors click to >=8.2 (wandb 0.26.x only requires click>=8.0.1, so the resolver
-# was settling on click 8.1.8). Taken from #1507.
-wandb>=0.27.1
+# 0.28.1 is paired with the patched wandb-core built in Dockerfile.nemo-skills.
+# Pinning keeps the Python/core protocol pair deterministic.
+wandb==0.28.1

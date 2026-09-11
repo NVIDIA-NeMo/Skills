@@ -1,5 +1,61 @@
+# W&B 0.28.1 still bundles Go 1.26.4, grpc-go 1.82.0, x/text 0.38.0, and
+# go-git 5.19.1. Keep the qualified W&B dependency-update commit and raise only
+# the modules with fixable Critical/High findings. Go 1.26.6 also clears the
+# reported Go standard-library findings. Build only wandb-core so the final
+# image does not retain the Go toolchain or source.
+ARG WANDB_CORE_COMMIT=e1184091520c9b44aa1096fdb27b2f4bf52f26d7
+ARG WANDB_GO_GIT_VERSION=5.19.2
+ARG WANDB_GO_CRYPTO_VERSION=0.55.0
+ARG WANDB_GO_IMAGE_VERSION=0.45.0
+ARG WANDB_GO_TEXT_VERSION=0.41.0
+ARG WANDB_GRPC_VERSION=1.83.1
+FROM --platform=$BUILDPLATFORM golang:1.26.6 AS wandb-core-builder
+ARG WANDB_CORE_COMMIT
+ARG WANDB_GO_GIT_VERSION
+ARG WANDB_GO_CRYPTO_VERSION
+ARG WANDB_GO_IMAGE_VERSION
+ARG WANDB_GO_TEXT_VERSION
+ARG WANDB_GRPC_VERSION
+ARG TARGETARCH
+RUN git init /src/wandb && \
+    cd /src/wandb && \
+    git remote add origin https://github.com/wandb/wandb.git && \
+    git sparse-checkout init --cone && \
+    git sparse-checkout set core && \
+    git fetch --depth 1 origin "${WANDB_CORE_COMMIT}" && \
+    git checkout --detach FETCH_HEAD
+RUN cd /src/wandb/core && \
+    go get \
+        "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}" \
+        "golang.org/x/crypto@v${WANDB_GO_CRYPTO_VERSION}" \
+        "golang.org/x/image@v${WANDB_GO_IMAGE_VERSION}" \
+        "golang.org/x/text@v${WANDB_GO_TEXT_VERSION}" \
+        "google.golang.org/grpc@v${WANDB_GRPC_VERSION}" && \
+    go mod vendor && \
+    grep -E "^[[:space:]]*github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" go.mod && \
+    grep -E "^# github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" vendor/modules.txt && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+        -tags "disable_grpc_modules parquet_read_only" \
+        -ldflags "-s -w -X main.commit=${WANDB_CORE_COMMIT}" \
+        -mod=vendor \
+        -o /wandb-core \
+        ./cmd/wandb-core && \
+    go version -m /wandb-core | grep -F "go1.26.6" && \
+    go version -m /wandb-core | grep -E "build[[:space:]]+GOOS=linux([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "build[[:space:]]+GOARCH=${TARGETARCH}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/crypto[[:space:]]+v${WANDB_GO_CRYPTO_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/image[[:space:]]+v${WANDB_GO_IMAGE_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v${WANDB_GRPC_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v${WANDB_GO_TEXT_VERSION}([[:space:]]|$)"
+
+# Keep uv's Python wheel and its build-environment SBOM out of the runtime
+# image. Only the standalone, version-pinned executable crosses this stage.
+FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer
+
 # using ubuntu instead of debian for easier apptainer installation on arm64
-FROM ubuntu:22.04
+FROM ubuntu:22.04 AS runtime-base
+ARG WANDB_CORE_COMMIT
 
 # Install Python and other dependencies
 RUN apt-get update && \
@@ -14,7 +70,8 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools "uv>=0.11.10"
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" && \
+    rm -f /usr/local/lib/python3*/dist-packages/pip/_vendor/bom.cdx.json
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -36,10 +93,13 @@ RUN apt-get update && \
         gir1.2-packagekitglib-1.0 && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-# for ifeval benchmark
-# TODO: can we get just a single dir?
+# IFEval imports this module from the repository root. Retain only the benchmark
+# it executes; unrelated manifests elsewhere in google-research describe Julia
+# and Rust projects that are neither installed nor used by this image.
 RUN mkdir /opt/benchmarks
-RUN git clone https://github.com/google-research/google-research.git /opt/benchmarks/google-research --depth=1
+RUN git clone https://github.com/google-research/google-research.git /opt/benchmarks/google-research --depth=1 && \
+    cd /opt/benchmarks/google-research && \
+    find . -mindepth 1 -maxdepth 1 ! -name instruction_following_eval -exec rm -rf {} +
 
 RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
 RUN cd /opt/gorilla && git checkout 86d0374d0db52623c5092a73f82c22b87b7e9a25
@@ -59,7 +119,7 @@ RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
 
-RUN pip install langdetect absl-py immutabledict nltk ipython && \
+RUN pip install langdetect absl-py immutabledict "nltk>=3.10.3" ipython && \
     python -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
     nltk.download('stopwords'); nltk.download('averaged_perceptron_tagger_eng'); download('en_core_web_sm')"
 
@@ -73,9 +133,57 @@ COPY core/requirements.txt /opt/NeMo-Skills/core/requirements.txt
 RUN pip install git+https://github.com/NVIDIA/NeMo-speech-data-processor@29b9b1ec0ceaf3ffa441c1d01297371b3f8e11d2
 ARG CACHEBUST=4
 # Install via `uv pip` from the project directory so [tool.uv].override-dependencies
-# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x
+# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.84.x
 # can be installed) is picked up. Plain pip ignores [tool.uv] and the resolver fails.
+FROM runtime-base AS dependency-installer
+COPY --from=uv-installer /uv /usr/local/bin/uv
+RUN uv --version | grep -E '^uv 0\.12\.9([[:space:]]|$)'
 RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
-    -r core/requirements.txt -r requirements/pipeline.txt
+    -r core/requirements.txt -r requirements/pipeline.txt && \
+    rm -f /usr/local/bin/uv && rm -rf /root/.cache/uv
+
+# Replace /usr/local with the resolved environment, not the uv layer that
+# created it. Replacement prevents metadata from older pre-resolution packages
+# from surviving alongside the resolved versions.
+FROM runtime-base
+RUN rm -rf /usr/local
+COPY --from=dependency-installer /usr/local/ /usr/local/
+# Replace W&B's vulnerable release binary with the source-compatible patched core
+# built and module-verified above. The copy preserves its executable mode.
+COPY --from=wandb-core-builder /wandb-core /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core
+RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
+    grep -F "Commit SHA: ${WANDB_CORE_COMMIT}"
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
+
+# Ray's runtime-env agent prepends its bundled aiohttp 3.14.1 over the fixed
+# environment package. Replace that private copy with the resolved 3.14.3 files
+# from the same architecture (CVE-2026-69244).
+RUN site_packages="$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" && \
+    ray_thirdparty="${site_packages}/ray/_private/runtime_env/agent/thirdparty_files" && \
+    rm -rf "${ray_thirdparty}/aiohttp" "${ray_thirdparty}"/aiohttp-*.dist-info && \
+    cp -a "${site_packages}/aiohttp" "${ray_thirdparty}/" && \
+    cp -a "${site_packages}"/aiohttp-*.dist-info "${ray_thirdparty}/"
+
+# Guard the final resolved environment and Ray's private import path against the
+# High findings seen in the multi-architecture image scans.
+RUN python -c "from importlib.metadata import version as v; from packaging.version import Version as V; \
+               assert V(v('aiohttp')) >= V('3.14.3'), v('aiohttp'); \
+               assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
+               assert V(v('nltk')) >= V('3.10.3'), v('nltk'); \
+               assert V(v('starlette')) >= V('1.3.1'), v('starlette'); \
+               assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
+               print('aiohttp/msgpack/nltk/starlette/setuptools security floors OK')" && \
+    python -c "from fastapi import FastAPI; FastAPI(); print('FastAPI/Starlette compatibility OK')" && \
+    python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohttp, ray; assert Path(aiohttp.__file__).is_relative_to(thirdparty), aiohttp.__file__; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp OK:', ray.__version__, aiohttp.__version__)" && \
+    [ ! -e /usr/local/bin/uv ] && \
+    [ ! -e /usr/local/lib/python3.10/dist-packages/pip/_vendor/bom.cdx.json ] && \
+    [ -z "$(find /usr/local/lib/python3*/dist-packages -maxdepth 1 -type d -name 'uv-*.dist-info' 2>/dev/null)" ]
+
+# nSpect's global policy flags Git metadata left by uv's source-distribution
+# cache. Ray's Java runtime is not used by the Python jobs in this image, and
+# linux-libc-dev provides build-only headers. Remove all three after builds.
+RUN apt-get purge -y linux-libc-dev && \
+    rm -rf /usr/local/lib/python3*/dist-packages/ray/jars && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/* && \
+    [ -z "$(find /usr/local/lib/python3*/dist-packages -path '*/ray/jars/*' -type f 2>/dev/null)" ]
