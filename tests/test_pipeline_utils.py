@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -19,6 +20,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nemo_skills.pipeline.utils.declarative import Command
+from nemo_skills.pipeline.utils.exp import get_exp
 from nemo_skills.pipeline.utils.generation import (
     get_chunked_rs_filename,
     get_expected_done_files,
@@ -35,6 +37,37 @@ def create_done_files(output_dir, seed_chunk_pairs):
         os.makedirs(os.path.dirname(done_file), exist_ok=True)
         with open(done_file, "w") as f:
             f.write("")
+
+
+def test_get_exp_reuse_preserves_slurm_handlers(monkeypatch):
+    """Reusing a Slurm experiment preserves the historical logger state."""
+    logger = logging.getLogger("nemo_skills")
+    monkeypatch.setattr(logger, "handlers", [logging.NullHandler()])
+    reused_exp = object()
+
+    with get_exp("nested", {"executor": "slurm"}, _reuse_exp=reused_exp) as exp:
+        assert exp is reused_exp
+
+    assert len(logger.handlers) == 1
+
+
+def test_get_exp_reuse_removes_ray_jobs_handlers(monkeypatch):
+    """A nested Ray Jobs pipeline must not duplicate propagated log records."""
+    logger = logging.getLogger("nemo_skills")
+    monkeypatch.setattr(logger, "handlers", [logging.NullHandler()])
+    reused_exp = object()
+    cluster_config = {
+        # A pre-created Ray Jobs backend can use Slurm as the surrounding
+        # scheduler; backend selection, not the executor label, controls the
+        # duplicate-handler cleanup.
+        "executor": "slurm",
+        "backend": {"name": "ray", "dashboard_url": "http://ray-head:8265"},
+    }
+
+    with get_exp("nested", cluster_config, _reuse_exp=reused_exp) as exp:
+        assert exp is reused_exp
+
+    assert logger.handlers == []
 
 
 def test_get_chunked_rs_filename():
@@ -457,3 +490,195 @@ def test_add_task_sandbox_mounts_override_keep_mounts_true(mock_port, mock_get_e
     )
 
     assert mock_get_executor.call_args_list[-1].kwargs["mounts"] == ["/host/data:/sandbox/data:ro"]
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_with_ray_on_non_slurm_does_not_request_embedded_cluster(mock_port, mock_get_executor):
+    """Legacy with_ray=True on a non-Slurm executor must NOT attach use_with_ray_cluster.
+
+    nemo-run only supports an embedded Ray cluster on SlurmExecutor (it asserts otherwise). The
+    legacy compat path resolves with_ray to a RayBackend whose name is "ray", so gating only the
+    with_ray term is insufficient -- the flag must be gated on executor == "slurm". The old code
+    silently no-op'd this combo; this guards the regression where it began requesting embedding.
+    """
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    captured = {}
+
+    def _add(script, **kwargs):
+        captured["script"] = script
+        return "task_handle"
+
+    exp = SimpleNamespace(add=_add)
+    cluster_config = {"executor": "local", "containers": {"sandbox": "sandbox:latest"}}
+
+    add_task(
+        exp=exp,
+        cmd="echo hello",
+        task_name="test-task",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_ray=True,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    metadata = getattr(captured["script"], "metadata", None) or {}
+    assert "use_with_ray_cluster" not in metadata, (
+        f"with_ray=True on a non-Slurm executor must not request an embedded Ray cluster; got {metadata}"
+    )
+
+
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="resolved:image")
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_resolves_command_images_only_when_ray_backend_active(mock_port, mock_get_executor, mock_resolve):
+    """command_images is consumed only by the Ray Jobs queue, and resolving an image can be
+    expensive (a docker inspect for dockerfile: specs). With get_executor mocked, the only
+    remaining caller of resolve_container_image is the (guarded) command_images appends -- so it
+    must not be called on the non-Ray path and must be called when a Ray backend is active.
+    """
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock()
+    cluster_config = {"executor": "local", "containers": {"sandbox": "sandbox:latest"}}
+
+    # Non-Ray backend: no command-image resolution.
+    add_task(
+        exp=SimpleNamespace(add=MagicMock(return_value="h")),
+        cmd="echo hello",
+        task_name="t",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+    assert mock_resolve.call_count == 0, "non-Ray add_task must not resolve command images"
+
+    # Legacy embedded Ray-on-Slurm is not the Jobs API backend and must not
+    # resolve images or prepare a queue.
+    mock_resolve.reset_mock()
+    captured = {}
+
+    def _add(script, **kwargs):
+        captured["metadata"] = script.metadata
+        return "h"
+
+    add_task(
+        exp=SimpleNamespace(add=_add),
+        cmd="echo hello",
+        task_name="t",
+        cluster_config={"executor": "slurm", "containers": {"sandbox": "sandbox:latest"}},
+        container="main:latest",
+        log_dir="/tmp/logs",
+        with_ray=True,
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+    assert mock_resolve.call_count == 0
+    assert captured["metadata"] == {"use_with_ray_cluster": True}
+
+    # An explicit Ray Jobs backend does need the resolved image for its queue.
+    ray_jobs_config = {
+        "executor": "none",
+        "containers": {"sandbox": "sandbox:latest"},
+        "backend": {"name": "ray", "dashboard_url": "http://ray-head:8265"},
+    }
+    add_task(
+        exp=SimpleNamespace(add=MagicMock(return_value="h"), jobs=[]),
+        cmd="echo hello",
+        task_name="t",
+        cluster_config=ray_jobs_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+    assert mock_resolve.call_count >= 1, "Ray Jobs add_task must resolve command images for the queue"
+
+
+@patch("nemo_skills.pipeline.utils.exp.resolve_container_image", return_value="resolved:image")
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_ray_working_dir_uses_stable_absolute_roots(mock_port, mock_get_executor, mock_resolve):
+    """A later cd must not make executor:none paths relative to /opt/Gym."""
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_get_executor.return_value = MagicMock(container_image="resolved:image")
+    exp = SimpleNamespace(add=MagicMock(return_value="h"), jobs=[])
+    original = (
+        "cd /opt/Gym && python /nemo_run/code/nvflow/driver.py "
+        "--dataset '/nemo_run/code/nemo_skills/dataset/secque/test.jsonl'"
+    )
+    cluster_config = {
+        "executor": "none",
+        "containers": {"sandbox": "sandbox:latest"},
+        "backend": {
+            "name": "ray",
+            "dashboard_url": "http://ray-head:8265",
+            "working_dir": "/opt/nvflow-ray-code.zip",
+        },
+    }
+
+    add_task(
+        exp=exp,
+        cmd=original,
+        task_name="grpo-prepare",
+        cluster_config=cluster_config,
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    queued = exp._ns_ray_jobs_queue[0]["command"]
+    added = exp.add.call_args.args[0].inline
+    assert queued == added
+    assert queued.startswith("cd /opt/Gym && ")
+    assert '"${NEMO_RUN_CODE_DIR}"/nvflow/driver.py' in queued
+    assert '"${NEMO_SKILLS_CODE_DIR}"' in queued
+    assert "/nemo_run/code" not in queued
+    assert "./nvflow" not in queued
+
+
+@patch("nemo_skills.pipeline.utils.exp.get_registered_external_repo")
+@patch("nemo_skills.pipeline.utils.exp.get_executor")
+@patch("nemo_skills.pipeline.utils.exp.get_free_port", return_value=12345)
+def test_add_task_non_ray_executor_none_path_rewrite_is_unchanged(mock_port, mock_get_executor, mock_repo):
+    """The opt-in Ray working-dir contract must not alter legacy local execution."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.exp import add_task
+
+    mock_repo.return_value = SimpleNamespace(path=Path("/installed/nemo_skills"))
+    mock_get_executor.return_value = MagicMock()
+    exp = SimpleNamespace(add=MagicMock(return_value="h"))
+
+    add_task(
+        exp=exp,
+        cmd=(
+            "cd /opt/Gym && python /nemo_run/code/nvflow/driver.py "
+            "--dataset /nemo_run/code/nemo_skills/dataset/test.jsonl"
+        ),
+        task_name="legacy-local",
+        cluster_config={"executor": "none", "containers": {"sandbox": "sandbox:latest"}},
+        container="main:latest",
+        log_dir="/tmp/logs",
+        skip_hf_home_check=True,
+        reuse_code=False,
+    )
+
+    assert exp.add.call_args.args[0].inline == (
+        "cd /opt/Gym && python .//nvflow/driver.py --dataset /installed/nemo_skills/dataset/test.jsonl"
+    )
