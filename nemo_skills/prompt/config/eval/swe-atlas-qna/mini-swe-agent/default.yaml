@@ -83,21 +83,6 @@ agent:
     ```bash
     find /app -type f -name "*.py" | head -20
     ```
-
-    ## Exploration Discipline
-
-    Explore sufficiently to produce a complete, evidence-based answer, but remain
-    focused on the task's requested deliverables.
-
-    - Before each command, identify the specific unresolved question it will answer.
-    - Prefer targeted searches and focused experiments over broad exploration.
-    - Stop investigating a topic once you have sufficient evidence to explain it.
-    - Avoid redundant searches, repeated experiments, and unrelated findings.
-    - If an approach fails, try one meaningful alternative rather than repeatedly
-      debugging the environment.
-    - Regularly review what remains unanswered and prioritize only that work.
-    - Once all requested deliverables are supported, immediately prepare and submit
-      the final answer.
   step_limit: 250
   cost_limit: 0.
 
