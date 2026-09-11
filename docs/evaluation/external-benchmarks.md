@@ -307,11 +307,10 @@ Run evaluation (using an API model as an example):
 ns eval \
     --cluster=local \
     --server_type=openai \
-    --model=nvidia/nemotron-3.5-lightning-30b-a3b \
+    --model=nvidia/nemotron-3-super-120b-a12b \
     --server_address=https://integrate.api.nvidia.com/v1 \
     --benchmarks=word_count \
-    --output_dir=/workspace/test-eval \
-    ++inference.temperature=1.0
+    --output_dir=/workspace/test-eval
 ```
 
 View results:

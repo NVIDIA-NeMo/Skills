@@ -288,8 +288,8 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
         f"ns eval "
         f"    --server_type=openai "
         f"    --server_type=openai "
-        f"    --model=nvidia/nemotron-3.5-lightning-30b-a3b "
-        f"    --model=nvidia/nemotron-3.5-lightning-30b-a3b "
+        f"    --model=nvidia/nemotron-3-super-120b-a12b "
+        f"    --model=nvidia/nemotron-3-super-120b-a12b "
         f"    --server_address=https://integrate.api.nvidia.com/v1 "
         f"    --server_address=https://integrate.api.nvidia.com/v1 "
         f"    --benchmarks=gsm8k "
@@ -297,7 +297,6 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
         f"    --generation_module={shlex.quote(str(generation_module))} "
         f"    ++max_samples=1 "
         f"    ++max_concurrent_requests=1 "
-        f"    ++inference.temperature=1.0 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
     )
