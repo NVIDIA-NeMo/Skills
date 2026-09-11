@@ -168,38 +168,72 @@ class RayBackend(ExecutionBackend):
         """Dependency identifiers a batch can observe to completion.
 
         The set is the nemo-run handle and the task_name of every queued job.
-        Jobs missing those keys contribute nothing. A dep matching this set is in
-        flight in the batch and must reach SUCCEEDED before its dependents start;
-        a dep matching none of it is gated upstream (see ``_deps_satisfied``).
+        Jobs missing those keys contribute nothing. Dependencies outside this set
+        cannot be observed by the direct Jobs API backend and must be rejected
+        before submission rather than silently treated as complete.
         """
         names = {j.get("task_handle") for j in jobs if j.get("task_handle")}
         names |= {j.get("task_name") for j in jobs if j.get("task_name")}
         return names
 
+    @classmethod
+    def _validate_dependency_graph(cls, jobs: list[Dict[str, Any]]) -> None:
+        """Reject dependencies whose completion this batch cannot observe."""
+        in_batch_dep_names = cls._compute_in_batch_dep_names(jobs)
+        unknown_dep_names = sorted(
+            {
+                dep_name
+                for job in jobs
+                for dep_name in job.get("dep_task_names") or []
+                if dep_name not in in_batch_dep_names
+            }
+        )
+        if unknown_dep_names:
+            raise NotImplementedError(
+                "Ray Jobs API backend cannot verify dependencies outside the current "
+                f"submission batch: {unknown_dep_names}. Active cross-experiment run_after "
+                "is not supported on this direct submission path; wait for the upstream "
+                "experiment to finish, or use the default Slurm backend."
+            )
+
     @staticmethod
     def _deps_satisfied(
         dep_names: list[str] | None,
         completed: Dict[str, str],
-        in_batch_dep_names: set[str],
     ) -> bool:
         """True only when every dependency is provably satisfied.
 
-        A dependency on a job submitted in this batch is satisfied only once that
-        job has reached SUCCEEDED (recorded under its task_name and its nemo-run
-        handle). It is never assumed done while still in flight, so a dependent
-        cannot start prematurely. A dependency that matches no job in this batch is
-        a prior or cross-experiment job already gated upstream and is treated as
-        satisfied so the resolver does not deadlock waiting on a job it can never
-        observe.
+        Dependencies are satisfied only after reaching SUCCEEDED, recorded under
+        either their task_name or nemo-run handle. Unknown dependencies are
+        rejected before the submission loop because this backend cannot observe
+        cross-experiment completion through the Ray Jobs API.
         """
-        for d in dep_names or []:
-            if completed.get(d) == _SUCCESS_STATE:
-                continue
-            if d in in_batch_dep_names:
-                # In flight in this batch and not yet SUCCEEDED: keep waiting.
-                return False
-            # Not produced by this batch: gated upstream; treat as satisfied.
-        return True
+        return all(completed.get(dep_name) == _SUCCESS_STATE for dep_name in dep_names or [])
+
+    @staticmethod
+    def _record_completion(
+        completed: Dict[str, str],
+        *,
+        task_name: str,
+        task_handle: str | None,
+        task_names_by_handle: Dict[str, set[str]],
+        successful_task_names_by_handle: Dict[str, set[str]],
+        status: str,
+    ) -> None:
+        """Record a terminal task status and complete its handle as one unit.
+
+        A single nemo-run handle can represent multiple Ray Jobs (for example, a
+        server and client in one command group). The shared handle must not become
+        SUCCEEDED until every task represented by it has succeeded.
+        """
+        completed[task_name] = status
+        if not task_handle:
+            return
+        grouped_task_names = task_names_by_handle.get(task_handle, set())
+        if status == _SUCCESS_STATE:
+            successful_task_names_by_handle.setdefault(task_handle, set()).add(task_name)
+        if grouped_task_names and grouped_task_names.issubset(successful_task_names_by_handle.get(task_handle, set())):
+            completed[task_handle] = _SUCCESS_STATE
 
     def _get_jobs_client(self):
         """Return a JobSubmissionClient for the dashboard URL, raising if unavailable."""
@@ -672,6 +706,8 @@ class RayBackend(ExecutionBackend):
         if not pending_jobs:
             return super().start_experiment(exp, cluster_config, options)
 
+        self._validate_dependency_graph(pending_jobs)
+
         if options.dry_run:
             LOG.info(
                 "Dry run mode enabled; skipping Ray Jobs submission for %d task(s).",
@@ -700,18 +736,24 @@ class RayBackend(ExecutionBackend):
           then submitted the judge — meaning the judge never came up while
           training needed it, causing the wait-for-host-file loop to time out.
         """
-        # job_id -> status, keyed by both task_name and nemo-run handle
-        # so handle-named deps resolve against jobs in this batch.
+        # Dependency identifier -> status, keyed by task_name and nemo-run handle
+        # so either supported dependency form can resolve within this batch.
         completed: Dict[str, str] = {}
         # job_id -> Future
         futures: Dict[str, Future] = {}
         # remaining jobs not yet submitted
         pending = list(pending_jobs)
 
-        # Dependency identifiers this batch can observe to completion (handles and
-        # task_names of every queued job). A dep matching none of them is gated
-        # upstream and treated as satisfied; see _deps_satisfied / its helpers.
-        in_batch_dep_names = self._compute_in_batch_dep_names(pending_jobs)
+        # Validate defensively for callers that invoke this helper directly. The
+        # normal lifecycle also validates before the dry-run short circuit.
+        self._validate_dependency_graph(pending_jobs)
+        task_names_by_handle: Dict[str, set[str]] = {}
+        for job in pending_jobs:
+            task_handle = job.get("task_handle")
+            task_name = job.get("task_name")
+            if task_handle and task_name:
+                task_names_by_handle.setdefault(str(task_handle), set()).add(str(task_name))
+        successful_task_names_by_handle: Dict[str, set[str]] = {}
         # job_id -> nemo-run task_handle (for recording completion under the handle name).
         handle_by_job_id: Dict[str, str] = {}
 
@@ -821,7 +863,7 @@ class RayBackend(ExecutionBackend):
                 # Submit any jobs whose dependencies are now satisfied.
                 still_pending = []
                 for job in pending:
-                    if self._deps_satisfied(job.get("dep_task_names"), completed, in_batch_dep_names):
+                    if self._deps_satisfied(job.get("dep_task_names"), completed):
                         try:
                             meta = _submit_one(job, idx)
                         except Exception as exc:
@@ -894,12 +936,15 @@ class RayBackend(ExecutionBackend):
                     self._handle_poll_failure(client, list(futures.keys()), exc)
                 status = result["status"]
                 task_name = result["task_name"]
-                completed[task_name] = status
-                # Also record completion under the nemo-run task_handle so that
-                # downstream jobs (whose dep_task_names are handles) can resolve.
                 done_handle = handle_by_job_id.get(done_job_id)
-                if done_handle:
-                    completed[done_handle] = status
+                self._record_completion(
+                    completed,
+                    task_name=task_name,
+                    task_handle=done_handle,
+                    task_names_by_handle=task_names_by_handle,
+                    successful_task_names_by_handle=successful_task_names_by_handle,
+                    status=status,
+                )
                 del futures[done_job_id]
                 LOG.info("Ray job %s (%s) finished with status %s", done_job_id, task_name, status)
 

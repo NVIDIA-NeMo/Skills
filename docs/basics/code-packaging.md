@@ -104,3 +104,9 @@ edit YAML, JSON, or other files inside the uploaded archive. Configuration files
 that must refer to the delivered source after changing directory should resolve
 `NEMO_RUN_CODE_DIR` themselves (and may retain `/nemo_run/code` as their non-Ray
 default).
+
+The direct Ray Jobs backend can order dependencies submitted in the same batch.
+It cannot observe an active job from another nemo-run or Slurm experiment, so an
+active cross-experiment `run_after` fails before any Ray Job is submitted. Wait
+for the upstream experiment to finish, or use the default Slurm backend when the
+scheduler must enforce that dependency.

@@ -442,6 +442,8 @@ class Pipeline:
         """
         # Track job name -> task handle for dependency resolution
         job_name_to_handle = {}
+        pipeline_backend = get_execution_backend(self.cluster_config)
+        ray_jobs_active_for_pipeline = is_ray_jobs_backend(pipeline_backend)
 
         with get_exp(self.name, self.cluster_config, _reuse_exp) as exp:
             # Process each job in order
@@ -469,13 +471,48 @@ class Pipeline:
                     if isinstance(dep, str):
                         # String dependency = external experiment name
                         if self.cluster_config["executor"] == "slurm":
+                            exp_jobs = getattr(exp, "jobs", None)
+                            known_job_ids = (
+                                {getattr(job, "id", None) for job in exp_jobs}
+                                if isinstance(exp_jobs, (list, tuple))
+                                else set()
+                            )
+                            if _reuse_exp and dep in known_job_ids:
+                                internal_deps.append(dep)
+                                LOG.info(f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)")
+                                continue
+
                             exp_handles = get_exp_handles(dep)
                             if len(exp_handles) == 0:
-                                LOG.warning(
-                                    f"No pending or running tasks found for experiment {dep}, cannot set dependencies."
-                                )
-                                # If no experiment found, treat as direct task handle (for _reuse_exp case)
-                                if _reuse_exp:
+                                if ray_jobs_active_for_pipeline:
+                                    try:
+                                        all_exp_handles = get_exp_handles(
+                                            dep,
+                                            ignore_finished=False,
+                                            ignore_exp_not_exists=False,
+                                        )
+                                    except ValueError:
+                                        all_exp_handles = []
+
+                                    if all_exp_handles:
+                                        LOG.info(
+                                            "All tasks in external experiment '%s' have already finished; "
+                                            "no dependency is needed.",
+                                            dep,
+                                        )
+                                    else:
+                                        LOG.warning(
+                                            "No pending or running tasks found for '%s', and the dependency "
+                                            "could not be verified as a finished experiment.",
+                                            dep,
+                                        )
+                                        # Preserve an unverifiable name for the Ray dependency
+                                        # validator. Dropping it would launch work without honoring
+                                        # the requested prerequisite.
+                                        external_deps.append(dep)
+                                elif _reuse_exp:
+                                    # Preserve the historical reused-experiment behavior for
+                                    # the default backend, where this may be a direct task handle.
                                     internal_deps.append(dep)
                                     LOG.info(
                                         f"Job '{job_name}' depends on task handle '{dep}' (from reused experiment)"
@@ -552,12 +589,14 @@ class Pipeline:
                 job_name_to_handle[job_name] = task_handle
                 LOG.info(f"Added job '{job_name}' with task_handle={task_handle}")
 
-            # Only run if not using existing experiment (matching generate_v0.py line 331)
-            if not dry_run and not _reuse_exp:
-                run_exp(exp, self.cluster_config, sequential=sequential)
+            # Run or validate the complete experiment unless a caller is still
+            # assembling a reused experiment. run_exp keeps dry-runs offline and
+            # lets backends validate their queued graph without submitting work.
+            if not _reuse_exp:
+                run_exp(exp, self.cluster_config, sequential=sequential, dry_run=dry_run)
 
                 # Cache experiment for code reuse in future runs
-                if self.cluster_config["executor"] != "none":
+                if not dry_run and self.cluster_config["executor"] != "none":
                     tunnel = get_tunnel(self.cluster_config)
                     cur_tunnel_hash = tunnel_hash(tunnel)
                     if cur_tunnel_hash not in REUSE_CODE_EXP:
@@ -965,9 +1004,10 @@ class Pipeline:
                 ray_queue_images.append(getattr(executor, "container_image", None))
 
         # Forward both internal (same-experiment) and external (cross-experiment
-        # run_after) dependencies. Dropping external deps would let Ray jobs submit
-        # before their prerequisites finish, since Ray ordering is resolved from
-        # the queued dep names rather than the nemo-run executor.
+        # run_after) dependencies. Already-finished external experiments were
+        # positively identified during dependency resolution and omitted there;
+        # any remaining external name is preserved so the Ray graph validator can
+        # fail rather than silently start too early.
         if ray_jobs_active:
             queue_ray_job_commands(
                 exp=exp,
@@ -980,31 +1020,6 @@ class Pipeline:
                 external_dependencies=external_deps,
                 should_use_with_ray_cluster=should_use_with_ray_cluster,
             )
-
-        # A run_after naming another experiment whose tasks have already finished
-        # resolves to empty handles and falls through as a bare experiment-name string
-        # in internal_deps. Only the Ray backend resolves cross-experiment ordering from
-        # the queued dep names (external_deps + the Ray queue), so only it needs those
-        # finished-cross-experiment strings dropped from exp.add(). On the default backend
-        # we must NOT silently drop them: nemo-run's exp.add asserts every dependency is a
-        # job in THIS experiment, and that fail-loud behavior is the historical contract.
-        # Only filter when exp.jobs is a concrete list (a real nemo-run experiment); a
-        # mocked or duck-typed exp leaves deps untouched so valid handles are never dropped.
-        exp_jobs = getattr(exp, "jobs", None)
-        if ray_jobs_active and internal_deps and isinstance(exp_jobs, (list, tuple)):
-            known_job_ids = {getattr(job, "id", None) for job in exp_jobs}
-            kept = []
-            for dep in internal_deps:
-                if not isinstance(dep, str) or dep in known_job_ids:
-                    kept.append(dep)
-                else:
-                    LOG.warning(
-                        "Dropping dependency '%s' from exp.add: not a job in this "
-                        "experiment (cross-experiment ordering preserved via external "
-                        "deps / Ray queue).",
-                        dep,
-                    )
-            internal_deps = kept or None
 
         # Add to experiment and return task ID
         # Note: Internal dependencies (task handles from same experiment) go to exp.add()

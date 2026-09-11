@@ -1018,8 +1018,9 @@ def queue_ray_job_commands(
     """Queue commands for Ray Jobs API submission when the Ray backend is active.
 
     Both within-experiment ``task_dependencies`` and cross-experiment
-    ``external_dependencies`` (resolved ``run_after`` handles) are forwarded so
-    the Ray queue can order submissions on all declared prerequisites.
+    ``external_dependencies`` (resolved ``run_after`` handles) are forwarded.
+    The Ray backend orders observable in-batch dependencies and fails before
+    submission when an active cross-experiment dependency cannot be observed.
     """
     if getattr(backend, "name", "") != "ray" or not getattr(backend, "dashboard_url", None):
         return 0

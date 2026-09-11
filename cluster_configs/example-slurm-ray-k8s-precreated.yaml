@@ -16,8 +16,11 @@
 # pre-created Ray cluster running on Kubernetes.
 #
 # Notes:
-# - SLURM remains the scheduler used by nemo_run.
-# - The execution backend is Ray; jobs connect to an existing Ray endpoint.
+# - executor: slurm retains nemo-run's cluster configuration and experiment lookup.
+# - The Ray Jobs backend submits directly to the existing cluster; it does not
+#   launch the queued commands through Slurm.
+# - Same-batch dependencies are supported. For an active cross-experiment
+#   run_after, wait for the upstream experiment or use the default Slurm backend.
 # - Replace all CHANGE_ME values before use.
 
 executor: slurm

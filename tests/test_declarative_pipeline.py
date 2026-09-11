@@ -785,17 +785,20 @@ class TestJobDependencies:
     def test_finished_cross_experiment_dep_filtered_from_exp_add_on_ray_backend(self):
         """On the RAY backend, a run_after naming another experiment whose tasks already
         finished resolves to empty handles and falls through as a bare experiment-name
-        string in internal_deps (the _reuse_exp path). The Ray backend resolves
-        cross-experiment ordering from the queued dep names (not nemo-run handles), so that
-        finished-cross-exp string is dropped from exp.add while same-experiment handles are
-        kept. Reproduces the bug the legacy cross-experiment dependency patch fixed, now
-        handled natively. The default backend must NOT drop it -- see the sibling test.
+        string in internal_deps (the _reuse_exp path). Because no active handles remain,
+        the Ray backend can drop that finished-cross-exp string from exp.add while keeping
+        same-experiment handles. Active external handles are forwarded to the Ray queue and
+        rejected before submission because the direct Jobs API cannot observe them. The
+        default backend must NOT drop it -- see the sibling test.
         """
         import nemo_run as run
 
-        # Empty handles -> the upstream experiment already finished / does not exist.
+        # The first lookup finds no active handles; the second proves the
+        # experiment exists and all of its tasks are finished.
         with patch("nemo_skills.pipeline.utils.declarative.get_exp_handles") as mock_get_handles:
-            mock_get_handles.return_value = []
+            mock_get_handles.side_effect = lambda _dep, ignore_finished=True, **_kwargs: (
+                [] if ignore_finished else ["finished-handle"]
+            )
 
             with patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp:
                 mock_exp = MagicMock(spec=run.Experiment)
@@ -865,6 +868,7 @@ class TestJobDependencies:
                         assert mock_exp.add.call_args_list[0][1]["dependencies"] is None
                         # job2: same-experiment handle kept, finished cross-exp string dropped.
                         assert mock_exp.add.call_args_list[1][1]["dependencies"] == ["task_handle_1"]
+                        assert mock_exp._ns_ray_jobs_queue[1]["dep_task_names"] == ["task_handle_1"]
 
     def test_finished_cross_experiment_dep_kept_on_default_backend(self):
         """The default (non-Ray) backend must NOT silently drop a finished cross-experiment
@@ -939,6 +943,79 @@ class TestJobDependencies:
                         assert deps is not None
                         assert "task_handle_1" in deps
                         assert "finished_external_experiment" in deps
+
+    def test_ray_dry_run_rejects_unverifiable_external_dependency(self):
+        """A user-facing dry-run must validate the Ray dependency graph."""
+        import nemo_run as run
+
+        def lookup_handles(_dep, ignore_finished=True, **_kwargs):
+            if ignore_finished:
+                return []
+            raise ValueError("experiment not found")
+
+        with patch(
+            "nemo_skills.pipeline.utils.declarative.get_exp_handles",
+            side_effect=lookup_handles,
+        ):
+            with patch("nemo_skills.pipeline.utils.declarative.get_exp") as mock_get_exp:
+                mock_exp = MagicMock(spec=run.Experiment)
+                mock_exp.__enter__ = MagicMock(return_value=mock_exp)
+                mock_exp.__exit__ = MagicMock(return_value=False)
+                mock_exp.jobs = []
+
+                def fake_add(*args, **kwargs):
+                    handle = f"task_handle_{len(mock_exp.jobs) + 1}"
+                    job = MagicMock()
+                    job.id = handle
+                    mock_exp.jobs.append(job)
+                    return handle
+
+                mock_exp.add = MagicMock(side_effect=fake_add)
+                mock_get_exp.return_value = mock_exp
+
+                def mock_get_executor(**kwargs):
+                    mock_executor = MagicMock()
+                    mock_executor.packager = MagicMock()
+                    mock_executor.container_image = "test/container"
+                    return mock_executor
+
+                with patch(
+                    "nemo_skills.pipeline.utils.declarative.get_executor",
+                    side_effect=mock_get_executor,
+                ):
+                    command = make_command(inline="echo job", name="job")
+                    group = CommandGroup(commands=[command], name="group", log_dir="/tmp/logs")
+                    pipeline = Pipeline(
+                        name="test_pipeline",
+                        cluster_config={
+                            "executor": "slurm",
+                            "backend": {
+                                "name": "ray",
+                                "dashboard_url": "http://ray-head:8265",
+                            },
+                            "containers": {"nemo-skills": "test/container"},
+                            "account": "test",
+                            "env_vars": {"HF_HOME": "/mounted/hf_home"},
+                            "mounts": ["/mounted/hf_home:/mounted/hf_home"],
+                        },
+                        jobs=[
+                            {
+                                "name": "job",
+                                "group": group,
+                                "dependencies": ["missing-upstream-experiment"],
+                            }
+                        ],
+                        skip_hf_home_check=True,
+                        reuse_code=False,
+                    )
+
+                    with pytest.raises(
+                        NotImplementedError,
+                        match="cannot verify dependencies outside the current submission batch",
+                    ):
+                        pipeline.run(dry_run=True)
+
+                    assert mock_exp._ns_ray_jobs_queue[0]["dep_task_names"] == ["missing-upstream-experiment"]
 
     def test_run_after_dependencies_across_experiments(self, tmp_path):
         """Test that run_after dependencies work when chaining multiple generate/run_cmd calls.

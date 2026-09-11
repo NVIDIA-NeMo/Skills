@@ -402,7 +402,7 @@ def test_default_slurm_backend_ignores_ray_working_dir_and_stays_lazy():
 
 
 # ---------------------------------------------------------------------------
-# Dependency resolver (in-batch vs cross-experiment deps)
+# Dependency resolver
 # ---------------------------------------------------------------------------
 
 
@@ -424,46 +424,168 @@ def test_deps_satisfied_false_for_in_batch_dep_not_yet_completed():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
     # Premature-start guard: dep is in flight in this batch and not SUCCEEDED.
-    in_batch = {"train", "train-handle"}
-    assert RayBackend._deps_satisfied(["train"], {}, in_batch) is False
+    assert RayBackend._deps_satisfied(["train"], {}) is False
     # Recorded under a non-success terminal state still blocks.
-    assert RayBackend._deps_satisfied(["train"], {"train": "FAILED"}, in_batch) is False
+    assert RayBackend._deps_satisfied(["train"], {"train": "FAILED"}) is False
 
 
 def test_deps_satisfied_true_when_in_batch_dep_succeeded_by_task_name_or_handle():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
-    in_batch = {"train", "train-handle"}
     # Recorded SUCCEEDED under task_name.
-    assert RayBackend._deps_satisfied(["train"], {"train": "SUCCEEDED"}, in_batch) is True
+    assert RayBackend._deps_satisfied(["train"], {"train": "SUCCEEDED"}) is True
     # Recorded SUCCEEDED under the nemo-run handle.
-    assert RayBackend._deps_satisfied(["train-handle"], {"train-handle": "SUCCEEDED"}, in_batch) is True
+    assert RayBackend._deps_satisfied(["train-handle"], {"train-handle": "SUCCEEDED"}) is True
 
 
-def test_deps_satisfied_true_for_cross_experiment_dep_gated_upstream():
+def test_deps_satisfied_false_without_explicit_success():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
-    # Dep matches no job in this batch -> gated upstream -> treated satisfied.
-    in_batch = {"judge", "judge-handle"}
-    assert RayBackend._deps_satisfied(["prior-experiment-handle"], {}, in_batch) is True
+    assert RayBackend._deps_satisfied(["prior-experiment-handle"], {}) is False
 
 
-def test_deps_satisfied_mixed_in_batch_pending_and_cross_experiment():
+def test_deps_satisfied_requires_every_dependency_success():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
-    in_batch = {"train", "train-handle"}
     deps = ["train", "prior-experiment-handle"]
-    # Blocked while the in-batch dep is still pending, even though the other is gated.
-    assert RayBackend._deps_satisfied(deps, {}, in_batch) is False
-    # Unblocks once the in-batch dep succeeds.
-    assert RayBackend._deps_satisfied(deps, {"train": "SUCCEEDED"}, in_batch) is True
+    # Every dependency needs explicit success; satisfying only one is insufficient.
+    assert RayBackend._deps_satisfied(deps, {}) is False
+    assert RayBackend._deps_satisfied(deps, {"train": "SUCCEEDED"}) is False
+    assert (
+        RayBackend._deps_satisfied(
+            deps,
+            {"train": "SUCCEEDED", "prior-experiment-handle": "SUCCEEDED"},
+        )
+        is True
+    )
 
 
 def test_deps_satisfied_true_for_empty_or_none_deps():
     from nemo_skills.pipeline.utils.ray_backend import RayBackend
 
-    assert RayBackend._deps_satisfied([], {}, set()) is True
-    assert RayBackend._deps_satisfied(None, {}, set()) is True
+    assert RayBackend._deps_satisfied([], {}) is True
+    assert RayBackend._deps_satisfied(None, {}) is True
+
+
+def test_shared_handle_succeeds_only_after_all_grouped_tasks_succeed():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    completed = {}
+    task_names_by_handle = {"nemo-run": {"server", "client"}}
+    successful_task_names_by_handle = {}
+
+    RayBackend._record_completion(
+        completed,
+        task_name="server",
+        task_handle="nemo-run",
+        task_names_by_handle=task_names_by_handle,
+        successful_task_names_by_handle=successful_task_names_by_handle,
+        status="SUCCEEDED",
+    )
+    assert completed == {"server": "SUCCEEDED"}
+    assert RayBackend._deps_satisfied(["nemo-run"], completed) is False
+
+    RayBackend._record_completion(
+        completed,
+        task_name="client",
+        task_handle="nemo-run",
+        task_names_by_handle=task_names_by_handle,
+        successful_task_names_by_handle=successful_task_names_by_handle,
+        status="SUCCEEDED",
+    )
+    assert completed["nemo-run"] == "SUCCEEDED"
+    assert RayBackend._deps_satisfied(["nemo-run"], completed) is True
+
+
+def test_repeated_task_names_do_not_complete_a_later_handle_early():
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    completed = {}
+    task_names_by_handle = {
+        "nemo-run": {"server", "client"},
+        "nemo-run_1": {"server", "client"},
+    }
+    successful_task_names_by_handle = {}
+
+    for task_name in ("server", "client"):
+        RayBackend._record_completion(
+            completed,
+            task_name=task_name,
+            task_handle="nemo-run",
+            task_names_by_handle=task_names_by_handle,
+            successful_task_names_by_handle=successful_task_names_by_handle,
+            status="SUCCEEDED",
+        )
+    assert completed["nemo-run"] == "SUCCEEDED"
+
+    RayBackend._record_completion(
+        completed,
+        task_name="server",
+        task_handle="nemo-run_1",
+        task_names_by_handle=task_names_by_handle,
+        successful_task_names_by_handle=successful_task_names_by_handle,
+        status="SUCCEEDED",
+    )
+    assert "nemo-run_1" not in completed
+
+    RayBackend._record_completion(
+        completed,
+        task_name="client",
+        task_handle="nemo-run_1",
+        task_names_by_handle=task_names_by_handle,
+        successful_task_names_by_handle=successful_task_names_by_handle,
+        status="SUCCEEDED",
+    )
+    assert completed["nemo-run_1"] == "SUCCEEDED"
+
+
+def test_ray_backend_rejects_cross_experiment_dependency_before_submission():
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    class NoSubmissionClient:
+        def submit_job(self, **kwargs):
+            raise AssertionError("submit_job must not be called")
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265")
+    pending_jobs = [
+        {
+            "task_name": "judge",
+            "task_handle": "nemo-run",
+            "command": "echo judge",
+            "dep_task_names": ["slurm://upstream/123"],
+        }
+    ]
+
+    with pytest.raises(NotImplementedError, match="cannot verify dependencies outside the current submission batch"):
+        backend._submit_jobs_concurrently(
+            NoSubmissionClient(),
+            SimpleNamespace(_title="dependent-eval"),
+            pending_jobs,
+        )
+
+
+def test_ray_backend_dry_run_rejects_cross_experiment_dependency():
+    from types import SimpleNamespace
+
+    from nemo_skills.pipeline.utils.backends import BackendRunOptions
+    from nemo_skills.pipeline.utils.ray_backend import RayBackend
+
+    backend = RayBackend(dashboard_url="http://ray-head:8265")
+    exp = SimpleNamespace(
+        _ns_ray_jobs_queue=[
+            {
+                "task_name": "judge",
+                "task_handle": "nemo-run",
+                "command": "echo judge",
+                "dep_task_names": ["slurm://upstream/123"],
+            }
+        ]
+    )
+
+    with pytest.raises(NotImplementedError, match="cannot verify dependencies outside the current submission batch"):
+        backend.start_experiment(exp, {}, BackendRunOptions(dry_run=True))
 
 
 # ---------------------------------------------------------------------------
