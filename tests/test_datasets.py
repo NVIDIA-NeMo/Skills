@@ -62,4 +62,5 @@ DATASETS = [
     ("librispeech-pc", ["test"]),
     ("musan", ["test"]),
     ("compute-eval", ["eval"]),
+    ("swe-atlas-qna", ["default.alpine", "default.ubuntu"]),
 ]
