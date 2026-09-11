@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 import numpy as np
 
@@ -61,10 +61,17 @@ class WeightedMathMetrics(MathMetrics):
             if not valid_pairs:
                 majority_score = 0.0
             else:
-                answer_counts = Counter(valid_pairs)
-                top_count = answer_counts.most_common(1)[0][1]
-                top_pairs = [(ans, sc) for (ans, sc), cnt in answer_counts.items() if cnt == top_count]
-                majority_score = sum(sc for _, sc in top_pairs) / len(top_pairs)
+                # Vote on the answer alone: the same answer can carry different scores
+                # across attempts, and those are repeated votes for one answer.
+                answer_scores = defaultdict(list)
+                for ans, sc in valid_pairs:
+                    answer_scores[ans].append(sc)
+                top_count = max(len(scores) for scores in answer_scores.values())
+                top_answers = [ans for ans, scores in answer_scores.items() if len(scores) == top_count]
+                # Average the scores within an answer first, then average across the
+                # most common answers as before.
+                majority_score = sum(sum(answer_scores[ans]) / len(answer_scores[ans]) for ans in top_answers)
+                majority_score /= len(top_answers)
             self.weighted_sums[f"majority@{k}"][score_method] += sample_weight * majority_score
 
     def update(self, predictions: list[dict]) -> None:

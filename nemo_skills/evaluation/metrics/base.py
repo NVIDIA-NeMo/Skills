@@ -14,7 +14,7 @@
 
 import abc
 import math
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 import numpy as np
 
@@ -275,17 +275,26 @@ class BaseMetrics(abc.ABC):
                     majority_score = 0
                     majority_answer = None
                 else:
-                    # Find the most common answer and its correctness
-                    majority_count = Counter(valid_answers_and_results).most_common(1)[0][1]
-                    majority_answer_list = [
-                        (answer, score)
-                        for (answer, score), count in Counter(valid_answers_and_results).items()
-                        if count == majority_count
-                    ]
-                    # Majority score is the average of the scores of the most common answers
-                    majority_score = sum(score for answer, score in majority_answer_list) / len(majority_answer_list)
+                    # Vote on the answer alone. A non-deterministic judge can score the
+                    # same answer differently across generations, and those are repeated
+                    # votes for one answer rather than votes for several.
+                    answer_verdicts = defaultdict(list)
+                    for answer, score in valid_answers_and_results:
+                        answer_verdicts[answer].append(score)
+
+                    majority_count = max(len(verdicts) for verdicts in answer_verdicts.values())
                     # Choose a deterministic answer from the most common answers for reproducibility
-                    majority_answer = sorted(majority_answer_list)[0][0]
+                    majority_answers = sorted(
+                        answer for answer, verdicts in answer_verdicts.items() if len(verdicts) == majority_count
+                    )
+                    # Average the verdicts within an answer first, then average across
+                    # the most common answers as before, so a judge that disagreed with
+                    # itself lands between the two verdicts instead of picking one.
+                    majority_score = sum(
+                        sum(answer_verdicts[answer]) / len(answer_verdicts[answer]) for answer in majority_answers
+                    )
+                    majority_score /= len(majority_answers)
+                    majority_answer = majority_answers[0]
 
                 eval_dict[f"majority@{k}"][score_method] += majority_score
 

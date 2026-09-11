@@ -52,15 +52,19 @@ class MathMetrics(BaseMetrics):
                     self.eval_dict[f"rm_best@{k}"][score_method] += is_correct_best
 
                     answer_to_score_dict = defaultdict(float)
-                    answer_to_correctness_dict = {}
+                    # Keep every verdict for an answer rather than the last one: a
+                    # non-deterministic judge can score the same answer both ways, and
+                    # plain assignment would let generation order decide the result.
+                    answer_to_verdicts = defaultdict(list)
                     for predicted_answer, is_correct, reward_score in valid_answers_and_results:
                         answer_to_score_dict[predicted_answer] += reward_score
-                        answer_to_correctness_dict[predicted_answer] = is_correct
+                        answer_to_verdicts[predicted_answer].append(is_correct)
 
                     top_cum_reward_answer = sorted(
                         list(answer_to_score_dict.items()), key=lambda x: x[1], reverse=True
                     )[0][0]
-                    is_correct_majority = answer_to_correctness_dict[top_cum_reward_answer]
+                    top_answer_verdicts = answer_to_verdicts[top_cum_reward_answer]
+                    is_correct_majority = sum(top_answer_verdicts) / len(top_answer_verdicts)
                     self.eval_dict[f"rm_majority@{k}"][score_method] += is_correct_majority
 
             no_answer = all(elem[self.answer_key] is None for elem in predictions[:k])

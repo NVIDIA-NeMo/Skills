@@ -192,3 +192,39 @@ def test_base_metrics_update(predictions, expected_all_scores):
     metrics = MockMetrics()
     metrics.update(predictions)
     assert metrics.all_scores == expected_all_scores
+
+
+@pytest.mark.parametrize(
+    "answers,verdicts,expected",
+    [
+        # The issue's example: a non-deterministic judge scores the same answer both
+        # ways. "42" has three votes to "43"'s two and wins outright, so only its
+        # three verdicts decide the score.
+        (["42", "42", "42", "43", "43"], [True, False, True, False, False], 2 / 3),
+        (["7", "7", "7"], [True, True, False], 2 / 3),
+        # The judge called the winning answer wrong more often than right.
+        (["a", "a", "a"], [True, False, False], 1 / 3),
+        # A deterministic judge is unaffected.
+        (["42", "42", "43"], [True, True, False], 1.0),
+        (["9", "9", "9"], [False, False, False], 0.0),
+        # Genuinely tied distinct answers still average across the tie.
+        (["a", "b"], [True, False], 0.5),
+        # Tie where one side is itself split: 0.5 for that answer, 1.0 for the clean one.
+        (["a", "a", "b", "b"], [True, False, True, True], 0.75),
+    ],
+)
+def test_majority_at_k_votes_on_the_answer(answers, verdicts, expected):
+    """Duplicate answers are one candidate, however the judge scored them (#1257)."""
+    metrics = MockMetrics(compute_no_answer=False)
+    predictions = [{"is_correct": v} for v in verdicts]
+    metrics._compute_majority_at_k(predictions=predictions, predicted_answers=answers)
+    k = len(answers)
+    assert metrics.eval_dict[f"majority@{k}"]["correct"] == pytest.approx(expected)
+
+
+def test_majority_at_k_ignores_none_answers():
+    """None answers are dropped before voting."""
+    metrics = MockMetrics(compute_no_answer=False)
+    predictions = [{"is_correct": v} for v in [True, False, True]]
+    metrics._compute_majority_at_k(predictions=predictions, predicted_answers=["5", None, "5"])
+    assert metrics.eval_dict["majority@3"]["correct"] == pytest.approx(1.0)
