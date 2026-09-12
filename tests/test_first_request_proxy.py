@@ -182,11 +182,16 @@ def test_proxy_rewrites_model_on_keep_alive_requests(tmp_path):
         first_body = b'{"model":"harness-model","messages":[{"role":"user","content":"first"}]}'
         second_body = b'{"model":"harness-model","messages":[{"role":"user","content":"second"}]}'
 
+        def transform(request):
+            request["chat_template_kwargs"] = {"enable_thinking": False}
+            return request
+
         try:
             async with capture_first_llm_request(
                 f"http://127.0.0.1:{upstream_port}/v1",
                 capture_file,
                 served_model_name="served-model",
+                request_transform=transform,
             ) as proxy_base:
                 parsed = urlsplit(proxy_base)
                 reader, writer = await asyncio.open_connection(parsed.hostname, parsed.port)
@@ -204,6 +209,9 @@ def test_proxy_rewrites_model_on_keep_alive_requests(tmp_path):
             await upstream.wait_closed()
 
         assert [item["model"] for item in received] == ["served-model", "served-model"]
-        assert json.loads(capture_file.read_bytes())["model"] == "served-model"
+        assert all(item["chat_template_kwargs"] == {"enable_thinking": False} for item in received)
+        captured = json.loads(capture_file.read_bytes())
+        assert captured["model"] == "served-model"
+        assert captured["chat_template_kwargs"] == {"enable_thinking": False}
 
     asyncio.run(run_test())

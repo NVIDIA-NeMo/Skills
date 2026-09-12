@@ -24,6 +24,7 @@ import socket
 import sys
 from dataclasses import field
 from enum import Enum
+from functools import partial
 from pathlib import Path
 
 import hydra
@@ -140,6 +141,7 @@ def build_claude_code_settings(
     model: str,
     context_window: int,
     effort: str | None = None,
+    disable_thinking: bool = False,
 ) -> dict:
     """Build explicit settings for a deterministic, unattended Claude Code run."""
     if context_window <= 0:
@@ -164,7 +166,11 @@ def build_claude_code_settings(
             "DISABLE_UPDATES": "1",
         }
     )
-    if effort is not None:
+    if disable_thinking:
+        env["MAX_THINKING_TOKENS"] = "0"
+        env.pop("CLAUDE_CODE_EFFORT_LEVEL", None)
+        env.pop("CLAUDE_CODE_ALWAYS_ENABLE_EFFORT", None)
+    elif effort is not None:
         if effort not in CLAUDE_CODE_EFFORT_LEVELS:
             raise ValueError(
                 f"Unsupported claude_code_effort: {effort}. "
@@ -176,6 +182,29 @@ def build_claude_code_settings(
         # explicitly enable effort transmission for those custom identifiers.
         env["CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"] = "1"
     return settings
+
+
+def transform_claude_code_request(request: dict, chat_template_kwargs: dict) -> dict:
+    """Apply vLLM chat-template controls to a request created by Claude Code."""
+    request = copy.deepcopy(request)
+    existing_kwargs = request.get("chat_template_kwargs", {})
+    if not isinstance(existing_kwargs, dict):
+        existing_kwargs = {}
+    request["chat_template_kwargs"] = _deep_merge_dicts(existing_kwargs, copy.deepcopy(chat_template_kwargs))
+
+    if chat_template_kwargs.get("enable_thinking") is False:
+        # MAX_THINKING_TOKENS=0 asks Claude Code not to request thinking, but
+        # custom model aliases can still receive its default effort=high.
+        # Explicit chat-template controls are authoritative for vLLM.
+        request["chat_template_kwargs"].pop("reasoning_effort", None)
+        request.pop("thinking", None)
+        output_config = request.get("output_config")
+        if isinstance(output_config, dict):
+            output_config.pop("effort", None)
+            if not output_config:
+                request.pop("output_config")
+
+    return request
 
 
 def build_opencode_config(
@@ -1373,6 +1402,7 @@ class SweBenchGenerationTask(GenerationTask):
         expected_file_pattern,
         *,
         served_model_name=None,
+        request_transform=None,
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
@@ -1382,6 +1412,7 @@ class SweBenchGenerationTask(GenerationTask):
             self.api_base,
             capture_file,
             served_model_name=served_model_name,
+            request_transform=request_transform,
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,
@@ -1545,16 +1576,21 @@ class SweBenchGenerationTask(GenerationTask):
         instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
         instance_id = data_point["instance_id"]
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
+        extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
+        chat_template_kwargs = extra_body.get("chat_template_kwargs", {})
+        if not isinstance(chat_template_kwargs, dict):
+            raise ValueError("inference.extra_body.chat_template_kwargs must be a dictionary.")
+        disable_thinking = chat_template_kwargs.get("enable_thinking") is False
+        effort = self.cfg.claude_code_effort or chat_template_kwargs.get("reasoning_effort")
 
         def build_claude_code_command(proxy_api_base):
-            extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
-            effort = self.cfg.claude_code_effort or extra_body.get("chat_template_kwargs", {}).get("reasoning_effort")
             settings = build_claude_code_settings(
                 agent_config,
                 api_base=proxy_api_base,
                 model=claude_model_name,
                 context_window=self.cfg.claude_code_context_window,
                 effort=effort,
+                disable_thinking=disable_thinking,
             )
             settings_json = json.dumps(settings)
             return (
@@ -1591,11 +1627,15 @@ class SweBenchGenerationTask(GenerationTask):
             )
 
         search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
+        request_transform = None
+        if chat_template_kwargs:
+            request_transform = partial(transform_claude_code_request, chat_template_kwargs=chat_template_kwargs)
         patch_file = await self._execute_agent_command_with_capture(
             data_point,
             build_claude_code_command,
             search_path,
             served_model_name=served_model_name,
+            request_transform=request_transform,
         )
 
         with open(patch_file, "r") as f:

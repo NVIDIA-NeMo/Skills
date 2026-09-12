@@ -17,6 +17,7 @@ import pytest
 from nemo_skills.inference.eval.swebench import (
     build_claude_code_settings,
     get_claude_code_api_base,
+    transform_claude_code_request,
 )
 
 
@@ -95,3 +96,69 @@ def test_build_claude_code_settings_rejects_invalid_effort():
             context_window=262144,
             effort="extreme",
         )
+
+
+def test_build_claude_code_settings_disables_thinking_and_suppresses_effort():
+    settings = build_claude_code_settings(
+        {
+            "env": {
+                "MAX_THINKING_TOKENS": "16000",
+                "CLAUDE_CODE_EFFORT_LEVEL": "high",
+                "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT": "1",
+            }
+        },
+        api_base="http://localhost:8000/v1",
+        model="qwen",
+        context_window=262144,
+        effort="xhigh",
+        disable_thinking=True,
+    )
+
+    assert settings["env"]["MAX_THINKING_TOKENS"] == "0"
+    assert "CLAUDE_CODE_EFFORT_LEVEL" not in settings["env"]
+    assert "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT" not in settings["env"]
+
+
+def test_transform_claude_code_request_disables_thinking_and_preserves_other_output_config():
+    request = {
+        "model": "qwen",
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "high", "format": {"type": "json_schema"}},
+        "chat_template_kwargs": {
+            "custom_option": True,
+            "enable_thinking": True,
+            "reasoning_effort": "high",
+        },
+    }
+
+    transformed = transform_claude_code_request(
+        request,
+        {
+            "enable_thinking": False,
+            "preserve_thinking": False,
+            "reasoning_effort": "xhigh",
+        },
+    )
+
+    assert transformed["chat_template_kwargs"] == {
+        "custom_option": True,
+        "enable_thinking": False,
+        "preserve_thinking": False,
+    }
+    assert "thinking" not in transformed
+    assert transformed["output_config"] == {"format": {"type": "json_schema"}}
+    assert request["thinking"] == {"type": "adaptive"}
+    assert request["output_config"]["effort"] == "high"
+
+
+def test_transform_claude_code_request_preserves_thinking_when_enabled():
+    request = {
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "medium"},
+    }
+
+    transformed = transform_claude_code_request(request, {"enable_thinking": True})
+
+    assert transformed["thinking"] == {"type": "adaptive"}
+    assert transformed["output_config"]["effort"] == "medium"
+    assert transformed["chat_template_kwargs"] == {"enable_thinking": True}

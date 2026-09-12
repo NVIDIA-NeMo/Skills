@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import ssl
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -36,12 +37,14 @@ class FirstRequestCaptureProxy:
         output_file: Path,
         *,
         served_model_name: str | None = None,
+        request_transform: Callable[[dict], dict] | None = None,
     ):
         self.upstream = urlsplit(upstream_base_url)
         if self.upstream.scheme not in {"http", "https"} or not self.upstream.hostname:
             raise ValueError(f"Unsupported upstream URL: {upstream_base_url}")
         self.output_file = output_file
         self.served_model_name = served_model_name
+        self.request_transform = request_transform
         self.server: asyncio.AbstractServer | None = None
         self._capture_lock = asyncio.Lock()
         self._captured = False
@@ -87,6 +90,10 @@ class FirstRequestCaptureProxy:
         # Any edits to the request body go here.
         if self.served_model_name is not None:
             request["model"] = self.served_model_name
+        if self.request_transform is not None:
+            request = self.request_transform(request)
+            if not isinstance(request, dict):
+                raise ValueError("Request transform must return a dictionary.")
 
         return json.dumps(request, ensure_ascii=False).encode()
 
@@ -180,12 +187,14 @@ async def capture_first_llm_request(
     output_file: Path,
     *,
     served_model_name: str | None = None,
+    request_transform: Callable[[dict], dict] | None = None,
 ):
     """Yield a local proxy URL and close all proxy resources afterward."""
     proxy = FirstRequestCaptureProxy(
         upstream_base_url,
         output_file,
         served_model_name=served_model_name,
+        request_transform=request_transform,
     )
     proxy_base_url = await proxy.start()
     try:
