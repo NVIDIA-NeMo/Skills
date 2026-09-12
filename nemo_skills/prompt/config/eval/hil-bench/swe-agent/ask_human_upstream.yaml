@@ -1,0 +1,112 @@
+# HIL-Bench SWE agent config for ask_human mode, matched to the UPSTREAM HiL-Bench repo
+# policy config (configs/swe/ask_config_qwen3_30b_a3b_instruct_2507.yaml).
+#
+# This is a copy of ask_human.yaml with three deliberate changes so the agent-side
+# (SWE-agent) policy configuration matches upstream exactly:
+#   1. agent.model.max_input_tokens: 96000   (upstream value; ask_human.yaml uses 0)
+#   2. agent.model.top_p: null               (upstream value; honored because
+#      nemo_skills.inference.eval.hilbench omits the --agent.model.top_p CLI flag
+#      when ++inference.top_p=null)
+#   3. agent.history_processors: cache_control / last_n_messages: 2
+#      (upstream enables prompt-cache control on the last 2 messages; ask_human.yaml
+#      leaves history_processors empty)
+#
+# parse_function.type=function_calling already matches upstream.
+#
+# As with ask_human.yaml, nemo_skills.inference.eval.hilbench writes a per-instance copy
+# that injects, into agent.tools.env_variables:
+#   - TASK_INSTANCE_ID=<instance_id>
+#   - ASK_HUMAN_SERVER_URL=http://127.0.0.1:<port>/ask
+
+agent:
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks.
+
+      A human expert is available via the ask_human tool to answer questions about the implementation requirements. You **must** do the following:
+      - First understand the problem given to you.
+      - Then think about what missing pieces of information, ambiguities, or contradictions are present in the problem - i.e. the blockers you need resolved before you can implement correctly.
+      - Then ask the human expert for clarification on these topics. Do NOT make assumptions or guesses, you MUST ASK!
+
+      **Do not jump into implementation until you have all the information and clarification you need.**
+
+      Rules for using the ask_human tool:
+      - Submit only ONE clear, specific question at a time, targeting one specific detail. Never ask multiple questions in one tool call.
+      - If the expert deems your question irrelevant but you believe it's a necessary clarification, try rewording or narrowing it. An "irrelevant question" response can also mean your question was too vague or contained more than one topic.
+      - Always integrate previous expert answers into your problem solving so you can unblock yourself or ask precise follow-up questions.
+    instance_template: |-
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+      I've uploaded a code repository in the directory {{working_dir}}. Consider the following PR description:
+
+      <pr_description>
+      {{problem_statement}}
+      </pr_description>
+
+      Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?
+      I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!
+      Your task is to make the minimal changes to non-tests files in the {{working_dir}} directory to ensure the <pr_description> is satisfied. **Do not make changes for anything that isn't explicitly or implicitly requested in the <pr_description>.**
+
+      Remember: the PR description deliberately omits or obscures some details. When you hit such a blocker, use the ask_human tool instead of guessing.
+    next_step_template: |-
+      OBSERVATION:
+      {{observation}}
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output.
+  tools:
+    # First ask_human call may block while the CPU broker cold-starts the
+    # quantized Llama judge. Keep this below SWE-agent's patched 600s swerex
+    # HTTP timeout, and above the observed ~3.5 minute cold start.
+    execution_timeout: 600
+    env_variables:
+      PAGER: cat
+      MANPAGER: cat
+      LESS: -R
+      PIP_PROGRESS_BAR: 'off'
+      TQDM_DISABLE: '1'
+      GIT_PAGER: cat
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      # TASK_INSTANCE_ID and ASK_HUMAN_SERVER_URL are injected per-instance by the module.
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/review_on_submit_m
+      - path: tools/ask_human
+    registry_variables:
+      USE_FILEMAP: 'true'
+      SUBMIT_REVIEW_MESSAGES:
+        - |
+          Thank you for your work on this issue. Please carefully follow the steps below to help review your changes.
+
+          1. If you made any changes to your code after running the reproduction script, please run the reproduction script again.
+            If the reproduction script is failing, please revisit your changes and make sure they are correct.
+            If you have already removed your reproduction script, please ignore this step.
+          2. Remove your reproduction script (if you haven't done so already).
+          3. If you have modified any TEST files, please revert them to the state they had before you started fixing the issue.
+            You can do this with `git checkout -- /path/to/test/file.py`. Use below <diff> to find the files you need to revert.
+          4. Run the submit command again to confirm.
+
+          Here is a list of all of your changes:
+
+          <diff>
+          {{diff}}
+          </diff>
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+  # Upstream enables prompt cache-control on the last 2 messages.
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
+  model:
+    # name, api_base, temperature, completion_kwargs, per_instance_call_limit are
+    # overridden by Nemo-Skills at run time. top_p is overridden ONLY when
+    # ++inference.top_p is not null; with ++inference.top_p=null the CLI flag is
+    # omitted and this null value (matching upstream) is used.
+    top_p: null
+    per_instance_cost_limit: 0
+    total_cost_limit: 0
+    max_input_tokens: 96000
+    max_output_tokens: 0

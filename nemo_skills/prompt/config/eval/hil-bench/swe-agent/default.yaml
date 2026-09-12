@@ -1,0 +1,90 @@
+# HIL-Bench SWE agent config for baseline and full_info modes.
+#
+# This mirrors the SWE task scaffold used by ask_human mode but does not expose
+# the ask_human tool. The generation module appends blocker resolutions to the
+# problem statement itself when mode=full_info.
+
+agent:
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks.
+    instance_template: |-
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+      I've uploaded a code repository in the directory {{working_dir}}. Consider the following PR description:
+
+      <pr_description>
+      {{problem_statement}}
+      </pr_description>
+
+      Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?
+      I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!
+      Your task is to make the minimal changes to non-tests files in the {{working_dir}} directory to ensure the <pr_description> is satisfied. **Do not make changes for anything that isn't explicitly or implicitly requested in the <pr_description>.**
+
+      Explore the codebase only as much as you need to understand the problem; prioritize actually implementing and testing your changes. Think about edge cases and make sure your changes handle them as well.
+
+      If you encounter trouble using any tool, find alternative ways to achieve the same goal, e.g. different tool arguments, a set of different tools, etc.
+    next_step_template: |-
+      OBSERVATION:
+      {{observation}}
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output.
+  tools:
+    env_variables:
+      PAGER: cat
+      MANPAGER: cat
+      LESS: -R
+      PIP_PROGRESS_BAR: 'off'
+      TQDM_DISABLE: '1'
+      GIT_PAGER: cat
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/review_on_submit_m
+    registry_variables:
+      USE_FILEMAP: 'true'
+      SUBMIT_REVIEW_MESSAGES:
+        - |
+          Thank you for your work on this issue. Please carefully follow the two phases below to help review your changes.
+
+          PHASE 1 - Sanity checks:
+          1. Before finalizing the patch, do a completeness pass over all modified files and affected call sites. Remove stale code paths, update dependent callers, and check that earlier/later call timing changes still satisfy the required internal state assumptions.
+          2. Go-specific additions (SKIP IF THE LANGUAGE IS NOT GO):
+          - Remove unused imports/variables.
+          - Update all stale call signatures and provider/wiring paths.
+          - Check early-call safety for contexts, pointers, maps, and singleton state.
+          3. Python-specific additions (SKIP IF THE LANGUAGE IS NOT PYTHON):
+          - Check for stale imports, attribute access, and fixture/patch interactions after refactors.
+          - Revisit initialization assumptions that are only validated at runtime.
+          4. TypeScript/JavaScript-specific additions (SKIP IF THE LANGUAGE IS NOT TYPESCRIPT/JAVASCRIPT):
+          - Check stale imports/exports and named/default export mismatches.
+          - Revisit async initialization, promise timing, and runtime undefined-state handling.
+
+          PHASE 2 - Cleanup:
+          1. If you have a reproduction script on hand and made changes to the code, please run the reproduction script again.
+            If the reproduction script is failing, please revisit your changes and make sure they are correct.
+            If you didn't create a reproduction script or already removed it, please ignore this step. **Do not make a new reproduction script here.**
+          2. Remove your reproduction script (if you made one and haven't done so already).
+          3. If you have modified any TEST files, please revert them to the state they had before you started fixing the issue.
+            You can do this with `git checkout -- /path/to/test/file`. Use below <diff> to find the files you need to revert.
+          4. Run the submit command again to confirm.
+
+          Here is a list of all of your changes:
+
+          <diff>
+          {{diff}}
+          </diff>
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+  history_processors: []
+  model:
+    # The following parameters are overridden by Nemo-Skills:
+    # name, api_base, temperature, top_p, completion_kwargs, per_instance_call_limit.
+    per_instance_cost_limit: 0
+    total_cost_limit: 0
+    max_input_tokens: 0
+    max_output_tokens: 0

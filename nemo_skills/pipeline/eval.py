@@ -259,6 +259,20 @@ def eval(
         "Can provide a list directly when using through Python",
     ),
     partition: str = typer.Option(None, help="Cluster partition to use"),
+    client_partition: str = typer.Option(
+        None,
+        help="Partition for the eval CLIENT (chunk) jobs when using a pre-hosted server. By "
+        "default client jobs run on cluster_config['cpu_partition'] with 0 GPUs. Set this "
+        "(together with --client_gpus) to instead place each chunk on a GPU partition -- useful "
+        "to escape a restrictive cpu QOS by requesting a token GPU per chunk. The value must "
+        "match a key in the cluster config 'timeouts' so the walltime is resolved correctly.",
+    ),
+    client_gpus: int = typer.Option(
+        None,
+        help="GPUs to request per eval CLIENT (chunk) job (pre-hosted server only). Defaults to 0 "
+        "(CPU-only client on cpu_partition). Set to 1 to request a token GPU per chunk so chunks "
+        "land on a GPU partition (see --client_partition) instead of competing for cpu-QOS nodes.",
+    ),
     account: str = typer.Option(None, help="Can specify a non-default Slurm account"),
     qos: str = typer.Option(None, help="Specify Slurm QoS, e.g. to request interactive nodes"),
     time_min: str = typer.Option(None, help="If specified, will use as a time-min slurm parameter"),
@@ -587,29 +601,41 @@ def eval(
                 installation_command=installation_command,
             )
 
-            # Build groups: group0 = (optional server0) + (optional sandbox) + client
+            # Build groups. When a hosted server is present, keep it in a dedicated
+            # heterogeneous group so the server srun owns the requested GPUs. If the
+            # CPU client shares the same non-heterogeneous group, Slurm can expose a
+            # partial GPU set to the server step even though the allocation has enough
+            # GPUs, which breaks tensor-parallel vLLM starts.
             groups = []
-
-            group0_components = []
             group0_server = server_scripts[0] if server_scripts else None
-            group_gpus = 0
-            group_nodes = 1
-            group_tasks = 1
 
             if group0_server is not None:
-                group0_components.append(
-                    Command(
-                        script=group0_server,
-                        container=server_containers_list[0] or cluster_config["containers"][server_types_list[0]],
-                        name=f"{task_name}_model_0_server",
+                groups.append(
+                    CommandGroup(
+                        commands=[
+                            Command(
+                                script=group0_server,
+                                container=server_containers_list[0] or cluster_config["containers"][server_types_list[0]],
+                                name=f"{task_name}_model_0_server",
+                            )
+                        ],
+                        hardware=HardwareConfig(
+                            partition=partition,
+                            account=account,
+                            num_gpus=int(server_gpus_list[0]),
+                            num_nodes=int(server_nodes_list[0]),
+                            num_tasks=int(group0_server.num_tasks),
+                            sbatch_kwargs=sbatch_kwargs,
+                        ),
+                        name=f"{task_name}_model_0_group",
+                        log_dir=log_dir,
                     )
                 )
-                group_gpus = int(server_gpus_list[0])
-                group_nodes = int(server_nodes_list[0])
-                group_tasks = int(group0_server.num_tasks)
+
+            client_components = []
 
             if sandbox_script is not None:
-                group0_components.append(
+                client_components.append(
                     Command(
                         script=sandbox_script,
                         container=sandbox_container or cluster_config["containers"]["sandbox"],
@@ -618,7 +644,7 @@ def eval(
                     )
                 )
 
-            group0_components.append(
+            client_components.append(
                 Command(
                     script=client_script,
                     container=main_container or cluster_config["containers"]["nemo-skills"],
@@ -626,18 +652,28 @@ def eval(
                 )
             )
 
+            # Eval client (chunk) hardware. By default a CPU-only job on cpu_partition. When
+            # --client_gpus>0 (with --client_partition), each chunk instead requests a token GPU
+            # and lands on a GPU partition: this dodges a restrictive cpu QOS (e.g. a 2-node cap)
+            # by riding the GPU partition's quota. The gpus>0 path in get_executor keeps the job
+            # non-exclusive, so each chunk gets the cluster's DefCpuPerGPU/DefMemPerGPU share.
+            client_num_gpus = int(client_gpus or 0)
+            if client_num_gpus > 0:
+                client_group_partition = client_partition or partition or cluster_config.get("partition")
+            else:
+                client_group_partition = client_partition or cluster_config.get("cpu_partition") or partition
             groups.append(
                 CommandGroup(
-                    commands=group0_components,
+                    commands=client_components,
                     hardware=HardwareConfig(
-                        partition=partition,
+                        partition=client_group_partition,
                         account=account,
-                        num_gpus=group_gpus,
-                        num_nodes=group_nodes,
-                        num_tasks=group_tasks,
+                        num_gpus=client_num_gpus,
+                        num_nodes=1,
+                        num_tasks=1,
                         sbatch_kwargs=sbatch_kwargs,
                     ),
-                    name=f"{task_name}_group0",
+                    name=f"{task_name}_client_group",
                     log_dir=log_dir,
                 )
             )

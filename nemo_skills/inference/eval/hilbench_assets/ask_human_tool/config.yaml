@@ -1,0 +1,9 @@
+tools:
+  ask_human:
+    signature: "ask_human <question>"
+    docstring: "Ask a specific question about implementation details when facing uncertainty. Returns guidance for known blockers or 'irrelevant question' if no match. Use only for targeted, well-formed questions about one topic at a time."
+    arguments:
+      - name: question
+        type: string
+        description: "A single, specific, well-formed question about a coding challenge or implementation detail."
+        required: true
