@@ -34,12 +34,13 @@ import json
 import re
 
 from bfcl_eval.constants.type_mappings import GORILLA_TO_OPENAPI
+from bfcl_eval.utils import is_java, is_js
 
 
 def _get_language_specific_hint(test_category):
-    if test_category == "java":
+    if is_java(test_category):
         return " Note that the provided function is in Java 8 SDK syntax."
-    elif test_category == "javascript":
+    elif is_js(test_category):
         return " Note that the provided function is in JavaScript syntax."
     else:
         return " Note that the provided function is in Python 3 syntax."
@@ -55,7 +56,7 @@ def func_doc_language_specific_pre_processing(function, test_category):
         item["description"] = item["description"] + _get_language_specific_hint(test_category)
         # Process the parameters
         properties = item["parameters"]["properties"]
-        if test_category == "java":
+        if is_java(test_category):
             for key, value in properties.items():
                 if value["type"] == "any":
                     properties[key]["description"] += (
@@ -71,7 +72,7 @@ def func_doc_language_specific_pre_processing(function, test_category):
 
                 value["type"] = "string"
 
-        elif test_category == "javascript":
+        elif is_js(test_category):
             for key, value in properties.items():
                 if value["type"] == "any":
                     properties[key]["description"] += (
