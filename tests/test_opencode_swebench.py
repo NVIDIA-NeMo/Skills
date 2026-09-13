@@ -31,15 +31,17 @@ def _run(command, cwd):
     return subprocess.run(command, cwd=cwd, check=True, capture_output=True, text=True)
 
 
-def test_clean_patch_commands_exclude_preexisting_untracked_files(tmp_path):
+def test_clean_patch_commands_exclude_preexisting_worktree_changes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _run(["git", "init"], repo)
     _run(["git", "config", "user.email", "test@example.com"], repo)
     _run(["git", "config", "user.name", "Test"], repo)
     (repo / "tracked.py").write_text("before\n")
-    _run(["git", "add", "tracked.py"], repo)
+    (repo / "environment.lock").write_text("original\n")
+    _run(["git", "add", "tracked.py", "environment.lock"], repo)
     _run(["git", "commit", "-m", "initial"], repo)
+    (repo / "environment.lock").write_text("changed by environment setup\n")
     (repo / "go.tar.gz").write_bytes(b"environment artifact")
 
     patch_path = tmp_path / "model.patch"
@@ -55,6 +57,7 @@ def test_clean_patch_commands_exclude_preexisting_untracked_files(tmp_path):
     patch = patch_path.read_text()
     assert "tracked.py" in patch
     assert "new.py" in patch
+    assert "environment.lock" not in patch
     assert "go.tar.gz" not in patch
     assert _run(["git", "diff", "--cached", "--quiet"], repo).returncode == 0
 

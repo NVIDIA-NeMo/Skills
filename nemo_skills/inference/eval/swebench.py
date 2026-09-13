@@ -209,24 +209,28 @@ def transform_claude_code_request(request: dict, chat_template_kwargs: dict) -> 
 
 
 def build_clean_patch_commands(patch_path: str) -> tuple[str, str]:
-    """Build shell commands that exclude files untracked before an agent run."""
+    """Build shell commands that diff against the working state before an agent run."""
     setup = (
         "PATCH_START_COMMIT=$(git rev-parse HEAD) && "
-        'git diff --quiet "$PATCH_START_COMMIT" -- && '
-        'git diff --cached --quiet "$PATCH_START_COMMIT" -- && '
+        "PATCH_BASE_INDEX=$(mktemp /tmp/nemo-base-index.XXXXXX) && "
+        'rm -f "$PATCH_BASE_INDEX" && '
+        'GIT_INDEX_FILE="$PATCH_BASE_INDEX" git read-tree "$PATCH_START_COMMIT" && '
+        'GIT_INDEX_FILE="$PATCH_BASE_INDEX" git add -u && '
+        'PATCH_BASE_TREE=$(GIT_INDEX_FILE="$PATCH_BASE_INDEX" git write-tree) && '
+        'rm -f "$PATCH_BASE_INDEX" && '
         "PATCH_BASE_UNTRACKED=$(mktemp /tmp/nemo-preexisting-untracked.XXXXXX) && "
         'git ls-files --others --exclude-standard -z >"$PATCH_BASE_UNTRACKED"'
     )
     collect = (
         "PATCH_INDEX=$(mktemp /tmp/nemo-patch-index.XXXXXX) && "
         'rm -f "$PATCH_INDEX" && '
-        'GIT_INDEX_FILE="$PATCH_INDEX" git read-tree "$PATCH_START_COMMIT" && '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git read-tree "$PATCH_BASE_TREE" && '
         'GIT_INDEX_FILE="$PATCH_INDEX" git add -A && '
         'if [ -s "$PATCH_BASE_UNTRACKED" ]; then '
-        'GIT_INDEX_FILE="$PATCH_INDEX" git reset -q "$PATCH_START_COMMIT" '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git reset -q "$PATCH_BASE_TREE" '
         '--pathspec-from-file="$PATCH_BASE_UNTRACKED" --pathspec-file-nul; '
         "fi && "
-        'GIT_INDEX_FILE="$PATCH_INDEX" git diff --binary --cached "$PATCH_START_COMMIT" -- '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git diff --binary --cached "$PATCH_BASE_TREE" -- '
         f">{shlex.quote(patch_path)} && "
         'rm -f "$PATCH_INDEX" "$PATCH_BASE_UNTRACKED"'
     )
