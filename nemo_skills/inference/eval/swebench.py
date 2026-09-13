@@ -208,6 +208,31 @@ def transform_claude_code_request(request: dict, chat_template_kwargs: dict) -> 
     return request
 
 
+def build_clean_patch_commands(patch_path: str) -> tuple[str, str]:
+    """Build shell commands that exclude files untracked before an agent run."""
+    setup = (
+        "PATCH_START_COMMIT=$(git rev-parse HEAD) && "
+        'git diff --quiet "$PATCH_START_COMMIT" -- && '
+        'git diff --cached --quiet "$PATCH_START_COMMIT" -- && '
+        "PATCH_BASE_UNTRACKED=$(mktemp /tmp/nemo-preexisting-untracked.XXXXXX) && "
+        'git ls-files --others --exclude-standard -z >"$PATCH_BASE_UNTRACKED"'
+    )
+    collect = (
+        "PATCH_INDEX=$(mktemp /tmp/nemo-patch-index.XXXXXX) && "
+        'rm -f "$PATCH_INDEX" && '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git read-tree "$PATCH_START_COMMIT" && '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git add -A && '
+        'if [ -s "$PATCH_BASE_UNTRACKED" ]; then '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git reset -q "$PATCH_START_COMMIT" '
+        '--pathspec-from-file="$PATCH_BASE_UNTRACKED" --pathspec-file-nul; '
+        "fi && "
+        'GIT_INDEX_FILE="$PATCH_INDEX" git diff --binary --cached "$PATCH_START_COMMIT" -- '
+        f">{shlex.quote(patch_path)} && "
+        'rm -f "$PATCH_INDEX" "$PATCH_BASE_UNTRACKED"'
+    )
+    return setup, collect
+
+
 def build_opencode_config(
     agent_config: dict,
     api_base: str,
@@ -1488,6 +1513,7 @@ class SweBenchGenerationTask(GenerationTask):
                 tokens_to_generate=output_token_max,
             )
             config_json = json.dumps(opencode_config)
+            patch_setup, patch_collect = build_clean_patch_commands(f"{trajectory_dir}/model.patch")
             return (
                 "export PATH=/root_mount/node/bin:$PATH && "
                 "export HOME=/root && "
@@ -1505,9 +1531,9 @@ class SweBenchGenerationTask(GenerationTask):
                 "git config --global --add safe.directory /testbed && "
                 "git config --global user.email opencode@nemo-skills.local && "
                 "git config --global user.name OpenCode && "
-                "START_COMMIT=$(git rev-parse HEAD) && "
                 f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
                 'mkdir -p "$TRAJECTORY_DIR" && '
+                f"{patch_setup} && "
                 f"opencode --model={shlex.quote(model_arg)} run --format=json "
                 f"--thinking --dangerously-skip-permissions -- {shlex.quote(instruction)} "
                 '</dev/null >"$TRAJECTORY_DIR/opencode.txt" 2>"$TRAJECTORY_DIR/opencode.stderr.log" && '
@@ -1525,8 +1551,7 @@ class SweBenchGenerationTask(GenerationTask):
                 '    echo "Warning: no OpenCode session ID found in stdout" '
                 '        >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
                 "fi && "
-                "git add -A && "
-                'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"'
+                f"{patch_collect}"
             )
 
         search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
@@ -1608,6 +1633,7 @@ class SweBenchGenerationTask(GenerationTask):
                 disable_thinking=disable_thinking,
             )
             settings_json = json.dumps(settings)
+            patch_setup, patch_collect = build_clean_patch_commands(f"{trajectory_dir}/model.patch")
             return (
                 "export PATH=/root_mount/node/bin:$PATH && "
                 "export HOME=/root && "
@@ -1617,9 +1643,9 @@ class SweBenchGenerationTask(GenerationTask):
                 "git config --global --add safe.directory /testbed && "
                 "git config --global user.email claude-code@nemo-skills.local && "
                 "git config --global user.name 'Claude Code' && "
-                "START_COMMIT=$(git rev-parse HEAD) && "
                 f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
                 'mkdir -p "$TRAJECTORY_DIR" && '
+                f"{patch_setup} && "
                 "{ set +e; "
                 f"claude --bare -p {shlex.quote(instruction)} "
                 f"--model {shlex.quote(claude_model_name)} "
@@ -1637,8 +1663,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "CLAUDE_EXIT_CODE=$?; "
                 "set -e; "
                 'printf "%s\\n" "$CLAUDE_EXIT_CODE" >"$TRAJECTORY_DIR/claude-code.exit-code"; '
-                "git add -A; "
-                'git diff --binary --cached "$START_COMMIT" >"$TRAJECTORY_DIR/model.patch"; }'
+                f"{patch_collect}; }}"
             )
 
         search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")

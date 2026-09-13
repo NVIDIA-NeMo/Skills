@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import subprocess
 from types import SimpleNamespace
 
 from nemo_skills.inference.eval.swebench import (
@@ -20,9 +21,42 @@ from nemo_skills.inference.eval.swebench import (
     SupportedAgentFrameworks,
     SweBenchGenerationTask,
     append_agent_prompt,
+    build_clean_patch_commands,
     build_direct_agent_user_prompt,
     build_opencode_config,
 )
+
+
+def _run(command, cwd):
+    return subprocess.run(command, cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def test_clean_patch_commands_exclude_preexisting_untracked_files(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(["git", "init"], repo)
+    _run(["git", "config", "user.email", "test@example.com"], repo)
+    _run(["git", "config", "user.name", "Test"], repo)
+    (repo / "tracked.py").write_text("before\n")
+    _run(["git", "add", "tracked.py"], repo)
+    _run(["git", "commit", "-m", "initial"], repo)
+    (repo / "go.tar.gz").write_bytes(b"environment artifact")
+
+    patch_path = tmp_path / "model.patch"
+    setup, collect = build_clean_patch_commands(str(patch_path))
+    subprocess.run(
+        f"{setup} && printf 'after\\n' >tracked.py && printf 'new\\n' >new.py && {collect}",
+        cwd=repo,
+        check=True,
+        executable="/bin/bash",
+        shell=True,
+    )
+
+    patch = patch_path.read_text()
+    assert "tracked.py" in patch
+    assert "new.py" in patch
+    assert "go.tar.gz" not in patch
+    assert _run(["git", "diff", "--cached", "--quiet"], repo).returncode == 0
 
 
 def test_build_opencode_config_points_at_local_openai_server():
