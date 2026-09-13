@@ -15,6 +15,7 @@
 import asyncio
 import copy
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -982,9 +983,19 @@ class SweBenchGenerationTask(GenerationTask):
             "type=bind,src=/root,dst=/root_mount,ro",
             f"type=bind,src={self.output_dir},dst=/trajectories_mount",
         ]
-        if mode == "eval" or self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+        if mode == "eval":
             mounts.append(f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro")
         return mounts
+
+    def _write_openhands_rollout_input(self, data_point: dict) -> tuple[Path, str]:
+        """Write one JSONL record for an OpenHands rollout into the mounted output directory."""
+        instance_token = hashlib.sha256(str(data_point["instance_id"]).encode()).hexdigest()[:20]
+        input_dir = self.output_dir / ".openhands_inputs"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        host_path = input_dir / f"{instance_token}.jsonl"
+        host_path.write_text(json.dumps(data_point, ensure_ascii=False) + "\n", encoding="utf-8")
+        container_path = f"/trajectories_mount/.openhands_inputs/{host_path.name}"
+        return host_path, container_path
 
     async def _run_agent(self, data_point) -> str:
         """
@@ -1279,10 +1290,11 @@ class SweBenchGenerationTask(GenerationTask):
 
         config_str = tomlkit.dumps(config)
 
-        # Folder to copy the dataset into.
+        # Folder to copy the rollout record into.
         # It's important that the name includes the original HF dataset name,
         # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
         data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
+        rollout_input_path, rollout_input_container_path = self._write_openhands_rollout_input(data_point)
 
         # The final 2 arguments are different between the swe_bench and multi_swe_bench scripts.
         # We handle that with extra_args.
@@ -1336,9 +1348,9 @@ class SweBenchGenerationTask(GenerationTask):
             "ln -sf /root/jq/jq /usr/local/bin/jq && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
-            # copy dataset
+            # copy only the current rollout record
             f"mkdir {data_dir} && "
-            f"cp /input_mount/{Path(self.cfg.input_file).name} {data_dir}/dataset.jsonl && "
+            f"cp {shlex.quote(rollout_input_container_path)} {data_dir}/dataset.jsonl && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
             f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
@@ -1362,7 +1374,10 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Execute OpenHands command
         search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
-        out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
+        try:
+            out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
+        finally:
+            rollout_input_path.unlink(missing_ok=True)
 
         with open(out_file, "r") as f:
             out_dict = json.loads(f.read().strip())
