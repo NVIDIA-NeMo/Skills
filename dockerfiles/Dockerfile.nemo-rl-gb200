@@ -136,6 +136,7 @@ ENV UV_LINK_MODE=copy
 # Ensure DeepEP is built for H100 and B200 (also mcore inference unified memory API now invokes a torch API that requires these to be set)
 # GB200 / Blackwell. Build with --platform=linux/arm64 for Grace-based GB200 nodes.
 ENV TORCH_CUDA_ARCH_LIST="10.0"
+ENV NVTE_CUDA_ARCHS="100"
 
 # Ensure HybridEP/DeepEP JIT compilation can find nvcc at runtime
 ENV CUDA_HOME=/usr/local/cuda
