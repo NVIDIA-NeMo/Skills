@@ -1,7 +1,7 @@
 # Nemotron-IMO-TTS
 
 Nemotron-IMO-TTS is the natural-language proof pipeline that scored 30 of 42 points at IMO 2026, released with
-the report [*An Open Recipe for IMO Gold: Training Nemotron for Olympiad Mathematics*](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/nemotron-imo-tts/paper.pdf).
+the report [*An Open Recipe for IMO Gold: Training Nemotron for Olympiad Mathematics*](https://arxiv.org/abs/2609.10712).
 Three Nemotron 3 Ultra
 checkpoints (the general-availability model and the released RL and SFT specialists) generate candidate proofs
 from eight complementary prompts, a two-checkpoint verifier panel scores every candidate and writes critiques,

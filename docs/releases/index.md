@@ -22,6 +22,8 @@ On this page you can find a list of papers, model and dataset releases that were
 
 ## Papers
 
+* [An Open Recipe for IMO Gold: Training Nemotron for Olympiad Mathematics](https://arxiv.org/abs/2609.10712){:target="_blank"} (2026)
+
 * [Nemotron-Math: Efficient Long-Context Distillation of Mathematical Reasoning from Multi-Mode Supervision](https://arxiv.org/abs/2512.15489){:target="_blank"} (2025)
 
 * [Scaling Generative Verifiers For Natural Language Mathematical Proof Verification And Selection](https://arxiv.org/abs/2511.13027){:target="_blank"} (2025)
