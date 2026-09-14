@@ -789,3 +789,78 @@ Output:
     st/test.jsonl    # one record per (src→tgt, audio) for translation
     audio/<locale>/...wav
 ```
+
+## CS-FLEURS
+
+[CS-FLEURS](https://huggingface.co/datasets/byan/cs-fleurs) ([paper](https://arxiv.org/abs/2509.14161)) is a massively multilingual *code-switched* extension of FLEURS, covering 52 languages and 113 code-switched language pairs. Each utterance is built with a Matrix language (grammatical frame) and an Embedded language (inserted words), so the reference transcription mixes two languages — and often two scripts — in one sentence.
+
+**Subtasks (ASR only):** one per test set — `cs-fleurs.read` (14 X-English pairs, human-read & human-validated; the paper's intended benchmark), `cs-fleurs.mms` (45 X-English pairs, concatenative MMS-TTS), `cs-fleurs.xtts-test1` (16 X-English pairs, generative XTTS-v2), `cs-fleurs.xtts-test2` (60 language pairs, generative XTTS-v2).
+
+**Splits:** `test`
+
+**Scoring — Mixed Error Rate (MER).** Because each utterance mixes two scripts, a single per-utterance CER-or-WER choice mis-scores it (e.g. whole-utterance CER over a `cmn-eng` sentence scores the embedded English at the character level). Instead, records set `use_mer=true` and the audio evaluator computes a Mixed Error Rate: scriptio-continua scripts (Han / kana / Hangul / Thai / Lao / Myanmar / Khmer) are counted by character and space-delimited scripts (e.g. Latin) by word, within the same utterance, then scored with the standard word-level edit distance. This matches the standard MER used for Mandarin-English code-switching (e.g. SEAME). The mixed figure is reported in the headline `wer*` column. `subset_for_metrics` is the code-switched pair (e.g. `ara-eng`), giving a per-pair breakdown; the group score module adds a per-test-set and overall entry-weighted figure. MER only affects CS-FLEURS — it is gated behind `use_mer`, which monolingual benchmarks (including `fleurs`) never set, so their CER/WER behavior is unchanged.
+
+In addition, a parallel **CER** column (`cer*`) is emitted for direct comparison with the [CS-FLEURS paper](https://arxiv.org/abs/2509.14161), which reports *"case insensitive and unpunctuated character error rate"*. So each pair gets both a code-switching-aware MER (`wer*`) and a paper-comparable CER (`cer*`); see the note below for how the normalization keeps them faithful.
+
+!!! note "Combining marks (Thai/Myanmar vowels & tones) are preserved for CS-FLEURS"
+    The shared `multilingual` normalization removes Unicode combining marks (category `Mn`, and turns `Mc` into spaces) as "diacritics" — correct for Latin accents, but it **destroys meaning-bearing vowel and tone marks in Thai/Myanmar** (e.g. `ที่` → `ท`). CS-FLEURS opts out of this so both metrics score those marks:
+
+    - **MER (`wer*`)** uses `multilingual` normalization with the `preserve_marks` option (marks kept, `num2words` and other steps retained); `mer_grapheme` grapheme-clustering is therefore effective for Thai/Myanmar.
+    - **CER (`cer*`)** uses `lower_nopunct` (lowercase + unpunctuated, marks kept) plus `strip_whitespace` (spaces not counted), matching the paper's character-level CER.
+
+    Both are gated on `use_mer`, so **monolingual benchmarks (`fleurs`, `covost2`) are unchanged** — they keep the default mark-stripping. Whether that shared default should itself become script-aware (preserve `Mn`/`Mc` for abugida scripts everywhere, which would change `fleurs` numbers) is a separate upstream question, left to maintainer guidance.
+
+### Dataset Location
+
+- Benchmark group is defined in [`nemo_skills/dataset/cs-fleurs/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/cs-fleurs/__init__.py); per-subtask config lives in `cs-fleurs/<test-set>/__init__.py`.
+- Original dataset is hosted on [HuggingFace](https://huggingface.co/datasets/byan/cs-fleurs) (CC-BY-NC-4.0).
+
+### Preparing CS-FLEURS Data
+
+Audio is downloaded automatically from HuggingFace. A single `prepare_data cs-fleurs` run produces all four test sets at once. Pass the parent group name (`cs-fleurs`), not the dotted subtask names. Use `--subsets` to prepare only some test sets.
+
+```bash
+ns prepare_data cs-fleurs \
+    --data_dir /path/to/data \
+    --cluster <cluster_name> \
+    --subsets read mms xtts-test1 xtts-test2
+```
+
+Output:
+
+```text
+<data_dir>/cs-fleurs/
+    read/test.jsonl         # one ASR record per (pair, audio)
+    mms/test.jsonl
+    xtts-test1/test.jsonl
+    xtts-test2/test.jsonl
+    raw/<read|mms|xtts>/<split>/audio/<lang3>/...wav
+```
+
+### Baseline results
+
+Reference numbers from **Whisper `large-v3`** (an external multilingual ASR model, *not* a SpeechLM/SALM model), transcribing the full `cs-fleurs.read` subset (5,818 utterances, greedy decoding) and scored through this benchmark's evaluator. Both the code-switching-aware **MER** (`wer` column, mark-preserving) and the paper-comparable **CER** (`cer` column) are shown per language pair (`subset_for_metrics`). These are a sanity-check baseline, not a tuned result.
+
+Example output:
+
+```text
+------------------------------- cs-fleurs.read -------------------------------
+language_pair  | num_entries | mer   | cer
+ara-eng        | 989         | 32.57 | 23.54
+ces-eng        | 326         | 17.47 | 7.58
+cmn-eng        | 1321        | 17.15 | 15.14
+deu-eng        | 298         | 10.95 | 4.04
+fra-eng        | 307         | 19.74 | 11.03
+hin-eng        | 233         | 39.13 | 39.62
+ita-eng        | 176         | 12.28 | 5.19
+jpn-eng        | 196         | 42.82 | 34.44
+kor-eng        | 466         | 32.71 | 40.23
+por-eng        | 338         | 15.43 | 7.78
+rus-eng        | 337         | 22.53 | 18.01
+slk-eng        | 314         | 26.67 | 11.05
+spa-eng        | 320         | 9.79  | 4.87
+tel-eng        | 197         | 73.08 | 50.98
+overall        | 5818        | 24.51 | 17.72
+```
+
+Numbers track expected difficulty: low for high-resource European pairs (spa/deu/ita), higher for distinct-script or low-resource languages (tel/jpn/hin/kor). The overall `cer` shown is corpus-pooled (micro) = 17.72%; macro-averaged over the 14 pairs it is **19.54%**, matching the paper's ~19.8% read-test CER (residual gap: greedy vs beam decoding and inference stack). A SpeechLM model evaluated through the standard pipeline reports the same metrics.

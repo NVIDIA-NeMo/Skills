@@ -53,6 +53,7 @@ EXCLUDED_DATASETS = {
     "mrcr",
     "audiobench",
     "fleurs",
+    "cs-fleurs",  # code-switched ASR benchmark group, requires HF download
     "librispeech-pc",
     "musan",
     "numb3rs",

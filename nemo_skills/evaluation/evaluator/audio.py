@@ -96,6 +96,16 @@ def remove_symbols(s: str):
     return "".join(" " if unicodedata.category(c)[0] in "MSP" else c for c in unicodedata.normalize("NFKC", s))
 
 
+def remove_symbols_keep_marks(s: str):
+    """
+    Replace symbols and punctuation (categories S*, P*) with a space, but KEEP combining
+    marks (M*) and letters/numbers. For abugida scripts (Thai/Lao/Myanmar/Khmer/Indic),
+    the vowel and tone marks are meaning-bearing, unlike Latin diacritics, so they must
+    not be stripped. Uses NFC to keep precomposed forms intact.
+    """
+    return "".join(" " if unicodedata.category(c)[0] in "SP" else c for c in unicodedata.normalize("NFC", s))
+
+
 def normalize_compound_pairs(ref_text: str, pred_text: str) -> tuple[str, str]:
     """Normalize compound word boundaries between ref/pred pairs.
 
@@ -133,8 +143,14 @@ class MultilingualTextNormalizer:
     Pass lang= to also convert digits to words via num2words.
     """
 
-    def __init__(self, remove_diacritics: bool = True):
-        self.clean = remove_symbols_and_diacritics if remove_diacritics else remove_symbols
+    def __init__(self, remove_diacritics: bool = True, preserve_marks: bool = False):
+        # preserve_marks keeps combining marks (M*) — essential vowels/tones in abugida
+        # scripts — while still removing symbols/punctuation. Overrides remove_diacritics.
+        self.preserve_marks = preserve_marks
+        if preserve_marks:
+            self.clean = remove_symbols_keep_marks
+        else:
+            self.clean = remove_symbols_and_diacritics if remove_diacritics else remove_symbols
 
     def _normalize_numbers(self, text, lang):
         import num2words
@@ -157,8 +173,11 @@ class MultilingualTextNormalizer:
         s = re.sub(r"\(([^)]+?)\)", "", s)  # remove words between parenthesis
         s = self.clean(s).lower()
 
-        # Remove punctuations and extra spaces
-        s = re.sub(r"[^\w\s]", "", s)
+        # Remove punctuations and extra spaces. Skip the [^\w\s] strip when preserving
+        # marks (it would delete combining marks, which \w does not match); self.clean
+        # has already removed symbols/punctuation in that case.
+        if not self.preserve_marks:
+            s = re.sub(r"[^\w\s]", "", s)
         s = normalize_whitespace(s)
 
         if lang is not None:
@@ -239,6 +258,84 @@ def normalize_whitespace(text: str) -> str:
 def split_tokens(text: str) -> list[str]:
     """Split text into words and punctuation as separate tokens."""
     return re.findall(r"\w+|[^\w\s]", text)
+
+
+# Scriptio-continua scripts (no inter-word spaces) whose units are tokenized
+# individually for Mixed Error Rate, while space-delimited scripts (e.g. Latin)
+# keep their whitespace-delimited words. Covers every CER-style script that
+# occurs in CS-FLEURS plus the obvious siblings (Lao/Khmer).
+_CONTINUA_RANGES = (
+    "㐀-䶿"  # CJK Unified Ideographs Extension A
+    "一-鿿"  # CJK Unified Ideographs
+    "豈-﫿"  # CJK Compatibility Ideographs
+    "぀-ゟ"  # Hiragana
+    "゠-ヿ"  # Katakana
+    "ㇰ-ㇿ"  # Katakana Phonetic Extensions
+    "ᄀ-ᇿ"  # Hangul Jamo
+    "㄰-㆏"  # Hangul Compatibility Jamo
+    "가-힣"  # Hangul Syllables
+    "฀-๿"  # Thai
+    "຀-໿"  # Lao
+    "က-႟"  # Myanmar
+    "ꩠ-ꩿ"  # Myanmar Extended-A
+    "ក-៿"  # Khmer
+)
+_CONTINUA_RE = re.compile(f"[{_CONTINUA_RANGES}]")
+
+
+def _grapheme_clusters(text: str) -> list[str]:
+    """Group each base character with its trailing combining marks.
+
+    A lightweight, dependency-free grapheme segmentation: combining marks
+    (Unicode categories Mn/Mc/Me) attach to the preceding base. This keeps a
+    Thai/Myanmar consonant together with its vowel signs and tone marks, which
+    naive per-codepoint splitting would tear apart.
+    """
+    clusters: list[str] = []
+    for ch in text:
+        if clusters and unicodedata.category(ch) in ("Mn", "Mc", "Me"):
+            clusters[-1] += ch
+        else:
+            clusters.append(ch)
+    return clusters
+
+
+def mixed_segment(text: str, grapheme: bool = False) -> list[str]:
+    """Tokenize code-switched text for Mixed Error Rate (MER).
+
+    Each scriptio-continua unit (Han/kana/Hangul/Thai/Lao/Myanmar/Khmer) becomes
+    its own token; runs of space-delimited script (e.g. Latin) stay as their
+    whitespace-delimited words. The result, joined with spaces, can be scored
+    with the standard word-level edit distance so Mandarin is counted by
+    character and English by word in the same utterance.
+
+    Args:
+        text: Normalized transcription (normalize first, then segment).
+        grapheme: When True, scriptio-continua units are grapheme clusters
+            (base + combining marks) rather than single codepoints. Needed for
+            Thai/Myanmar to avoid splitting tone/vowel marks off their base;
+            unnecessary for Han/kana/Hangul (no combining marks). Default False
+            keeps per-codepoint counting, consistent with the evaluator's CER.
+    """
+    units = _grapheme_clusters(text) if grapheme else list(text)
+    tokens: list[str] = []
+    buffer: list[str] = []
+
+    def _flush():
+        if buffer:
+            tokens.append("".join(buffer))
+            buffer.clear()
+
+    for unit in units:
+        if unit[0].isspace():
+            _flush()
+        elif _CONTINUA_RE.match(unit[0]):
+            _flush()
+            tokens.append(unit)
+        else:
+            buffer.append(unit)
+    _flush()
+    return tokens
 
 
 def extract_punctuation(text: str) -> list[str]:
@@ -399,7 +496,15 @@ def _remove_non_speech_elements(text: str) -> str:
     return re.sub(non_speech_patterns, "", text)
 
 
-VALID_NORMALIZATION_MODES = ("standard", "audiobench", "hf_leaderboard", "none", "no_tn_itn", "multilingual")
+VALID_NORMALIZATION_MODES = (
+    "standard",
+    "audiobench",
+    "hf_leaderboard",
+    "none",
+    "no_tn_itn",
+    "multilingual",
+    "lower_nopunct",
+)
 TASKS_NEED_PARSING = {"ASR", "ASR-PC", "ASR_LEADERBOARD", "Multilingual-ASR", "CER", "Hallucination", "PC-Rate"}
 
 
@@ -442,6 +547,16 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         text = re.sub(r"[^\w\s]", "", text)
         return normalize_whitespace(text)
 
+    if mode == "lower_nopunct":
+        # Lowercase + drop punctuation only, PRESERVING combining marks (Mn/Mc).
+        # Unlike no_tn_itn (whose [^\w\s] also strips abugida vowel/tone marks,
+        # since \w does not match them), this keeps Thai/Myanmar/Indic vowels and
+        # tones. Matches the CS-FLEURS paper's "case insensitive and unpunctuated"
+        # character error rate, so per-language CER is comparable to the paper.
+        text = text.lower()
+        text = "".join("" if unicodedata.category(ch).startswith("P") else ch for ch in text)
+        return normalize_whitespace(text)
+
     from whisper_normalizer.english import EnglishTextNormalizer
 
     if mode in ["standard", "hf_leaderboard"]:
@@ -478,9 +593,10 @@ def preprocess_asr_text(text: str, mode: str = "standard", **kwargs) -> str:
         if lang in [None, "en"]:
             text = EnglishTextNormalizer()(text)
         else:
-            text = MultilingualTextNormalizer(remove_diacritics=kwargs.get("remove_diacritics", False))(
-                text, lang=lang
-            )
+            text = MultilingualTextNormalizer(
+                remove_diacritics=kwargs.get("remove_diacritics", False),
+                preserve_marks=kwargs.get("preserve_marks", False),
+            )(text, lang=lang)
         return normalize_whitespace(text)
 
 
@@ -614,15 +730,25 @@ def evaluate_cer(
     normalization_mode: str = "none",
     key_prefix: str = "cer",
     normalize_compound: bool = False,
+    strip_whitespace: bool = False,
     **kwargs,
 ) -> dict[str, Any]:
-    """Evaluate CER: character-level edit distance."""
+    """Evaluate CER: character-level edit distance.
+
+    strip_whitespace removes all whitespace before scoring, so CER is computed over
+    the bare character sequence (spaces not counted). This matches the CS-FLEURS
+    paper's character error rate; default False keeps spaces (existing behavior).
+    """
 
     ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
     hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
 
     if normalize_compound:
         ref, hyp = normalize_compound_pairs(ref, hyp)
+
+    if strip_whitespace:
+        ref = re.sub(r"\s+", "", ref)
+        hyp = re.sub(r"\s+", "", hyp)
 
     # Mirror evaluate_asr: drop samples whose normalized reference is empty rather
     # than dividing by zero in the character edit distance.
@@ -631,6 +757,47 @@ def evaluate_cer(
 
     result = _cer_with_counts(ref, hyp, key_prefix=key_prefix)
     result["is_correct"] = result[key_prefix] < 0.5
+    result["text"] = ref
+    result["pred_text"] = hyp
+    return result
+
+
+def evaluate_mer(
+    reference: str,
+    hypothesis: str,
+    normalization_mode: str = "none",
+    normalize_compound: bool = False,
+    grapheme: bool = False,
+    **kwargs,
+) -> dict[str, Any]:
+    """Evaluate Mixed Error Rate for code-switched ASR.
+
+    Scriptio-continua scripts are counted by character and space-delimited
+    scripts by word within the same utterance (see ``mixed_segment``), then
+    scored with the standard word-level edit distance. Results are reported
+    under the ``wer*`` keys so the mixed figure occupies the headline WER column
+    (matching how ``Multilingual-ASR`` folds CER into ``wer*``).
+    """
+    ref = preprocess_asr_text(reference, mode=normalization_mode, **kwargs)
+    hyp = preprocess_asr_text(hypothesis, mode=normalization_mode, **kwargs)
+
+    if normalize_compound:
+        ref, hyp = normalize_compound_pairs(ref, hyp)
+
+    # Mirror evaluate_asr/evaluate_cer: drop samples whose normalized reference
+    # is empty rather than scoring against a placeholder.
+    if not ref:
+        return {"wer": None, "is_correct": None, "text": "", "pred_text": hyp or ""}
+
+    if not hyp:
+        hyp = "empty"
+
+    ref_seg = " ".join(mixed_segment(ref, grapheme=grapheme))
+    hyp_seg = " ".join(mixed_segment(hyp, grapheme=grapheme))
+
+    result = _wer_with_counts(ref_seg, hyp_seg)
+    result["is_correct"] = result["wer"] < 0.5
+    # Store the human-readable (unsegmented) normalized text, not the spaced tokens.
     result["text"] = ref
     result["pred_text"] = hyp
     return result
@@ -805,12 +972,31 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
             "lang": src_lang,
             "remove_diacritics": True,
         }
+        # For code-switched data (use_mer, i.e. cs-fleurs), preserve combining marks in
+        # the multilingual normalization so MER counts Thai/Myanmar vowels/tones (and so
+        # grapheme-cluster segmentation is meaningful). num2words and other steps still
+        # apply. Monolingual benchmarks keep the existing mark-stripping behavior.
+        if extra_fields.get("use_mer", False):
+            preprocess_kwargs["preserve_marks"] = True
         # Only normalize compound pairs for non-English languages
         normalize_compound = src_lang not in [None, "en"]
 
         # Mixed WER column: CJK-style languages (use_cer) fold their CER into the WER
         # column (stored under wer* keys), all other languages contribute standard WER.
-        if use_cer:
+        # Code-switched samples (use_mer) instead get a true Mixed Error Rate, counting
+        # scriptio-continua scripts by character and space-delimited scripts by word in
+        # the same utterance; also stored under the wer* column. Monolingual benchmarks
+        # (e.g. fleurs) never set use_mer, so their use_cer/WER behavior is unchanged.
+        if extra_fields.get("use_mer", False):
+            metrics = evaluate_mer(
+                expected_answer,
+                generation,
+                normalization_mode=mode,
+                normalize_compound=normalize_compound,
+                grapheme=extra_fields.get("mer_grapheme", False),
+                **preprocess_kwargs,
+            )
+        elif use_cer:
             metrics = evaluate_cer(
                 expected_answer,
                 generation,
@@ -831,12 +1017,18 @@ def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dic
 
         # Parallel only-CER column: character error rate computed for every sample,
         # reported separately (cer* keys) alongside the mixed WER column.
+        # Code-switched benchmarks (use_mer, i.e. cs-fleurs) score this CER with
+        # mark-preserving normalization (lowercase + unpunctuated, combining marks
+        # kept) so it matches the CS-FLEURS paper's CER; monolingual benchmarks keep
+        # the standard multilingual normalization unchanged.
+        cer_mode = "lower_nopunct" if extra_fields.get("use_mer", False) else mode
         cer_metrics = evaluate_cer(
             expected_answer,
             generation,
-            normalization_mode=mode,
+            normalization_mode=cer_mode,
             key_prefix="cer",
             normalize_compound=normalize_compound,
+            strip_whitespace=extra_fields.get("use_mer", False),
             **preprocess_kwargs,
         )
         # Merge only cer* keys so the mixed metric's is_correct/text/pred_text are preserved.
