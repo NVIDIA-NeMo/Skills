@@ -526,7 +526,7 @@ def main():
         checkpointer,
         sft_save_state,
         master_config,
-    ) = setup(config, tokenizer, dataset, val_dataset)
+    ) = setup(MasterConfig.model_validate(config), tokenizer, dataset, val_dataset)
 
     sft_train(
         policy,
