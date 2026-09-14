@@ -221,6 +221,9 @@ data:
   shuffle: true
   num_workers: 10
 
+  train:
+    dataset_name: prompt_response_dataset
+
 logger:
   log_dir: "logs"  # Base directory for all logs
   wandb_enabled: true # Make sure you do a ``wandb login [Your API key]'' before running
