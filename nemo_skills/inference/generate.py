@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import importlib
 import json
 import logging
 import random
@@ -271,6 +272,145 @@ class GenerationTaskConfig:
 
 cs = hydra.core.config_store.ConfigStore.instance()
 cs.store(name="base_generation_config", node=GenerationTaskConfig)
+
+_VALIDATED_HTTPCORE_FAST_ASSIGN_VERSIONS = {
+    "1.0.3",
+    "1.0.4",
+    "1.0.5",
+    "1.0.6",
+    "1.0.7",
+    "1.0.8",
+    "1.0.9",
+}
+
+
+def _patch_httpcore_connection_pool_assignment() -> None:
+    """Patch httpcore's async connection assignment hot path.
+
+    httpcore 1.0.3-1.0.9's ``_assign_requests_to_connections`` is O(N^2 + N*M)
+    (N connections, M queued requests): it rebuilds connection-state lists for
+    every idle connection and again for every queued request. At high
+    OpenAI-compatible concurrency this dominates the client asyncio loop
+    (see encode/httpcore#1035, still unmerged as of 1.0.9).
+
+    This installs a single-pass O(N+M) rewrite ported from that PR: categorize
+    connections once, then assign queued requests from the available bucket
+    (popping so a connection is never handed to two requests in one pass) with
+    an early exit once nothing more can be serviced. HTTP/2 pools fall back to
+    the original because they need per-connection stream-capacity tracking that
+    this fast path omits.
+    """
+    try:
+        httpcore = importlib.import_module("httpcore")
+        async_connection_pool = importlib.import_module("httpcore._async.connection_pool")
+    except ImportError:
+        LOG.debug("httpcore is not installed; skipping async connection-pool patch")
+        return
+
+    httpcore_version = getattr(httpcore, "__version__", None)
+    if httpcore_version not in _VALIDATED_HTTPCORE_FAST_ASSIGN_VERSIONS:
+        LOG.warning(
+            "Skipping httpcore AsyncConnectionPool patch: validated only on httpcore 1.0.3-1.0.9, found %s",
+            httpcore_version,
+        )
+        return
+
+    original_assign = async_connection_pool.AsyncConnectionPool._assign_requests_to_connections
+    if getattr(original_assign, "_nemo_skills_fast_assign", False):
+        return
+
+    def _single_pass_assign_requests_to_connections(self):
+        # HTTP/2 multiplexing needs per-connection stream-capacity bookkeeping
+        # that this fast path intentionally omits, so defer to the original.
+        if getattr(self, "_http2", False):
+            return original_assign(self)
+
+        closing_conns = []
+        available_conns = []
+        occupied_conns = []
+
+        # Phase 1: categorize every connection in a single O(N) pass.
+        for connection in self._connections:
+            if connection.is_closed():
+                continue
+            elif connection.has_expired():
+                closing_conns.append(connection)
+            elif connection.is_available():
+                available_conns.append(connection)
+            elif connection.is_idle():
+                # Idle but not available should not happen; close defensively.
+                closing_conns.append(connection)
+            else:
+                occupied_conns.append(connection)
+
+        new_conns_remaining = self._max_connections - len(available_conns) - len(occupied_conns)
+
+        # Phase 2: assign queued requests. Reuse an available connection
+        # (popping so it is never handed to two requests in one pass), else
+        # create a new connection, else evict an idle one as a last resort.
+        # Stop as soon as a request cannot be serviced (early exit).
+        for pool_request in self._requests:
+            if not pool_request.is_queued():
+                continue
+            origin = pool_request.request.url.origin
+
+            assigned = False
+            # Iterate in reverse so popping the chosen connection is O(1).
+            for i in range(len(available_conns) - 1, -1, -1):
+                connection = available_conns[i]
+                if connection.can_handle_request(origin):
+                    pool_request.assign_to_connection(connection)
+                    available_conns.pop(i)
+                    occupied_conns.append(connection)
+                    assigned = True
+                    break
+            if assigned:
+                continue
+
+            if new_conns_remaining > 0:
+                connection = self.create_connection(origin)
+                pool_request.assign_to_connection(connection)
+                occupied_conns.append(connection)
+                new_conns_remaining -= 1
+                continue
+
+            for i in range(len(available_conns) - 1, -1, -1):
+                connection = available_conns[i]
+                if connection.is_idle():
+                    closing_conns.append(available_conns.pop(i))
+                    connection = self.create_connection(origin)
+                    pool_request.assign_to_connection(connection)
+                    occupied_conns.append(connection)
+                    assigned = True
+                    break
+
+            if not assigned:
+                break
+
+        # Phase 3: enforce max_keepalive_connections by closing surplus idle
+        # connections (idle connections are a subset of available ones).
+        if len(available_conns) > self._max_keepalive_connections:
+            kept = []
+            n_idle_kept = 0
+            for connection in available_conns:
+                if connection.is_idle():
+                    if n_idle_kept >= self._max_keepalive_connections:
+                        closing_conns.append(connection)
+                    else:
+                        kept.append(connection)
+                        n_idle_kept += 1
+                else:
+                    kept.append(connection)
+            available_conns = kept
+
+        self._connections = available_conns + occupied_conns
+        return closing_conns
+
+    _single_pass_assign_requests_to_connections._nemo_skills_fast_assign = True
+    async_connection_pool.AsyncConnectionPool._assign_requests_to_connections = (
+        _single_pass_assign_requests_to_connections
+    )
+    LOG.debug("Patched httpcore AsyncConnectionPool._assign_requests_to_connections (single-pass O(N+M))")
 
 
 class GenerationTask:
@@ -862,6 +1002,7 @@ class GenerationTask:
 
     async def async_loop(self, data):
         """Async loop to generate generations using asyncio."""
+        _patch_httpcore_connection_pool_assignment()
 
         # Initialize output lock for thread-safe writing
         if self.output_lock is None:
