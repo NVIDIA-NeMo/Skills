@@ -20,6 +20,19 @@ ASR benchmark based on the [HuggingFace Open ASR Leaderboard](https://huggingfac
 - Benchmark is defined in [`nemo_skills/dataset/asr-leaderboard/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/asr-leaderboard/__init__.py)
 - Original datasets are hosted on HuggingFace (downloaded automatically during preparation)
 
+### AppTek Call-Center Dialogues
+
+AppTek Call-Center Dialogues is a long-form English ASR benchmark of role-played agent-customer calls across 14 accent groups and 16 service domains. It contains 1,746 split-channel WAV files, totaling 128.6 hours. Many calls run several minutes long (the longest exceeds 20 minutes), so a model's generation budget and long-audio settings often need tuning before evaluation.
+
+The benchmark uses the official HuggingFace release: [apptek-com/apptek_callcenter_dialogues](https://huggingface.co/datasets/apptek-com/apptek_callcenter_dialogues). Scoring uses WER with Whisper English normalization plus the dataset-specific word mappings from the released `score.py` and `word_mappings.py`.
+
+#### Dataset Location
+
+- Benchmark is defined in [`nemo_skills/dataset/apptek-callcenter-dialogues/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/apptek-callcenter-dialogues/__init__.py)
+- Original data is hosted on HuggingFace and downloaded automatically during preparation.
+- All accent metadata is mapped to one NeMo Skills split: `test.jsonl`.
+- A standalone Parakeet v3 reproduction script lives at [`recipes/apptek-callcenter-dialogues/reproduce_parakeet_v3.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/recipes/apptek-callcenter-dialogues/reproduce_parakeet_v3.py) for cross-checking the WER against the dataset paper.
+
 ### MMAU-Pro
 
 MMAU-Pro (Multimodal Audio Understanding - Pro) is a comprehensive benchmark for evaluating audio understanding capabilities across three different task categories:
@@ -51,6 +64,28 @@ Prepare specific datasets only:
 ns prepare_data asr-leaderboard --datasets librispeech_clean ami
 ```
 
+### AppTek Call-Center Dialogues
+
+The full dataset is 34.9 GB. If `--data_dir` is not passed to the dataset prepare script, raw files are downloaded to a sibling directory outside the repo, such as `<repo-parent>/Skills-data/apptek-callcenter-dialogues`.
+
+```bash
+ns prepare_data apptek-callcenter-dialogues --skip_data_dir_check
+```
+
+To prepare metadata only:
+
+```bash
+ns prepare_data apptek-callcenter-dialogues --skip_data_dir_check --no-audio
+```
+
+To point generated manifests at a container-mounted audio path:
+
+```bash
+python -m nemo_skills.dataset.prepare apptek-callcenter-dialogues \
+    --data_dir=/data/apptek-callcenter-dialogues \
+    --audio-prefix=/data/apptek-callcenter-dialogues
+```
+
 ### MMAU-Pro
 
 ```bash
@@ -74,7 +109,7 @@ eval(
     model="/workspace/checkpoint",
     server_entrypoint="/workspace/megatron-lm/server.py",
     server_container="/path/to/container.sqsh",
-    data_dir="/dataset",
+    data_dir="/data",
     installation_command="pip install -r requirements/audio.txt",
     server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
 )
@@ -84,6 +119,26 @@ Evaluate a specific dataset:
 
 ```python
 eval(benchmarks="asr-leaderboard", split="librispeech_clean", ...)
+```
+
+### AppTek Call-Center Dialogues
+
+```python
+from nemo_skills.pipeline.cli import wrap_arguments, eval
+
+eval(
+    ctx=wrap_arguments(""),
+    cluster="oci_iad",
+    output_dir="/workspace/apptek-callcenter-eval",
+    benchmarks="apptek-callcenter-dialogues",
+    server_type="megatron",
+    server_gpus=1,
+    model="/workspace/checkpoint",
+    server_entrypoint="/workspace/megatron-lm/server.py",
+    server_container="/path/to/container.sqsh",
+    data_dir="/data",
+    installation_command="pip install -r requirements/audio.txt",
+)
 ```
 
 ??? note "Alternative: Command-line usage"
@@ -98,7 +153,7 @@ eval(benchmarks="asr-leaderboard", split="librispeech_clean", ...)
         --model=/workspace/path/to/checkpoint \
         --server_entrypoint=/workspace/megatron-lm/server.py \
         --server_container=/path/to/container.sqsh \
-        --data_dir=/dataset \
+        --data_dir=/data \
         --installation_command="pip install -r requirements/audio.txt"
     ```
 
@@ -120,7 +175,7 @@ eval(
     model="/workspace/checkpoint",
     server_entrypoint="/workspace/megatron-lm/server.py",
     server_container="/path/to/container.sqsh",
-    data_dir="/dataset",
+    data_dir="/data",
     installation_command="pip install sacrebleu",
     server_args="--inference-max-requests 1 --model-config /workspace/checkpoint/config.yaml",
 )
@@ -150,7 +205,7 @@ eval(benchmarks="mmau-pro.closed_form", ...)
         --model=/workspace/path/to/checkpoint \
         --server_entrypoint=/workspace/megatron-lm/server.py \
         --server_container=/path/to/container.sqsh \
-        --data_dir=/dataset \
+        --data_dir=/data \
         --installation_command="pip install sacrebleu"
     ```
 
@@ -254,6 +309,19 @@ pass@1          | 732        | 3878        | 77.74%       | 0.00%     | 7.89% | 
 evaluation_mode | avg_tokens | gen_seconds | success_rate | no_answer | wer   | num_entries
 pass@1          | 741        | 4007        | 99.51%       | 0.00%     | 6.47% | 1842
 ```
+
+### AppTek Call-Center Dialogues Results
+
+```text
+<output_dir>/
+└── eval-results/
+    └── apptek-callcenter-dialogues/
+        └── metrics.json
+```
+
+Reported columns match the standard NeMo Skills ASR table — `wer`, `substitutions`, `insertions`, `deletions`, `ref_words` — and the summary includes per-accent rows such as `apptek-callcenter-dialogues-en-AU` because each sample sets `subset_for_metrics` to the accent code.
+
+For reference, the AppTek dataset paper reports Parakeet v3 at 9.2% WER with Silero VAD segmentation and ~10.4% WER without external segmentation; report the segmentation setup with any reproduced number.
 
 ### MMAU-Pro Results
 
