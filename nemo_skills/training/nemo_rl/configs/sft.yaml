@@ -101,9 +101,9 @@ policy:
     moe_router_bias_update_rate: 1e-3
     moe_permute_fusion: true
     #gives ~20% training perf speedup with sequence packing
-    apply_rope_fusion: True
+    apply_rope_fusion: False
     # gives ~25% training perf speedup with sequence packing and apply_rope_fusion
-    bias_activation_fusion: True
+    bias_activation_fusion: False
     layernorm_epsilon: 1e-6
     defer_fp32_logits: False
     moe_per_layer_logging: False
