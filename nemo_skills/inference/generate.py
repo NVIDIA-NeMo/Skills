@@ -912,10 +912,28 @@ class GenerationTask:
         with open(self.cfg.output_file + "-async", "rt", encoding="utf-8") as fin:
             generations = [json.loads(line) for line in fin]
 
-        ordered_generations = [None] * len(generations)
+        if not generations:
+            ordered_generations = []
+        else:
+            max_position = max(gen_dict[self.cfg.async_position_key] for gen_dict in generations)
+            ordered_generations = [None] * (max_position + 1)
         for gen_dict in generations:
             async_pos = gen_dict.pop(self.cfg.async_position_key)
+            if async_pos < 0:
+                raise ValueError(f"Invalid async output position {async_pos}")
+            if ordered_generations[async_pos] is not None:
+                raise RuntimeError(f"Duplicate async output position {async_pos}")
             ordered_generations[async_pos] = gen_dict
+
+        missing_positions = [idx for idx, gen_dict in enumerate(ordered_generations) if gen_dict is None]
+        if missing_positions:
+            preview = ", ".join(map(str, missing_positions[:20]))
+            if len(missing_positions) > 20:
+                preview += ", ..."
+            raise RuntimeError(
+                f"Missing async outputs for {len(missing_positions)} positions: {preview}. "
+                "Refusing to write null rows to the merged output."
+            )
 
         with open(self.cfg.output_file, "wt", encoding="utf-8") as fout:
             for gen_dict in ordered_generations:
