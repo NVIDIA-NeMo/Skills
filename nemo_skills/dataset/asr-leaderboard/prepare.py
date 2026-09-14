@@ -19,7 +19,7 @@ test-only sorted dataset (hf-audio/esb-datasets-test-only-sorted). This is the
 same data source used by the official leaderboard, ensuring apples-to-apples
 WER comparison.
 
-Audio paths in JSONL: /dataset/asr-leaderboard/data/{dataset}/{sample_id}.flac
+Audio paths in JSONL: {audio_prefix}/asr-leaderboard/data/{dataset}/{sample_id}.flac
 
 Usage:
     ns prepare_data asr-leaderboard
@@ -35,6 +35,12 @@ import numpy as np
 import soundfile as sf
 from datasets import Audio, load_dataset
 from tqdm import tqdm
+
+from nemo_skills.dataset.utils import (
+    DEFAULT_CONTAINER_AUDIO_ROOT,
+    build_container_audio_path,
+    get_container_audio_root,
+)
 
 HF_REPO = "hf-audio/esb-datasets-test-only-sorted"
 SYSTEM_MESSAGE = "You are a helpful assistant. /no_think"
@@ -69,7 +75,9 @@ def extract_audio(audio_info):
         return None, None
 
 
-def format_entry(entry, dataset_name, audio_dir, text_field, id_field, with_audio):
+def format_entry(
+    entry, dataset_name, audio_dir, text_field, id_field, with_audio, audio_root=DEFAULT_CONTAINER_AUDIO_ROOT
+):
     """Format a dataset entry into JSONL and optionally save the audio file."""
     text = entry[text_field].strip()
     if not text:
@@ -87,7 +95,11 @@ def format_entry(entry, dataset_name, audio_dir, text_field, id_field, with_audi
             sf.write(str(audio_dir / audio_filename), audio_array, sampling_rate)
 
     user_message = {"role": "user", "content": "Transcribe the following audio."}
-    audio_meta = {"path": f"/dataset/asr-leaderboard/data/{dataset_name}/{audio_filename}"}
+    audio_meta = {
+        "path": build_container_audio_path(
+            "asr-leaderboard", "data", dataset_name, audio_filename, audio_prefix=audio_root
+        )
+    }
     if duration is not None:
         audio_meta["duration"] = float(duration)
     user_message["audio"] = audio_meta
@@ -105,7 +117,7 @@ def format_entry(entry, dataset_name, audio_dir, text_field, id_field, with_audi
     return formatted
 
 
-def prepare_dataset(dataset_name, output_dir, with_audio=True):
+def prepare_dataset(dataset_name, output_dir, with_audio=True, audio_root=DEFAULT_CONTAINER_AUDIO_ROOT):
     """Download, decode, and write a single ASR dataset to JSONL + audio files."""
     if dataset_name not in DATASET_CONFIGS:
         raise ValueError(f"Unknown dataset: {dataset_name}. Available: {list(DATASET_CONFIGS.keys())}")
@@ -127,7 +139,9 @@ def prepare_dataset(dataset_name, output_dir, with_audio=True):
     count = 0
     with open(output_file, "w", encoding="utf-8") as fout:
         for entry in tqdm(dataset, desc=dataset_name):
-            formatted = format_entry(entry, dataset_name, audio_dir, text_field, id_field, with_audio)
+            formatted = format_entry(
+                entry, dataset_name, audio_dir, text_field, id_field, with_audio, audio_root=audio_root
+            )
             if formatted is None:
                 continue
             fout.write(json.dumps(formatted) + "\n")
@@ -147,25 +161,47 @@ def main():
         help="Datasets to prepare (default: all)",
     )
     parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=None,
+        help=(
+            "Output directory. If provided, outputs go under <data_dir>/asr-leaderboard. "
+            "If omitted, writes into this package's dataset directory."
+        ),
+    )
+    parser.add_argument(
         "--no-audio",
         action="store_true",
         help="Skip saving audio files (JSONL still includes audio paths)",
     )
+    parser.add_argument(
+        "--audio-prefix",
+        type=str,
+        default=None,
+        help="In-container audio root written into JSONL paths. Defaults to $NEMO_SKILLS_AUDIO_ROOT or /data.",
+    )
     args = parser.parse_args()
 
-    data_dir = Path("/dataset/asr-leaderboard")
-    output_dir = data_dir if data_dir.exists() else Path(__file__).parent
+    if args.data_dir:
+        output_dir = Path(args.data_dir) / "asr-leaderboard"
+    else:
+        output_dir = Path(__file__).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with_audio = not args.no_audio
-    if not with_audio:
+    audio_root = get_container_audio_root(args.audio_prefix)
+
+    if args.no_audio:
         print("Running without saving audio files.")
+    else:
+        print("Running with audio. Saving to data/{dataset}/")
+    print(f"Audio paths in JSONL will use: {audio_root}/asr-leaderboard/data/...")
 
     datasets_to_prepare = list(DATASET_CONFIGS.keys()) if "all" in args.datasets else args.datasets
 
     total_samples = 0
     for dataset_name in datasets_to_prepare:
-        total_samples += prepare_dataset(dataset_name, output_dir, with_audio=with_audio)
+        total_samples += prepare_dataset(dataset_name, output_dir, with_audio=with_audio, audio_root=audio_root)
 
     combined_file = output_dir / "test.jsonl"
     print(f"\nCreating combined file: {combined_file}")
