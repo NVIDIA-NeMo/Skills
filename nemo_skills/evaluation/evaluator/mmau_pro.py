@@ -56,6 +56,10 @@ def eval_mmau_pro(cfg):
 
 def evaluate_instruction_following_sample(sample: dict[str, Any]) -> dict[str, Any]:
     """Evaluate a single instruction following sample."""
+    if sample is None:
+        LOG.warning("Encountered null MMAU-Pro sample; marking it incorrect")
+        return {"is_correct": False, "error": "null_sample"}
+
     sample = sample.copy()
     generation = sample.get("generation", "").strip()
 

@@ -86,9 +86,11 @@ def format_entry(entry, with_audio=False):
         audio_path = entry["audio_path"]
 
         if isinstance(audio_path, list) and audio_path:
-            user_message["audios"] = [{"path": path, "duration": 10.0} for path in audio_path]
+            formatted_entry["audio_path"] = [f"../{path}" for path in audio_path]
+            user_message["audios"] = [{"path": path, "duration": 10.0} for path in formatted_entry["audio_path"]]
         elif isinstance(audio_path, str):
-            user_message["audio"] = {"path": audio_path, "duration": 10.0}
+            formatted_entry["audio_path"] = f"../{audio_path}"
+            user_message["audio"] = {"path": formatted_entry["audio_path"], "duration": 10.0}
 
     formatted_entry["messages"] = [user_message]
     return formatted_entry

@@ -26,5 +26,7 @@ METRICS_TYPE = "audio"
 # Evaluation settings
 EVAL_ARGS = "++eval_type=audio ++eval_config.normalization_mode=audiobench"
 
-# Generation settings - OpenAI format for audio-language models
-GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true"
+# Generation settings - OpenAI format for audio-language models.
+# Soft-fail keeps one over-limit or malformed audio request from aborting an
+# entire chunk; audio metrics count the empty generation as incorrect.
+GENERATION_ARGS = "++prompt_format=openai ++enable_audio=true ++server.enable_soft_fail=true"

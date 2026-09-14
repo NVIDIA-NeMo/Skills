@@ -740,12 +740,28 @@ def eval_audio(cfg):
     asyncio.run(evaluator.eval_full())
 
 
+def coerce_text_field(value: Any) -> str:
+    """Convert loose AudioBench text/reference fields to plain text."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("text", "expected_answer", "answer", "transcript", "reference"):
+            if key in value and value[key] is not None:
+                return coerce_text_field(value[key])
+        return " ".join(coerce_text_field(item) for item in value.values() if item is not None).strip()
+    if isinstance(value, (list, tuple)):
+        return " ".join(coerce_text_field(item) for item in value if item is not None).strip()
+    return str(value).strip()
+
+
 def evaluate_sample(sample: dict[str, Any], config: AudioEvaluatorConfig) -> dict[str, Any]:
     """Evaluate single sample based on task_type. Returns dict of updates to merge."""
     updates = {}
     task_type = sample.get("task_type", "unknown")
-    generation = sample["generation"].strip()
-    expected_answer = sample.get("expected_answer", "").strip()
+    generation = coerce_text_field(sample.get("generation", ""))
+    expected_answer = coerce_text_field(sample.get("expected_answer", ""))
 
     # Extract ASR text from generation
     # E.g Qwen ASR uses <asr_text> tags to indicate the ASR text

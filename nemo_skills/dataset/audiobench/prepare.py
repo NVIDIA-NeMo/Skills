@@ -25,6 +25,7 @@ Usage:
 """
 
 import argparse
+import copy
 import json
 import os
 import shutil
@@ -155,12 +156,21 @@ def create_manifest_entry(
         Manifest entry dict with proper format for nemo-skills
     """
     instruction = sample.get("instruction", sample.get("text", "Process the audio"))
+    if isinstance(instruction, dict):
+        try:
+            instruction = instruction["text"]
+        except KeyError as exc:
+            raise ValueError(
+                f"Instruction dict missing required 'text' field for {dataset_name} sample {sample_id}: {instruction}"
+            ) from exc
+    if not isinstance(instruction, str):
+        raise ValueError(f"Instruction must be a string for {dataset_name} sample {sample_id}: {instruction!r}")
     reference = sample.get("reference", sample.get("answer", ""))
     task_type = sample.get("task_type", "unknown")
 
-    # Create absolute audio path with /data/ prefix for cluster deployment
-    # Format: /data/audiobench/{category}/audio/{dataset_name}/{filename}
-    audio_rel_path = f"/data/audiobench/{category}/audio/{dataset_name}/{audio_filename}"
+    # Paths are resolved relative to the manifest directory by the inference code.
+    # The combined category manifest lives at audiobench/{category}/test.jsonl.
+    audio_rel_path = f"audio/{dataset_name}/{audio_filename}"
 
     # Create audio metadata (both singular and plural forms for compatibility)
     audio_metadata = {"path": audio_rel_path, "duration": duration}
@@ -199,6 +209,30 @@ def create_manifest_entry(
     ]:
         if key in sample:
             entry[key] = sample[key]
+
+    return entry
+
+
+def make_dataset_manifest_entry(entry: Dict) -> Dict:
+    """Adjust category-relative audio paths for per-dataset manifests."""
+    entry = copy.deepcopy(entry)
+
+    def rewrite(path: str) -> str:
+        return f"../{path}" if path.startswith("audio/") else path
+
+    if isinstance(entry.get("audio_path"), list):
+        entry["audio_path"] = [rewrite(path) for path in entry["audio_path"]]
+    elif isinstance(entry.get("audio_path"), str):
+        entry["audio_path"] = rewrite(entry["audio_path"])
+
+    for message in entry.get("messages", []):
+        if not isinstance(message, dict):
+            continue
+        if "audio" in message and isinstance(message["audio"], dict) and "path" in message["audio"]:
+            message["audio"]["path"] = rewrite(message["audio"]["path"])
+        for audio in message.get("audios", []):
+            if isinstance(audio, dict) and "path" in audio:
+                audio["path"] = rewrite(audio["path"])
 
     return entry
 
@@ -473,7 +507,7 @@ def process_dataset(
     manifest_path = dataset_dir / f"{split}.jsonl"
     with open(manifest_path, "w", encoding="utf-8") as f:
         for entry in manifest_entries:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.write(json.dumps(make_dataset_manifest_entry(entry), ensure_ascii=False) + "\n")
 
     print(f"✓ Saved {successful} samples to {manifest_path}")
     if failed > 0:
@@ -566,6 +600,7 @@ def main():
 
     total_samples = 0
     total_datasets = 0
+    combined_entries = {"judge": [], "nonjudge": []}
 
     for name in target_datasets:
         # Normalize dataset name: allow passing without _test suffix
@@ -575,23 +610,33 @@ def main():
             if f"{dataset_name}_test" in JUDGE_DATASETS or f"{dataset_name}_test" in NONJUDGE_DATASETS:
                 dataset_name = f"{dataset_name}_test"
 
-        # Determine category for logging
-        category = "judge" if name in JUDGE_DATASETS else "nonjudge"
+        if dataset_name in JUDGE_DATASETS:
+            category = "judge"
+        elif dataset_name in NONJUDGE_DATASETS:
+            category = "nonjudge"
+        else:
+            raise ValueError(f"Unsupported AudioBench dataset name: {name}")
 
-        try:
-            num_samples, _ = process_dataset(
-                dataset_name=dataset_name,
-                output_dir=output_dir,
-                save_audio=args.save_audio,
-                split=args.split,
-                max_samples=args.max_samples,
-            )
-            total_samples += num_samples
-            total_datasets += 1
-            print(f"✓ Completed {dataset_name}: {num_samples} samples")
-        except Exception as e:
-            print(f"✗ Failed {dataset_name}: {e}")
+        num_samples, manifest_entries = process_dataset(
+            dataset_name=dataset_name,
+            output_dir=output_dir,
+            save_audio=args.save_audio,
+            split=args.split,
+            max_samples=args.max_samples,
+        )
+        total_samples += num_samples
+        total_datasets += 1
+        combined_entries[category].extend(manifest_entries)
+        print(f"✓ Completed {dataset_name}: {num_samples} samples")
+
+    for category, entries in combined_entries.items():
+        if not entries:
             continue
+        combined_manifest = output_dir / category / f"{args.split}.jsonl"
+        with open(combined_manifest, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        print(f"✓ Saved combined {category} manifest with {len(entries)} samples to {combined_manifest}")
 
     print("\n" + "=" * 60)
     print("AudioBench Preparation Summary")

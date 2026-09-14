@@ -1,0 +1,56 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from nemo_skills.evaluation.evaluator import nvembed_judge
+
+
+def test_nvembed_coerces_nested_generation_text(monkeypatch):
+    """Nested generation payloads should be scored as text, not empty output."""
+
+    def fake_similarity(generation, choices, expected_answer, model_name):
+        assert generation == "alpha beta"
+        assert choices == ["A", "B"]
+        assert expected_answer == "A"
+        return "A", 99.0
+
+    monkeypatch.setattr(nvembed_judge, "evaluate_with_nvembed_similarity", fake_similarity)
+    sample = {
+        "generation": {"text": [" alpha ", {"text": "beta"}]},
+        "choices": ["A", "B"],
+        "expected_answer": "A",
+    }
+
+    result = nvembed_judge.evaluate_sample_with_nvembed(sample)
+
+    assert result["nvembed_matched_choice"] == "A"
+    assert result["nvembed_confidence"] == 99.0
+    assert result["is_correct"] is True
+    assert "nvembed_error" not in result
+
+
+def test_nvembed_soft_fails_empty_generation():
+    """Empty coerced generation payloads should be marked as failed outputs."""
+
+    sample = {
+        "generation": {"text": [" ", {"text": None}]},
+        "choices": ["A", "B"],
+        "expected_answer": "A",
+    }
+
+    result = nvembed_judge.evaluate_sample_with_nvembed(sample)
+
+    assert result["nvembed_matched_choice"] == ""
+    assert result["nvembed_confidence"] == 0.0
+    assert result["is_correct"] is False
+    assert result["nvembed_error"] == "empty_generation"
