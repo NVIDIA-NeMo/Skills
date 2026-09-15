@@ -457,3 +457,33 @@ def test_add_task_sandbox_mounts_override_keep_mounts_true(mock_port, mock_get_e
     )
 
     assert mock_get_executor.call_args_list[-1].kwargs["mounts"] == ["/host/data:/sandbox/data:ro"]
+
+
+def test_get_env_variables_forwards_prefix_except_ssh(monkeypatch):
+    """NEMO_SKILLS_* values are forwarded except launcher-local SSH settings."""
+    from nemo_skills.pipeline.utils.cluster import get_env_variables
+
+    # Representative runtime settings, including an unknown future setting.
+    monkeypatch.setenv("NEMO_SKILLS_OPENAI_AIOHTTP", "1")
+    monkeypatch.setenv("NEMO_SKILLS_DISABLE_UVLOOP", "1")
+    monkeypatch.setenv("NEMO_SKILLS_OPENAI_BASE_URL", "http://model:8000/v1")
+    monkeypatch.setenv("NEMO_SKILLS_SANDBOX_HOST", "sandbox")
+    monkeypatch.setenv("NEMO_SKILLS_CONFIG_DIR", "/home/user/cluster_configs")
+    monkeypatch.setenv("NEMO_SKILLS_SOME_FUTURE_KNOB", "x")
+    # SSH tunnel settings remain launcher-local.
+    monkeypatch.setenv("NEMO_SKILLS_SSH_SERVER", "login-node")
+    monkeypatch.setenv("NEMO_SKILLS_SSH_KEY_PATH", "/home/user/.ssh/id_rsa")
+
+    env = get_env_variables({})
+
+    for forwarded in (
+        "NEMO_SKILLS_OPENAI_AIOHTTP",
+        "NEMO_SKILLS_DISABLE_UVLOOP",
+        "NEMO_SKILLS_OPENAI_BASE_URL",
+        "NEMO_SKILLS_SANDBOX_HOST",
+        "NEMO_SKILLS_CONFIG_DIR",
+        "NEMO_SKILLS_SOME_FUTURE_KNOB",
+    ):
+        assert forwarded in env, f"{forwarded} should be forwarded"
+    for denied in ("NEMO_SKILLS_SSH_SERVER", "NEMO_SKILLS_SSH_KEY_PATH"):
+        assert denied not in env, f"{denied} (SSH tunnel) must not be forwarded into the job env"

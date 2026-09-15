@@ -13,8 +13,10 @@
 # limitations under the License.
 import abc
 import asyncio
+import inspect
 import logging
 import os
+import uuid
 from enum import Enum
 from typing import Union
 
@@ -24,6 +26,7 @@ import litellm.constants
 import litellm.llms.custom_httpx.http_handler
 import litellm.llms.openai.common_utils
 import openai
+from pydantic import BaseModel as PydanticBaseModel
 
 from nemo_skills.inference.patch_litellm_logging import patch_litellm_logging_worker
 from nemo_skills.utils import get_logger_name
@@ -73,6 +76,17 @@ class BaseModel:
     # Litellm provider name
     MODEL_PROVIDER = "openai"
 
+    # Whether chat completions may use the native AsyncOpenAI + aiohttp path.
+    # Subclasses should opt in only when their endpoint accepts the standard
+    # OpenAI chat-completions request without litellm transformations.
+    SUPPORTS_NATIVE_OPENAI = False
+
+    # Keys that litellm understands but AsyncOpenAI's strict schema rejects as
+    # unknown top-level fields; stripped before handing the body to the native
+    # client. Keep this in sync with any litellm-only parameter emitted by a
+    # _build_chat_request_params implementation.
+    _LITELLM_ONLY_CHAT_PARAMS = frozenset({"allowed_openai_params"})
+
     def __init__(
         self,
         model: str,
@@ -95,6 +109,10 @@ class BaseModel:
         output_dir: str | None = None,
         # Request tokenizer initialization independent of soft_fail
         require_tokenizer: bool = False,
+        # Upper bound on requests admitted by this model instance. The high
+        # default leaves normal concurrency control to the caller; use
+        # NEMO_SKILLS_MODEL_CONCURRENCY to impose a lower model-level limit.
+        concurrent_requests_limit: int = int(os.environ.get("NEMO_SKILLS_MODEL_CONCURRENCY", "65536")),
     ):
         self._tunnel = None
         self.model_name_or_path = model
@@ -167,9 +185,51 @@ class BaseModel:
         httpx_limits = httpx.Limits(max_keepalive_connections=None, max_connections=None)
         litellm.client_session = httpx.Client(limits=httpx_limits)
         litellm.aclient_session = httpx.AsyncClient(limits=httpx_limits)
-        # Controlling concurrent requests using semaphore since large
-        # concurrent requests result into httpx hanging
-        self.concurrent_semaphore = asyncio.Semaphore(2048)
+        # Gate in-flight requests at the configured model-level limit.
+        self.concurrent_semaphore = asyncio.Semaphore(concurrent_requests_limit)
+
+        # Use the lower-overhead AsyncOpenAI + aiohttp transport for providers
+        # that opt in. Text completions, the Responses API, and providers that
+        # require litellm transformations continue to use litellm. Set
+        # NEMO_SKILLS_OPENAI_AIOHTTP=0 to disable the native path.
+        self._async_openai_client = None
+        native_enabled = os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP", "1") != "0"
+        if native_enabled and self.SUPPORTS_NATIVE_OPENAI:
+            try:
+                from openai import AsyncOpenAI, DefaultAioHttpClient
+
+                # Set an explicit connector limit: passing None through the
+                # httpx-aiohttp adapter omits aiohttp's `limit` setting and
+                # restores its lower default. The environment variable allows
+                # deployments to choose an appropriate transport-level cap.
+                aiohttp_limit = int(os.environ.get("NEMO_SKILLS_OPENAI_AIOHTTP_LIMIT", "65536"))
+                self._async_openai_client = AsyncOpenAI(
+                    api_key=api_key,
+                    base_url=self.base_url,
+                    http_client=DefaultAioHttpClient(
+                        limits=httpx.Limits(
+                            max_connections=aiohttp_limit,
+                            max_keepalive_connections=aiohttp_limit,
+                        ),
+                    ),
+                    # Match the litellm retry budget. The SDK handles HTTP 429
+                    # and 5xx retries; the application-level handler below is
+                    # limited to connection errors. SDK retries occur within the
+                    # semaphore, so a logical request retains one in-flight slot.
+                    max_retries=max_retries,
+                )
+            except Exception as e:
+                # ImportError if openai[aiohttp] isn't installed, but the
+                # DefaultAioHttpClient constructor can also raise other errors
+                # when the aiohttp extra is only partially present. Degrade to
+                # litellm/httpx rather than failing model construction.
+                LOG.warning(
+                    "Native AsyncOpenAI aiohttp fast-path unavailable (%s: %s); "
+                    "falling back to litellm/httpx. Install openai[aiohttp] to enable it.",
+                    type(e).__name__,
+                    e,
+                )
+                self._async_openai_client = None
 
     def _get_api_key(self, api_key: str | None, api_key_env_var: str | None, base_url: str) -> str | None:
         if api_key:  # explicit cmd argument always takes precedence
@@ -185,8 +245,11 @@ class BaseModel:
         return api_key
 
     def __del__(self):
-        if self._tunnel:
-            self._tunnel.stop()
+        # getattr guard: __del__ can fire on an instance whose __init__ raised
+        # (or never ran), before _tunnel was set.
+        tunnel = getattr(self, "_tunnel", None)
+        if tunnel:
+            tunnel.stop()
 
     def _maybe_apply_stop_phrase_removal(
         self, result: dict, remove_stop_phrases: bool, stop_phrases: list[str] | None
@@ -239,6 +302,13 @@ class BaseModel:
     def _build_responses_request_params(self, **kwargs) -> dict:
         raise NotImplementedError("Responses completion is not not supported or implemented for this model.")
 
+    @staticmethod
+    def _apply_routing_keys(request_params: dict, cache_key: str | None) -> None:
+        """Attach a request ID and an optional prompt-cache key."""
+        request_params.setdefault("extra_headers", {}).setdefault("X-Request-Id", str(uuid.uuid4()))
+        if cache_key is not None:
+            request_params["prompt_cache_key"] = cache_key
+
     @with_context_retry
     async def generate_async(
         self,
@@ -261,6 +331,7 @@ class BaseModel:
         include_response: bool = False,
         extra_body: dict = None,
         response_format=None,
+        cache_key: str | None = None,
     ) -> dict:
         if endpoint_type is None:
             # Infering completion type from prompt
@@ -289,9 +360,12 @@ class BaseModel:
             "response_format": response_format,
         }
 
-        # TODO: remove this after we no longer use gpt-oss or it's fixed in vllm
+        # Keep the targeted bad-request retry budget separate from retries for
+        # transient connection failures.
         max_retries = 2
         retry_count = 0
+        max_transient_retries = int(os.environ.get("NEMO_SKILLS_TRANSIENT_RETRIES", "3"))
+        transient_count = 0
 
         async with self.concurrent_semaphore:
             while retry_count <= max_retries:
@@ -299,7 +373,41 @@ class BaseModel:
                     if endpoint_type == EndpointType.chat:
                         assert isinstance(prompt, list), "Chat completion requests must be a list of messages."
                         request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
-                        response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
+                        # Use the native client when this provider and request
+                        # support it. Other endpoint types continue through
+                        # litellm.
+                        #
+                        # Exception: a pydantic BaseModel response_format (structured
+                        # output) must go through litellm. The native SDK's
+                        # chat.completions.create() rejects a BaseModel class
+                        # ("must use .parse() instead"); litellm accepts it and
+                        # converts it to a JSON schema. (dict/json_schema
+                        # response_formats are fine on the native path.)
+                        rf = request_params.get("response_format")
+                        needs_litellm_response_format = inspect.isclass(rf) and issubclass(rf, PydanticBaseModel)
+                        use_native = self._async_openai_client is not None and not needs_litellm_response_format
+                        if use_native:
+                            # Strip litellm-only parameters and None-valued fields.
+                            # AsyncOpenAI rejects unknown keywords, and some
+                            # compatible endpoints reject explicit JSON nulls that
+                            # litellm omits from the request body.
+                            native_params = {
+                                k: v
+                                for k, v in request_params.items()
+                                if k not in self._LITELLM_ONLY_CHAT_PARAMS and v is not None
+                            }
+                            # AsyncOpenAI needs `model` as a top-level
+                            # kwarg; litellm consumes it via
+                            # self.litellm_kwargs (with the `openai/`
+                            # provider prefix). Use the raw model name
+                            # here.
+                            native_params.setdefault("model", self.model_name_or_path)
+                            response = await self._async_openai_client.chat.completions.create(
+                                **native_params,
+                            )
+                        else:
+                            response = await litellm.acompletion(**request_params, **self.litellm_kwargs)
                         if stream:
                             result = self._stream_chat_chunks_async(response)
                         else:
@@ -309,6 +417,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.text:
                         assert isinstance(prompt, str), "Text completion requests must be a string."
                         request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         response = await litellm.atext_completion(**request_params, **self.litellm_kwargs)
                         if stream:
                             result = self._stream_completion_chunks_async(response)
@@ -319,6 +428,7 @@ class BaseModel:
                     elif endpoint_type == EndpointType.responses:
                         assert isinstance(prompt, list), "Responses completion requests must be a list."
                         request_params = self._build_responses_request_params(input=prompt, stream=stream, **kwargs)
+                        self._apply_routing_keys(request_params, cache_key)
                         response = await litellm.aresponses(**request_params, **self.litellm_kwargs)
                         if stream:
                             raise NotImplementedError("Streaming responses is not supported yet.")
@@ -348,6 +458,38 @@ class BaseModel:
                         }
                     else:
                         raise e
+                except (
+                    httpx.ConnectError,
+                    httpx.ReadError,
+                    httpx.RemoteProtocolError,
+                    httpx.PoolTimeout,
+                    httpx.NetworkError,
+                    openai.APIConnectionError,
+                    ConnectionError,
+                    ConnectionResetError,
+                ) as e:
+                    # Retry transient connection failures with a short
+                    # exponential backoff.
+                    if transient_count < max_transient_retries:
+                        transient_count += 1
+                        backoff = 0.05 * (2 ** (transient_count - 1))
+                        LOG.warning(
+                            "transient connect error, retry %d/%d after %.0fms: %s: %s",
+                            transient_count,
+                            max_transient_retries,
+                            backoff * 1000,
+                            type(e).__name__,
+                            e,
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
+                    LOG.error(
+                        "transient connect error after %d retries, propagating: %s: %s",
+                        max_transient_retries,
+                        type(e).__name__,
+                        e,
+                    )
+                    raise
 
         return result
 
@@ -384,6 +526,20 @@ class BaseModel:
 
         return result
 
+    @staticmethod
+    def _extract_reasoning(message_or_delta) -> str | None:
+        """Return reasoning text from either supported response field.
+
+        litellm uses `reasoning_content`, while direct OpenAI-compatible
+        responses may use `reasoning`. Prefer `reasoning_content` when both are
+        present.
+        """
+        for attr in ("reasoning_content", "reasoning"):
+            value = getattr(message_or_delta, attr, None)
+            if value:
+                return value
+        return None
+
     def _parse_chat_completion_response(self, response, include_response: bool = False, **kwargs) -> dict:
         choice = response.choices[0]
         output = choice.message.content
@@ -395,9 +551,25 @@ class BaseModel:
         elif getattr(response.usage, "input_tokens", None) is not None:
             result["num_input_tokens"] = response.usage.input_tokens
 
-        # Add reasoning_content if available
-        if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
-            result["reasoning_content"] = choice.message.reasoning_content
+        # Normalize either supported reasoning field in the result.
+        reasoning = self._extract_reasoning(choice.message)
+        if reasoning:
+            result["reasoning_content"] = reasoning
+
+        # Preserve the complete usage payload, including explicit nulls, so
+        # provider-specific usage metadata remains available.
+        try:
+            result["usage"] = response.usage.model_dump()
+        except AttributeError:
+            # Support non-pydantic usage objects.
+            try:
+                result["usage"] = dict(response.usage)
+            except Exception:
+                result["usage"] = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", None),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", None),
+                    "total_tokens": getattr(response.usage, "total_tokens", None),
+                }
 
         # Extract detailed token breakdown for reasoning models if available
         if hasattr(response.usage, "completion_tokens_details") and response.usage.completion_tokens_details:
@@ -463,12 +635,8 @@ class BaseModel:
         """Process a single chat chunk and return data to yield."""
         if hasattr(chunk.choices[0], "delta"):
             cur_delta = chunk.choices[0].delta.content
-            # Check for reasoning_content in delta
-            reasoning_delta = (
-                getattr(chunk.choices[0].delta, "reasoning_content", None)
-                if hasattr(chunk.choices[0].delta, "reasoning_content")
-                else None
-            )
+            # Normalize either supported reasoning field in the delta.
+            reasoning_delta = self._extract_reasoning(chunk.choices[0].delta)
             tool_calls_delta = getattr(chunk.choices[0].delta, "tool_calls", None)
         else:
             cur_delta = chunk.choices[0].text
@@ -561,6 +729,9 @@ class BaseModel:
 
     async def _stream_chat_chunks_async(self, response):
         async for chunk in response:
+            # Usage-only and keepalive chunks have no choices to process.
+            if not getattr(chunk, "choices", None):
+                continue
             results = self._process_chat_chunk(chunk)
             for result in results:
                 yield result

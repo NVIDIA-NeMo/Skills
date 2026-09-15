@@ -160,6 +160,13 @@ def parse_kwargs(kwargs: str | dict | None, **extra_kwargs) -> dict | None:
     return full_kwargs
 
 
+# SSH tunnel settings are launcher-local and are not forwarded automatically.
+_NON_FORWARDED_ENV_VARS = {
+    "NEMO_SKILLS_SSH_SERVER",
+    "NEMO_SKILLS_SSH_KEY_PATH",
+}
+
+
 def get_env_variables(cluster_config):
     """
     Will get the environment variables from the cluster config and the user environment.
@@ -215,6 +222,14 @@ def get_env_variables(cluster_config):
         "HF_TOKEN",
         "NGC_API_KEY",
     }
+    # Forward NEMO_SKILLS_* runtime configuration except launcher-local settings.
+    for name in os.environ:
+        if (
+            name.startswith("NEMO_SKILLS_")
+            and name not in _NON_FORWARDED_ENV_VARS
+            and name not in optional_env_vars_to_add
+        ):
+            optional_env_vars_to_add.add(name)
     default_factories = {
         "HF_TOKEN": lambda: str(token) if (token := get_token()) else "",
     }
