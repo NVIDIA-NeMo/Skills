@@ -497,7 +497,8 @@ class SweBenchGenerationTask(GenerationTask):
             "Use max_concurrent_requests to control the number of concurrent requests.",
             self.cfg.max_concurrent_requests,
         )
-        self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
+        self.rollout_semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
+        self.eval_semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
 
         # output_lock will be initialized when async_loop is called
         self.output_lock = None
@@ -1810,7 +1811,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Run the agent rollout.
         # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
-        async with self.semaphore:
+        async with self.rollout_semaphore:
             pred_file = await self._run_agent(data_point)
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
@@ -1895,7 +1896,7 @@ class SweBenchGenerationTask(GenerationTask):
             search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
             # TODO: should we fail on errors here? Seems that json isn't always generated
             try:
-                async with self.semaphore:
+                async with self.eval_semaphore:
                     report_file = await self._execute_container_command(
                         data_point,
                         swe_bench_cmd,

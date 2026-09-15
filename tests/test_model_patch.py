@@ -136,7 +136,8 @@ def test_model_patch_limits_standard_swe_evaluation_concurrency(tmp_path):
     task._execute_container_command = fake_execute
 
     async def run_all():
-        task.semaphore = asyncio.Semaphore(2)
+        task.rollout_semaphore = asyncio.Semaphore(2)
+        task.eval_semaphore = asyncio.Semaphore(2)
         await asyncio.gather(
             *(task.process_single_datapoint({"instance_id": instance_id}, []) for instance_id in instance_ids)
         )
