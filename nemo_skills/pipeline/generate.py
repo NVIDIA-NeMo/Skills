@@ -193,10 +193,19 @@ def _create_job_unified(
         if components:
             group_tasks = server_script.num_tasks if (server_config and server_script) else 1
 
+            # If this group requests no GPUs (external server via server_address,
+            # e.g. an openai-hosted judge), the default `partition` may forbid
+            # GPU-less submissions (most SLURM clusters' interactive/batch
+            # partitions do). Auto-route to `cpu_partition` when available so
+            # judge passes don't blow up just because they don't need GPUs.
+            effective_partition = partition
+            if group_gpus == 0 and cluster_config.get("cpu_partition"):
+                effective_partition = cluster_config["cpu_partition"]
+
             group = CommandGroup(
                 commands=components,
                 hardware=HardwareConfig(
-                    partition=partition,
+                    partition=effective_partition,
                     account=account,
                     num_gpus=group_gpus,
                     num_nodes=group_nodes,

@@ -64,6 +64,15 @@ def _sandbox_exec_sync(sandbox: LocalSandbox, cmd: str, *, language: str = "shel
 
 
 def wait_for_sandbox(sandbox, timeout: int = 240, poll: float = 1.0):
+    # Allow the timeout to be overridden by IOI_SANDBOX_TIMEOUT env var so
+    # slower clusters (e.g. those where the pyxis-mounted sandbox container
+    # takes >4 min to boot a fresh worker) don't require a code change.
+    env_timeout = os.environ.get("IOI_SANDBOX_TIMEOUT")
+    if env_timeout:
+        try:
+            timeout = int(env_timeout)
+        except ValueError:
+            pass
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:

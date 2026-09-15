@@ -24,6 +24,7 @@ import typer
 import nemo_skills.pipeline.utils as pipeline_utils
 from nemo_skills.inference import GenerationType
 from nemo_skills.pipeline.app import app, typer_unpacker
+from nemo_skills.pipeline.eval_gym import eval_gym as _eval_gym
 from nemo_skills.pipeline.generate import generate as _generate
 from nemo_skills.pipeline.utils import kwargs_to_string, parse_kwargs
 from nemo_skills.pipeline.utils.declarative import Command, CommandGroup, HardwareConfig, Pipeline
@@ -31,7 +32,16 @@ from nemo_skills.pipeline.utils.eval import (
     EvalGenerationUnit,
     prepare_eval_commands,
 )
-from nemo_skills.pipeline.utils.scripts import EvalClientScript, SandboxScript, ServerScript
+from nemo_skills.pipeline.utils.gym import (
+    GymBenchmarkConfig,
+    is_registered,
+)
+from nemo_skills.pipeline.utils.scripts import (
+    EvalClientScript,
+    GymEvalClientScript,
+    SandboxScript,
+    ServerScript,
+)
 from nemo_skills.utils import (
     get_logger_name,
     setup_logging,
@@ -44,6 +54,11 @@ LOG = logging.getLogger(get_logger_name(__file__))
 class SingleNodeMode(str, enum.Enum):
     sequential = "sequential"
     parallel = "parallel"
+
+
+class EvalBackend(str, enum.Enum):
+    skills = "skills"
+    gym = "gym"
 
 
 def _resolve_child_sbatch_kwargs(sbatch_kwargs, child_sbatch_kwargs):
@@ -272,6 +287,12 @@ def eval(
         "If running in parallel, ++max_concurrent_requests parameter is respected per "
         "benchmark, but not globally across benchmarks.",
     ),
+    backend: EvalBackend = typer.Option(
+        EvalBackend.skills,
+        help="Which generation backend to use. 'skills' is the legacy nemo_skills.inference.generate "
+        "path; 'gym' runs through NeMo-Gym (ng_run + ng_collect_rollouts) and is gated on the "
+        "benchmark having a Gym counterpart. See convert-eval-to-gym/TIERED_PLAN.md.",
+    ),
     run_after: List[str] = typer.Option(
         None, help="Can specify a list of expnames that need to be completed before this one starts"
     ),
@@ -384,6 +405,98 @@ def eval(
         single_node_mode = single_node_mode.value
     except AttributeError:
         pass
+
+    try:
+        backend = backend.value
+    except AttributeError:
+        pass
+
+    # If any requested benchmark is registered Gym-only (`skills_optional=True`)
+    # and the caller picked the Skills backend, fail fast with a clear pointer
+    # rather than letting Skills' dataset-module lookup raise a confusing
+    # "Init file not found on the cluster" later.
+    if backend == EvalBackend.skills.value:
+        requested_names = [b.split(":", 1)[0] for b in benchmarks.split(",")]
+        for name in requested_names:
+            if is_registered(name):
+                from nemo_skills.pipeline.utils.gym import get_gym_config
+
+                if get_gym_config(name).skills_optional:
+                    raise ValueError(
+                        f"Benchmark '{name}' has no NeMo Skills dataset module. "
+                        f"This benchmark is only available via the Gym backend. "
+                        f"Re-run with --backend=gym."
+                    )
+
+    if backend == EvalBackend.gym.value:
+        # All Gym-backend submissions go through the dedicated dispatcher.
+        # It keeps the Skills-shaped command-prep helpers entirely out of
+        # the Gym path so (a) Skills code paths stay unmodified during the
+        # dual-backend window and (b) Skills can be sunset wholesale later.
+        # The dispatcher does its own registry validation, mount-resolution,
+        # and preflight; we hand off after the typer args are coerced.
+        if " " in str(benchmarks):
+            raise ValueError("benchmarks should be separated with commas")
+        # Translate generator-task-specific Skills args into Gym wandb dict
+        # for the small overlap the Gym path uses.
+        if log_samples:
+            wandb_parameters = {
+                "name": wandb_name or expname,
+                "project": wandb_project,
+                "group": wandb_group,
+            }
+            validate_wandb_project_name(
+                wandb_project=wandb_project,
+                wandb_name=wandb_name or expname,
+                wandb_group=wandb_group,
+            )
+        else:
+            wandb_parameters = None
+        return _eval_gym(
+            ctx=ctx,
+            cluster=cluster,
+            output_dir=output_dir,
+            expname=expname,
+            benchmarks=benchmarks,
+            model=model,
+            server_type=server_type,
+            server_address=server_address,
+            server_gpus=server_gpus,
+            server_nodes=server_nodes,
+            server_args=server_args,
+            server_entrypoint=server_entrypoint,
+            server_container=server_container,
+            partition=partition,
+            account=account,
+            log_dir=log_dir,
+            starting_seed=starting_seed,
+            # Gym's native multi-sample knob is `+num_repeats=N` on the
+            # `ng_collect_rollouts` CLI — pass via `++` Hydra overrides if
+            # multi-seed is needed. The dispatcher emits one SLURM job per
+            # benchmark with a single seed unit by default.
+            num_random_seeds=1,
+            extra_arguments=extra_arguments,
+            wandb_parameters=wandb_parameters,
+            single_node_mode=single_node_mode,
+            with_sandbox=with_sandbox,
+            keep_mounts_for_sandbox=keep_mounts_for_sandbox,
+            sandbox_container=sandbox_container,
+            sandbox_mounts=sandbox_mounts,
+            main_container=main_container,
+            mount_paths=mount_paths,
+            check_mounted_paths=check_mounted_paths,
+            config_dir=config_dir,
+            run_after=run_after,
+            dependent_jobs=dependent_jobs,
+            sbatch_kwargs=parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min),
+            installation_command=installation_command,
+            reuse_code=reuse_code,
+            reuse_code_exp=reuse_code_exp,
+            skip_hf_home_check=skip_hf_home_check,
+            dry_run=dry_run,
+            _reuse_exp=_reuse_exp,
+            _task_dependencies=_task_dependencies,
+        )
 
     if log_samples:
         wandb_parameters = {
@@ -575,17 +688,46 @@ def eval(
                 else:
                     unit_dicts.append(dict(u))
 
-            client_script = EvalClientScript(
-                units=unit_dicts,
-                single_node_mode=single_node_mode,
-                with_sandbox=sandbox_enabled,
-                servers=server_scripts,
-                server_addresses_prehosted=server_addresses_list,
-                model_names=models_list,
-                server_types=server_types_list,
-                sandbox=sandbox_script,
-                installation_command=installation_command,
-            )
+            if backend == EvalBackend.gym.value:
+                # Gym runs one shared `ng_run` mesh per SLURM job, so all units
+                # in a job must share the same Gym wiring. Enforce one benchmark
+                # per job rather than per-unit mesh-switching.
+                if len(job_benchmarks) > 1:
+                    raise ValueError(
+                        f"--backend=gym requires one benchmark per SLURM job; this job "
+                        f"would mix {sorted(job_benchmarks)}. Re-run with --num_jobs=-1 "
+                        f"(or large enough that each benchmark gets its own job)."
+                    )
+                (gym_benchmark,) = job_benchmarks
+                gym_cfg: GymBenchmarkConfig = get_gym_config(gym_benchmark)
+                client_script = GymEvalClientScript(
+                    units=unit_dicts,
+                    config_paths=list(gym_cfg.config_paths),
+                    agent_name=gym_cfg.agent_name,
+                    gym_input_jsonl_fpath=gym_cfg.input_jsonl_fpath,
+                    gym_prompt_config=gym_cfg.prompt_config,
+                    extra_overrides=tuple(gym_cfg.extra_overrides),
+                    single_node_mode=single_node_mode,
+                    with_sandbox=sandbox_enabled,
+                    servers=server_scripts,
+                    server_addresses_prehosted=server_addresses_list,
+                    model_names=models_list,
+                    server_types=server_types_list,
+                    sandbox=sandbox_script,
+                    installation_command=installation_command,
+                )
+            else:
+                client_script = EvalClientScript(
+                    units=unit_dicts,
+                    single_node_mode=single_node_mode,
+                    with_sandbox=sandbox_enabled,
+                    servers=server_scripts,
+                    server_addresses_prehosted=server_addresses_list,
+                    model_names=models_list,
+                    server_types=server_types_list,
+                    sandbox=sandbox_script,
+                    installation_command=installation_command,
+                )
 
             # Build groups: group0 = (optional server0) + (optional sandbox) + client
             groups = []
@@ -618,10 +760,23 @@ def eval(
                     )
                 )
 
+            # Pick the right container for the client task. The Skills client
+            # uses `nemo-skills`; the Gym client needs `ng_run`/ng_collect_rollouts`
+            # which live in the gym container (falls back to nemo-rl per
+            # nemo_gym_rollouts' convention when `nemo-gym` is absent).
+            if backend == EvalBackend.gym.value:
+                client_container = (
+                    main_container
+                    or cluster_config["containers"].get("nemo-gym")
+                    or cluster_config["containers"]["nemo-rl"]
+                )
+            else:
+                client_container = main_container or cluster_config["containers"]["nemo-skills"]
+
             group0_components.append(
                 Command(
                     script=client_script,
-                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    container=client_container,
                     name=f"{task_name}",
                 )
             )
@@ -710,6 +865,14 @@ def eval(
                 all_tasks.append(job_name_to_handle[last_job_name])
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
+            # Skip Skills' judge step for the Gym backend — Gym's agent +
+            # resource_server already handles judging (e.g. math_with_judge,
+            # mcqa, hle_equivalence_llm_judge). Running Skills' judge on top
+            # would (a) require duplicate config, (b) double-evaluate the
+            # rollouts, and (c) hit `_generate(server_type=…)` requiring
+            # judge kwargs we never plumbed through for the gym path.
+            if backend == EvalBackend.gym.value:
+                continue
             if not eval_requires_judge and not benchmark_args.requires_judge:
                 continue
             dependent_job_ids = benchmark_args.job_ids
@@ -824,7 +987,11 @@ def eval(
         group_module = {}
 
         # setting summarize results tasks
-        if auto_summarize_results:
+        # Skip on the Gym backend: ng_collect_rollouts writes its own
+        # rollouts_aggregate_metrics.json next to rollouts.jsonl, and we
+        # intentionally don't preserve the Skills `output.jsonl` schema
+        # that summarize_results consumes.
+        if auto_summarize_results and backend != EvalBackend.gym.value:
             for benchmark, benchmark_args in benchmarks_dict.items():
                 # TODO: add logic if metrics.json exists, we don't run this!
                 has_tasks = True
