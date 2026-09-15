@@ -340,7 +340,7 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
         return metrics
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
-        async with self.semaphore:
+        async with self.rollout_semaphore:
             pred_file = await self._run_agent(data_point)
 
         with open(pred_file, "r") as f:
@@ -361,7 +361,7 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
                 "invalid_trial": None,
             }
         else:
-            async with self.semaphore:
+            async with self.eval_semaphore:
                 metrics = await self._run_senior_swe_bench_verifier(data_point, str(model_patch))
 
         return {

@@ -214,7 +214,7 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
 
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         data_point = self._normalize_data_point(data_point)
-        async with self.semaphore:
+        async with self.rollout_semaphore:
             pred_file = await self._run_agent(data_point)
 
         try:
@@ -239,7 +239,7 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
                 resolved=None,
             )
         else:
-            async with self.semaphore:
+            async with self.eval_semaphore:
                 metrics = await self._run_scale_swe_verifier(data_point, str(model_patch))
 
         return {

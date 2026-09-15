@@ -242,7 +242,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
 
         # Run the agent rollout.
         # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
-        async with self.semaphore:
+        async with self.rollout_semaphore:
             pred_file = await self._run_agent(data_point)
 
         with open(pred_file, "r") as f:
@@ -264,7 +264,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
                 "partial": None,
             }
         else:
-            async with self.semaphore:
+            async with self.eval_semaphore:
                 metrics = await self._run_deepswe_verifier(data_point, str(model_patch))
 
         return {
