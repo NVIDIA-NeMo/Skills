@@ -1023,7 +1023,17 @@ class SweBenchGenerationTask(GenerationTask):
         input_dir = self.output_dir / ".openhands_inputs"
         input_dir.mkdir(parents=True, exist_ok=True)
         host_path = input_dir / f"{instance_token}.jsonl"
-        host_path.write_text(json.dumps(data_point, ensure_ascii=False) + "\n", encoding="utf-8")
+        data_point_for_openhands = {
+            # Include only the information OH needs, without exposing hidden info to the agent
+            "instance_id": data_point["instance_id"],
+            "repo": data_point.get("repo") or "repo",
+            "base_commit": data_point["base_commit"],
+            "problem_statement": data_point["problem_statement"],
+            "version": data_point.get("version") or "1.0",
+            "PASS_TO_PASS": [],
+            "FAIL_TO_PASS": [],
+        }
+        host_path.write_text(json.dumps(data_point_for_openhands, ensure_ascii=False) + "\n", encoding="utf-8")
         container_path = f"/trajectories_mount/.openhands_inputs/{host_path.name}"
         return host_path, container_path
 

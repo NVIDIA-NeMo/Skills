@@ -24,6 +24,12 @@ def test_openhands_rollout_input_contains_only_current_record(tmp_path):
         "instance_id": "owner__repo-123",
         "dataset_name": "princeton-nlp/SWE-bench_Verified",
         "problem_statement": "Handle non-ASCII text: café",
+        "base_commit": "abc123",
+        "patch": "diff --git a/gold.py b/gold.py\n",
+        "test_patch": "diff --git a/test_gold.py b/test_gold.py\n",
+        "hints_text": "look at gold.py",
+        "FAIL_TO_PASS": ["tests/test_gold.py::test_repro"],
+        "PASS_TO_PASS": ["tests/test_stable.py::test_ok"],
     }
 
     host_path, container_path = task._write_openhands_rollout_input(data_point)
@@ -31,4 +37,12 @@ def test_openhands_rollout_input_contains_only_current_record(tmp_path):
     assert host_path.parent == tmp_path / ".openhands_inputs"
     assert container_path == f"/trajectories_mount/.openhands_inputs/{host_path.name}"
     assert host_path.read_text(encoding="utf-8").count("\n") == 1
-    assert json.loads(host_path.read_text(encoding="utf-8")) == data_point
+    assert json.loads(host_path.read_text(encoding="utf-8")) == {
+        "instance_id": "owner__repo-123",
+        "repo": "repo",
+        "base_commit": "abc123",
+        "problem_statement": "Handle non-ASCII text: café",
+        "version": "1.0",
+        "PASS_TO_PASS": [],
+        "FAIL_TO_PASS": [],
+    }
