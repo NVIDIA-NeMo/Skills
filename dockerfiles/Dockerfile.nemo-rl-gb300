@@ -107,6 +107,17 @@ ENV CUDA_HOME=/usr/local/cuda
 # CUDA 13 moved cuda/std headers under include/cccl.
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include/cccl
 
+# The CUDA ARM64 image stores its target payload under targets/sbsa-linux.
+# Transformer Engine's CMake discovery can still construct the conventional
+# x86_64-linux target path when this ARM64 image is built through binfmt on an
+# x86 builder. Map that compatibility name to the real ARM64 payload; no x86
+# libraries are introduced into the image.
+RUN if [[ "$(uname -m)" == "aarch64" \
+        && -d /usr/local/cuda/targets/sbsa-linux \
+        && ! -e /usr/local/cuda/targets/x86_64-linux ]]; then \
+        ln -s sbsa-linux /usr/local/cuda/targets/x86_64-linux; \
+    fi
+
 # Copy dependency metadata and MCore workspace sources before resolving. The
 # project itself is installed after the complete NeMo-RL source is copied.
 COPY --from=nemo-rl pyproject.toml uv.lock ./
