@@ -1,0 +1,214 @@
+# syntax=docker/dockerfile:1
+# GB300 Megatron/SFT image pinned to NeMo-RL v0.7.0.
+#
+# This image intentionally installs only the MCore training backend. NeMo-RL's
+# default actor isolation creates a separate uv environment on every Ray node
+# when a prefetched environment cannot be reused. For a single-backend SFT
+# image that isolation is unnecessary, so workers use the fully baked system
+# environment instead. Runtime uv synchronization is disabled after the image
+# has been built and validated.
+#
+# GB300 systems use Grace (ARM64) CPUs and Blackwell GPUs.
+# Build:
+#   docker buildx build --platform=linux/arm64 \
+#     -f dockerfiles/Dockerfile.nemo-rl-gb300 \
+#     --tag nemo-rl:v0.7.0-gb300 .
+# Override the source with --build-arg NRL_GIT_REF=<git-ref> or:
+#   --build-context nemo-rl=/path/to/NeMo-RL
+
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.03-cuda13.2-devel-ubuntu24.04
+
+FROM scratch AS nemo-rl
+ARG NRL_GIT_REF=v0.7.0
+ADD --keep-git-dir=true https://github.com/NVIDIA-NeMo/RL.git#${NRL_GIT_REF} /
+
+# Empty by default. CI may inject a compatible uv cache with:
+#   --build-context uv-cache-seed=/path/to/cache
+FROM scratch AS uv-cache-seed
+
+FROM ${BASE_IMAGE} AS base
+
+ENV NRL_CONTAINER=1
+USER root
+
+RUN <<"EOF" bash -exu -o pipefail
+export DEBIAN_FRONTEND=noninteractive
+export TZ=America/Los_Angeles
+
+apt-get update
+apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    gnupg \
+    jq \
+    less \
+    rsync \
+    vim \
+    wget
+
+# Nsight Systems CLI
+echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" \
+    > /etc/apt/sources.list.d/nvidia-devtools.list
+apt-key adv --fetch-keys \
+    "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/$(uname -m | sed 's/aarch64/sbsa/')/7fa2af80.pub"
+apt-get update
+apt-get install -y --no-install-recommends nsight-systems-cli
+
+# Security updates and attack-surface reduction.
+apt-get install -y --only-upgrade gnupg rsync
+apt-get remove -y --purge ffmpeg || true
+apt-get autoremove -y
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOF
+
+# CMake is required by CUDA extensions such as Transformer Engine and mamba-ssm.
+ARG CMAKE_VERSION=3.31.1
+RUN ARCH=$(uname -m) \
+    && CMAKE_INSTALLER="cmake-${CMAKE_VERSION}-linux-${ARCH}" \
+    && curl --retry 3 --retry-delay 2 -fsSL \
+        -o "${CMAKE_INSTALLER}.tar.gz" \
+        "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/${CMAKE_INSTALLER}.tar.gz" \
+    && tar -xzf "${CMAKE_INSTALLER}.tar.gz" \
+    && cp -r "${CMAKE_INSTALLER}/bin/"* /usr/local/bin/ \
+    && cp -r "${CMAKE_INSTALLER}/share/"* /usr/local/share/ \
+    && rm -rf "${CMAKE_INSTALLER}" "${CMAKE_INSTALLER}.tar.gz"
+
+ARG UV_VERSION=0.11.18
+ARG PYTHON_VERSION=3.13.13
+
+# Keep the managed interpreter outside /root. This prevents absolute Python
+# links from becoming invalid when an HPC runtime changes the root home mount.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
+ENV PATH="/root/.local/bin:$PATH"
+RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh \
+    && uv python install "${PYTHON_VERSION}"
+
+ENV RAY_USAGE_STATS_ENABLED=0
+ENV RAY_ENABLE_UV_RUN_RUNTIME_ENV=0
+ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
+
+FROM base AS hermetic
+
+WORKDIR /opt/nemo-rl
+
+ARG MAX_JOBS
+ARG NVTE_BUILD_THREADS_PER_JOB
+ARG BASE_IMAGE
+ARG UV_VERSION
+
+ENV UV_PROJECT_ENVIRONMENT=/opt/nemo_rl_venv
+ENV UV_LINK_MODE=copy
+
+# GB300 / Blackwell only. Grace-based GB300 nodes require linux/arm64.
+ENV TORCH_CUDA_ARCH_LIST="10.0"
+ENV NVTE_CUDA_ARCHS="100"
+ENV CUDA_HOME=/usr/local/cuda
+# CUDA 13 moved cuda/std headers under include/cccl.
+ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include/cccl
+
+# Copy dependency metadata and MCore workspace sources before resolving. The
+# project itself is installed after the complete NeMo-RL source is copied.
+COPY --from=nemo-rl pyproject.toml uv.lock ./
+COPY --from=nemo-rl nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
+COPY --from=nemo-rl --link research/ ./research/
+COPY --from=nemo-rl --link 3rdparty/ ./3rdparty/
+
+# Use a BuildKit cache for build speed, but copy packages into the final venv.
+# No installed file in /opt/nemo_rl_venv may depend on this ephemeral cache.
+RUN --mount=type=ssh \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,from=uv-cache-seed,source=.,target=/tmp/uv-cache-seed <<"EOF" bash -exu -o pipefail
+CACHE_KEY=$(echo "${BASE_IMAGE}-${UV_VERSION}" | md5sum | cut -c1-12)
+SEED_KEY=$(cat /tmp/uv-cache-seed/.cache-key 2>/dev/null || true)
+if [[ -n "${SEED_KEY}" && "${SEED_KEY}" == "${CACHE_KEY}" ]]; then
+    rsync -a --exclude=.cache-key /tmp/uv-cache-seed/ /root/.cache/uv/
+elif [[ -n "${SEED_KEY}" ]]; then
+    echo "Ignoring incompatible uv cache seed"
+fi
+
+uv venv --seed
+uv sync --locked --extra mcore --no-install-project
+EOF
+
+ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
+
+# Use the cuDNN packaged with the locked Python environment rather than a
+# potentially different version supplied by the base image.
+ENV CUDNN_HOME=/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn
+ENV LD_LIBRARY_PATH="/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
+
+FROM hermetic AS release
+
+ARG NRL_GIT_REF=v0.7.0
+ARG NVIDIA_BUILD_ID
+ARG NVIDIA_BUILD_REF
+ARG RC_DATE=00.00
+ARG TARGETARCH
+
+ENV NEMO_RL_COMMIT=${NRL_GIT_REF}
+ENV NVIDIA_BUILD_ID=${NVIDIA_BUILD_ID:-<unknown>}
+ENV NVIDIA_BUILD_REF=${NVIDIA_BUILD_REF:-<unknown>}
+
+LABEL com.nvidia.build.id="${NVIDIA_BUILD_ID}"
+LABEL com.nvidia.build.ref="${NVIDIA_BUILD_REF}"
+LABEL com.nvidia.nemo-rl.accelerator="GB300"
+LABEL com.nvidia.nemo-rl.backends="mcore"
+
+# These paths are used by NCCL on AWS EFA systems and are harmless elsewhere.
+RUN printf '%s\n' /opt/amazon/ofi-nccl/lib /opt/amazon/efa/lib \
+    > /etc/ld.so.conf.d/aws-efa.conf
+ENV LD_LIBRARY_PATH="/opt/amazon/ofi-nccl/lib:/opt/amazon/efa/lib:${LD_LIBRARY_PATH}"
+
+# Retain the dependency files already used to construct the environment.
+COPY --from=nemo-rl --exclude=pyproject.toml --exclude=uv.lock . /opt/nemo-rl
+
+RUN git rev-parse --is-shallow-repository | grep -q true \
+    && git fetch --unshallow \
+    || true
+
+# Install the project and verify the complete GB300/MCore environment at build
+# time. NEMO_RL_PY_EXECUTABLES_SYSTEM makes Ray actors use this baked Python
+# directly; no per-node /opt/ray_venvs construction is needed for SFT.
+ENV NEMO_RL_PY_EXECUTABLES_SYSTEM=1
+RUN --mount=type=ssh \
+    --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
+uv sync --locked --extra mcore
+
+python - <<'PY'
+import megatron.core
+import nemo_rl
+import torch
+import transformer_engine.pytorch
+
+print("Validated NeMo-RL MCore environment")
+print("NeMo-RL:", getattr(nemo_rl, "__version__", "unknown"))
+print("PyTorch:", torch.__version__)
+PY
+EOF
+
+# Install NeMo-Skills without allowing it to rewrite NeMo-RL's locked
+# dependency environment. Training commonly mounts a newer Skills checkout at
+# /nemo_run/code, while this installation supplies package metadata and tools.
+RUN git clone https://github.com/NVIDIA-NeMo/Skills.git /opt/NeMo-Skills \
+    && cd /opt/NeMo-Skills \
+    && uv pip install --no-deps .
+
+# Generate the fingerprint after every environment mutation.
+RUN python tools/generate_fingerprint.py \
+    > /opt/nemo_rl_container_fingerprint
+
+RUN echo "This distribution includes open source which is archived at the following URL: https://opensource.nvidia.com/oss/teams/nvidia/nemo-rl/${RC_DATE}:linux-${TARGETARCH}/index.html" \
+        > NOTICES.txt \
+    && echo "For further inquiries or assistance, contact us at oss-requests@nvidia.com" \
+        >> NOTICES.txt
+
+# The image is complete. A runtime `uv run` must use the baked environment and
+# must never resolve or download packages independently on every Ray node.
+ENV UV_NO_SYNC=1
+
+# Megatron recommends a single CUDA connection when tensor/sequence
+# parallelism is enabled so communication can overlap backward GEMMs.
+ENV CUDA_DEVICE_MAX_CONNECTIONS=1
+
+WORKDIR /opt/nemo-rl
