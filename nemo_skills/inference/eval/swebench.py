@@ -141,6 +141,7 @@ def build_claude_code_settings(
     api_base: str,
     model: str,
     context_window: int,
+    tokens_to_generate: int | None = None,
     effort: str | None = None,
     disable_thinking: bool = False,
 ) -> dict:
@@ -167,6 +168,8 @@ def build_claude_code_settings(
             "DISABLE_UPDATES": "1",
         }
     )
+    if tokens_to_generate is not None:
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(tokens_to_generate)
     if disable_thinking:
         env["MAX_THINKING_TOKENS"] = "0"
         env.pop("CLAUDE_CODE_EFFORT_LEVEL", None)
@@ -1644,6 +1647,7 @@ class SweBenchGenerationTask(GenerationTask):
                 api_base=proxy_api_base,
                 model=claude_model_name,
                 context_window=self.cfg.claude_code_context_window,
+                tokens_to_generate=self.cfg.inference.tokens_to_generate,
                 effort=effort,
                 disable_thinking=disable_thinking,
             )

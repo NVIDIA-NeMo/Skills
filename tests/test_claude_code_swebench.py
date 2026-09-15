@@ -56,10 +56,23 @@ def test_build_claude_code_settings_merges_user_environment():
     assert settings["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "qwen3-coder"
     assert settings["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "qwen3-coder"
     assert settings["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "393216"
+    assert "CLAUDE_CODE_MAX_OUTPUT_TOKENS" not in settings["env"]
     assert settings["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
     assert settings["env"]["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
     assert settings["env"]["DISABLE_AUTOUPDATER"] == "1"
     assert settings["permissions"] == {"deny": ["WebFetch"]}
+
+
+def test_build_claude_code_settings_applies_output_token_limit():
+    settings = build_claude_code_settings(
+        {},
+        api_base="http://localhost:8000/v1",
+        model="qwen",
+        context_window=262144,
+        tokens_to_generate=65536,
+    )
+
+    assert settings["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "65536"
 
 
 def test_build_claude_code_settings_rejects_invalid_values():
