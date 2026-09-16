@@ -16,55 +16,43 @@
 # Override the source with --build-arg NRL_GIT_REF=<git-ref> or:
 #   --build-context nemo-rl=/path/to/NeMo-RL
 
-ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.03-cuda13.2-devel-ubuntu24.04
+FROM nvcr.io/nvidia/cuda-dl-base:26.03-cuda13.2-devel-ubuntu24.04 AS cuda-base
 
 # Use an ordinary clone stage instead of Docker BuildKit's remote-Git ADD.
 # This keeps the same pinned source and .git metadata while allowing native
 # builds with Podman/Buildah on GB300 ARM64 compute nodes.
-FROM ${BASE_IMAGE} AS nemo-rl
+FROM cuda-base AS nemo-rl
 ARG NRL_GIT_REF=v0.7.0
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 RUN git clone --branch "${NRL_GIT_REF}" --depth 1 \
+    --recurse-submodules --shallow-submodules \
     https://github.com/NVIDIA-NeMo/RL.git .
 
-FROM ${BASE_IMAGE} AS base
+FROM cuda-base AS base
 
 ENV NRL_CONTAINER=1
 USER root
 
-RUN <<"EOF" bash -exu -o pipefail
-export DEBIAN_FRONTEND=noninteractive
-export TZ=America/Los_Angeles
-
-apt-get update
-apt-get install -y --no-install-recommends \
-    curl \
-    git \
-    gnupg \
-    jq \
-    less \
-    rsync \
-    vim \
-    wget
-
-# Nsight Systems CLI
-echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" \
-    > /etc/apt/sources.list.d/nvidia-devtools.list
-apt-key adv --fetch-keys \
-    "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/$(uname -m | sed 's/aarch64/sbsa/')/7fa2af80.pub"
-apt-get update
-apt-get install -y --no-install-recommends nsight-systems-cli
-
-# Security updates and attack-surface reduction.
-apt-get install -y --only-upgrade gnupg rsync
-apt-get remove -y --purge ffmpeg || true
-apt-get autoremove -y
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-EOF
+RUN export DEBIAN_FRONTEND=noninteractive \
+    && export TZ=America/Los_Angeles \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl git gnupg jq less rsync vim wget \
+    && . /etc/lsb-release \
+    && echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" \
+        > /etc/apt/sources.list.d/nvidia-devtools.list \
+    && apt-key adv --fetch-keys \
+        "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/$(uname -m | sed "s/aarch64/sbsa/")/7fa2af80.pub" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nsight-systems-cli \
+    && apt-get install -y --only-upgrade gnupg rsync \
+    && (apt-get remove -y --purge ffmpeg || true) \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # CMake is required by CUDA extensions such as Transformer Engine and mamba-ssm.
 ARG CMAKE_VERSION=3.31.1
@@ -130,10 +118,9 @@ COPY --from=nemo-rl /src/3rdparty/ ./3rdparty/
 
 # Use a BuildKit cache for build speed, but copy packages into the final venv.
 # No installed file in /opt/nemo_rl_venv may depend on this ephemeral cache.
-RUN --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
-uv venv --seed
-uv sync --locked --extra mcore --no-install-project
-EOF
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv --seed \
+    && uv sync --locked --extra mcore --no-install-project
 
 ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
 
@@ -180,64 +167,30 @@ RUN git rev-parse --is-shallow-repository | grep -q true \
 # time. NEMO_RL_PY_EXECUTABLES_SYSTEM makes Ray actors use this baked Python
 # directly; no per-node /opt/ray_venvs construction is needed for SFT.
 ENV NEMO_RL_PY_EXECUTABLES_SYSTEM=1
-RUN --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
-uv sync --locked --extra mcore
-
 # NeMo-RL v0.7.0 locks Transformer Engine 2.15 and cuDNN 9.20. That
 # combination does not provide a backend for GB300/SM103 BF16 training with
 # packed THD tensors, D=256, and context parallelism. Override the locked
 # attention stack only after the final uv sync so a later sync cannot revert
 # it. TE 2.18 adds Blackwell 10.x D=256 fused-attention backward support;
 # packed THD with context parallelism requires cuDNN 9.25 or newer.
-/opt/nemo_rl_venv/bin/python -m pip install \
-    --no-build-isolation --no-deps --force-reinstall \
-    "nvidia-cudnn-cu13==${CUDNN_VERSION}" \
-    "nvidia-cudnn-frontend==${CUDNN_FRONTEND_VERSION}" \
-    "transformer-engine-cu13==${TRANSFORMER_ENGINE_VERSION}" \
-    "transformer-engine==${TRANSFORMER_ENGINE_VERSION}"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --extra mcore \
+    && /opt/nemo_rl_venv/bin/python -m pip install \
+        --no-build-isolation --no-deps --force-reinstall \
+        "nvidia-cudnn-cu13==${CUDNN_VERSION}" \
+        "nvidia-cudnn-frontend==${CUDNN_FRONTEND_VERSION}" \
+        "transformer-engine-cu13==${TRANSFORMER_ENGINE_VERSION}" \
+        "transformer-engine==${TRANSFORMER_ENGINE_VERSION}" \
+    && NVTE_FRAMEWORK=pytorch /opt/nemo_rl_venv/bin/python -m pip install \
+        --no-build-isolation --no-deps --force-reinstall \
+        "transformer-engine-torch==${TRANSFORMER_ENGINE_VERSION}" \
+    && /opt/nemo_rl_venv/bin/python -m pip install \
+        --force-reinstall \
+        "flash-attn-4==${FLASH_ATTN_4_VERSION}" \
+        "nvidia-cutlass-dsl[cu13]==${CUTLASS_DSL_VERSION}"
 
-NVTE_FRAMEWORK=pytorch /opt/nemo_rl_venv/bin/python -m pip install \
-    --no-build-isolation --no-deps --force-reinstall \
-    "transformer-engine-torch==${TRANSFORMER_ENGINE_VERSION}"
-
-# Keep the CUDA 13 FlashAttention 4 stack aligned with the combination used
-# by the working GB300 NeMo-RL v0.6 image. Pin CuTe DSL so rebuilds do not
-# silently resolve a different kernel/runtime package combination.
-/opt/nemo_rl_venv/bin/python -m pip install \
-    --force-reinstall \
-    "flash-attn-4==${FLASH_ATTN_4_VERSION}" \
-    "nvidia-cutlass-dsl[cu13]==${CUTLASS_DSL_VERSION}"
-
-python - <<'PY'
-from importlib.metadata import version
-import os
-
-import megatron.core
-import nemo_rl
-import torch
-import transformer_engine.pytorch
-
-expected = {
-    "transformer-engine": os.environ["TRANSFORMER_ENGINE_VERSION"],
-    "transformer-engine-torch": os.environ["TRANSFORMER_ENGINE_VERSION"],
-    "transformer-engine-cu13": os.environ["TRANSFORMER_ENGINE_VERSION"],
-    "nvidia-cudnn-cu13": os.environ["CUDNN_VERSION"],
-    "nvidia-cudnn-frontend": os.environ["CUDNN_FRONTEND_VERSION"],
-    "flash-attn-4": os.environ["FLASH_ATTN_4_VERSION"],
-    "nvidia-cutlass-dsl": os.environ["CUTLASS_DSL_VERSION"],
-}
-for package, required in expected.items():
-    installed = version(package)
-    assert installed == required, f"{package}: expected {required}, found {installed}"
-    print(f"{package}: {installed}")
-
-import flash_attn.cute
-
-print("Validated NeMo-RL GB300 MCore fused-attention environment")
-print("NeMo-RL:", getattr(nemo_rl, "__version__", "unknown"))
-print("PyTorch:", torch.__version__)
-PY
-EOF
+# Validate exact fused-attention package versions and imports in the image.
+RUN python -c 'exec("""from importlib.metadata import version\nimport os\nimport megatron.core\nimport nemo_rl\nimport torch\nimport transformer_engine.pytorch\nexpected = {\n    \"transformer-engine\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"transformer-engine-torch\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"transformer-engine-cu13\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"nvidia-cudnn-cu13\": os.environ[\"CUDNN_VERSION\"],\n    \"nvidia-cudnn-frontend\": os.environ[\"CUDNN_FRONTEND_VERSION\"],\n    \"flash-attn-4\": os.environ[\"FLASH_ATTN_4_VERSION\"],\n    \"nvidia-cutlass-dsl\": os.environ[\"CUTLASS_DSL_VERSION\"],\n}\nfor package, required in expected.items():\n    installed = version(package)\n    assert installed == required, f\"{package}: expected {required}, found {installed}\"\n    print(f\"{package}: {installed}\")\nimport flash_attn.cute\nprint(\"Validated NeMo-RL GB300 MCore fused-attention environment\")\nprint(\"NeMo-RL:\", getattr(nemo_rl, \"__version__\", \"unknown\"))\nprint(\"PyTorch:\", torch.__version__)\n""")'
 
 # Install NeMo-Skills without allowing it to rewrite NeMo-RL's locked
 # dependency environment. Training commonly mounts a newer Skills checkout at
