@@ -25,6 +25,11 @@ from nemo_skills.pipeline.utils.generation import (
     get_remaining_jobs,
     separate_hydra_args,
 )
+from nemo_skills.pipeline.utils.server import (
+    get_cluster_gpus_per_node,
+    should_get_random_port,
+    warn_hosted_server_allocation,
+)
 
 
 def create_done_files(output_dir, seed_chunk_pairs):
@@ -35,6 +40,80 @@ def create_done_files(output_dir, seed_chunk_pairs):
         os.makedirs(os.path.dirname(done_file), exist_ok=True)
         with open(done_file, "w") as f:
             f.write("")
+
+
+def test_should_get_random_port_respects_cluster_gpu_count():
+    assert should_get_random_port(server_gpus=4, exclusive=None, gpus_per_node=8)
+    assert not should_get_random_port(server_gpus=8, exclusive=None, gpus_per_node=8)
+    assert not should_get_random_port(server_gpus=4, exclusive=None, gpus_per_node=4)
+    assert not should_get_random_port(server_gpus=4, exclusive=True, gpus_per_node=8)
+
+
+def test_should_get_random_port_warns_on_exclusive_partial_node(caplog):
+    # The guardrail warning is centralized here so every server-hosting pipeline gets it.
+    should_get_random_port(server_gpus=4, exclusive=True, gpus_per_node=8)
+    assert "exclusive=True" in caplog.text
+
+
+def test_get_cluster_gpus_per_node_reads_config_and_defaults():
+    # Reads explicit cluster-config values; falls back to the default otherwise.
+    assert get_cluster_gpus_per_node({"gpus_per_node": 4}) == 4
+    assert get_cluster_gpus_per_node({"num_gpus_per_node": 16}) == 16
+    assert get_cluster_gpus_per_node(None) == 8
+    assert get_cluster_gpus_per_node({"_cluster_yaml_name": "some-cluster"}) == 8
+    # gpus_per_node takes precedence over num_gpus_per_node.
+    assert get_cluster_gpus_per_node({"gpus_per_node": 2, "num_gpus_per_node": 8}) == 2
+    # Explicit default override.
+    assert get_cluster_gpus_per_node(None, default=4) == 4
+
+
+def test_warn_hosted_server_allocation_partial_fixed_port(caplog):
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=False,
+        gpus_per_node=8,
+        get_random_port=False,
+    )
+
+    assert "fixed server port" in caplog.text
+    assert "get_random_port=True" in caplog.text
+
+
+def test_warn_hosted_server_allocation_partial_exclusive(caplog):
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=True,
+        gpus_per_node=8,
+        get_random_port=False,
+    )
+
+    assert "exclusive=True" in caplog.text
+    assert "server_gpus=8" in caplog.text
+
+
+def test_warn_hosted_server_allocation_random_partial_has_no_port_warning(caplog):
+    # A resolved random port (no caller-pinned port) must not trigger the collision warning.
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=False,
+        gpus_per_node=8,
+        get_random_port=True,
+    )
+
+    assert "fixed server port" not in caplog.text
+
+
+def test_warn_hosted_server_allocation_explicit_port_is_fixed(caplog):
+    # An explicitly pinned server_port is a fixed port even when get_random_port is True.
+    warn_hosted_server_allocation(
+        server_gpus=4,
+        exclusive=False,
+        gpus_per_node=8,
+        get_random_port=True,
+        server_port=5000,
+    )
+
+    assert "fixed server port" in caplog.text
 
 
 def test_get_chunked_rs_filename():
