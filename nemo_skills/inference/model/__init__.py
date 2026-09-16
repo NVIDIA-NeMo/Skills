@@ -136,6 +136,7 @@ def get_tool_calling_model(
     tool_overrides: dict | None = None,
     schema_overrides: dict | None = None,
     max_tool_calls: int = -1,
+    tool_call_timeout_s: float | None = 300.0,
     **kwargs,
 ):
     if isinstance(model, str):
@@ -147,6 +148,7 @@ def get_tool_calling_model(
         additional_config=additional_config,
         schema_overrides=schema_overrides,
         max_tool_calls=max_tool_calls,
+        tool_call_timeout_s=tool_call_timeout_s,
     )
 
 
