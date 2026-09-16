@@ -595,20 +595,18 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
             if self.cfg.agent_framework_commit is None:
-                self.cfg.agent_framework_commit = "v2.0"
+                self.cfg.agent_framework_commit = "v2.4.6"
             setup_commands.append(
-                # clone the swe-agent repo
+                # clone the mini-swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
                 "cd /root/mini-swe-agent && "
-                # Bypass the interactive setup wizard by pointing to the default config
-                "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/benchmarks/swebench.yaml && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install mini-swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e . && "
-                # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
+                # force downgrade rich - newer versions cause the mini-swe-agent logger to hang in some instances
                 "uv pip install rich==14.2.0"
             )
 
