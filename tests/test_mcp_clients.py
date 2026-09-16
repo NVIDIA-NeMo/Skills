@@ -17,6 +17,7 @@ import types
 import pytest
 
 # Dummy client to exercise MCPClientMeta behavior without real I/O
+from nemo_skills.inference.model.tool_call import ToolCallingWrapper
 from nemo_skills.mcp.clients import MCPClient, MCPStdioClient, MCPStreamableHttpClient
 from nemo_skills.mcp.tool_manager import Tool, ToolManager
 
@@ -219,6 +220,13 @@ class DummyTool(Tool):
         return {"unknown": tool_name, "args": arguments}
 
 
+class ShutdownTool(DummyTool):
+    shutdown_calls = 0
+
+    async def shutdown(self) -> None:
+        type(self).shutdown_calls += 1
+
+
 # Helper class for test_tool_manager_cache_and_duplicate_detection
 # Defined at module level so it can be imported via locate()
 class CountingTool(DummyTool):
@@ -253,6 +261,16 @@ async def test_tool_manager_list_and_execute_with_class_locator():
 
     result = await tm.execute_tool("execute", {"code": "x=1"})
     assert result == {"ran": True, "code": "x=1"}
+
+
+@pytest.mark.asyncio
+async def test_tool_calling_wrapper_shutdown_calls_registered_tools():
+    ShutdownTool.shutdown_calls = 0
+    wrapper = ToolCallingWrapper(model=object(), tool_modules=[f"{__name__}::ShutdownTool"])
+
+    await wrapper.shutdown()
+
+    assert ShutdownTool.shutdown_calls == 1
 
 
 @pytest.mark.asyncio

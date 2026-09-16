@@ -14,6 +14,7 @@
 
 
 import copy
+import inspect
 import logging
 import time
 from dataclasses import field
@@ -43,6 +44,17 @@ class CodeExecutionWrapper:
         self.model = model
         self.sandbox = sandbox
         self.config = config
+
+    async def shutdown(self) -> None:
+        try:
+            shutdown = getattr(self.model, "shutdown", None)
+            if shutdown is not None:
+                result = shutdown()
+                if inspect.isawaitable(result):
+                    await result
+        finally:
+            if self.sandbox is not None:
+                await self.sandbox.close()
 
     async def _generate_single(
         self,
