@@ -22,10 +22,12 @@ import os
 import pprint
 import re
 from functools import partial
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from datasets import Dataset, load_dataset, load_from_disk
+import nemo_rl
 from nemo_rl.algorithms.sft import MasterConfig, setup, sft_train
 from nemo_rl.algorithms.utils import get_tokenizer
 from nemo_rl.data import DataConfig
@@ -443,6 +445,12 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
 
 def main():
     """Main entry point."""
+    try:
+        nemo_rl_version = version("nemo-rl")
+    except PackageNotFoundError:
+        nemo_rl_version = getattr(nemo_rl, "__version__", "unknown")
+    print(f"NeMo-RL version: {nemo_rl_version}")
+
     # Parse arguments
     args, overrides = parse_args()
 
@@ -516,6 +524,12 @@ def main():
     # setup data
     dataset, val_dataset = setup_data(tokenizer, config["data"])
 
+    # NeMo-RL 0.7 expects a Pydantic MasterConfig, while 0.6 expects the
+    # original dictionary. Detect the supported API instead of comparing
+    # package versions so development builds work as well.
+    validate_config = getattr(MasterConfig, "model_validate", None)
+    setup_config = validate_config(config) if validate_config is not None else config
+
     (
         policy,
         cluster,
@@ -526,7 +540,7 @@ def main():
         checkpointer,
         sft_save_state,
         master_config,
-    ) = setup(MasterConfig.model_validate(config), tokenizer, dataset, val_dataset)
+    ) = setup(setup_config, tokenizer, dataset, val_dataset)
 
     sft_train(
         policy,
