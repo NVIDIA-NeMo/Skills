@@ -153,6 +153,11 @@ ENV LD_LIBRARY_PATH="/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn
 FROM hermetic AS release
 
 ARG NRL_GIT_REF=v0.7.0
+ARG TRANSFORMER_ENGINE_VERSION=2.18.0
+ARG CUDNN_VERSION=9.25.0.15
+ARG CUDNN_FRONTEND_VERSION=1.26.0
+ARG FLASH_ATTN_4_VERSION=4.0.0b8
+ARG CUTLASS_DSL_VERSION=4.4.2
 ARG NVIDIA_BUILD_ID
 ARG NVIDIA_BUILD_REF
 ARG RC_DATE=00.00
@@ -165,7 +170,7 @@ ENV NVIDIA_BUILD_REF=${NVIDIA_BUILD_REF:-<unknown>}
 LABEL com.nvidia.build.id="${NVIDIA_BUILD_ID}"
 LABEL com.nvidia.build.ref="${NVIDIA_BUILD_REF}"
 LABEL com.nvidia.nemo-rl.accelerator="GB300"
-LABEL com.nvidia.nemo-rl.backends="mcore"
+LABEL com.nvidia.nemo-rl.backends="mcore,cudnn-fused-attention,flash-attention-2,flash-attention-4"
 
 # These paths are used by NCCL on AWS EFA systems and are harmless elsewhere.
 RUN printf '%s\n' /opt/amazon/ofi-nccl/lib /opt/amazon/efa/lib \
@@ -187,13 +192,58 @@ RUN --mount=type=ssh \
     --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
 uv sync --locked --extra mcore
 
+# NeMo-RL v0.7.0 locks Transformer Engine 2.15 and cuDNN 9.20. That
+# combination does not provide a backend for GB300/SM103 BF16 training with
+# packed THD tensors, D=256, and context parallelism. Override the locked
+# attention stack only after the final uv sync so a later sync cannot revert
+# it. TE 2.18 adds Blackwell 10.x D=256 fused-attention backward support;
+# packed THD with context parallelism requires cuDNN 9.25 or newer.
+uv pip install --python /opt/nemo_rl_venv/bin/python \
+    --no-deps --reinstall \
+    "nvidia-cudnn-cu13==${CUDNN_VERSION}" \
+    "nvidia-cudnn-frontend==${CUDNN_FRONTEND_VERSION}" \
+    "transformer-engine-cu13==${TRANSFORMER_ENGINE_VERSION}" \
+    "transformer-engine==${TRANSFORMER_ENGINE_VERSION}"
+
+NVTE_FRAMEWORK=pytorch \
+uv pip install --python /opt/nemo_rl_venv/bin/python \
+    --no-build-isolation --no-deps --reinstall \
+    "transformer-engine-torch==${TRANSFORMER_ENGINE_VERSION}"
+
+# Keep the CUDA 13 FlashAttention 4 stack aligned with the combination used
+# by the working GB300 NeMo-RL v0.6 image. Pin CuTe DSL so rebuilds do not
+# silently resolve a different kernel/runtime package combination.
+uv pip install --python /opt/nemo_rl_venv/bin/python \
+    --reinstall \
+    "flash-attn-4==${FLASH_ATTN_4_VERSION}" \
+    "nvidia-cutlass-dsl[cu13]==${CUTLASS_DSL_VERSION}"
+
 python - <<'PY'
+from importlib.metadata import version
+import os
+
 import megatron.core
 import nemo_rl
 import torch
 import transformer_engine.pytorch
 
-print("Validated NeMo-RL MCore environment")
+expected = {
+    "transformer-engine": os.environ["TRANSFORMER_ENGINE_VERSION"],
+    "transformer-engine-torch": os.environ["TRANSFORMER_ENGINE_VERSION"],
+    "transformer-engine-cu13": os.environ["TRANSFORMER_ENGINE_VERSION"],
+    "nvidia-cudnn-cu13": os.environ["CUDNN_VERSION"],
+    "nvidia-cudnn-frontend": os.environ["CUDNN_FRONTEND_VERSION"],
+    "flash-attn-4": os.environ["FLASH_ATTN_4_VERSION"],
+    "nvidia-cutlass-dsl": os.environ["CUTLASS_DSL_VERSION"],
+}
+for package, required in expected.items():
+    installed = version(package)
+    assert installed == required, f"{package}: expected {required}, found {installed}"
+    print(f"{package}: {installed}")
+
+import flash_attn.cute
+
+print("Validated NeMo-RL GB300 MCore fused-attention environment")
 print("NeMo-RL:", getattr(nemo_rl, "__version__", "unknown"))
 print("PyTorch:", torch.__version__)
 PY
