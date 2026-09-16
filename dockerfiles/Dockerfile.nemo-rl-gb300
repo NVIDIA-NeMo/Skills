@@ -18,13 +18,17 @@
 
 ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.03-cuda13.2-devel-ubuntu24.04
 
-FROM scratch AS nemo-rl
+# Use an ordinary clone stage instead of Docker BuildKit's remote-Git ADD.
+# This keeps the same pinned source and .git metadata while allowing native
+# builds with Podman/Buildah on GB300 ARM64 compute nodes.
+FROM ${BASE_IMAGE} AS nemo-rl
 ARG NRL_GIT_REF=v0.7.0
-ADD --keep-git-dir=true https://github.com/NVIDIA-NeMo/RL.git#${NRL_GIT_REF} /
-
-# Empty by default. CI may inject a compatible uv cache with:
-#   --build-context uv-cache-seed=/path/to/cache
-FROM scratch AS uv-cache-seed
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --branch "${NRL_GIT_REF}" --depth 1 \
+    https://github.com/NVIDIA-NeMo/RL.git .
 
 FROM ${BASE_IMAGE} AS base
 
@@ -95,8 +99,6 @@ WORKDIR /opt/nemo-rl
 
 ARG MAX_JOBS
 ARG NVTE_BUILD_THREADS_PER_JOB
-ARG BASE_IMAGE
-ARG UV_VERSION
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/nemo_rl_venv
 ENV UV_LINK_MODE=copy
@@ -121,24 +123,14 @@ RUN if [[ "$(uname -m)" == "aarch64" \
 
 # Copy dependency metadata and MCore workspace sources before resolving. The
 # project itself is installed after the complete NeMo-RL source is copied.
-COPY --from=nemo-rl pyproject.toml uv.lock ./
-COPY --from=nemo-rl nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
-COPY --from=nemo-rl --link research/ ./research/
-COPY --from=nemo-rl --link 3rdparty/ ./3rdparty/
+COPY --from=nemo-rl /src/pyproject.toml /src/uv.lock ./
+COPY --from=nemo-rl /src/nemo_rl/__init__.py /src/nemo_rl/package_info.py ./nemo_rl/
+COPY --from=nemo-rl /src/research/ ./research/
+COPY --from=nemo-rl /src/3rdparty/ ./3rdparty/
 
 # Use a BuildKit cache for build speed, but copy packages into the final venv.
 # No installed file in /opt/nemo_rl_venv may depend on this ephemeral cache.
-RUN --mount=type=ssh \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,from=uv-cache-seed,source=.,target=/tmp/uv-cache-seed <<"EOF" bash -exu -o pipefail
-CACHE_KEY=$(echo "${BASE_IMAGE}-${UV_VERSION}" | md5sum | cut -c1-12)
-SEED_KEY=$(cat /tmp/uv-cache-seed/.cache-key 2>/dev/null || true)
-if [[ -n "${SEED_KEY}" && "${SEED_KEY}" == "${CACHE_KEY}" ]]; then
-    rsync -a --exclude=.cache-key /tmp/uv-cache-seed/ /root/.cache/uv/
-elif [[ -n "${SEED_KEY}" ]]; then
-    echo "Ignoring incompatible uv cache seed"
-fi
-
+RUN --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
 uv venv --seed
 uv sync --locked --extra mcore --no-install-project
 EOF
@@ -178,7 +170,7 @@ RUN printf '%s\n' /opt/amazon/ofi-nccl/lib /opt/amazon/efa/lib \
 ENV LD_LIBRARY_PATH="/opt/amazon/ofi-nccl/lib:/opt/amazon/efa/lib:${LD_LIBRARY_PATH}"
 
 # Retain the dependency files already used to construct the environment.
-COPY --from=nemo-rl --exclude=pyproject.toml --exclude=uv.lock . /opt/nemo-rl
+COPY --from=nemo-rl /src/ /opt/nemo-rl/
 
 RUN git rev-parse --is-shallow-repository | grep -q true \
     && git fetch --unshallow \
@@ -188,8 +180,7 @@ RUN git rev-parse --is-shallow-repository | grep -q true \
 # time. NEMO_RL_PY_EXECUTABLES_SYSTEM makes Ray actors use this baked Python
 # directly; no per-node /opt/ray_venvs construction is needed for SFT.
 ENV NEMO_RL_PY_EXECUTABLES_SYSTEM=1
-RUN --mount=type=ssh \
-    --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
+RUN --mount=type=cache,target=/root/.cache/uv <<"EOF" bash -exu -o pipefail
 uv sync --locked --extra mcore
 
 # NeMo-RL v0.7.0 locks Transformer Engine 2.15 and cuDNN 9.20. That
@@ -198,23 +189,22 @@ uv sync --locked --extra mcore
 # attention stack only after the final uv sync so a later sync cannot revert
 # it. TE 2.18 adds Blackwell 10.x D=256 fused-attention backward support;
 # packed THD with context parallelism requires cuDNN 9.25 or newer.
-uv pip install --python /opt/nemo_rl_venv/bin/python \
-    --no-deps --reinstall \
+/opt/nemo_rl_venv/bin/python -m pip install \
+    --no-build-isolation --no-deps --force-reinstall \
     "nvidia-cudnn-cu13==${CUDNN_VERSION}" \
     "nvidia-cudnn-frontend==${CUDNN_FRONTEND_VERSION}" \
     "transformer-engine-cu13==${TRANSFORMER_ENGINE_VERSION}" \
     "transformer-engine==${TRANSFORMER_ENGINE_VERSION}"
 
-NVTE_FRAMEWORK=pytorch \
-uv pip install --python /opt/nemo_rl_venv/bin/python \
-    --no-build-isolation --no-deps --reinstall \
+NVTE_FRAMEWORK=pytorch /opt/nemo_rl_venv/bin/python -m pip install \
+    --no-build-isolation --no-deps --force-reinstall \
     "transformer-engine-torch==${TRANSFORMER_ENGINE_VERSION}"
 
 # Keep the CUDA 13 FlashAttention 4 stack aligned with the combination used
 # by the working GB300 NeMo-RL v0.6 image. Pin CuTe DSL so rebuilds do not
 # silently resolve a different kernel/runtime package combination.
-uv pip install --python /opt/nemo_rl_venv/bin/python \
-    --reinstall \
+/opt/nemo_rl_venv/bin/python -m pip install \
+    --force-reinstall \
     "flash-attn-4==${FLASH_ATTN_4_VERSION}" \
     "nvidia-cutlass-dsl[cu13]==${CUTLASS_DSL_VERSION}"
 
