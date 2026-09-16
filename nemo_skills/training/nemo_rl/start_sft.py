@@ -26,8 +26,8 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from datasets import Dataset, load_dataset, load_from_disk
 import nemo_rl
+from datasets import Dataset, load_dataset, load_from_disk
 from nemo_rl.algorithms.sft import MasterConfig, setup, sft_train
 from nemo_rl.algorithms.utils import get_tokenizer
 from nemo_rl.data import DataConfig
