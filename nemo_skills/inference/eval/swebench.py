@@ -1247,6 +1247,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
+                "export MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=3 && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
