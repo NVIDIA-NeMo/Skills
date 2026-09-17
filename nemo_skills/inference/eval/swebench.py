@@ -862,7 +862,7 @@ class SweBenchGenerationTask(GenerationTask):
             # repo_formatter tells us where to get the repo from: either from a URL or from a local mirror.
             # If repo_formatter is not set, we try to fetch it from GitHub using the "repo" column of the dataset.
             repo_formatter = data_point.get("repo_formatter", "https://github.com/{repo}")
-            repo_url_or_path = repo_formatter.format(repo=data_point["repo"])
+            repo_url_or_path = repo_formatter.format(repo=data_point["repo"].removeprefix("https://github.com/"))
             if repo_url_or_path.startswith("/"):
                 # If the repo is local, we need to mount it inside of Apptainer
                 extra_apptainer_args += f" --mount type=bind,src={repo_url_or_path},dst=/instance_repo,ro "
