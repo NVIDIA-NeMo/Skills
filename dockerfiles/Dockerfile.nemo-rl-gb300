@@ -120,7 +120,8 @@ COPY --from=nemo-rl /src/3rdparty/ ./3rdparty/
 # No installed file in /opt/nemo_rl_venv may depend on this ephemeral cache.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv --seed \
-    && uv sync --locked --extra mcore --no-install-project
+    && uv sync --locked --extra mcore --no-install-project \
+        --no-install-package transformer-engine
 
 ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
 
@@ -132,15 +133,24 @@ ENV LD_LIBRARY_PATH="/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn
 FROM hermetic AS release
 
 ARG NRL_GIT_REF=v0.7.0
-ARG TRANSFORMER_ENGINE_VERSION=2.18.0
-ARG CUDNN_VERSION=9.25.0.15
-ARG CUDNN_FRONTEND_VERSION=1.26.0
-ARG FLASH_ATTN_4_VERSION=4.0.0b8
-ARG CUTLASS_DSL_VERSION=4.4.2
+ARG GB300_TRANSFORMER_ENGINE_VERSION=2.18.0
+ARG GB300_CUDNN_VERSION=9.25.0.15
+ARG GB300_CUDNN_FRONTEND_VERSION=1.26.0
+ARG GB300_FLASH_ATTN_4_VERSION=4.0.0b8
+ARG GB300_CUTLASS_DSL_VERSION=4.4.2
 ARG NVIDIA_BUILD_ID
 ARG NVIDIA_BUILD_REF
 ARG RC_DATE=00.00
 ARG TARGETARCH
+
+# Export the requested versions so the validation step can verify the final
+# environment.  Keeping these values in ENV also makes version changes visible
+# to Podman/Buildah's layer cache.
+ENV TRANSFORMER_ENGINE_VERSION=${GB300_TRANSFORMER_ENGINE_VERSION}
+ENV CUDNN_VERSION=${GB300_CUDNN_VERSION}
+ENV CUDNN_FRONTEND_VERSION=${GB300_CUDNN_FRONTEND_VERSION}
+ENV FLASH_ATTN_4_VERSION=${GB300_FLASH_ATTN_4_VERSION}
+ENV CUTLASS_DSL_VERSION=${GB300_CUTLASS_DSL_VERSION}
 
 ENV NEMO_RL_COMMIT=${NRL_GIT_REF}
 ENV NVIDIA_BUILD_ID=${NVIDIA_BUILD_ID:-<unknown>}
@@ -173,8 +183,25 @@ ENV NEMO_RL_PY_EXECUTABLES_SYSTEM=1
 # attention stack only after the final uv sync so a later sync cannot revert
 # it. TE 2.18 adds Blackwell 10.x D=256 fused-attention backward support;
 # packed THD with context parallelism requires cuDNN 9.25 or newer.
+# The locked MCore environment carries Transformer Engine 2.13 components, so
+# apply the GB300 TE 2.18 override last to prevent the lock from restoring them.
+# The hermetic stage already contains every locked MCore dependency. A second
+# full `uv sync` here would rebuild mamba, causal-conv1d, and DeepEP merely
+# because the complete project source is now present. Install only NeMo-RL
+# itself without touching those prebuilt dependencies.
+# Install FlashAttention's small runtime companions explicitly. Letting pip
+# resolve through its `torch` requirement downloads an older cuDNN plus the
+# full CUDA toolkit, all of which would immediately be replaced below.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --extra mcore \
+    uv pip install --no-deps -e /opt/nemo-rl \
+    && /opt/nemo_rl_venv/bin/python -m pip install \
+        --no-deps \
+        "flash-attn-4==${FLASH_ATTN_4_VERSION}" \
+        "nvidia-cutlass-dsl[cu13]==${CUTLASS_DSL_VERSION}" \
+        "nvidia-cutlass-dsl-libs-base==${CUTLASS_DSL_VERSION}" \
+        "nvidia-cutlass-dsl-libs-cu13==${CUTLASS_DSL_VERSION}" \
+        "torch-c-dlpack-ext==0.1.5" \
+        "quack-kernels==0.4.1" \
     && /opt/nemo_rl_venv/bin/python -m pip install \
         --no-build-isolation --no-deps --force-reinstall \
         "nvidia-cudnn-cu13==${CUDNN_VERSION}" \
@@ -183,14 +210,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         "transformer-engine==${TRANSFORMER_ENGINE_VERSION}" \
     && NVTE_FRAMEWORK=pytorch /opt/nemo_rl_venv/bin/python -m pip install \
         --no-build-isolation --no-deps --force-reinstall \
-        "transformer-engine-torch==${TRANSFORMER_ENGINE_VERSION}" \
-    && /opt/nemo_rl_venv/bin/python -m pip install \
-        --force-reinstall \
-        "flash-attn-4==${FLASH_ATTN_4_VERSION}" \
-        "nvidia-cutlass-dsl[cu13]==${CUTLASS_DSL_VERSION}"
+        "transformer-engine-torch==${TRANSFORMER_ENGINE_VERSION}"
 
-# Validate exact fused-attention package versions and imports in the image.
-RUN python -c 'exec("""from importlib.metadata import version\nimport os\nimport megatron.core\nimport nemo_rl\nimport torch\nimport transformer_engine.pytorch\nexpected = {\n    \"transformer-engine\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"transformer-engine-torch\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"transformer-engine-cu13\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"nvidia-cudnn-cu13\": os.environ[\"CUDNN_VERSION\"],\n    \"nvidia-cudnn-frontend\": os.environ[\"CUDNN_FRONTEND_VERSION\"],\n    \"flash-attn-4\": os.environ[\"FLASH_ATTN_4_VERSION\"],\n    \"nvidia-cutlass-dsl\": os.environ[\"CUTLASS_DSL_VERSION\"],\n}\nfor package, required in expected.items():\n    installed = version(package)\n    assert installed == required, f\"{package}: expected {required}, found {installed}\"\n    print(f\"{package}: {installed}\")\nimport flash_attn.cute\nprint(\"Validated NeMo-RL GB300 MCore fused-attention environment\")\nprint(\"NeMo-RL:\", getattr(nemo_rl, \"__version__\", \"unknown\"))\nprint(\"PyTorch:\", torch.__version__)\n""")'
+# The CPU build node intentionally has no NVIDIA driver (`libcuda.so.1`), and
+# TE 2.18 loads that driver when imported. Verify exact versions and module
+# payloads here; perform the real imports on a GB300 GPU before publishing.
+RUN python -c 'exec("""from importlib.metadata import version\nfrom importlib.util import find_spec\nfrom pathlib import Path\nimport os\nexpected = {\n    \"transformer-engine\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"transformer-engine-torch\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"transformer-engine-cu13\": os.environ[\"TRANSFORMER_ENGINE_VERSION\"],\n    \"nvidia-cudnn-cu13\": os.environ[\"CUDNN_VERSION\"],\n    \"nvidia-cudnn-frontend\": os.environ[\"CUDNN_FRONTEND_VERSION\"],\n    \"flash-attn-4\": os.environ[\"FLASH_ATTN_4_VERSION\"],\n    \"nvidia-cutlass-dsl\": os.environ[\"CUTLASS_DSL_VERSION\"],\n}\nfor package, required in expected.items():\n    installed = version(package)\n    assert installed == required, f\"{package}: expected {required}, found {installed}\"\n    print(f\"{package}: {installed}\")\nte = find_spec(\"transformer_engine\")\nfa = find_spec(\"flash_attn\")\nassert te and te.submodule_search_locations\nassert fa and fa.submodule_search_locations\nte_root = Path(next(iter(te.submodule_search_locations)))\nfa_root = Path(next(iter(fa.submodule_search_locations)))\nassert (te_root / \"pytorch\").is_dir()\nassert any(te_root.rglob(\"*.so\"))\nassert (fa_root / \"cute\").is_dir()\nassert find_spec(\"megatron\") and find_spec(\"nemo_rl\")\nprint(\"Validated GB300 package versions and module payloads\")\nprint(\"NeMo-RL:\", version(\"nemo-rl\"))\nprint(\"PyTorch:\", version(\"torch\"))\n""")'
 
 # Install NeMo-Skills without allowing it to rewrite NeMo-RL's locked
 # dependency environment. Training commonly mounts a newer Skills checkout at
