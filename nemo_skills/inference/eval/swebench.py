@@ -931,7 +931,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"--mount {shlex.quote(mount_spec)}" for mount_spec in self._get_apptainer_mounts(mode, data_point)
         )
         apptainer_cmd = (
-            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
+            f"apptainer exec --writable-tmpfs --cleanenv --pid --no-mount home,tmp,bind-paths "
             f"{mount_args} "
             f"{extra_apptainer_args} "
             f"{container_name} bash -c {shlex.quote(combined_command)}"
