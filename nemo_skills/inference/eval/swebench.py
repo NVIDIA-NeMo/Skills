@@ -1139,7 +1139,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Variables that will be available in prompt templates
         extra_fields = {}
-        if self.cfg.multilingual:
+        if self.cfg.multilingual or data_point.get("language"):
             extra_fields["language"] = data_point["language"]
 
         problem_statement = self._get_agent_problem_statement(data_point)
