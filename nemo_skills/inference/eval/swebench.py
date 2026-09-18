@@ -1036,6 +1036,8 @@ class SweBenchGenerationTask(GenerationTask):
             "PASS_TO_PASS": [],
             "FAIL_TO_PASS": [],
         }
+        if data_point.get("language"):
+            data_point_for_openhands["language"] = data_point["language"]
         host_path.write_text(json.dumps(data_point_for_openhands, ensure_ascii=False) + "\n", encoding="utf-8")
         container_path = f"/trajectories_mount/.openhands_inputs/{host_path.name}"
         return host_path, container_path
