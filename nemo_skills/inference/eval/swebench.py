@@ -1113,7 +1113,9 @@ class SweBenchGenerationTask(GenerationTask):
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
         if self.cfg.agent_config is None:
-            if self.cfg.multilingual:
+            if self.cfg.swe_zero_container is not None:
+                self.cfg.agent_config = "eval/swe-bench/swe-agent/swe-zero"
+            elif self.cfg.multilingual:
                 self.cfg.agent_config = "eval/swe-bench/swe-agent/multilingual"
             else:
                 self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
@@ -1194,6 +1196,12 @@ class SweBenchGenerationTask(GenerationTask):
         Runs mini-swe-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
+        if self.cfg.agent_config is None:
+            if self.cfg.swe_zero_container is not None:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swe-zero"
+            else:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swebench"
+
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
             for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
@@ -1205,7 +1213,7 @@ class SweBenchGenerationTask(GenerationTask):
         if "reasoning_effort" in completion_kwargs:
             completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
+        base_config_path = get_config_path(self.cfg.agent_config)
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
