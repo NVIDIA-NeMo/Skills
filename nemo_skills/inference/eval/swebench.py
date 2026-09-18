@@ -13,15 +13,19 @@
 # limitations under the License.
 
 import asyncio
+import copy
 import glob
+import hashlib
 import json
 import logging
 import os
 import random
 import shlex
+import socket
 import sys
 from dataclasses import field
 from enum import Enum
+from functools import partial
 from pathlib import Path
 
 import hydra
@@ -29,6 +33,9 @@ import tomlkit
 import yaml
 from omegaconf import OmegaConf
 
+from nemo_skills.inference.eval.claude_code_trajectory import convert_claude_code_stream_to_atif
+from nemo_skills.inference.eval.first_request_proxy import capture_first_llm_request
+from nemo_skills.inference.eval.opencode_trajectory import convert_opencode_session_to_atif
 from nemo_skills.inference.generate import GenerationTask
 from nemo_skills.inference.model import server_params
 from nemo_skills.prompt.utils import get_config_path
@@ -46,12 +53,281 @@ class SupportedAgentFrameworks(str, Enum):
     swe_agent = "swe_agent"
     openhands = "openhands"
     mini_swe_agent = "mini_swe_agent"
+    opencode = "opencode"
+    claude_code = "claude_code"
     gold_patch = "gold_patch"
+    model_patch = "model_patch"
+
+
+# OpenCode is installed from npm (not git). Pin matches NeMo Gym v0.5.0's default.
+OPENCODE_NPM_PACKAGE = "opencode-ai"
+OPENCODE_DEFAULT_VERSION = "1.17.11"
+OPENCODE_NODE_VERSION = "22.15.0"
+OPENCODE_PROVIDER_ID = "nemo"
+OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
+DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/solution-originality"
+CHEATS_ALLOWED_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/cheats-allowed"
+MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG = "swebench_cheats_allowed"
+
+# Claude Code is installed from npm so benchmark runs can pin the harness version.
+CLAUDE_CODE_NPM_PACKAGE = "@anthropic-ai/claude-code"
+CLAUDE_CODE_DEFAULT_VERSION = "2.1.259"
+CLAUDE_CODE_NODE_VERSION = "22.15.0"
+CLAUDE_CODE_ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
+CLAUDE_CODE_EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max", "auto"})
+
+# These verifiers bind fixed localhost ports. Run only their verifier
+# containers in private, network-disabled namespaces so concurrent
+# multilingual evaluations cannot collide on the host network.
+NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
+    {
+        "axios__axios-4731",
+        "axios__axios-4738",
+        "caddyserver__caddy-5995",
+        "valkey-io__valkey-928",
+    }
+)
+
+# This instance can deadlock its Gradle daemon under ARM emulation. Bound the
+# failure cost without shortening verification for any other task.
+VERIFIER_TEST_TIMEOUT_OVERRIDES = {
+    "reactivex__rxjava-7597": 5 * 60,
+}
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    """Merge *override* into *base* in place, recursing into nested dicts."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge_dicts(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def append_agent_prompt(template: str, agent_prompt: str) -> str:
+    """Append a shared prompt, keeping it inside an ``<instructions>`` block when present."""
+    agent_prompt = agent_prompt.strip()
+    if not agent_prompt:
+        return template
+    template = template.rstrip()
+    closing_tag = "</instructions>"
+    if closing_tag in template:
+        prefix, suffix = template.rsplit(closing_tag, maxsplit=1)
+        return f"{prefix.rstrip()}\n\n{agent_prompt}\n{closing_tag}{suffix}\n"
+    return f"{template}\n\n{agent_prompt}\n"
+
+
+def build_direct_agent_user_prompt(problem_statement: str, agent_prompt: str) -> str:
+    """Combine a benchmark problem and shared instructions into one user prompt."""
+    agent_prompt = agent_prompt.strip()
+    if not agent_prompt:
+        return problem_statement
+    else:
+        return f"{problem_statement.rstrip()}\n\n{agent_prompt}\n"
+
+
+def get_claude_code_api_base(api_base: str) -> str:
+    """Return the server root expected by ANTHROPIC_BASE_URL."""
+    normalized = api_base.rstrip("/")
+    if normalized.endswith("/v1"):
+        normalized = normalized[:-3]
+    return normalized
+
+
+def build_claude_code_settings(
+    agent_config: dict,
+    *,
+    api_base: str,
+    model: str,
+    context_window: int,
+    tokens_to_generate: int | None = None,
+    effort: str | None = None,
+    disable_thinking: bool = False,
+) -> dict:
+    """Build explicit settings for a deterministic, unattended Claude Code run."""
+    if context_window <= 0:
+        raise ValueError("claude_code_context_window must be greater than zero.")
+    settings = _deep_merge_dicts({}, copy.deepcopy(agent_config) if agent_config else {})
+    env = settings.setdefault("env", {})
+    if not isinstance(env, dict):
+        raise ValueError("Claude Code settings env must be a dictionary.")
+    env.update(
+        {
+            "ANTHROPIC_BASE_URL": get_claude_code_api_base(api_base),
+            "ANTHROPIC_API_KEY": "EMPTY",
+            "ANTHROPIC_AUTH_TOKEN": "EMPTY",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS": str(context_window),
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+            "CLAUDE_CODE_MAX_RETRIES": "2",
+            "DISABLE_AUTOUPDATER": "1",
+            "DISABLE_UPDATES": "1",
+        }
+    )
+    if tokens_to_generate is not None:
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(tokens_to_generate)
+    if disable_thinking:
+        env["MAX_THINKING_TOKENS"] = "0"
+        env.pop("CLAUDE_CODE_EFFORT_LEVEL", None)
+        env.pop("CLAUDE_CODE_ALWAYS_ENABLE_EFFORT", None)
+    elif effort is not None:
+        if effort not in CLAUDE_CODE_EFFORT_LEVELS:
+            raise ValueError(
+                f"Unsupported claude_code_effort: {effort}. "
+                f"Choose one of: {', '.join(sorted(CLAUDE_CODE_EFFORT_LEVELS))}."
+            )
+        env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+    if "CLAUDE_CODE_EFFORT_LEVEL" in env:
+        # Model aliases used with vLLM are not recognized as Claude models, so
+        # explicitly enable effort transmission for those custom identifiers.
+        env["CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"] = "1"
+    return settings
+
+
+def transform_claude_code_request(request: dict, chat_template_kwargs: dict) -> dict:
+    """Apply vLLM chat-template controls to a request created by Claude Code."""
+    request = copy.deepcopy(request)
+    existing_kwargs = request.get("chat_template_kwargs", {})
+    if not isinstance(existing_kwargs, dict):
+        existing_kwargs = {}
+    request["chat_template_kwargs"] = _deep_merge_dicts(existing_kwargs, copy.deepcopy(chat_template_kwargs))
+
+    if chat_template_kwargs.get("enable_thinking") is False:
+        # MAX_THINKING_TOKENS=0 asks Claude Code not to request thinking, but
+        # custom model aliases can still receive its default effort=high.
+        # Explicit chat-template controls are authoritative for vLLM.
+        request["chat_template_kwargs"].pop("reasoning_effort", None)
+        request.pop("thinking", None)
+        output_config = request.get("output_config")
+        if isinstance(output_config, dict):
+            output_config.pop("effort", None)
+            if not output_config:
+                request.pop("output_config")
+
+    return request
+
+
+def build_clean_patch_commands(patch_path: str) -> tuple[str, str]:
+    """Build shell commands that diff against the working state before an agent run."""
+    setup = (
+        "PATCH_START_COMMIT=$(git rev-parse HEAD) && "
+        "PATCH_BASE_INDEX=$(mktemp /tmp/nemo-base-index.XXXXXX) && "
+        'rm -f "$PATCH_BASE_INDEX" && '
+        'GIT_INDEX_FILE="$PATCH_BASE_INDEX" git read-tree "$PATCH_START_COMMIT" && '
+        'GIT_INDEX_FILE="$PATCH_BASE_INDEX" git add -u && '
+        'PATCH_BASE_TREE=$(GIT_INDEX_FILE="$PATCH_BASE_INDEX" git write-tree) && '
+        'rm -f "$PATCH_BASE_INDEX" && '
+        "PATCH_BASE_UNTRACKED=$(mktemp /tmp/nemo-preexisting-untracked.XXXXXX) && "
+        'git ls-files --others --exclude-standard -z >"$PATCH_BASE_UNTRACKED"'
+    )
+    collect = (
+        "PATCH_INDEX=$(mktemp /tmp/nemo-patch-index.XXXXXX) && "
+        'rm -f "$PATCH_INDEX" && '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git read-tree "$PATCH_BASE_TREE" && '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git add -A && '
+        'if [ -s "$PATCH_BASE_UNTRACKED" ]; then '
+        'GIT_INDEX_FILE="$PATCH_INDEX" git reset -q "$PATCH_BASE_TREE" '
+        '--pathspec-from-file="$PATCH_BASE_UNTRACKED" --pathspec-file-nul; '
+        "fi && "
+        'GIT_INDEX_FILE="$PATCH_INDEX" git diff --binary --cached "$PATCH_BASE_TREE" -- '
+        f">{shlex.quote(patch_path)} && "
+        'rm -f "$PATCH_INDEX" "$PATCH_BASE_UNTRACKED"'
+    )
+    return setup, collect
+
+
+def build_opencode_config(
+    agent_config: dict,
+    api_base: str,
+    model: str,
+    context_window: int,
+    temperature: float,
+    top_p: float,
+    top_k: int | None,
+    extra_body: dict,
+    agent_max_turns: int,
+    tokens_to_generate: int | None = None,
+) -> dict:
+    """Build the OpenCode JSON config used to point the CLI at a local OpenAI-compatible server."""
+    config = _deep_merge_dicts({}, copy.deepcopy(agent_config) if agent_config else {})
+    config.setdefault(
+        "permission",
+        {
+            "bash": "allow",
+            "edit": "allow",
+            "webfetch": "allow",
+        },
+    )
+    providers = config.setdefault("provider", {})
+    nemo = providers.setdefault(
+        OPENCODE_PROVIDER_ID,
+        {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "Nemo-Skills LLM server",
+        },
+    )
+    nemo.setdefault("npm", "@ai-sdk/openai-compatible")
+    nemo.setdefault("options", {}).update(
+        {
+            "baseURL": api_base,
+            "apiKey": "EMPTY",
+        }
+    )
+    models = nemo.setdefault("models", {})
+    model_entry = models.get(model, {}) if isinstance(models.get(model), dict) else {}
+    _deep_merge_dicts(
+        model_entry,
+        {
+            "id": model,
+            "name": model,
+            # OpenCode only forwards an agent temperature for models that declare
+            # temperature support.
+            "temperature": True,
+            "tool_call": True,
+            "limit": {
+                "context": context_window,
+                "output": (
+                    tokens_to_generate if tokens_to_generate is not None else OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
+                ),
+            },
+        },
+    )
+    if extra_body or top_k is not None:
+        model_options = model_entry.setdefault("options", {})
+        if not isinstance(model_options, dict):
+            raise ValueError("OpenCode model options must be a dictionary.")
+        _deep_merge_dicts(model_options, copy.deepcopy(extra_body))
+        if top_k is not None:
+            model_options["top_k"] = top_k
+    models[model] = model_entry
+    agents = config.setdefault("agent", {})
+    agent_name = config.get("default_agent") or "build"
+    primary_agent = agents.get(agent_name, {}) if isinstance(agents.get(agent_name), dict) else {}
+    primary_agent.update(
+        {
+            "temperature": temperature,
+            "top_p": top_p,
+            "steps": agent_max_turns,
+        }
+    )
+    agents[agent_name] = primary_agent
+    title_agent = agents.get("title", {}) if isinstance(agents.get("title"), dict) else {}
+    title_agent["disable"] = True
+    agents["title"] = title_agent
+    return config
 
 
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
+    swe_rebench_v2 = "swe_rebench_v2"
+    deep_swe = "deep_swe"  # note: deepswe evaluation logic is implemented in deepswe.py
+    senior_swe_bench = "senior_swe_bench"  # Harbor grading in senior_swe_bench.py
+    scale_swe = "scale_swe"  # Native F2P/P2P grading in scale_swe.py
 
 
 # Like nemo_skills.inference.generate.InferenceConfig, except most parameters are not passed by default
@@ -107,18 +383,35 @@ class SweBenchGenerationConfig:
     output_file: str  # Where to save the generations
 
     agent_framework: SupportedAgentFrameworks  # Which agentic framework to use
+    # JSONL output containing pre-generated patches, keyed by instance_id. Required for model_patch.
+    model_patch_file: str | None = None
 
-    # SWE-agent/OpenHands repo URL & commit. Passed to git clone & git checkout respectively.
+    # SWE-agent/OpenHands/mini-SWE-agent repo URL & commit. Passed to git clone & git checkout respectively.
     # Default behavior:
     # - If multilingual=True, will use a branch in our fork of SWE-agent/OpenHands with better multilingual support.
     # - Otherwise, will use the HEAD commit in the official SWE-agent/OpenHands repo.
+    # For OpenCode and Claude Code, agent_framework_repo is unused (npm install).
+    # agent_framework_commit is the npm package version.
     agent_framework_repo: str | None = None
     agent_framework_commit: str | None = None
 
-    # SWE-agent/OpenHands configuration file path. Can be specified in the same way as ns prompt configs
+    # SWE-agent/OpenHands/OpenCode/Claude Code configuration file path.
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
-    agent_max_turns: int = 100  # Max iterations for the agent
+    # Markdown prompt added to the native task instructions for every agent framework.
+    # Defaults to the solution-originality prompt.
+    agent_prompt_config: str | None = None
+    agent_max_turns: int = 100  # Max agent iterations
+
+    opencode_context_window: int = 262144  # Context window advertised to OpenCode
+    claude_code_context_window: int = 262144  # Context window advertised to Claude Code
+
+    # Served model name used by Claude Code. Only set this if you are using a custom --served-model-name in vllm args.
+    # Deprecated, you don't need to override --served-model-name or pass this anymore.
+    claude_code_model: str | None = None
+    # Claude Code effort level. Defaults to reusing ++inference.extra_body.chat_template_kwargs.reasoning_effort.
+    # Deprecated, set via ++inference instead.
+    claude_code_effort: str | None = None
 
     # Enables multilingual mode. Intended for datasets such as SWE-bench Multilingual.
     # For OpenHands, this runs a different entrypoint script within the OH repo that adds multilingual-specific features.
@@ -133,6 +426,13 @@ class SweBenchGenerationConfig:
 
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
+
+    # Native Scale-SWE evaluation runs with the host network, matching AweAgent's Docker bridge behavior.
+    # When enabled, mount a usable resolver configuration into the verifier container. Agent inference and
+    # other benchmarks retain their existing network behavior. Set scale_swe_eval_resolv_conf to override
+    # automatic resolver discovery on clusters with a non-standard systemd-resolved setup.
+    scale_swe_verifier_network: bool = True
+    scale_swe_eval_resolv_conf: str | None = None
 
     # Which dataset type we're running on. This determines which evaluation harness is used.
     dataset_type: SupportedDatasetTypes = SupportedDatasetTypes.swe_bench
@@ -159,9 +459,11 @@ class SweBenchGenerationConfig:
 
     max_samples: int = -1  # If > 0, will stop after generating this many samples. Useful for debugging
     skip_filled: bool = False  # If True, will skip the generations that are already in the output file
+    # If True, persist failed instances and continue processing the rest of the shard.
+    continue_on_error: bool = False
 
-    # Maximum number of concurrent agent rollouts in each job.
-    # Each rollout sends 1 request to the LLM server at a time, so this is also the max number of concurrent requests.
+    # Maximum number of concurrent agent rollouts and per-instance evaluations in each job.
+    # Each rollout sends 1 request to the LLM server at a time, so this also limits concurrent model requests.
     max_concurrent_requests: int = 512
     # chunk the dataset into equal sized parts and index into them
     num_chunks: int | None = None  # if specified, will split the data into chunks and only generate for one chunk
@@ -198,7 +500,8 @@ class SweBenchGenerationTask(GenerationTask):
             "Use max_concurrent_requests to control the number of concurrent requests.",
             self.cfg.max_concurrent_requests,
         )
-        self.semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
+        self.rollout_semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
+        self.eval_semaphore = asyncio.Semaphore(self.cfg.max_concurrent_requests)
 
         # output_lock will be initialized when async_loop is called
         self.output_lock = None
@@ -224,6 +527,20 @@ class SweBenchGenerationTask(GenerationTask):
             self.output_dir = self.output_dir / f"rs{self.cfg.inference.random_seed}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Set up the LLM API base URL.
+        # Agent containers are launched with `--no-mount bind-paths`, so they have no
+        # /etc/resolv.conf and cannot resolve node hostnames. Resolve the host here, where
+        # DNS works, so the agent only ever receives a literal address.
+        if "base_url" in self.cfg.server:
+            self.api_base = self.cfg.server.base_url
+        else:
+            host = self.cfg.server.host
+            try:
+                host = socket.gethostbyname(host)
+            except OSError:
+                LOG.warning("Could not resolve server host %s, passing it through unchanged", host)
+            self.api_base = f"http://{host}:{self.cfg.server.port}/v1"
+
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
         # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
@@ -240,7 +557,7 @@ class SweBenchGenerationTask(GenerationTask):
         setup_commands.append(
             # install uv
             "curl -Lf https://astral.sh/uv/install.sh | sh && "
-            "source /root/.local/bin/env && "
+            "export PATH=/root/.local/bin:$PATH && "
             # tell uv to store its data in /root/uv
             "export UV_PYTHON_INSTALL_DIR=/root/uv/python && "
             "export UV_TOOL_DIR=/root/uv/tool && "
@@ -278,20 +595,18 @@ class SweBenchGenerationTask(GenerationTask):
             if self.cfg.agent_framework_repo is None:
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
             if self.cfg.agent_framework_commit is None:
-                self.cfg.agent_framework_commit = "v2.0"
+                self.cfg.agent_framework_commit = "v2.4.6"
             setup_commands.append(
-                # clone the swe-agent repo
+                # clone the mini-swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
                 "cd /root/mini-swe-agent && "
-                # Bypass the interactive setup wizard by pointing to the default config
-                "export MSWEA_MINI_CONFIG_PATH=/root/mini-swe-agent/src/minisweagent/config/benchmarks/swebench.yaml && "
                 f"git checkout {self.cfg.agent_framework_commit} && "
                 # make venv & install mini-swe-agent dependencies
                 "uv venv --python 3.12 --managed-python venv && "
                 "source venv/bin/activate && "
                 "uv pip install -e . && "
-                # force downgrade rich - newer versions cause the swe-agent logger to hang in some instances
+                # force downgrade rich - newer versions cause the mini-swe-agent logger to hang in some instances
                 "uv pip install rich==14.2.0"
             )
 
@@ -353,8 +668,65 @@ class SweBenchGenerationTask(GenerationTask):
                 "poetry run python -m pip install datasets"
             )
 
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-            pass  # no installation needed for gold patches
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
+            if self.cfg.agent_framework_repo is not None:
+                raise ValueError(
+                    "OpenCode is installed from npm (opencode-ai), not git. "
+                    "Unset ++agent_framework_repo and pin the package with "
+                    f"++agent_framework_commit (default {OPENCODE_DEFAULT_VERSION})."
+                )
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = OPENCODE_DEFAULT_VERSION
+            setup_commands.append(
+                "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
+                "    export NODE_ARCH=linux-arm64; "
+                "else "
+                "    export NODE_ARCH=linux-x64; "
+                "fi && "
+                f"export NODE_VERSION={OPENCODE_NODE_VERSION} && "
+                "rm -rf /root/node && "
+                "mkdir -p /root/node && "
+                "curl -Lf "
+                '"https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" '
+                "-o /tmp/node.tar.gz && "
+                "tar -xzf /tmp/node.tar.gz -C /root/node --strip-components=1 && "
+                "export PATH=/root/node/bin:$PATH && "
+                f"npm install -g {OPENCODE_NPM_PACKAGE}@{self.cfg.agent_framework_commit} && "
+                "opencode --version"
+            )
+
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.claude_code:
+            if self.cfg.agent_framework_repo is not None:
+                raise ValueError(
+                    "Claude Code is installed from npm (@anthropic-ai/claude-code), not git. "
+                    "Unset ++agent_framework_repo and pin the package with "
+                    f"++agent_framework_commit (default {CLAUDE_CODE_DEFAULT_VERSION})."
+                )
+            if self.cfg.agent_framework_commit is None:
+                self.cfg.agent_framework_commit = CLAUDE_CODE_DEFAULT_VERSION
+            setup_commands.append(
+                "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
+                "    export NODE_ARCH=linux-arm64; "
+                "else "
+                "    export NODE_ARCH=linux-x64; "
+                "fi && "
+                f"export NODE_VERSION={CLAUDE_CODE_NODE_VERSION} && "
+                "rm -rf /root/node && "
+                "mkdir -p /root/node && "
+                "curl -Lf "
+                '"https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" '
+                "-o /tmp/node.tar.gz && "
+                "tar -xzf /tmp/node.tar.gz -C /root/node --strip-components=1 && "
+                "export PATH=/root/node/bin:$PATH && "
+                f"npm install -g {CLAUDE_CODE_NPM_PACKAGE}@{self.cfg.agent_framework_commit} && "
+                "claude --version"
+            )
+
+        elif self.cfg.agent_framework in {
+            SupportedAgentFrameworks.gold_patch,
+            SupportedAgentFrameworks.model_patch,
+        }:
+            pass  # no installation needed for supplied patches
 
         else:
             raise ValueError(
@@ -362,19 +734,24 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        if self.cfg.evaluate:
-            # Install the SWE-bench evaluation harness.
+        if self.cfg.evaluate and self.cfg.dataset_type in [
+            SupportedDatasetTypes.swe_bench,
+            SupportedDatasetTypes.swe_bench_pro,
+            SupportedDatasetTypes.swe_rebench_v2,
+        ]:
+            # Install the SWE-bench/SWE-bench-Pro/SWE-rebench-V2 evaluation harness.
             setup_commands.append(
-                # clone the swe-bench repo
+                # clone the repo
                 "rm -rf /root/SWE-bench && "
                 f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
                 "cd /root/SWE-bench && "
                 f"git checkout {self.cfg.eval_harness_commit} && "
-                # make venv & install swe-bench dependencies
-                "uv venv --python 3.12 --managed-python venv && "
-                "source venv/bin/activate && "
-                "uv pip install -e ."
+                # make venv
+                "uv venv --python 3.12 --managed-python venv"
             )
+            if self.cfg.dataset_type != SupportedDatasetTypes.swe_rebench_v2:
+                # install dependencies (not needed for swe-rebench-v2)
+                setup_commands.append("source venv/bin/activate && uv pip install -e .")
 
         # Run all commands with retries and timeout
         combined_setup_command = " && ".join(setup_commands)
@@ -389,11 +766,37 @@ class SweBenchGenerationTask(GenerationTask):
     def setup_llm(self):
         return
 
+    def wait_for_server(self):
+        # Supplied patches never talk to an LLM; skip the curl handshake that would hang forever
+        # when ns eval is given a dummy --server_address to avoid spinning up vLLM.
+        if self.cfg.agent_framework in {
+            SupportedAgentFrameworks.gold_patch,
+            SupportedAgentFrameworks.model_patch,
+        }:
+            LOG.info("Skipping server wait for %s (no LLM server required).", self.cfg.agent_framework)
+            return
+        super().wait_for_server()
+
     def setup_litellm_cache(self):
         return
 
     def cleanup_litellm_cache(self):
         return
+
+    def preprocess_data(self, data):
+        """For model_patch evaluation, keep only instances supplied in the patch file."""
+        if self.cfg.agent_framework != SupportedAgentFrameworks.model_patch:
+            return data
+
+        if not hasattr(self, "_model_patches"):
+            self._model_patches = self._load_model_patches()
+        filtered_data = [
+            data_point for data_point in data if str(data_point.get("instance_id")) in self._model_patches
+        ]
+        skipped = len(data) - len(filtered_data)
+        if skipped:
+            LOG.info("Skipping %d instances without entries in %s.", skipped, self.cfg.model_patch_file)
+        return filtered_data
 
     async def evaluate_single_datapoint(self, data_point):
         # currently evaluation is done directly after generation already
@@ -433,15 +836,21 @@ class SweBenchGenerationTask(GenerationTask):
             else:
                 return
 
-    async def _execute_container_command(self, data_point, command, expected_file_pattern, mode, timeout=100000):
+    async def _execute_container_command(
+        self,
+        data_point,
+        command,
+        expected_file_pattern,
+        mode,
+        timeout=100000,
+        extra_apptainer_args="",
+    ):
         """Execute a command in an Apptainer container with retry logic."""
         # Commands to be executed in the Apptainer container, in order
         container_commands = []
 
         # Fix localhost URLs not working sometimes
         container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
-
-        extra_apptainer_args = ""
 
         if self.cfg.swe_zero_container is not None and mode == "agent":
             container_name = self.cfg.swe_zero_container
@@ -451,7 +860,7 @@ class SweBenchGenerationTask(GenerationTask):
             # repo_formatter tells us where to get the repo from: either from a URL or from a local mirror.
             # If repo_formatter is not set, we try to fetch it from GitHub using the "repo" column of the dataset.
             repo_formatter = data_point.get("repo_formatter", "https://github.com/{repo}")
-            repo_url_or_path = repo_formatter.format(repo=data_point["repo"])
+            repo_url_or_path = repo_formatter.format(repo=data_point["repo"].removeprefix("https://github.com/"))
             if repo_url_or_path.startswith("/"):
                 # If the repo is local, we need to mount it inside of Apptainer
                 extra_apptainer_args += f" --mount type=bind,src={repo_url_or_path},dst=/instance_repo,ro "
@@ -497,29 +906,33 @@ class SweBenchGenerationTask(GenerationTask):
                 instance_id=data_point["instance_id"].replace("__", "_1776_")
             )
 
-            # Get the folder where the repo is cloned inside the container
-            container_repo_dir = data_point.get("container_repo_dir", "/testbed")
+            if mode == "agent":
+                # Get the folder where the repo is cloned inside the container
+                container_repo_dir = data_point.get("container_repo_dir", "/testbed")
 
-            # If pre_commands are specified, execute them before running the agent
-            pre_commands = data_point.get("pre_commands", "").strip()
-            if pre_commands:
-                container_commands.append(f"cd {container_repo_dir}")
-                container_commands.append(pre_commands)
+                # If pre_commands are specified, execute them before running the agent
+                pre_commands = data_point.get("pre_commands", "").strip()
+                if pre_commands:
+                    container_commands.append(f"cd {container_repo_dir}")
+                    container_commands.append(pre_commands)
 
-            # If the repo is not in /testbed, copy it before running the agent
-            if mode == "agent" and container_repo_dir != "/testbed":
-                container_commands.append(f"cp -r {container_repo_dir} /testbed")
+                # If the repo is not in /testbed, copy it before running the agent
+                if container_repo_dir != "/testbed":
+                    container_commands.append(f"cp -r {container_repo_dir} /testbed")
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
 
+        if mode == "eval" and data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
+            extra_apptainer_args += " --net --network none "
+
         # Launch Apptainer container and execute the command
+        mount_args = " ".join(
+            f"--mount {shlex.quote(mount_spec)}" for mount_spec in self._get_apptainer_mounts(mode, data_point)
+        )
         apptainer_cmd = (
-            f"apptainer exec --writable-tmpfs --cleanenv --no-mount home,tmp,bind-paths "
-            f"--mount type=bind,src=/nemo_run/code,dst=/nemo_run/code "
-            f"--mount type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro "
-            f"--mount type=bind,src=/root,dst=/root_mount,ro "
-            f"--mount type=bind,src={self.output_dir},dst=/trajectories_mount "
+            f"apptainer exec --writable-tmpfs --cleanenv --pid --no-mount home,tmp,bind-paths "
+            f"{mount_args} "
             f"{extra_apptainer_args} "
             f"{container_name} bash -c {shlex.quote(combined_command)}"
         )
@@ -594,16 +1007,124 @@ class SweBenchGenerationTask(GenerationTask):
                         f"found {len(pred_files) if 'pred_files' in locals() else 'unknown'}."
                     )
 
-    async def _run_swe_agent(self, data_point, api_base):
+    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
+        """Return the mounts used by agent and evaluation containers."""
+        mounts = [
+            "type=bind,src=/nemo_run/code,dst=/nemo_run/code",
+            "type=bind,src=/root,dst=/root_mount,ro",
+            f"type=bind,src={self.output_dir},dst=/trajectories_mount",
+        ]
+        if mode == "eval":
+            mounts.append(f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro")
+        return mounts
+
+    def _write_openhands_rollout_input(self, data_point: dict) -> tuple[Path, str]:
+        """Write one JSONL record for an OpenHands rollout into the mounted output directory."""
+        instance_token = hashlib.sha256(str(data_point["instance_id"]).encode()).hexdigest()[:20]
+        input_dir = self.output_dir / ".openhands_inputs"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        host_path = input_dir / f"{instance_token}.jsonl"
+        data_point_for_openhands = {
+            # Include only the information OH needs, without exposing hidden info to the agent
+            "instance_id": data_point["instance_id"],
+            "repo": data_point.get("repo") or "repo",
+            "base_commit": data_point["base_commit"],
+            "problem_statement": data_point["problem_statement"],
+            "version": data_point.get("version") or "1.0",
+            "PASS_TO_PASS": [],
+            "FAIL_TO_PASS": [],
+        }
+        if data_point.get("language"):
+            data_point_for_openhands["language"] = data_point["language"]
+        host_path.write_text(json.dumps(data_point_for_openhands, ensure_ascii=False) + "\n", encoding="utf-8")
+        container_path = f"/trajectories_mount/.openhands_inputs/{host_path.name}"
+        return host_path, container_path
+
+    async def _run_agent(self, data_point) -> str:
+        """
+        Runs the agent on one instance, dispatching to the configured agent framework.
+        Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
+        """
+        if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
+            return await self._run_swe_agent(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
+            return await self._run_mini_swe_agent(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+            return await self._run_openhands(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
+            return await self._run_opencode(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.claude_code:
+            return await self._run_claude_code(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
+            return await self._get_gold_patch(data_point)
+        if self.cfg.agent_framework == SupportedAgentFrameworks.model_patch:
+            return await self._get_model_patch(data_point)
+        raise ValueError(
+            f"Unsupported agent framework: {self.cfg.agent_framework}. "
+            f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
+        )
+
+    def _get_agent_prompt(self) -> str:
+        """Load the shared prompt selected for the current agent framework."""
+        prompt_config = self.cfg.agent_prompt_config
+        if prompt_config is None:
+            agent_config_name = Path(self.cfg.agent_config or "").stem
+            if (
+                self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent
+                and agent_config_name == MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG
+            ):
+                prompt_config = CHEATS_ALLOWED_AGENT_PROMPT_CONFIG
+            else:
+                prompt_config = DEFAULT_AGENT_PROMPT_CONFIG
+        with open(get_config_path(prompt_config, config_extension="md"), "r") as f:
+            return f.read()
+
+    def _get_terminal_error_metrics(self, error: Exception) -> dict:
+        """Return fail-closed metrics for an agent rollout that raised."""
+        return {
+            "resolved": False,
+            "patch_exists": False,
+            "patch_successfully_applied": False,
+        }
+
+    def get_error_output(self, error: Exception, data_point: dict) -> dict:
+        """Persist a stable SWE-bench row when one instance fails terminally."""
+        error_details = {
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        }
+        return {
+            "generation": "",
+            "generation_error": error_details,
+            "swe-bench-metrics": self._get_terminal_error_metrics(error),
+            "swe-bench-outputs": {
+                "model_name_or_path": self.cfg.server.get("model"),
+                "instance_id": data_point.get("instance_id"),
+                "model_patch": None,
+                "generation_error": error_details,
+            },
+        }
+
+    async def _run_swe_agent(self, data_point):
         """
         Runs SWE-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
         if self.cfg.agent_config is None:
-            if self.cfg.multilingual:
+            if self.cfg.swe_zero_container is not None:
+                self.cfg.agent_config = "eval/swe-bench/swe-agent/swe-zero"
+            elif self.cfg.multilingual:
                 self.cfg.agent_config = "eval/swe-bench/swe-agent/multilingual"
             else:
                 self.cfg.agent_config = "eval/swe-bench/swe-agent/default"
+
+        with open(get_config_path(self.cfg.agent_config), "r") as f:
+            swe_agent_config = yaml.safe_load(f)
+        try:
+            instance_template = swe_agent_config["agent"]["templates"]["instance_template"]
+        except (KeyError, TypeError) as error:
+            raise ValueError("SWE-agent config must define agent.templates.instance_template.") from error
+        instance_template = append_agent_prompt(instance_template, self._get_agent_prompt())
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -618,9 +1139,10 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Variables that will be available in prompt templates
         extra_fields = {}
-        if self.cfg.multilingual:
+        if self.cfg.multilingual or data_point.get("language"):
             extra_fields["language"] = data_point["language"]
 
+        problem_statement = self._get_agent_problem_statement(data_point)
         swe_agent_cmd = (
             # copy installed repo & uv dir from /root_mount
             "cp -r /root_mount/SWE-agent /root && "
@@ -629,8 +1151,9 @@ class SweBenchGenerationTask(GenerationTask):
             # run the agent
             f"/root/SWE-agent/venv/bin/python -m sweagent run "
             f"    --config {get_config_path(self.cfg.agent_config)} "
+            f"    --agent.templates.instance_template {shlex.quote(instance_template)} "
             f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
-            f"    --agent.model.api_base {api_base} "
+            f"    --agent.model.api_base {self.api_base} "
             f"    --agent.model.temperature {self.cfg.inference.temperature} "
             f"    --agent.model.top_p {self.cfg.inference.top_p} "
             f"    --agent.model.completion_kwargs {shlex.quote(json.dumps(completion_kwargs))} "
@@ -639,7 +1162,7 @@ class SweBenchGenerationTask(GenerationTask):
             f"    --env.repo.type preexisting "
             f"    --env.repo.repo_name testbed "
             f"    --env.repo.base_commit {data_point['base_commit']} "
-            f"    --problem_statement.text {shlex.quote(data_point['problem_statement'])} "
+            f"    --problem_statement.text {shlex.quote(problem_statement)} "
             f"    --problem_statement.id {data_point['instance_id']} "
             f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
             # move trajectories to the mounted directory
@@ -666,11 +1189,17 @@ class SweBenchGenerationTask(GenerationTask):
 
         return pred_jsonl_file
 
-    async def _run_mini_swe_agent(self, data_point, api_base):
+    async def _run_mini_swe_agent(self, data_point):
         """
         Runs mini-swe-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
+        if self.cfg.agent_config is None:
+            if self.cfg.swe_zero_container is not None:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swe-zero"
+            else:
+                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swebench"
+
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
             for ns_param, openai_param in NS_TO_OPENAI_PARAM.items()
@@ -682,12 +1211,18 @@ class SweBenchGenerationTask(GenerationTask):
         if "reasoning_effort" in completion_kwargs:
             completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        base_config_path = get_config_path(self.cfg.agent_config or "eval/swe-bench/mini-swe-agent/swebench")
+        base_config_path = get_config_path(self.cfg.agent_config)
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
         if "agent" not in full_config:
             full_config["agent"] = {}
+        if "instance_template" not in full_config["agent"]:
+            raise ValueError("mini-SWE-agent config must define agent.instance_template.")
+        full_config["agent"]["instance_template"] = append_agent_prompt(
+            full_config["agent"]["instance_template"],
+            self._get_agent_prompt(),
+        )
         full_config["agent"]["step_limit"] = self.cfg.agent_max_turns
 
         if "model" not in full_config:
@@ -698,7 +1233,7 @@ class SweBenchGenerationTask(GenerationTask):
         full_config["model"]["model_kwargs"].update(
             {
                 **completion_kwargs,
-                "api_base": api_base,
+                "api_base": self.api_base,
                 "temperature": self.cfg.inference.temperature,
                 "top_p": self.cfg.inference.top_p,
             }
@@ -714,6 +1249,7 @@ class SweBenchGenerationTask(GenerationTask):
         with open(host_tmp_path, "w") as f:
             yaml.dump(full_config, f)
 
+        problem_statement = self._get_agent_problem_statement(data_point)
         try:
             mini_swe_agent_cmd = (
                 "cp -r /root_mount/mini-swe-agent /root && "
@@ -721,10 +1257,11 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
+                "export MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=3 && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
-                f"--task {shlex.quote(data_point['problem_statement'])} "
+                f"--task {shlex.quote(problem_statement)} "
                 f"--output trajectories/{data_point['instance_id']}.traj.json "
                 f"--yolo "
                 f"--exit-immediately && "
@@ -762,7 +1299,7 @@ class SweBenchGenerationTask(GenerationTask):
             if os.path.exists(host_tmp_path):
                 os.remove(host_tmp_path)
 
-    async def _run_openhands(self, data_point, api_base):
+    async def _run_openhands(self, data_point):
         """
         Runs OpenHands on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
@@ -774,10 +1311,11 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="toml"), "r") as f:
             config = tomlkit.parse(f.read())
+        agent_prompt = self._get_agent_prompt()
 
         config["llm"]["model"] |= {
             "model": self.cfg.server.model,
-            "base_url": api_base,
+            "base_url": self.api_base,
             "temperature": self.cfg.inference.temperature,
             "top_p": self.cfg.inference.top_p,
         }
@@ -804,10 +1342,11 @@ class SweBenchGenerationTask(GenerationTask):
 
         config_str = tomlkit.dumps(config)
 
-        # Folder to copy the dataset into.
+        # Folder to copy the rollout record into.
         # It's important that the name includes the original HF dataset name,
         # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
         data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
+        rollout_input_path, rollout_input_container_path = self._write_openhands_rollout_input(data_point)
 
         # The final 2 arguments are different between the swe_bench and multi_swe_bench scripts.
         # We handle that with extra_args.
@@ -824,6 +1363,21 @@ class SweBenchGenerationTask(GenerationTask):
                 f" train "  # dataset split (always "train" for local datasets)
             )
 
+        instruction_template = self._get_openhands_instruction_template()
+        instruction_template_setup = ""
+        if instruction_template is not None:
+            instruction_template_setup = (
+                f"cp {shlex.quote(instruction_template)} "
+                "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 && "
+                f"cp {shlex.quote(instruction_template)} "
+                "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 && "
+            )
+        instruction_template_setup += (
+            f"printf '\\n%s\\n' {shlex.quote(agent_prompt)} | tee -a "
+            "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 "
+            "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 >/dev/null && "
+        )
+
         openhands_cmd = (
             # make sure /workspace isn't mounted as a safety precaution
             # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -839,15 +1393,16 @@ class SweBenchGenerationTask(GenerationTask):
             "cp -r /root_mount/tmux /root && "
             "cp -r /root_mount/jq /root && "
             "cd /root/OpenHands && "
+            f"{instruction_template_setup}"
             # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
             "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
             "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
             "ln -sf /root/jq/jq /usr/local/bin/jq && "
             # activate openhands venv
             "source /root/OpenHands/.venv/bin/activate && "
-            # copy dataset
+            # copy only the current rollout record
             f"mkdir {data_dir} && "
-            f"cp /input_mount/{Path(self.cfg.input_file).name} {data_dir}/dataset.jsonl && "
+            f"cp {shlex.quote(rollout_input_container_path)} {data_dir}/dataset.jsonl && "
             # set up config files
             f"echo {shlex.quote(config_str)} >config.toml && "
             f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
@@ -871,7 +1426,10 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Execute OpenHands command
         search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
-        out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
+        try:
+            out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
+        finally:
+            rollout_input_path.unlink(missing_ok=True)
 
         with open(out_file, "r") as f:
             out_dict = json.loads(f.read().strip())
@@ -890,6 +1448,311 @@ class SweBenchGenerationTask(GenerationTask):
                     {
                         "model_name_or_path": out_dict["metadata"]["llm_config"]["model"],
                         "instance_id": out_dict["instance_id"],
+                        "model_patch": patch,
+                    }
+                )
+            )
+        return pred_file
+
+    def _get_agent_problem_statement(self, data_point: dict) -> str:
+        """Return the benchmark problem passed to direct-prompt agent harnesses."""
+        return data_point["problem_statement"]
+
+    def _get_openhands_instruction_template(self) -> str | None:
+        """Return an optional replacement for OpenHands' user instruction template."""
+        return None
+
+    async def _execute_agent_command_with_capture(
+        self,
+        data_point,
+        command_builder,
+        expected_file_pattern,
+        *,
+        served_model_name=None,
+        request_transform=None,
+    ):
+        """Run an agent command through a proxy that saves its first LLM request."""
+        capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
+        for legacy_prompt_file in ("system-prompt.md", "user-prompt.md"):
+            (capture_file.parent / legacy_prompt_file).unlink(missing_ok=True)
+        async with capture_first_llm_request(
+            self.api_base,
+            capture_file,
+            served_model_name=served_model_name,
+            request_transform=request_transform,
+        ) as proxy_api_base:
+            return await self._execute_container_command(
+                data_point,
+                command_builder(proxy_api_base),
+                expected_file_pattern,
+                mode="agent",
+            )
+
+    async def _run_opencode(self, data_point):
+        """
+        Runs OpenCode on one instance.
+        Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
+        """
+        if self.cfg.agent_config is None:
+            self.cfg.agent_config = "eval/swe-bench/opencode/default"
+
+        with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
+            agent_config = json.load(f)
+        agent_prompt = self._get_agent_prompt()
+
+        output_token_max = (
+            self.cfg.inference.tokens_to_generate
+            if self.cfg.inference.tokens_to_generate is not None
+            else OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX
+        )
+        if self.cfg.opencode_context_window <= 0:
+            raise ValueError("opencode_context_window must be greater than zero.")
+        if output_token_max > self.cfg.opencode_context_window:
+            raise ValueError(
+                f"OpenCode output-token limit ({output_token_max}) cannot exceed its context window "
+                f"({self.cfg.opencode_context_window})."
+            )
+        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
+        instance_id = data_point["instance_id"]
+        # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
+        model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"
+        trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
+        # OpenCode's JSONL stream contains the root session ID. Node is guaranteed to be
+        # available here because it is also used to install and run OpenCode.
+        session_id_script = (
+            "const fs=require('fs');"
+            "for(const line of fs.readFileSync(process.argv[1],'utf8').split(/\\r?\\n/)){"
+            "try{const event=JSON.parse(line);"
+            "if(event.sessionID){process.stdout.write(event.sessionID);break;}}catch{}}"
+        )
+
+        def build_opencode_command(proxy_api_base):
+            opencode_config = build_opencode_config(
+                agent_config=agent_config,
+                api_base=proxy_api_base,
+                model=self.cfg.server.model,
+                context_window=self.cfg.opencode_context_window,
+                temperature=self.cfg.inference.temperature,
+                top_p=self.cfg.inference.top_p,
+                top_k=self.cfg.inference.top_k,
+                extra_body=OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True),
+                agent_max_turns=self.cfg.agent_max_turns,
+                tokens_to_generate=output_token_max,
+            )
+            config_json = json.dumps(opencode_config)
+            patch_setup, patch_collect = build_clean_patch_commands(f"{trajectory_dir}/model.patch")
+            return (
+                "export PATH=/root_mount/node/bin:$PATH && "
+                "export HOME=/root && "
+                "export XDG_CONFIG_HOME=/root/.config && "
+                "export OPENCODE_DISABLE_AUTOUPDATE=1 && "
+                "export OPENCODE_DISABLE_MODELS_FETCH=1 && "
+                "export OPENCODE_PURE=1 && "
+                "export OPENCODE_FAKE_VCS=git && "
+                f"export OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX={output_token_max} && "
+                "export OPENAI_API_KEY=EMPTY && "
+                f"export OPENAI_BASE_URL={shlex.quote(proxy_api_base)} && "
+                "mkdir -p /root/.config/opencode && "
+                f"echo {shlex.quote(config_json)} >/root/.config/opencode/opencode.json && "
+                "cd /testbed && "
+                "git config --global --add safe.directory /testbed && "
+                "git config --global user.email opencode@nemo-skills.local && "
+                "git config --global user.name OpenCode && "
+                f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
+                'mkdir -p "$TRAJECTORY_DIR" && '
+                f"{patch_setup} && "
+                f"opencode --model={shlex.quote(model_arg)} run --format=json "
+                f"--thinking --dangerously-skip-permissions -- {shlex.quote(instruction)} "
+                '</dev/null >"$TRAJECTORY_DIR/opencode.txt" 2>"$TRAJECTORY_DIR/opencode.stderr.log" && '
+                f'SESSION_ID=$(node -e {shlex.quote(session_id_script)} "$TRAJECTORY_DIR/opencode.txt") && '
+                'if [ -n "$SESSION_ID" ]; then '
+                '    if opencode export "$SESSION_ID" >"$TRAJECTORY_DIR/opencode-session.json.tmp" '
+                '        2>>"$TRAJECTORY_DIR/opencode.stderr.log"; then '
+                '        mv "$TRAJECTORY_DIR/opencode-session.json.tmp" "$TRAJECTORY_DIR/opencode-session.json"; '
+                "    else "
+                '        rm -f "$TRAJECTORY_DIR/opencode-session.json.tmp"; '
+                '        echo "Warning: failed to export OpenCode session $SESSION_ID" '
+                '            >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
+                "    fi; "
+                "else "
+                '    echo "Warning: no OpenCode session ID found in stdout" '
+                '        >>"$TRAJECTORY_DIR/opencode.stderr.log"; '
+                "fi && "
+                f"{patch_collect}"
+            )
+
+        search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
+        patch_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_opencode_command,
+            search_path,
+        )
+
+        with open(patch_file, "r") as f:
+            patch = f.read()
+        if not patch.strip():
+            patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
+
+        session_file = os.path.join(self.output_dir, "trajectories", instance_id, "opencode-session.json")
+        if os.path.exists(session_file):
+            try:
+                with open(session_file, "r") as f:
+                    session = json.load(f)
+                trajectory = convert_opencode_session_to_atif(
+                    session,
+                    model_name=self.cfg.server.model,
+                    agent_version=self.cfg.agent_framework_commit,
+                )
+                if trajectory is not None:
+                    trajectory_file = os.path.join(self.output_dir, "trajectories", instance_id, "trajectory.json")
+                    with open(trajectory_file, "w") as f:
+                        json.dump(trajectory, f, indent=2)
+                        f.write("\n")
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                LOG.exception("Failed to convert OpenCode session export for %s to ATIF.", instance_id)
+        else:
+            LOG.warning("OpenCode did not produce a native session export for %s.", instance_id)
+
+        pred_file = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
+        with open(pred_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": self.cfg.server.model,
+                        "instance_id": instance_id,
+                        "model_patch": patch,
+                    }
+                )
+            )
+        return pred_file
+
+    async def _run_claude_code(self, data_point):
+        """Run Claude Code and return a prediction in the SWE-bench evaluation format."""
+        if self.cfg.agent_config is None:
+            self.cfg.agent_config = "eval/swe-bench/claude-code/default"
+
+        with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
+            agent_config = json.load(f)
+        agent_prompt = self._get_agent_prompt()
+
+        served_model_name = self.cfg.claude_code_model or self.cfg.server.model
+        claude_model_name = served_model_name.replace("/", "__")
+
+        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
+        instance_id = data_point["instance_id"]
+        trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
+        extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
+        chat_template_kwargs = extra_body.get("chat_template_kwargs", {})
+        if not isinstance(chat_template_kwargs, dict):
+            raise ValueError("inference.extra_body.chat_template_kwargs must be a dictionary.")
+        disable_thinking = chat_template_kwargs.get("enable_thinking") is False
+        effort = self.cfg.claude_code_effort or chat_template_kwargs.get("reasoning_effort")
+
+        def build_claude_code_command(proxy_api_base):
+            settings = build_claude_code_settings(
+                agent_config,
+                api_base=proxy_api_base,
+                model=claude_model_name,
+                context_window=self.cfg.claude_code_context_window,
+                tokens_to_generate=self.cfg.inference.tokens_to_generate,
+                effort=effort,
+                disable_thinking=disable_thinking,
+            )
+            settings_json = json.dumps(settings)
+            patch_setup, patch_collect = build_clean_patch_commands(f"{trajectory_dir}/model.patch")
+            return (
+                "export PATH=/root_mount/node/bin:$PATH && "
+                "export HOME=/root && "
+                "mkdir -p /root/.claude && "
+                f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
+                "cd /testbed && "
+                "git config --global --add safe.directory /testbed && "
+                "git config --global user.email claude-code@nemo-skills.local && "
+                "git config --global user.name 'Claude Code' && "
+                f"TRAJECTORY_DIR={shlex.quote(trajectory_dir)} && "
+                'mkdir -p "$TRAJECTORY_DIR" && '
+                f"{patch_setup} && "
+                "{ set +e; "
+                f"claude --bare -p {shlex.quote(instruction)} "
+                f"--model {shlex.quote(claude_model_name)} "
+                f"--settings /root/.claude/settings.json "
+                f"--tools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
+                f"--allowedTools {shlex.quote(CLAUDE_CODE_ALLOWED_TOOLS)} "
+                "--permission-mode dontAsk "
+                "--permission-prompts none "
+                "--output-format stream-json "
+                "--verbose "
+                f"--max-turns {self.cfg.agent_max_turns} "
+                "--no-session-persistence "
+                '</dev/null >"$TRAJECTORY_DIR/claude-code.jsonl" '
+                '2>"$TRAJECTORY_DIR/claude-code.stderr.log"; '
+                "CLAUDE_EXIT_CODE=$?; "
+                "set -e; "
+                'printf "%s\\n" "$CLAUDE_EXIT_CODE" >"$TRAJECTORY_DIR/claude-code.exit-code"; '
+                f"{patch_collect}; }}"
+            )
+
+        search_path = os.path.join(self.output_dir, "trajectories", instance_id, "model.patch")
+        request_transform = None
+        if chat_template_kwargs:
+            request_transform = partial(transform_claude_code_request, chat_template_kwargs=chat_template_kwargs)
+        patch_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_claude_code_command,
+            search_path,
+            served_model_name=served_model_name,
+            request_transform=request_transform,
+        )
+
+        with open(patch_file, "r") as f:
+            patch = f.read()
+        if not patch.strip():
+            patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
+
+        exit_code_file = os.path.join(self.output_dir, "trajectories", instance_id, "claude-code.exit-code")
+        with open(exit_code_file, "r") as f:
+            claude_exit_code = int(f.read().strip())
+        if claude_exit_code != 0:
+            if patch is None:
+                raise ValueError(
+                    f"Claude Code exited with code {claude_exit_code} and did not produce a patch for {instance_id}."
+                )
+            LOG.warning(
+                "Claude Code exited with code %d for %s; preserving and evaluating its partial patch.",
+                claude_exit_code,
+                instance_id,
+            )
+
+        stream_file = os.path.join(self.output_dir, "trajectories", instance_id, "claude-code.jsonl")
+        if os.path.exists(stream_file):
+            try:
+                with open(stream_file, "r") as f:
+                    events = [json.loads(line) for line in f if line.strip()]
+                trajectory = convert_claude_code_stream_to_atif(
+                    events,
+                    model_name=served_model_name,
+                    agent_version=self.cfg.agent_framework_commit,
+                    initial_prompt=instruction,
+                )
+                if trajectory is not None:
+                    trajectory_file = os.path.join(self.output_dir, "trajectories", instance_id, "trajectory.json")
+                    with open(trajectory_file, "w") as f:
+                        json.dump(trajectory, f, indent=2)
+                        f.write("\n")
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                LOG.exception("Failed to convert Claude Code stream for %s to ATIF.", instance_id)
+
+        pred_file = os.path.join(self.output_dir, "trajectories", instance_id, "output_for_eval.jsonl")
+        with open(pred_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": self.cfg.server.model,
+                        "instance_id": instance_id,
                         "model_patch": patch,
                     }
                 )
@@ -915,33 +1778,64 @@ class SweBenchGenerationTask(GenerationTask):
             )
         return str(out_file)
 
+    def _load_model_patches(self) -> dict[str, dict]:
+        """Load pre-generated patches from direct SWE-bench or NeMo-Skills JSONL output."""
+        model_patch_file = self.cfg.model_patch_file
+        if not model_patch_file:
+            raise ValueError("++model_patch_file is required when ++agent_framework=model_patch")
+
+        patches = {}
+        with open(model_patch_file) as f:
+            for line_number, line in enumerate(f, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSON on line {line_number} of {model_patch_file}") from exc
+
+                patch_record = row.get("swe-bench-outputs", row)
+                if not isinstance(patch_record, dict):
+                    raise ValueError(
+                        f"Expected an object with instance_id and model_patch on line {line_number} "
+                        f"of {model_patch_file}"
+                    )
+                instance_id = patch_record.get("instance_id") or row.get("instance_id")
+                if not instance_id or "model_patch" not in patch_record:
+                    raise ValueError(f"Missing instance_id or model_patch on line {line_number} of {model_patch_file}")
+                if instance_id in patches:
+                    raise ValueError(f"Duplicate instance_id {instance_id!r} in {model_patch_file}")
+                patches[str(instance_id)] = patch_record
+        return patches
+
+    async def _get_model_patch(self, data_point):
+        """Save a pre-generated model patch in the format consumed by evaluation."""
+        if not hasattr(self, "_model_patches"):
+            self._model_patches = self._load_model_patches()
+
+        instance_id = str(data_point["instance_id"])
+        if instance_id not in self._model_patches:
+            raise ValueError(f"No model patch found for instance_id {instance_id!r} in {self.cfg.model_patch_file}")
+
+        patch_record = self._model_patches[instance_id]
+        output = {
+            "model_name_or_path": patch_record.get("model_name_or_path", "model_patch"),
+            "instance_id": instance_id,
+            "model_patch": patch_record["model_patch"],
+        }
+        output_dir = self.output_dir / "model_patches"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_file = output_dir / f"{instance_id}.jsonl"
+        out_file.write_text(json.dumps(output))
+        return str(out_file)
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
 
-        # TODO: what's the right way to support api models, so that our standard parameters for that can be used?
-        # TODO: use self.cfg.server.base_url, etc. Can we pass in API key?
-
-        if "base_url" in self.cfg.server:
-            api_base = self.cfg.server.base_url
-        else:
-            api_base = f"http://{self.cfg.server.host}:{self.cfg.server.port}/v1"
-
         # Run the agent rollout.
         # The semaphore ensures that no more than max_concurrent_requests rollouts are running at the same time.
-        async with self.semaphore:
-            if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
-                pred_file = await self._run_swe_agent(data_point, api_base)
-            elif self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent:
-                pred_file = await self._run_mini_swe_agent(data_point, api_base)
-            elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
-                pred_file = await self._run_openhands(data_point, api_base)
-            elif self.cfg.agent_framework == SupportedAgentFrameworks.gold_patch:
-                pred_file = await self._get_gold_patch(data_point)
-            else:
-                raise ValueError(
-                    f"Unsupported agent framework: {self.cfg.agent_framework}. "
-                    f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
-                )
+        async with self.rollout_semaphore:
+            pred_file = await self._run_agent(data_point)
 
         pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
         with open(pred_file, "r") as f:
@@ -967,6 +1861,14 @@ class SweBenchGenerationTask(GenerationTask):
                 }
             }
         else:
+            tests_timeout = min(
+                self.cfg.swebench_tests_timeout,
+                VERIFIER_TEST_TIMEOUT_OVERRIDES.get(
+                    data_point["instance_id"],
+                    self.cfg.swebench_tests_timeout,
+                ),
+            )
+
             # Run full evaluation with streaming output
             if self.cfg.dataset_type == SupportedDatasetTypes.swe_bench_pro:
                 swe_bench_cmd = (
@@ -982,6 +1884,21 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
                     f"cp -r eval-outputs /trajectories_mount/"
                 )
+            elif self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2:
+                swe_bench_cmd = (
+                    # copy installed repo & uv dir from /root_mount
+                    "cp -r /root_mount/SWE-bench /root && "
+                    "cp -r /root_mount/uv /root && "
+                    "cd /root/SWE-bench && "
+                    # run the evaluation with streaming output
+                    f"/root/SWE-bench/venv/bin/python scripts/local_eval.py "
+                    f"    --json /input_mount/{Path(self.cfg.input_file).name} "
+                    f"    --patches {pred_mounted_path} "
+                    f"    --instance-ids {data_point['instance_id']} "
+                    f"    --report-json logs/report.json && "
+                    f"mkdir -p /trajectories_mount/eval-outputs/results/{data_point['instance_id']} && "
+                    f"cp logs/* /trajectories_mount/eval-outputs/results/{data_point['instance_id']}"
+                )
             else:
                 swe_bench_cmd = (
                     # copy installed repo & uv dir from /root_mount
@@ -993,7 +1910,7 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --predictions_path {pred_mounted_path} "
                     f"    --instance_ids {data_point['instance_id']} "
                     f"    --run_id eval-outputs "
-                    f"    --timeout {self.cfg.swebench_tests_timeout} "
+                    f"    --timeout {tests_timeout} "
                     f"    --dataset_name /input_mount/{Path(self.cfg.input_file).name} && "
                     f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
                 )
@@ -1002,13 +1919,14 @@ class SweBenchGenerationTask(GenerationTask):
             search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
             # TODO: should we fail on errors here? Seems that json isn't always generated
             try:
-                report_file = await self._execute_container_command(
-                    data_point,
-                    swe_bench_cmd,
-                    search_path,
-                    mode="eval",
-                    timeout=self.cfg.swebench_tests_timeout + 120,
-                )
+                async with self.eval_semaphore:
+                    report_file = await self._execute_container_command(
+                        data_point,
+                        swe_bench_cmd,
+                        search_path,
+                        mode="eval",
+                        timeout=tests_timeout + 120,
+                    )
             except ValueError:
                 LOG.error("Failed to execute SWE-bench evaluation command for %s", data_point["instance_id"])
                 report_json = {
