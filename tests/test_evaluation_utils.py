@@ -18,6 +18,7 @@ from nemo_skills.evaluation.utils import get_eval_group, load_config
 
 
 def test_load_config_raises_on_empty_file(tmp_path):
+    """Test that load_config raises ValueError for a fully empty yaml file."""
     config_path = tmp_path / "empty.yaml"
     config_path.write_text("")
 
@@ -26,6 +27,7 @@ def test_load_config_raises_on_empty_file(tmp_path):
 
 
 def test_load_config_raises_on_comments_only_file(tmp_path):
+    """Test that load_config raises ValueError for a yaml file containing only comments."""
     config_path = tmp_path / "comments_only.yaml"
     config_path.write_text("# just a comment\n# another one\n")
 
@@ -34,6 +36,7 @@ def test_load_config_raises_on_comments_only_file(tmp_path):
 
 
 def test_load_config_returns_dict_for_valid_file(tmp_path):
+    """Test that load_config returns the parsed mapping for a valid yaml file."""
     config_path = tmp_path / "valid.yaml"
     config_path.write_text("key: value\n")
 
@@ -41,6 +44,7 @@ def test_load_config_returns_dict_for_valid_file(tmp_path):
 
 
 def test_get_eval_group_raises_on_empty_file(tmp_path):
+    """Test that get_eval_group propagates the empty-file ValueError from load_config."""
     config_path = tmp_path / "empty.yaml"
     config_path.write_text("")
 
@@ -49,5 +53,6 @@ def test_get_eval_group_raises_on_empty_file(tmp_path):
 
 
 def test_get_eval_group_passes_through_dict_unchanged():
+    """Test that get_eval_group returns a dict input unchanged instead of reloading it."""
     config = {"already": "a dict"}
     assert get_eval_group(config) is config

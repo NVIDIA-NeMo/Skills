@@ -54,6 +54,18 @@ def load_config(config: str, config_dir: str | None = None) -> dict:
 
 
 def get_eval_group(eval_config: str | dict, eval_group_dir: str | None = None) -> dict:
+    """
+    Resolves an eval group config to a dictionary.
+
+    Args:
+        eval_config (str | dict): Either an already-loaded eval group dict, or the
+            config name/path to load via `load_config`.
+        eval_group_dir (str): The dir to look for the config file, passed through to
+            `load_config` when `eval_config` is a str.
+
+    Returns:
+        The eval group config as a dictionary.
+    """
     if isinstance(eval_config, dict):
         return eval_config
 
