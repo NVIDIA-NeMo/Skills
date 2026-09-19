@@ -42,10 +42,30 @@ def load_config(config: str, config_dir: str | None = None) -> dict:
         config_path = Path(config_dir) / f"{config}.yaml"
 
     with open(config_path, "rt", encoding="utf-8") as fin:
-        return yaml.safe_load(fin)
+        config_dict = yaml.safe_load(fin)
+
+    if config_dict is None:
+        raise ValueError(
+            f"Eval group config file {config_path} is empty (or contains only comments). "
+            "It must define a non-empty mapping."
+        )
+
+    return config_dict
 
 
 def get_eval_group(eval_config: str | dict, eval_group_dir: str | None = None) -> dict:
+    """
+    Resolves an eval group config to a dictionary.
+
+    Args:
+        eval_config (str | dict): Either an already-loaded eval group dict, or the
+            config name/path to load via `load_config`.
+        eval_group_dir (str): The dir to look for the config file, passed through to
+            `load_config` when `eval_config` is a str.
+
+    Returns:
+        The eval group config as a dictionary.
+    """
     if isinstance(eval_config, dict):
         return eval_config
 
