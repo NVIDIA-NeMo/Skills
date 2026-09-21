@@ -17,23 +17,6 @@ your solution will be DISCARDED regardless of its correctness!
 
 ## Test and Patch Integrity
 
-The evaluation harness supplies all required test changes separately.
-
-You may inspect and run existing tests, but your final patch MUST NOT create,
-modify, delete, rename, or move:
-
-- test files or test directories,
-- test fixtures or test data,
-- snapshots or golden files,
-- test configuration or test-only helper files.
-
-Make the smallest necessary changes to non-test files required by the task.
-
-If you need a temporary reproduction script, create it outside the repository,
-such as under `/tmp`, or remove it before finishing.
-
-Before finishing:
-
-1. Inspect `git status --short` and `git diff --name-only HEAD`.
-2. Revert every test-related or temporary repository change.
-3. Confirm that the final patch contains only the non-test changes
+All required changes to the test files are already taken care of. You do not need to modify the testing logic or any tests.
+Make only the minimal necessary changes to non-test files.
+If you modify any test files, revert those changes before finishing.
