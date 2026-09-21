@@ -143,6 +143,12 @@ def transform_mini_swe_agent_request(request: dict) -> dict:
     transformed = copy.deepcopy(request)
     if "messages" in transformed:
         transformed["messages"] = duplicate_reasoning_content_keys(transformed["messages"])
+        for message in transformed["messages"]:
+            if not isinstance(message, dict) or message.get("role") != "assistant" or message.get("reasoning"):
+                continue
+            provider_fields = message.get("provider_specific_fields")
+            if isinstance(provider_fields, dict) and provider_fields.get("reasoning"):
+                message["reasoning"] = provider_fields["reasoning"]
     return transformed
 
 
