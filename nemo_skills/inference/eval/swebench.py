@@ -421,6 +421,8 @@ class SweBenchGenerationConfig:
     # Defaults to the solution-originality prompt.
     agent_prompt_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
+    # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
+    capture_all_llm_requests: bool = False
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
@@ -1498,6 +1500,7 @@ class SweBenchGenerationTask(GenerationTask):
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
+        all_requests_dir = capture_file.parent / "llm-requests" if self.cfg.capture_all_llm_requests else None
         for legacy_prompt_file in ("system-prompt.md", "user-prompt.md"):
             (capture_file.parent / legacy_prompt_file).unlink(missing_ok=True)
         async with capture_first_llm_request(
@@ -1505,6 +1508,7 @@ class SweBenchGenerationTask(GenerationTask):
             capture_file,
             served_model_name=served_model_name,
             request_transform=request_transform,
+            all_requests_dir=all_requests_dir,
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,

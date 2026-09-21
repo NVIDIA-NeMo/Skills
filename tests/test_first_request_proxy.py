@@ -179,6 +179,9 @@ def test_proxy_rewrites_model_on_keep_alive_requests(tmp_path):
         upstream = await asyncio.start_server(upstream_handler, "127.0.0.1", 0)
         upstream_port = upstream.sockets[0].getsockname()[1]
         capture_file = tmp_path / "first-llm-request.json"
+        all_requests_dir = tmp_path / "llm-requests"
+        all_requests_dir.mkdir()
+        (all_requests_dir / "stale.json").write_text("{}")
         first_body = b'{"model":"harness-model","messages":[{"role":"user","content":"first"}]}'
         second_body = b'{"model":"harness-model","messages":[{"role":"user","content":"second"}]}'
 
@@ -192,6 +195,7 @@ def test_proxy_rewrites_model_on_keep_alive_requests(tmp_path):
                 capture_file,
                 served_model_name="served-model",
                 request_transform=transform,
+                all_requests_dir=all_requests_dir,
             ) as proxy_base:
                 parsed = urlsplit(proxy_base)
                 reader, writer = await asyncio.open_connection(parsed.hostname, parsed.port)
@@ -213,5 +217,9 @@ def test_proxy_rewrites_model_on_keep_alive_requests(tmp_path):
         captured = json.loads(capture_file.read_bytes())
         assert captured["model"] == "served-model"
         assert captured["chat_template_kwargs"] == {"enable_thinking": False}
+        captured_requests = [json.loads(path.read_bytes()) for path in sorted(all_requests_dir.glob("*.json"))]
+        assert [item["messages"][0]["content"] for item in captured_requests] == ["first", "second"]
+        assert all(item["model"] == "served-model" for item in captured_requests)
+        assert all(item["chat_template_kwargs"] == {"enable_thinking": False} for item in captured_requests)
 
     asyncio.run(run_test())

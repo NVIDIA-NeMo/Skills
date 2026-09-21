@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 import ssl
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -38,6 +39,7 @@ class FirstRequestCaptureProxy:
         *,
         served_model_name: str | None = None,
         request_transform: Callable[[dict], dict] | None = None,
+        all_requests_dir: Path | None = None,
     ):
         self.upstream = urlsplit(upstream_base_url)
         if self.upstream.scheme not in {"http", "https"} or not self.upstream.hostname:
@@ -45,13 +47,17 @@ class FirstRequestCaptureProxy:
         self.output_file = output_file
         self.served_model_name = served_model_name
         self.request_transform = request_transform
+        self.all_requests_dir = all_requests_dir
         self.server: asyncio.AbstractServer | None = None
         self._capture_lock = asyncio.Lock()
         self._captured = False
+        self._request_count = 0
         self._writers: set[asyncio.StreamWriter] = set()
 
     async def start(self) -> str:
         self.output_file.unlink(missing_ok=True)
+        if self.all_requests_dir is not None:
+            shutil.rmtree(self.all_requests_dir, ignore_errors=True)
         self.server = await asyncio.start_server(self._handle_connection, "127.0.0.1", 0)
         port = self.server.sockets[0].getsockname()[1]
         return urlunsplit(("http", f"127.0.0.1:{port}", self.upstream.path, self.upstream.query, ""))
@@ -73,6 +79,11 @@ class FirstRequestCaptureProxy:
         except (UnicodeDecodeError, json.JSONDecodeError):
             return
         async with self._capture_lock:
+            if self.all_requests_dir is not None:
+                self._request_count += 1
+                self.all_requests_dir.mkdir(parents=True, exist_ok=True)
+                request_file = self.all_requests_dir / f"request-{self._request_count:06d}.json"
+                request_file.write_bytes(body)
             if self._captured:
                 return
             self.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +199,7 @@ async def capture_first_llm_request(
     *,
     served_model_name: str | None = None,
     request_transform: Callable[[dict], dict] | None = None,
+    all_requests_dir: Path | None = None,
 ):
     """Yield a local proxy URL and close all proxy resources afterward."""
     proxy = FirstRequestCaptureProxy(
@@ -195,6 +207,7 @@ async def capture_first_llm_request(
         output_file,
         served_model_name=served_model_name,
         request_transform=request_transform,
+        all_requests_dir=all_requests_dir,
     )
     proxy_base_url = await proxy.start()
     try:
