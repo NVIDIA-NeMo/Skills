@@ -1354,7 +1354,6 @@ class SweBenchGenerationTask(GenerationTask):
 
         config["llm"]["model"] |= {
             "model": self.cfg.server.model,
-            "base_url": self.api_base,
             "temperature": self.cfg.inference.temperature,
             "top_p": self.cfg.inference.top_p,
         }
@@ -1378,8 +1377,6 @@ class SweBenchGenerationTask(GenerationTask):
 
         if completion_kwargs:
             config["llm"]["model"]["completion_kwargs"] = completion_kwargs
-
-        config_str = tomlkit.dumps(config)
 
         # Folder to copy the rollout record into.
         # It's important that the name includes the original HF dataset name,
@@ -1417,56 +1414,63 @@ class SweBenchGenerationTask(GenerationTask):
             "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 >/dev/null && "
         )
 
-        openhands_cmd = (
-            # make sure /workspace isn't mounted as a safety precaution
-            # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
-            "if awk '{print $2}' /proc/mounts | grep -qE '^/workspace(/|$)'; then "
-            "    echo 'Exiting because /workspace is mounted.' && "
-            "    echo 'Please make sure /workspace is not mounted inside of Apptainer before running OpenHands.' && "
-            "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
-            "    exit 1; "
-            "fi && "
-            # copy installed repo, uv, tmux & jq dirs from /root_mount
-            "cp -r /root_mount/OpenHands /root && "
-            "cp -r /root_mount/uv /root && "
-            "cp -r /root_mount/tmux /root && "
-            "cp -r /root_mount/jq /root && "
-            "cd /root/OpenHands && "
-            f"{instruction_template_setup}"
-            # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
-            "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
-            "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
-            "ln -sf /root/jq/jq /usr/local/bin/jq && "
-            # activate openhands venv
-            "source /root/OpenHands/.venv/bin/activate && "
-            # copy only the current rollout record
-            f"mkdir {data_dir} && "
-            f"cp {shlex.quote(rollout_input_container_path)} {data_dir}/dataset.jsonl && "
-            # set up config files
-            f"echo {shlex.quote(config_str)} >config.toml && "
-            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
-            # set local runtime & force verbose logs
-            "export RUNTIME=local && "
-            "export LOG_ALL_EVENTS=true && "
-            "export LOG_LEVEL=DEBUG && "
-            # run the agent
-            f"./evaluation/benchmarks/{benchmark_name}/scripts/run_infer.sh "
-            f"    llm.model "  # name of llm config section in config.toml
-            f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
-            f"    CodeActAgent "  # agent
-            f"    1 "  # number of instances
-            f"    {self.cfg.agent_max_turns} "  # max agent iterations
-            f"    1 "  # number of workers
-            f"    {extra_args} && "  # extra args (different depending on benchmark_name)
-            # move outputs to the mounted directory
-            f"mkdir -p /trajectories_mount/trajectories && "
-            f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
-        )
+        def build_openhands_command(api_base):
+            config["llm"]["model"]["base_url"] = api_base
+            config_str = tomlkit.dumps(config)
+            return (
+                # make sure /workspace isn't mounted as a safety precaution
+                # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
+                "if awk '{print $2}' /proc/mounts | grep -qE '^/workspace(/|$)'; then "
+                "    echo 'Exiting because /workspace is mounted.' && "
+                "    echo 'Please make sure /workspace is not mounted inside of Apptainer before running OpenHands.' && "
+                "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
+                "    exit 1; "
+                "fi && "
+                # copy installed repo, uv, tmux & jq dirs from /root_mount
+                "cp -r /root_mount/OpenHands /root && "
+                "cp -r /root_mount/uv /root && "
+                "cp -r /root_mount/tmux /root && "
+                "cp -r /root_mount/jq /root && "
+                "cd /root/OpenHands && "
+                f"{instruction_template_setup}"
+                # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
+                "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
+                "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
+                "ln -sf /root/jq/jq /usr/local/bin/jq && "
+                # activate openhands venv
+                "source /root/OpenHands/.venv/bin/activate && "
+                # copy only the current rollout record
+                f"mkdir {data_dir} && "
+                f"cp {shlex.quote(rollout_input_container_path)} {data_dir}/dataset.jsonl && "
+                # set up config files
+                f"echo {shlex.quote(config_str)} >config.toml && "
+                f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
+                # set local runtime & force verbose logs
+                "export RUNTIME=local && "
+                "export LOG_ALL_EVENTS=true && "
+                "export LOG_LEVEL=DEBUG && "
+                # run the agent
+                f"./evaluation/benchmarks/{benchmark_name}/scripts/run_infer.sh "
+                f"    llm.model "  # name of llm config section in config.toml
+                f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
+                f"    CodeActAgent "  # agent
+                f"    1 "  # number of instances
+                f"    {self.cfg.agent_max_turns} "  # max agent iterations
+                f"    1 "  # number of workers
+                f"    {extra_args} && "  # extra args (different depending on benchmark_name)
+                # move outputs to the mounted directory
+                f"mkdir -p /trajectories_mount/trajectories && "
+                f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
+            )
 
         # Execute OpenHands command
         search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
         try:
-            out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
+            out_file = await self._execute_agent_command_with_capture(
+                data_point,
+                build_openhands_command,
+                search_path,
+            )
         finally:
             rollout_input_path.unlink(missing_ok=True)
 
