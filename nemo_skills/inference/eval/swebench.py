@@ -127,6 +127,25 @@ def build_direct_agent_user_prompt(problem_statement: str, agent_prompt: str) ->
         return f"{problem_statement.rstrip()}\n\n{agent_prompt}\n"
 
 
+def transform_mini_swe_agent_request(request: dict) -> dict:
+    """Add vLLM's ``reasoning`` alias to mini-SWE-agent conversation messages."""
+
+    def duplicate_reasoning_content_keys(value):
+        if isinstance(value, dict):
+            duplicated = {key: duplicate_reasoning_content_keys(item) for key, item in value.items()}
+            if "reasoning_content" in value and "reasoning" not in value:
+                duplicated["reasoning"] = duplicated["reasoning_content"]
+            return duplicated
+        if isinstance(value, list):
+            return [duplicate_reasoning_content_keys(item) for item in value]
+        return value
+
+    transformed = copy.deepcopy(request)
+    if "messages" in transformed:
+        transformed["messages"] = duplicate_reasoning_content_keys(transformed["messages"])
+    return transformed
+
+
 def get_claude_code_api_base(api_base: str) -> str:
     """Return the server root expected by ANTHROPIC_BASE_URL."""
     normalized = api_base.rstrip("/")
@@ -1233,7 +1252,6 @@ class SweBenchGenerationTask(GenerationTask):
         full_config["model"]["model_kwargs"].update(
             {
                 **completion_kwargs,
-                "api_base": self.api_base,
                 "temperature": self.cfg.inference.temperature,
                 "top_p": self.cfg.inference.top_p,
             }
@@ -1246,12 +1264,15 @@ class SweBenchGenerationTask(GenerationTask):
         # Inside the container, this path maps to /trajectories_mount/
         container_tmp_path = os.path.join("/trajectories_mount", tmp_config_filename)
 
-        with open(host_tmp_path, "w") as f:
-            yaml.dump(full_config, f)
-
         problem_statement = self._get_agent_problem_statement(data_point)
-        try:
-            mini_swe_agent_cmd = (
+        instance_id = data_point["instance_id"]
+
+        def build_mini_swe_agent_command(api_base):
+            full_config["model"]["model_kwargs"]["api_base"] = api_base
+            with open(host_tmp_path, "w") as f:
+                yaml.dump(full_config, f)
+
+            return (
                 "cp -r /root_mount/mini-swe-agent /root && "
                 "cp -r /root_mount/uv /root && "
                 "cd /root/mini-swe-agent && "
@@ -1262,17 +1283,21 @@ class SweBenchGenerationTask(GenerationTask):
                 f"--config {container_tmp_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
                 f"--task {shlex.quote(problem_statement)} "
-                f"--output trajectories/{data_point['instance_id']}.traj.json "
+                f"--output trajectories/{instance_id}.traj.json "
                 f"--yolo "
                 f"--exit-immediately && "
                 "mkdir -p /trajectories_mount/trajectories && cp -r trajectories/* /trajectories_mount/trajectories/"
             )
 
+        try:
             # Execute mini-swe-agent command
-            search_path = os.path.join(self.output_dir, "trajectories", f"{data_point['instance_id']}.traj.json")
+            search_path = os.path.join(self.output_dir, "trajectories", f"{instance_id}.traj.json")
 
-            pred_file = await self._execute_container_command(
-                data_point, mini_swe_agent_cmd, search_path, mode="agent"
+            pred_file = await self._execute_agent_command_with_capture(
+                data_point,
+                build_mini_swe_agent_command,
+                search_path,
+                request_transform=transform_mini_swe_agent_request,
             )
 
             with open(pred_file, "r") as f:
