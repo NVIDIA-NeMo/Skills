@@ -1170,37 +1170,43 @@ class SweBenchGenerationTask(GenerationTask):
             extra_fields["language"] = data_point["language"]
 
         problem_statement = self._get_agent_problem_statement(data_point)
-        swe_agent_cmd = (
-            # copy installed repo & uv dir from /root_mount
-            "cp -r /root_mount/SWE-agent /root && "
-            "cp -r /root_mount/uv /root && "
-            "cd /root/SWE-agent && "
-            # run the agent
-            f"/root/SWE-agent/venv/bin/python -m sweagent run "
-            f"    --config {get_config_path(self.cfg.agent_config)} "
-            f"    --agent.templates.instance_template {shlex.quote(instance_template)} "
-            f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
-            f"    --agent.model.api_base {self.api_base} "
-            f"    --agent.model.temperature {self.cfg.inference.temperature} "
-            f"    --agent.model.top_p {self.cfg.inference.top_p} "
-            f"    --agent.model.completion_kwargs {shlex.quote(json.dumps(completion_kwargs))} "
-            f"    --agent.model.per_instance_call_limit {self.cfg.agent_max_turns} "
-            f"    --env.deployment.type local "
-            f"    --env.repo.type preexisting "
-            f"    --env.repo.repo_name testbed "
-            f"    --env.repo.base_commit {data_point['base_commit']} "
-            f"    --problem_statement.text {shlex.quote(problem_statement)} "
-            f"    --problem_statement.id {data_point['instance_id']} "
-            f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
-            # move trajectories to the mounted directory
-            f"cp -r trajectories /trajectories_mount/"
-        )
+
+        def build_swe_agent_command(api_base):
+            return (
+                # copy installed repo & uv dir from /root_mount
+                "cp -r /root_mount/SWE-agent /root && "
+                "cp -r /root_mount/uv /root && "
+                "cd /root/SWE-agent && "
+                # run the agent
+                f"/root/SWE-agent/venv/bin/python -m sweagent run "
+                f"    --config {get_config_path(self.cfg.agent_config)} "
+                f"    --agent.templates.instance_template {shlex.quote(instance_template)} "
+                f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
+                f"    --agent.model.api_base {shlex.quote(api_base)} "
+                f"    --agent.model.temperature {self.cfg.inference.temperature} "
+                f"    --agent.model.top_p {self.cfg.inference.top_p} "
+                f"    --agent.model.completion_kwargs {shlex.quote(json.dumps(completion_kwargs))} "
+                f"    --agent.model.per_instance_call_limit {self.cfg.agent_max_turns} "
+                f"    --env.deployment.type local "
+                f"    --env.repo.type preexisting "
+                f"    --env.repo.repo_name testbed "
+                f"    --env.repo.base_commit {data_point['base_commit']} "
+                f"    --problem_statement.text {shlex.quote(problem_statement)} "
+                f"    --problem_statement.id {data_point['instance_id']} "
+                f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
+                # move trajectories to the mounted directory
+                f"cp -r trajectories /trajectories_mount/"
+            )
 
         # Execute SWE-agent command
         search_path = os.path.join(
             self.output_dir, "trajectories", "*", "*", data_point["instance_id"], f"{data_point['instance_id']}.pred"
         )
-        pred_file = await self._execute_container_command(data_point, swe_agent_cmd, search_path, mode="agent")
+        pred_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_swe_agent_command,
+            search_path,
+        )
 
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read().strip())
