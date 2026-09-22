@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nemo_skills.inference.eval.swebench import transform_mini_swe_agent_request
+from nemo_skills.inference.eval.swebench import transform_litellm_reasoning_request
 
 
-def test_transform_mini_swe_agent_request_adds_reasoning_alias_recursively():
+def test_transform_litellm_reasoning_request_adds_reasoning_alias_recursively():
     request = {
         "model": "model",
         "messages": [
@@ -32,7 +32,7 @@ def test_transform_mini_swe_agent_request_adds_reasoning_alias_recursively():
         ],
     }
 
-    transformed = transform_mini_swe_agent_request(request)
+    transformed = transform_litellm_reasoning_request(request)
 
     assert transformed["messages"][0]["reasoning"] == "thinking"
     assert transformed["messages"][0]["metadata"]["reasoning"] == "nested"
@@ -40,7 +40,7 @@ def test_transform_mini_swe_agent_request_adds_reasoning_alias_recursively():
     assert "reasoning" not in request["messages"][0]
 
 
-def test_transform_mini_swe_agent_request_promotes_litellm_provider_reasoning():
+def test_transform_litellm_reasoning_request_promotes_provider_reasoning():
     request = {
         "messages": [
             {
@@ -64,7 +64,7 @@ def test_transform_mini_swe_agent_request_promotes_litellm_provider_reasoning():
         ]
     }
 
-    transformed = transform_mini_swe_agent_request(request)
+    transformed = transform_litellm_reasoning_request(request)
 
     assert transformed["messages"][0]["reasoning"] == "thinking from LiteLLM"
     assert transformed["messages"][1]["reasoning"] == "authoritative"
@@ -72,13 +72,13 @@ def test_transform_mini_swe_agent_request_promotes_litellm_provider_reasoning():
     assert "reasoning" not in request["messages"][0]
 
 
-def test_transform_mini_swe_agent_request_leaves_non_message_fields_unchanged():
+def test_transform_litellm_reasoning_request_leaves_non_message_fields_unchanged():
     request = {
         "reasoning_content": "top-level",
         "messages": [{"role": "user", "content": "hello"}],
     }
 
-    transformed = transform_mini_swe_agent_request(request)
+    transformed = transform_litellm_reasoning_request(request)
 
     assert transformed == request
     assert transformed is not request

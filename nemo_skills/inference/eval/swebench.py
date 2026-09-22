@@ -127,8 +127,8 @@ def build_direct_agent_user_prompt(problem_statement: str, agent_prompt: str) ->
         return f"{problem_statement.rstrip()}\n\n{agent_prompt}\n"
 
 
-def transform_mini_swe_agent_request(request: dict) -> dict:
-    """Add vLLM's ``reasoning`` alias to mini-SWE-agent conversation messages."""
+def transform_litellm_reasoning_request(request: dict) -> dict:
+    """Promote LiteLLM reasoning fields to the top-level key expected by vLLM."""
 
     def duplicate_reasoning_content_keys(value):
         if isinstance(value, dict):
@@ -1206,6 +1206,7 @@ class SweBenchGenerationTask(GenerationTask):
             data_point,
             build_swe_agent_command,
             search_path,
+            request_transform=transform_litellm_reasoning_request,
         )
 
         with open(pred_file, "r") as f:
@@ -1311,7 +1312,7 @@ class SweBenchGenerationTask(GenerationTask):
                 data_point,
                 build_mini_swe_agent_command,
                 search_path,
-                request_transform=transform_mini_swe_agent_request,
+                request_transform=transform_litellm_reasoning_request,
             )
 
             with open(pred_file, "r") as f:
