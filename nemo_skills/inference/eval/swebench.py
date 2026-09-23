@@ -95,11 +95,6 @@ VERIFIER_TEST_TIMEOUT_OVERRIDES = {
 }
 
 
-def _get_openhands_output_pattern(output_dir: Path, instance_id: str) -> str:
-    """Match OpenHands output in both flat and run-name directory layouts."""
-    return os.path.join(output_dir, "trajectories", instance_id, "**", "output.jsonl")
-
-
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
     """Merge *override* into *base* in place, recursing into nested dicts."""
     for key, value in override.items():
@@ -1465,12 +1460,12 @@ class SweBenchGenerationTask(GenerationTask):
                 f"    1 "  # number of workers
                 f"    {extra_args} && "  # extra args (different depending on benchmark_name)
                 # move outputs to the mounted directory
-                f"mkdir -p /trajectories_mount/trajectories && "
-                f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
+                f"mkdir -p /trajectories_mount/trajectories/{data_point['instance_id']} && "
+                f"cp -r evaluation/evaluation_outputs/outputs/*/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
             )
 
         # Execute OpenHands command
-        search_path = _get_openhands_output_pattern(self.output_dir, data_point["instance_id"])
+        search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
         try:
             out_file = await self._execute_agent_command_with_capture(
                 data_point,

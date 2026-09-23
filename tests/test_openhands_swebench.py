@@ -12,27 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import glob
 import json
 
-from nemo_skills.inference.eval.swebench import SweBenchGenerationTask, _get_openhands_output_pattern
-
-
-def test_openhands_output_pattern_supports_flat_and_run_name_layouts(tmp_path):
-    instance_id = "owner__repo-123"
-    instance_dir = tmp_path / "trajectories" / instance_id
-    instance_dir.mkdir(parents=True)
-    pattern = _get_openhands_output_pattern(tmp_path, instance_id)
-
-    flat_output = instance_dir / "output.jsonl"
-    flat_output.touch()
-    assert glob.glob(pattern, recursive=True) == [str(flat_output)]
-
-    flat_output.unlink()
-    nested_output = instance_dir / "model_maxiter_100_N_v1-run_1" / "output.jsonl"
-    nested_output.parent.mkdir()
-    nested_output.touch()
-    assert glob.glob(pattern, recursive=True) == [str(nested_output)]
+from nemo_skills.inference.eval.swebench import SweBenchGenerationTask
 
 
 def test_openhands_rollout_input_contains_only_current_record(tmp_path):
