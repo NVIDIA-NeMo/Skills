@@ -1,3 +1,5 @@
+<solution_originality>
+
 ## Solution Originality
 
 Implement your own original solution to the task.
@@ -14,3 +16,5 @@ Because you are working independently, you **MUST NOT** attempt to:
 for ANY reason at all, even if it's just "for reference" or to verify your own solution.
 WARNING: If you seek any form of external solutions, hints or information while solving the task,
 your solution will be DISCARDED regardless of its correctness!
+
+</solution_originality>
