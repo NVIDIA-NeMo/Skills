@@ -579,6 +579,13 @@ class SweBenchGenerationTask(GenerationTask):
             else:
                 self.cfg.extra_instructions = [self.cfg.agent_prompt_config]
 
+        # Add SWE-Zero instruction for OpenCode and Claude Code.
+        # For other harnesses we replace the agent_config entirely. See e.g. _run_openhands below.
+        if self.cfg.swe_zero_container is not None and self.cfg.agent_framework in [
+            SupportedAgentFrameworks.opencode, SupportedAgentFrameworks.claude_code
+        ]:
+            self.cfg.extra_instructions.append("swe-zero")
+
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
         # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
