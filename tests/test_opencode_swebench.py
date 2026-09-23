@@ -18,9 +18,8 @@ from types import SimpleNamespace
 from nemo_skills.inference.eval.swebench import (
     OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX,
     OPENCODE_PROVIDER_ID,
-    SupportedAgentFrameworks,
     SweBenchGenerationTask,
-    append_agent_prompt,
+    append_extra_instructions,
     build_clean_patch_commands,
     build_direct_agent_user_prompt,
     build_opencode_config,
@@ -145,8 +144,8 @@ def test_build_opencode_config_merges_user_keys():
     assert "options" not in model
 
 
-def test_append_agent_prompt_keeps_prompt_inside_instruction_tags():
-    combined = append_agent_prompt("Task instructions\n</instructions>\n", "Shared prompt")
+def test_append_extra_instructions_keeps_prompt_inside_instruction_tags():
+    combined = append_extra_instructions("Task instructions\n</instructions>\n", "Shared prompt")
 
     assert combined == "Task instructions\n\nShared prompt\n</instructions>\n"
 
@@ -157,15 +156,16 @@ def test_build_direct_agent_user_prompt_appends_shared_instructions():
     assert combined == "Fix parser.py\n\n## Solution Originality\nDo not use solutions.\n"
 
 
-def test_mini_swe_agent_cheats_allowed_config_preserves_legacy_prompt_selection():
+def test_extra_instructions_concatenates_prompts_in_order():
     task = object.__new__(SweBenchGenerationTask)
     task.cfg = SimpleNamespace(
-        agent_framework=SupportedAgentFrameworks.mini_swe_agent,
-        agent_config="eval/swe-bench/mini-swe-agent/swebench_cheats_allowed",
+        extra_instructions=["no-test-edits", "eval/swe-bench/common/solution-originality"],
         agent_prompt_config=None,
     )
 
-    prompt = task._get_agent_prompt()
+    prompt = task._get_extra_instructions()
 
-    assert "Solution Originality" not in prompt
-    assert "Do not create a Git commit" in prompt
+    assert prompt.index("Test and Patch Integrity") < prompt.index("Solution Originality")
+
+    task.cfg.extra_instructions = []
+    assert task._get_extra_instructions() == ""

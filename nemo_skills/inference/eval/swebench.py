@@ -65,9 +65,6 @@ OPENCODE_DEFAULT_VERSION = "1.17.11"
 OPENCODE_NODE_VERSION = "22.15.0"
 OPENCODE_PROVIDER_ID = "nemo"
 OPENCODE_DEFAULT_OUTPUT_TOKEN_MAX = 131072
-DEFAULT_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/solution-originality"
-CHEATS_ALLOWED_AGENT_PROMPT_CONFIG = "eval/swe-bench/common/cheats-allowed"
-MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG = "swebench_cheats_allowed"
 
 # Claude Code is installed from npm so benchmark runs can pin the harness version.
 CLAUDE_CODE_NPM_PACKAGE = "@anthropic-ai/claude-code"
@@ -105,26 +102,26 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
     return base
 
 
-def append_agent_prompt(template: str, agent_prompt: str) -> str:
-    """Append a shared prompt, keeping it inside an ``<instructions>`` block when present."""
-    agent_prompt = agent_prompt.strip()
-    if not agent_prompt:
+def append_extra_instructions(template: str, extra_instructions: str) -> str:
+    """Append extra instructions, keeping them inside an ``<instructions>`` block when present."""
+    extra_instructions = extra_instructions.strip()
+    if not extra_instructions:
         return template
     template = template.rstrip()
     closing_tag = "</instructions>"
     if closing_tag in template:
         prefix, suffix = template.rsplit(closing_tag, maxsplit=1)
-        return f"{prefix.rstrip()}\n\n{agent_prompt}\n{closing_tag}{suffix}\n"
-    return f"{template}\n\n{agent_prompt}\n"
+        return f"{prefix.rstrip()}\n\n{extra_instructions}\n{closing_tag}{suffix}\n"
+    return f"{template}\n\n{extra_instructions}\n"
 
 
-def build_direct_agent_user_prompt(problem_statement: str, agent_prompt: str) -> str:
-    """Combine a benchmark problem and shared instructions into one user prompt."""
-    agent_prompt = agent_prompt.strip()
-    if not agent_prompt:
+def build_direct_agent_user_prompt(problem_statement: str, extra_instructions: str) -> str:
+    """Combine a benchmark problem and extra instructions into one user prompt."""
+    extra_instructions = extra_instructions.strip()
+    if not extra_instructions:
         return problem_statement
     else:
-        return f"{problem_statement.rstrip()}\n\n{agent_prompt}\n"
+        return f"{problem_statement.rstrip()}\n\n{extra_instructions}\n"
 
 
 def transform_litellm_reasoning_request(request: dict) -> dict:
@@ -423,8 +420,10 @@ class SweBenchGenerationConfig:
     # SWE-agent/OpenHands/OpenCode/Claude Code configuration file path.
     # If None, will use the default for the chosen framework
     agent_config: str | None = None
-    # Markdown prompt added to the native task instructions for every agent framework.
-    # Defaults to the solution-originality prompt.
+    # Markdown prompts appended, in order, to the native task instructions for every agent framework.
+    # Names without a slash are resolved in eval/swe-bench/common. Use [] to add nothing.
+    extra_instructions: list[str] = field(default_factory=lambda: ["solution-originality", "no-test-edits"])
+    # Deprecated, use extra_instructions instead. Preserved for backward compatibility.
     agent_prompt_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
     # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
@@ -567,6 +566,18 @@ class SweBenchGenerationTask(GenerationTask):
             except OSError:
                 LOG.warning("Could not resolve server host %s, passing it through unchanged", host)
             self.api_base = f"http://{host}:{self.cfg.server.port}/v1"
+
+        # Backward compatibility for the deprecated agent_prompt_config
+        if self.cfg.agent_prompt_config is not None:
+            LOG.warning("agent_prompt_config is deprecated, use extra_instructions instead.")
+            if self.cfg.agent_prompt_config == "eval/swe-bench/common/cheats-allowed":
+                self.cfg.extra_instructions = []
+            elif self.cfg.agent_prompt_config == "eval/swe-bench/common/solution-originality":
+                self.cfg.extra_instructions = ["solution-originality"]
+            elif self.cfg.agent_prompt_config == "eval/swe-bench/common/solution-originality-no-test-edits":
+                self.cfg.extra_instructions = ["solution-originality", "no-test-edits"]
+            else:
+                self.cfg.extra_instructions = [self.cfg.agent_prompt_config]
 
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
@@ -1091,20 +1102,15 @@ class SweBenchGenerationTask(GenerationTask):
             f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
         )
 
-    def _get_agent_prompt(self) -> str:
-        """Load the shared prompt selected for the current agent framework."""
-        prompt_config = self.cfg.agent_prompt_config
-        if prompt_config is None:
-            agent_config_name = Path(self.cfg.agent_config or "").stem
-            if (
-                self.cfg.agent_framework == SupportedAgentFrameworks.mini_swe_agent
-                and agent_config_name == MINI_SWE_AGENT_CHEATS_ALLOWED_CONFIG
-            ):
-                prompt_config = CHEATS_ALLOWED_AGENT_PROMPT_CONFIG
-            else:
-                prompt_config = DEFAULT_AGENT_PROMPT_CONFIG
-        with open(get_config_path(prompt_config, config_extension="md"), "r") as f:
-            return f.read()
+    def _get_extra_instructions(self) -> str:
+        """Load and concatenate the prompts selected via extra_instructions."""
+        prompts = []
+        for prompt_config in self.cfg.extra_instructions:
+            if "/" not in prompt_config:
+                prompt_config = f"eval/swe-bench/common/{prompt_config}"
+            with open(get_config_path(prompt_config, config_extension="md"), "r") as f:
+                prompts.append(f.read().strip())
+        return "\n\n".join(prompts)
 
     def _get_terminal_error_metrics(self, error: Exception) -> dict:
         """Return fail-closed metrics for an agent rollout that raised."""
@@ -1151,7 +1157,7 @@ class SweBenchGenerationTask(GenerationTask):
             instance_template = swe_agent_config["agent"]["templates"]["instance_template"]
         except (KeyError, TypeError) as error:
             raise ValueError("SWE-agent config must define agent.templates.instance_template.") from error
-        instance_template = append_agent_prompt(instance_template, self._get_agent_prompt())
+        instance_template = append_extra_instructions(instance_template, self._get_extra_instructions())
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -1253,9 +1259,9 @@ class SweBenchGenerationTask(GenerationTask):
             full_config["agent"] = {}
         if "instance_template" not in full_config["agent"]:
             raise ValueError("mini-SWE-agent config must define agent.instance_template.")
-        full_config["agent"]["instance_template"] = append_agent_prompt(
+        full_config["agent"]["instance_template"] = append_extra_instructions(
             full_config["agent"]["instance_template"],
-            self._get_agent_prompt(),
+            self._get_extra_instructions(),
         )
         full_config["agent"]["step_limit"] = self.cfg.agent_max_turns
 
@@ -1351,7 +1357,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="toml"), "r") as f:
             config = tomlkit.parse(f.read())
-        agent_prompt = self._get_agent_prompt()
+        extra_instructions = self._get_extra_instructions()
 
         config["llm"]["model"] |= {
             "model": self.cfg.server.model,
@@ -1410,7 +1416,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 && "
             )
         instruction_template_setup += (
-            f"printf '\\n%s\\n' {shlex.quote(agent_prompt)} | tee -a "
+            f"printf '\\n%s\\n' {shlex.quote(extra_instructions)} | tee -a "
             "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 "
             "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 >/dev/null && "
         )
@@ -1544,7 +1550,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        agent_prompt = self._get_agent_prompt()
+        extra_instructions = self._get_extra_instructions()
 
         output_token_max = (
             self.cfg.inference.tokens_to_generate
@@ -1558,7 +1564,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"OpenCode output-token limit ({output_token_max}) cannot exceed its context window "
                 f"({self.cfg.opencode_context_window})."
             )
-        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
+        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), extra_instructions)
         instance_id = data_point["instance_id"]
         # OpenCode splits --model on the first '/', so nemo/<model> keeps slashes in the model id.
         model_arg = f"{OPENCODE_PROVIDER_ID}/{self.cfg.server.model}"
@@ -1681,12 +1687,12 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        agent_prompt = self._get_agent_prompt()
+        extra_instructions = self._get_extra_instructions()
 
         served_model_name = self.cfg.claude_code_model or self.cfg.server.model
         claude_model_name = served_model_name.replace("/", "__")
 
-        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), agent_prompt)
+        instruction = build_direct_agent_user_prompt(self._get_agent_problem_statement(data_point), extra_instructions)
         instance_id = data_point["instance_id"]
         trajectory_dir = f"/trajectories_mount/trajectories/{instance_id}"
         extra_body = OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True)
