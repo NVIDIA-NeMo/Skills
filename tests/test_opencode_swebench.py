@@ -158,10 +158,7 @@ def test_build_direct_agent_user_prompt_appends_shared_instructions():
 
 def test_extra_instructions_concatenates_prompts_in_order():
     task = object.__new__(SweBenchGenerationTask)
-    task.cfg = SimpleNamespace(
-        extra_instructions=["no-test-edits", "eval/swe-bench/common/solution-originality"],
-        agent_prompt_config=None,
-    )
+    task.cfg = SimpleNamespace(extra_instructions=["no-test-edits", "eval/swe-bench/common/solution-originality"])
 
     prompt = task._get_extra_instructions()
 

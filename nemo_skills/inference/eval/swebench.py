@@ -423,8 +423,6 @@ class SweBenchGenerationConfig:
     # Markdown prompts appended, in order, to the native task instructions for every agent framework.
     # Names without a slash are resolved in eval/swe-bench/common. Use [] to add nothing.
     extra_instructions: list[str] = field(default_factory=lambda: ["solution-originality", "no-test-edits"])
-    # Deprecated, use extra_instructions instead. Preserved for backward compatibility.
-    agent_prompt_config: str | None = None
     agent_max_turns: int = 100  # Max agent iterations
     # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
     capture_all_llm_requests: bool = False
@@ -567,22 +565,11 @@ class SweBenchGenerationTask(GenerationTask):
                 LOG.warning("Could not resolve server host %s, passing it through unchanged", host)
             self.api_base = f"http://{host}:{self.cfg.server.port}/v1"
 
-        # Backward compatibility for the deprecated agent_prompt_config
-        if self.cfg.agent_prompt_config is not None:
-            LOG.warning("agent_prompt_config is deprecated, use extra_instructions instead.")
-            if self.cfg.agent_prompt_config == "eval/swe-bench/common/cheats-allowed":
-                self.cfg.extra_instructions = []
-            elif self.cfg.agent_prompt_config == "eval/swe-bench/common/solution-originality":
-                self.cfg.extra_instructions = ["solution-originality"]
-            elif self.cfg.agent_prompt_config == "eval/swe-bench/common/solution-originality-no-test-edits":
-                self.cfg.extra_instructions = ["solution-originality", "no-test-edits"]
-            else:
-                self.cfg.extra_instructions = [self.cfg.agent_prompt_config]
-
         # Add SWE-Zero instruction for OpenCode and Claude Code.
         # For other harnesses we replace the agent_config entirely. See e.g. _run_openhands below.
         if self.cfg.swe_zero_container is not None and self.cfg.agent_framework in [
-            SupportedAgentFrameworks.opencode, SupportedAgentFrameworks.claude_code
+            SupportedAgentFrameworks.opencode,
+            SupportedAgentFrameworks.claude_code,
         ]:
             self.cfg.extra_instructions.append("swe-zero")
 
