@@ -45,6 +45,10 @@ RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
 RUN cd /opt/gorilla && git checkout 86d0374d0db52623c5092a73f82c22b87b7e9a25
 RUN cd /opt/gorilla/berkeley-function-call-leaderboard && pip install --no-cache-dir -e . --extra-index-url https://download.pytorch.org/whl/cpu
 
+# iheval (Instruction Hierarchy Evaluation) scoring package
+ARG IHEVAL_COMMIT=4572a71b46abdd5ec3a61553ed2fa91af31827b5
+RUN pip install --no-cache-dir "iheval @ git+https://github.com/bzantium/iheval.git@${IHEVAL_COMMIT}"
+
 RUN apt remove -y python3-blinker
 
 # ifbench

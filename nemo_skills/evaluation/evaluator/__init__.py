@@ -44,6 +44,14 @@ _EVALUATOR_MAP_PATHS = {
     "human_eval_infilling": "nemo_skills.evaluation.evaluator.code:eval_human_eval_infilling",
     "mmau-pro": "nemo_skills.evaluation.evaluator.mmau_pro:eval_mmau_pro",
     "specdec": "nemo_skills.evaluation.evaluator.specdec:eval_specdec",
+    # IHEval sub-benchmark scorers (thin wrappers over the external `iheval` package)
+    "iheval_rule_following": "nemo_skills.evaluation.evaluator.iheval:eval_rule_following",
+    "iheval_verb_extract": "nemo_skills.evaluation.evaluator.iheval:eval_verb_extract",
+    "iheval_translation": "nemo_skills.evaluation.evaluator.iheval:eval_translation",
+    "iheval_lang_detect": "nemo_skills.evaluation.evaluator.iheval:eval_lang_detect",
+    "iheval_safety": "nemo_skills.evaluation.evaluator.iheval:eval_safety",
+    "iheval_slack_user": "nemo_skills.evaluation.evaluator.iheval:eval_slack_user",
+    "iheval_webpage": "nemo_skills.evaluation.evaluator.iheval:eval_webpage",
 }
 
 # Class-based evaluators: eval_type -> "module_path:ClassName"
