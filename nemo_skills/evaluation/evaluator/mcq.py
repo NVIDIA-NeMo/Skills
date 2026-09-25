@@ -86,19 +86,21 @@ def eval_mcq(cfg):
             extracted_answer = normalize_extracted_answer(extracted_answer)
 
         parsed_letter = None
-        if extracted_answer is not None:
-            if len(extracted_answer) == 1:
-                parsed_letter = extracted_answer.upper()
-            elif len(extracted_answer) > 1:
-                # try to extract the letter from extracted answer, useful to match <A>, {A}, *A*, etc.
-                match = re.findall(r"\b[A-Z]\b(?!.*\b[A-Z]\b)", extracted_answer, re.DOTALL)
-                if len(match) > 0:
-                    parsed_letter = match[-1].strip().upper()
+        if extracted_answer is not None and len(extracted_answer) == 1:
+            parsed_letter = extracted_answer.upper()
 
         # adapted from https://artificialanalysis.ai/methodology/intelligence-benchmarking#intelligence-index-evaluation-suite-overview
+        # An explicit "Answer: X" line takes precedence over a letter scavenged from a longer extracted
+        # expression, e.g. \boxed{\Delta E} in the reasoning would otherwise be parsed as "E"
         if parsed_letter is None:
             match = re.findall(r"(?i)[\*\_]{0,2}Answer[\*\_]{0,2}\s*:[\s\*\_]{0,2}\s*([A-Z])(?![a-zA-Z0-9])", text)
             if match:
+                parsed_letter = match[-1].strip().upper()
+
+        if parsed_letter is None and extracted_answer is not None and len(extracted_answer) > 1:
+            # try to extract the letter from extracted answer, useful to match <A>, {A}, *A*, etc.
+            match = re.findall(r"\b[A-Z]\b(?!.*\b[A-Z]\b)", extracted_answer, re.DOTALL)
+            if len(match) > 0:
                 parsed_letter = match[-1].strip().upper()
 
         LOG.info(
