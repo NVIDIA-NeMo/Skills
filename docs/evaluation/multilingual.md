@@ -788,7 +788,141 @@ Some reference numbers (%) and commands for reproduction:
         ++inference.top_k=64
     ```
 
-The four MCQ benchmarks (`kmmlu`, `kmmlu-pro`, `kmmlu-redux`, `kormedmcqa`) all use the existing `eval_type=multichoice`; each entry sets a per-sample `extract_regex` that matches the prompt's `정답: A/B/C/D[/E]` answer line. Unlike the other benchmarks on this page, the Korean benchmarks are single-language and do not take a `--languages` flag.
+### kobalt
+
+- Benchmark is defined in [`nemo_skills/dataset/kobalt/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/kobalt/__init__.py)
+- Original benchmark source is [here](https://huggingface.co/datasets/snunlp/KoBALT-700).
+
+Korean-only 10-choice MCQ designed to probe deep linguistic competence across five domains (Syntax, Semantics, Pragmatics, Phonetics/Phonology, Morphology). 700 expert-written items. `subset_for_metrics` is the per-domain `Class` field.
+
+Some reference numbers (symbolic_correct, %) and commands for reproduction:
+
+|                Model                |    Avg    | Syntax | Semantics | Pragmatics | Phonetics/Phonology | Morphology |
+| :---------------------------------- | :-------: | :----: | :-------: | :--------: | :-----------------: | :--------: |
+| Nemotron-Cascade-2-30B-A3B          | **32.29** | 32.00  |   46.05   |   30.86    |        4.84         |    7.14    |
+| kanana-2-30b-a3b-thinking-2601      | **36.14** | 33.00  |   49.30   |   28.40    |        19.35        |   30.95    |
+| gemma-4-26B-A4B-it                  | **69.57** | 75.33  |   71.16   |   60.49    |        54.84        |   59.52    |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks kobalt \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks kobalt \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks kobalt \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+### click
+
+- Benchmark is defined in [`nemo_skills/dataset/click/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/click/__init__.py)
+- Original benchmark source is [here](https://github.com/rladmstn1714/CLIcK) (mirrored to [`bzantium/CLIcK`](https://huggingface.co/datasets/bzantium/CLIcK) with the per-item subcategory labels restored, since the [`EunsuKim/CLIcK`](https://huggingface.co/datasets/EunsuKim/CLIcK) HF mirror drops them).
+
+Korean Cultural and Linguistic Intelligence benchmark (LREC-COLING 2024). 1995 items across 11 subcategories under two broad domains (8 Culture: Economy / Geography / History / Law / Politics / Popular / Society / Tradition; 3 Language: Functional / Grammar / Textual). Items are a mix of 4- and 5-choice MCQ; the 5-choice prompt covers both.
+
+Some reference numbers (symbolic_correct, %) and commands for reproduction:
+
+|                Model                | symbolic_correct |
+| :---------------------------------- | :--------------: |
+| Nemotron-Cascade-2-30B-A3B          |    **65.81**     |
+| kanana-2-30b-a3b-thinking-2601      |    **73.23**     |
+| gemma-4-26B-A4B-it                  |    **86.77**     |
+
+=== "Nemotron-Cascade-2-30B-A3B"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=nvidia/Nemotron-Cascade-2-30B-A3B \
+        --benchmarks click \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser nemotron_v3' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95
+    ```
+
+=== "kanana-2-30b-a3b-thinking-2601"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=kakaocorp/kanana-2-30b-a3b-thinking-2601 \
+        --benchmarks click \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        ++parse_reasoning=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=0.6 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=20
+    ```
+
+=== "gemma-4-26B-A4B-it"
+
+    ```bash
+    ns eval \
+        --cluster=[cluster] \
+        --model=google/gemma-4-26B-A4B-it \
+        --benchmarks click \
+        --output_dir=[output dir] \
+        --server_type=vllm \
+        --server_gpus=4 \
+        --server_args='--reasoning-parser gemma4' \
+        ++chat_template_kwargs.enable_thinking=true \
+        ++inference.tokens_to_generate=16384 \
+        ++inference.temperature=1.0 \
+        ++inference.top_p=0.95 \
+        ++inference.top_k=64
+    ```
+
+The six MCQ benchmarks (`kmmlu`, `kmmlu-pro`, `kmmlu-redux`, `kormedmcqa`, `kobalt`, `click`) all use `eval_type=multichoice`; each entry sets a per-sample `extract_regex` that matches the prompt's `정답: <letter>` answer line. `kobalt` uses a dedicated 10-choice prompt config; the others share the 4-choice and 5-choice prompts. Unlike the other benchmarks on this page, the Korean benchmarks are single-language and do not take a `--languages` flag.
 
 ## Supported translation metrics
 
