@@ -120,6 +120,8 @@ def robust_eval(
                     # Quote properly for it to be correct passed to ns eval in terminal
                     shell_safe_arg = shlex.quote(shlex.quote(hydra_arg))
                     prompt_context.args.append(shell_safe_arg)
+                    # prompts with a custom answer format should be matched by their regex before falling back to boxed
+                    prompt_context.args.append("++eval_config.regex_first=True")
 
                 prompt_context.args.append(f"++prompt_config={prompt.prompt_config}")
 

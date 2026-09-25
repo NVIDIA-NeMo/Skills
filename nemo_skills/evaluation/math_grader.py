@@ -100,14 +100,20 @@ def math_equal(gt_answer, predicted_answer, take_modulo: int | None = None, **kw
 
 
 def extract_answer(
-    string: str, extract_from_boxed: bool = True, extract_regex: str = r"The final answer is (.+)$", relaxed=False
+    string: str,
+    extract_from_boxed: bool = True,
+    extract_regex: str = r"The final answer is (.+)$",
+    relaxed=False,
+    regex_first: bool = False,
 ):
     """Extract Answer String from \\boxed expression or based on regex
-    If relaxed=True: try both methods, regex first.
+    If relaxed=True: try both methods, boxed first (or regex first if regex_first=True).
     If relaxed=False: use only one method based on extract_from_boxed flag.
     """
     if relaxed:
-        return search_regex(string, extract_regex) or search_boxed(string)
+        if regex_first:
+            return search_regex(string, extract_regex) or search_boxed(string)
+        return search_boxed(string) or search_regex(string, extract_regex)
 
     if extract_from_boxed:
         return search_boxed(string)

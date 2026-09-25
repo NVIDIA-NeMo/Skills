@@ -38,8 +38,10 @@ class MathEvaluatorConfig(BaseEvaluatorConfig):
     extract_from_boxed: bool = True
     # only used if extract_from_boxed is False
     extract_regex: str = r"The final answer is (.+)$"
-    # if True: try regex first, then boxed (regardless of extract_from_boxed)
+    # if True: try both boxed and regex (regardless of extract_from_boxed), boxed first
     relaxed_extraction: bool = False
+    # only used if relaxed_extraction is True: try regex first, then boxed
+    regex_first: bool = False
     take_modulo: int | None = None  # will take modulo of the gt and predicted answers if not None
 
 
@@ -67,6 +69,7 @@ class MathEvaluator(BaseEvaluator):
                 extract_from_boxed=self.eval_config.extract_from_boxed,
                 extract_regex=self.eval_config.extract_regex,
                 relaxed=self.eval_config.relaxed_extraction,
+                regex_first=self.eval_config.regex_first,
             )
         else:
             if "predicted_answer" not in data_point:
