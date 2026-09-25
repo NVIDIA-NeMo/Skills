@@ -42,7 +42,10 @@ def load_config(config: str, config_dir: str | None = None) -> dict:
         config_path = Path(config_dir) / f"{config}.yaml"
 
     with open(config_path, "rt", encoding="utf-8") as fin:
-        return yaml.safe_load(fin)
+        config_data = yaml.safe_load(fin)
+    if config_data is None:
+        raise ValueError(f"Config file {config_path} is empty or contains only comments.")
+    return config_data
 
 
 def get_eval_group(eval_config: str | dict, eval_group_dir: str | None = None) -> dict:
