@@ -567,11 +567,19 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Add SWE-Zero instruction for OpenCode and Claude Code.
         # For other harnesses we replace the agent_config entirely. See e.g. _run_openhands below.
-        if self.cfg.swe_zero_container is not None and self.cfg.agent_framework in [
-            SupportedAgentFrameworks.opencode,
-            SupportedAgentFrameworks.claude_code,
-        ]:
+        if (
+            self.cfg.swe_zero_container is not None
+            and self.cfg.agent_framework in [SupportedAgentFrameworks.opencode, SupportedAgentFrameworks.claude_code]
+            and "swe-zero" not in self.cfg.extra_instructions
+        ):
             self.cfg.extra_instructions.append("swe-zero")
+
+        # Add OpenHands "use finish tool" instruction.
+        if (
+            self.cfg.agent_framework == SupportedAgentFrameworks.openhands
+            and "openhands-use-finish-tool" not in self.cfg.extra_instructions
+        ):
+            self.cfg.extra_instructions.append("openhands-use-finish-tool")
 
         # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
         #
