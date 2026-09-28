@@ -1385,34 +1385,36 @@ class SweBenchGenerationTask(GenerationTask):
         data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
         rollout_input_path, rollout_input_container_path = self._write_openhands_rollout_input(data_point)
 
-        # The final 2 arguments are different between the swe_bench and multi_swe_bench scripts.
-        # We handle that with extra_args.
+        # The final 2 arguments to run_infer.sh and the user prompt template paths
+        # are different between the swe_bench and multi_swe_bench scripts.
         if self.cfg.multilingual and self.cfg.swe_zero_container is None:
             benchmark_name = "multi_swe_bench"
             extra_args = (
                 f" {data_dir}/dataset.jsonl "  # dataset file
                 f" {data_point['language']} "  # language
             )
+            prompt_files = ["evaluation/benchmarks/multi_swe_bench/prompts/swe_default.j2"]
         else:
             benchmark_name = "swe_bench"
             extra_args = (
                 f" {data_dir} "  # dataset folder
                 f" train "  # dataset split (always "train" for local datasets)
             )
+            prompt_files = [
+                "evaluation/benchmarks/swe_bench/prompts/swe_default.j2",
+                "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2",
+            ]
 
         instruction_template = self._get_openhands_instruction_template()
         instruction_template_setup = ""
         if instruction_template is not None:
-            instruction_template_setup = (
-                f"cp {shlex.quote(instruction_template)} "
-                "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 && "
-                f"cp {shlex.quote(instruction_template)} "
-                "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 && "
+            # Entirely replace the user prompt template with the custom one, if present
+            instruction_template_setup = "".join(
+                f"cp {shlex.quote(instruction_template)} {prompt_file} && " for prompt_file in prompt_files
             )
+        # Append extra instructions to the user prompt template
         instruction_template_setup += (
-            f"printf '\\n%s\\n' {shlex.quote(extra_instructions)} | tee -a "
-            "evaluation/benchmarks/swe_bench/prompts/swe_default.j2 "
-            "evaluation/benchmarks/swe_bench/prompts/swe_gpt4.j2 >/dev/null && "
+            f"printf '\\n%s\\n' {shlex.quote(extra_instructions)} | tee -a {' '.join(prompt_files)} >/dev/null && "
         )
 
         def build_openhands_command(api_base):
