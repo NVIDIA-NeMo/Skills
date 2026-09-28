@@ -195,3 +195,19 @@ def test_arena_metrics_pass_at_k_with_repeats():
     assert metrics[pass_at_n]["score"] >= metrics[avg_of_n]["score"], (
         f"best-of-N ({metrics[pass_at_n]['score']}) < avg-of-N ({metrics[avg_of_n]['score']})"
     )
+
+
+def test_get_incorrect_sample_marks_candidate_loss():
+    """Over-length filtering must score as a strong baseline win, not a candidate win (#1533)."""
+    from nemo_skills.evaluation.metrics.arena_metrics import (
+        ArenaMetrics,
+        _BASE_GEN_PREFERENCE,
+        _GEN_BASE_PREFERENCE,
+    )
+
+    m = ArenaMetrics()
+    out = m.get_incorrect_sample(_make_prediction("A>>B", "B>>A"))
+    assert m._get_judge_score(out["judgement-gen-base"]) == _GEN_BASE_PREFERENCE[-1]
+    assert m._get_judge_score(out["judgement-base-gen"]) == _BASE_GEN_PREFERENCE[-1]
+    assert out["judgement-gen-base"] == f"Rating: [[{_GEN_BASE_PREFERENCE[-1]}]]"
+    assert out["judgement-base-gen"] == f"Rating: [[{_BASE_GEN_PREFERENCE[-1]}]]"
