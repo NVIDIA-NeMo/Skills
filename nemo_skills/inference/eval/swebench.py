@@ -1052,10 +1052,28 @@ class SweBenchGenerationTask(GenerationTask):
         mounts = [
             "type=bind,src=/nemo_run/code,dst=/nemo_run/code",
             "type=bind,src=/root,dst=/root_mount,ro",
-            f"type=bind,src={self.output_dir},dst=/trajectories_mount",
         ]
+
+        if mode == "agent" and self.cfg.agent_framework in (
+            SupportedAgentFrameworks.opencode,
+            SupportedAgentFrameworks.claude_code,
+        ):
+            # Only mount the inner trajectories/<instance_id> path, not the whole trajectories folder.
+            # This mitigates the risk of Lustre issues caused by the agent searching a large trajectory folder.
+            # It also prevents the agent from cheating by looking at other instances' trajectories.
+            # TODO: ideally do this for all harnesses,
+            #       but it will require changing the output file layout and adding new mounts.
+            instance_dir = self.output_dir / "trajectories" / data_point["instance_id"]
+            instance_dir.mkdir(parents=True, exist_ok=True)
+            mounts.append(
+                f"type=bind,src={instance_dir},dst=/trajectories_mount/trajectories/{data_point['instance_id']}"
+            )
+        else:
+            mounts.append(f"type=bind,src={self.output_dir},dst=/trajectories_mount")
+
         if mode == "eval":
             mounts.append(f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro")
+
         return mounts
 
     def _write_openhands_rollout_input(self, data_point: dict) -> tuple[Path, str]:

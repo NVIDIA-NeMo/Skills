@@ -66,6 +66,7 @@ def test_scale_swe_enables_resolver_only_for_evaluation(tmp_path):
     task.output_dir = tmp_path / "outputs"
     task.cfg = SimpleNamespace(
         input_file="/datasets/scale-swe.jsonl",
+        agent_framework="swe_agent",
         scale_swe_verifier_network=True,
         scale_swe_eval_resolv_conf=str(resolver),
     )
