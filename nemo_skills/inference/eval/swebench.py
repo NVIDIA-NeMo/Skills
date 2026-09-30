@@ -1032,7 +1032,7 @@ class SweBenchGenerationTask(GenerationTask):
         ]
         mount_args = " ".join(f"--mount {shlex.quote(mount_spec)}" for mount_spec in mount_specs)
         apptainer_cmd = (
-            f"apptainer exec --writable-tmpfs --cleanenv --pid --no-mount home,tmp,bind-paths "
+            f"apptainer exec --writable-tmpfs --cleanenv --pid --no-mount home,tmp,bind-paths,cwd --pwd / "
             f"{mount_args} "
             f"{extra_apptainer_args} "
             f"{container_name} bash -c {shlex.quote(combined_command)}"
