@@ -53,6 +53,28 @@ def locate(path):
     return getattr(module, obj_name)
 
 
+def coerce_numeric_answer(expected_answer):
+    """Return an int for an integral value, including integers past 2**53.
+
+    A float64 mantissa cannot hold every integer above 2**53, so converting
+    through float() and back changes the value.
+    """
+    text = str(expected_answer).strip()
+    if not text.replace(".", "", 1).replace("-", "", 1).isdigit():
+        return expected_answer
+    body = text[1:] if text.startswith("-") else text
+    if "." not in body:
+        return int(text)
+    whole, frac = body.split(".", 1)
+    if whole and set(frac) <= {"0"}:
+        sign = "-" if text.startswith("-") else ""
+        return int(sign + whole)
+    value = float(text)
+    if int(value) == value:
+        return int(value)
+    return value
+
+
 def add_rounding_instruction(data: Dict) -> Dict:
     try:
         float(data["expected_answer"])
