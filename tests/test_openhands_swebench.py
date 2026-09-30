@@ -19,7 +19,7 @@ from nemo_skills.inference.eval.swebench import SweBenchGenerationTask
 
 def test_openhands_rollout_input_contains_only_current_record(tmp_path):
     task = object.__new__(SweBenchGenerationTask)
-    task.output_dir = tmp_path
+    task.scratch_dir = tmp_path
     data_point = {
         "instance_id": "owner__repo-123",
         "dataset_name": "princeton-nlp/SWE-bench_Verified",
@@ -32,10 +32,9 @@ def test_openhands_rollout_input_contains_only_current_record(tmp_path):
         "PASS_TO_PASS": ["tests/test_stable.py::test_ok"],
     }
 
-    host_path, container_path = task._write_openhands_rollout_input(data_point)
+    host_path = task._write_openhands_rollout_input(data_point)
 
-    assert host_path.parent == tmp_path / ".openhands_inputs"
-    assert container_path == f"/trajectories_mount/.openhands_inputs/{host_path.name}"
+    assert host_path.parent == tmp_path
     assert host_path.read_text(encoding="utf-8").count("\n") == 1
     assert json.loads(host_path.read_text(encoding="utf-8")) == {
         "instance_id": "owner__repo-123",

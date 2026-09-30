@@ -21,8 +21,10 @@ import logging
 import os
 import random
 import shlex
+import shutil
 import socket
 import sys
+import tempfile
 from dataclasses import field
 from enum import Enum
 from functools import partial
@@ -90,6 +92,11 @@ NETWORK_ISOLATED_VERIFIER_TASKS = frozenset(
 VERIFIER_TEST_TIMEOUT_OVERRIDES = {
     "reactivex__rxjava-7597": 5 * 60,
 }
+
+# Everything mounted into Apptainer is staged in a scratch dir, so that agents can't access the original paths,
+# which are usually on Lustre. We use node-local /raid/scratch if it exists, otherwise a dir inside the NS container.
+SCRATCH_DIR = Path("/raid/scratch")
+FALLBACK_SCRATCH_DIR = Path("/swe-bench-scratch")
 
 
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
@@ -797,6 +804,27 @@ class SweBenchGenerationTask(GenerationTask):
         combined_setup_command = " && ".join(setup_commands)
         asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
 
+        # Set up the scratch dir where Apptainer mounts are staged (see _execute_container_command)
+        scratch_root = SCRATCH_DIR
+        if not scratch_root.is_dir():
+            LOG.warning(
+                "%s does not exist, staging Apptainer mounts in %s inside the Nemo-Skills container instead.",
+                SCRATCH_DIR,
+                FALLBACK_SCRATCH_DIR,
+            )
+            scratch_root = FALLBACK_SCRATCH_DIR
+            scratch_root.mkdir(exist_ok=True)
+        self.scratch_dir = Path(tempfile.mkdtemp(dir=scratch_root, prefix="nemo-skills-swe-"))
+        self.input_dir = self.scratch_dir / "input"
+        self.input_dir.mkdir()
+        shutil.copy2(self.cfg.input_file, self.input_dir)
+
+    def generate(self):
+        try:
+            super().generate()
+        finally:
+            shutil.rmtree(self.scratch_dir, ignore_errors=True)
+
     def log_example_prompt(self, data):
         return
 
@@ -884,8 +912,14 @@ class SweBenchGenerationTask(GenerationTask):
         mode,
         timeout=100000,
         extra_apptainer_args="",
+        extra_mounts=(),
     ):
-        """Execute a command in an Apptainer container with retry logic."""
+        """
+        Execute a command in an Apptainer container with retry logic.
+        Mounts are (src, dst, read_only) tuples, in addition to the ones from _get_apptainer_mounts.
+        """
+        mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)
+
         # Commands to be executed in the Apptainer container, in order
         container_commands = []
 
@@ -903,7 +937,7 @@ class SweBenchGenerationTask(GenerationTask):
             repo_url_or_path = repo_formatter.format(repo=data_point["repo"].removeprefix("https://github.com/"))
             if repo_url_or_path.startswith("/"):
                 # If the repo is local, we need to mount it inside of Apptainer
-                extra_apptainer_args += f" --mount type=bind,src={repo_url_or_path},dst=/instance_repo,ro "
+                mounts.append((repo_url_or_path, "/instance_repo", True))
                 repo_url_or_path = "/instance_repo"
                 # Prevent "dubious ownership" errors
                 container_commands.append("git config --global --add safe.directory /instance_repo")
@@ -966,122 +1000,110 @@ class SweBenchGenerationTask(GenerationTask):
         if mode == "eval" and data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
             extra_apptainer_args += " --net --network none "
 
+        # Stage Apptainer mounts in a scratch directory to prevent the agent from accessing Lustre folders.
+        # Read-only mounts are copied in.
+        # Writable mounts start empty and are copied back to their original location after each attempt.
+        # This makes them effectively "write-only" mounts.
+        run_dir = Path(tempfile.mkdtemp(dir=self.scratch_dir))
+        container_mounts = []
+        for i, (src, dst, read_only) in enumerate(mounts):
+            src, local = Path(src), run_dir / str(i)
+            if src == Path("/root") or src.is_relative_to(self.scratch_dir):
+                local = src
+            elif not read_only:
+                local.mkdir()
+            elif src.is_dir():
+                await asyncio.to_thread(shutil.copytree, src, local, symlinks=True)
+            else:
+                await asyncio.to_thread(shutil.copy2, src, local)
+            container_mounts.append((local, dst, read_only))
+
         # Launch Apptainer container and execute the command
-        mount_args = " ".join(
-            f"--mount {shlex.quote(mount_spec)}" for mount_spec in self._get_apptainer_mounts(mode, data_point)
-        )
+        mount_specs = [
+            f"type=bind,src={src},dst={dst}{',ro' if read_only else ''}" for src, dst, read_only in container_mounts
+        ]
+        mount_args = " ".join(f"--mount {shlex.quote(mount_spec)}" for mount_spec in mount_specs)
         apptainer_cmd = (
             f"apptainer exec --writable-tmpfs --cleanenv --pid --no-mount home,tmp,bind-paths "
             f"{mount_args} "
             f"{extra_apptainer_args} "
             f"{container_name} bash -c {shlex.quote(combined_command)}"
         )
+        LOG.info("Executing Apptainer command: %s", apptainer_cmd)  # TODO remove this
 
         # Create logs directory if it doesn't exist
         logs_dir = self.output_dir / "apptainer_logs"
         logs_dir.mkdir(exist_ok=True)
 
-        # Retry apptainer command up to max_retries times
-        for attempt in range(self.cfg.max_retries):
-            log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
-            LOG.info(
-                "Starting execution of an apptainer command (attempt %d of %d). Logs are available at %s",
-                attempt + 1,
-                self.cfg.max_retries,
-                log_file_path,
-            )
+        try:
+            # Retry apptainer command up to max_retries times
+            for attempt in range(self.cfg.max_retries):
+                log_file_path = logs_dir / f"{data_point['instance_id']}_{mode}_attempt{attempt + 1}.log"
+                LOG.info(
+                    "Starting execution of an apptainer command (attempt %d of %d). Logs are available at %s",
+                    attempt + 1,
+                    self.cfg.max_retries,
+                    log_file_path,
+                )
 
-            try:
                 # Stream output to log file as it appears
+                timed_out = False
                 with open(log_file_path, "w") as log_file:
+                    process = await asyncio.create_subprocess_shell(apptainer_cmd, stdout=log_file, stderr=log_file)
                     try:
-                        # Create async subprocess
-                        process = await asyncio.create_subprocess_shell(
-                            apptainer_cmd, stdout=log_file, stderr=log_file
-                        )
-                        # Wait for completion with timeout
-                        await asyncio.wait_for(process.communicate(), timeout=timeout)
-
-                        if process.returncode != 0:
-                            raise ValueError(f"Command failed with return code {process.returncode}")
-
+                        await asyncio.wait_for(process.wait(), timeout=timeout)
                     except asyncio.TimeoutError:
-                        # Kill the process if it's still running
-                        if process.returncode is None:
-                            process.kill()
-                            await process.wait()
-                        attempt = self.cfg.max_retries  # Force exit the loop on timeout
-                        raise ValueError("Command timed out")
+                        process.kill()
+                        await process.wait()
+                        timed_out = True
 
-                # Look for the expected file
+                # Copy outputs from scratch back to their original location
+                for (src, _, read_only), (local, _, _) in zip(mounts, container_mounts):
+                    if not read_only:
+                        await asyncio.to_thread(shutil.copytree, local, src, symlinks=True, dirs_exist_ok=True)
+
                 pred_files = glob.glob(expected_file_pattern, recursive=True)
-
-                if len(pred_files) == 1:
-                    # Success, break out of retry loop
+                if process.returncode == 0 and len(pred_files) == 1:
                     return pred_files[0]
-                else:
-                    raise ValueError(
-                        f"Expected exactly one file matching {expected_file_pattern} for {data_point['instance_id']}, "
-                        f"found {len(pred_files)}."
-                    )
-            except Exception:
-                if attempt < self.cfg.max_retries - 1:
-                    retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
-                    LOG.warning(
-                        "Attempt %d failed for instance %s. Retrying in %d seconds...",
-                        attempt + 1,
-                        data_point["instance_id"],
-                        retry_interval,
-                    )
-                    if retry_interval > 0:
-                        await asyncio.sleep(retry_interval)
-                    continue
-                else:
-                    LOG.error(
-                        "All %d attempts failed for instance %s", self.cfg.max_retries, data_point["instance_id"]
-                    )
+
+                # Don't retry on timeout
+                if timed_out or attempt == self.cfg.max_retries - 1:
                     LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
                     raise ValueError(
-                        f"Job failed for {data_point['instance_id']}. Check logs at: {log_file_path}. "
-                        f"Expected exactly one file matching {expected_file_pattern}, "
-                        f"found {len(pred_files) if 'pred_files' in locals() else 'unknown'}."
+                        f"Job failed for {data_point['instance_id']} (return code {process.returncode}, "
+                        f"timed out: {timed_out}). Check logs at: {log_file_path}. "
+                        f"Expected exactly one file matching {expected_file_pattern}, found {len(pred_files)}."
                     )
 
-    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
-        """Return the mounts used by agent and evaluation containers."""
+                retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
+                LOG.warning(
+                    "Attempt %d failed for instance %s. Retrying in %d seconds...",
+                    attempt + 1,
+                    data_point["instance_id"],
+                    retry_interval,
+                )
+                await asyncio.sleep(retry_interval)
+        finally:
+            await asyncio.to_thread(shutil.rmtree, run_dir, ignore_errors=True)
+
+    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[tuple]:
+        """Return the (src, dst, read_only) mounts used by agent and evaluation containers."""
+        # /trajectories_mount starts empty and is copied back to output_dir after the run,
+        # so any inputs for the container must be passed via extra_mounts instead.
         mounts = [
-            "type=bind,src=/nemo_run/code,dst=/nemo_run/code",
-            "type=bind,src=/root,dst=/root_mount,ro",
+            ("/root", "/root_mount", True),
+            (self.output_dir, "/trajectories_mount", False),
         ]
-
-        if mode == "agent" and self.cfg.agent_framework in (
-            SupportedAgentFrameworks.opencode,
-            SupportedAgentFrameworks.claude_code,
-        ):
-            # Only mount the inner trajectories/<instance_id> path, not the whole trajectories folder.
-            # This mitigates the risk of Lustre issues caused by the agent searching a large trajectory folder.
-            # It also prevents the agent from cheating by looking at other instances' trajectories.
-            # TODO: ideally do this for all harnesses,
-            #       but it will require changing the output file layout and adding new mounts.
-            instance_dir = self.output_dir / "trajectories" / data_point["instance_id"]
-            instance_dir.mkdir(parents=True, exist_ok=True)
-            mounts.append(
-                f"type=bind,src={instance_dir},dst=/trajectories_mount/trajectories/{data_point['instance_id']}"
-            )
-        else:
-            mounts.append(f"type=bind,src={self.output_dir},dst=/trajectories_mount")
-
         if mode == "eval":
-            mounts.append(f"type=bind,src={Path(self.cfg.input_file).parent},dst=/input_mount,ro")
-
+            # Mounts the folder with the input dataset. Used during evaluation.
+            # DO NOT do this in agent mode, to prevent the agent from accessing privileged info e.g. gold patches.
+            mounts.append((self.input_dir, "/input_mount", True))
         return mounts
 
-    def _write_openhands_rollout_input(self, data_point: dict) -> tuple[Path, str]:
-        """Write one JSONL record for an OpenHands rollout into the mounted output directory."""
+    def _write_openhands_rollout_input(self, data_point: dict) -> Path:
+        """Write one JSONL record for an OpenHands rollout into the scratch directory."""
         instance_token = hashlib.sha256(str(data_point["instance_id"]).encode()).hexdigest()[:20]
-        input_dir = self.output_dir / ".openhands_inputs"
-        input_dir.mkdir(parents=True, exist_ok=True)
-        host_path = input_dir / f"{instance_token}.jsonl"
+        host_path = self.scratch_dir / f"openhands_input_{instance_token}.jsonl"
         data_point_for_openhands = {
             # Include only the information OH needs, without exposing hidden info to the agent
             "instance_id": data_point["instance_id"],
@@ -1095,8 +1117,7 @@ class SweBenchGenerationTask(GenerationTask):
         if data_point.get("language"):
             data_point_for_openhands["language"] = data_point["language"]
         host_path.write_text(json.dumps(data_point_for_openhands, ensure_ascii=False) + "\n", encoding="utf-8")
-        container_path = f"/trajectories_mount/.openhands_inputs/{host_path.name}"
-        return host_path, container_path
+        return host_path
 
     async def _run_agent(self, data_point) -> str:
         """
@@ -1205,7 +1226,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cd /root/SWE-agent && "
                 # run the agent
                 f"/root/SWE-agent/venv/bin/python -m sweagent run "
-                f"    --config {get_config_path(self.cfg.agent_config)} "
+                f"    --config /swe_agent_config.yaml "
                 f"    --agent.templates.instance_template {shlex.quote(instance_template)} "
                 f"    --agent.model.name hosted_vllm/{self.cfg.server.model} "
                 f"    --agent.model.api_base {shlex.quote(api_base)} "
@@ -1233,6 +1254,7 @@ class SweBenchGenerationTask(GenerationTask):
             build_swe_agent_command,
             search_path,
             request_transform=transform_litellm_reasoning_request,
+            extra_mounts=[(get_config_path(self.cfg.agent_config), "/swe_agent_config.yaml", True)],
         )
 
         with open(pred_file, "r") as f:
@@ -1298,19 +1320,14 @@ class SweBenchGenerationTask(GenerationTask):
             }
         )
 
-        (self.output_dir / "configs").mkdir(parents=True, exist_ok=True)
-        tmp_config_filename = f"configs/config_{data_point['instance_id']}.yaml"
-        host_tmp_path = os.path.join(self.output_dir, tmp_config_filename)
-
-        # Inside the container, this path maps to /trajectories_mount/
-        container_tmp_path = os.path.join("/trajectories_mount", tmp_config_filename)
-
         problem_statement = self._get_agent_problem_statement(data_point)
         instance_id = data_point["instance_id"]
+        host_config_path = self.scratch_dir / f"mini_swe_agent_config_{instance_id}.yaml"
+        container_config_path = "/mini_swe_agent_config.yaml"
 
         def build_mini_swe_agent_command(api_base):
             full_config["model"]["model_kwargs"]["api_base"] = api_base
-            with open(host_tmp_path, "w") as f:
+            with open(host_config_path, "w") as f:
                 yaml.dump(full_config, f)
 
             return (
@@ -1318,10 +1335,10 @@ class SweBenchGenerationTask(GenerationTask):
                 "cp -r /root_mount/uv /root && "
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
-                f"export MSWEA_MINI_CONFIG_PATH={container_tmp_path} && "
+                f"export MSWEA_MINI_CONFIG_PATH={container_config_path} && "
                 "export MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=3 && "
                 f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
-                f"--config {container_tmp_path} "
+                f"--config {container_config_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
                 f"--task {shlex.quote(problem_statement)} "
                 f"--output trajectories/{instance_id}.traj.json "
@@ -1330,40 +1347,36 @@ class SweBenchGenerationTask(GenerationTask):
                 "mkdir -p /trajectories_mount/trajectories && cp -r trajectories/* /trajectories_mount/trajectories/"
             )
 
-        try:
-            # Execute mini-swe-agent command
-            search_path = os.path.join(self.output_dir, "trajectories", f"{instance_id}.traj.json")
+        # Execute mini-swe-agent command
+        search_path = os.path.join(self.output_dir, "trajectories", f"{instance_id}.traj.json")
 
-            pred_file = await self._execute_agent_command_with_capture(
-                data_point,
-                build_mini_swe_agent_command,
-                search_path,
-                request_transform=transform_litellm_reasoning_request,
-            )
+        pred_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_mini_swe_agent_command,
+            search_path,
+            request_transform=transform_litellm_reasoning_request,
+            extra_mounts=[(host_config_path, container_config_path, True)],
+        )
 
-            with open(pred_file, "r") as f:
-                trajectory_dict = json.loads(f.read().strip())
+        with open(pred_file, "r") as f:
+            trajectory_dict = json.loads(f.read().strip())
 
-            pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
-            with open(pred_jsonl_file, "w") as f:
-                trajectory_info = trajectory_dict.get("info", {})
-                trajectory_info["model_name_or_path"] = self.cfg.server.model
-                trajectory_info["instance_id"] = data_point["instance_id"]
+        pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
+        with open(pred_jsonl_file, "w") as f:
+            trajectory_info = trajectory_dict.get("info", {})
+            trajectory_info["model_name_or_path"] = self.cfg.server.model
+            trajectory_info["instance_id"] = data_point["instance_id"]
 
-                patch = trajectory_info.pop("submission", None)
-                if not patch:
-                    patch = None
-                elif not patch.endswith("\n"):
-                    patch += "\n"
-                trajectory_info["model_patch"] = patch
+            patch = trajectory_info.pop("submission", None)
+            if not patch:
+                patch = None
+            elif not patch.endswith("\n"):
+                patch += "\n"
+            trajectory_info["model_patch"] = patch
 
-                f.write(json.dumps(trajectory_info))
+            f.write(json.dumps(trajectory_info))
 
-            return pred_jsonl_file
-
-        finally:
-            if os.path.exists(host_tmp_path):
-                os.remove(host_tmp_path)
+        return pred_jsonl_file
 
     async def _run_openhands(self, data_point):
         """
@@ -1405,11 +1418,11 @@ class SweBenchGenerationTask(GenerationTask):
         if completion_kwargs:
             config["llm"]["model"]["completion_kwargs"] = completion_kwargs
 
-        # Folder to copy the rollout record into.
+        # Folder to mount the rollout record into.
         # It's important that the name includes the original HF dataset name,
         # because OpenHands has internal checks for substrings like "swe-bench-live" in the name (case-insensitive)
         data_dir = "/root/" + data_point["dataset_name"].replace("/", "__")
-        rollout_input_path, rollout_input_container_path = self._write_openhands_rollout_input(data_point)
+        extra_mounts = [(self._write_openhands_rollout_input(data_point), f"{data_dir}/dataset.jsonl", True)]
 
         # The final 2 arguments to run_infer.sh and the user prompt template paths
         # are different between the swe_bench and multi_swe_bench scripts.
@@ -1435,8 +1448,9 @@ class SweBenchGenerationTask(GenerationTask):
         instruction_template_setup = ""
         if instruction_template is not None:
             # Entirely replace the user prompt template with the custom one, if present
+            extra_mounts.append((instruction_template, "/openhands_instruction.j2", True))
             instruction_template_setup = "".join(
-                f"cp {shlex.quote(instruction_template)} {prompt_file} && " for prompt_file in prompt_files
+                f"cp /openhands_instruction.j2 {prompt_file} && " for prompt_file in prompt_files
             )
         # Append extra instructions to the user prompt template
         instruction_template_setup += (
@@ -1468,9 +1482,6 @@ class SweBenchGenerationTask(GenerationTask):
                 "ln -sf /root/jq/jq /usr/local/bin/jq && "
                 # activate openhands venv
                 "source /root/OpenHands/.venv/bin/activate && "
-                # copy only the current rollout record
-                f"mkdir {data_dir} && "
-                f"cp {shlex.quote(rollout_input_container_path)} {data_dir}/dataset.jsonl && "
                 # set up config files
                 f"echo {shlex.quote(config_str)} >config.toml && "
                 f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
@@ -1494,14 +1505,12 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Execute OpenHands command
         search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
-        try:
-            out_file = await self._execute_agent_command_with_capture(
-                data_point,
-                build_openhands_command,
-                search_path,
-            )
-        finally:
-            rollout_input_path.unlink(missing_ok=True)
+        out_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_openhands_command,
+            search_path,
+            extra_mounts=extra_mounts,
+        )
 
         with open(out_file, "r") as f:
             out_dict = json.loads(f.read().strip())
@@ -1542,6 +1551,7 @@ class SweBenchGenerationTask(GenerationTask):
         *,
         served_model_name=None,
         request_transform=None,
+        extra_mounts=(),
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
@@ -1560,6 +1570,7 @@ class SweBenchGenerationTask(GenerationTask):
                 command_builder(proxy_api_base),
                 expected_file_pattern,
                 mode="agent",
+                extra_mounts=extra_mounts,
             )
 
     async def _run_opencode(self, data_point):
@@ -1911,7 +1922,7 @@ class SweBenchGenerationTask(GenerationTask):
         async with self.rollout_semaphore:
             pred_file = await self._run_agent(data_point)
 
-        pred_mounted_path = pred_file.replace(str(self.output_dir), "/trajectories_mount")
+        pred_mounted_path = f"/predictions_mount/{Path(pred_file).name}"
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read())
 
@@ -2000,6 +2011,7 @@ class SweBenchGenerationTask(GenerationTask):
                         search_path,
                         mode="eval",
                         timeout=tests_timeout + 120,
+                        extra_mounts=[(pred_file, pred_mounted_path, True)],
                     )
             except ValueError:
                 LOG.error("Failed to execute SWE-bench evaluation command for %s", data_point["instance_id"])

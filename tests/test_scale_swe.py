@@ -64,8 +64,8 @@ def test_scale_swe_enables_resolver_only_for_evaluation(tmp_path):
     resolver.write_text("nameserver 192.0.2.53\n")
     task = object.__new__(ScaleSweGenerationTask)
     task.output_dir = tmp_path / "outputs"
+    task.input_dir = Path("/datasets")
     task.cfg = SimpleNamespace(
-        input_file="/datasets/scale-swe.jsonl",
         agent_framework="swe_agent",
         scale_swe_verifier_network=True,
         scale_swe_eval_resolv_conf=str(resolver),
@@ -76,22 +76,19 @@ def test_scale_swe_enables_resolver_only_for_evaluation(tmp_path):
     agent_mounts = task._get_apptainer_mounts("agent", data_point)
     eval_mounts = task._get_apptainer_mounts("eval", data_point)
 
-    assert "type=bind,src=/nemo_run/code,dst=/nemo_run/code" in agent_mounts
-    assert "type=bind,src=/root,dst=/root_mount,ro" in agent_mounts
-    assert not any("resolv.conf" in mount for mount in agent_mounts)
+    assert ("/root", "/root_mount", True) in agent_mounts
+    assert not any(dst == "/etc/resolv.conf" for _, dst, _ in agent_mounts)
     assert eval_mounts == [
-        f"type=bind,src={task.output_dir}/scale-swe-eval/{token},dst=/scale_swe_eval,ro",
-        f"type=bind,src={task.output_dir}/eval-outputs/{token},dst=/scale_swe_report",
-        f"type=bind,src={resolver.resolve()},dst=/etc/resolv.conf,ro",
+        (task.output_dir / "scale-swe-eval" / token, "/scale_swe_eval", True),
+        (task.output_dir / "eval-outputs" / token, "/scale_swe_report", False),
+        (resolver.resolve(), "/etc/resolv.conf", True),
     ]
-    assert not any("/root_mount" in mount or "/input_mount" in mount for mount in eval_mounts)
 
 
 def test_scale_swe_evaluation_network_can_be_disabled(tmp_path):
     task = object.__new__(ScaleSweGenerationTask)
     task.output_dir = tmp_path / "outputs"
     task.cfg = SimpleNamespace(
-        input_file="/datasets/scale-swe.jsonl",
         scale_swe_verifier_network=False,
         scale_swe_eval_resolv_conf=None,
     )
@@ -99,8 +96,8 @@ def test_scale_swe_evaluation_network_can_be_disabled(tmp_path):
     data_point = {"instance_id": "owner_repo_pr1"}
     token = hashlib.sha256(data_point["instance_id"].encode()).hexdigest()[:20]
     assert task._get_apptainer_mounts("eval", data_point) == [
-        f"type=bind,src={task.output_dir}/scale-swe-eval/{token},dst=/scale_swe_eval,ro",
-        f"type=bind,src={task.output_dir}/eval-outputs/{token},dst=/scale_swe_report",
+        (task.output_dir / "scale-swe-eval" / token, "/scale_swe_eval", True),
+        (task.output_dir / "eval-outputs" / token, "/scale_swe_report", False),
     ]
 
 

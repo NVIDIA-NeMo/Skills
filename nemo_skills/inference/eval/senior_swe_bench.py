@@ -242,13 +242,14 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
         mode,
         timeout=100000,
         extra_apptainer_args="",
+        extra_mounts=(),
     ):
         if mode == "agent" and self.cfg.use_agent_timeouts and data_point.get("agent_timeout_sec"):
             timeout = int(data_point.get("agent_timeout_sec")) + 120
         if mode == "eval" and self.cfg.use_verifier_timeouts and data_point.get("verifier_timeout_sec"):
             timeout = int(data_point.get("verifier_timeout_sec")) + 120
         return await SweBenchGenerationTask._execute_container_command(
-            self, data_point, command, expected_file_pattern, mode, timeout, extra_apptainer_args
+            self, data_point, command, expected_file_pattern, mode, timeout, extra_apptainer_args, extra_mounts
         )
 
     def _resolve_tests_dir(self, data_point: dict) -> Path:
@@ -275,16 +276,18 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
             data_point.get("repo_name") or Path(data_point.get("container_repo_dir", "/repo")).name
         )
 
-        tests_dir = self._resolve_tests_dir(data_point)
-        extra_apptainer_args = f" --mount type=bind,src={tests_dir},dst=/tests,ro "
-        extra_apptainer_args += _verifier_env_apptainer_args(repo_name)
+        extra_mounts = [
+            (self._resolve_tests_dir(data_point), "/tests", True),
+            (patch_path, "/patch_mount/model.patch", True),
+        ]
+        extra_apptainer_args = _verifier_env_apptainer_args(repo_name)
 
         instance_id = data_point["instance_id"]
         # SSB test.sh assumes a post-agent dirty tree under /repo/$REPO_NAME.
         # Apply the captured model.patch first; on failure write apply_failed reward.
         verifier_cmd = (
             "mkdir -p /logs/artifacts /logs/verifier && "
-            f"cp /trajectories_mount/patches/{instance_id}.patch /logs/artifacts/model.patch && "
+            "cp /patch_mount/model.patch /logs/artifacts/model.patch && "
             "export TESTS_DIR=/tests && "
             "export VERIFIER_DIR=/logs/verifier && "
             "export ARTIFACTS_DIR=/logs/artifacts && "
@@ -320,6 +323,7 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
                 mode="eval",
                 timeout=self.cfg.swebench_tests_timeout + 120,
                 extra_apptainer_args=extra_apptainer_args,
+                extra_mounts=extra_mounts,
             )
         except ValueError:
             if not (eval_out / "reward.json").exists() and not (eval_out / "reward.txt").exists():

@@ -108,7 +108,7 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
         """Return the Scale-SWE user template rendered by OpenHands."""
         return str(get_config_path("eval/scale-swe/openhands/swe_default", config_extension="j2"))
 
-    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[str]:
+    def _get_apptainer_mounts(self, mode: str, data_point: dict) -> list[tuple]:
         """Use minimal mounts and a real resolver only for native Scale-SWE grading."""
         if mode != "eval":
             return super()._get_apptainer_mounts(mode, data_point)
@@ -117,12 +117,11 @@ class ScaleSweGenerationTask(SweBenchGenerationTask):
         artifact_dir = self.output_dir / "scale-swe-eval" / token
         report_dir = self.output_dir / "eval-outputs" / token
         mounts = [
-            f"type=bind,src={artifact_dir},dst=/scale_swe_eval,ro",
-            f"type=bind,src={report_dir},dst=/scale_swe_report",
+            (artifact_dir, "/scale_swe_eval", True),
+            (report_dir, "/scale_swe_report", False),
         ]
         if self.cfg.scale_swe_verifier_network:
-            resolver = self._get_scale_swe_resolver()
-            mounts.append(f"type=bind,src={resolver},dst=/etc/resolv.conf,ro")
+            mounts.append((self._get_scale_swe_resolver(), "/etc/resolv.conf", True))
         return mounts
 
     def _get_scale_swe_resolver(self) -> Path:

@@ -111,7 +111,7 @@ def test_model_patch_limits_standard_swe_evaluation_concurrency(tmp_path):
     async def fake_run_agent(data_point):
         return await task._get_model_patch(data_point)
 
-    async def fake_execute(data_point, command, expected_file_pattern, mode, timeout):
+    async def fake_execute(data_point, command, expected_file_pattern, mode, timeout, extra_mounts):
         nonlocal active_evaluations, max_active_evaluations
         active_evaluations += 1
         max_active_evaluations = max(max_active_evaluations, active_evaluations)
