@@ -926,14 +926,6 @@ class SweBenchGenerationTask(GenerationTask):
         # Fix localhost URLs not working sometimes
         container_commands.append("echo '127.0.0.1 localhost' >/etc/hosts")
 
-        # TODO: temporary debug check, remove. Reports any Lustre/NFS filesystems visible inside the container.
-        container_commands.append(
-            "{ LUSTRE_MOUNTS=$(while read -r src mnt fstype rest; do "
-            'case "$fstype" in lustre|nfs|nfs4) echo "$fstype $src $mnt";; esac; done </proc/mounts); '
-            'if [ -n "$LUSTRE_MOUNTS" ]; then echo "LUSTRE_CHECK: FAIL"; echo "$LUSTRE_MOUNTS"; '
-            'else echo "LUSTRE_CHECK: OK"; fi; }'
-        )
-
         if self.cfg.swe_zero_container is not None and mode == "agent":
             container_name = self.cfg.swe_zero_container
 
@@ -1037,7 +1029,6 @@ class SweBenchGenerationTask(GenerationTask):
             f"{extra_apptainer_args} "
             f"{container_name} bash -c {shlex.quote(combined_command)}"
         )
-        LOG.info("Executing Apptainer command: %s", apptainer_cmd)  # TODO remove this
 
         # Create logs directory if it doesn't exist
         logs_dir = self.output_dir / "apptainer_logs"
