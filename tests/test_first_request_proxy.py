@@ -17,6 +17,7 @@ import json
 from urllib.parse import urlsplit
 
 from nemo_skills.inference.eval.first_request_proxy import capture_first_llm_request
+from nemo_skills.inference.eval.unix_socket_relay import main_async as run_unix_socket_relay
 
 
 async def _send_json_request(base_url, endpoint, body):
@@ -97,6 +98,91 @@ def test_proxy_captures_first_llm_request_and_forwards_it(tmp_path):
             (b"POST /v1/messages HTTP/1.1", second_body),
         ]
         assert capture_file.read_bytes() == first_body
+
+    asyncio.run(run_test())
+
+
+def test_proxy_accepts_requests_over_unix_socket(tmp_path):
+    async def run_test():
+        received = []
+
+        async def upstream_handler(reader, writer):
+            raw_headers = await reader.readuntil(b"\r\n\r\n")
+            content_length = next(
+                int(line.split(b":", maxsplit=1)[1].strip())
+                for line in raw_headers.split(b"\r\n")
+                if line.lower().startswith(b"content-length:")
+            )
+            received.append(await reader.readexactly(content_length))
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+            await writer.drain()
+            writer.close()
+
+        upstream = await asyncio.start_server(upstream_handler, "127.0.0.1", 0)
+        upstream_port = upstream.sockets[0].getsockname()[1]
+        socket_path = tmp_path / "proxy.sock"
+        capture_file = tmp_path / "capture.json"
+        body = b'{"model":"test","messages":[]}'
+        try:
+            async with capture_first_llm_request(
+                f"http://127.0.0.1:{upstream_port}/v1",
+                capture_file,
+                unix_socket_path=socket_path,
+                client_base_url="http://127.0.0.1:19000",
+            ) as proxy_base:
+                assert proxy_base == "http://127.0.0.1:19000/v1"
+                reader, writer = await asyncio.open_unix_connection(socket_path)
+                writer.write(
+                    b"POST /v1/chat/completions HTTP/1.1\r\n"
+                    + f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode()
+                    + body
+                )
+                await writer.drain()
+                assert b"200 OK" in await reader.read()
+                writer.close()
+                await writer.wait_closed()
+        finally:
+            upstream.close()
+            await upstream.wait_closed()
+
+        assert [json.loads(item) for item in received] == [json.loads(body)]
+        assert json.loads(capture_file.read_bytes()) == json.loads(body)
+        assert not socket_path.exists()
+
+    asyncio.run(run_test())
+
+
+def test_tcp_to_unix_relay(tmp_path):
+    async def run_test():
+        async def echo(reader, writer):
+            writer.write(await reader.readexactly(len(b"relay-test")))
+            await writer.drain()
+            writer.close()
+
+        socket_path = tmp_path / "echo.sock"
+        ready_file = tmp_path / "ready"
+        unix_server = await asyncio.start_unix_server(echo, path=socket_path)
+        tcp_server = await asyncio.start_server(lambda _reader, _writer: None, "127.0.0.1", 0)
+        port = tcp_server.sockets[0].getsockname()[1]
+        tcp_server.close()
+        await tcp_server.wait_closed()
+        relay_task = asyncio.create_task(run_unix_socket_relay(port, str(socket_path), str(ready_file)))
+        try:
+            for _ in range(100):
+                if ready_file.exists():
+                    break
+                await asyncio.sleep(0.01)
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(b"relay-test")
+            await writer.drain()
+            assert await reader.read() == b"relay-test"
+            writer.close()
+            await writer.wait_closed()
+        finally:
+            relay_task.cancel()
+            await asyncio.gather(relay_task, return_exceptions=True)
+            unix_server.close()
+            await unix_server.wait_closed()
 
     asyncio.run(run_test())
 

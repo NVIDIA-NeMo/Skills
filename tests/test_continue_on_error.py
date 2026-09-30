@@ -22,6 +22,7 @@ from nemo_skills.inference.eval.deepswe import DeepSweGenerationTask
 from nemo_skills.inference.eval.scale_swe import ScaleSweGenerationTask
 from nemo_skills.inference.eval.senior_swe_bench import SeniorSweBenchGenerationTask
 from nemo_skills.inference.eval.swebench import SweBenchGenerationConfig, SweBenchGenerationTask
+from nemo_skills.inference.eval.swebench_pro_v2 import SweBenchProV2GenerationTask
 from nemo_skills.inference.generate import GenerationTask
 
 
@@ -233,3 +234,9 @@ def test_swe_family_terminal_error_metrics_match_each_benchmark_schema():
     assert senior["patch_exists"] is False
     assert senior["invalid_trial"] is True
     assert senior["generation_error"]["error_type"] == "RuntimeError"
+
+    pro_v2 = object.__new__(SweBenchProV2GenerationTask)._get_terminal_error_metrics(error)
+    assert pro_v2["resolved"] is False
+    assert pro_v2["patch_exists"] is False
+    assert pro_v2["reward"] == 0
+    assert pro_v2["generation_error"]["error_type"] == "RuntimeError"

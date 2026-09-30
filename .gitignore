@@ -41,6 +41,8 @@ build
 # not packaged with every job.
 nemo_skills/dataset/deep-swe/deep-swe-repo/
 nemo_skills/dataset/deep-swe/tasks/
+nemo_skills/dataset/swe-bench-pro-v2/swe-bench-pro-v2-repo/
+nemo_skills/dataset/swe-bench-pro-v2/tasks/
 
 __pycache__
 .ipynb_checkpoints

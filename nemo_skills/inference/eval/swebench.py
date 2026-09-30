@@ -353,6 +353,7 @@ def build_opencode_config(
 class SupportedDatasetTypes(str, Enum):
     swe_bench = "swe_bench"
     swe_bench_pro = "swe_bench_pro"
+    swe_bench_pro_v2 = "swe_bench_pro_v2"
     swe_rebench_v2 = "swe_rebench_v2"
     deep_swe = "deep_swe"  # note: deepswe evaluation logic is implemented in deepswe.py
     senior_swe_bench = "senior_swe_bench"  # Harbor grading in senior_swe_bench.py
@@ -433,6 +434,9 @@ class SweBenchGenerationConfig:
     agent_max_turns: int = 100  # Max agent iterations
     # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
     capture_all_llm_requests: bool = False
+    # Run agent containers without an IP network. A mounted Unix socket relays
+    # only LLM API traffic to the configured server.
+    isolate_agent_network: bool = False
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
@@ -523,6 +527,8 @@ cs.store(name="base_swebench_generation_config", node=SweBenchGenerationConfig)
 
 
 class SweBenchGenerationTask(GenerationTask):
+    ISOLATED_PROXY_PORT = 19000
+
     def __init__(self, cfg: SweBenchGenerationConfig):
         self.cfg = cfg
 
@@ -983,16 +989,29 @@ class SweBenchGenerationTask(GenerationTask):
             if mode == "agent":
                 # Get the folder where the repo is cloned inside the container
                 container_repo_dir = data_point.get("container_repo_dir", "/testbed")
+                fallback_repo_dir = data_point.get("container_repo_dir_fallback")
 
                 # If pre_commands are specified, execute them before running the agent
                 pre_commands = data_point.get("pre_commands", "").strip()
                 if pre_commands:
-                    container_commands.append(f"cd {container_repo_dir}")
+                    if fallback_repo_dir:
+                        container_commands.append(
+                            f"cd {shlex.quote(container_repo_dir)} 2>/dev/null || cd {shlex.quote(fallback_repo_dir)}"
+                        )
+                    else:
+                        container_commands.append(f"cd {container_repo_dir}")
                     container_commands.append(pre_commands)
 
                 # If the repo is not in /testbed, copy it before running the agent
                 if container_repo_dir != "/testbed":
-                    container_commands.append(f"cp -r {container_repo_dir} /testbed")
+                    if fallback_repo_dir == "/testbed":
+                        container_commands.append(
+                            f"if [ -d {shlex.quote(container_repo_dir)} ]; then "
+                            f"cp -r {shlex.quote(container_repo_dir)} /testbed; "
+                            "elif [ ! -d /testbed ]; then exit 1; fi"
+                        )
+                    else:
+                        container_commands.append(f"cp -r {container_repo_dir} /testbed")
 
         container_commands.append(command)
         combined_command = " && ".join(container_commands)
@@ -1152,6 +1171,25 @@ class SweBenchGenerationTask(GenerationTask):
                 prompts.append(f.read().strip())
         return "\n\n".join(prompts)
 
+    def _get_agent_relay_command(self, runtime: str, *, node: bool = False) -> str:
+        """Start the loopback-to-Unix relay used in network-isolated agent containers."""
+        if not self.cfg.isolate_agent_network:
+            return ""
+        script = "/llm_proxy/unix_socket_relay.js" if node else "/llm_proxy/unix_socket_relay.py"
+        ready_file = "/tmp/nemo-llm-relay-ready"
+        return (
+            f"rm -f {ready_file} && "
+            f"{runtime} {script} --port {self.ISOLATED_PROXY_PORT} "
+            f"--socket /llm_proxy/proxy.sock --ready-file {ready_file} "
+            ">/tmp/nemo-llm-relay.log 2>&1 & "
+            "LLM_RELAY_PID=$!; "
+            "trap 'kill $LLM_RELAY_PID 2>/dev/null || true' EXIT; "
+            f"for _ in $(seq 1 100); do [ -e {ready_file} ] && break; "
+            "kill -0 $LLM_RELAY_PID 2>/dev/null || { cat /tmp/nemo-llm-relay.log; exit 1; }; "
+            "sleep 0.1; done; "
+            f"[ -e {ready_file} ] || {{ cat /tmp/nemo-llm-relay.log; exit 1; }}; "
+        )
+
     def _get_terminal_error_metrics(self, error: Exception) -> dict:
         """Return fail-closed metrics for an agent rollout that raised."""
         return {
@@ -1222,6 +1260,7 @@ class SweBenchGenerationTask(GenerationTask):
                 # copy installed repo & uv dir from /root_mount
                 "cp -r /root_mount/SWE-agent /root && "
                 "cp -r /root_mount/uv /root && "
+                f"{self._get_agent_relay_command('/root/SWE-agent/venv/bin/python')}"
                 "cd /root/SWE-agent && "
                 # run the agent
                 f"/root/SWE-agent/venv/bin/python -m sweagent run "
@@ -1332,6 +1371,7 @@ class SweBenchGenerationTask(GenerationTask):
             return (
                 "cp -r /root_mount/mini-swe-agent /root && "
                 "cp -r /root_mount/uv /root && "
+                f"{self._get_agent_relay_command('/root/mini-swe-agent/venv/bin/python')}"
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_config_path} && "
@@ -1473,6 +1513,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "cp -r /root_mount/uv /root && "
                 "cp -r /root_mount/tmux /root && "
                 "cp -r /root_mount/jq /root && "
+                f"{self._get_agent_relay_command('/root/OpenHands/.venv/bin/python')}"
                 "cd /root/OpenHands && "
                 f"{instruction_template_setup}"
                 # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
@@ -1555,22 +1596,42 @@ class SweBenchGenerationTask(GenerationTask):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
         all_requests_dir = capture_file.parent / "llm-requests" if self.cfg.capture_all_llm_requests else None
+        container_mounts = list(extra_mounts)
+        proxy_dir = None
+        unix_socket_path = None
+        client_base_url = None
+        extra_apptainer_args = ""
+        if self.cfg.isolate_agent_network:
+            proxy_dir = Path(tempfile.mkdtemp(dir=self.scratch_dir, prefix="llm-proxy-"))
+            for relay_name in ("unix_socket_relay.py", "unix_socket_relay.js"):
+                shutil.copy2(Path(__file__).with_name(relay_name), proxy_dir / relay_name)
+            unix_socket_path = proxy_dir / "proxy.sock"
+            client_base_url = f"http://127.0.0.1:{self.ISOLATED_PROXY_PORT}"
+            container_mounts.append((proxy_dir, "/llm_proxy", True))
+            extra_apptainer_args = " --net --network none "
         for legacy_prompt_file in ("system-prompt.md", "user-prompt.md"):
             (capture_file.parent / legacy_prompt_file).unlink(missing_ok=True)
-        async with capture_first_llm_request(
-            self.api_base,
-            capture_file,
-            served_model_name=served_model_name,
-            request_transform=request_transform,
-            all_requests_dir=all_requests_dir,
-        ) as proxy_api_base:
-            return await self._execute_container_command(
-                data_point,
-                command_builder(proxy_api_base),
-                expected_file_pattern,
-                mode="agent",
-                extra_mounts=extra_mounts,
-            )
+        try:
+            async with capture_first_llm_request(
+                self.api_base,
+                capture_file,
+                served_model_name=served_model_name,
+                request_transform=request_transform,
+                all_requests_dir=all_requests_dir,
+                unix_socket_path=unix_socket_path,
+                client_base_url=client_base_url,
+            ) as proxy_api_base:
+                return await self._execute_container_command(
+                    data_point,
+                    command_builder(proxy_api_base),
+                    expected_file_pattern,
+                    mode="agent",
+                    extra_apptainer_args=extra_apptainer_args,
+                    extra_mounts=container_mounts,
+                )
+        finally:
+            if proxy_dir is not None:
+                shutil.rmtree(proxy_dir, ignore_errors=True)
 
     async def _run_opencode(self, data_point):
         """
@@ -1628,6 +1689,7 @@ class SweBenchGenerationTask(GenerationTask):
             return (
                 "export PATH=/root_mount/node/bin:$PATH && "
                 "export HOME=/root && "
+                f"{self._get_agent_relay_command('/root_mount/node/bin/node', node=True)}"
                 "export XDG_CONFIG_HOME=/root/.config && "
                 "export OPENCODE_DISABLE_AUTOUPDATE=1 && "
                 "export OPENCODE_DISABLE_MODELS_FETCH=1 && "
@@ -1749,6 +1811,7 @@ class SweBenchGenerationTask(GenerationTask):
             return (
                 "export PATH=/root_mount/node/bin:$PATH && "
                 "export HOME=/root && "
+                f"{self._get_agent_relay_command('/root_mount/node/bin/node', node=True)}"
                 "mkdir -p /root/.claude && "
                 f"printf %s {shlex.quote(settings_json)} >/root/.claude/settings.json && "
                 "cd /testbed && "

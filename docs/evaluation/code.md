@@ -432,6 +432,65 @@ Metrics:
 
 Missing rubric/taste fields fail closed for tasteful solve (counted as not tasteful).
 
+### swe-bench-pro-v2
+
+SWE-bench Pro V2 is the validated 642-task Harbor release from
+[ScaleAI/SWE-bench_Pro](https://huggingface.co/datasets/ScaleAI/SWE-bench_Pro).
+It uses the SWE-bench agent interfaces for generation, then applies only the
+captured model patch to a pristine task image and runs the task's unchanged
+`tests/test.sh` verifier.
+
+Prepare the Harbor task tree and JSONL data on shared cluster storage:
+
+```bash
+ns prepare_data swe-bench-pro-v2 \
+  --cluster=<CLUSTER> \
+  --data_dir=/workspace/ns-data \
+  --container_formatter "/swe-bench-images/swe-bench-pro-v2/{instance_id}.sif"
+```
+
+Preparation creates `default.ubuntu.jsonl` (565 non-Alpine tasks) and
+`default.alpine.jsonl` (77 Alpine/musl tasks). It also materializes verifier
+files under `{data_dir}/swe-bench-pro-v2/tasks/`. The default split is
+`default.ubuntu`.
+
+Run the non-Alpine split normally:
+
+```bash
+ns eval --cluster=<CLUSTER> --benchmarks=swe-bench-pro-v2 \
+  --split=default.ubuntu --data_dir=/workspace/ns-data \
+  --model=<MODEL> --server_type=vllm --server_gpus=8 \
+  --output_dir=<OUTPUT_DIR> ++agent_framework=mini_swe_agent
+```
+
+Run `default.alpine` as a separate job with an Alpine NeMo-Skills image:
+
+```bash
+ns eval --cluster=<CLUSTER> --benchmarks=swe-bench-pro-v2 \
+  --split=default.alpine --data_dir=/workspace/ns-data \
+  --main_container=<PATH_TO_ALPINE_NS_CONTAINER> \
+  --model=<MODEL> --server_type=vllm --server_gpus=8 \
+  --output_dir=<OUTPUT_DIR_ALPINE> ++agent_framework=mini_swe_agent
+```
+
+The agent phase follows V2's locked protocol by default:
+`++isolate_agent_network=True` launches each agent in an Apptainer network
+namespace with no IP network. A mounted Unix-domain socket relays only model
+API traffic to NeMo-Skills' request proxy. Setup and verification retain
+network access. Disable this only for debugging; results would no longer
+follow the locked protocol.
+
+Use `++agent_framework=gold_patch ++max_samples=5` to smoke-test images and
+verification. `++agent_framework=model_patch
+++model_patch_file=<GENERATIONS_JSONL>` re-grades existing patches in fresh
+images. `++tasks_dir` can override the default Harbor task root, and
+`++use_agent_timeouts` / `++use_verifier_timeouts` control whether the
+per-task 3000-second limits are honored.
+
+SWE-agent and mini-SWE-agent support both OS splits. OpenCode and Claude Code
+use the same locked relay on non-Alpine tasks; their standard Node runtime is
+not musl-compatible, so they are not supported on the Alpine split.
+
 ### swe-bench-pro
 
 - Benchmark is defined in [`nemo_skills/dataset/swe-bench-pro/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/swe-bench-pro/__init__.py)
