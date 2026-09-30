@@ -20,7 +20,7 @@ from pathlib import Path
 
 from datasets import load_dataset
 
-from nemo_skills.dataset.utils import add_rounding_instruction
+from nemo_skills.dataset.utils import add_rounding_instruction, coerce_numeric_answer
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -90,10 +90,7 @@ if __name__ == "__main__":
                     },
                 )
                 # converting to int if able to for cleaner text representation
-                if str(entry["expected_answer"]).replace(".", "", 1).replace("-", "", 1).isdigit():
-                    entry["expected_answer"] = float(entry["expected_answer"])
-                    if int(entry["expected_answer"]) == entry["expected_answer"]:
-                        entry["expected_answer"] = int(entry["expected_answer"])
+                entry["expected_answer"] = coerce_numeric_answer(entry["expected_answer"])
 
                 test_full.write(json.dumps(entry) + "\n")
 

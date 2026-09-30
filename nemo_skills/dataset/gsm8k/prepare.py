@@ -19,6 +19,8 @@ import re
 import urllib.request
 from pathlib import Path
 
+from nemo_skills.dataset.utils import coerce_numeric_answer
+
 URL = "https://raw.githubusercontent.com/openai/grade-school-math/master/grade_school_math/data/{}.jsonl"
 
 
@@ -55,10 +57,12 @@ def save_data(split):
             # mapping to the required naming format
             new_entry["problem"] = original_entry["question"]
             solution, expected_answer = original_entry["answer"].split("####")
-            new_entry["expected_answer"] = float(expected_answer.replace(",", ""))
-            # converting to int if able to for cleaner text-only representation
-            if int(new_entry["expected_answer"]) == new_entry["expected_answer"]:
-                new_entry["expected_answer"] = int(new_entry["expected_answer"])
+            cleaned_answer = expected_answer.replace(",", "").strip()
+            coerced_answer = coerce_numeric_answer(cleaned_answer)
+            # Non-numeric text still goes through float(), which raises.
+            if isinstance(coerced_answer, str):
+                coerced_answer = float(cleaned_answer)
+            new_entry["expected_answer"] = coerced_answer
             # removing redundant computations
             new_entry["reference_solution"] = re.sub(r"<<.*?>>", "", solution)
             # fixing some of the errors in the training set
