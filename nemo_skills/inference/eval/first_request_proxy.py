@@ -40,6 +40,7 @@ class FirstRequestCaptureProxy:
         served_model_name: str | None = None,
         request_transform: Callable[[dict], dict] | None = None,
         all_requests_dir: Path | None = None,
+        unix_socket: Path | None = None,
     ):
         self.upstream = urlsplit(upstream_base_url)
         if self.upstream.scheme not in {"http", "https"} or not self.upstream.hostname:
@@ -48,7 +49,9 @@ class FirstRequestCaptureProxy:
         self.served_model_name = served_model_name
         self.request_transform = request_transform
         self.all_requests_dir = all_requests_dir
+        self.unix_socket = unix_socket
         self.server: asyncio.AbstractServer | None = None
+        self.unix_server: asyncio.AbstractServer | None = None
         self._capture_lock = asyncio.Lock()
         self._captured = False
         self._request_count = 0
@@ -59,13 +62,18 @@ class FirstRequestCaptureProxy:
         if self.all_requests_dir is not None:
             shutil.rmtree(self.all_requests_dir, ignore_errors=True)
         self.server = await asyncio.start_server(self._handle_connection, "127.0.0.1", 0)
+        if self.unix_socket is not None:
+            self.unix_server = await asyncio.start_unix_server(self._handle_connection, path=self.unix_socket)
         port = self.server.sockets[0].getsockname()[1]
         return urlunsplit(("http", f"127.0.0.1:{port}", self.upstream.path, self.upstream.query, ""))
 
     async def close(self) -> None:
-        if self.server is not None:
-            self.server.close()
-            await self.server.wait_closed()
+        for server in (self.server, self.unix_server):
+            if server is not None:
+                server.close()
+                await server.wait_closed()
+        if self.unix_socket is not None:
+            self.unix_socket.unlink(missing_ok=True)
         for writer in list(self._writers):
             writer.close()
         await asyncio.gather(*(writer.wait_closed() for writer in list(self._writers)), return_exceptions=True)
@@ -200,6 +208,7 @@ async def capture_first_llm_request(
     served_model_name: str | None = None,
     request_transform: Callable[[dict], dict] | None = None,
     all_requests_dir: Path | None = None,
+    unix_socket: Path | None = None,
 ):
     """Yield a local proxy URL and close all proxy resources afterward."""
     proxy = FirstRequestCaptureProxy(
@@ -208,6 +217,7 @@ async def capture_first_llm_request(
         served_model_name=served_model_name,
         request_transform=request_transform,
         all_requests_dir=all_requests_dir,
+        unix_socket=unix_socket,
     )
     proxy_base_url = await proxy.start()
     try:

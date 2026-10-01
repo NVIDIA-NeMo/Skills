@@ -25,10 +25,12 @@ import shutil
 import socket
 import sys
 import tempfile
+import uuid
 from dataclasses import field
 from enum import Enum
 from functools import partial
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import hydra
 import tomlkit
@@ -433,6 +435,9 @@ class SweBenchGenerationConfig:
     agent_max_turns: int = 100  # Max agent iterations
     # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
     capture_all_llm_requests: bool = False
+    # If True, run the agent container without network access, connecting the LLM through a Unix socket.
+    # Currently only supported for mini-swe-agent.
+    block_network: bool = False
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
     claude_code_context_window: int = 262144  # Context window advertised to Claude Code
@@ -548,6 +553,9 @@ class SweBenchGenerationTask(GenerationTask):
         self.should_run_evaluation = False
         self.evaluator = None
         self._reasoning_warning_shown = False
+
+        if self.cfg.block_network and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
+            raise ValueError("block_network=True is currently only supported for mini_swe_agent.")
 
         # Set up output folder,
         # making sure it is different for each random seed if we're running with --benchmarks=swe-bench:N
@@ -1324,7 +1332,28 @@ class SweBenchGenerationTask(GenerationTask):
         host_config_path = self.scratch_dir / f"mini_swe_agent_config_{instance_id}.yaml"
         container_config_path = "/mini_swe_agent_config.yaml"
 
+        extra_mounts = [(host_config_path, container_config_path, True)]
+        unix_socket = None
+        extra_apptainer_args = ""
+        forwarder_command = ""
+        if self.cfg.block_network:
+            # The container has no network, so LLM requests go through a local TCP -> Unix socket forwarder.
+            # Unix socket paths are limited to 107 bytes, so don't use instance_id in the name.
+            unix_socket = self.scratch_dir / f"{uuid.uuid4()}.sock"
+            extra_mounts += [
+                (unix_socket, "/llm.sock", True),
+                (Path(__file__).parent / "uds_forwarder.py", "/uds_forwarder.py", True),
+            ]
+            extra_apptainer_args = " --net --network none "
+            forwarder_command = "(/root/mini-swe-agent/venv/bin/python /uds_forwarder.py /llm.sock 8000 &) && "
+
         def build_mini_swe_agent_command(api_base):
+            if self.cfg.block_network:
+                # Set the base URL inside the Apptainer container to 127.0.0.1:8000.
+                # The forwarder (uds_forwarder.py) will listen at that port
+                # and forward requests to the Unix socket at /llm.sock.
+                # Our proxy will listen there and forward requests to the actual LLM.
+                api_base = urlsplit(api_base)._replace(netloc="127.0.0.1:8000").geturl()
             full_config["model"]["model_kwargs"]["api_base"] = api_base
             with open(host_config_path, "w") as f:
                 yaml.dump(full_config, f)
@@ -1332,6 +1361,7 @@ class SweBenchGenerationTask(GenerationTask):
             return (
                 "cp -r /root_mount/mini-swe-agent /root && "
                 "cp -r /root_mount/uv /root && "
+                f"{forwarder_command}"
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_config_path} && "
@@ -1354,7 +1384,9 @@ class SweBenchGenerationTask(GenerationTask):
             build_mini_swe_agent_command,
             search_path,
             request_transform=transform_litellm_reasoning_request,
-            extra_mounts=[(host_config_path, container_config_path, True)],
+            extra_mounts=extra_mounts,
+            unix_socket=unix_socket,
+            extra_apptainer_args=extra_apptainer_args,
         )
 
         with open(pred_file, "r") as f:
@@ -1551,6 +1583,8 @@ class SweBenchGenerationTask(GenerationTask):
         served_model_name=None,
         request_transform=None,
         extra_mounts=(),
+        unix_socket=None,
+        extra_apptainer_args="",
     ):
         """Run an agent command through a proxy that saves its first LLM request."""
         capture_file = self.output_dir / "trajectories" / data_point["instance_id"] / "first-llm-request.json"
@@ -1563,12 +1597,14 @@ class SweBenchGenerationTask(GenerationTask):
             served_model_name=served_model_name,
             request_transform=request_transform,
             all_requests_dir=all_requests_dir,
+            unix_socket=unix_socket,
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,
                 command_builder(proxy_api_base),
                 expected_file_pattern,
                 mode="agent",
+                extra_apptainer_args=extra_apptainer_args,
                 extra_mounts=extra_mounts,
             )
 

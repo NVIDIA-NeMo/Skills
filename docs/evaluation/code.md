@@ -87,6 +87,8 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++capture_all_llm_requests:** Save every transformed LLM request made by SWE-agent, mini-SWE-agent, OpenHands, OpenCode, or Claude Code under `trajectories/<instance_id>/llm-requests/`. Defaults to `False` because the artifacts can be large and contain sensitive prompt and repository context. Intended for debugging only.
 
+- **++block_network:** Whether to block network access in agent containers. Defaults to `False`. With `++block_network=True`, mini-SWE-agent containers run with `--net --network none`, so the agent cannot access the internet, and LLM requests reach the model server through a Unix socket mounted into the container. Container setup runs without network too, so SWE-Zero needs a local `repo_formatter` mirror, and `pre_commands` must not download anything. Currently only supported for mini-SWE-agent.
+
 - **++max_concurrent_requests:** Maximum concurrent agent rollouts and per-instance evaluations within each chunk job. Defaults to 512. Reduce this for memory-heavy evaluation containers, especially with `model_patch`.
 
 - **++agent_timeout:** Hard wall-clock timeout for a Claude Code rollout, in seconds. Defaults to 3600.
