@@ -410,32 +410,29 @@ def generate_solutions(cluster, expname, run_after, stage_config, **kwargs):
     )
 
 
-def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
-    """Run difficulty estimation generation, judge correctness, and postprocess metrics.
+def profiling(cluster, expname, run_after, stage_config, **kwargs):
+    """Run multi-model profiling: generate, judge, and aggregate per model in parallel, then merge.
 
-    This stage:
-      - Generates multiple solutions per problem using the provided model/prompt.
-      - Runs LLM-based judging (math_judge) over those generations to get Yes/No per sample.
-      - Postprocesses the judgements to append three keys to the final results file:
-        - difficulty_model: the model used for generation
-        - difficulty_model_pass_rate: decimal fraction of correct judgements (e.g., 0.5)
-        - difficulty_model_pass_at_n: formatted fraction "correct/total" (e.g., 2/4)
+    This stage runs N models in parallel, each through a generate -> judge -> aggregate chain.
+    All models share a common input preparation step. A final merge step combines all per-model
+    results into a single profiling array per problem.
+
+    Output format per record:
+        "profiling": [
+            {"model": "ModelA", "pass_rate": 0.5, "pass_at_n": "2/4"},
+            {"model": "ModelB", "pass_rate": 0.8, "pass_at_n": "4/5"},
+        ]
 
     Note: The judging step extracts predicted answers using the \\boxed{...} convention.
     It will only work out-of-the-box when generations include a final answer in boxed format.
     """
     output_dir = stage_config["output_dir"]
     input_file = stage_config["input_file"]
+    models = stage_config.get("models", [])
+    shared_judge_kwargs = stage_config.get("judge_kwargs", {})
 
-    generation_kwargs = stage_config.get("generation_kwargs", {})
-    judge_kwargs = stage_config.get("judge_kwargs", {})
-
-    generation_args = generation_kwargs.get("args", {})
-    generation_ctx_args = generation_kwargs.get("ctx_args", "")
-
-    judge_args = judge_kwargs.get("args", {})
-    judge_ctx_args = judge_kwargs.get("ctx_args", "")
-
+    # Step 1: Shared prepare job
+    prepare_expname = f"{expname}_prepare_profiling"
     run_cmd(
         ctx=wrap_arguments(
             f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/remove_redundant_fields.py "
@@ -446,41 +443,85 @@ def difficulty_estimation(cluster, expname, run_after, stage_config, **kwargs):
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/tmp/logs",
-        expname=f"{expname}_prepare_difficulty_estimation",
+        expname=prepare_expname,
         run_after=run_after,
     )
 
-    generate(
-        ctx=wrap_arguments(generation_ctx_args),
-        cluster=cluster,
-        input_file=f"{output_dir}/tmp/prepared.jsonl",
-        output_dir=f"{output_dir}/generation",
-        expname=f"{expname}-generation",
-        run_after=f"{expname}_prepare_difficulty_estimation",
-        **generation_args,
-    )
+    # Step 2: Per-model generate -> judge -> aggregate chains (all depend on prepare, run in parallel)
+    per_model_aggregate_expnames = []
+    per_model_result_files = []
 
-    generate(
-        ctx=wrap_arguments(judge_ctx_args),
-        generation_type="math_judge",
-        cluster=cluster,
-        input_dir=f"{output_dir}/generation",
-        output_dir=f"{output_dir}/judgement",
-        expname=f"{expname}-judgement",
-        run_after=f"{expname}-generation",
-        **judge_args,
-    )
+    for model_cfg in models:
+        model_name = model_cfg["name"]
+        safe_name = model_name.replace("/", "-").lower()
+        model_dir = f"{output_dir}/{safe_name}"
 
+        generation_kwargs = model_cfg.get("generation_kwargs", {})
+        generation_args = generation_kwargs.get("args", {})
+        generation_ctx_args = generation_kwargs.get("ctx_args", "")
+
+        # Per-model judge_kwargs: use model-level override if present, else shared
+        judge_kwargs = model_cfg.get("judge_kwargs", shared_judge_kwargs)
+        judge_args = judge_kwargs.get("args", {})
+        judge_ctx_args = judge_kwargs.get("ctx_args", "")
+
+        # Ensure judge num_random_seeds matches generation if not explicitly set
+        if "num_random_seeds" not in judge_args and "num_random_seeds" in generation_args:
+            judge_args = dict(judge_args)
+            judge_args["num_random_seeds"] = generation_args["num_random_seeds"]
+
+        gen_expname = f"{expname}-{safe_name}-generation"
+        judge_expname = f"{expname}-{safe_name}-judgement"
+        agg_expname = f"{expname}-{safe_name}-aggregate"
+
+        generate(
+            ctx=wrap_arguments(generation_ctx_args),
+            cluster=cluster,
+            input_file=f"{output_dir}/tmp/prepared.jsonl",
+            output_dir=f"{model_dir}/generation",
+            expname=gen_expname,
+            run_after=prepare_expname,
+            **generation_args,
+        )
+
+        generate(
+            ctx=wrap_arguments(judge_ctx_args),
+            generation_type="math_judge",
+            cluster=cluster,
+            input_dir=f"{model_dir}/generation",
+            output_dir=f"{model_dir}/judgement",
+            expname=judge_expname,
+            run_after=gen_expname,
+            **judge_args,
+        )
+
+        model_result_file = f"{model_dir}/result.jsonl"
+        run_cmd(
+            ctx=wrap_arguments(
+                f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_profiling_model.py "
+                f"    --judgement_dir '{model_dir}/judgement' "
+                f"    --output_file '{model_result_file}' "
+                f"    --model_name '{model_name}' "
+            ),
+            cluster=cluster,
+            log_dir=f"{model_dir}/logs",
+            run_after=judge_expname,
+            expname=agg_expname,
+        )
+
+        per_model_aggregate_expnames.append(agg_expname)
+        per_model_result_files.append(model_result_file)
+
+    # Step 3: Merge all per-model results into a single profiling array
     run_cmd(
         ctx=wrap_arguments(
-            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/aggregate_difficulty.py "
-            f"    --judgement_dir '{output_dir}/judgement' "
+            f"python /nemo_run/code/recipes/opensciencereasoning/sdg_pipeline/scripts/merge_profiling.py "
+            f"    --model_result_files {shlex.quote(json.dumps(per_model_result_files, ensure_ascii=False))} "
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
-            f"    --difficulty_model '{generation_args['model'].split('/')[-1]}' "
         ),
         cluster=cluster,
         log_dir=f"{output_dir}/logs",
-        run_after=f"{expname}-judgement",
+        run_after=per_model_aggregate_expnames,
         expname=expname,
     )
 
@@ -519,7 +560,7 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
     Supported filters (see `filter_solutions.py`):
       - `only_correct_solutions`: keep only samples marked `is_correct`.
       - `generation_model_pass_rate_range`: JSON `[min, max]` range (min exclusive, max inclusive).
-      - `difficulty_model_pass_rate_range`: JSON `[min, max]` range over difficulty pass rates.
+      - `profiling_pass_rate_range`: JSON dict `{model_name: [min, max]}` for per-model profiling filtering.
       - `metadata_values`: dict of field -> allowed values.
 
     Replace `filter_solutions.py` with your own implementation if custom filtering logic is required.
@@ -528,7 +569,7 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
     input_file = stage_config["input_file"]
     only_correct_solutions = stage_config.get("only_correct_solutions", False)
     generation_model_pass_rate_range = stage_config.get("generation_model_pass_rate_range", None)
-    difficulty_model_pass_rate_range = stage_config.get("difficulty_model_pass_rate_range", None)
+    profiling_pass_rate_range = stage_config.get("profiling_pass_rate_range", None)
     metadata_values = stage_config.get("metadata_values", None)
     only_samples_with_ground_truth_answer = stage_config.get("only_samples_with_ground_truth_answer", False)
 
@@ -537,9 +578,9 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
         if generation_model_pass_rate_range
         else ""
     )
-    difficulty_model_pass_rate_range_arg = (
-        f"    --difficulty_model_pass_rate_range {shlex.quote(json.dumps(difficulty_model_pass_rate_range, ensure_ascii=False))} "
-        if difficulty_model_pass_rate_range
+    profiling_pass_rate_range_arg = (
+        f"    --profiling_pass_rate_range {shlex.quote(json.dumps(profiling_pass_rate_range, ensure_ascii=False))} "
+        if profiling_pass_rate_range
         else ""
     )
     metadata_values_arg = (
@@ -558,7 +599,7 @@ def filter_solutions(cluster, expname, run_after, stage_config, **kwargs):
             f"    --output_file '{output_dir}/{OUTPUT_FILE}' "
             f"{only_correct_arg}"
             f"{generation_model_pass_rate_range_arg} "
-            f"{difficulty_model_pass_rate_range_arg} "
+            f"{profiling_pass_rate_range_arg} "
             f"{metadata_values_arg} "
             f"{only_samples_with_ground_truth_answer_arg} "
         ),
@@ -752,7 +793,7 @@ stages_map = {
     "decontaminate": decontaminate,
     "topics_labeling": topics_labeling,
     "generate_solutions": generate_solutions,
-    "difficulty_estimation": difficulty_estimation,
+    "profiling": profiling,
     "aggregate": aggregate,
     "filter_solutions": filter_solutions,
     "prepare_for_sft": prepare_for_sft,

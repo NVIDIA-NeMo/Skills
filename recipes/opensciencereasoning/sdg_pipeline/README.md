@@ -5,7 +5,7 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
 - Deduplicate and clean incoming problems via [`filter_problems`](scripts/filter_problems.py).
 - Run contamination checks in [`decontaminate`](scripts/decontaminate.py).
 - Launch [`generate_solutions`](run_pipeline.py) to obtain model answers when no GT is supplied, then run majority voting to recover a GT answer. Will only be applied with the `without_gt` setting.
-- Score questions with [`difficulty_estimation`](run_pipeline.py) and enrich metadata with [`topics_labeling`](run_pipeline.py).
+- Profile problem difficulty with multiple models via [`profiling`](run_pipeline.py) and enrich metadata with [`topics_labeling`](run_pipeline.py).
 - Finish with [`aggregate`](scripts/aggregate_metadata.py) and [`filter_solutions`](scripts/filter_solutions.py) to produce deliverables.
 
 ## SFT Data Flow
@@ -27,10 +27,10 @@ This folder provides templates, prompts, and scripts for the automated pipeline 
   - `generation/output*.jsonl`: raw generations.
   - `with_predictions/output*.jsonl`: adds `predicted_answer`, and when the majority answer is applied, also adds `expected_answer`, `majority_voting_agreement_rate`, and `majority_voting_agreement_at_n`.
   - Optional `judgement/output*.jsonl`: contains `judgement` strings when `make_judgement` is enabled. The aggregated stage output also adds `is_correct`, `generation_model_pass_rate`, `generation_model_pass_at_n`, and `generation_model` to each sample.
-- [`difficulty_estimation`](run_pipeline.py): Requires GT answers. Uses [`remove_redundant_fields.py`](scripts/remove_redundant_fields.py) to keep baseline keys, generates boxed-format solutions (`generation_kwargs`), judges them (`judge_kwargs`), and writes `final_result.jsonl` with `difficulty_model`, `difficulty_model_pass_rate`, and `difficulty_model_pass_at_n` fields (see [`aggregate_difficulty.py`](scripts/aggregate_difficulty.py)).
+- [`profiling`](run_pipeline.py): Requires GT answers. Runs multiple models in parallel, each through a generate-judge-aggregate chain. Uses [`remove_redundant_fields.py`](scripts/remove_redundant_fields.py) to keep baseline keys, generates boxed-format solutions per model, judges them, and writes `final_result.jsonl` with a `profiling` array field containing per-model `{model, pass_rate, pass_at_n}` entries (see [`aggregate_profiling_model.py`](scripts/aggregate_profiling_model.py) and [`merge_profiling.py`](scripts/merge_profiling.py)).
 - [`aggregate`](scripts/aggregate_metadata.py): Merges metadata (`metadata_files`) and optional solution glob (`solutions_path`) into `final_result.jsonl`. The resulting records combine base fields with appended metadata and solution statistics.
 - [`prepare_for_sft`](run_pipeline.py): Calls `nemo_skills.training.prepare_data` via the configured `prepare_data_kwargs` (tokenizer, prompt config, formatting toggles). Outputs an instruction-tuning JSONL file.
-- [`filter_solutions`](scripts/filter_solutions.py): Applies correctness/pass-rate/metadata filters. Parameters: `only_correct_solutions`, `generation_model_pass_rate_range`, `difficulty_model_pass_rate_range`, `metadata_values`, `only_samples_with_ground_truth_answer`. The filtered output preserves the same schema as the input `final_result.jsonl`.
+- [`filter_solutions`](scripts/filter_solutions.py): Applies correctness/pass-rate/metadata filters. Parameters: `only_correct_solutions`, `generation_model_pass_rate_range`, `profiling_pass_rate_range` (JSON dict `{model_name: [min, max]}`), `metadata_values`, `only_samples_with_ground_truth_answer`. The filtered output preserves the same schema as the input `final_result.jsonl`.
 - [`process_messages_and_bucket`](run_pipeline.py): Uses [`scripts/process_messages_and_bucket.py`](scripts/process_messages_and_bucket.py) to transform prepared rows into input/output message text, compute `input_token_length` and `output_token_length`, and optionally split into token-length buckets based on `bucket_field` and `bucket_sizes`.
 - [`validate`](scripts/validate_pipeline.py): Reuses the automated checker to verify artifacts exist, counts add up, and required metadata fields are present, so failures point directly to the problematic stage. See [What the Validation Stage Covers](#what-the-validation-stage-covers) for details and caveats.
 

@@ -17,7 +17,7 @@ stages:
     enabled: False
   topics_labeling:
     enabled: False
-  difficulty_estimation:
+  profiling:
     enabled: False
   aggregate:
     enabled: False

@@ -1,0 +1,92 @@
+# profiling_example.yaml
+# -----------------------------------------------------------------------------
+# Example settings overlay showing how to drive the `profiling` stage with
+# multiple models. Wire three widely-used models — Qwen3-30B-A3B,
+# Nemotron-Super, Gemma — under the shared GPT-OSS-120B judge.
+#
+# Adapt to your cluster:
+#   * Replace the `model:` strings below with local paths (e.g.
+#     /path/to/models/Qwen3-30B-A3B) if you have the weights pre-staged,
+#     or keep the HF hub identifiers to let vLLM download on first use.
+#   * Tune `server_gpus`, `server_nodes`, and sampling params
+#     (temperature / top_p / top_k / tokens_to_generate) per model.
+#   * Gemma-4 needs a vLLM build that supports the `gemma4` architecture;
+#     set `server_container` on the Gemma entry if your cluster's default
+#     vLLM image predates that support.
+#
+# Usage:
+#   ns run ... --settings profiling_example
+# -----------------------------------------------------------------------------
+
+stages:
+  profiling:
+    # Shared judge — overridden per-model if any entry sets its own judge_kwargs.
+    # NOTE: do not set `generation_type` in judge_kwargs.args — the orchestrator
+    # passes `generation_type="math_judge"` to generate() explicitly; a duplicate
+    # would raise TypeError.
+    judge_kwargs:
+      args:
+        model: openai/gpt-oss-120b
+        server_type: vllm
+        server_gpus: 8
+        server_nodes: 1
+        num_chunks: 5
+      ctx_args: >-
+        ++prompt_config=judge/general-judge
+
+    models:
+      # ----- Qwen3-30B-A3B -----------------------------------------------------
+      - name: qwen3-30b-a3b
+        generation_kwargs:
+          args:
+            model: Qwen/Qwen3-30B-A3B
+            server_type: vllm
+            server_gpus: 4
+            server_nodes: 1
+            num_random_seeds: 5
+            num_chunks: 20
+          ctx_args: >-
+            ++prompt_config=generic/general-boxed
+            ++inference.tokens_to_generate=16000
+
+      # ----- Nemotron-Super -----------------------------------------------------
+      # Use the publicly available Llama-3.3-Nemotron-Super variant by default.
+      # Swap to the internal Nemotron-Super-120B HF id / local path if you have
+      # access. Recommended sampling: temp=0.6, top_p=0.95 (per model card).
+      - name: nemotron-super
+        generation_kwargs:
+          args:
+            model: nvidia/Llama-3_3-Nemotron-Super-49B-v1_5
+            server_type: vllm
+            server_gpus: 8
+            server_nodes: 1
+            num_random_seeds: 5
+            num_chunks: 20
+          ctx_args: >-
+            ++prompt_config=generic/general-boxed
+            ++inference.tokens_to_generate=16000
+            ++inference.temperature=0.6
+            ++inference.top_p=0.95
+
+      # ----- Gemma-4-31B-IT -----------------------------------------------------
+      # Requires a vLLM image with Gemma-4 architecture support. If your default
+      # `containers.vllm` fails with `Unrecognized architecture: gemma4`, set a
+      # gemma-compatible image here, e.g.:
+      #   server_container: /path/to/vllm-gemma.sqsh
+      # Recommended sampling (per model card): temp=1.0, top_p=0.95, top_k=64.
+      - name: gemma-4-31b-it
+        generation_kwargs:
+          args:
+            model: google/gemma-4-31b-it
+            server_type: vllm
+            server_gpus: 8
+            server_nodes: 1
+            num_random_seeds: 5
+            num_chunks: 20
+          ctx_args: >-
+            ++prompt_config=generic/general-boxed
+            ++inference.endpoint_type=chat
+            ++inference.tokens_to_generate=16000
+            ++inference.temperature=1.0
+            ++inference.top_p=0.95
+            ++inference.top_k=64

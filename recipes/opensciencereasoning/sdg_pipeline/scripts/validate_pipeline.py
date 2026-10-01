@@ -23,7 +23,7 @@ WITHOUT_GT_SETTINGS = {"without_gt"}
 SEED_DATA_SETTINGS = {"seed_data"}
 BASE_FIELDS = {"problem", "expected_answer", "metadata"}
 TOPIC_FIELDS = {"topic", "subtopic"}
-DIFFICULTY_FIELDS = {"difficulty_model", "difficulty_model_pass_rate", "difficulty_model_pass_at_n"}
+PROFILING_FIELDS = {"profiling"}
 SOLUTION_FIELDS = {
     "predicted_answer",
     "serialized_output",
@@ -225,7 +225,7 @@ def main():
         if is_without_gt_variant:
             if stage_name == "filter_problems":
                 check_no_expected_answers(final_path)
-            if stage_name in {"generate_solutions", "difficulty_estimation"}:
+            if stage_name in {"generate_solutions", "profiling"}:
                 check_has_expected_answers(final_path)
 
     def expect_equal(stage: str, expected: int):
@@ -239,7 +239,7 @@ def main():
             "decontaminate should not have more rows than filter_problems",
         )
 
-    for stage in {"topics_labeling", "difficulty_estimation"}:
+    for stage in {"topics_labeling", "profiling"}:
         expect_equal(stage, base_count)
 
     if "generate_solutions" in artifacts:
@@ -278,7 +278,7 @@ def main():
                 )
 
     has_topics = "topics_labeling" in artifacts
-    has_difficulty = "difficulty_estimation" in artifacts
+    has_profiling = "profiling" in artifacts
     has_solutions = "generate_solutions" in artifacts
     generate_with_judge = has_solutions and artifacts["generate_solutions"]["cfg"].get("make_judgement")
     require_solution_fields = not bool(SEED_DATA_SETTINGS & applied_setting_labels)
@@ -292,8 +292,8 @@ def main():
         check_required_fields(record, BASE_FIELDS, stage, file_path)
         if has_topics:
             check_required_fields(record, TOPIC_FIELDS, stage, file_path)
-        if has_difficulty:
-            check_required_fields(record, DIFFICULTY_FIELDS, stage, file_path)
+        if has_profiling:
+            check_required_fields(record, PROFILING_FIELDS, stage, file_path)
         if has_solutions and require_solution_fields:
             check_required_fields(record, SOLUTION_FIELDS, stage, file_path)
             if generate_with_judge:

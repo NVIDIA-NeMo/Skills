@@ -7,7 +7,7 @@ stages:
     enabled: False
   topics_labeling:
     enabled: False
-  difficulty_estimation:
+  profiling:
     enabled: False
   generate_solutions:
     generation_kwargs:
@@ -21,5 +21,5 @@ stages:
   filter_solutions:
     only_correct_solutions: True
     is_ground_truth_answer_present: True
-    difficulty_model_pass_rate_range: null
+    profiling_pass_rate_range: null
     metadata_values: null
