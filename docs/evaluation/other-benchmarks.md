@@ -127,6 +127,87 @@ After all jobs are complete, you can check the results in `<OUTPUT_DIR>/eval-res
 }
 ```
 
+### FACTS Grounding
+
+[FACTS Grounding](https://www.kaggle.com/benchmarks/google/facts-grounding) is a Google DeepMind and Google Research benchmark for measuring whether long-form model responses are grounded in a provided context document.
+The benchmark evaluates factuality with respect to the supplied document, rather than open-world factual recall.
+
+- Benchmark definition: [`nemo_skills/dataset/facts_grounding/__init__.py`](https://github.com/NVIDIA-NeMo/Skills/blob/main/nemo_skills/dataset/facts_grounding/__init__.py)
+- Original benchmark leaderboard is [FACTS Grounding on Kaggle](https://www.kaggle.com/benchmarks/google/facts-grounding).
+- Public data is available on Hugging Face as [`google/FACTS-grounding-public`](https://huggingface.co/datasets/google/FACTS-grounding-public).
+- The public split contains 860 examples. Each example includes a user request, a long context document, and a full prompt.
+- Metrics follow the FACTS Grounding setup: a 3-judge ensemble first checks grounding and eligibility, then reports unadjusted factuality, eligibility rate, and eligibility-adjusted final factuality.
+- The leaderboard-style score is `final_factuality`. Ineligible responses are counted as inaccurate in this final score.
+
+#### Data Preparation
+
+Prepare the public split and the evaluation prompts:
+
+```bash
+ns prepare_data facts_grounding
+```
+
+#### Running the Evaluation
+
+FACTS Grounding uses LLM judges through the NVIDIA Inference API by default, so make sure `NVIDIA_API_KEY` is defined.
+The default NeMo-Skills judge ensemble uses Gemini 3.1 Pro Preview, GPT-5.2, and Claude Opus 4.5.
+
+```bash
+export NVIDIA_API_KEY=<>
+ns eval \
+    --cluster=<CLUSTER_NAME> \
+    --model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --server_type=vllm \
+    --server_gpus=8 \
+    --benchmarks=facts_grounding \
+    --output_dir=<OUTPUT_DIR> \
+    --server_args="--max-model-len 65536" \
+    ++parse_reasoning=True \
+    ++max_concurrent_requests=24
+```
+
+You can override the judge set with `++judge_models=[...]`.
+The default 3-judge ensemble is:
+
+```text
+gcp/google/gemini-3.1-pro-preview
+azure/openai/gpt-5.2
+aws/anthropic/claude-opus-4-5
+```
+
+#### Verifying Results
+
+After all jobs are complete, check the results in `<OUTPUT_DIR>/eval-results/facts_grounding/metrics.json`.
+The results table is printed to stdout and captured in the summarize-results srun log.
+
+Example public-split results (Nemotron-3-Nano, `facts_grounding`):
+
+```text
+--------------------------------------- facts_grounding ---------------------------------------
+evaluation_mode | num_entries | avg_tokens | gen_seconds | unadjusted_factuality | eligibility_rate | final_factuality | grounding_correct | quality_passed | factuality_correct | num_judges
+pass@1          | 860         | 943        | 285         | 41.90%                | 95.12%           | 39.81%           | 17.91%            | 95.12%         | 17.09%             | 3
+```
+
+Per-judge unadjusted factuality and eligibility:
+
+| Judge | Unadjusted factuality | Eligibility |
+|:---|---:|---:|
+| Gemini 3.1 Pro Preview | 45.93% | 88.60% |
+| GPT-5.2 | 24.19% | 83.14% |
+| Claude Opus 4.5 | 55.58% | 89.77% |
+
+Sentence-level grounding labels from the JSON-style judges:
+
+| Label | Share |
+|:---|---:|
+| Supported | 59.06% |
+| Unsupported | 21.73% |
+| Contradictory | 1.07% |
+| No RAD | 18.05% |
+
+!!! note
+    These numbers are for the public split and the NeMo-Skills default judge set. They are useful for local comparison, but they are not directly identical to the Kaggle leaderboard's private-split score.
+
 ### HotpotQA
 
 [HotpotQA](https://hotpotqa.github.io/) is a multi-hop question-answering benchmark that requires reasoning over multiple Wikipedia paragraphs. Two variants are supported:

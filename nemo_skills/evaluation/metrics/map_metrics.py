@@ -33,6 +33,7 @@ from nemo_skills.evaluation.metrics.code_metrics import (
 from nemo_skills.evaluation.metrics.contextasr_metrics import ContextASRMetrics
 from nemo_skills.evaluation.metrics.contextual_earnings22_metrics import ContextualEarnings22Metrics
 from nemo_skills.evaluation.metrics.critpt_metrics import CritPtMetrics
+from nemo_skills.evaluation.metrics.facts_grounding_metrics import FactsGroundingMetrics
 from nemo_skills.evaluation.metrics.gradingbench_metrics import GradingBenchMetrics
 from nemo_skills.evaluation.metrics.graphwalks_metrics import GraphWalksMetrics
 from nemo_skills.evaluation.metrics.hleaa_metrics import HLEAAMetrics
@@ -107,6 +108,7 @@ METRICS_MAP = {
     "hotpotqa_closedbook": functools.partial(HotpotQAMetrics, closed_book=True),
     "graphwalks": GraphWalksMetrics,
     "weighted-math": WeightedMathMetrics,
+    "facts_grounding": FactsGroundingMetrics,
 }
 
 
