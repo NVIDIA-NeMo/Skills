@@ -68,6 +68,7 @@ def _build_command(
     skip_data_dir_check,
     prepare_unknown_args,
 ):
+    """Validate dataset requirements and append shell-quoted dataset paths and preparation arguments."""
     for dataset in requested_datasets:
         # we always want to unconditionally check this to trigger import
         # for init.py as it might need to register dataset for packaging

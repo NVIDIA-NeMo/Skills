@@ -24,6 +24,7 @@ prepare_module = importlib.import_module("nemo_skills.pipeline.prepare_data")
 
 @pytest.fixture
 def submitted_command(monkeypatch):
+    """Capture submitted commands without running jobs or inheriting cluster settings."""
     monkeypatch.delenv("NEMO_SKILLS_CONFIG", raising=False)
     monkeypatch.delenv("NEMO_SKILLS_CONFIG_DIR", raising=False)
     monkeypatch.delenv("NEMO_SKILLS_EXTRA_BENCHMARK_MAP", raising=False)
@@ -35,6 +36,7 @@ def submitted_command(monkeypatch):
 
 @pytest.mark.parametrize("data_dir", ["prepared", "prepared data"])
 def test_local_data_dir_without_cluster(submitted_command, data_dir):
+    """Local preparation must use host paths, including when the destination contains spaces."""
     ctx = SimpleNamespace(args=["gsm8k"])
     assert prepare_module.prepare_data(ctx=ctx, data_dir=data_dir) == "submitted"
     kwargs = submitted_command.call_args.kwargs
@@ -47,6 +49,7 @@ def test_local_data_dir_without_cluster(submitted_command, data_dir):
 
 
 def test_local_external_dataset_uses_host_path(submitted_command, monkeypatch):
+    """External dataset paths containing spaces must remain intact in preparation and copy commands."""
     dataset = "/local/external benchmark"
     monkeypatch.setattr(prepare_module, "get_dataset_name", lambda name: "external benchmark")
     ctx = SimpleNamespace(args=[dataset])
@@ -59,6 +62,7 @@ def test_local_external_dataset_uses_host_path(submitted_command, monkeypatch):
 
 @pytest.mark.parametrize("executor", ["local", "slurm"])
 def test_container_data_dir_preserves_container_paths(submitted_command, monkeypatch, executor):
+    """Container-backed executors must copy from the packaged dataset location."""
     monkeypatch.setattr(prepare_module, "get_cluster_config", lambda *args, **kwargs: {"executor": executor})
     prepare_module.prepare_data(ctx=SimpleNamespace(args=["gsm8k"]), cluster="configured", data_dir="/data")
     command = submitted_command.call_args.kwargs["command"]
@@ -67,6 +71,7 @@ def test_container_data_dir_preserves_container_paths(submitted_command, monkeyp
 
 
 def test_data_dir_respects_environment_cluster(submitted_command, monkeypatch, tmp_path):
+    """NEMO_SKILLS_CONFIG must select container execution without an explicit cluster argument."""
     config = tmp_path / "cluster.yaml"
     config.write_text("executor: local\ncontainers: {}\n", encoding="utf-8")
     monkeypatch.setenv("NEMO_SKILLS_CONFIG", str(config))
@@ -76,6 +81,7 @@ def test_data_dir_respects_environment_cluster(submitted_command, monkeypatch, t
 
 
 def test_slurm_still_requires_data_dir(submitted_command, monkeypatch):
+    """Reject Slurm preparation without data_dir before submitting a job."""
     monkeypatch.setattr(prepare_module, "get_cluster_config", lambda *args, **kwargs: {"executor": "slurm"})
     with pytest.raises(ValueError, match="Data directory is required"):
         prepare_module.prepare_data(ctx=SimpleNamespace(args=["gsm8k"]), cluster="configured")
@@ -83,5 +89,6 @@ def test_slurm_still_requires_data_dir(submitted_command, monkeypatch):
 
 
 def test_local_without_data_dir_does_not_copy(submitted_command):
+    """Local preparation without data_dir must leave data in its default location."""
     prepare_module.prepare_data(ctx=SimpleNamespace(args=["gsm8k"]))
     assert "cp -r" not in submitted_command.call_args.kwargs["command"]
