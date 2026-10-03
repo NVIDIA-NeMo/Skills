@@ -68,6 +68,7 @@ def _build_command(
     skip_data_dir_check,
     prepare_unknown_args,
 ):
+    """Validate dataset requirements and append shell-quoted dataset paths and preparation arguments."""
     for dataset in requested_datasets:
         # we always want to unconditionally check this to trigger import
         # for init.py as it might need to register dataset for packaging
@@ -97,10 +98,10 @@ def _build_command(
         # external datasets we resolve to the full path if used inside container
         if cluster_config["executor"] != "none" and _is_external_dataset(dataset, extra_benchmark_map):
             container_dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
-            command += f" {container_dataset_path} "
+            command += f" {shlex.quote(str(container_dataset_path))} "
         # if not running inside container or using built-in datasets, we don't need to change things
         else:
-            command += f" {dataset} "
+            command += f" {shlex.quote(dataset)} "
 
     command += shlex.join(prepare_unknown_args)
     return command
@@ -178,13 +179,6 @@ def prepare_data(
     Run `python -m nemo_skills.dataset.prepare --help` to see other supported arguments.
     """
     setup_logging(disable_hydra_logs=False, use_rich=True)
-    if data_dir and cluster is None:
-        raise ValueError(
-            "Please use 'cluster' parameter when specifying data_dir. "
-            "You can set it to 'local' if preparing data locally assuming "
-            "you have a corresponding 'local.yaml' cluster config."
-        )
-
     cluster_config = get_cluster_config(cluster, config_dir=config_dir)
     if cluster_config["executor"] == "local" and not data_dir:
         # in this case we need to put the results in the current folder
@@ -212,11 +206,16 @@ def prepare_data(
     )
 
     if data_dir:
-        command += f" && mkdir -p {data_dir}"
+        command += f" && mkdir -p {shlex.quote(data_dir)}"
         for dataset in requested_datasets:
             name = get_dataset_name(dataset)
-            container_dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
-            command += f" && mkdir -p {data_dir}/{name} && cp -r {container_dataset_path}/. {data_dir}/{name}/"
+            if cluster_config["executor"] == "none":
+                dataset_path = get_dataset_path(dataset, extra_benchmark_map=extra_benchmark_map)
+            else:
+                dataset_path = _get_container_dataset_path(dataset, extra_benchmark_map)
+            destination = shlex.quote(f"{data_dir}/{name}/")
+            source = shlex.quote(f"{dataset_path}/.")
+            command += f" && mkdir -p {destination} && cp -r {source} {destination}"
 
     log_dir = log_dir or data_dir
 
