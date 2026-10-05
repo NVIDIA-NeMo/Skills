@@ -62,6 +62,69 @@ mounts:
 
 When this path is accessed during evaluation, `{instance_id}` will be replaced by the value of the instance_id column in the dataset, replacing `__` with `_1776_`. For example, `astropy__astropy-12907` becomes `astropy_1776_astropy-12907`.
 
+#### Remote tool execution with OpenSandbox
+
+For mini-SWE-agent, native `ns eval` and the SWE generation module support
+`++execution_backend=opensandbox`. The model server stays on GPU nodes; agent
+commands and grading run in separate, fresh OpenSandbox task containers. Gym is
+not required. Apptainer remains the default backend.
+
+Install `nemo_skills[opensandbox]` in the coordinator's runtime image or environment.
+Export `OPENSANDBOX_DOMAIN` and `OPENSANDBOX_API_KEY`; NeMo-Skills forwards these
+variables into the coordinator container like other API keys. The OpenSandbox
+backend requires both. The domain may include an `http://` or `https://` scheme.
+
+Prepare OCI task images rather than local `.sif` files:
+
+```bash
+ns prepare_data swe-bench-multilingual
+
+ns eval --cluster=<CLUSTER> \
+  --benchmarks=swe-bench-multilingual \
+  --server_type=vllm --model=<SERVED_MODEL> \
+  --server_address=http://<GPU_MODEL_HOST>:8000/v1 \
+  --output_dir=<OUTPUT_DIR> \
+  ++agent_framework=mini_swe_agent \
+  ++execution_backend=opensandbox \
+  ++max_concurrent_requests=2 ++max_samples=3
+```
+
+After the job starts, NeMo-Skills automatically discovers the coordinator's IPv4
+interface using its network route to `OPENSANDBOX_DOMAIN`, with the node's hostname
+as a fallback. This uses the allocated compute node, including on Slurm; no IP
+needs to be supplied when submitting the job. NeMo-Skills logs the detected address
+and passes the per-instance proxy URL to the remote agent in its model configuration.
+For unusual network setups, override it with `++opensandbox_proxy_host=<COORDINATOR_IP>`.
+NeMo-Skills binds each model proxy to this interface on dynamically allocated ports.
+The sandbox workers must be able to reach these ports on the cluster network;
+automatic address discovery does not create a tunnel or change firewall rules.
+The proxy forwards model requests to the configured GPU endpoint and preserves
+request transformations and capture. With a pre-hosted model server,
+the coordinator can run on a CPU node. When NeMo-Skills hosts the model itself,
+the coordinator can remain on its GPU node while all task commands run remotely.
+
+Optional resource settings use `++opensandbox.resources.cpu=4` and
+`++opensandbox.resources.memory=16Gi`. Other options are `ready_timeout_s` (1200),
+`request_timeout_s` (60), `command_timeout_s` (10800), and `poll_interval_s` (5).
+The command timeout caps the agent/verifier execution budget; dependency setup has
+its own `setup_timeout`. Setup currently installs the pinned agent or verifier in
+each sandbox and therefore needs download access. Sandbox lifetime includes setup,
+execution, readiness, and an artifact-transfer allowance.
+
+The same backend can be used for inference through
+`--generation_module=nemo_skills.inference.eval.swebench` with `++evaluate=False`.
+Output schemas and multilingual language instructions follow the existing SWE
+flow. Command logs are saved under `opensandbox_logs`; successful outputs are
+downloaded before each sandbox is terminated. Sandboxes are also terminated on
+command failure or cancellation.
+Infrastructure failures propagate rather than being scored as incorrect patches.
+
+Initial support covers mini-SWE-agent on standard SWE-bench and SWE-bench
+Multilingual OCI images. SWE-Zero, other agent frameworks, and `block_network`
+(the local Unix-socket forwarding path) are not supported. Each task has its own sandbox network, so fixed-port multilingual verifiers do
+not share the coordinator network. Start with a few samples before increasing
+concurrency to match the service's capacity.
+
 #### SWE-bench-specific parameters
 
 There are a few parameters specific to SWE-bench. They have to be specified with the `++` prefix. All of them are optional, except for ++agent_framework.

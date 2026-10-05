@@ -211,6 +211,8 @@ def get_env_variables(cluster_config):
         "NVIDIA_API_KEY",
         "AZURE_OPENAI_API_KEY",
         "OPENAI_API_KEY",
+        "OPENSANDBOX_DOMAIN",
+        "OPENSANDBOX_API_KEY",
         "GEMINI_API_KEY",
         "HF_TOKEN",
         "NGC_API_KEY",

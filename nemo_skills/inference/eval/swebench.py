@@ -462,6 +462,13 @@ class SweBenchGenerationConfig:
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
 
+    # OpenSandbox runs the agent and verifier remotely; model serving stays on the GPU nodes.
+    execution_backend: str = "apptainer"  # apptainer | opensandbox
+    opensandbox: dict = field(default_factory=dict)  # OpenSandboxExecutor options; credentials come from env.
+    opensandbox_proxy_host: str | None = (
+        None  # Auto-detect inside the job; optionally override the coordinator interface.
+    )
+
     # Native Scale-SWE evaluation runs with the host network, matching AweAgent's Docker bridge behavior.
     # When enabled, mount a usable resolver configuration into the verifier container. Agent inference and
     # other benchmarks retain their existing network behavior. Set scale_swe_eval_resolv_conf to override
@@ -552,6 +559,33 @@ class SweBenchGenerationTask(GenerationTask):
         self.should_run_evaluation = False
         self.evaluator = None
         self._reasoning_warning_shown = False
+
+        if self.cfg.execution_backend not in {"apptainer", "opensandbox"}:
+            raise ValueError(f"Unknown execution_backend: {self.cfg.execution_backend}")
+        self.opensandbox_executor = None
+        if self.cfg.execution_backend == "opensandbox":
+            from nemo_skills.inference.eval.opensandbox import OpenSandboxExecutor
+
+            if self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
+                raise ValueError("OpenSandbox currently supports agent_framework=mini_swe_agent only.")
+            if self.cfg.dataset_type != SupportedDatasetTypes.swe_bench or self.cfg.swe_zero_container:
+                raise ValueError(
+                    "OpenSandbox currently supports standard SWE-bench and Multilingual task images only."
+                )
+            if self.cfg.block_network:
+                raise ValueError("block_network uses local Unix sockets and is not supported with OpenSandbox.")
+            self.opensandbox_executor = OpenSandboxExecutor(**self.cfg.opensandbox)
+            if self.cfg.opensandbox_proxy_host is None:
+                self.cfg.opensandbox_proxy_host = self.opensandbox_executor.detect_proxy_host()
+                LOG.info("Detected OpenSandbox model proxy interface: %s", self.cfg.opensandbox_proxy_host)
+            if not self.cfg.opensandbox_proxy_host or self.cfg.opensandbox_proxy_host in {
+                "localhost",
+                "127.0.0.1",
+                "0.0.0.0",
+                "::1",
+                "::",
+            }:
+                raise ValueError("Set opensandbox_proxy_host to a coordinator interface reachable from OpenSandbox.")
 
         if self.cfg.block_network and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
             raise ValueError("block_network=True is currently only supported for mini_swe_agent.")
@@ -788,6 +822,8 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
+        agent_setup_command = " && ".join(setup_commands)
+        eval_setup_start = len(setup_commands)
         if self.cfg.evaluate and self.cfg.dataset_type in [
             SupportedDatasetTypes.swe_bench,
             SupportedDatasetTypes.swe_bench_pro,
@@ -809,7 +845,13 @@ class SweBenchGenerationTask(GenerationTask):
 
         # Run all commands with retries and timeout
         combined_setup_command = " && ".join(setup_commands)
-        asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
+        if self.opensandbox_executor is None:
+            asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
+        else:
+            self.opensandbox_setup_commands = {
+                "agent": agent_setup_command,
+                "eval": " && ".join([setup_commands[0], *setup_commands[eval_setup_start:]]),
+            }
 
         # Set up the scratch dir where Apptainer mounts are staged (see _execute_container_command)
         scratch_root = SCRATCH_DIR
@@ -928,6 +970,24 @@ class SweBenchGenerationTask(GenerationTask):
         NOTE: expected_file_pattern is expected to be a static path.
         Glob patterns (e.g. 'dir/*/*.json') are no longer accepted, since they can cause issues on Lustre filesystems.
         """
+        if getattr(self, "opensandbox_executor", None) is not None:
+            # Fixed-port multilingual verifiers get a separate sandbox network rather
+            # than sharing Apptainer's default host network.
+            if extra_apptainer_args:
+                raise RuntimeError("Apptainer-specific arguments are not supported with OpenSandbox.")
+            return await self.opensandbox_executor.execute(
+                data_point=data_point,
+                command=command,
+                expected_file=Path(expected_file_pattern),
+                output_dir=self.output_dir,
+                input_file=Path(self.cfg.input_file),
+                setup_command=self.opensandbox_setup_commands[mode],
+                setup_timeout=self.cfg.setup_timeout,
+                mode=mode,
+                timeout=timeout,
+                extra_files=extra_mounts,
+            )
+
         mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)
 
         # Commands to be executed in the Apptainer container, in order
@@ -1606,6 +1666,9 @@ class SweBenchGenerationTask(GenerationTask):
             request_transform=request_transform,
             all_requests_dir=all_requests_dir,
             unix_socket=unix_socket,
+            host=self.cfg.opensandbox_proxy_host
+            if getattr(self, "opensandbox_executor", None) is not None
+            else "127.0.0.1",
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,

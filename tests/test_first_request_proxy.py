@@ -16,6 +16,8 @@ import asyncio
 import json
 from urllib.parse import urlsplit
 
+import pytest
+
 from nemo_skills.inference.eval.first_request_proxy import capture_first_llm_request
 
 
@@ -39,7 +41,8 @@ async def _send_json_request(base_url, endpoint, body):
     return response
 
 
-def test_proxy_captures_first_llm_request_and_forwards_it(tmp_path):
+@pytest.mark.parametrize("proxy_host", ["127.0.0.1", "127.0.0.2"])
+def test_proxy_captures_first_llm_request_and_forwards_it(tmp_path, proxy_host):
     async def run_test():
         received = []
 
@@ -83,7 +86,9 @@ def test_proxy_captures_first_llm_request_and_forwards_it(tmp_path):
             async with capture_first_llm_request(
                 f"http://127.0.0.1:{upstream_port}/v1",
                 capture_file,
+                host=proxy_host,
             ) as proxy_base:
+                assert urlsplit(proxy_base).hostname == proxy_host
                 first_response = await _send_json_request(proxy_base, "messages", first_body)
                 second_response = await _send_json_request(proxy_base, "messages", second_body)
         finally:
