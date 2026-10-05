@@ -283,6 +283,14 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
         extra_apptainer_args = _verifier_env_apptainer_args(repo_name)
 
         instance_id = data_point["instance_id"]
+        out_dir = f"/trajectories_mount/eval-outputs/{instance_id}"
+        save_outputs = (
+            f"mkdir -p {out_dir} && "
+            f"cp -r /logs/verifier/. {out_dir}/ && "
+            # Create an .eval_done marker to indicate that the evaluation was completed (used as search_path below).
+            # Accept either reward.json or reward.txt existing.
+            f"if [ -f {out_dir}/reward.json ] || [ -f {out_dir}/reward.txt ]; then touch {out_dir}/.eval_done; fi"
+        )
         # SSB test.sh assumes a post-agent dirty tree under /repo/$REPO_NAME.
         # Apply the captured model.patch first; on failure write apply_failed reward.
         verifier_cmd = (
@@ -295,8 +303,7 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
             f"cd /repo/{repo_name} || {{ "
             '  echo \'{"reward": 0, "apply_failed": 1}\' > /logs/verifier/reward.json; '
             "  echo 0 > /logs/verifier/reward.txt; "
-            f"  mkdir -p /trajectories_mount/eval-outputs/{instance_id} && "
-            f"  cp -r /logs/verifier/. /trajectories_mount/eval-outputs/{instance_id}/; "
+            f"  {save_outputs}; "
             "  exit 0; "
             "} && "
             "if ! git apply --whitespace=nowarn /logs/artifacts/model.patch 2>/logs/verifier/apply.err; then "
@@ -304,17 +311,15 @@ class SeniorSweBenchGenerationTask(SweBenchGenerationTask):
             "      >>/logs/verifier/apply.err 2>&1; then "
             '    echo \'{"reward": 0, "apply_failed": 1}\' > /logs/verifier/reward.json; '
             "    echo 0 > /logs/verifier/reward.txt; "
-            f"    mkdir -p /trajectories_mount/eval-outputs/{instance_id} && "
-            f"    cp -r /logs/verifier/. /trajectories_mount/eval-outputs/{instance_id}/; "
+            f"    {save_outputs}; "
             "    exit 0; "
             "  fi; "
             "fi && "
             "bash /tests/test.sh; "
-            f"mkdir -p /trajectories_mount/eval-outputs/{instance_id} && "
-            f"cp -r /logs/verifier/. /trajectories_mount/eval-outputs/{instance_id}/"
+            f"{save_outputs}"
         )
 
-        search_path = str(eval_out / "reward.*")
+        search_path = str(eval_out / ".eval_done")
         try:
             await self._execute_container_command(
                 data_point,

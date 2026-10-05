@@ -200,6 +200,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
         if data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
             extra_apptainer_args = " --net --network none "
 
+        out_dir = f"/trajectories_mount/eval-outputs/{data_point['instance_id']}"
         verifier_cmd = (
             "mkdir -p /logs/artifacts /logs/verifier && "
             "cp /patch_mount/model.patch /logs/artifacts/model.patch && "
@@ -209,12 +210,14 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             "export ARTIFACTS_DIR=/logs/artifacts && "
             "cd /app && "
             "bash /tests/test.sh; "
-            f"mkdir -p /trajectories_mount/eval-outputs/{data_point['instance_id']} && "
-            f"cp -r /logs/verifier/. /trajectories_mount/eval-outputs/{data_point['instance_id']}/"
+            f"mkdir -p {out_dir} && "
+            f"cp -r /logs/verifier/. {out_dir}/ && "
+            # Create an .eval_done marker to indicate that the evaluation was completed (used as search_path below).
+            # DeepSWE crash sentinel only writes reward.txt=-1, so accept either reward.json or reward.txt existing.
+            f"if [ -f {out_dir}/reward.json ] || [ -f {out_dir}/reward.txt ]; then touch {out_dir}/.eval_done; fi"
         )
 
-        # Prefer reward.json; DeepSWE crash sentinel only writes reward.txt=-1.
-        search_path = str(eval_out / "reward.*")
+        search_path = str(eval_out / ".eval_done")
         try:
             await self._execute_container_command(
                 data_point,

@@ -14,7 +14,6 @@
 
 import asyncio
 import copy
-import glob
 import hashlib
 import json
 import logging
@@ -925,6 +924,9 @@ class SweBenchGenerationTask(GenerationTask):
         """
         Execute a command in an Apptainer container with retry logic.
         Mounts are (src, dst, read_only) tuples, in addition to the ones from _get_apptainer_mounts.
+
+        NOTE: expected_file_pattern is expected to be a static path.
+        Glob patterns (e.g. 'dir/*/*.json') are no longer accepted, since they can cause issues on Lustre filesystems.
         """
         mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)
 
@@ -1069,17 +1071,17 @@ class SweBenchGenerationTask(GenerationTask):
                     if not read_only:
                         await asyncio.to_thread(shutil.copytree, local, src, symlinks=True, dirs_exist_ok=True)
 
-                pred_files = glob.glob(expected_file_pattern, recursive=True)
-                if process.returncode == 0 and len(pred_files) == 1:
-                    return pred_files[0]
+                file_exists = os.path.exists(expected_file_pattern)
+                if process.returncode == 0 and file_exists:
+                    return expected_file_pattern
 
                 # Don't retry on timeout
                 if timed_out or attempt == self.cfg.max_retries - 1:
                     LOG.error("Apptainer command failed. Check logs at: %s", log_file_path)
                     raise ValueError(
                         f"Job failed for {data_point['instance_id']} (return code {process.returncode}, "
-                        f"timed out: {timed_out}). Check logs at: {log_file_path}. "
-                        f"Expected exactly one file matching {expected_file_pattern}, found {len(pred_files)}."
+                        f"timed out: {timed_out}, expected output file {expected_file_pattern} exists: {file_exists}). "
+                        f"Check logs at: {log_file_path}."
                     )
 
                 retry_interval = random.randint(self.cfg.min_retry_interval, self.cfg.max_retry_interval)
@@ -1247,14 +1249,20 @@ class SweBenchGenerationTask(GenerationTask):
                 f"    --env.repo.base_commit {data_point['base_commit']} "
                 f"    --problem_statement.text {shlex.quote(problem_statement)} "
                 f"    --problem_statement.id {data_point['instance_id']} "
-                f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} && "
+                f"    --problem_statement.extra_fields {shlex.quote(json.dumps(extra_fields))} "
+                f"    --output_dir trajectories/root/{data_point['instance_id']} && "
                 # move trajectories to the mounted directory
                 f"cp -r trajectories /trajectories_mount/"
             )
 
         # Execute SWE-agent command
         search_path = os.path.join(
-            self.output_dir, "trajectories", "*", "*", data_point["instance_id"], f"{data_point['instance_id']}.pred"
+            self.output_dir,
+            "trajectories",
+            "root",
+            data_point["instance_id"],
+            data_point["instance_id"],
+            f"{data_point['instance_id']}.pred",
         )
         pred_file = await self._execute_agent_command_with_capture(
             data_point,
@@ -2002,7 +2010,8 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --patch_path {pred_mounted_path} "
                     f"    --output_dir eval-outputs "
                     f"    --scripts_dir /root/SWE-bench/run_scripts && "
-                    f"cp -r eval-outputs /trajectories_mount/"
+                    f"mkdir -p /trajectories_mount/eval-outputs/results && "
+                    f"cp -r eval-outputs/*/{data_point['instance_id']} /trajectories_mount/eval-outputs/results/"
                 )
             elif self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2:
                 swe_bench_cmd = (
@@ -2032,11 +2041,14 @@ class SweBenchGenerationTask(GenerationTask):
                     f"    --run_id eval-outputs "
                     f"    --timeout {tests_timeout} "
                     f"    --dataset_name /input_mount/{Path(self.cfg.input_file).name} && "
-                    f"cp -r logs/run_evaluation/eval-outputs /trajectories_mount/"
+                    f"mkdir -p /trajectories_mount/eval-outputs/results && "
+                    f"cp -r logs/run_evaluation/eval-outputs/*/{data_point['instance_id']} /trajectories_mount/eval-outputs/results/"
                 )
 
-            # Execute SWE-bench evaluation command
-            search_path = os.path.join(self.output_dir, "eval-outputs", "*", data_point["instance_id"], "report.json")
+            # Execute the SWE-bench evaluation command. For all 3 harnesses, we copy output files to this exact path.
+            search_path = os.path.join(
+                self.output_dir, "eval-outputs", "results", data_point["instance_id"], "report.json"
+            )
             # TODO: should we fail on errors here? Seems that json isn't always generated
             try:
                 async with self.eval_semaphore:
