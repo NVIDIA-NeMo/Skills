@@ -72,6 +72,7 @@ class OpenSandboxExecutor:
         ready_timeout_s: int = 1200,
         request_timeout_s: int = 60,
         command_timeout_s: int = 10800,
+        repo_setup_timeout_s: int = 300,
         poll_interval_s: float = 5,
     ):
         domain = domain or os.environ.get("OPENSANDBOX_DOMAIN")
@@ -83,7 +84,7 @@ class OpenSandboxExecutor:
             raise ValueError("OPENSANDBOX_DOMAIN must be an HTTP(S) host with an optional port.")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("OPENSANDBOX_DOMAIN must not contain credentials, a query, or a fragment.")
-        if min(ready_timeout_s, request_timeout_s, command_timeout_s, poll_interval_s) <= 0:
+        if min(ready_timeout_s, request_timeout_s, command_timeout_s, repo_setup_timeout_s, poll_interval_s) <= 0:
             raise ValueError("OpenSandbox timeouts and poll_interval_s must be positive.")
         tls_verify = os.environ.get("OPENSANDBOX_TLS_VERIFY", "true").strip().lower()
         if tls_verify not in {"true", "false", "1", "0"}:
@@ -103,6 +104,7 @@ class OpenSandboxExecutor:
         self.resources = {key: str(value) for key, value in (resources or {"cpu": "2", "memory": "8Gi"}).items()}
         self.ready_timeout_s = ready_timeout_s
         self.command_timeout_s = command_timeout_s
+        self.repo_setup_timeout_s = repo_setup_timeout_s
         self.poll_interval_s = poll_interval_s
 
     @asynccontextmanager
@@ -238,7 +240,13 @@ class OpenSandboxExecutor:
             sandbox = await self.Sandbox.create(
                 image=image,
                 connection_config=connection,
-                timeout=timedelta(seconds=self.ready_timeout_s + setup_timeout + timeout + 300),
+                timeout=timedelta(
+                    seconds=self.ready_timeout_s
+                    + setup_timeout
+                    + (self.repo_setup_timeout_s if mode == "agent" else 0)
+                    + timeout
+                    + 300
+                ),
                 ready_timeout=timedelta(seconds=self.ready_timeout_s),
                 resource=self.resources,
                 metadata={"benchmark": "swe-bench", "instance_id": data_point["instance_id"][:63], "mode": mode},
@@ -284,7 +292,7 @@ class OpenSandboxExecutor:
                     if repo_dir != "/testbed":
                         repo_setup_commands.append(f"cp -r {shlex.quote(repo_dir)} /testbed")
                     if repo_setup_commands:
-                        await self._run(sandbox, " && ".join(repo_setup_commands), 60, log_file)
+                        await self._run(sandbox, " && ".join(repo_setup_commands), self.repo_setup_timeout_s, log_file)
 
                     # After setup is done, if block_network=True,
                     # block the sandbox's network access to everything except the vLLM proxy.

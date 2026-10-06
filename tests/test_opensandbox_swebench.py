@@ -135,6 +135,36 @@ def test_verifier_receives_only_its_record_in_a_fresh_sandbox(executor, monkeypa
     sandbox.kill.assert_awaited_once()
 
 
+@pytest.mark.parametrize("repo_setup_timeout_s", [None, 600])
+@pytest.mark.parametrize("mode", ["agent", "eval"])
+def test_repository_preparation_timeout_and_sandbox_lifetime(
+    executor, monkeypatch, tmp_path, repo_setup_timeout_s, mode
+):
+    if repo_setup_timeout_s is not None:
+        executor = OpenSandboxExecutor(repo_setup_timeout_s=repo_setup_timeout_s)
+    sandbox, create = _sandbox(executor, monkeypatch, _archive())
+    args = _arguments(tmp_path, mode=mode)
+    args["data_point"]["pre_commands"] = "git gc --prune=now --aggressive"
+    asyncio.run(executor.execute(**args))
+    expected_timeout = 300 if repo_setup_timeout_s is None else repo_setup_timeout_s
+    preparation_calls = [call for call in sandbox.commands.run.call_args_list if "git gc" in call.args[0]]
+    if mode == "agent":
+        assert len(preparation_calls) == 1
+        assert preparation_calls[0].kwargs["opts"].timeout.total_seconds() == expected_timeout
+    else:
+        assert not preparation_calls
+    expected_lifetime = executor.ready_timeout_s + args["setup_timeout"] + args["timeout"] + 300
+    if mode == "agent":
+        expected_lifetime += expected_timeout
+    assert create.call_args.kwargs["timeout"].total_seconds() == expected_lifetime
+
+
+@pytest.mark.parametrize("repo_setup_timeout_s", [0, -1])
+def test_repository_preparation_timeout_must_be_positive(executor, repo_setup_timeout_s):
+    with pytest.raises(ValueError, match="must be positive"):
+        OpenSandboxExecutor(repo_setup_timeout_s=repo_setup_timeout_s)
+
+
 def test_failed_mutating_command_is_not_replayed_and_worker_is_cleaned_up(executor, monkeypatch, tmp_path):
     sandbox, _ = _sandbox(executor, monkeypatch)
     sandbox.commands.get_command_status.return_value.exit_code = 7
