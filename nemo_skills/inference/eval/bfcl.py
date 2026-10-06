@@ -66,7 +66,8 @@ BFCL_REQUIREMENTS = [
     "cohere==5.18.0",
     "typer>=0.12.5",
     "tabulate>=0.9.0",
-    "datamodel-code-generator==0.25.7",
+    # 0.64.0 fixes eight High findings through CVE-2026-55415.
+    "datamodel-code-generator==0.64.0",
     "google-genai>=1.52.0",
     # "qwen-agent",  # disabling due to some issues (and shouldn't be needed)
     "mpmath==1.3.0",

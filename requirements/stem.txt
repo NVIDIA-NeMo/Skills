@@ -77,7 +77,7 @@ lie
 LIEGenTools
 lifelines
 lingpy
-lxml
+lxml>=6.1.0  # fixes GHSA-vfmq-68hx-4jfw (High)
 matplotlib
 mendeleev
 mido
@@ -92,7 +92,7 @@ mygene
 myvariant
 networkx
 nibabel
-nltk
+nltk @ git+https://github.com/nltk/nltk.git@574270e2ad368c8816976e584da56ddfb3fefbad  # CVE-2026-81726 unreleased upstream fix
 nuclear
 num2words
 numba

@@ -85,7 +85,8 @@ scripts/
 
 1. **Basic Requirements**
 ```bash
-pip install pandas numpy matplotlib seaborn scikit-learn nltk spacy \
+pip install pandas numpy matplotlib seaborn scikit-learn \
+    "nltk @ git+https://github.com/nltk/nltk.git@574270e2ad368c8816976e584da56ddfb3fefbad" spacy \
     sentence-transformers umap-learn plotly textstat textblob rouge \
     datasets tqdm openai
 ```
