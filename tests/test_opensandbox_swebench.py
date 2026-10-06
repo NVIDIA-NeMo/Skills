@@ -40,6 +40,7 @@ def _archive(name="sample.traj.json", content=b'{"info":{"submission":"patch"}}'
 def executor(monkeypatch):
     monkeypatch.setenv("OPENSANDBOX_DOMAIN", "https://sandbox.example:443")
     monkeypatch.setenv("OPENSANDBOX_API_KEY", "test-only-key")
+    monkeypatch.delenv("OPENSANDBOX_TLS_VERIFY", raising=False)
     return OpenSandboxExecutor(poll_interval_s=0.001)
 
 
@@ -314,3 +315,55 @@ def test_proxy_address_rejects_unreachable_local_addresses(executor, monkeypatch
     monkeypatch.setattr(socket, "gethostbyname", lambda hostname: address)
     with pytest.raises(RuntimeError, match="opensandbox_proxy_host"):
         executor.detect_proxy_host()
+
+
+@pytest.mark.parametrize(
+    "value,expected", [("true", True), ("1", True), ("false", False), ("0", False), (" FALSE ", False)]
+)
+def test_tls_verification_reads_env(executor, monkeypatch, value, expected):
+    monkeypatch.setenv("OPENSANDBOX_TLS_VERIFY", value)
+    assert OpenSandboxExecutor().tls_verify is expected
+
+
+def test_tls_verification_defaults_to_enabled(executor):
+    assert executor.tls_verify is True
+
+
+def test_invalid_tls_verification_setting_fails_explicitly(executor, monkeypatch):
+    monkeypatch.setenv("OPENSANDBOX_TLS_VERIFY", "invalid")
+    with pytest.raises(ValueError, match="OPENSANDBOX_TLS_VERIFY"):
+        OpenSandboxExecutor()
+
+
+@pytest.mark.parametrize("create_fails", [False, True])
+def test_tls_transport_disables_verification_and_closes_on_success_or_create_failure(
+    executor, monkeypatch, tmp_path, create_fails
+):
+    import httpx
+
+    executor.tls_verify = False
+    sandbox, create = _sandbox(executor, monkeypatch, _archive())
+    if create_fails:
+        create.side_effect = RuntimeError("create failed")
+    factory = httpx.AsyncHTTPTransport
+    transports = []
+
+    def track_transport(**kwargs):
+        assert kwargs["verify"] is False
+        transport = factory(**kwargs)
+        transport._pool.aclose = AsyncMock(wraps=transport._pool.aclose)
+        transports.append(transport)
+        return transport
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", track_transport)
+    if create_fails:
+        with pytest.raises(RuntimeError, match="create failed"):
+            asyncio.run(executor.execute(**_arguments(tmp_path)))
+    else:
+        asyncio.run(executor.execute(**_arguments(tmp_path)))
+        sandbox.close.assert_awaited_once()
+    assert len(transports) == 1
+    transports[0]._pool.aclose.assert_awaited_once()
+    connection = create.call_args.kwargs["connection_config"]
+    assert connection.transport is not None
+    assert connection._owns_transport is False

@@ -73,6 +73,10 @@ Install `nemo_skills[opensandbox]` in the coordinator's runtime image or environ
 Export `OPENSANDBOX_DOMAIN` and `OPENSANDBOX_API_KEY`; NeMo-Skills forwards these
 variables into the coordinator container like other API keys. The OpenSandbox
 backend requires both. The domain may include an `http://` or `https://` scheme.
+For a trusted endpoint with a self-signed certificate, explicitly export
+`OPENSANDBOX_TLS_VERIFY=false`; this variable is also forwarded into the job.
+Certificate verification remains enabled by default. Disabling it bypasses server
+certificate authentication for OpenSandbox HTTPS connections.
 
 Prepare OCI task images rather than local `.sif` files:
 

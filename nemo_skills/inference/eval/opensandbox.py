@@ -23,6 +23,7 @@ import shlex
 import shutil
 import socket
 import tarfile
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
@@ -81,6 +82,10 @@ class OpenSandboxExecutor:
             raise ValueError("OPENSANDBOX_DOMAIN must not contain credentials, a query, or a fragment.")
         if min(ready_timeout_s, request_timeout_s, command_timeout_s, poll_interval_s) <= 0:
             raise ValueError("OpenSandbox timeouts and poll_interval_s must be positive.")
+        tls_verify = os.environ.get("OPENSANDBOX_TLS_VERIFY", "true").strip().lower()
+        if tls_verify not in {"true", "false", "1", "0"}:
+            raise ValueError("OPENSANDBOX_TLS_VERIFY must be true, false, 1, or 0.")
+        self.tls_verify = tls_verify in {"true", "1"}
         self.Sandbox, self.ConnectionConfig, self.RunCommandOpts = _load_sdk()
         self.connection_options = dict(
             domain=parsed.netloc,
@@ -93,6 +98,26 @@ class OpenSandboxExecutor:
         self.ready_timeout_s = ready_timeout_s
         self.command_timeout_s = command_timeout_s
         self.poll_interval_s = poll_interval_s
+
+    @asynccontextmanager
+    async def _connection_config(self):
+        config = self.ConnectionConfig(**self.connection_options)
+        if self.tls_verify:
+            yield config
+            return
+
+        import httpx
+        from opensandbox.transport import RetryAsyncTransport
+
+        # Custom transports belong to the caller. Close them even if Sandbox.create fails.
+        async with httpx.AsyncHTTPTransport(
+            verify=False,
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20, keepalive_expiry=30.0),
+        ) as inner:
+            async with RetryAsyncTransport(inner, config.retry_policy, owns_inner=False) as transport:
+                yield self.ConnectionConfig(
+                    **self.connection_options, transport=transport, retry_policy=config.retry_policy
+                )
 
     def detect_proxy_host(self) -> str:
         """Discover the coordinator interface inside the allocated job, without sending traffic."""
@@ -187,57 +212,60 @@ class OpenSandboxExecutor:
         log_file = logs_dir / f"{data_point['instance_id']}_{mode}.log"
         log_file.write_text("")
         # A new client transport and a fresh task image for every agent/verifier invocation.
-        sandbox = await self.Sandbox.create(
-            image=image,
-            connection_config=self.ConnectionConfig(**self.connection_options),
-            timeout=timedelta(seconds=self.ready_timeout_s + setup_timeout + timeout + 300),
-            ready_timeout=timedelta(seconds=self.ready_timeout_s),
-            resource=self.resources,
-            metadata={"benchmark": "swe-bench", "instance_id": data_point["instance_id"][:63], "mode": mode},
-        )
-        try:
-            dependency = "mini-swe-agent" if mode == "agent" else "SWE-bench"
-            stage_runtime = (
-                f"mkdir -p /root_mount /trajectories_mount && "
-                f"cp -a /root/{dependency} /root_mount/ && cp -a /root/uv /root_mount/"
+        async with self._connection_config() as connection:
+            sandbox = await self.Sandbox.create(
+                image=image,
+                connection_config=connection,
+                timeout=timedelta(seconds=self.ready_timeout_s + setup_timeout + timeout + 300),
+                ready_timeout=timedelta(seconds=self.ready_timeout_s),
+                resource=self.resources,
+                metadata={"benchmark": "swe-bench", "instance_id": data_point["instance_id"][:63], "mode": mode},
             )
-            await self._run(sandbox, setup_command + " && " + stage_runtime, setup_timeout, log_file)
-            for source, target, read_only in extra_files:
-                if not read_only or not Path(source).is_file():
-                    raise RuntimeError("OpenSandbox extra inputs must be regular read-only files.")
-                await self._run(sandbox, f"mkdir -p {shlex.quote(str(PurePosixPath(target).parent))}", 60, log_file)
-                await sandbox.files.write_file(target, await asyncio.to_thread(Path(source).read_bytes), mode=644)
-            if mode == "eval":
-                # Upload only this verifier's record; never expose gold patches or tests to the agent.
-                await self._run(sandbox, "mkdir -p /input_mount", 60, log_file)
-                await sandbox.files.write_file(
-                    f"/input_mount/{input_file.name}", json.dumps(data_point) + "\n", mode=644
-                )
-            else:
-                repo_dir = data_point.get("container_repo_dir", "/testbed")
-                pre_commands = data_point.get("pre_commands", "").strip()
-                if pre_commands:
-                    command = f"cd {shlex.quote(repo_dir)} && {pre_commands} && " + command
-                if repo_dir != "/testbed":
-                    command = f"cp -r {shlex.quote(repo_dir)} /testbed && " + command
-            await self._run(sandbox, command, timeout, log_file)
-            relative_output = expected_file.relative_to(output_dir)
-            remote_output = PurePosixPath("/trajectories_mount") / relative_output
-            archive_path = "/tmp/nemo-skills-output.tar.gz"
-            await self._run(
-                sandbox,
-                f"test -f {shlex.quote(str(remote_output))} && "
-                f"tar -czf {archive_path} -C {shlex.quote(str(remote_output.parent))} .",
-                60,
-                log_file,
-            )
-            outputs = await sandbox.files.read_bytes(archive_path)
-            await asyncio.to_thread(_extract_outputs, outputs, expected_file.parent)
-            if not expected_file.is_file():
-                raise RuntimeError(f"OpenSandbox did not return the expected artifact: {expected_file}")
-            return str(expected_file)
-        finally:
             try:
-                await asyncio.wait_for(sandbox.kill(), timeout=30)
+                dependency = "mini-swe-agent" if mode == "agent" else "SWE-bench"
+                stage_runtime = (
+                    f"mkdir -p /root_mount /trajectories_mount && "
+                    f"cp -a /root/{dependency} /root_mount/ && cp -a /root/uv /root_mount/"
+                )
+                await self._run(sandbox, setup_command + " && " + stage_runtime, setup_timeout, log_file)
+                for source, target, read_only in extra_files:
+                    if not read_only or not Path(source).is_file():
+                        raise RuntimeError("OpenSandbox extra inputs must be regular read-only files.")
+                    await self._run(
+                        sandbox, f"mkdir -p {shlex.quote(str(PurePosixPath(target).parent))}", 60, log_file
+                    )
+                    await sandbox.files.write_file(target, await asyncio.to_thread(Path(source).read_bytes), mode=644)
+                if mode == "eval":
+                    # Upload only this verifier's record; never expose gold patches or tests to the agent.
+                    await self._run(sandbox, "mkdir -p /input_mount", 60, log_file)
+                    await sandbox.files.write_file(
+                        f"/input_mount/{input_file.name}", json.dumps(data_point) + "\n", mode=644
+                    )
+                else:
+                    repo_dir = data_point.get("container_repo_dir", "/testbed")
+                    pre_commands = data_point.get("pre_commands", "").strip()
+                    if pre_commands:
+                        command = f"cd {shlex.quote(repo_dir)} && {pre_commands} && " + command
+                    if repo_dir != "/testbed":
+                        command = f"cp -r {shlex.quote(repo_dir)} /testbed && " + command
+                await self._run(sandbox, command, timeout, log_file)
+                relative_output = expected_file.relative_to(output_dir)
+                remote_output = PurePosixPath("/trajectories_mount") / relative_output
+                archive_path = "/tmp/nemo-skills-output.tar.gz"
+                await self._run(
+                    sandbox,
+                    f"test -f {shlex.quote(str(remote_output))} && "
+                    f"tar -czf {archive_path} -C {shlex.quote(str(remote_output.parent))} .",
+                    60,
+                    log_file,
+                )
+                outputs = await sandbox.files.read_bytes(archive_path)
+                await asyncio.to_thread(_extract_outputs, outputs, expected_file.parent)
+                if not expected_file.is_file():
+                    raise RuntimeError(f"OpenSandbox did not return the expected artifact: {expected_file}")
+                return str(expected_file)
             finally:
-                await sandbox.close()
+                try:
+                    await asyncio.wait_for(sandbox.kill(), timeout=30)
+                finally:
+                    await sandbox.close()

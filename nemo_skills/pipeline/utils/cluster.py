@@ -213,6 +213,7 @@ def get_env_variables(cluster_config):
         "OPENAI_API_KEY",
         "OPENSANDBOX_DOMAIN",
         "OPENSANDBOX_API_KEY",
+        "OPENSANDBOX_TLS_VERIFY",
         "GEMINI_API_KEY",
         "HF_TOKEN",
         "NGC_API_KEY",
