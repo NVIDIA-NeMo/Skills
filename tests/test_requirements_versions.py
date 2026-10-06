@@ -24,6 +24,7 @@ This PR bumps several dependency floors/pins to close known CVEs:
   * aiohttp          -> >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
   * nltk             -> >=3.10.3 (fixes CVE-2026-79675 and related High findings)
+  * gradio           -> >=6.16.0 (fixes CVE-2026-49119)
   * starlette        -> >=1.3.1  (fixes CVE-2026-48818 and CVE-2026-54283)
   * setuptools       -> >=78.1.1 (fixes CVE-2025-47273)
   * typer            -> >=0.16   (click 8.2 compatible)
@@ -129,6 +130,13 @@ class TestCoreRequirements:
         specs = {spec.operator: spec.version for spec in req.specifier}
         assert ">=" in specs, f"expected a floor (>=) specifier for datamodel-code-generator, got {req.specifier}"
         assert Version(specs[">="]) >= Version("0.64.0")
+
+    def test_gradio_floor_fixes_cve_2026_49119(self):
+        req, comment = _find_requirement(CORE_REQUIREMENTS, "gradio")
+        specs = {spec.operator: spec.version for spec in req.specifier}
+        assert ">=" in specs, f"expected a floor (>=) specifier for gradio, got {req.specifier}"
+        assert Version(specs[">="]) >= Version("6.16.0")
+        assert "CVE-2026-49119" in comment
 
     def test_bfcl_does_not_reinstall_vulnerable_datamodel_code_generator(self):
         content = BFCL_MODULE.read_text()
@@ -283,9 +291,8 @@ class TestStemRequirements:
         assert "CVE-2026-79675" in comment
 
 
-class TestPyprojectUvOverrides:
-    """pyproject.toml: [tool.uv].override-dependencies still relaxes the transitive pins
-    that would otherwise conflict with the new litellm floor."""
+class TestPyprojectUvDependencyPolicy:
+    """pyproject.toml keeps transitive security floors in the correct uv policy sections."""
 
     @pytest.fixture(scope="class")
     def uv_overrides(self):
@@ -293,6 +300,16 @@ class TestPyprojectUvOverrides:
         overrides = data["tool"]["uv"]["override-dependencies"]
         parsed = {}
         for entry in overrides:
+            req = Requirement(entry)
+            parsed[req.name.lower()] = req
+        return parsed
+
+    @pytest.fixture(scope="class")
+    def uv_constraints(self):
+        data = _load_toml(PYPROJECT_TOML)
+        constraints = data["tool"]["uv"]["constraint-dependencies"]
+        parsed = {}
+        for entry in constraints:
             req = Requirement(entry)
             parsed[req.name.lower()] = req
         return parsed
@@ -316,15 +333,30 @@ class TestPyprojectUvOverrides:
         ("package", "minimum"),
         [
             ("aiohttp", "3.14.3"),
+            ("anyio", "4.14.2"),
             ("msgpack", "1.2.1"),
             ("nltk", "3.10.3"),
-            ("starlette", "1.3.1"),
+            ("prometheus-fastapi-instrumentator", "8.1.0"),
             ("setuptools", "78.1.1"),
         ],
     )
     def test_container_security_override_present(self, uv_overrides, package, minimum):
         assert package in uv_overrides
         specs = {spec.operator: spec.version for spec in uv_overrides[package].specifier}
+        assert ">=" in specs
+        assert Version(specs[">="]) >= Version(minimum)
+
+    @pytest.mark.parametrize(
+        ("package", "minimum"),
+        [
+            ("httpcore2", "2.10.0"),
+            ("httpx2", "2.12.0"),
+            ("starlette", "1.3.1"),
+        ],
+    )
+    def test_container_security_constraint_present(self, uv_constraints, package, minimum):
+        assert package in uv_constraints
+        specs = {spec.operator: spec.version for spec in uv_constraints[package].specifier}
         assert ">=" in specs
         assert Version(specs[">="]) >= Version(minimum)
 

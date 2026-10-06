@@ -17,7 +17,7 @@ flask
 func-timeout
 # Fixes all High GitPython advisories reported through GHSA-wvpp-8hx9-p66j.
 GitPython>=3.1.58
-gradio
+gradio>=6.16.0  # CVE-2026-49119
 httpx
 huggingface_hub
 hydra-core
