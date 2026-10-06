@@ -90,6 +90,9 @@ class OpenSandboxExecutor:
         self.connection_options = dict(
             domain=parsed.netloc,
             api_key=api_key,
+            # Execd adapters use config.headers, not config.api_key. The server
+            # proxy authenticates readiness, commands, and file requests too.
+            headers={"OPEN-SANDBOX-API-KEY": api_key},
             protocol=parsed.scheme,
             request_timeout=timedelta(seconds=request_timeout_s),
             use_server_proxy=True,

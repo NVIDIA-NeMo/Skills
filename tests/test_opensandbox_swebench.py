@@ -486,3 +486,31 @@ def test_native_harness_runs_through_remote_backend_and_returns_prediction(
     create.assert_awaited_once()
     sandbox.kill.assert_awaited_once()
     sandbox.close.assert_awaited_once()
+
+
+def test_sdk_health_check_authenticates_through_server_proxy(executor):
+    import httpx
+    from opensandbox.adapters.health_adapter import HealthAdapter
+
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.headers.get("OPEN-SANDBOX-API-KEY") != "test-only-key":
+            return httpx.Response(401, json={"code": "MISSING_API_KEY"})
+        return httpx.Response(200)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            config = executor.ConnectionConfig(**executor.connection_options, transport=client._transport)
+            endpoint = SimpleNamespace(endpoint="sandbox.example/v1/sandboxes/id/proxy/44772", headers={})
+            health = HealthAdapter(config, endpoint)
+            try:
+                assert await health.ping("id") is True
+            finally:
+                await health._httpx_client.aclose()
+
+    asyncio.run(run())
+    assert len(requests) == 1
+    assert requests[0].url.path == "/v1/sandboxes/id/proxy/44772/ping"
+    assert requests[0].headers["OPEN-SANDBOX-API-KEY"] == "test-only-key"
