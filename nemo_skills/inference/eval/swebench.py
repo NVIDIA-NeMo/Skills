@@ -2154,7 +2154,7 @@ class SweBenchGenerationTask(GenerationTask):
                         timeout=tests_timeout + 120,
                         extra_mounts=[(pred_file, pred_mounted_path, True)],
                     )
-            except ValueError:
+            except (ValueError, RuntimeError):
                 LOG.error("Failed to execute SWE-bench evaluation command for %s", data_point["instance_id"])
                 report_json = {
                     data_point["instance_id"]: {
