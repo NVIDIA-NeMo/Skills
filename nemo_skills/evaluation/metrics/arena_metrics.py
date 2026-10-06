@@ -45,8 +45,10 @@ class ArenaMetrics(BaseMetrics):
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         prediction = prediction.copy()
-        prediction["judgement-gen-base"] = "Rating: [[A>>B]]"
-        prediction["judgement-base-gen"] = "Rating: [[B>>A]]"
+        # Worst labels for the candidate (see _GEN_BASE_PREFERENCE / _BASE_GEN_PREFERENCE).
+        # The previous A>>B / B>>A pair marked over-length gens as strong *wins*.
+        prediction["judgement-gen-base"] = f"Rating: [[{_GEN_BASE_PREFERENCE[-1]}]]"
+        prediction["judgement-base-gen"] = f"Rating: [[{_BASE_GEN_PREFERENCE[-1]}]]"
         return prediction
 
     @staticmethod
