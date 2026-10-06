@@ -637,9 +637,10 @@ class SweBenchGenerationTask(GenerationTask):
         ):
             self.cfg.extra_instructions.append("openhands-use-finish-tool")
 
-        # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
+        # Install the agent framework and the SWE-bench evaluation harness.
+        # Here's how it works (Apptainer backend only):
         #
-        # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
+        # 1. This code installs the agent framework and the eval harness in the Nemo-Skills container.
         #    All required files, venvs and dependencies are stored in /root.
         # 2. When we start SWE-bench containers via Apptainer, we mount /root to /root_mount.
         # 3. Inside of the child containers, we copy the required files from /root_mount to /root and run from there.
@@ -647,10 +648,25 @@ class SweBenchGenerationTask(GenerationTask):
         # The goal is to run inference & evaluation inside of the SWE-bench containers,
         # but avoid having to download & install everything in each container separately.
 
-        setup_commands = []
+        common_setup_commands = []  # commands installing setup dependencies (e.g. uv)
+
+        if self.opensandbox_executor is not None:
+            # For OpenSandbox, we run the setup inside of per-task containers,
+            # so git/curl/ca-certificates/make are not guaranteed to be present.
+            # This installs them for both Ubuntu and Alpine.
+            common_setup_commands.append(
+                "if command -v apk >/dev/null 2>&1; then "
+                "    apk info -e git curl ca-certificates make >/dev/null || "
+                "    apk add --no-cache git curl ca-certificates make; "
+                "else "
+                "    dpkg -s git curl ca-certificates make >/dev/null 2>&1 || "
+                "    (apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install "
+                "    -y --no-install-recommends --no-upgrade git curl ca-certificates make); "
+                "fi"
+            )
 
         # Install uv.
-        setup_commands.append(
+        common_setup_commands.append(
             # install uv
             "curl -Lf https://astral.sh/uv/install.sh | sh && "
             "export PATH=/root/.local/bin:$PATH && "
@@ -660,7 +676,8 @@ class SweBenchGenerationTask(GenerationTask):
             "export UV_TOOL_BIN_DIR=/root/uv/tool-bin"
         )
 
-        # Install SWE-agent/OpenHands.
+        agent_setup_commands = []  # commands installing the agent framework
+
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             if self.cfg.multilingual:
                 if self.cfg.agent_framework_repo is None:
@@ -673,7 +690,7 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_commit is None:
                     self.cfg.agent_framework_commit = "HEAD"
 
-            setup_commands.append(
+            agent_setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/SWE-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
@@ -692,7 +709,7 @@ class SweBenchGenerationTask(GenerationTask):
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
             if self.cfg.agent_framework_commit is None:
                 self.cfg.agent_framework_commit = "v2.4.6"
-            setup_commands.append(
+            agent_setup_commands.append(
                 # clone the mini-swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
@@ -725,7 +742,7 @@ class SweBenchGenerationTask(GenerationTask):
                     # Future versions are not supported for now and will require significant changes.
                     self.cfg.agent_framework_commit = "1.2.1"
 
-            setup_commands.append(
+            agent_setup_commands.append(
                 # install python 3.12 with uv
                 "uv python install 3.12 && "
                 # install poetry in an isolated environment
@@ -773,7 +790,7 @@ class SweBenchGenerationTask(GenerationTask):
                 )
             if self.cfg.agent_framework_commit is None:
                 self.cfg.agent_framework_commit = OPENCODE_DEFAULT_VERSION
-            setup_commands.append(
+            agent_setup_commands.append(
                 "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
                 "    export NODE_ARCH=linux-arm64; "
                 "else "
@@ -800,7 +817,7 @@ class SweBenchGenerationTask(GenerationTask):
                 )
             if self.cfg.agent_framework_commit is None:
                 self.cfg.agent_framework_commit = CLAUDE_CODE_DEFAULT_VERSION
-            setup_commands.append(
+            agent_setup_commands.append(
                 "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
                 "    export NODE_ARCH=linux-arm64; "
                 "else "
@@ -830,15 +847,15 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
-        agent_setup_command = " && ".join(setup_commands)
-        eval_setup_start = len(setup_commands)
+        eval_setup_commands = []  # commands installing the evaluation harness
+
         if self.cfg.evaluate and self.cfg.dataset_type in [
             SupportedDatasetTypes.swe_bench,
             SupportedDatasetTypes.swe_bench_pro,
             SupportedDatasetTypes.swe_rebench_v2,
         ]:
             # Install the SWE-bench/SWE-bench-Pro/SWE-rebench-V2 evaluation harness.
-            setup_commands.append(
+            eval_setup_commands.append(
                 # clone the repo
                 "rm -rf /root/SWE-bench && "
                 f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
@@ -849,16 +866,16 @@ class SweBenchGenerationTask(GenerationTask):
             )
             if self.cfg.dataset_type != SupportedDatasetTypes.swe_rebench_v2:
                 # install dependencies (not needed for swe-rebench-v2)
-                setup_commands.append("source venv/bin/activate && uv pip install -e .")
+                eval_setup_commands.append("source venv/bin/activate && uv pip install -e .")
 
         # Run all commands with retries and timeout
-        combined_setup_command = " && ".join(setup_commands)
         if self.opensandbox_executor is None:
+            combined_setup_command = " && ".join(common_setup_commands + agent_setup_commands + eval_setup_commands)
             asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
         else:
             self.opensandbox_setup_commands = {
-                "agent": agent_setup_command,
-                "eval": " && ".join([setup_commands[0], *setup_commands[eval_setup_start:]]),
+                "agent": " && ".join(common_setup_commands + agent_setup_commands),
+                "eval": " && ".join(common_setup_commands + eval_setup_commands),
             }
 
         # Set up the scratch dir where Apptainer mounts are staged (see _execute_container_command)
