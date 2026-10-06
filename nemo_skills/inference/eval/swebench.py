@@ -566,8 +566,16 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.execution_backend == "opensandbox":
             from nemo_skills.inference.eval.opensandbox import OpenSandboxExecutor
 
-            if self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
-                raise ValueError("OpenSandbox currently supports agent_framework=mini_swe_agent only.")
+            if self.cfg.agent_framework not in {
+                SupportedAgentFrameworks.mini_swe_agent,
+                SupportedAgentFrameworks.swe_agent,
+                SupportedAgentFrameworks.openhands,
+                SupportedAgentFrameworks.opencode,
+                SupportedAgentFrameworks.claude_code,
+            }:
+                raise ValueError(
+                    "OpenSandbox requires a supported agent harness; supplied-patch modes are not supported."
+                )
             if self.cfg.dataset_type != SupportedDatasetTypes.swe_bench or self.cfg.swe_zero_container:
                 raise ValueError(
                     "OpenSandbox currently supports standard SWE-bench and Multilingual task images only."
@@ -986,6 +994,7 @@ class SweBenchGenerationTask(GenerationTask):
                 mode=mode,
                 timeout=timeout,
                 extra_files=extra_mounts,
+                agent_framework=self.cfg.agent_framework,
             )
 
         mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)

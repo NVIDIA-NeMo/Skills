@@ -64,7 +64,8 @@ When this path is accessed during evaluation, `{instance_id}` will be replaced b
 
 #### Remote tool execution with OpenSandbox
 
-For mini-SWE-agent, native `ns eval` and the SWE generation module support
+For mini-SWE-agent, SWE-agent, OpenHands, OpenCode, and Claude Code, native
+`ns eval` and the SWE generation module support
 `++execution_backend=opensandbox`. The model server stays on GPU nodes; agent
 commands and grading run in separate, fresh OpenSandbox task containers. Gym is
 not required. Apptainer remains the default backend.
@@ -123,8 +124,11 @@ downloaded before each sandbox is terminated. Sandboxes are also terminated on
 command failure or cancellation.
 Infrastructure failures propagate rather than being scored as incorrect patches.
 
-Initial support covers mini-SWE-agent on standard SWE-bench and SWE-bench
-Multilingual OCI images. SWE-Zero, other agent frameworks, and `block_network`
+Support covers these five agent harnesses on standard SWE-bench and SWE-bench
+Multilingual OCI images. Select one with `++agent_framework=mini_swe_agent`,
+`swe_agent`, `openhands`, `opencode`, or `claude_code`; use that harness's agent config
+or leave `agent_config` unset for its default. SWE-Zero, supplied-patch modes,
+other benchmark dataset types, and `block_network`
 (the local Unix-socket forwarding path) are not supported. Each task has its own sandbox network, so fixed-port multilingual verifiers do
 not share the coordinator network. Start with a few samples before increasing
 concurrency to match the service's capacity.

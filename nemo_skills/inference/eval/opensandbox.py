@@ -198,6 +198,7 @@ class OpenSandboxExecutor:
         mode,
         timeout,
         extra_files=(),
+        agent_framework="mini_swe_agent",
     ) -> str:
         image = (
             data_point["container_formatter"]
@@ -222,10 +223,16 @@ class OpenSandboxExecutor:
                 metadata={"benchmark": "swe-bench", "instance_id": data_point["instance_id"][:63], "mode": mode},
             )
             try:
-                dependency = "mini-swe-agent" if mode == "agent" else "SWE-bench"
-                stage_runtime = (
-                    f"mkdir -p /root_mount /trajectories_mount && "
-                    f"cp -a /root/{dependency} /root_mount/ && cp -a /root/uv /root_mount/"
+                runtime_dirs = {
+                    "mini_swe_agent": ("mini-swe-agent", "uv"),
+                    "swe_agent": ("SWE-agent", "uv"),
+                    "openhands": ("OpenHands", "uv", "tmux", "jq"),
+                    "opencode": ("node",),
+                    "claude_code": ("node",),
+                }
+                directories = runtime_dirs[agent_framework] if mode == "agent" else ("SWE-bench", "uv")
+                stage_runtime = "mkdir -p /root_mount /trajectories_mount && " + " && ".join(
+                    f"cp -a /root/{directory} /root_mount/" for directory in directories
                 )
                 await self._run(sandbox, setup_command + " && " + stage_runtime, setup_timeout, log_file)
                 for source, target, read_only in extra_files:

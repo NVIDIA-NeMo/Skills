@@ -16,6 +16,7 @@ import asyncio
 import io
 import json
 import tarfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -117,9 +118,11 @@ def test_remote_agent_downloads_artifact_and_never_uploads_gold_data(executor, m
     sandbox.close.assert_awaited_once()
 
 
-def test_verifier_receives_only_its_record_in_a_fresh_sandbox(executor, monkeypatch, tmp_path):
+@pytest.mark.parametrize("framework", ["mini_swe_agent", "swe_agent", "openhands", "opencode", "claude_code"])
+def test_verifier_receives_only_its_record_in_a_fresh_sandbox(executor, monkeypatch, tmp_path, framework):
     sandbox, create = _sandbox(executor, monkeypatch, _archive())
     args = _arguments(tmp_path, mode="eval")
+    args["agent_framework"] = framework
     asyncio.run(executor.execute(**args))
     record_upload = sandbox.files.write_file.call_args_list[-1]
     assert record_upload.args[0] == "/input_mount/dataset.jsonl"
@@ -194,7 +197,10 @@ def test_remote_artifact_symlinks_are_rejected(tmp_path):
 
 
 @pytest.mark.parametrize("proxy_host", [None, "10.0.0.2"])
-def test_opensandbox_setup_stays_remote_and_separates_agent_from_verifier(executor, monkeypatch, tmp_path, proxy_host):
+@pytest.mark.parametrize("framework", ["mini_swe_agent", "swe_agent", "openhands", "opencode", "claude_code"])
+def test_opensandbox_setup_stays_remote_and_separates_agent_from_verifier(
+    executor, monkeypatch, tmp_path, proxy_host, framework
+):
     detect = MagicMock(return_value="10.0.0.3")
     monkeypatch.setattr(executor, "detect_proxy_host", detect)
     monkeypatch.setattr(SweBenchGenerationTask, "_execute_local_command", AsyncMock())
@@ -206,7 +212,7 @@ def test_opensandbox_setup_stays_remote_and_separates_agent_from_verifier(execut
         _init_nested=True,
         input_file=str(dataset),
         output_file=str(tmp_path / "output.jsonl"),
-        agent_framework="mini_swe_agent",
+        agent_framework=framework,
         multilingual=True,
         execution_backend="opensandbox",
         opensandbox_proxy_host=proxy_host,
@@ -214,10 +220,17 @@ def test_opensandbox_setup_stays_remote_and_separates_agent_from_verifier(execut
     )
     task = SweBenchGenerationTask(cfg)
     task._execute_local_command.assert_not_called()
-    assert "mini-swe-agent" in task.opensandbox_setup_commands["agent"]
+    package = {
+        "mini_swe_agent": "mini-swe-agent",
+        "swe_agent": "SWE-agent",
+        "openhands": "OpenHands",
+        "opencode": "opencode-ai",
+        "claude_code": "@anthropic-ai/claude-code",
+    }[framework]
+    assert package in task.opensandbox_setup_commands["agent"]
     assert "SWE-bench" not in task.opensandbox_setup_commands["agent"]
     assert "SWE-bench" in task.opensandbox_setup_commands["eval"]
-    assert "mini-swe-agent" not in task.opensandbox_setup_commands["eval"]
+    assert package not in task.opensandbox_setup_commands["eval"]
     assert task.api_base == "http://gpu.example:8000/v1"
     assert task.cfg.opensandbox_proxy_host == (proxy_host or "10.0.0.3")
     assert detect.call_count == (1 if proxy_host is None else 0)
@@ -230,7 +243,9 @@ def test_backend_dispatch_preserves_native_artifact_contract(executor, monkeypat
     args["data_point"]["instance_id"] = instance_id
     args["mode"] = "eval"
     task = object.__new__(SweBenchGenerationTask)
-    task.cfg = SimpleNamespace(input_file=str(args["input_file"]), setup_timeout=args["setup_timeout"])
+    task.cfg = SimpleNamespace(
+        input_file=str(args["input_file"]), setup_timeout=args["setup_timeout"], agent_framework="mini_swe_agent"
+    )
     task.opensandbox_executor = executor
     task.opensandbox_setup_commands = {"eval": "install-runtime"}
     task.output_dir = args["output_dir"]
@@ -367,3 +382,107 @@ def test_tls_transport_disables_verification_and_closes_on_success_or_create_fai
     connection = create.call_args.kwargs["connection_config"]
     assert connection.transport is not None
     assert connection._owns_transport is False
+
+
+@pytest.mark.parametrize("framework", ["mini_swe_agent", "swe_agent", "openhands", "opencode", "claude_code"])
+@pytest.mark.parametrize("multilingual", [False, True])
+def test_native_harness_runs_through_remote_backend_and_returns_prediction(
+    executor, monkeypatch, tmp_path, framework, multilingual
+):
+    args = _arguments(tmp_path)
+    data_point = {
+        **args["data_point"],
+        "base_commit": "abc123",
+        "language": "python",
+        "dataset_name": "SWE-bench/SWE-bench_Multilingual",
+        "repo": "owner/repo",
+    }
+    instance_id = data_point["instance_id"]
+    patch = "diff --git a/main.py b/main.py\n"
+    if framework == "mini_swe_agent":
+        files = {f"{instance_id}.traj.json": json.dumps({"info": {"submission": patch}})}
+    elif framework == "swe_agent":
+        files = {f"{instance_id}.pred": json.dumps({"instance_id": instance_id, "model_patch": patch})}
+    elif framework == "openhands":
+        files = {
+            "output.jsonl": json.dumps(
+                {
+                    "instance_id": instance_id,
+                    "test_result": {"git_patch": patch},
+                    "metadata": {"llm_config": {"model": "served-model"}},
+                }
+            )
+        }
+    else:
+        files = {"model.patch": patch}
+        if framework == "claude_code":
+            files["claude-code.exit-code"] = "0\n"
+    files["worker.log"] = "remote artifact"
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in files.items():
+            content = content.encode()
+            member = tarfile.TarInfo(name)
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+    sandbox, create = _sandbox(executor, monkeypatch, buffer.getvalue())
+    monkeypatch.setattr(SweBenchGenerationTask, "_execute_local_command", AsyncMock())
+    monkeypatch.setattr("nemo_skills.inference.eval.opensandbox.OpenSandboxExecutor", lambda **kwargs: executor)
+    monkeypatch.setattr("nemo_skills.inference.eval.swebench.SCRATCH_DIR", tmp_path)
+    proxy_calls = []
+
+    @asynccontextmanager
+    async def capture(upstream, output_path, **kwargs):
+        assert upstream == "http://gpu.example:8000/v1"
+        proxy_calls.append(kwargs)
+        yield "http://10.0.0.2:45678/v1"
+
+    monkeypatch.setattr("nemo_skills.inference.eval.swebench.capture_first_llm_request", capture)
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(json.dumps(data_point) + "\n")
+    cfg = SweBenchGenerationConfig(
+        _init_nested=True,
+        input_file=str(dataset),
+        output_file=str(tmp_path / "results" / "output.jsonl"),
+        agent_framework=framework,
+        multilingual=multilingual,
+        execution_backend="opensandbox",
+        opensandbox_proxy_host="10.0.0.2",
+        server=OmegaConf.create({"base_url": "http://gpu.example:8000/v1", "model": "served-model"}),
+    )
+    cfg.inference.extra_body = OmegaConf.create({"chat_template_kwargs": {"enable_thinking": False}})
+    task = SweBenchGenerationTask(cfg)
+    prediction = Path(asyncio.run(task._run_agent(data_point)))
+    assert json.loads(prediction.read_text())["model_patch"] == patch
+    assert (prediction.parent / "worker.log").read_text() == "remote artifact"
+    task._execute_local_command.assert_not_called()
+    assert len(proxy_calls) == 1
+    assert proxy_calls[0]["host"] == "10.0.0.2"
+    if framework in {"mini_swe_agent", "swe_agent", "claude_code"}:
+        assert proxy_calls[0]["request_transform"] is not None
+    commands = "\n".join(call.args[0] for call in sandbox.commands.run.call_args_list)
+    uploads = "\n".join(call.args[1].decode() for call in sandbox.files.write_file.call_args_list)
+    assert "http://10.0.0.2:45678" in commands + uploads
+    paths = {
+        "mini_swe_agent": ["mini-swe-agent", "uv"],
+        "swe_agent": ["SWE-agent", "uv"],
+        "openhands": ["OpenHands", "uv", "tmux", "jq"],
+        "opencode": ["node"],
+        "claude_code": ["node"],
+    }[framework]
+    for path in paths:
+        assert f"cp -a /root/{path} /root_mount/" in commands
+    assert "cp -a /root/SWE-bench /root_mount/" not in commands
+    if framework in {"opencode", "claude_code"}:
+        assert "cp -a /root/uv /root_mount/" not in commands
+    for upload in sandbox.files.write_file.call_args_list:
+        content = upload.args[1].decode()
+        assert "gold patch" not in content
+        assert "hidden test patch" not in content
+    if framework == "openhands":
+        record = json.loads(sandbox.files.write_file.call_args_list[0].args[1])
+        assert record["instance_id"] == instance_id
+        assert "patch" not in record and "test_patch" not in record
+    create.assert_awaited_once()
+    sandbox.kill.assert_awaited_once()
+    sandbox.close.assert_awaited_once()
