@@ -23,7 +23,7 @@ This PR bumps several dependency floors/pins to close known CVEs:
   * lxml             -> >=6.1.0  (fixes GHSA-vfmq-68hx-4jfw)
   * aiohttp          -> >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          -> >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
-  * nltk             -> >=3.10.3 (fixes CVE-2026-79675 and related High findings)
+  * nltk             -> immutable upstream security commit for CVE-2026-81726
   * gradio           -> >=6.16.0 (fixes CVE-2026-49119)
   * starlette        -> >=1.3.1  (fixes CVE-2026-48818 and CVE-2026-54283)
   * setuptools       -> >=78.1.1 (fixes CVE-2025-47273)
@@ -40,6 +40,7 @@ one of these floors) will fail CI, rather than only being caught during a
 manual dependency resolve.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -52,10 +53,19 @@ REPO_ROOT = Path(__file__).parent.parent
 CORE_REQUIREMENTS = REPO_ROOT / "core" / "requirements.txt"
 PIPELINE_REQUIREMENTS = REPO_ROOT / "requirements" / "pipeline.txt"
 STEM_REQUIREMENTS = REPO_ROOT / "requirements" / "stem.txt"
+SANDBOX_LOCK = REPO_ROOT / "requirements" / "sandbox.lock"
+MODEL_COMPARISON_REQUIREMENTS = REPO_ROOT / "recipes" / "data-integrity" / "model_comparison" / "requirements.txt"
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
+NLTK_VEX = REPO_ROOT / "security" / "nltk-cve-2026-81726.openvex.json"
 BFCL_MODULE = REPO_ROOT / "nemo_skills" / "inference" / "eval" / "bfcl.py"
 NEMO_SKILLS_DOCKERFILE = REPO_ROOT / "dockerfiles" / "Dockerfile.nemo-skills"
-BUILD_PYPROJECTS = [PYPROJECT_TOML, REPO_ROOT / "core" / "pyproject.toml", REPO_ROOT / "tools" / "pyproject.toml"]
+BUILD_PYPROJECTS = [
+    PYPROJECT_TOML,
+    REPO_ROOT / "core" / "pyproject.toml",
+    REPO_ROOT / "tools" / "pyproject.toml",
+]
+NLTK_SECURITY_COMMIT = "574270e2ad368c8816976e584da56ddfb3fefbad"
+NLTK_SECURITY_URL = f"git+https://github.com/nltk/nltk.git@{NLTK_SECURITY_COMMIT}"
 
 
 def _load_toml(path: Path) -> dict:
@@ -94,6 +104,12 @@ def _find_requirement(path: Path, package_name: str) -> tuple[Requirement, str]:
         if req.name.lower() == package_name.lower():
             return req, comment_part
     raise AssertionError(f"Could not find requirement '{package_name}' in {path}")
+
+
+def _assert_nltk_security_commit(req: Requirement) -> None:
+    assert req.name.lower() == "nltk"
+    assert not req.specifier, f"NLTK must use the exact patched source commit, not {req.specifier}"
+    assert req.url == NLTK_SECURITY_URL
 
 
 class TestCoreRequirements:
@@ -137,6 +153,11 @@ class TestCoreRequirements:
         assert ">=" in specs, f"expected a floor (>=) specifier for gradio, got {req.specifier}"
         assert Version(specs[">="]) >= Version("6.16.0")
         assert "CVE-2026-49119" in comment
+
+    def test_nltk_uses_unreleased_upstream_cve_fix(self):
+        req, comment = _find_requirement(CORE_REQUIREMENTS, "nltk")
+        _assert_nltk_security_commit(req)
+        assert "CVE-2026-81726" in comment
 
     def test_bfcl_does_not_reinstall_vulnerable_datamodel_code_generator(self):
         content = BFCL_MODULE.read_text()
@@ -208,6 +229,13 @@ class TestPatchedWandbCoreDockerBuild:
         assert "V(v('nltk')) >= V('3.10.3')" in dockerfile
         assert "V(v('starlette')) >= V('1.3.1')" in dockerfile
         assert "V(v('setuptools')) >= V('78.1.1')" in dockerfile
+
+    def test_nltk_patch_source_and_provenance_are_verified(self, dockerfile):
+        assert f"NLTK_SECURITY_COMMIT={NLTK_SECURITY_COMMIT}" in dockerfile
+        assert "github.com/nltk/nltk.git@${NLTK_SECURITY_COMMIT}" in dockerfile
+        assert "d('nltk').read_text('direct_url.json')" in dockerfile
+        assert "direct['vcs_info']['requested_revision'] == expected" in dockerfile
+        assert "direct['vcs_info']['commit_id'] == expected" in dockerfile
 
     def test_ray_private_aiohttp_and_uv_wheel_are_remediated(self, dockerfile):
         assert "ray/_private/runtime_env/agent/thirdparty_files" in dockerfile
@@ -283,12 +311,14 @@ class TestStemRequirements:
             if code_part == "lxml":
                 pytest.fail(f"lxml requirement has no version floor: {raw_line!r}")
 
-    def test_nltk_floor_fixes_current_critical_and_high_findings(self):
+    def test_nltk_uses_unreleased_upstream_cve_fix(self):
         req, comment = _find_requirement(STEM_REQUIREMENTS, "nltk")
-        specs = {spec.operator: spec.version for spec in req.specifier}
-        assert ">=" in specs, f"expected a floor (>=) specifier for nltk, got {req.specifier}"
-        assert Version(specs[">="]) >= Version("3.10.3")
-        assert "CVE-2026-79675" in comment
+        _assert_nltk_security_commit(req)
+        assert "CVE-2026-81726" in comment
+
+    def test_sandbox_lock_uses_same_nltk_security_commit(self):
+        req, _ = _find_requirement(SANDBOX_LOCK, "nltk")
+        _assert_nltk_security_commit(req)
 
 
 class TestPyprojectUvDependencyPolicy:
@@ -335,7 +365,6 @@ class TestPyprojectUvDependencyPolicy:
             ("aiohttp", "3.14.3"),
             ("anyio", "4.14.2"),
             ("msgpack", "1.2.1"),
-            ("nltk", "3.10.3"),
             ("prometheus-fastapi-instrumentator", "8.1.0"),
             ("setuptools", "78.1.1"),
         ],
@@ -345,6 +374,10 @@ class TestPyprojectUvDependencyPolicy:
         specs = {spec.operator: spec.version for spec in uv_overrides[package].specifier}
         assert ">=" in specs
         assert Version(specs[">="]) >= Version(minimum)
+
+    def test_nltk_override_uses_unreleased_upstream_cve_fix(self, uv_overrides):
+        assert "nltk" in uv_overrides
+        _assert_nltk_security_commit(uv_overrides["nltk"])
 
     @pytest.mark.parametrize(
         ("package", "minimum"),
@@ -364,6 +397,25 @@ class TestPyprojectUvDependencyPolicy:
         data = _load_toml(PYPROJECT_TOML)
         dynamic_deps = data["tool"]["setuptools"]["dynamic"]["dependencies"]
         assert dynamic_deps["file"] == ["core/requirements.txt", "requirements/pipeline.txt"]
+
+
+def test_nltk_vex_is_narrow_and_tied_to_the_audited_commit():
+    document = json.loads(NLTK_VEX.read_text())
+    assert document["@context"] == "https://openvex.dev/ns/v0.2.0"
+    assert document["version"] == 1
+    assert len(document["statements"]) == 1
+    statement = document["statements"][0]
+    assert statement["vulnerability"]["name"] == "CVE-2026-81726"
+    assert statement["products"] == [{"@id": "pkg:pypi/nltk@3.10.3"}]
+    assert statement["status"] == "fixed"
+    assert NLTK_SECURITY_COMMIT in statement["status_notes"]
+
+
+def test_data_integrity_recipe_uses_same_nltk_security_commit():
+    req, _ = _find_requirement(MODEL_COMPARISON_REQUIREMENTS, "nltk")
+    _assert_nltk_security_commit(req)
+    readme = (REPO_ROOT / "recipes" / "data-integrity" / "README.md").read_text()
+    assert NLTK_SECURITY_URL in readme
 
 
 class TestPyprojectCommentUpdated:

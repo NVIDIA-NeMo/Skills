@@ -56,6 +56,7 @@ FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer
 # using ubuntu instead of debian for easier apptainer installation on arm64
 FROM ubuntu:22.04 AS runtime-base
 ARG WANDB_CORE_COMMIT
+ARG NLTK_SECURITY_COMMIT=574270e2ad368c8816976e584da56ddfb3fefbad
 
 # Install Python and other dependencies
 RUN apt-get update && \
@@ -119,7 +120,8 @@ RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
 
-RUN pip install langdetect absl-py immutabledict "nltk>=3.10.3" ipython && \
+RUN pip install langdetect absl-py immutabledict \
+        "nltk @ git+https://github.com/nltk/nltk.git@${NLTK_SECURITY_COMMIT}" ipython && \
     python -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
     nltk.download('stopwords'); nltk.download('averaged_perceptron_tagger_eng'); download('en_core_web_sm')"
 
@@ -146,6 +148,7 @@ RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
 # created it. Replacement prevents metadata from older pre-resolution packages
 # from surviving alongside the resolved versions.
 FROM runtime-base
+ARG NLTK_SECURITY_COMMIT
 RUN rm -rf /usr/local
 COPY --from=dependency-installer /usr/local/ /usr/local/
 # Replace W&B's vulnerable release binary with the source-compatible patched core
@@ -167,10 +170,13 @@ RUN site_packages="$(python -c "import sysconfig; print(sysconfig.get_paths()['p
 
 # Guard the final resolved environment and Ray's private import path against the
 # High findings seen in the multi-architecture image scans.
-RUN python -c "from importlib.metadata import version as v; from packaging.version import Version as V; \
+RUN python -c "import json; from importlib.metadata import distribution as d, version as v; from packaging.version import Version as V; \
                assert V(v('aiohttp')) >= V('3.14.3'), v('aiohttp'); \
                assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
                assert V(v('nltk')) >= V('3.10.3'), v('nltk'); \
+               direct = json.loads(d('nltk').read_text('direct_url.json')); expected = '${NLTK_SECURITY_COMMIT}'; \
+               assert direct['vcs_info']['requested_revision'] == expected, direct; \
+               assert direct['vcs_info']['commit_id'] == expected, direct; \
                assert V(v('starlette')) >= V('1.3.1'), v('starlette'); \
                assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
                print('aiohttp/msgpack/nltk/starlette/setuptools security floors OK')" && \

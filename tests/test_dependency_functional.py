@@ -34,7 +34,7 @@ Bumps under test:
                                so guarded by importorskip)
   * aiohttp          >=3.14.3 (fixes CVE-2026-69244)
   * msgpack          >=1.2.1  (fixes GHSA-6v7p-g79w-8964)
-  * nltk             >=3.10.3 (fixes CVE-2026-79675 and related High findings)
+  * nltk             pinned to upstream commit 574270e (fixes CVE-2026-81726)
   * starlette        >=1.3.1  (fixes CVE-2026-48818 and CVE-2026-54283)
   * setuptools       >=78.1.1 (fixes CVE-2025-47273)
 
@@ -44,11 +44,14 @@ API keys) so they run in the existing `unit-tests` (`-m "not gpu"`) CI job.
 
 import asyncio
 import json
-from importlib.metadata import version
+import pickle
+from importlib.metadata import distribution, version
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+NLTK_SECURITY_COMMIT = "574270e2ad368c8816976e584da56ddfb3fefbad"
 
 # ---------------------------------------------------------------------------
 # GitPython >=3.1.58 and datamodel-code-generator >=0.64.0
@@ -81,6 +84,97 @@ def test_python_security_floors():
     assert Version(version("nltk")) >= Version("3.10.3")
     assert Version(version("starlette")) >= Version("1.3.1")
     assert Version(version("setuptools")) >= Version("78.1.1")
+
+
+def test_nltk_security_patch_provenance():
+    """Version 3.10.3 alone is vulnerable; prove this is the patched Git tree."""
+    direct_url_text = distribution("nltk").read_text("direct_url.json")
+    assert direct_url_text, "NLTK must be installed from the audited upstream commit"
+    direct_url = json.loads(direct_url_text)
+    assert direct_url["vcs_info"]["requested_revision"] == NLTK_SECURITY_COMMIT
+    assert direct_url["vcs_info"]["commit_id"] == NLTK_SECURITY_COMMIT
+
+
+def test_nltk_model_artifact_paths_stay_inside_pathsec(tmp_path, monkeypatch):
+    """Drive every CVE-2026-81726 model I/O sink against an outside path."""
+    import nltk.data
+    import numpy as np
+    from nltk import pathsec
+    from nltk.classify.maxent import save_maxent_params
+    from nltk.parse import DependencyGraph, transitionparser
+    from nltk.parse.transitionparser import TransitionParser
+    from nltk.tag.perceptron import AveragedPerceptron, PerceptronTagger
+
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    monkeypatch.setattr(nltk.data, "path", [str(allowed)])
+    monkeypatch.setattr(pathsec, "ENFORCE", True)
+    monkeypatch.setattr(pathsec, "_get_allowed_roots", lambda: (str(allowed.resolve()),))
+
+    weights_path = outside / "weights.json"
+    with pytest.raises(PermissionError):
+        AveragedPerceptron({"feature": {"NN": 1.0}}).save(weights_path)
+    assert not weights_path.exists()
+
+    weights_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(PermissionError):
+        AveragedPerceptron().load(weights_path)
+    assert weights_path.read_text(encoding="utf-8") == "{}"
+
+    tagger_path = outside / "tagger"
+    with pytest.raises(PermissionError):
+        PerceptronTagger(load=False).save_to_json(lang="eng", loc=tagger_path)
+    assert not tagger_path.exists()
+
+    maxent_path = outside / "maxent"
+    with pytest.raises(PermissionError):
+        save_maxent_params(np.array([1.0]), {}, [], {}, tab_dir=maxent_path)
+    assert not maxent_path.exists()
+
+    parser_model = outside / "parser.pickle"
+    parser_model.write_bytes(pickle.dumps({}))
+    with pytest.raises(PermissionError):
+        TransitionParser("arc-standard").parse([], str(parser_model))
+
+    class _Array:
+        def astype(self, *args, **kwargs):
+            return self
+
+    class _Features(_Array):
+        def __init__(self):
+            self.indices = _Array()
+            self.indptr = _Array()
+
+    class _Model:
+        def fit(self, *args, **kwargs):
+            return self
+
+    class _SVM:
+        @staticmethod
+        def SVC(*args, **kwargs):
+            return _Model()
+
+    graph = DependencyGraph("Economic\tJJ\t2\tATT\nnews\tNN\t3\tSBJ\nhas\tVBD\t0\tROOT\n")
+    trained_model = outside / "trained.pickle"
+    monkeypatch.setattr(
+        transitionparser,
+        "load_svmlight_file",
+        lambda _name: (_Features(), None),
+        raising=False,
+    )
+    monkeypatch.setattr(transitionparser, "svm", _SVM(), raising=False)
+    with pytest.raises(PermissionError):
+        TransitionParser("arc-standard").train([graph], str(trained_model), verbose=False)
+    assert not trained_model.exists()
+
+
+def test_nltk_tokenizers_still_work_after_security_patch():
+    from nltk.tokenize import PunktSentenceTokenizer, wordpunct_tokenize
+
+    assert PunktSentenceTokenizer().tokenize("One. Two.") == ["One.", "Two."]
+    assert wordpunct_tokenize("alpha, beta") == ["alpha", ",", "beta"]
 
 
 def test_fastapi_constructs_with_fixed_starlette():

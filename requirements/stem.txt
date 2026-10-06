@@ -92,7 +92,7 @@ mygene
 myvariant
 networkx
 nibabel
-nltk>=3.10.3  # fixes CVE-2026-79675, CVE-2026-71513, CVE-2026-72818, CVE-2026-78680
+nltk @ git+https://github.com/nltk/nltk.git@574270e2ad368c8816976e584da56ddfb3fefbad  # CVE-2026-81726 unreleased upstream fix
 nuclear
 num2words
 numba

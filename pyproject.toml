@@ -90,7 +90,9 @@ override-dependencies = [
     # environment above the first fixed releases.
     "aiohttp>=3.14.3",
     "msgpack>=1.2.1",
-    "nltk>=3.10.3",
+    # CVE-2026-81726 has no fixed release. This is the first exact upstream
+    # merge containing the complete TransitionParser, MaxEnt, and tagger fixes.
+    "nltk @ git+https://github.com/nltk/nltk.git@574270e2ad368c8816976e584da56ddfb3fefbad",
     "setuptools>=78.1.1",
 ]
 
