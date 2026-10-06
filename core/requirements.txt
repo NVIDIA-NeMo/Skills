@@ -24,9 +24,6 @@ hydra-core
 ipython
 iso639-lang
 koifeval @ git+https://github.com/bzantium/koifeval.git@7a27889c0cf285e60b1a7b4795211846dc328aaf
-# CVE-2026-81726 is fixed upstream but has no release yet. Pin the first
-# immutable upstream merge containing all model-artifact pathsec fixes.
-nltk @ git+https://github.com/nltk/nltk.git@574270e2ad368c8816976e584da56ddfb3fefbad  # CVE-2026-81726
 langcodes
 langdetect
 language-data
@@ -37,6 +34,9 @@ math-verify[antlr4_9_3]
 # mcp 2.0 removed the streamablehttp_client alias that nemo_skills/mcp/clients.py imports.
 # Unpin once those call sites move to streamable_http_client and the 2.0 API is verified.
 mcp<2.0
+# CVE-2026-81726 is fixed upstream but has no release yet. Pin the first
+# immutable upstream merge containing all model-artifact pathsec fixes.
+nltk @ git+https://github.com/nltk/nltk.git@574270e2ad368c8816976e584da56ddfb3fefbad  # CVE-2026-81726
 numpy
 openai
 openpyxl>=3.1.0
