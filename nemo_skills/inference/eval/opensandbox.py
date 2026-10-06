@@ -254,10 +254,14 @@ class OpenSandboxExecutor:
                 else:
                     repo_dir = data_point.get("container_repo_dir", "/testbed")
                     pre_commands = data_point.get("pre_commands", "").strip()
+                    repo_setup_commands = []
                     if pre_commands:
-                        command = f"cd {shlex.quote(repo_dir)} && {pre_commands} && " + command
+                        repo_setup_commands.append(f"cd {shlex.quote(repo_dir)}")
+                        repo_setup_commands.append(pre_commands)
                     if repo_dir != "/testbed":
-                        command = f"cp -r {shlex.quote(repo_dir)} /testbed && " + command
+                        repo_setup_commands.append(f"cp -r {shlex.quote(repo_dir)} /testbed")
+                    if repo_setup_commands:
+                        command = " && ".join(repo_setup_commands) + " && " + command
                 await self._run(sandbox, command, timeout, log_file)
                 relative_output = expected_file.relative_to(output_dir)
                 remote_output = PurePosixPath("/trajectories_mount") / relative_output
