@@ -434,8 +434,8 @@ class SweBenchGenerationConfig:
     agent_max_turns: int = 100  # Max agent iterations
     # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
     capture_all_llm_requests: bool = False
-    # If True, run the agent container without network access, connecting the LLM through a Unix socket.
-    # Currently only supported for mini-swe-agent.
+    # If True, run the agent container without network access.
+    # With the Apptainer backend, only supported for mini-swe-agent. With OpenSandbox, supported for all frameworks.
     block_network: bool = False
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
@@ -580,8 +580,6 @@ class SweBenchGenerationTask(GenerationTask):
                 raise ValueError(
                     "OpenSandbox currently supports standard SWE-bench and Multilingual task images only."
                 )
-            if self.cfg.block_network:
-                raise ValueError("block_network uses local Unix sockets and is not supported with OpenSandbox.")
             self.opensandbox_executor = OpenSandboxExecutor(**self.cfg.opensandbox)
             if self.cfg.opensandbox_proxy_host is None:
                 self.cfg.opensandbox_proxy_host = self.opensandbox_executor.detect_proxy_host()
@@ -595,8 +593,12 @@ class SweBenchGenerationTask(GenerationTask):
             }:
                 raise ValueError("Set opensandbox_proxy_host to a coordinator interface reachable from OpenSandbox.")
 
-        if self.cfg.block_network and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
-            raise ValueError("block_network=True is currently only supported for mini_swe_agent.")
+        if (
+            self.cfg.block_network
+            and self.cfg.execution_backend == "apptainer"
+            and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent
+        ):
+            raise ValueError("block_network=True under Apptainer is currently only supported for mini_swe_agent.")
 
         # Set up output folder,
         # making sure it is different for each random seed if we're running with --benchmarks=swe-bench:N
@@ -868,11 +870,12 @@ class SweBenchGenerationTask(GenerationTask):
                 # install dependencies (not needed for swe-rebench-v2)
                 eval_setup_commands.append("source venv/bin/activate && uv pip install -e .")
 
-        # Run all commands with retries and timeout
         if self.opensandbox_executor is None:
+            # For Apptainer, run all commands with retries and timeout
             combined_setup_command = " && ".join(common_setup_commands + agent_setup_commands + eval_setup_commands)
             asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
         else:
+            # For OpenSandbox, we don't run the setup yet, only save the commands to be executed later.
             self.opensandbox_setup_commands = {
                 "agent": " && ".join(common_setup_commands + agent_setup_commands),
                 "eval": " && ".join(common_setup_commands + eval_setup_commands),
@@ -1009,9 +1012,11 @@ class SweBenchGenerationTask(GenerationTask):
                 setup_command=self.opensandbox_setup_commands[mode],
                 setup_timeout=self.cfg.setup_timeout,
                 mode=mode,
+                agent_framework=self.cfg.agent_framework,
                 timeout=timeout,
                 extra_files=extra_mounts,
-                agent_framework=self.cfg.agent_framework,
+                proxy_host=self.cfg.opensandbox_proxy_host,
+                block_network=self.cfg.block_network,
             )
 
         mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)
@@ -1430,7 +1435,7 @@ class SweBenchGenerationTask(GenerationTask):
         unix_socket = None
         extra_apptainer_args = ""
         forwarder_command = ""
-        if self.cfg.block_network:
+        if self.cfg.block_network and self.cfg.execution_backend == "apptainer":
             # The container has no network, so LLM requests go through a local TCP -> Unix socket forwarder.
             # Unix socket paths are limited to 107 bytes, so don't use instance_id in the name.
             unix_socket = self.scratch_dir / f"{uuid.uuid4()}.sock"
@@ -1442,7 +1447,7 @@ class SweBenchGenerationTask(GenerationTask):
             forwarder_command = "(/root/mini-swe-agent/venv/bin/python /uds_forwarder.py /llm.sock 8000 &) && "
 
         def build_mini_swe_agent_command(api_base):
-            if self.cfg.block_network:
+            if self.cfg.block_network and self.cfg.execution_backend == "apptainer":
                 # Set the base URL inside the Apptainer container to 127.0.0.1:8000.
                 # The forwarder (uds_forwarder.py) will listen at that port
                 # and forward requests to the Unix socket at /llm.sock.

@@ -28,15 +28,18 @@ from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
+SETUP_ALLOWED_DOMAINS = ["*.com", "*.org", "*.net", "*.io", "*.sh", "*.dev", "*.rs", "*.co", "*.edu", "*.cn"]
+
 
 def _load_sdk():
     try:
         from opensandbox import Sandbox
         from opensandbox.config import ConnectionConfig
         from opensandbox.models.execd import RunCommandOpts
+        from opensandbox.models.sandboxes import NetworkPolicy, NetworkRule
     except ImportError as error:
         raise RuntimeError("Install nemo_skills[opensandbox] in the NeMo-Skills coordinator runtime.") from error
-    return Sandbox, ConnectionConfig, RunCommandOpts
+    return Sandbox, ConnectionConfig, RunCommandOpts, NetworkPolicy, NetworkRule
 
 
 def _extract_outputs(data: bytes, destination: Path) -> None:
@@ -86,7 +89,7 @@ class OpenSandboxExecutor:
         if tls_verify not in {"true", "false", "1", "0"}:
             raise ValueError("OPENSANDBOX_TLS_VERIFY must be true, false, 1, or 0.")
         self.tls_verify = tls_verify in {"true", "1"}
-        self.Sandbox, self.ConnectionConfig, self.RunCommandOpts = _load_sdk()
+        self.Sandbox, self.ConnectionConfig, self.RunCommandOpts, self.NetworkPolicy, self.NetworkRule = _load_sdk()
         self.connection_options = dict(
             domain=parsed.netloc,
             api_key=api_key,
@@ -199,9 +202,11 @@ class OpenSandboxExecutor:
         setup_command,
         setup_timeout,
         mode,
+        agent_framework,
         timeout,
-        extra_files=(),
-        agent_framework="mini_swe_agent",
+        extra_files,
+        proxy_host,
+        block_network,
     ) -> str:
         image = (
             data_point["container_formatter"]
@@ -215,6 +220,19 @@ class OpenSandboxExecutor:
         logs_dir.mkdir(exist_ok=True, parents=True)
         log_file = logs_dir / f"{data_point['instance_id']}_{mode}.log"
         log_file.write_text("")
+
+        # Create the network policy.
+        # If we are in eval mode or block_network=False, use the defaults.
+        # If we are in agent mode and block_network=True, block all traffic by default, with the following exceptions:
+        # - the vLLM proxy (always allowed),
+        # - common domain wildcards (allowed only during setup, access removed before running the agent).
+        if block_network and mode == "agent":
+            rules = [self.NetworkRule(action="allow", target=target) for target in SETUP_ALLOWED_DOMAINS]
+            rules.append(self.NetworkRule(action="allow", target=proxy_host))
+            network_policy = self.NetworkPolicy(default_action="deny", egress=rules)
+        else:
+            network_policy = None
+
         # A new client transport and a fresh task image for every agent/verifier invocation.
         async with self._connection_config() as connection:
             sandbox = await self.Sandbox.create(
@@ -224,6 +242,7 @@ class OpenSandboxExecutor:
                 ready_timeout=timedelta(seconds=self.ready_timeout_s),
                 resource=self.resources,
                 metadata={"benchmark": "swe-bench", "instance_id": data_point["instance_id"][:63], "mode": mode},
+                network_policy=network_policy,
             )
             try:
                 runtime_dirs = {
@@ -238,6 +257,7 @@ class OpenSandboxExecutor:
                     f"cp -a /root/{directory} /root_mount/" for directory in directories
                 )
                 await self._run(sandbox, setup_command + " && " + stage_runtime, setup_timeout, log_file)
+
                 for source, target, read_only in extra_files:
                     if not read_only or not Path(source).is_file():
                         raise RuntimeError("OpenSandbox extra inputs must be regular read-only files.")
@@ -245,13 +265,16 @@ class OpenSandboxExecutor:
                         sandbox, f"mkdir -p {shlex.quote(str(PurePosixPath(target).parent))}", 60, log_file
                     )
                     await sandbox.files.write_file(target, await asyncio.to_thread(Path(source).read_bytes), mode=644)
+
                 if mode == "eval":
-                    # Upload only this verifier's record; never expose gold patches or tests to the agent.
+                    # Mounts the input dataset row for this instance. Used during evaluation.
+                    # DO NOT do this in agent mode, to prevent the agent from accessing privileged info e.g. gold patches.
                     await self._run(sandbox, "mkdir -p /input_mount", 60, log_file)
                     await sandbox.files.write_file(
                         f"/input_mount/{input_file.name}", json.dumps(data_point) + "\n", mode=644
                     )
                 else:
+                    # Run pre_commands and copy the repo to /testbed if needed.
                     repo_dir = data_point.get("container_repo_dir", "/testbed")
                     pre_commands = data_point.get("pre_commands", "").strip()
                     repo_setup_commands = []
@@ -261,7 +284,13 @@ class OpenSandboxExecutor:
                     if repo_dir != "/testbed":
                         repo_setup_commands.append(f"cp -r {shlex.quote(repo_dir)} /testbed")
                     if repo_setup_commands:
-                        command = " && ".join(repo_setup_commands) + " && " + command
+                        await self._run(sandbox, " && ".join(repo_setup_commands), 60, log_file)
+
+                    # After setup is done, if block_network=True,
+                    # block the sandbox's network access to everything except the vLLM proxy.
+                    if block_network:
+                        await sandbox.delete_egress_rules(SETUP_ALLOWED_DOMAINS)
+
                 await self._run(sandbox, command, timeout, log_file)
                 relative_output = expected_file.relative_to(output_dir)
                 remote_output = PurePosixPath("/trajectories_mount") / relative_output

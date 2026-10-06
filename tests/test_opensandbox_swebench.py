@@ -80,8 +80,11 @@ def _arguments(tmp_path, mode="agent"):
         setup_command="install-runtime",
         setup_timeout=1200,
         mode=mode,
+        agent_framework="mini_swe_agent",
         timeout=60,
         extra_files=[(config, "/agent.yaml", True)],
+        proxy_host="10.0.0.2",
+        block_network=False,
     )
 
 
@@ -244,7 +247,11 @@ def test_backend_dispatch_preserves_native_artifact_contract(executor, monkeypat
     args["mode"] = "eval"
     task = object.__new__(SweBenchGenerationTask)
     task.cfg = SimpleNamespace(
-        input_file=str(args["input_file"]), setup_timeout=args["setup_timeout"], agent_framework="mini_swe_agent"
+        input_file=str(args["input_file"]),
+        setup_timeout=args["setup_timeout"],
+        agent_framework="mini_swe_agent",
+        opensandbox_proxy_host=args["proxy_host"],
+        block_network=False,
     )
     task.opensandbox_executor = executor
     task.opensandbox_setup_commands = {"eval": "install-runtime"}
