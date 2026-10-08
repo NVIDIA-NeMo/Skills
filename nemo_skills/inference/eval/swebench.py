@@ -1047,7 +1047,10 @@ class SweBenchGenerationTask(GenerationTask):
                 )
                 with open(host_tmp_path, "w") as config_file:
                     yaml.dump(runtime_config, config_file)
+                runtime_config_str = yaml.safe_dump(runtime_config)
                 return (
+                    f"mkdir -p {shlex.quote(os.path.dirname(container_tmp_path))} && "
+                    f"printf '%s\\n' {shlex.quote(runtime_config_str)} >{shlex.quote(container_tmp_path)} && "
                     "cp -r /root_mount/mini-swe-agent /root && "
                     "cp -r /root_mount/uv /root && "
                     "cd /root/mini-swe-agent && "
