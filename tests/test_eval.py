@@ -89,6 +89,7 @@ def test_get_benchmark_args_can_skip_configured_judge(
     assert benchmark_args.eval_subfolder == expected_subfolder
     assert benchmark_args.requires_judge is expected_requires_judge
     assert benchmark_args.judge_skipped is skip_judge
+    assert benchmark_args.task_count == 1
     if skip_judge:
         assert benchmark_args.judge_args == ""
         assert benchmark_args.judge_pipeline_args == {}

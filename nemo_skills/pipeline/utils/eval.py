@@ -49,6 +49,7 @@ class BenchmarkArgs:
     score_module: str | None = None
     reference_answer_key: str | None = None
     judge_skipped: bool = False
+    task_count: int | None = None
     job_ids: list[int] = field(default_factory=list)
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
@@ -152,6 +153,10 @@ def get_benchmark_args_from_module(
                 "Please check the benchmark and split parameters. "
                 "Did you forget to run prepare data commands or add data_dir argument?"
             )
+    task_count = None
+    if Path(check_path).is_file():
+        with open(check_path, encoding="utf-8") as fin:
+            task_count = sum(1 for line in fin if line.strip())
 
     # this is deprecated, should remove in the future
     prompt_config = get_arg_from_module_or_dict(benchmark_module, "PROMPT_CONFIG", "", override_dict=override_dict)
@@ -225,6 +230,7 @@ def get_benchmark_args_from_module(
         metrics_type=metrics_type,
         reference_answer_key=reference_answer_key,
         judge_skipped=judge_skipped,
+        task_count=task_count,
         sandbox_env_overrides=sandbox_env_overrides,
     )
 

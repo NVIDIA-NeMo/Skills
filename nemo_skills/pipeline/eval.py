@@ -617,7 +617,10 @@ def eval(
             )
             provisional_args.append(split_benchmarks["swe-atlas-qna"])
 
-        split_sizes = [_count_jsonl_rows(cluster_config, args.input_file) for args in provisional_args]
+        split_sizes = [
+            args.task_count if args.task_count is not None else _count_jsonl_rows(cluster_config, args.input_file)
+            for args in provisional_args
+        ]
         split_chunks = (
             _allocate_split_counts(split_sizes, num_chunks, "--num-chunks")
             if num_chunks is not None
