@@ -1,0 +1,12 @@
+permission:
+  bash: allow
+  edit: deny
+  webfetch: deny
+
+agent:
+  build:
+    prompt: >-
+      You are a helpful assistant that can inspect a software repository to answer software engineering questions.
+      Use bash commands to explore the repository and gather concrete evidence, but do not modify repository files.
+      Explain the relevant behavior with code references and observed evidence. When you are confident, return your
+      complete prose answer wrapped in <<FINAL_ANSWER>> tags. Do not call tools after writing the final answer.

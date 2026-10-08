@@ -28,6 +28,7 @@ from nemo_skills.pipeline.dataset import get_dataset_module
 from nemo_skills.utils import compute_chunk_ids, get_logger_name
 
 LOG = logging.getLogger(get_logger_name(__file__))
+_MISSING = object()
 
 
 @dataclass
@@ -46,10 +47,15 @@ class BenchmarkArgs:
     metrics_type: str | None = None
     benchmark_group: str | None = None
     score_module: str | None = None
+    reference_answer_key: str | None = None
+    judge_skipped: bool = False
+    task_count: int | None = None
     job_ids: list[int] = field(default_factory=list)
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
     sandbox_env_overrides: list[str] = field(default_factory=list)
+    # Intermediate split folders that must be merged before judging.
+    split_eval_subfolders: list[str] = field(default_factory=list)
 
     @property
     def requires_judge(self):
@@ -74,15 +80,17 @@ class EvalGenerationUnit:
     requirements: list[str] | None
     wandb_parameters: dict | None
     with_sandbox: bool
+    # Optional per-unit override for the generation client container.
+    client_container: str | None = None
 
 
-def get_arg_from_module_or_dict(module, arg_name, default_value=None, override_dict=None):
+def get_arg_from_module_or_dict(module, arg_name, default_value=_MISSING, override_dict=None):
     """If argument is in a dict, take from there. If not, take from the module."""
     if override_dict and arg_name in override_dict:
         return override_dict[arg_name]
     if hasattr(module, arg_name):
         return getattr(module, arg_name)
-    if default_value is not None:
+    if default_value is not _MISSING:
         return default_value
     raise ValueError(f"Argument {arg_name} not found in module {module} or override_dict.")
 
@@ -99,6 +107,7 @@ def get_benchmark_args_from_module(
     override_dict=None,
     local_data_path=None,
     data_dir=None,
+    skip_judge=False,
 ):
     if split is None:
         split = get_arg_from_module_or_dict(benchmark_module, "EVAL_SPLIT", "test", override_dict)
@@ -144,6 +153,10 @@ def get_benchmark_args_from_module(
                 "Please check the benchmark and split parameters. "
                 "Did you forget to run prepare data commands or add data_dir argument?"
             )
+    task_count = None
+    if Path(check_path).is_file():
+        with open(check_path, encoding="utf-8") as fin:
+            task_count = sum(1 for line in fin if line.strip())
 
     # this is deprecated, should remove in the future
     prompt_config = get_arg_from_module_or_dict(benchmark_module, "PROMPT_CONFIG", "", override_dict=override_dict)
@@ -172,6 +185,10 @@ def get_benchmark_args_from_module(
         get_arg_from_module_or_dict(benchmark_module, "JUDGE_PIPELINE_ARGS", {}, override_dict)
     )
     judge_args = get_arg_from_module_or_dict(benchmark_module, "JUDGE_ARGS", "", override_dict)
+    judge_skipped = skip_judge and bool(judge_args or judge_pipeline_args or eval_requires_judge)
+    if judge_skipped:
+        judge_args = ""
+        judge_pipeline_args = {}
     num_samples = get_arg_from_module_or_dict(benchmark_module, "NUM_SAMPLES", 0, override_dict)
     num_chunks = get_arg_from_module_or_dict(benchmark_module, "NUM_CHUNKS", 0, override_dict)
     if num_chunks == 0:
@@ -195,6 +212,7 @@ def get_benchmark_args_from_module(
         os.environ["NEMO_SKILLS_PRIVILEGED_DOCKER"] = "1"
 
     metrics_type = get_arg_from_module_or_dict(benchmark_module, "METRICS_TYPE", None, override_dict)
+    reference_answer_key = get_arg_from_module_or_dict(benchmark_module, "REFERENCE_ANSWER_KEY", None, override_dict)
 
     return BenchmarkArgs(
         name=benchmark,
@@ -210,6 +228,9 @@ def get_benchmark_args_from_module(
         eval_subfolder=eval_subfolder,
         benchmark_group=benchmark_group,
         metrics_type=metrics_type,
+        reference_answer_key=reference_answer_key,
+        judge_skipped=judge_skipped,
+        task_count=task_count,
         sandbox_env_overrides=sandbox_env_overrides,
     )
 
@@ -224,7 +245,13 @@ def _resolve_data_path(data_path):
 
 
 def add_default_args(
-    cluster_config, benchmark_or_group, split, data_dir, eval_requires_judge, extra_benchmark_map=None
+    cluster_config,
+    benchmark_or_group,
+    split,
+    data_dir,
+    eval_requires_judge,
+    extra_benchmark_map=None,
+    skip_judge=False,
 ):
     benchmark_or_group_module, data_path = get_dataset_module(
         dataset=benchmark_or_group,
@@ -265,6 +292,7 @@ def add_default_args(
                 override_dict=override_dict,
                 local_data_path=local_data_path,
                 data_dir=data_dir,
+                skip_judge=skip_judge,
             )
             if data_dir:
                 benchmark_args.generation_args += f" ++eval_config.data_dir={data_dir} "
@@ -286,6 +314,7 @@ def add_default_args(
         eval_requires_judge=eval_requires_judge,
         local_data_path=local_data_path,
         data_dir=data_dir,
+        skip_judge=skip_judge,
     )
 
     if data_dir:
@@ -314,6 +343,9 @@ def prepare_eval_commands(
     generation_type=None,
     generation_module=None,
     extra_benchmark_map=None,
+    evaluate_reference_answer=False,
+    skip_judge=False,
+    eval_subfolder_suffix=None,
 ):
     """
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
@@ -352,9 +384,14 @@ def prepare_eval_commands(
             data_dir,
             eval_requires_judge=eval_requires_judge,
             extra_benchmark_map=extra_benchmark_map,
+            skip_judge=skip_judge,
         )
         for benchmark_args in cur_benchmarks:
             benchmark = benchmark_args.name
+            if eval_subfolder_suffix:
+                benchmark_args.eval_subfolder = (
+                    f"{benchmark_args.eval_subfolder.rstrip('/')}/{eval_subfolder_suffix.strip('/')}"
+                )
             if benchmark in benchmarks_dict:
                 raise ValueError(
                     f"Benchmark {benchmark} is specified multiple times in the benchmarks list. "
@@ -380,6 +417,25 @@ def prepare_eval_commands(
                 and not keep_mounts_for_sandbox
             ):
                 LOG.warning("Found benchmark (%s) which requires sandbox to keep mounts, enabling it.", benchmark)
+
+    if evaluate_reference_answer:
+        for benchmark, benchmark_args in benchmarks_dict.items():
+            if benchmark_args.reference_answer_key is None:
+                raise ValueError(
+                    f"Benchmark {benchmark} does not support reference-answer evaluation. "
+                    "Define REFERENCE_ANSWER_KEY in its dataset configuration."
+                )
+            if benchmark_args.num_samples != 0:
+                raise ValueError(
+                    "Reference-answer evaluation does not support repeated sampling. "
+                    f"Specify {benchmark} without a repeat count."
+                )
+            if num_chunks or benchmark_args.num_chunks:
+                raise ValueError(
+                    "Reference-answer evaluation does not support chunking. "
+                    "Omit --num-chunks and benchmark NUM_CHUNKS settings."
+                )
+        return benchmarks_dict, []
 
     total_evals = 0
     for benchmark, benchmark_args in benchmarks_dict.items():
