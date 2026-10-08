@@ -284,6 +284,14 @@ def test_resolve_child_sbatch_kwargs_inherits_or_overrides():
     assert eval_pipeline._resolve_child_sbatch_kwargs(parent, '{"segment": 1}') == {"segment": 1}
 
 
+def test_allocate_split_counts_is_proportional():
+    assert eval_pipeline._allocate_split_counts([300, 200], 10, "--num-chunks") == [6, 4]
+    assert eval_pipeline._allocate_split_counts([104, 20], 5, "--num-chunks") == [4, 1]
+
+    with pytest.raises(ValueError, match="must be at least 2"):
+        eval_pipeline._allocate_split_counts([104, 20], 1, "--num-chunks")
+
+
 @pytest.mark.parametrize(
     "main_model_arg",
     [
@@ -350,6 +358,144 @@ def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args, executor="slurm"):
         return {args.name: args}, []
 
     monkeypatch.setattr(eval_pipeline, "prepare_eval_commands", fake_prepare_eval_commands)
+
+
+def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tmp_path):
+    def benchmark_args(split, suffix):
+        return eval_utils.BenchmarkArgs(
+            name="swe-atlas-qna",
+            input_file=f"/data/swe-atlas-qna/{split}.jsonl",
+            generation_args=f"++eval_config.split={split}",
+            judge_args="++prompt_config=judge/swe-atlas-qna",
+            judge_pipeline_args={
+                "generation_module": "nemo_skills.inference.swe_atlas_qna_judge",
+                "model": "judge-model",
+                "server_type": "openai",
+                "server_address": "https://judge.example/v1",
+            },
+            requires_sandbox=False,
+            keep_mounts_for_sandbox=False,
+            generation_module="nemo_skills.inference.generate",
+            num_samples=0,
+            num_chunks=None,
+            eval_subfolder=f"tmp-eval-results/swe-atlas-qna/{suffix}",
+            metrics_type="swe-atlas-qna",
+        )
+
+    _patch_eval_for_sbatch_tests(monkeypatch, lambda: benchmark_args("default.ubuntu", "unused"))
+
+    def fake_prepare_eval_commands(*, split, num_chunks, eval_subfolder_suffix=None, **kwargs):
+        args = benchmark_args(split, eval_subfolder_suffix)
+        args.num_chunks = num_chunks
+        batch_count = num_chunks or 1
+        batches = []
+        for chunk_id in range(batch_count):
+            unit = eval_utils.EvalGenerationUnit(
+                output_dir=str(tmp_path / args.eval_subfolder),
+                input_file=args.input_file,
+                extra_arguments=args.generation_args,
+                random_seed=None,
+                chunk_id=chunk_id if num_chunks else None,
+                num_chunks=num_chunks,
+                script=args.generation_module,
+                requirements=[],
+                wandb_parameters=None,
+                with_sandbox=False,
+            )
+            batches.append(([unit], {"swe-atlas-qna"}, False, False, []))
+            args.job_ids.append(chunk_id)
+        return {"swe-atlas-qna": args}, batches
+
+    monkeypatch.setattr(eval_pipeline, "prepare_eval_commands", fake_prepare_eval_commands)
+    monkeypatch.setattr(
+        eval_pipeline,
+        "_count_jsonl_rows",
+        lambda cluster_config, input_file: 300 if "ubuntu" in input_file else 200,
+    )
+
+    submitted_pipelines = []
+
+    def fake_pipeline_run(self, **kwargs):
+        submitted_pipelines.append(self)
+        return [f"generation-{idx}" for idx in range(len(self.jobs))]
+
+    monkeypatch.setattr(eval_pipeline.Pipeline, "run", fake_pipeline_run)
+    added_tasks = []
+
+    def fake_add_task(*args, **kwargs):
+        added_tasks.append(kwargs)
+        return "merge-task"
+
+    monkeypatch.setattr(eval_pipeline.pipeline_utils, "add_task", fake_add_task)
+    captured_judge = {}
+
+    def fake_generate(**kwargs):
+        captured_judge.update(kwargs)
+        return ["judge-task"]
+
+    monkeypatch.setattr(eval_pipeline, "_generate", fake_generate)
+
+    eval_pipeline.eval(
+        ctx=SimpleNamespace(args=[]),
+        cluster="test-cluster",
+        output_dir=str(tmp_path),
+        benchmarks="swe-atlas-qna",
+        split="default.ubuntu,default.alpine",
+        num_chunks=10,
+        main_container="ubuntu-container",
+        alpine_container="alpine-container",
+        model="model",
+        server_type="openai",
+        server_address="http://server",
+        auto_summarize_results=False,
+        skip_hf_home_check=True,
+    )
+
+    assert len(submitted_pipelines) == 1
+    jobs = submitted_pipelines[0].jobs
+    assert len(jobs) == 10
+    client_containers = [job["group"].commands[-1].container for job in jobs]
+    assert client_containers == ["ubuntu-container"] * 6 + ["alpine-container"] * 4
+
+    assert len(added_tasks) == 1
+    merge_task = added_tasks[0]
+    assert "default.ubuntu" in merge_task["cmd"]
+    assert "default.alpine" in merge_task["cmd"]
+    assert merge_task["container"] == "ubuntu-container"
+    assert merge_task["task_dependencies"] == [f"generation-{idx}" for idx in range(10)]
+    assert captured_judge["input_file"].endswith("tmp-eval-results/swe-atlas-qna/output.jsonl")
+    assert captured_judge["_task_dependencies"] == ["merge-task"]
+
+
+def test_eval_requires_alpine_container_for_atlas_alpine_split(monkeypatch, tmp_path):
+    _patch_eval_for_sbatch_tests(
+        monkeypatch,
+        lambda: eval_utils.BenchmarkArgs(
+            name="swe-atlas-qna",
+            input_file="/data/default.alpine.jsonl",
+            generation_args="",
+            judge_args="",
+            judge_pipeline_args={},
+            requires_sandbox=False,
+            keep_mounts_for_sandbox=False,
+            generation_module="nemo_skills.inference.generate",
+            num_samples=0,
+            num_chunks=None,
+            eval_subfolder="eval-results/swe-atlas-qna",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="--alpine-container is required"):
+        eval_pipeline.eval(
+            ctx=SimpleNamespace(args=[]),
+            cluster="test-cluster",
+            output_dir=str(tmp_path),
+            benchmarks="swe-atlas-qna",
+            split="default.alpine",
+            model="model",
+            server_type="openai",
+            server_address="http://server",
+        )
 
 
 def test_eval_skip_judge_omits_judge_and_summarization_for_judge_benchmark(monkeypatch, tmp_path):

@@ -47,6 +47,57 @@ class SingleNodeMode(str, enum.Enum):
     parallel = "parallel"
 
 
+def _allocate_split_counts(split_sizes: list[int], total_count: int, label: str) -> list[int]:
+    """Allocate a fixed number of jobs proportionally across non-empty splits."""
+    if not split_sizes or any(size <= 0 for size in split_sizes):
+        raise ValueError("SWE-Atlas-QnA splits must contain at least one task.")
+    if total_count < len(split_sizes):
+        raise ValueError(f"{label} must be at least {len(split_sizes)} when running multiple splits.")
+    if total_count > sum(split_sizes):
+        raise ValueError(f"{label} ({total_count}) cannot exceed the total number of tasks ({sum(split_sizes)}).")
+
+    remaining = total_count - len(split_sizes)
+    total_size = sum(split_sizes)
+    scaled = [remaining * size for size in split_sizes]
+    extras = [min(size - 1, value // total_size) for size, value in zip(split_sizes, scaled)]
+    allocations = [1 + extra for extra in extras]
+    remaining -= sum(extras)
+
+    order = sorted(
+        range(len(split_sizes)),
+        key=lambda idx: (scaled[idx] % total_size, split_sizes[idx], -idx),
+        reverse=True,
+    )
+    while remaining:
+        made_progress = False
+        for idx in order:
+            if allocations[idx] >= split_sizes[idx]:
+                continue
+            allocations[idx] += 1
+            remaining -= 1
+            made_progress = True
+            if remaining == 0:
+                break
+        if not made_progress:
+            raise ValueError(f"Unable to allocate {label} across the requested splits.")
+    return allocations
+
+
+def _count_jsonl_rows(cluster_config: dict, input_file: str) -> int:
+    """Count dataset rows locally or through the configured cluster tunnel."""
+    host_path = pipeline_utils.get_unmounted_path(cluster_config, input_file)
+    if Path(host_path).is_file():
+        with open(host_path, encoding="utf-8") as fin:
+            return sum(1 for line in fin if line.strip())
+    if cluster_config["executor"] == "slurm":
+        result = pipeline_utils.get_tunnel(cluster_config).run(
+            f"awk 'NF {{count++}} END {{print count+0}}' {shlex.quote(host_path)}",
+            hide=True,
+        )
+        return int(result.stdout.strip())
+    raise ValueError(f"Cannot count tasks because dataset file {host_path} is not locally accessible.")
+
+
 def _resolve_child_sbatch_kwargs(sbatch_kwargs, child_sbatch_kwargs):
     if child_sbatch_kwargs is None:
         return sbatch_kwargs
@@ -229,6 +280,10 @@ def eval(
         "CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     main_container: str = typer.Option(None, help="Override container image for the main evaluation client"),
+    alpine_container: str = typer.Option(
+        None,
+        help="Main evaluation client container for SWE-Atlas-QnA Alpine splits.",
+    ),
     sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     judge_container: str = typer.Option(None, help="Override container image for GPU-based judges (comet, nvembed)"),
     judge_server_container: str = typer.Option(
@@ -245,7 +300,8 @@ def eval(
     starting_seed: int = typer.Option(0, help="Starting seed for random sampling"),
     split: str = typer.Option(
         None,
-        help="Data split to use for evaluation. Will use benchmark-specific default or 'test' if it's not defined.",
+        help="Data split to use for evaluation. SWE-Atlas-QnA also accepts a comma-separated list of splits. "
+        "Otherwise uses the benchmark-specific default or 'test'.",
     ),
     num_jobs: int = typer.Option(
         None, help="Number of jobs to split the evaluation into. By default will run all benchmarks/seeds in parallel."
@@ -513,16 +569,11 @@ def eval(
     if " " in str(benchmarks):
         raise ValueError("benchmarks should be separated with commas")
 
-    # Use a single shared code path for both single-model and multi-model eval:
-    # build structured "eval units" and run via declarative Pipeline (like ns generate).
-    benchmarks_dict, job_batches_units = prepare_eval_commands(
+    prepare_kwargs = dict(
         cluster_config=cluster_config,
         benchmarks_or_groups=benchmarks,
-        split=split,
-        num_jobs=num_jobs,
         starting_seed=starting_seed,
         output_dir=output_dir,
-        num_chunks=num_chunks,
         chunk_ids=chunk_ids,
         rerun_done=rerun_done,
         extra_arguments=extra_arguments,
@@ -538,6 +589,88 @@ def eval(
         evaluate_reference_answer=evaluate_reference_answer,
         skip_judge=skip_judge,
     )
+    requested_splits = [value.strip() for value in split.split(",") if value.strip()] if split else []
+    if len(requested_splits) != len(set(requested_splits)):
+        raise ValueError("Each SWE-Atlas-QnA split may be specified only once.")
+    benchmark_names = [spec.split(":", maxsplit=1)[0] for spec in benchmarks.split(",")]
+    is_swe_atlas_only = benchmark_names == ["swe-atlas-qna"]
+    if len(requested_splits) > 1 and not is_swe_atlas_only:
+        raise ValueError("Multiple --split values are supported only when evaluating swe-atlas-qna by itself.")
+    if len(requested_splits) > 1 and evaluate_reference_answer:
+        raise ValueError("Multiple SWE-Atlas-QnA splits are not supported with --evaluate-reference-answer.")
+    if is_swe_atlas_only and any("alpine" in value.lower() for value in requested_splits) and not alpine_container:
+        raise ValueError("--alpine-container is required when running a SWE-Atlas-QnA Alpine split.")
+    if len(requested_splits) > 1 and chunk_ids:
+        raise ValueError("--chunk-ids is not supported with multiple SWE-Atlas-QnA splits.")
+
+    # A multi-split Atlas run remains one logical benchmark for judging and
+    # metrics, but has one independently-containerized rollout group per split.
+    if len(requested_splits) > 1:
+        provisional_args = []
+        for split_name in requested_splits:
+            split_benchmarks, _ = prepare_eval_commands(
+                **{**prepare_kwargs, "wandb_parameters": deepcopy(wandb_parameters)},
+                split=split_name,
+                num_chunks=None,
+                num_jobs=1,
+                eval_subfolder_suffix=f"splits/{split_name}",
+            )
+            provisional_args.append(split_benchmarks["swe-atlas-qna"])
+
+        split_sizes = [_count_jsonl_rows(cluster_config, args.input_file) for args in provisional_args]
+        split_chunks = (
+            _allocate_split_counts(split_sizes, num_chunks, "--num-chunks")
+            if num_chunks is not None
+            else [None] * len(requested_splits)
+        )
+        split_num_jobs = (
+            _allocate_split_counts(split_sizes, num_jobs, "--num-jobs")
+            if num_jobs is not None
+            else [None] * len(requested_splits)
+        )
+
+        job_batches_units = []
+        parent_args = None
+        parent_job_ids = []
+        split_eval_subfolders = []
+        for split_name, split_chunk_count, split_job_count in zip(requested_splits, split_chunks, split_num_jobs):
+            split_benchmarks, split_batches = prepare_eval_commands(
+                **{**prepare_kwargs, "wandb_parameters": deepcopy(wandb_parameters)},
+                split=split_name,
+                num_chunks=split_chunk_count,
+                num_jobs=split_job_count,
+                eval_subfolder_suffix=f"splits/{split_name}",
+            )
+            split_args = split_benchmarks["swe-atlas-qna"]
+            job_id_offset = len(job_batches_units)
+            parent_job_ids.extend(job_id_offset + job_id for job_id in split_args.job_ids)
+            split_eval_subfolders.append(split_args.eval_subfolder)
+
+            use_alpine_container = "alpine" in split_name.lower()
+            for batch in split_batches:
+                for unit in batch[0]:
+                    unit.client_container = alpine_container if use_alpine_container else None
+            job_batches_units.extend(split_batches)
+
+            if parent_args is None:
+                parent_args = deepcopy(split_args)
+                parent_args.eval_subfolder = parent_args.eval_subfolder.rsplit("/splits/", maxsplit=1)[0]
+
+        parent_args.job_ids = parent_job_ids
+        parent_args.num_chunks = num_chunks
+        parent_args.split_eval_subfolders = split_eval_subfolders
+        benchmarks_dict = {"swe-atlas-qna": parent_args}
+    else:
+        benchmarks_dict, job_batches_units = prepare_eval_commands(
+            **prepare_kwargs,
+            split=split,
+            num_chunks=num_chunks,
+            num_jobs=num_jobs,
+        )
+        if is_swe_atlas_only and requested_splits and "alpine" in requested_splits[0].lower():
+            for batch in job_batches_units:
+                for unit in batch[0]:
+                    unit.client_container = alpine_container
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
     judge_sbatch_kwargs = _resolve_child_sbatch_kwargs(sbatch_kwargs, judge_sbatch_kwargs)
@@ -546,6 +679,7 @@ def eval(
     has_tasks = False
     job_id_to_tasks = {}
     benchmark_to_reference_tasks = {}
+    benchmark_to_merge_tasks = {}
     benchmark_to_judge_tasks = {}
     all_tasks = []
     if _task_dependencies is None:
@@ -645,6 +779,19 @@ def eval(
                 # This is critical for multi-node setups where client tasks need local sandbox access
                 sandbox_script.span_group_nodes = True
 
+            client_container_overrides = {
+                unit.client_container
+                for unit in units
+                if isinstance(unit, EvalGenerationUnit) and unit.client_container is not None
+            }
+            if len(client_container_overrides) > 1:
+                raise ValueError("Evaluation units using different client containers cannot share one job.")
+            job_main_container = (
+                next(iter(client_container_overrides))
+                if client_container_overrides
+                else main_container or cluster_config["containers"]["nemo-skills"]
+            )
+
             # Convert units to dict payloads for EvalClientScript
             unit_dicts = []
             for u in units:
@@ -712,7 +859,7 @@ def eval(
             group0_components.append(
                 Command(
                     script=client_script,
-                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    container=job_main_container,
                     name=f"{task_name}",
                 )
             )
@@ -800,6 +947,68 @@ def eval(
             for job_idx, last_job_name in job_batch_to_last_job_name.items():
                 job_id_to_tasks[job_idx] = [job_name_to_handle[last_job_name]]
                 all_tasks.append(job_name_to_handle[last_job_name])
+
+        # Multi-split Atlas rollouts use separate client containers and output
+        # folders. Merge them into the normal benchmark output before judging.
+        for benchmark, benchmark_args in benchmarks_dict.items():
+            if not benchmark_args.split_eval_subfolders:
+                continue
+            has_tasks = True
+            dependent_tasks = []
+            for job_id in benchmark_args.job_ids:
+                dependent_tasks.extend(job_id_to_tasks[job_id])
+
+            seeds = (
+                [None]
+                if benchmark_args.num_samples == 0
+                else list(range(starting_seed, starting_seed + benchmark_args.num_samples))
+            )
+            merge_commands = []
+            final_output_dir = str(Path(output_dir) / benchmark_args.eval_subfolder)
+            for seed in seeds:
+                final_file = pipeline_utils.get_chunked_rs_filename(final_output_dir, random_seed=seed)
+                split_files = [
+                    pipeline_utils.get_chunked_rs_filename(
+                        str(Path(output_dir) / split_subfolder),
+                        random_seed=seed,
+                    )
+                    for split_subfolder in benchmark_args.split_eval_subfolders
+                ]
+                checks = " && ".join(
+                    f"test -f {shlex.quote(path)} && test -f {shlex.quote(path + '.done')}" for path in split_files
+                )
+                temporary_file = f"{final_file}.merge-tmp"
+                merge_commands.append(
+                    f"if [ ! -f {shlex.quote(final_file + '.done')} ]; then "
+                    f"{checks} && cat {' '.join(shlex.quote(path) for path in split_files)} "
+                    f"> {shlex.quote(temporary_file)} && "
+                    f"mv {shlex.quote(temporary_file)} {shlex.quote(final_file)} && "
+                    f"touch {shlex.quote(final_file + '.done')}; fi"
+                )
+
+            merge_task = pipeline_utils.add_task(
+                exp,
+                cmd=f"mkdir -p {shlex.quote(final_output_dir)} && " + " && ".join(merge_commands),
+                task_name=f"{expname}-{benchmark}-merge-splits",
+                log_dir=f"{final_output_dir}/merge-splits",
+                container=main_container or cluster_config["containers"]["nemo-skills"],
+                cluster_config=cluster_config,
+                num_gpus=0,
+                partition=partition,
+                account=account,
+                run_after=run_after,
+                reuse_code_exp=reuse_code_exp,
+                reuse_code=reuse_code,
+                task_dependencies=(
+                    dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
+                ),
+                installation_command=installation_command,
+                skip_hf_home_check=skip_hf_home_check,
+                sbatch_kwargs=sbatch_kwargs,
+            )
+            benchmark_to_merge_tasks[benchmark] = [merge_task]
+            all_tasks.append(merge_task)
+
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
             if benchmark_args.judge_skipped:
@@ -808,6 +1017,8 @@ def eval(
                 continue
             if evaluate_reference_answer:
                 dependent_tasks = benchmark_to_reference_tasks[benchmark]
+            elif benchmark in benchmark_to_merge_tasks:
+                dependent_tasks = benchmark_to_merge_tasks[benchmark]
             else:
                 dependent_job_ids = benchmark_args.job_ids
                 dependent_tasks = []
@@ -959,6 +1170,8 @@ def eval(
 
                 if benchmark in benchmark_to_judge_tasks:
                     dependent_tasks = benchmark_to_judge_tasks[benchmark]
+                elif benchmark in benchmark_to_merge_tasks:
+                    dependent_tasks = benchmark_to_merge_tasks[benchmark]
                 else:
                     dependent_job_ids = benchmark_args.job_ids
                     dependent_tasks = []

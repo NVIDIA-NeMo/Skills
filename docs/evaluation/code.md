@@ -359,11 +359,11 @@ ns prepare_data swe-atlas-qna \
 For local SIF paths, `{docker_image}` is replaced with the image tag from the dataset, such as `swe_atlas_QnA_minio_minio_1.0`.
 
 !!! note
-    Alpine tasks use musl rather than glibc and must run separately with the Alpine NeMo-Skills container built from [`dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine`](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine).
+    Alpine tasks use musl rather than glibc and run in a separate rollout job group using the Alpine NeMo-Skills container built from [`dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine`](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine).
 
 #### Running the evaluation
 
-The following example launches the Ubuntu and Alpine subsets separately:
+The following example launches the Ubuntu and Alpine subsets as separate rollout job groups in one evaluation:
 
 ```
 #!/bin/bash
@@ -377,6 +377,8 @@ COMMON_ARGS=(
     --server_nodes=1
     --server_gpus=8
     --benchmarks=swe-atlas-qna
+    --split=default.ubuntu,default.alpine
+    --alpine_container=<PATH_TO_ALPINE_NS_CONTAINER>
     --expname=<EXPERIMENT_NAME>
     ++inference.temperature=1.0
     ++inference.top_p=0.95
@@ -385,18 +387,13 @@ COMMON_ARGS=(
 )
 
 ns eval "${COMMON_ARGS[@]}" \
-    --split=default.ubuntu \
-    --output_dir=<OUTPUT_DIR>/ubuntu \
-    --num_chunks=4
-
-ns eval "${COMMON_ARGS[@]}" \
-    --split=default.alpine \
-    --output_dir=<OUTPUT_DIR>/alpine \
-    --num_chunks=1 \
-    --main_container=<PATH_TO_ALPINE_NS_CONTAINER>
+    --output_dir=<OUTPUT_DIR> \
+    --num_chunks=5
 ```
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
+
+For multi-split SWE-Atlas-QnA runs, `--num_chunks` is the total across all splits. NeMo-Skills allocates chunks proportionally by task count while guaranteeing at least one chunk per non-empty split. The example above assigns four chunks to the 104 Ubuntu tasks and one chunk to the 20 Alpine tasks. Rollout outputs are merged before a single judge and metrics stage. `--alpine_container` is required whenever an Alpine split is requested. A single split remains supported, for example `--split=default.ubuntu`, or `--split=default.alpine --alpine_container=<PATH>`.
 
 The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent, OpenHands, OpenCode, and Claude Code are also supported:
 

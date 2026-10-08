@@ -53,6 +53,8 @@ class BenchmarkArgs:
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
     sandbox_env_overrides: list[str] = field(default_factory=list)
+    # Intermediate split folders that must be merged before judging.
+    split_eval_subfolders: list[str] = field(default_factory=list)
 
     @property
     def requires_judge(self):
@@ -77,6 +79,8 @@ class EvalGenerationUnit:
     requirements: list[str] | None
     wandb_parameters: dict | None
     with_sandbox: bool
+    # Optional per-unit override for the generation client container.
+    client_container: str | None = None
 
 
 def get_arg_from_module_or_dict(module, arg_name, default_value=_MISSING, override_dict=None):
@@ -335,6 +339,7 @@ def prepare_eval_commands(
     extra_benchmark_map=None,
     evaluate_reference_answer=False,
     skip_judge=False,
+    eval_subfolder_suffix=None,
 ):
     """
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
@@ -377,6 +382,10 @@ def prepare_eval_commands(
         )
         for benchmark_args in cur_benchmarks:
             benchmark = benchmark_args.name
+            if eval_subfolder_suffix:
+                benchmark_args.eval_subfolder = (
+                    f"{benchmark_args.eval_subfolder.rstrip('/')}/{eval_subfolder_suffix.strip('/')}"
+                )
             if benchmark in benchmarks_dict:
                 raise ValueError(
                     f"Benchmark {benchmark} is specified multiple times in the benchmarks list. "
