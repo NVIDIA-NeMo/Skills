@@ -578,6 +578,14 @@ class GenerationTask:
                         filled_positions.add(int(json.loads(line)[self.cfg.async_position_key]))
             except FileNotFoundError:
                 LOG.warning(f"File `{self.cfg.output_file}-async` not found, starting from scratch")
+            try:
+                with open(Path(self.cfg.output_file).with_suffix(".errors"), "rt", encoding="utf-8") as fin:
+                    for line in fin:
+                        async_position = json.loads(line).get(self.cfg.async_position_key)
+                        if async_position is not None:
+                            filled_positions.add(int(async_position))
+            except FileNotFoundError:
+                pass
 
         remaining_data = []
         for idx, dp in enumerate(data):
@@ -781,7 +789,7 @@ class GenerationTask:
         # Override this method to customize the prefilling behavior.
         return None
 
-    def get_error_output(self, error: Exception) -> dict | None:
+    def get_error_output(self, error: Exception, data_point: dict) -> dict | None:
         """Return an output to persist for a failed datapoint, or None to keep only the error sidecar."""
         return None
 
@@ -844,10 +852,38 @@ class GenerationTask:
         data_point.update(eval_results)
         return data_point
 
+    async def _save_datapoint_error(self, error, original_data_point, fout, traceback_text):
+        """Persist diagnostics and an optional terminal output for one failed datapoint."""
+        error_record = {
+            self.cfg.async_position_key: original_data_point.get(self.cfg.async_position_key),
+            "instance_id": original_data_point.get("instance_id"),
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "traceback": traceback_text,
+        }
+        try:
+            error_output = self.get_error_output(error, original_data_point)
+            if error_output is not None:
+                await self.postprocess_single_output(error_output, original_data_point)
+        except Exception as error_output_error:
+            LOG.exception("Could not build the terminal error output; preserving sidecar diagnostics only")
+            error_record["error_output_error"] = {
+                "error_type": type(error_output_error).__name__,
+                "error_message": str(error_output_error),
+                "traceback": traceback.format_exc(),
+            }
+            error_output = None
+
+        async with self.output_lock:
+            if error_output is not None:
+                self.dump_outputs([error_output], [original_data_point], fout)
+            with open(Path(self.cfg.output_file).with_suffix(".errors"), "at", encoding="utf-8") as error_fout:
+                error_fout.write(json.dumps(error_record) + "\n")
+
     async def _generate_and_save_datapoint(self, data_point, all_data, fout, pbar):
         """Starts generation, evaluation and saves the output for a single data point."""
+        original_data_point = deepcopy(data_point)
         try:
-            # Generate output for this single data point
             start_time = time.time()
             output = await self.process_single_datapoint(data_point, all_data)
             end_time = time.time()
@@ -858,41 +894,22 @@ class GenerationTask:
                 output["generation_time"] = end_time - start_time
 
             await self.postprocess_single_output(output, data_point)
-
-            # evaluate single-data point if requested and evaluator supports that
             if self.should_run_evaluation and self.evaluator:
                 output = await self.evaluate_single_datapoint({**data_point, **output})
-
-            # Thread-safe output writing
-            async with self.output_lock:
-                self.dump_outputs([output], [data_point], fout)
-                pbar.update(1)
         except Exception as error:
             if not self.cfg.continue_on_error:
                 raise
-
             LOG.exception(
-                "Generation failed for data point %s; continuing", data_point.get("instance_id", "<unknown>")
+                "Generation failed for data point %s; continuing",
+                original_data_point.get("instance_id", "<unknown>"),
             )
-            error_record = {
-                self.cfg.async_position_key: data_point.get(self.cfg.async_position_key),
-                "instance_id": data_point.get("instance_id"),
-                "error_type": type(error).__name__,
-                "error_message": str(error),
-                "traceback": traceback.format_exc(),
-            }
-            error_output = self.get_error_output(error)
-            if error_output is not None:
-                await self.postprocess_single_output(error_output, data_point)
-            async with self.output_lock:
-                # Persist the terminal output first so an interrupted process resumes
-                # past this datapoint even if writing the diagnostic sidecar is interrupted.
-                if error_output is not None:
-                    self.dump_outputs([error_output], [data_point], fout)
-                error_file = Path(self.cfg.output_file).with_suffix(".errors.jsonl")
-                with open(error_file, "at", encoding="utf-8") as error_fout:
-                    error_fout.write(json.dumps(error_record) + "\n")
-                pbar.update(1)
+            await self._save_datapoint_error(error, original_data_point, fout, traceback.format_exc())
+            pbar.update(1)
+            return
+
+        async with self.output_lock:
+            self.dump_outputs([output], [data_point], fout)
+            pbar.update(1)
 
     async def async_loop(self, data):
         """Async loop to generate generations using asyncio."""
@@ -903,10 +920,21 @@ class GenerationTask:
 
         # We first segregate the data into prefilled and non-prefilled data points
         prefilled_data_points, prefilled_outputs = [], []
+        prefill_errors = []
         remaining_data_points = []
 
         for data_point in data:
-            prefill_output = self.prefill_generation(data_point)
+            try:
+                prefill_output = self.prefill_generation(data_point)
+            except Exception as error:
+                if not self.cfg.continue_on_error:
+                    raise
+                LOG.exception(
+                    "Prefill failed for data point %s; continuing",
+                    data_point.get("instance_id", "<unknown>"),
+                )
+                prefill_errors.append((error, deepcopy(data_point), traceback.format_exc()))
+                continue
             if prefill_output is not None:
                 prefilled_outputs.append(prefill_output)
                 prefilled_data_points.append(data_point)
@@ -916,16 +944,28 @@ class GenerationTask:
         pbar = tqdm(total=len(remaining_data_points), desc="Remaining generations")
 
         with open(self.cfg.output_file + "-async", "at", encoding="utf-8", buffering=1) as fout:
+            for error, data_point, traceback_text in prefill_errors:
+                await self._save_datapoint_error(error, data_point, fout, traceback_text)
+
             # Dump prefilled data first
             if len(prefilled_data_points) > 0:
                 for output, data_point in zip(prefilled_outputs, prefilled_data_points):
-                    await self.postprocess_single_output(output, data_point)
-
-                    # evaluate single-data point if requested and evaluator supports that
-                    if self.should_run_evaluation and self.evaluator:
-                        output = await self.evaluate_single_datapoint({**data_point, **output})
-                async with self.output_lock:
-                    self.dump_outputs(prefilled_outputs, prefilled_data_points, fout)
+                    original_data_point = deepcopy(data_point)
+                    try:
+                        await self.postprocess_single_output(output, data_point)
+                        if self.should_run_evaluation and self.evaluator:
+                            output = await self.evaluate_single_datapoint({**data_point, **output})
+                    except Exception as error:
+                        if not self.cfg.continue_on_error:
+                            raise
+                        LOG.exception(
+                            "Prefilled output failed for data point %s; continuing",
+                            original_data_point.get("instance_id", "<unknown>"),
+                        )
+                        await self._save_datapoint_error(error, original_data_point, fout, traceback.format_exc())
+                        continue
+                    async with self.output_lock:
+                        self.dump_outputs([output], [data_point], fout)
 
             # Create tasks for all remaining data points
             tasks = []
@@ -933,11 +973,11 @@ class GenerationTask:
                 task = asyncio.create_task(self._generate_and_save_datapoint(data_point, data, fout, pbar))
                 tasks.append(task)
 
-            # Wait for all tasks to complete
-            if tasks:
-                await asyncio.gather(*tasks)
-
-            pbar.close()
+            try:
+                if tasks:
+                    await asyncio.gather(*tasks)
+            finally:
+                pbar.close()
 
         self.restore_async_order()
 
@@ -1015,7 +1055,7 @@ class GenerationTask:
                 for output_path in [
                     Path(self.cfg.output_file),
                     Path(self.cfg.output_file + "-async"),
-                    Path(self.cfg.output_file).with_suffix(".errors.jsonl"),
+                    Path(self.cfg.output_file).with_suffix(".errors"),
                 ]:
                     if output_path.exists():
                         output_path.unlink()

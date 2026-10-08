@@ -33,6 +33,7 @@ DEFAULT_AGENT_CONFIGS = {
     SupportedAgentFrameworks.mini_swe_agent: "eval/swe-atlas-qna/mini-swe-agent/default",
     SupportedAgentFrameworks.swe_agent: "eval/swe-atlas-qna/swe-agent/default",
     SupportedAgentFrameworks.opencode: "eval/swe-atlas-qna/opencode/default",
+    SupportedAgentFrameworks.claude_code: "eval/swe-atlas-qna/claude-code/default",
 }
 
 
@@ -68,7 +69,7 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         cfg.evaluate = False
         super().__init__(cfg)
 
-    def get_error_output(self, error: Exception) -> dict:
+    def get_error_output(self, error: Exception, data_point: dict) -> dict:
         """Persist terminal rollout failures so resume and scoring retain the task."""
         return {
             "generation": "",
@@ -100,6 +101,27 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
         trajectory_info.pop("model_patch", None)
         return trajectory_info
 
+    def _format_claude_code_output(self, prediction_dict, data_point):
+        trajectory_info = prediction_dict.copy()
+        trajectory_info["model_name_or_path"] = self.cfg.server.model
+        trajectory_info["instance_id"] = data_point["instance_id"]
+        trajectory_info["generation"] = extract_final_answer(trajectory_info.pop("final_response", None))
+        trajectory_info.pop("model_patch", None)
+        return trajectory_info
+
+    def _get_claude_code_instruction(self, data_point):
+        return (
+            "You are a helpful assistant that can inspect a software repository to answer software engineering "
+            "questions. Use Bash, Read, Glob, and Grep to gather concrete evidence, but do not modify repository "
+            "files. Explain the relevant behavior with code references and observed evidence. When you are confident, "
+            "return your complete prose answer wrapped in <<FINAL_ANSWER>> tags. Do not call tools after writing the "
+            "final answer.\n\n"
+            f"Question:\n{data_point['problem_statement']}"
+        )
+
+    def _get_extra_instructions_config_dir(self) -> str:
+        return "eval/swe-atlas-qna/common"
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         api_base = self.get_api_base()
 
@@ -110,6 +132,8 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
                 output_file = await self._run_swe_agent(data_point, api_base)
             elif self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
                 output_file = await self._run_opencode(data_point, api_base)
+            elif self.cfg.agent_framework == SupportedAgentFrameworks.claude_code:
+                output_file = await self._run_claude_code(data_point, api_base)
             else:
                 raise ValueError(f"Unsupported agent framework: {self.cfg.agent_framework}")
 
@@ -119,6 +143,8 @@ class SweAtlasQnAGenerationTask(SweBenchGenerationTask):
             trajectory_info = self._format_swe_agent_output(trajectory_info, data_point)
         elif self.cfg.agent_framework == SupportedAgentFrameworks.opencode:
             trajectory_info = self._format_opencode_output(trajectory_info, data_point)
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.claude_code:
+            trajectory_info = self._format_claude_code_output(trajectory_info, data_point)
 
         return {
             "generation": trajectory_info["generation"],

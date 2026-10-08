@@ -334,7 +334,7 @@ all you need to do is replace `swe_agent` with `mini_swe_agent` in the command a
 - Original benchmark source is [ScaleAI/SWE-Atlas-QnA](https://huggingface.co/datasets/ScaleAI/SWE-Atlas-QnA).
 - Official results are published on the [SWE-Atlas-QnA leaderboard](https://labs.scale.com/leaderboard/sweatlas-qna).
 
-SWE-Atlas-QnA contains 124 repository-level software engineering questions. Unlike SWE-bench, the agent submits a prose answer rather than a patch. NeMo-Skills runs [mini-SWE-agent](https://mini-swe-agent.com/latest/) by default and also supports [SWE-agent](https://swe-agent.com/) inside the task-specific container. It extracts the answer enclosed by `<<FINAL_ANSWER>>` tags and uses an LLM judge to grade it against the task-specific rubric.
+SWE-Atlas-QnA contains 124 repository-level software engineering questions. Unlike SWE-bench, the agent submits a prose answer rather than a patch. NeMo-Skills runs [mini-SWE-agent](https://mini-swe-agent.com/latest/) by default and also supports [SWE-agent](https://swe-agent.com/), OpenCode, and Claude Code inside the task-specific container. It extracts the answer enclosed by `<<FINAL_ANSWER>>` tags and uses an LLM judge to grade it against the task-specific rubric.
 
 #### Data preparation
 
@@ -398,19 +398,24 @@ ns eval "${COMMON_ARGS[@]}" \
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
 
-The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent and OpenCode are also supported:
+The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent, OpenCode, and Claude Code are also supported:
 
 ```
 # Select one of these overrides.
 ++agent_framework=swe_agent
 ++agent_framework=opencode
+++agent_framework=claude_code
 ```
 
-NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You can override a framework's default with `++agent_config=<PROMPT_CONFIG>`. OpenCode is pinned to version 1.17.11 by default; override it with `++agent_framework_commit=<VERSION>`. Its installer selects x86_64 or ARM64 and uses the native musl package in Alpine containers. The model server must support native tool calls for OpenCode.
+NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You can override a framework's default with `++agent_config=<PROMPT_CONFIG>`. mini-SWE-agent is pinned to v2.4.6 and OpenCode to 1.17.11; override either version with `++agent_framework_commit=<VERSION>`. The OpenCode installer selects x86_64 or ARM64 and uses the native musl package in Alpine containers. The model server must support native tool calls for OpenCode.
+
+Additional Markdown instruction fragments can be appended to the user-facing task prompt for every harness with `++extra_instructions='["instruction-name","path/to/custom.md"]'`. Short names resolve under `eval/swe-atlas-qna/common`; explicit paths may be used for custom prompts. The default is an empty list.
+
+Claude Code is pinned to 2.1.259 and uses the server's Anthropic Messages endpoint (`/v1/messages`). The server must support native tool use through that endpoint. Its Atlas configuration exposes only Bash, Read, Glob, and Grep, denies Edit, Write, and WebFetch, and instructs the agent not to modify the repository. Configure its advertised context window with `++claude_code_context_window=<TOKENS>`, select a model alias with `++claude_code_model=<MODEL>`, and set effort with `++claude_code_effort=<LEVEL>`. When `++claude_code_effort` is omitted, `++inference.extra_body.chat_template_kwargs.reasoning_effort` is reused. Setting `enable_thinking=false` in the same `chat_template_kwargs` disables Claude Code thinking.
 
 SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
 
-By default, an unhandled error for one instance fails its generation job. Add `++continue_on_error=True` to record diagnostic details in an `*.errors.jsonl` sidecar and continue processing the rest of the chunk. After an instance exhausts its retries, a terminal placeholder is also retained in the finalized output, so resumed jobs do not retry it and pass@k files remain aligned. The rubric judge skips LLM calls for these placeholders; metrics retain them in the denominator as unresolved tasks with zero rubric score.
+By default, an unhandled error for one instance fails its generation job. Add `++continue_on_error=True` to record diagnostic details in an `*.errors` sidecar and continue processing the rest of the chunk. After an instance exhausts its retries, a terminal placeholder is also retained in the finalized output, so resumed jobs do not retry it and pass@k files remain aligned. The rubric judge skips LLM calls for these placeholders; metrics retain them in the denominator as unresolved tasks with zero rubric score.
 
 The default judge is configured for the NVIDIA-hosted Claude endpoint and requires `NVIDIA_API_KEY`. You can override the judge model, endpoint, or server configuration with the `--judge_*` options of `ns eval`.
 

@@ -32,8 +32,11 @@ from nemo_skills.inference.eval.opencode_utils import (
 from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask, extract_final_answer
 from nemo_skills.inference.eval.swebench import (
     SupportedAgentFrameworks,
+    SweBenchGenerationConfig,
     SweBenchGenerationTask,
     _override_mini_swe_agent_cwd,
+    append_extra_instructions,
+    build_direct_agent_user_prompt,
 )
 from nemo_skills.inference.generate import GenerationTask, GenerationTaskConfig
 from nemo_skills.inference.swe_atlas_qna_judge import SweAtlasQnAJudgeTask, _extract_rating
@@ -51,6 +54,35 @@ RUBRIC = [
         "annotations": {"type": "negative hli verifier", "importance": "must have"},
     },
 ]
+
+
+def test_swe_atlas_qna_extra_instructions_default_to_empty():
+    cfg = SweBenchGenerationConfig(
+        input_file="input.jsonl",
+        output_file="output.jsonl",
+        agent_framework=SupportedAgentFrameworks.mini_swe_agent,
+    )
+
+    assert cfg.extra_instructions == []
+
+
+def test_swe_atlas_qna_loads_extra_instructions_in_order(tmp_path):
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("First instruction.", encoding="utf-8")
+    second.write_text("Second instruction.", encoding="utf-8")
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(extra_instructions=[str(first), str(second)])
+
+    assert task._get_extra_instructions() == "First instruction.\n\nSecond instruction."
+    assert task._get_extra_instructions_config_dir() == "eval/swe-atlas-qna/common"
+
+
+def test_extra_instructions_preserve_templates_and_direct_prompts():
+    assert append_extra_instructions("Task\n</instructions>\n", "Additional rule.") == (
+        "Task\n\nAdditional rule.\n</instructions>\n"
+    )
+    assert build_direct_agent_user_prompt("Question?", "Additional rule.") == "Question?\n\nAdditional rule.\n"
 
 
 def test_mini_swe_agent_cwd_override_preserves_yaml_default():
@@ -116,9 +148,7 @@ def test_continue_on_error_writes_successful_subset_and_error_sidecar(tmp_path):
     assert [row["instance_id"] for row in output_rows] == ["first", "last"]
     assert [row["generation"] for row in output_rows] == ["answer-first", "answer-last"]
 
-    error_rows = [
-        json.loads(line) for line in (tmp_path / "output.errors.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    error_rows = [json.loads(line) for line in (tmp_path / "output.errors").read_text(encoding="utf-8").splitlines()]
     assert error_rows[0]["instance_id"] == "failed"
     assert error_rows[0]["error_type"] == "RuntimeError"
     assert error_rows[0]["error_message"] == "context length exceeded"
@@ -515,6 +545,23 @@ def test_swe_atlas_qna_maps_opencode_response_to_generation():
     assert "model_patch" not in output
 
 
+def test_swe_atlas_qna_maps_claude_code_response_to_generation():
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(server=SimpleNamespace(model="test-model"))
+    output = task._format_claude_code_output(
+        {
+            "final_response": "<<FINAL_ANSWER>>\nClaude Code answer\n<<FINAL_ANSWER>>",
+            "model_patch": None,
+            "extra_field": "preserved",
+        },
+        {"instance_id": "task-1"},
+    )
+    assert output["generation"] == "Claude Code answer"
+    assert output["extra_field"] == "preserved"
+    assert "final_response" not in output
+    assert "model_patch" not in output
+
+
 def test_swe_atlas_qna_generation_disables_inline_evaluation(monkeypatch, caplog):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.mini_swe_agent,
@@ -556,6 +603,19 @@ def test_swe_atlas_qna_selects_opencode_config(monkeypatch):
     assert cfg.agent_config == "eval/swe-atlas-qna/opencode/default"
 
 
+def test_swe_atlas_qna_selects_claude_code_config(monkeypatch):
+    cfg = SimpleNamespace(
+        agent_framework=SupportedAgentFrameworks.claude_code,
+        agent_config=None,
+        evaluate=False,
+    )
+    monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
+
+    SweAtlasQnAGenerationTask(cfg)
+
+    assert cfg.agent_config == "eval/swe-atlas-qna/claude-code/default"
+
+
 def test_swe_atlas_qna_swe_agent_prompt_submits_prose_answer():
     with open(get_config_path("eval/swe-atlas-qna/swe-agent/default"), encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
@@ -577,6 +637,21 @@ def test_swe_atlas_qna_opencode_prompt_is_read_only_qna():
     prompt = config["agent"]["build"]["prompt"]
     assert "do not modify repository files" in prompt
     assert "<<FINAL_ANSWER>>" in prompt
+
+
+def test_swe_atlas_qna_claude_code_is_read_only_qna():
+    with open(
+        get_config_path("eval/swe-atlas-qna/claude-code/default", config_extension="json"),
+        encoding="utf-8",
+    ) as config_file:
+        config = json.load(config_file)
+
+    assert set(config["permissions"]["deny"]) == {"Edit", "Write", "WebFetch"}
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    prompt = task._get_claude_code_instruction({"problem_statement": "How does this work?"})
+    assert "do not modify repository files" in prompt
+    assert "<<FINAL_ANSWER>>" in prompt
+    assert "How does this work?" in prompt
 
 
 def test_swe_atlas_qna_processes_swe_agent_output(tmp_path):
@@ -641,6 +716,38 @@ def test_swe_atlas_qna_processes_opencode_output(tmp_path):
 
     output = asyncio.run(run())
 
+    assert output["generation"] == "Final response"
+    assert output["swe-atlas-qna-outputs"]["instance_id"] == "task-1"
+
+
+def test_swe_atlas_qna_processes_claude_code_output(tmp_path):
+    async def run():
+        prediction_file = tmp_path / "prediction.jsonl"
+        prediction_file.write_text(
+            json.dumps(
+                {
+                    "final_response": "<<FINAL_ANSWER>>\nFinal response\n<<FINAL_ANSWER>>",
+                    "model_patch": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        task = object.__new__(SweAtlasQnAGenerationTask)
+        task.cfg = SimpleNamespace(
+            agent_framework=SupportedAgentFrameworks.claude_code,
+            server=SimpleNamespace(model="test-model"),
+        )
+        task.semaphore = asyncio.Semaphore(1)
+        task.get_api_base = lambda: "http://127.0.0.1:8000/v1"
+
+        async def fake_run_claude_code(data_point, api_base):
+            assert api_base == "http://127.0.0.1:8000/v1"
+            return str(prediction_file)
+
+        task._run_claude_code = fake_run_claude_code
+        return await task.process_single_datapoint({"instance_id": "task-1"}, [])
+
+    output = asyncio.run(run())
     assert output["generation"] == "Final response"
     assert output["swe-atlas-qna-outputs"]["instance_id"] == "task-1"
 

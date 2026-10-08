@@ -160,6 +160,10 @@ def build_opencode_config(
         }
     )
     agents[agent_name] = primary_agent
+    # Title generation is an extra model request unrelated to solving the task.
+    title_agent = agents.get("title", {}) if isinstance(agents.get("title"), dict) else {}
+    title_agent["disable"] = True
+    agents["title"] = title_agent
     return config
 
 
