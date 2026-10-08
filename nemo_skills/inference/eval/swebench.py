@@ -761,7 +761,7 @@ class SweBenchGenerationTask(GenerationTask):
         input_mount = ""
         if mode == "eval":
             input_mount = f"--mount type=bind,src={self.input_dir},dst=/input_mount,ro "
-        elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands:
+        elif self.cfg.agent_framework == SupportedAgentFrameworks.openhands and self._openhands_requires_input_mount():
             # OpenHands still consumes its benchmark row from the input file.
             input_mount = f"--mount type=bind,src={self.input_dir},dst=/input_mount,ro "
         apptainer_cmd = (
@@ -854,6 +854,39 @@ class SweBenchGenerationTask(GenerationTask):
 
     def _get_extra_instructions_config_dir(self) -> str:
         return "eval/swe-bench/common"
+
+    def _openhands_requires_input_mount(self) -> bool:
+        """Whether OpenHands needs access to the benchmark input file."""
+        return True
+
+    def _get_openhands_dataset_setup(self, data_point: dict, data_dir: str) -> str:
+        """Build the command that places the benchmark dataset in the container."""
+        return f"mkdir {data_dir} && cp /input_mount/{Path(self.cfg.input_file).name} {data_dir}/dataset.jsonl"
+
+    def _get_openhands_prompt_setup(self, data_point: dict) -> str:
+        """Return optional commands and environment for a custom OpenHands prompt."""
+        return ""
+
+    def _format_openhands_output(self, out_dict: dict, out_file: str, data_point: dict) -> str:
+        """Convert an OpenHands trajectory to the SWE-bench prediction format."""
+        patch = out_dict["test_result"]["git_patch"]
+        if not patch:
+            patch = None
+        elif not patch.endswith("\n"):
+            patch += "\n"
+
+        pred_file = out_file.replace("output.jsonl", "output_for_eval.jsonl")
+        with open(pred_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "model_name_or_path": out_dict["metadata"]["llm_config"]["model"],
+                        "instance_id": out_dict["instance_id"],
+                        "model_patch": patch,
+                    }
+                )
+            )
+        return pred_file
 
     def _get_extra_instructions(self) -> str:
         """Load and concatenate the Markdown prompts selected by extra_instructions."""
@@ -1082,36 +1115,7 @@ class SweBenchGenerationTask(GenerationTask):
         # Add parameters to config.toml
 
         with open(get_config_path(self.cfg.agent_config, config_extension="toml"), "r") as f:
-            config = tomlkit.parse(f.read())
-
-        config["llm"]["model"] |= {
-            "model": self.cfg.server.model,
-            "base_url": api_base,
-            "temperature": self.cfg.inference.temperature,
-            "top_p": self.cfg.inference.top_p,
-        }
-        completion_kwargs = {}
-
-        for ns_param, oh_param in NS_TO_OPENHANDS_PARAM.items():
-            param_value = getattr(self.cfg.inference, ns_param)
-            if param_value is not None:
-                if oh_param is not None:
-                    config["llm"]["model"][oh_param] = param_value
-                else:
-                    # If oh_param is None, that means there is no dedicated OH config option for this parameter,
-                    # so we need to pass it via the completion_kwargs option.
-                    completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
-
-        completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
-        if "top_logprobs" in completion_kwargs:
-            completion_kwargs["logprobs"] = True
-        if "reasoning_effort" in completion_kwargs:
-            completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
-
-        if completion_kwargs:
-            config["llm"]["model"]["completion_kwargs"] = completion_kwargs
-
-        config_str = tomlkit.dumps(config)
+            base_config = tomlkit.parse(f.read())
 
         # Folder to copy the dataset into.
         # It's important that the name includes the original HF dataset name,
@@ -1133,77 +1137,86 @@ class SweBenchGenerationTask(GenerationTask):
                 f" train "  # dataset split (always "train" for local datasets)
             )
 
-        openhands_cmd = (
-            # make sure /workspace isn't mounted as a safety precaution
-            # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
-            "if awk '{print $2}' /proc/mounts | grep -qE '^/workspace(/|$)'; then "
-            "    echo 'Exiting because /workspace is mounted.' && "
-            "    echo 'Please make sure /workspace is not mounted inside of Apptainer before running OpenHands.' && "
-            "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
-            "    exit 1; "
-            "fi && "
-            # copy installed repo, uv, tmux & jq dirs from /root_mount
-            "cp -r /root_mount/OpenHands /root && "
-            "cp -r /root_mount/uv /root && "
-            "cp -r /root_mount/tmux /root && "
-            "cp -r /root_mount/jq /root && "
-            "cd /root/OpenHands && "
-            # make soft links to poetry, tmux & jq in /usr/local/bin, so OpenHands can run them from the command line
-            "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
-            "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
-            "ln -sf /root/jq/jq /usr/local/bin/jq && "
-            # activate openhands venv
-            "source /root/OpenHands/.venv/bin/activate && "
-            # copy dataset
-            f"mkdir {data_dir} && "
-            f"cp /input_mount/{Path(self.cfg.input_file).name} {data_dir}/dataset.jsonl && "
-            # set up config files
-            f"echo {shlex.quote(config_str)} >config.toml && "
-            f"echo \"selected_ids = ['{data_point['instance_id']}']\" >evaluation/benchmarks/{benchmark_name}/config.toml && "
-            # set local runtime & force verbose logs
-            "export RUNTIME=local && "
-            "export LOG_ALL_EVENTS=true && "
-            "export LOG_LEVEL=DEBUG && "
-            # run the agent
-            f"./evaluation/benchmarks/{benchmark_name}/scripts/run_infer.sh "
-            f"    llm.model "  # name of llm config section in config.toml
-            f"    HEAD "  # openhands commit (HEAD = stay in the currently checked out commit)
-            f"    CodeActAgent "  # agent
-            f"    1 "  # number of instances
-            f"    {self.cfg.agent_max_turns} "  # max agent iterations
-            f"    1 "  # number of workers
-            f"    {extra_args} && "  # extra args (different depending on benchmark_name)
-            # move outputs to the mounted directory
-            f"mkdir -p /trajectories_mount/trajectories && "
-            f"cp -r evaluation/evaluation_outputs/outputs/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
-        )
+        def build_openhands_command(proxy_api_base):
+            config = copy.deepcopy(base_config)
+            config["llm"]["model"] |= {
+                "model": self.cfg.server.model,
+                "base_url": proxy_api_base,
+                "temperature": self.cfg.inference.temperature,
+                "top_p": self.cfg.inference.top_p,
+            }
+            completion_kwargs = {}
+            for ns_param, oh_param in NS_TO_OPENHANDS_PARAM.items():
+                param_value = getattr(self.cfg.inference, ns_param)
+                if param_value is not None:
+                    if oh_param is not None:
+                        config["llm"]["model"][oh_param] = param_value
+                    else:
+                        # OpenHands has no dedicated option for this parameter.
+                        completion_kwargs[NS_TO_OPENAI_PARAM[ns_param]] = param_value
+
+            completion_kwargs.update(OmegaConf.to_container(self.cfg.inference.extra_body, resolve=True))
+            if "top_logprobs" in completion_kwargs:
+                completion_kwargs["logprobs"] = True
+            if "reasoning_effort" in completion_kwargs:
+                completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
+            if completion_kwargs:
+                config["llm"]["model"]["completion_kwargs"] = completion_kwargs
+
+            config_str = tomlkit.dumps(config)
+            dataset_setup = self._get_openhands_dataset_setup(data_point, data_dir)
+            prompt_setup = self._get_openhands_prompt_setup(data_point)
+            return (
+                # Make sure /workspace isn't mounted: OpenHands clears it during setup.
+                "if awk '{print $2}' /proc/mounts | grep -qE '^/workspace(/|$)'; then "
+                "    echo 'Exiting because /workspace is mounted.' && "
+                "    echo 'Please make sure /workspace is not mounted inside of Apptainer before running OpenHands.' && "
+                "    echo 'This is because OpenHands DELETES EVERYTHING in the /workspace folder if it exists.' && "
+                "    exit 1; "
+                "fi && "
+                # Copy the installation prepared in the NeMo-Skills container.
+                "cp -r /root_mount/OpenHands /root && "
+                "cp -r /root_mount/uv /root && "
+                "cp -r /root_mount/tmux /root && "
+                "cp -r /root_mount/jq /root && "
+                "cd /root/OpenHands && "
+                "ln -sf /root/uv/tool-bin/poetry /usr/local/bin/poetry && "
+                "ln -sf /root/tmux/tmux /usr/local/bin/tmux && "
+                "ln -sf /root/jq/jq /usr/local/bin/jq && "
+                "source /root/OpenHands/.venv/bin/activate && "
+                f"{dataset_setup} && "
+                f"echo {shlex.quote(config_str)} >config.toml && "
+                f"echo \"selected_ids = ['{data_point['instance_id']}']\" "
+                f">evaluation/benchmarks/{benchmark_name}/config.toml && "
+                f"{prompt_setup}"
+                "export RUNTIME=local && "
+                "export LOG_ALL_EVENTS=true && "
+                "export LOG_LEVEL=DEBUG && "
+                f"./evaluation/benchmarks/{benchmark_name}/scripts/run_infer.sh "
+                f"    llm.model "  # name of llm config section in config.toml
+                f"    HEAD "  # OpenHands commit (HEAD = current pinned commit)
+                f"    CodeActAgent "  # agent
+                f"    1 "  # number of instances
+                f"    {self.cfg.agent_max_turns} "  # max agent iterations
+                f"    1 "  # number of workers
+                f"    {extra_args} && "
+                "mkdir -p /trajectories_mount/trajectories && "
+                f"cp -r evaluation/evaluation_outputs/outputs/*/*/* "
+                f"/trajectories_mount/trajectories/{data_point['instance_id']}"
+            )
 
         # Execute OpenHands command
         search_path = os.path.join(self.output_dir, "trajectories", data_point["instance_id"], "output.jsonl")
-        out_file = await self._execute_container_command(data_point, openhands_cmd, search_path, mode="agent")
+        out_file = await self._execute_agent_command_with_capture(
+            data_point,
+            build_openhands_command,
+            search_path,
+            api_base=api_base,
+        )
 
         with open(out_file, "r") as f:
             out_dict = json.loads(f.read().strip())
-
-        patch = out_dict["test_result"]["git_patch"]
-        if not patch:
-            patch = None
-        elif not patch.endswith("\n"):
-            patch += "\n"
-
-        # Create file in the SWE-bench evaluation format
-        pred_file = out_file.replace("output.jsonl", "output_for_eval.jsonl")
-        with open(pred_file, "w") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "model_name_or_path": out_dict["metadata"]["llm_config"]["model"],
-                        "instance_id": out_dict["instance_id"],
-                        "model_patch": patch,
-                    }
-                )
-            )
-        return pred_file
+        return self._format_openhands_output(out_dict, out_file, data_point)
 
     async def _execute_agent_command_with_capture(
         self,

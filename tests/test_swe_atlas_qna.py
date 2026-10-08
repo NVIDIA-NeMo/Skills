@@ -14,6 +14,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -29,7 +30,11 @@ from nemo_skills.inference.eval.opencode_utils import (
     extract_final_assistant_text,
     extract_final_assistant_text_from_jsonl,
 )
-from nemo_skills.inference.eval.swe_atlas_qna import SweAtlasQnAGenerationTask, extract_final_answer
+from nemo_skills.inference.eval.swe_atlas_qna import (
+    SweAtlasQnAGenerationTask,
+    extract_final_answer,
+    extract_openhands_final_response,
+)
 from nemo_skills.inference.eval.swebench import (
     SupportedAgentFrameworks,
     SweBenchGenerationConfig,
@@ -603,6 +608,20 @@ def test_swe_atlas_qna_selects_opencode_config(monkeypatch):
     assert cfg.agent_config == "eval/swe-atlas-qna/opencode/default"
 
 
+def test_swe_atlas_qna_selects_openhands_config(monkeypatch):
+    cfg = SimpleNamespace(
+        agent_framework=SupportedAgentFrameworks.openhands,
+        agent_config=None,
+        evaluate=False,
+    )
+    monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
+
+    task = SweAtlasQnAGenerationTask(cfg)
+
+    assert cfg.agent_config == "eval/swe-atlas-qna/openhands/default"
+    assert task._openhands_requires_input_mount() is False
+
+
 def test_swe_atlas_qna_selects_claude_code_config(monkeypatch):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.claude_code,
@@ -652,6 +671,79 @@ def test_swe_atlas_qna_claude_code_is_read_only_qna():
     assert "do not modify repository files" in prompt
     assert "<<FINAL_ANSWER>>" in prompt
     assert "How does this work?" in prompt
+
+
+def test_swe_atlas_qna_openhands_uses_sanitized_dataset_and_qna_prompt():
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(extra_instructions=[])
+    data_point = {
+        "instance_id": "task-1",
+        "problem_statement": "How does this work?",
+        "base_commit": "abc123",
+        "reference_answer": "PRIVATE REFERENCE",
+        "rubric": [{"title": "PRIVATE RUBRIC"}],
+    }
+
+    dataset_setup = task._get_openhands_dataset_setup(data_point, "/root/ScaleAI__SWE-Atlas-QnA")
+    prompt_setup = task._get_openhands_prompt_setup(data_point)
+
+    assert "How does this work?" in dataset_setup
+    assert "PRIVATE REFERENCE" not in dataset_setup
+    assert "PRIVATE RUBRIC" not in dataset_setup
+    assert "reference_answer" not in dataset_setup
+    assert "rubric" not in dataset_setup
+    assert "INSTRUCTION_TEMPLATE_NAME" in prompt_setup
+    assert "Do not modify repository files" in prompt_setup
+    assert "<<FINAL_ANSWER>>" in prompt_setup
+
+
+def test_extract_openhands_final_response_prefers_tagged_agent_answer():
+    history = [
+        {"source": "user", "action": "message", "args": {"content": "Question"}},
+        {
+            "source": "agent",
+            "action": "message",
+            "args": {"content": "<<FINAL_ANSWER>>Evidence-based answer<<FINAL_ANSWER>>"},
+        },
+        {
+            "source": "agent",
+            "action": "finish",
+            "args": {"thought": "Done", "outputs": {}},
+        },
+    ]
+
+    assert extract_openhands_final_response(history) == ("<<FINAL_ANSWER>>Evidence-based answer<<FINAL_ANSWER>>")
+
+
+def test_swe_atlas_qna_formats_openhands_prose_output(tmp_path):
+    task = object.__new__(SweAtlasQnAGenerationTask)
+    task.cfg = SimpleNamespace(server=SimpleNamespace(model="test-model"))
+    raw_output = tmp_path / "output.jsonl"
+    raw_output.write_text("raw trajectory remains here", encoding="utf-8")
+    out_dict = {
+        "instance_id": "task-1",
+        "instance": {"reference_answer": "must not be copied"},
+        "test_result": {"git_patch": "must not be copied"},
+        "history": [
+            {
+                "source": "agent",
+                "action": "finish",
+                "args": {"outputs": {"content": "<<FINAL_ANSWER>>\nOpenHands answer\n<<FINAL_ANSWER>>"}},
+            }
+        ],
+        "metrics": {"accumulated_cost": 1.0},
+    }
+
+    prediction_file = task._format_openhands_output(out_dict, str(raw_output), {"instance_id": "task-1"})
+    prediction = json.loads(Path(prediction_file).read_text(encoding="utf-8"))
+
+    assert prediction["generation"] == "OpenHands answer"
+    assert prediction["final_response"].startswith("<<FINAL_ANSWER>>")
+    assert prediction["model_name_or_path"] == "test-model"
+    assert prediction["metrics"] == {"accumulated_cost": 1.0}
+    assert "instance" not in prediction
+    assert "test_result" not in prediction
+    assert raw_output.read_text(encoding="utf-8") == "raw trajectory remains here"
 
 
 def test_swe_atlas_qna_processes_swe_agent_output(tmp_path):

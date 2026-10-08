@@ -334,7 +334,7 @@ all you need to do is replace `swe_agent` with `mini_swe_agent` in the command a
 - Original benchmark source is [ScaleAI/SWE-Atlas-QnA](https://huggingface.co/datasets/ScaleAI/SWE-Atlas-QnA).
 - Official results are published on the [SWE-Atlas-QnA leaderboard](https://labs.scale.com/leaderboard/sweatlas-qna).
 
-SWE-Atlas-QnA contains 124 repository-level software engineering questions. Unlike SWE-bench, the agent submits a prose answer rather than a patch. NeMo-Skills runs [mini-SWE-agent](https://mini-swe-agent.com/latest/) by default and also supports [SWE-agent](https://swe-agent.com/), OpenCode, and Claude Code inside the task-specific container. It extracts the answer enclosed by `<<FINAL_ANSWER>>` tags and uses an LLM judge to grade it against the task-specific rubric.
+SWE-Atlas-QnA contains 124 repository-level software engineering questions. Unlike SWE-bench, the agent submits a prose answer rather than a patch. NeMo-Skills runs [mini-SWE-agent](https://mini-swe-agent.com/latest/) by default and also supports [SWE-agent](https://swe-agent.com/), [OpenHands](https://www.all-hands.dev/), OpenCode, and Claude Code inside the task-specific container. It extracts the answer enclosed by `<<FINAL_ANSWER>>` tags and uses an LLM judge to grade it against the task-specific rubric.
 
 #### Data preparation
 
@@ -398,16 +398,17 @@ ns eval "${COMMON_ARGS[@]}" \
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
 
-The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent, OpenCode, and Claude Code are also supported:
+The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent, OpenHands, OpenCode, and Claude Code are also supported:
 
 ```
 # Select one of these overrides.
 ++agent_framework=swe_agent
+++agent_framework=openhands
 ++agent_framework=opencode
 ++agent_framework=claude_code
 ```
 
-NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You can override a framework's default with `++agent_config=<PROMPT_CONFIG>`. mini-SWE-agent is pinned to v2.4.6 and OpenCode to 1.17.11; override either version with `++agent_framework_commit=<VERSION>`. The OpenCode installer selects x86_64 or ARM64 and uses the native musl package in Alpine containers. The model server must support native tool calls for OpenCode.
+NeMo-Skills automatically selects the corresponding read-only Q&A prompt. You can override a framework's default with `++agent_config=<PROMPT_CONFIG>`. mini-SWE-agent is pinned to v2.4.6, OpenHands to 1.2.1, and OpenCode to 1.17.11; override a version with `++agent_framework_commit=<VERSION>`. OpenHands uses its proven SWE-bench runner but receives a generated inference-only dataset row: the rubric, reference answer, and original input file are not mounted into the agent container. The OpenCode installer selects x86_64 or ARM64 and uses the native musl package in Alpine containers. The model server must support native tool calls for OpenHands and OpenCode.
 
 Additional Markdown instruction fragments can be appended to the user-facing task prompt for every harness with `++extra_instructions='["instruction-name","path/to/custom.md"]'`. Short names resolve under `eval/swe-atlas-qna/common`; explicit paths may be used for custom prompts. The default is an empty list.
 
