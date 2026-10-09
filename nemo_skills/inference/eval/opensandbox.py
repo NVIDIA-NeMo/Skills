@@ -210,6 +210,11 @@ class OpenSandboxExecutor:
         proxy_host,
         block_network,
     ) -> str:
+        if mode == "agent" and agent_framework in {"gold_patch", "model_patch"}:
+            raise RuntimeError(
+                f"{agent_framework} does not run an agent sandbox; use OpenSandbox only for evaluation."
+            )
+
         image = (
             data_point["container_formatter"]
             .format(instance_id=data_point["instance_id"].replace("__", "_1776_"))

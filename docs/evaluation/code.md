@@ -64,11 +64,13 @@ When this path is accessed during evaluation, `{instance_id}` will be replaced b
 
 #### Remote tool execution with OpenSandbox
 
-For mini-SWE-agent, SWE-agent, OpenHands, OpenCode, and Claude Code, native
-`ns eval` and the SWE generation module support
-`++execution_backend=opensandbox`. The model server stays on GPU nodes; agent
-commands and grading run in separate, fresh OpenSandbox task containers. Gym is
-not required. Apptainer remains the default backend.
+Native `ns eval` and the SWE generation module support
+`++execution_backend=opensandbox` for mini-SWE-agent, SWE-agent, OpenHands,
+OpenCode, Claude Code, `gold_patch`, and `model_patch`. For agent harnesses, the
+model server stays on GPU nodes while agent commands and grading run in separate,
+fresh OpenSandbox task containers. Supplied-patch modes create their prediction
+files on the coordinator and use OpenSandbox only for grading. Gym is not required.
+Apptainer remains the default backend.
 
 Install `nemo_skills[opensandbox]` in the coordinator's runtime image or environment.
 Export `OPENSANDBOX_DOMAIN` and `OPENSANDBOX_API_KEY`; NeMo-Skills forwards these
@@ -94,19 +96,21 @@ ns eval --cluster=<CLUSTER> \
   ++max_concurrent_requests=2 ++max_samples=3
 ```
 
-After the job starts, NeMo-Skills automatically discovers the coordinator's IPv4
-interface using its network route to `OPENSANDBOX_DOMAIN`, with the node's hostname
-as a fallback. This uses the allocated compute node, including on Slurm; no IP
-needs to be supplied when submitting the job. NeMo-Skills logs the detected address
-and passes the per-instance proxy URL to the remote agent in its model configuration.
-For unusual network setups, override it with `++opensandbox_proxy_host=<COORDINATOR_IP>`.
-NeMo-Skills binds each model proxy to this interface on dynamically allocated ports.
-The sandbox workers must be able to reach these ports on the cluster network;
-automatic address discovery does not create a tunnel or change firewall rules.
-The proxy forwards model requests to the configured GPU endpoint and preserves
-request transformations and capture. With a pre-hosted model server,
-the coordinator can run on a CPU node. When NeMo-Skills hosts the model itself,
-the coordinator can remain on its GPU node while all task commands run remotely.
+For agent harnesses, NeMo-Skills automatically discovers the coordinator's IPv4
+interface after the job starts using its network route to `OPENSANDBOX_DOMAIN`,
+with the node's hostname as a fallback. This uses the allocated compute node,
+including on Slurm; no IP needs to be supplied when submitting the job. NeMo-Skills
+logs the detected address and passes the per-instance proxy URL to the remote agent
+in its model configuration. For unusual network setups, override it with
+`++opensandbox_proxy_host=<COORDINATOR_IP>`. NeMo-Skills binds each model proxy to
+this interface on dynamically allocated ports. The sandbox workers must be able to
+reach these ports on the cluster network; automatic address discovery does not
+create a tunnel or change firewall rules. The proxy forwards model requests to the
+configured GPU endpoint and preserves request transformations and capture. With a
+pre-hosted model server, the coordinator can run on a CPU node. When NeMo-Skills
+hosts the model itself, the coordinator can remain on its GPU node while all task
+commands run remotely. Supplied-patch modes do not start this model proxy and do
+not require `opensandbox_proxy_host`.
 
 Optional resource settings use `++opensandbox.resources.cpu=4` and
 `++opensandbox.resources.memory=16Gi`. Other options are `ready_timeout_s` (1200),
@@ -122,16 +126,38 @@ Output schemas and multilingual language instructions follow the existing SWE
 flow. Command logs are saved under `opensandbox_logs`; successful outputs are
 downloaded before each sandbox is terminated. Sandboxes are also terminated on
 command failure or cancellation.
-Infrastructure failures propagate rather than being scored as incorrect patches.
+Agent infrastructure failures propagate. Evaluator command failures return
+unresolved patch metrics so one failed verifier does not abort the shard.
 
-Support covers these five agent harnesses on standard SWE-bench and SWE-bench
-Multilingual OCI images. Select one with `++agent_framework=mini_swe_agent`,
-`swe_agent`, `openhands`, `opencode`, or `claude_code`; use that harness's agent config
-or leave `agent_config` unset for its default. SWE-Zero, supplied-patch modes,
-other benchmark dataset types, and `block_network`
-(the local Unix-socket forwarding path) are not supported. Each task has its own sandbox network, so fixed-port multilingual verifiers do
-not share the coordinator network. Start with a few samples before increasing
-concurrency to match the service's capacity.
+Support covers the five agent harnesses and both supplied-patch modes on standard
+SWE-bench and SWE-bench Multilingual OCI images. Supplied-patch grading also
+supports SWE-rebench V2; agent rollouts on SWE-rebench V2 remain unsupported.
+Select an agent harness with `++agent_framework=mini_swe_agent`, `swe_agent`,
+`openhands`, `opencode`, or `claude_code`; use that harness's agent config or
+leave `agent_config` unset for its default. To smoke-test a remote evaluator
+without an LLM, use:
+
+```bash
+ns eval --cluster=<CLUSTER> \
+  --benchmarks=swe-bench --server_type=vllm --model=gold-patch \
+  --server_address=http://localhost:1 --output_dir=<OUTPUT_DIR> \
+  ++agent_framework=gold_patch ++execution_backend=opensandbox ++max_samples=3
+```
+
+To grade existing predictions instead, replace the final line with:
+
+```bash
+++agent_framework=model_patch ++model_patch_file=<PATCHES_JSONL> ++execution_backend=opensandbox
+```
+
+Neither supplied-patch mode contacts the dummy server address or creates an
+OpenSandbox agent container. The same commands work for SWE-rebench V2 by using
+`--benchmarks=swe-rebench-v2`.
+
+SWE-Zero and other benchmark dataset types are not supported. Each task has its
+own sandbox network, so fixed-port multilingual verifiers do not share the
+coordinator network. Start with a few samples before increasing concurrency to
+match the service's capacity.
 
 #### SWE-bench-specific parameters
 

@@ -25,7 +25,11 @@ import pytest
 from omegaconf import OmegaConf
 
 from nemo_skills.inference.eval.opensandbox import OpenSandboxExecutor, _extract_outputs
-from nemo_skills.inference.eval.swebench import SweBenchGenerationConfig, SweBenchGenerationTask
+from nemo_skills.inference.eval.swebench import (
+    SupportedDatasetTypes,
+    SweBenchGenerationConfig,
+    SweBenchGenerationTask,
+)
 
 
 def _archive(name="sample.traj.json", content=b'{"info":{"submission":"patch"}}'):
@@ -121,7 +125,10 @@ def test_remote_agent_downloads_artifact_and_never_uploads_gold_data(executor, m
     sandbox.close.assert_awaited_once()
 
 
-@pytest.mark.parametrize("framework", ["mini_swe_agent", "swe_agent", "openhands", "opencode", "claude_code"])
+@pytest.mark.parametrize(
+    "framework",
+    ["mini_swe_agent", "swe_agent", "openhands", "opencode", "claude_code", "gold_patch", "model_patch"],
+)
 def test_verifier_receives_only_its_record_in_a_fresh_sandbox(executor, monkeypatch, tmp_path, framework):
     sandbox, create = _sandbox(executor, monkeypatch, _archive())
     args = _arguments(tmp_path, mode="eval")
@@ -133,6 +140,18 @@ def test_verifier_receives_only_its_record_in_a_fresh_sandbox(executor, monkeypa
     assert create.call_args.kwargs["metadata"]["mode"] == "eval"
     assert "SWE-bench" in sandbox.commands.run.call_args_list[0].args[0]
     sandbox.kill.assert_awaited_once()
+
+
+@pytest.mark.parametrize("framework", ["gold_patch", "model_patch"])
+def test_supplied_patch_cannot_run_in_agent_sandbox(executor, monkeypatch, tmp_path, framework):
+    _, create = _sandbox(executor, monkeypatch)
+    args = _arguments(tmp_path, mode="agent")
+    args["agent_framework"] = framework
+
+    with pytest.raises(RuntimeError, match="does not run an agent sandbox"):
+        asyncio.run(executor.execute(**args))
+
+    create.assert_not_called()
 
 
 @pytest.mark.parametrize("repo_setup_timeout_s", [None, 600])
@@ -269,6 +288,162 @@ def test_opensandbox_setup_stays_remote_and_separates_agent_from_verifier(
     assert detect.call_count == (1 if proxy_host is None else 0)
 
 
+@pytest.mark.parametrize("framework", ["gold_patch", "model_patch"])
+def test_supplied_patch_setup_skips_model_proxy(executor, monkeypatch, tmp_path, framework):
+    detect = MagicMock(side_effect=AssertionError("supplied patches do not need a model proxy"))
+    monkeypatch.setattr(executor, "detect_proxy_host", detect)
+    monkeypatch.setattr(SweBenchGenerationTask, "_execute_local_command", AsyncMock())
+    monkeypatch.setattr("nemo_skills.inference.eval.opensandbox.OpenSandboxExecutor", lambda **kwargs: executor)
+    monkeypatch.setattr("nemo_skills.inference.eval.swebench.SCRATCH_DIR", tmp_path)
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text("{}\n")
+    patch_file = tmp_path / "patches.jsonl"
+    patch_file.write_text('{"instance_id":"owner__repo-1","model_patch":"model patch"}\n')
+    cfg = SweBenchGenerationConfig(
+        _init_nested=True,
+        input_file=str(dataset),
+        output_file=str(tmp_path / "output.jsonl"),
+        agent_framework=framework,
+        model_patch_file=str(patch_file) if framework == "model_patch" else None,
+        multilingual=True,
+        execution_backend="opensandbox",
+        server=OmegaConf.create({"base_url": "http://unused.example:8000/v1"}),
+    )
+
+    task = SweBenchGenerationTask(cfg)
+
+    task._execute_local_command.assert_not_called()
+    detect.assert_not_called()
+    assert task.cfg.opensandbox_proxy_host is None
+    assert "SWE-bench" not in task.opensandbox_setup_commands["agent"]
+    assert "SWE-bench" in task.opensandbox_setup_commands["eval"]
+
+
+@pytest.mark.parametrize(
+    "framework,patch,patch_directory",
+    [
+        ("gold_patch", "gold patch", "gold_patches"),
+        ("model_patch", "model patch", "model_patches"),
+    ],
+)
+@pytest.mark.parametrize(
+    "dataset_type,evaluator_entrypoint",
+    [
+        (SupportedDatasetTypes.swe_bench, "swebench.harness.run_local_evaluation"),
+        (SupportedDatasetTypes.swe_rebench_v2, "scripts/local_eval.py"),
+    ],
+)
+def test_supplied_patch_runs_only_remote_evaluation(
+    executor, monkeypatch, tmp_path, framework, patch, patch_directory, dataset_type, evaluator_entrypoint
+):
+    instance_id = "owner__repo-1"
+    data_point = {
+        "instance_id": instance_id,
+        "container_formatter": "docker://swebench/sweb.eval.x86_64.{instance_id}",
+        "problem_statement": "Fix the bug",
+        "patch": "gold patch",
+        "test_patch": "hidden test patch",
+    }
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(json.dumps(data_point) + "\n")
+    patch_file = tmp_path / "patches.jsonl"
+    patch_file.write_text(json.dumps({"instance_id": instance_id, "model_patch": "model patch"}) + "\n")
+    report = {
+        instance_id: {
+            "resolved": True,
+            "patch_exists": True,
+            "patch_successfully_applied": True,
+        }
+    }
+    sandbox, create = _sandbox(
+        executor,
+        monkeypatch,
+        _archive(
+            "report.json",
+            json.dumps(report).encode(),
+        ),
+    )
+    detect = MagicMock(side_effect=AssertionError("supplied patches do not need a model proxy"))
+    monkeypatch.setattr(executor, "detect_proxy_host", detect)
+    monkeypatch.setattr(SweBenchGenerationTask, "_execute_local_command", AsyncMock())
+    monkeypatch.setattr("nemo_skills.inference.eval.opensandbox.OpenSandboxExecutor", lambda **kwargs: executor)
+    monkeypatch.setattr("nemo_skills.inference.eval.swebench.SCRATCH_DIR", tmp_path)
+    cfg = SweBenchGenerationConfig(
+        _init_nested=True,
+        input_file=str(dataset),
+        output_file=str(tmp_path / "results/output.jsonl"),
+        agent_framework=framework,
+        model_patch_file=str(patch_file) if framework == "model_patch" else None,
+        dataset_type=dataset_type,
+        execution_backend="opensandbox",
+        server=OmegaConf.create({"base_url": "http://unused.example:8000/v1"}),
+    )
+    task = SweBenchGenerationTask(cfg)
+    task.rollout_semaphore = asyncio.Semaphore(1)
+    task.eval_semaphore = asyncio.Semaphore(1)
+
+    output = asyncio.run(task.process_single_datapoint(data_point, []))
+
+    assert output["swe-bench-metrics"]["resolved"] is True
+    assert output["swe-bench-outputs"]["model_patch"] == patch
+    prediction = tmp_path / f"results/{patch_directory}/{instance_id}.jsonl"
+    assert prediction.is_file()
+    assert create.await_count == 1
+    assert create.call_args.kwargs["metadata"]["mode"] == "eval"
+    detect.assert_not_called()
+    uploaded_paths = [call.args[0] for call in sandbox.files.write_file.call_args_list]
+    assert uploaded_paths == [f"/predictions_mount/{instance_id}.jsonl", "/input_mount/dataset.jsonl"]
+    commands = "\n".join(call.args[0] for call in sandbox.commands.run.call_args_list)
+    assert evaluator_entrypoint in commands
+    assert (tmp_path / f"results/opensandbox_logs/{instance_id}_eval.log").is_file()
+    assert not (tmp_path / f"results/opensandbox_logs/{instance_id}_agent.log").exists()
+
+
+@pytest.mark.parametrize("framework", ["gold_patch", "model_patch"])
+@pytest.mark.parametrize(
+    "dataset_type,swe_zero_container",
+    [
+        (SupportedDatasetTypes.swe_bench_pro, None),
+        (SupportedDatasetTypes.swe_bench, "docker://swe-zero"),
+    ],
+)
+def test_supplied_patch_keeps_opensandbox_dataset_restrictions(
+    executor, monkeypatch, tmp_path, framework, dataset_type, swe_zero_container
+):
+    monkeypatch.setattr("nemo_skills.inference.eval.opensandbox.OpenSandboxExecutor", lambda **kwargs: executor)
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text("{}\n")
+    cfg = SweBenchGenerationConfig(
+        _init_nested=True,
+        input_file=str(dataset),
+        output_file=str(tmp_path / "output.jsonl"),
+        agent_framework=framework,
+        model_patch_file=str(tmp_path / "patches.jsonl") if framework == "model_patch" else None,
+        dataset_type=dataset_type,
+        swe_zero_container=swe_zero_container,
+        execution_backend="opensandbox",
+    )
+
+    with pytest.raises(ValueError, match="standard SWE-bench and Multilingual"):
+        SweBenchGenerationTask(cfg)
+
+
+def test_agent_harness_cannot_use_opensandbox_for_swe_rebench_v2(tmp_path):
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text("{}\n")
+    cfg = SweBenchGenerationConfig(
+        _init_nested=True,
+        input_file=str(dataset),
+        output_file=str(tmp_path / "output.jsonl"),
+        agent_framework="mini_swe_agent",
+        dataset_type=SupportedDatasetTypes.swe_rebench_v2,
+        execution_backend="opensandbox",
+    )
+
+    with pytest.raises(ValueError, match="SWE-rebench V2 for supplied-patch grading"):
+        SweBenchGenerationTask(cfg)
+
+
 @pytest.mark.parametrize("instance_id", ["owner__repo-1", "axios__axios-4731"])
 def test_backend_dispatch_preserves_native_artifact_contract(executor, monkeypatch, tmp_path, instance_id):
     sandbox, _ = _sandbox(executor, monkeypatch, _archive())
@@ -300,7 +475,7 @@ def test_backend_dispatch_preserves_native_artifact_contract(executor, monkeypat
     sandbox.kill.assert_awaited_once()
 
 
-def test_remote_infrastructure_failure_is_not_scored_as_an_incorrect_patch(tmp_path):
+def test_remote_evaluation_failure_returns_failed_patch_metrics(tmp_path):
     prediction = tmp_path / "prediction.jsonl"
     prediction.write_text(json.dumps({"instance_id": "owner__repo-1", "model_patch": "patch"}))
     task = object.__new__(SweBenchGenerationTask)
@@ -319,8 +494,13 @@ def test_remote_infrastructure_failure_is_not_scored_as_an_incorrect_patch(tmp_p
         task.eval_semaphore = asyncio.Semaphore(1)
         return await task.process_single_datapoint({"instance_id": "owner__repo-1"}, [])
 
-    with pytest.raises(RuntimeError, match="sandbox service unavailable"):
-        asyncio.run(run())
+    output = asyncio.run(run())
+
+    assert output["swe-bench-metrics"] == {
+        "resolved": False,
+        "patch_exists": True,
+        "patch_successfully_applied": False,
+    }
 
 
 def test_hydra_numeric_resource_values_are_normalized_for_sdk(monkeypatch):

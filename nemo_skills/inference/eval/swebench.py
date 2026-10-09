@@ -62,6 +62,23 @@ class SupportedAgentFrameworks(str, Enum):
     model_patch = "model_patch"
 
 
+SUPPLIED_PATCH_FRAMEWORKS = frozenset(
+    {
+        SupportedAgentFrameworks.gold_patch,
+        SupportedAgentFrameworks.model_patch,
+    }
+)
+OPENSANDBOX_AGENT_FRAMEWORKS = frozenset(
+    {
+        SupportedAgentFrameworks.mini_swe_agent,
+        SupportedAgentFrameworks.swe_agent,
+        SupportedAgentFrameworks.openhands,
+        SupportedAgentFrameworks.opencode,
+        SupportedAgentFrameworks.claude_code,
+    }
+)
+
+
 # OpenCode is installed from npm (not git). Pin matches NeMo Gym v0.5.0's default.
 OPENCODE_NPM_PACKAGE = "opencode-ai"
 OPENCODE_DEFAULT_VERSION = "1.17.11"
@@ -566,32 +583,32 @@ class SweBenchGenerationTask(GenerationTask):
         if self.cfg.execution_backend == "opensandbox":
             from nemo_skills.inference.eval.opensandbox import OpenSandboxExecutor
 
-            if self.cfg.agent_framework not in {
-                SupportedAgentFrameworks.mini_swe_agent,
-                SupportedAgentFrameworks.swe_agent,
-                SupportedAgentFrameworks.openhands,
-                SupportedAgentFrameworks.opencode,
-                SupportedAgentFrameworks.claude_code,
-            }:
+            if self.cfg.agent_framework not in OPENSANDBOX_AGENT_FRAMEWORKS | SUPPLIED_PATCH_FRAMEWORKS:
+                raise ValueError(f"Unsupported OpenSandbox agent framework: {self.cfg.agent_framework}.")
+            supports_dataset = self.cfg.dataset_type == SupportedDatasetTypes.swe_bench or (
+                self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2
+                and self.cfg.agent_framework in SUPPLIED_PATCH_FRAMEWORKS
+            )
+            if not supports_dataset or self.cfg.swe_zero_container:
                 raise ValueError(
-                    "OpenSandbox requires a supported agent harness; supplied-patch modes are not supported."
-                )
-            if self.cfg.dataset_type != SupportedDatasetTypes.swe_bench or self.cfg.swe_zero_container:
-                raise ValueError(
-                    "OpenSandbox currently supports standard SWE-bench and Multilingual task images only."
+                    "OpenSandbox supports standard SWE-bench and Multilingual task images, plus "
+                    "SWE-rebench V2 for supplied-patch grading."
                 )
             self.opensandbox_executor = OpenSandboxExecutor(**self.cfg.opensandbox)
-            if self.cfg.opensandbox_proxy_host is None:
-                self.cfg.opensandbox_proxy_host = self.opensandbox_executor.detect_proxy_host()
-                LOG.info("Detected OpenSandbox model proxy interface: %s", self.cfg.opensandbox_proxy_host)
-            if not self.cfg.opensandbox_proxy_host or self.cfg.opensandbox_proxy_host in {
-                "localhost",
-                "127.0.0.1",
-                "0.0.0.0",
-                "::1",
-                "::",
-            }:
-                raise ValueError("Set opensandbox_proxy_host to a coordinator interface reachable from OpenSandbox.")
+            if self.cfg.agent_framework in OPENSANDBOX_AGENT_FRAMEWORKS:
+                if self.cfg.opensandbox_proxy_host is None:
+                    self.cfg.opensandbox_proxy_host = self.opensandbox_executor.detect_proxy_host()
+                    LOG.info("Detected OpenSandbox model proxy interface: %s", self.cfg.opensandbox_proxy_host)
+                if not self.cfg.opensandbox_proxy_host or self.cfg.opensandbox_proxy_host in {
+                    "localhost",
+                    "127.0.0.1",
+                    "0.0.0.0",
+                    "::1",
+                    "::",
+                }:
+                    raise ValueError(
+                        "Set opensandbox_proxy_host to a coordinator interface reachable from OpenSandbox."
+                    )
 
         if (
             self.cfg.block_network
