@@ -62,6 +62,23 @@ class SupportedAgentFrameworks(str, Enum):
     model_patch = "model_patch"
 
 
+SUPPLIED_PATCH_FRAMEWORKS = frozenset(
+    {
+        SupportedAgentFrameworks.gold_patch,
+        SupportedAgentFrameworks.model_patch,
+    }
+)
+OPENSANDBOX_AGENT_FRAMEWORKS = frozenset(
+    {
+        SupportedAgentFrameworks.mini_swe_agent,
+        SupportedAgentFrameworks.swe_agent,
+        SupportedAgentFrameworks.openhands,
+        SupportedAgentFrameworks.opencode,
+        SupportedAgentFrameworks.claude_code,
+    }
+)
+
+
 # OpenCode is installed from npm (not git). Pin matches NeMo Gym v0.5.0's default.
 OPENCODE_NPM_PACKAGE = "opencode-ai"
 OPENCODE_DEFAULT_VERSION = "1.17.11"
@@ -434,8 +451,8 @@ class SweBenchGenerationConfig:
     agent_max_turns: int = 100  # Max agent iterations
     # Save every transformed LLM request for proxy-backed harnesses. Intended only for debugging.
     capture_all_llm_requests: bool = False
-    # If True, run the agent container without network access, connecting the LLM through a Unix socket.
-    # Currently only supported for mini-swe-agent.
+    # If True, run the agent container without network access.
+    # With the Apptainer backend, only supported for mini-swe-agent. With OpenSandbox, supported for all frameworks.
     block_network: bool = False
 
     opencode_context_window: int = 262144  # Context window advertised to OpenCode
@@ -461,6 +478,13 @@ class SweBenchGenerationConfig:
 
     # Whether to run evaluation. If False, will only run inference (trajectory/patch generation).
     evaluate: bool = True
+
+    # OpenSandbox runs the agent and verifier remotely; model serving stays on the GPU nodes.
+    execution_backend: str = "apptainer"  # apptainer | opensandbox
+    opensandbox: dict = field(default_factory=dict)  # OpenSandboxExecutor options; credentials come from env.
+    opensandbox_proxy_host: str | None = (
+        None  # Auto-detect inside the job; optionally override the coordinator interface.
+    )
 
     # Native Scale-SWE evaluation runs with the host network, matching AweAgent's Docker bridge behavior.
     # When enabled, mount a usable resolver configuration into the verifier container. Agent inference and
@@ -553,8 +577,45 @@ class SweBenchGenerationTask(GenerationTask):
         self.evaluator = None
         self._reasoning_warning_shown = False
 
-        if self.cfg.block_network and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent:
-            raise ValueError("block_network=True is currently only supported for mini_swe_agent.")
+        if self.cfg.execution_backend not in {"apptainer", "opensandbox"}:
+            raise ValueError(f"Unknown execution_backend: {self.cfg.execution_backend}")
+        self.opensandbox_executor = None
+        if self.cfg.execution_backend == "opensandbox":
+            from nemo_skills.inference.eval.opensandbox import OpenSandboxExecutor
+
+            if self.cfg.agent_framework not in OPENSANDBOX_AGENT_FRAMEWORKS | SUPPLIED_PATCH_FRAMEWORKS:
+                raise ValueError(f"Unsupported OpenSandbox agent framework: {self.cfg.agent_framework}.")
+            supports_dataset = self.cfg.dataset_type == SupportedDatasetTypes.swe_bench or (
+                self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2
+                and self.cfg.agent_framework in SUPPLIED_PATCH_FRAMEWORKS
+            )
+            if not supports_dataset or self.cfg.swe_zero_container:
+                raise ValueError(
+                    "OpenSandbox supports standard SWE-bench and Multilingual task images, plus "
+                    "SWE-rebench V2 for supplied-patch grading."
+                )
+            self.opensandbox_executor = OpenSandboxExecutor(**self.cfg.opensandbox)
+            if self.cfg.agent_framework in OPENSANDBOX_AGENT_FRAMEWORKS:
+                if self.cfg.opensandbox_proxy_host is None:
+                    self.cfg.opensandbox_proxy_host = self.opensandbox_executor.detect_proxy_host()
+                    LOG.info("Detected OpenSandbox model proxy interface: %s", self.cfg.opensandbox_proxy_host)
+                if not self.cfg.opensandbox_proxy_host or self.cfg.opensandbox_proxy_host in {
+                    "localhost",
+                    "127.0.0.1",
+                    "0.0.0.0",
+                    "::1",
+                    "::",
+                }:
+                    raise ValueError(
+                        "Set opensandbox_proxy_host to a coordinator interface reachable from OpenSandbox."
+                    )
+
+        if (
+            self.cfg.block_network
+            and self.cfg.execution_backend == "apptainer"
+            and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent
+        ):
+            raise ValueError("block_network=True under Apptainer is currently only supported for mini_swe_agent.")
 
         # Set up output folder,
         # making sure it is different for each random seed if we're running with --benchmarks=swe-bench:N
@@ -595,9 +656,10 @@ class SweBenchGenerationTask(GenerationTask):
         ):
             self.cfg.extra_instructions.append("openhands-use-finish-tool")
 
-        # Install SWE-agent/OpenHands and the SWE-bench evaluation harness. Here's how it works:
+        # Install the agent framework and the SWE-bench evaluation harness.
+        # Here's how it works (Apptainer backend only):
         #
-        # 1. This code installs SWE-agent/OpenHands and the eval harness in the Nemo-Skills container.
+        # 1. This code installs the agent framework and the eval harness in the Nemo-Skills container.
         #    All required files, venvs and dependencies are stored in /root.
         # 2. When we start SWE-bench containers via Apptainer, we mount /root to /root_mount.
         # 3. Inside of the child containers, we copy the required files from /root_mount to /root and run from there.
@@ -605,10 +667,25 @@ class SweBenchGenerationTask(GenerationTask):
         # The goal is to run inference & evaluation inside of the SWE-bench containers,
         # but avoid having to download & install everything in each container separately.
 
-        setup_commands = []
+        common_setup_commands = []  # commands installing setup dependencies (e.g. uv)
+
+        if self.opensandbox_executor is not None:
+            # For OpenSandbox, we run the setup inside of per-task containers,
+            # so git/curl/ca-certificates/make are not guaranteed to be present.
+            # This installs them for both Ubuntu and Alpine.
+            common_setup_commands.append(
+                "if command -v apk >/dev/null 2>&1; then "
+                "    apk info -e git curl ca-certificates make >/dev/null || "
+                "    apk add --no-cache git curl ca-certificates make; "
+                "else "
+                "    dpkg -s git curl ca-certificates make >/dev/null 2>&1 || "
+                "    (apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install "
+                "    -y --no-install-recommends --no-upgrade git curl ca-certificates make); "
+                "fi"
+            )
 
         # Install uv.
-        setup_commands.append(
+        common_setup_commands.append(
             # install uv
             "curl -Lf https://astral.sh/uv/install.sh | sh && "
             "export PATH=/root/.local/bin:$PATH && "
@@ -618,7 +695,8 @@ class SweBenchGenerationTask(GenerationTask):
             "export UV_TOOL_BIN_DIR=/root/uv/tool-bin"
         )
 
-        # Install SWE-agent/OpenHands.
+        agent_setup_commands = []  # commands installing the agent framework
+
         if self.cfg.agent_framework == SupportedAgentFrameworks.swe_agent:
             if self.cfg.multilingual:
                 if self.cfg.agent_framework_repo is None:
@@ -631,7 +709,7 @@ class SweBenchGenerationTask(GenerationTask):
                 if self.cfg.agent_framework_commit is None:
                     self.cfg.agent_framework_commit = "HEAD"
 
-            setup_commands.append(
+            agent_setup_commands.append(
                 # clone the swe-agent repo
                 "rm -rf /root/SWE-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/SWE-agent && "
@@ -650,7 +728,7 @@ class SweBenchGenerationTask(GenerationTask):
                 self.cfg.agent_framework_repo = "https://github.com/SWE-agent/mini-swe-agent.git"
             if self.cfg.agent_framework_commit is None:
                 self.cfg.agent_framework_commit = "v2.4.6"
-            setup_commands.append(
+            agent_setup_commands.append(
                 # clone the mini-swe-agent repo
                 "rm -rf /root/mini-swe-agent && "
                 f"git clone {self.cfg.agent_framework_repo} /root/mini-swe-agent && "
@@ -683,7 +761,7 @@ class SweBenchGenerationTask(GenerationTask):
                     # Future versions are not supported for now and will require significant changes.
                     self.cfg.agent_framework_commit = "1.2.1"
 
-            setup_commands.append(
+            agent_setup_commands.append(
                 # install python 3.12 with uv
                 "uv python install 3.12 && "
                 # install poetry in an isolated environment
@@ -731,7 +809,7 @@ class SweBenchGenerationTask(GenerationTask):
                 )
             if self.cfg.agent_framework_commit is None:
                 self.cfg.agent_framework_commit = OPENCODE_DEFAULT_VERSION
-            setup_commands.append(
+            agent_setup_commands.append(
                 "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
                 "    export NODE_ARCH=linux-arm64; "
                 "else "
@@ -758,7 +836,7 @@ class SweBenchGenerationTask(GenerationTask):
                 )
             if self.cfg.agent_framework_commit is None:
                 self.cfg.agent_framework_commit = CLAUDE_CODE_DEFAULT_VERSION
-            setup_commands.append(
+            agent_setup_commands.append(
                 "if [[ $(uname -m) == 'aarch64' || $(uname -m) == 'arm64' ]]; then "
                 "    export NODE_ARCH=linux-arm64; "
                 "else "
@@ -788,13 +866,15 @@ class SweBenchGenerationTask(GenerationTask):
                 f"Supported frameworks: {', '.join(SupportedAgentFrameworks)}."
             )
 
+        eval_setup_commands = []  # commands installing the evaluation harness
+
         if self.cfg.evaluate and self.cfg.dataset_type in [
             SupportedDatasetTypes.swe_bench,
             SupportedDatasetTypes.swe_bench_pro,
             SupportedDatasetTypes.swe_rebench_v2,
         ]:
             # Install the SWE-bench/SWE-bench-Pro/SWE-rebench-V2 evaluation harness.
-            setup_commands.append(
+            eval_setup_commands.append(
                 # clone the repo
                 "rm -rf /root/SWE-bench && "
                 f"git clone {self.cfg.eval_harness_repo} /root/SWE-bench && "
@@ -805,11 +885,18 @@ class SweBenchGenerationTask(GenerationTask):
             )
             if self.cfg.dataset_type != SupportedDatasetTypes.swe_rebench_v2:
                 # install dependencies (not needed for swe-rebench-v2)
-                setup_commands.append("source venv/bin/activate && uv pip install -e .")
+                eval_setup_commands.append("source venv/bin/activate && uv pip install -e .")
 
-        # Run all commands with retries and timeout
-        combined_setup_command = " && ".join(setup_commands)
-        asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
+        if self.opensandbox_executor is None:
+            # For Apptainer, run all commands with retries and timeout
+            combined_setup_command = " && ".join(common_setup_commands + agent_setup_commands + eval_setup_commands)
+            asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
+        else:
+            # For OpenSandbox, we don't run the setup yet, only save the commands to be executed later.
+            self.opensandbox_setup_commands = {
+                "agent": " && ".join(common_setup_commands + agent_setup_commands),
+                "eval": " && ".join(common_setup_commands + eval_setup_commands),
+            }
 
         # Set up the scratch dir where Apptainer mounts are staged (see _execute_container_command)
         scratch_root = SCRATCH_DIR
@@ -928,6 +1015,27 @@ class SweBenchGenerationTask(GenerationTask):
         NOTE: expected_file_pattern is expected to be a static path.
         Glob patterns (e.g. 'dir/*/*.json') are no longer accepted, since they can cause issues on Lustre filesystems.
         """
+        if getattr(self, "opensandbox_executor", None) is not None:
+            # Fixed-port multilingual verifiers get a separate sandbox network rather
+            # than sharing Apptainer's default host network.
+            if extra_apptainer_args:
+                raise RuntimeError("Apptainer-specific arguments are not supported with OpenSandbox.")
+            return await self.opensandbox_executor.execute(
+                data_point=data_point,
+                command=command,
+                expected_file=Path(expected_file_pattern),
+                output_dir=self.output_dir,
+                input_file=Path(self.cfg.input_file),
+                setup_command=self.opensandbox_setup_commands[mode],
+                setup_timeout=self.cfg.setup_timeout,
+                mode=mode,
+                agent_framework=self.cfg.agent_framework,
+                timeout=timeout,
+                extra_files=extra_mounts,
+                proxy_host=self.cfg.opensandbox_proxy_host,
+                block_network=self.cfg.block_network,
+            )
+
         mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)
 
         # Commands to be executed in the Apptainer container, in order
@@ -1344,7 +1452,7 @@ class SweBenchGenerationTask(GenerationTask):
         unix_socket = None
         extra_apptainer_args = ""
         forwarder_command = ""
-        if self.cfg.block_network:
+        if self.cfg.block_network and self.cfg.execution_backend == "apptainer":
             # The container has no network, so LLM requests go through a local TCP -> Unix socket forwarder.
             # Unix socket paths are limited to 107 bytes, so don't use instance_id in the name.
             unix_socket = self.scratch_dir / f"{uuid.uuid4()}.sock"
@@ -1356,7 +1464,7 @@ class SweBenchGenerationTask(GenerationTask):
             forwarder_command = "(/root/mini-swe-agent/venv/bin/python /uds_forwarder.py /llm.sock 8000 &) && "
 
         def build_mini_swe_agent_command(api_base):
-            if self.cfg.block_network:
+            if self.cfg.block_network and self.cfg.execution_backend == "apptainer":
                 # Set the base URL inside the Apptainer container to 127.0.0.1:8000.
                 # The forwarder (uds_forwarder.py) will listen at that port
                 # and forward requests to the Unix socket at /llm.sock.
@@ -1606,6 +1714,9 @@ class SweBenchGenerationTask(GenerationTask):
             request_transform=request_transform,
             all_requests_dir=all_requests_dir,
             unix_socket=unix_socket,
+            host=self.cfg.opensandbox_proxy_host
+            if getattr(self, "opensandbox_executor", None) is not None
+            else "127.0.0.1",
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,
@@ -2060,7 +2171,7 @@ class SweBenchGenerationTask(GenerationTask):
                         timeout=tests_timeout + 120,
                         extra_mounts=[(pred_file, pred_mounted_path, True)],
                     )
-            except ValueError:
+            except (ValueError, RuntimeError):
                 LOG.error("Failed to execute SWE-bench evaluation command for %s", data_point["instance_id"])
                 report_json = {
                     data_point["instance_id"]: {

@@ -62,6 +62,103 @@ mounts:
 
 When this path is accessed during evaluation, `{instance_id}` will be replaced by the value of the instance_id column in the dataset, replacing `__` with `_1776_`. For example, `astropy__astropy-12907` becomes `astropy_1776_astropy-12907`.
 
+#### Remote tool execution with OpenSandbox
+
+Native `ns eval` and the SWE generation module support
+`++execution_backend=opensandbox` for mini-SWE-agent, SWE-agent, OpenHands,
+OpenCode, Claude Code, `gold_patch`, and `model_patch`. For agent harnesses, the
+model server stays on GPU nodes while agent commands and grading run in separate,
+fresh OpenSandbox task containers. Supplied-patch modes create their prediction
+files on the coordinator and use OpenSandbox only for grading. Gym is not required.
+Apptainer remains the default backend.
+
+Install `nemo_skills[opensandbox]` in the coordinator's runtime image or environment.
+Export `OPENSANDBOX_DOMAIN` and `OPENSANDBOX_API_KEY`; NeMo-Skills forwards these
+variables into the coordinator container like other API keys. The OpenSandbox
+backend requires both. The domain may include an `http://` or `https://` scheme.
+For a trusted endpoint with a self-signed certificate, explicitly export
+`OPENSANDBOX_TLS_VERIFY=false`; this variable is also forwarded into the job.
+Certificate verification remains enabled by default. Disabling it bypasses server
+certificate authentication for OpenSandbox HTTPS connections.
+
+Prepare OCI task images rather than local `.sif` files:
+
+```bash
+ns prepare_data swe-bench-multilingual
+
+ns eval --cluster=<CLUSTER> \
+  --benchmarks=swe-bench-multilingual \
+  --server_type=vllm --model=<SERVED_MODEL> \
+  --server_address=http://<GPU_MODEL_HOST>:8000/v1 \
+  --output_dir=<OUTPUT_DIR> \
+  ++agent_framework=mini_swe_agent \
+  ++execution_backend=opensandbox \
+  ++max_concurrent_requests=2 ++max_samples=3
+```
+
+For agent harnesses, NeMo-Skills automatically discovers the coordinator's IPv4
+interface after the job starts using its network route to `OPENSANDBOX_DOMAIN`,
+with the node's hostname as a fallback. This uses the allocated compute node,
+including on Slurm; no IP needs to be supplied when submitting the job. NeMo-Skills
+logs the detected address and passes the per-instance proxy URL to the remote agent
+in its model configuration. For unusual network setups, override it with
+`++opensandbox_proxy_host=<COORDINATOR_IP>`. NeMo-Skills binds each model proxy to
+this interface on dynamically allocated ports. The sandbox workers must be able to
+reach these ports on the cluster network; automatic address discovery does not
+create a tunnel or change firewall rules. The proxy forwards model requests to the
+configured GPU endpoint and preserves request transformations and capture. With a
+pre-hosted model server, the coordinator can run on a CPU node. When NeMo-Skills
+hosts the model itself, the coordinator can remain on its GPU node while all task
+commands run remotely. Supplied-patch modes do not start this model proxy and do
+not require `opensandbox_proxy_host`.
+
+Optional resource settings use `++opensandbox.resources.cpu=4` and
+`++opensandbox.resources.memory=16Gi`. Other options are `ready_timeout_s` (1200),
+`request_timeout_s` (60), `command_timeout_s` (10800), and `poll_interval_s` (5).
+The command timeout caps the agent/verifier execution budget; dependency setup has
+its own `setup_timeout`. Setup currently installs the pinned agent or verifier in
+each sandbox and therefore needs download access. Sandbox lifetime includes setup,
+execution, readiness, and an artifact-transfer allowance.
+
+The same backend can be used for inference through
+`--generation_module=nemo_skills.inference.eval.swebench` with `++evaluate=False`.
+Output schemas and multilingual language instructions follow the existing SWE
+flow. Command logs are saved under `opensandbox_logs`; successful outputs are
+downloaded before each sandbox is terminated. Sandboxes are also terminated on
+command failure or cancellation.
+Agent infrastructure failures propagate. Evaluator command failures return
+unresolved patch metrics so one failed verifier does not abort the shard.
+
+Support covers the five agent harnesses and both supplied-patch modes on standard
+SWE-bench and SWE-bench Multilingual OCI images. Supplied-patch grading also
+supports SWE-rebench V2; agent rollouts on SWE-rebench V2 remain unsupported.
+Select an agent harness with `++agent_framework=mini_swe_agent`, `swe_agent`,
+`openhands`, `opencode`, or `claude_code`; use that harness's agent config or
+leave `agent_config` unset for its default. To smoke-test a remote evaluator
+without an LLM, use:
+
+```bash
+ns eval --cluster=<CLUSTER> \
+  --benchmarks=swe-bench --server_type=vllm --model=gold-patch \
+  --server_address=http://localhost:1 --output_dir=<OUTPUT_DIR> \
+  ++agent_framework=gold_patch ++execution_backend=opensandbox ++max_samples=3
+```
+
+To grade existing predictions instead, replace the final line with:
+
+```bash
+++agent_framework=model_patch ++model_patch_file=<PATCHES_JSONL> ++execution_backend=opensandbox
+```
+
+Neither supplied-patch mode contacts the dummy server address or creates an
+OpenSandbox agent container. The same commands work for SWE-rebench V2 by using
+`--benchmarks=swe-rebench-v2`.
+
+SWE-Zero and other benchmark dataset types are not supported. Each task has its
+own sandbox network, so fixed-port multilingual verifiers do not share the
+coordinator network. Start with a few samples before increasing concurrency to
+match the service's capacity.
+
 #### SWE-bench-specific parameters
 
 There are a few parameters specific to SWE-bench. They have to be specified with the `++` prefix. All of them are optional, except for ++agent_framework.
@@ -87,7 +184,9 @@ There are a few parameters specific to SWE-bench. They have to be specified with
 
 - **++capture_all_llm_requests:** Save every transformed LLM request made by SWE-agent, mini-SWE-agent, OpenHands, OpenCode, or Claude Code under `trajectories/<instance_id>/llm-requests/`. Defaults to `False` because the artifacts can be large and contain sensitive prompt and repository context. Intended for debugging only.
 
-- **++block_network:** Whether to block network access in agent containers. Defaults to `False`. With `++block_network=True`, mini-SWE-agent containers run with `--net --network none`, so the agent cannot access the internet, and LLM requests reach the model server through a Unix socket mounted into the container. Container setup runs without network too, so SWE-Zero needs a local `repo_formatter` mirror, and `pre_commands` must not download anything. Currently only supported for mini-SWE-agent.
+- **++block_network:** Whether to block network access in agent containers. Defaults to `False`. Evaluation containers are not affected.
+    - With the Apptainer backend, only mini-SWE-agent is supported. Its containers run with `--net --network none`, so the agent cannot access the internet, and LLM requests reach the model server through a Unix socket mounted into the container. Container setup runs without network too, so SWE-Zero needs a local `repo_formatter` mirror, and `pre_commands` must not download anything.
+    - With the OpenSandbox backend, all agent frameworks are supported. The sandbox is created with an egress policy that denies all traffic except the model proxy. For the setup portion only (before running the agent), common domain wildcards (`*.com`, `*.org`, `*.net`, `*.io`, `*.sh`, `*.dev`, `*.rs`, `*.co`, `*.edu`, `*.cn`) are allowed. The OpenSandbox server must have an egress sidecar image configured (`[egress] image`), and should use `mode = "dns+nft"`: in the default `dns` mode, only DNS lookups are filtered, so connections to literal IP addresses are not blocked.
 
 - **++max_concurrent_requests:** Maximum concurrent agent rollouts and per-instance evaluations within each chunk job. Defaults to 512. Reduce this for memory-heavy evaluation containers, especially with `model_patch`.
 
