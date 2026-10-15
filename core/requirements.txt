@@ -6,14 +6,19 @@
 bs4
 compute-eval @ git+https://github.com/NVIDIA/compute-eval.git@e01a5d2
 contractions
-datasets
+# Fixes eight High findings through CVE-2026-55415.
+datamodel-code-generator>=0.64.0
+datasets>=5.0.1
 editdistance
 evalplus @ git+https://github.com/evalplus/evalplus@c91370f
 faiss-cpu
 fire
 flask
+fsspec>=2026.6.0,<=2026.7.0
 func-timeout
-gradio
+# Fixes all High GitPython advisories reported through GHSA-wvpp-8hx9-p66j.
+GitPython>=3.1.58
+gradio>=6.16.0  # CVE-2026-49119
 httpx
 huggingface_hub
 hydra-core
@@ -30,6 +35,9 @@ math-verify[antlr4_9_3]
 # mcp 2.0 removed the streamablehttp_client alias that nemo_skills/mcp/clients.py imports.
 # Unpin once those call sites move to streamable_http_client and the 2.0 API is verified.
 mcp<2.0
+# NLTK has no release containing the CVE-2026-81726 model-artifact fixes or
+# the later GHSA-j456-xh4h-cpf2 Weka path-containment fix.
+nltk @ git+https://github.com/nltk/nltk.git@6a17606293fe9d3ea1006f99dd3fed2e2b25d519  # CVE-2026-81726; GHSA-j456-xh4h-cpf2
 numpy
 openai
 openpyxl>=3.1.0
@@ -41,12 +49,12 @@ requests
 rich
 sacrebleu
 scikit-learn
-sentence_transformers
+sentence-transformers>=5.7.0
 serpapi
 sympy
 torchcodec
 tqdm
-transformers
-# Floors click to >=8.2 (wandb 0.26.x only requires click>=8.0.1, so the resolver
-# was settling on click 8.1.8). Taken from #1507.
-wandb>=0.27.1
+transformers>=5.19.0
+# 0.28.1 is paired with the patched wandb-core built in Dockerfile.nemo-skills.
+# Pinning keeps the Python/core protocol pair deterministic.
+wandb==0.28.1

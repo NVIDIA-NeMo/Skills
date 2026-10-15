@@ -14,6 +14,7 @@
 
 *.json
 !greptile.json
+!security/nltk-cve-2026-81726.openvex.json
 !tests/data/dummy_external_benchmark/benchmark_map.json
 !nemo_skills/mcp/servers/exclude_domains_hle_opus.json
 *.tar.gz

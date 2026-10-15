@@ -27,6 +27,10 @@ from nemo_skills.pipeline import eval as eval_pipeline
 from nemo_skills.pipeline.utils import eval as eval_utils
 from nemo_skills.pipeline.utils.scripts import BaseJobScript, EvalClientScript
 
+NVIDIA_TEST_API_BASE_URL = "https://inference-api.nvidia.com/v1"
+NVIDIA_TEST_API_KEY_ENV_VAR = "NV_INFERENCE_API_KEY"
+NVIDIA_TEST_API_MODEL = "gcp/google/gemini-2.5-flash-lite"
+
 
 class FakeExp:
     def __enter__(self):
@@ -278,7 +282,10 @@ def test_eval_judge_sbatch_kwargs_override(monkeypatch, tmp_path):
 
 
 @pytest.mark.timeout(300)
-@pytest.mark.skipif("NVIDIA_API_KEY" not in os.environ, reason="requires NVIDIA_API_KEY")
+@pytest.mark.skipif(
+    NVIDIA_TEST_API_KEY_ENV_VAR not in os.environ,
+    reason=f"requires {NVIDIA_TEST_API_KEY_ENV_VAR}",
+)
 def test_eval_multi_model_generation_module_smoke(tmp_path):
     repo_root = Path(__file__).resolve().parents[1]
     output_dir = tmp_path / "out"
@@ -288,10 +295,10 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
         f"ns eval "
         f"    --server_type=openai "
         f"    --server_type=openai "
-        f"    --model=nvidia/nemotron-3-nano-30b-a3b "
-        f"    --model=nvidia/nemotron-3-nano-30b-a3b "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
-        f"    --server_address=https://integrate.api.nvidia.com/v1 "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --model={NVIDIA_TEST_API_MODEL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
+        f"    --server_address={NVIDIA_TEST_API_BASE_URL} "
         f"    --benchmarks=gsm8k "
         f"    --output_dir={shlex.quote(str(output_dir))} "
         f"    --generation_module={shlex.quote(str(generation_module))} "
@@ -299,6 +306,7 @@ def test_eval_multi_model_generation_module_smoke(tmp_path):
         f"    ++max_concurrent_requests=1 "
         f"    ++inference.timeout=120 "
         f"    ++server.max_retries=1 "
+        f"    ++server.api_key_env_var={NVIDIA_TEST_API_KEY_ENV_VAR} "
     )
     env = {**os.environ, "PYTHONPATH": f"{repo_root}{os.pathsep}{os.environ.get('PYTHONPATH', '')}"}
     subprocess.run(cmd, shell=True, check=True, env=env)

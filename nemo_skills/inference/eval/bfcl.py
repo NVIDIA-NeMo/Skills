@@ -52,12 +52,12 @@ BFCL_REQUIREMENTS = [
     # we made changes listed in comments to speed up installation time
     "requests",
     "tqdm",
-    "numpy==1.26.4",
+    "numpy>=2.1.0,<2.2",
     "pandas",
     "huggingface_hub",
     "pydantic>=2.8.2",
     "python-dotenv>=1.0.1",
-    "tree_sitter==0.21.3",
+    "tree_sitter>=0.25.2,<0.27",
     "tree-sitter-java==0.21.0",
     "tree-sitter-javascript==0.21.4",
     "openai>=1.86.0",
@@ -66,7 +66,8 @@ BFCL_REQUIREMENTS = [
     "cohere==5.18.0",
     "typer>=0.12.5",
     "tabulate>=0.9.0",
-    "datamodel-code-generator==0.25.7",
+    # 0.64.0 fixes eight High findings through CVE-2026-55415.
+    "datamodel-code-generator>=0.64.0",
     "google-genai>=1.52.0",
     # "qwen-agent",  # disabling due to some issues (and shouldn't be needed)
     "mpmath==1.3.0",

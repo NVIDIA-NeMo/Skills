@@ -14,7 +14,7 @@
 
 [build-system]
 requires = [
-    "setuptools",
+    "setuptools>=78.1.1",
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
@@ -79,7 +79,36 @@ override-dependencies = [
     # urllib3<2 has open CVEs (e.g. CVE-2024-37891 / CVE-2025-50182). torchx
     # 0.7.0 (a transitive dep of nemo_run) pins urllib3<1.27, but in practice
     # urllib3>=2 works at runtime, so override the constraint.
-    "urllib3>=2.6.3",
+    "urllib3>=2.8.0",
+    # LeptonAI 0.27.3 caps AnyIO at <=4.9.0. Override that cap for the
+    # certificate-validation fix in CVE-2026-63374.
+    "anyio>=4.15.1",
+    # LeptonAI 0.27.3 pins instrumentator==7.0.0, which requires Starlette<1.0.
+    # Override it with the first release compatible with Starlette 1.x.
+    "prometheus-fastapi-instrumentator>=8.1.0",
+    # Container scans found vulnerable transitive versions. Keep the complete
+    # environment above the first fixed releases.
+    "aiohttp>=3.14.3",
+    # Keep the container on the exact lxml release exercised by its runtime
+    # gate; this also stays above the GHSA-vfmq-68hx-4jfw floor.
+    "lxml==6.1.1",
+    "msgpack>=1.2.1",
+    # NLTK has no release containing the CVE-2026-81726 model-artifact fixes or
+    # the later GHSA-j456-xh4h-cpf2 Weka path-containment fix.
+    "nltk @ git+https://github.com/nltk/nltk.git@6a17606293fe9d3ea1006f99dd3fed2e2b25d519",
+    # Torch 2.11 CPU wheels require setuptools<82. Keep the CVE-2025-47273
+    # security floor while allowing the sandbox lock to remain installable.
+    "setuptools>=78.1.1,<82",
+]
+
+constraint-dependencies = [
+    # Fix CVE-2026-84381/CVE-2026-84382 in the HTTPX2 stack and
+    # CVE-2026-48818/CVE-2026-54283 in Starlette.
+    "httpcore2>=2.10.0",
+    "httpx2>=2.12.0",
+    "pyjwt>=2.15.1",
+    "starlette>=1.3.1",
+    "virtualenv>=21.14.7",
 ]
 
 [tool.pytest.ini_options]

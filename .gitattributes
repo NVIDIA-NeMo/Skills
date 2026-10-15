@@ -1,0 +1,2 @@
+dockerfiles/pip-security-vendor.patch -whitespace
+dockerfiles/bfcl-modern-deps.patch -whitespace

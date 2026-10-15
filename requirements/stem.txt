@@ -10,7 +10,6 @@ bible
 biopython
 bioservices
 bson
-cactus
 cantera
 certifi
 chardet
@@ -71,13 +70,14 @@ ipywidgets
 isbnlib
 jax
 jdcal
+keras>=3.15.1  # fixes CVE-2026-11816, CVE-2026-1462, and later Keras advisories (High); Python >=3.11
 language_tool_python
 law
 lie
 LIEGenTools
 lifelines
 lingpy
-lxml
+lxml>=6.1.0  # fixes GHSA-vfmq-68hx-4jfw (High)
 matplotlib
 mendeleev
 mido
@@ -92,7 +92,7 @@ mygene
 myvariant
 networkx
 nibabel
-nltk
+nltk @ git+https://github.com/nltk/nltk.git@6a17606293fe9d3ea1006f99dd3fed2e2b25d519  # unreleased CVE-2026-81726 and GHSA-j456 fixes
 nuclear
 num2words
 numba

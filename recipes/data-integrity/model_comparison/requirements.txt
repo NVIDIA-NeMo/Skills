@@ -4,7 +4,7 @@ matplotlib>=3.4.0
 nbformat>=4.2.0
 
 # NLP and text processing
-nltk>=3.6.0
+nltk @ git+https://github.com/nltk/nltk.git@6a17606293fe9d3ea1006f99dd3fed2e2b25d519  # unreleased CVE-2026-81726 and GHSA-j456 fixes
 numpy>=1.21.0
 
 # Additional dependencies that may be needed

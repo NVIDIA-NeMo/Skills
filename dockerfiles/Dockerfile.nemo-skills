@@ -1,11 +1,142 @@
+# pip 26.2.1 contains vulnerable vendored msgpack, urllib3, and setuptools
+# components. Re-vendor only those exact dependencies using pip's own release
+# tooling, retain the CycloneDX inventory, and give the downstream build a
+# local version so the patched artifact is distinguishable from upstream.
+ARG PIP_SECURITY_SOURCE_VERSION=26.2.1
+ARG PIP_SECURITY_SOURCE_COMMIT=634a6ec1a5d9dcc2433571cdb2f4c58a4bb29caf
+ARG PIP_SECURITY_SOURCE_SHA256=b6121e99b196e78b6e477924ffac99d814c5198acc4a9e53c1b4ddce72ecf5b5
+ARG PIP_SECURITY_VERSION=26.2.1+nvf.1
+ARG PIP_SECURITY_PATCH_SHA256=a93cdd2f8c0d96a3b7808190684b52ab2355cb52dccffccdccc57829b17d2285
+ARG PIP_SECURITY_WHEEL_SHA256=107b70e4b74cd9ac27ab19bebf9be2f13af12e739717f02d5c8ad23cef25f38e
+ARG PIP_VENDORED_MSGPACK_VERSION=1.2.1
+ARG PIP_VENDORED_URLLIB3_VERSION=2.8.0
+ARG PIP_VENDORED_SETUPTOOLS_VERSION=80.10.2
+
+# W&B 0.28.1 still bundles vulnerable Go standard-library and module versions.
+# Keep the qualified W&B source commit and raise only the modules with fixable
+# Critical/High findings. Build only wandb-core so the final image does not
+# retain the Go toolchain or source. The source archive is content-verified so
+# this stage does not depend on a mutable Git checkout.
+ARG WANDB_CORE_COMMIT=bc2cf24b1bd9fa3a1b6cbeb920087b832afc526f
+ARG WANDB_CORE_ARCHIVE_SHA256=81e21f1057ca3312b9a676f77ba541e027b9a91950a0c8de5de5895b1dd9fa6e
+ARG WANDB_GO_GIT_VERSION=5.19.2
+ARG WANDB_GO_CRYPTO_VERSION=0.57.0
+ARG WANDB_GO_IMAGE_VERSION=0.45.0
+ARG WANDB_GO_TEXT_VERSION=0.42.0
+ARG WANDB_GO_NET_VERSION=0.60.0
+ARG WANDB_GRPC_VERSION=1.83.2
+FROM --platform=$BUILDPLATFORM golang:1.27.2@sha256:5bc7f572bbaa98885a3a1fd9c0aa76b59e3e14e8628bfc316bbfd0c701e4818c AS wandb-core-builder
+ARG WANDB_CORE_COMMIT
+ARG WANDB_CORE_ARCHIVE_SHA256
+ARG WANDB_GO_GIT_VERSION
+ARG WANDB_GO_CRYPTO_VERSION
+ARG WANDB_GO_IMAGE_VERSION
+ARG WANDB_GO_TEXT_VERSION
+ARG WANDB_GO_NET_VERSION
+ARG WANDB_GRPC_VERSION
+ARG TARGETARCH
+RUN curl -fsSL --retry 4 \
+        -o /tmp/wandb.tar.gz \
+        "https://codeload.github.com/wandb/wandb/tar.gz/${WANDB_CORE_COMMIT}" && \
+    echo "${WANDB_CORE_ARCHIVE_SHA256}  /tmp/wandb.tar.gz" | sha256sum -c - && \
+    mkdir -p /src/wandb && \
+    tar -xzf /tmp/wandb.tar.gz --strip-components=1 -C /src/wandb && \
+    rm -f /tmp/wandb.tar.gz
+RUN cd /src/wandb/core && \
+    go get \
+        "github.com/go-git/go-git/v5@v${WANDB_GO_GIT_VERSION}" \
+        "golang.org/x/crypto@v${WANDB_GO_CRYPTO_VERSION}" \
+        "golang.org/x/image@v${WANDB_GO_IMAGE_VERSION}" \
+        "golang.org/x/net@v${WANDB_GO_NET_VERSION}" \
+        "golang.org/x/text@v${WANDB_GO_TEXT_VERSION}" \
+        "google.golang.org/grpc@v${WANDB_GRPC_VERSION}" && \
+    go mod vendor && \
+    grep -E "^[[:space:]]*github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" go.mod && \
+    grep -E "^# github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" vendor/modules.txt && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+        -tags "disable_grpc_modules parquet_read_only" \
+        -ldflags "-s -w -X main.commit=${WANDB_CORE_COMMIT}" \
+        -trimpath \
+        -buildvcs=false \
+        -mod=vendor \
+        -o /wandb-core \
+        ./cmd/wandb-core && \
+    go version -m /wandb-core | grep -F "go1.27.2" && \
+    go version -m /wandb-core | grep -E "build[[:space:]]+GOOS=linux([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "build[[:space:]]+GOARCH=${TARGETARCH}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "github\.com/go-git/go-git/v5[[:space:]]+v${WANDB_GO_GIT_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/crypto[[:space:]]+v${WANDB_GO_CRYPTO_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/image[[:space:]]+v${WANDB_GO_IMAGE_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/net[[:space:]]+v${WANDB_GO_NET_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "google\.golang\.org/grpc[[:space:]]+v${WANDB_GRPC_VERSION}([[:space:]]|$)" && \
+    go version -m /wandb-core | grep -E "golang\.org/x/text[[:space:]]+v${WANDB_GO_TEXT_VERSION}([[:space:]]|$)"
+
+# Build the patched pip as a reproducible, architecture-independent wheel. The
+# source archive, maintained patch, and resulting wheel are all hash-verified.
+FROM --platform=$BUILDPLATFORM python:3.11.14-slim@sha256:c8271b1f627d0068857dce5b53e14a9558603b527e46f1f901722f935b786a39 AS pip-security-builder
+ARG PIP_SECURITY_SOURCE_VERSION
+ARG PIP_SECURITY_SOURCE_COMMIT
+ARG PIP_SECURITY_SOURCE_SHA256
+ARG PIP_SECURITY_VERSION
+ARG PIP_SECURITY_PATCH_SHA256
+ARG PIP_SECURITY_WHEEL_SHA256
+ARG PIP_VENDORED_MSGPACK_VERSION
+ARG PIP_VENDORED_URLLIB3_VERSION
+ARG PIP_VENDORED_SETUPTOOLS_VERSION
+COPY dockerfiles/pip-security-vendor.patch /tmp/pip-security-vendor.patch
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends build-essential ca-certificates curl git patch; \
+    rm -rf /var/lib/apt/lists/*; \
+    echo "${PIP_SECURITY_PATCH_SHA256}  /tmp/pip-security-vendor.patch" | sha256sum -c -; \
+    curl -fsSL --retry 4 \
+        -o /tmp/pip.tar.gz \
+        "https://codeload.github.com/pypa/pip/tar.gz/${PIP_SECURITY_SOURCE_COMMIT}"; \
+    echo "${PIP_SECURITY_SOURCE_SHA256}  /tmp/pip.tar.gz" | sha256sum -c -; \
+    mkdir -p /src/pip /dist; \
+    tar -xzf /tmp/pip.tar.gz --strip-components=1 -C /src/pip; \
+    cd /src/pip; \
+    patch -p1 --forward < /tmp/pip-security-vendor.patch; \
+    python -m pip install --no-cache-dir \
+        vendoring==1.4.0 build==1.4.0 flit-core==3.12.0; \
+    vendoring sync -v; \
+    SOURCE_DATE_EPOCH=1785882488 python -m build \
+        --wheel --no-isolation --outdir /dist; \
+    wheel="/dist/pip-${PIP_SECURITY_VERSION}-py3-none-any.whl"; \
+    test -f "${wheel}"; \
+    echo "${PIP_SECURITY_WHEEL_SHA256}  ${wheel}" | sha256sum -c -; \
+    PIP_BOM=/src/pip/src/pip/_vendor/bom.cdx.json \
+        PIP_VENDORED_MSGPACK_VERSION="${PIP_VENDORED_MSGPACK_VERSION}" \
+        PIP_VENDORED_URLLIB3_VERSION="${PIP_VENDORED_URLLIB3_VERSION}" \
+        PIP_VENDORED_SETUPTOOLS_VERSION="${PIP_VENDORED_SETUPTOOLS_VERSION}" \
+        python -c "import json, os; components = {item['name']: item.get('version') for item in json.load(open(os.environ['PIP_BOM']))['components']}; expected = {'msgpack': os.environ['PIP_VENDORED_MSGPACK_VERSION'], 'urllib3': os.environ['PIP_VENDORED_URLLIB3_VERSION'], 'setuptools': os.environ['PIP_VENDORED_SETUPTOOLS_VERSION']}; assert all(components.get(name) == value for name, value in expected.items()), (components, expected); print('patched pip BOM OK:', expected)"
+RUN set -eu; \
+    python -m venv /tmp/pip-smoke; \
+    /tmp/pip-smoke/bin/python -m pip install --no-cache-dir --force-reinstall --no-deps \
+        "/dist/pip-${PIP_SECURITY_VERSION}-py3-none-any.whl"; \
+    /tmp/pip-smoke/bin/python -m pip --version | grep -F "pip ${PIP_SECURITY_VERSION}"; \
+    /tmp/pip-smoke/bin/pip --version | grep -F "pip ${PIP_SECURITY_VERSION}"; \
+    /tmp/pip-smoke/bin/python -m pip check; \
+    PYTHONWARNINGS=error /tmp/pip-smoke/bin/python -c "import pip, pip._vendor.msgpack, pip._vendor.pkg_resources, pip._vendor.urllib3; from importlib.metadata import version; assert pip.__version__ == '${PIP_SECURITY_VERSION}', pip.__version__; assert version('pip') == '${PIP_SECURITY_VERSION}', version('pip'); assert pip._vendor.msgpack.__version__ == '${PIP_VENDORED_MSGPACK_VERSION}', pip._vendor.msgpack.__version__; assert pip._vendor.urllib3.__version__ == '${PIP_VENDORED_URLLIB3_VERSION}', pip._vendor.urllib3.__version__; print('patched pip runtime OK:', pip.__version__)"
+
+# Keep uv's Python wheel and its build-environment SBOM out of the runtime
+# image. Only the standalone, version-pinned executable crosses this stage.
+FROM ghcr.io/astral-sh/uv:0.12.9 AS uv-installer
+
 # using ubuntu instead of debian for easier apptainer installation on arm64
-FROM ubuntu:22.04
+FROM ubuntu:22.04 AS runtime-base
+ARG WANDB_CORE_COMMIT
+ARG NLTK_SECURITY_COMMIT=6a17606293fe9d3ea1006f99dd3fed2e2b25d519
+ARG PIP_SECURITY_VERSION
+ARG PIP_VENDORED_MSGPACK_VERSION
+ARG PIP_VENDORED_URLLIB3_VERSION
 
 # Install Python and other dependencies
 RUN apt-get update && \
     apt-get install -y \
     python3.10 \
     python3-pip \
+    python3-cairo \
     curl \
     wget \
     git \
@@ -14,7 +145,28 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools "uv>=0.11.10"
+COPY --from=pip-security-builder /dist/pip-${PIP_SECURITY_VERSION}-py3-none-any.whl /tmp/
+RUN set -eu; \
+    python3 -m pip install --no-cache-dir --force-reinstall --no-deps \
+        "/tmp/pip-${PIP_SECURITY_VERSION}-py3-none-any.whl"; \
+    python3 -m pip install --no-cache-dir --upgrade "setuptools>=78.1.1,<82"; \
+    for package in python3-pip python3-pip-whl; do \
+        if dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | grep -q 'install ok installed'; then \
+            apt-get purge -y "${package}"; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*; \
+    ! dpkg-query -W -f='${Status}' python3-pip 2>/dev/null | grep -q 'install ok installed'; \
+    ! dpkg-query -W -f='${Status}' python3-pip-whl 2>/dev/null | grep -q 'install ok installed'; \
+    test "$(command -v pip)" = /usr/local/bin/pip; \
+    test "$(command -v pip3)" = /usr/local/bin/pip3; \
+    test ! -e /usr/lib/python3/dist-packages/pip; \
+    test -z "$(find /usr/share/python-wheels -maxdepth 1 -type f -name 'pip-*.whl' -print -quit 2>/dev/null)"; \
+    python3 -m pip --version | grep -F "pip ${PIP_SECURITY_VERSION}"; \
+    pip --version | grep -F "pip ${PIP_SECURITY_VERSION}"; \
+    PYTHONWARNINGS=error python3 -c "import pip, pip._vendor.msgpack, pip._vendor.pkg_resources, pip._vendor.urllib3; from importlib.metadata import version; assert pip.__version__ == '${PIP_SECURITY_VERSION}', pip.__version__; assert version('pip') == '${PIP_SECURITY_VERSION}', version('pip'); assert pip._vendor.msgpack.__version__ == '${PIP_VENDORED_MSGPACK_VERSION}', pip._vendor.msgpack.__version__; assert pip._vendor.urllib3.__version__ == '${PIP_VENDORED_URLLIB3_VERSION}', pip._vendor.urllib3.__version__; print('patched pip installed:', pip.__version__)"; \
+    python3 -m pip check; \
+    rm -f "/tmp/pip-${PIP_SECURITY_VERSION}-py3-none-any.whl"
 
 # Update package lists and install apptainer for arm64
 # https://apptainer.org/docs/admin/1.1/installation.html
@@ -36,14 +188,24 @@ RUN apt-get update && \
         gir1.2-packagekitglib-1.0 && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
-# for ifeval benchmark
-# TODO: can we get just a single dir?
+# IFEval imports this module from the repository root. Retain only the benchmark
+# it executes; unrelated manifests elsewhere in google-research describe Julia
+# and Rust projects that are neither installed nor used by this image.
 RUN mkdir /opt/benchmarks
-RUN git clone https://github.com/google-research/google-research.git /opt/benchmarks/google-research --depth=1
+RUN git clone https://github.com/google-research/google-research.git /opt/benchmarks/google-research --depth=1 && \
+    cd /opt/benchmarks/google-research && \
+    find . -mindepth 1 -maxdepth 1 ! -name instruction_following_eval -exec rm -rf {} +
 
 RUN git clone https://github.com/ShishirPatil/gorilla.git /opt/gorilla
 RUN cd /opt/gorilla && git checkout 86d0374d0db52623c5092a73f82c22b87b7e9a25
-RUN cd /opt/gorilla/berkeley-function-call-leaderboard && pip install --no-cache-dir -e . --extra-index-url https://download.pytorch.org/whl/cpu
+# Compute-eval needs NumPy 2.1 and tree-sitter 0.25+, while this pinned BFCL
+# release still declares older exact pins and uses the removed parser API.
+COPY dockerfiles/bfcl-modern-deps.patch /tmp/bfcl-modern-deps.patch
+RUN cd /opt/gorilla && git apply --check /tmp/bfcl-modern-deps.patch && \
+    git apply /tmp/bfcl-modern-deps.patch && \
+    cd berkeley-function-call-leaderboard && \
+    pip install --no-cache-dir -e . --extra-index-url https://download.pytorch.org/whl/cpu && \
+    rm -f /tmp/bfcl-modern-deps.patch
 
 RUN apt remove -y python3-blinker
 
@@ -59,7 +221,8 @@ RUN cd ${IFBENCH_DIR} && pip install -r requirements.txt
 COPY dockerfiles/ifbench.patch /opt/benchmarks/IFBench/ifbench.patch
 RUN cd /opt/benchmarks/IFBench && git apply ifbench.patch
 
-RUN pip install langdetect absl-py immutabledict nltk ipython && \
+RUN pip install langdetect absl-py immutabledict \
+        "nltk @ git+https://github.com/nltk/nltk.git@${NLTK_SECURITY_COMMIT}" ipython && \
     python -c "import nltk; from spacy.cli import download; nltk.download('punkt'); nltk.download('punkt_tab'); \
     nltk.download('stopwords'); nltk.download('averaged_perceptron_tagger_eng'); download('en_core_web_sm')"
 
@@ -73,9 +236,116 @@ COPY core/requirements.txt /opt/NeMo-Skills/core/requirements.txt
 RUN pip install git+https://github.com/NVIDIA/NeMo-speech-data-processor@29b9b1ec0ceaf3ffa441c1d01297371b3f8e11d2
 ARG CACHEBUST=4
 # Install via `uv pip` from the project directory so [tool.uv].override-dependencies
-# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.83.x
+# in pyproject.toml (which relaxes leptonai's httpx==0.27.2 pin so litellm 1.84.x
 # can be installed) is picked up. Plain pip ignores [tool.uv] and the resolver fails.
+FROM runtime-base AS dependency-installer
+COPY --from=uv-installer /uv /usr/local/bin/uv
+RUN uv --version | grep -E '^uv 0\.12\.9([[:space:]]|$)'
 RUN cd /opt/NeMo-Skills && uv pip install --system --no-cache-dir \
-    -r core/requirements.txt -r requirements/pipeline.txt
+    -r core/requirements.txt -r requirements/pipeline.txt && \
+    rm -f /usr/local/bin/uv && rm -rf /root/.cache/uv
+
+# Replace /usr/local with the resolved environment, not the uv layer that
+# created it. Replacement prevents metadata from older pre-resolution packages
+# from surviving alongside the resolved versions.
+FROM runtime-base
+ARG NLTK_SECURITY_COMMIT
+ARG WANDB_CORE_COMMIT
+ARG PIP_SECURITY_VERSION
+ARG PIP_VENDORED_MSGPACK_VERSION
+ARG PIP_VENDORED_URLLIB3_VERSION
+ARG PIP_VENDORED_SETUPTOOLS_VERSION
+RUN rm -rf /usr/local
+COPY --from=dependency-installer /usr/local/ /usr/local/
+# Replace W&B's vulnerable release binary with the source-compatible patched core
+# built and module-verified above. The copy preserves its executable mode.
+COPY --from=wandb-core-builder /wandb-core /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core
+RUN /usr/local/lib/python3.10/dist-packages/wandb/bin/wandb-core --help 2>&1 | \
+    grep -F "Commit SHA: ${WANDB_CORE_COMMIT}" && \
+    python -c "from importlib.metadata import version; assert version('wandb') == '0.28.1', version('wandb')" && \
+    smoke_dir="$(mktemp -d)" && \
+    WANDB_MODE=offline WANDB_DIR="${smoke_dir}" python -c "import os, wandb; run = wandb.init(project='nvflow-security-smoke', mode='offline', dir=os.environ['WANDB_DIR']); run.log({'probe': 1}); run.finish()" && \
+    rm -rf "${smoke_dir}"
+
 # Fix http mismatch between lepton and dggs by manually downloading dggs here
 RUN pip install ddgs
+
+# Ray's runtime-env agent prepends a private aiohttp dependency tree. Replace
+# the complete tree from the same resolved environment so aiohttp and its
+# compiled dependencies cannot be mixed across incompatible versions.
+RUN site_packages="$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" && \
+    ray_thirdparty="${site_packages}/ray/_private/runtime_env/agent/thirdparty_files" && \
+    rm -rf "${ray_thirdparty}" && \
+    mkdir -p "${ray_thirdparty}" && \
+    for module in aiohappyeyeballs aiohttp aiosignal attr attrs frozenlist idna multidict propcache yarl; do \
+        test -e "${site_packages}/${module}" && \
+        cp -a "${site_packages}/${module}" "${ray_thirdparty}/" || exit 1; \
+    done && \
+    for project in aiohappyeyeballs aiohttp aiosignal attrs frozenlist idna multidict propcache yarl; do \
+        metadata="$(find "${site_packages}" -maxdepth 1 -type d -name "${project}-*.dist-info" -print -quit)" && \
+        test -n "${metadata}" && \
+        cp -a "${metadata}" "${ray_thirdparty}/" || exit 1; \
+    done
+
+# Guard the final resolved environment and Ray's private import path against the
+# High findings seen in the multi-architecture image scans.
+RUN python -c "import json; from importlib.metadata import distribution as d, version as v; from pathlib import Path; from packaging.version import Version as V; import pip, pip._vendor.msgpack, pip._vendor.urllib3; \
+               assert V(v('aiohttp')) >= V('3.14.3'), v('aiohttp'); \
+               assert V(v('msgpack')) >= V('1.2.1'), v('msgpack'); \
+               assert V(v('nltk')) >= V('3.10.3'), v('nltk'); \
+               assert v('lxml') == '6.1.1', v('lxml'); \
+               assert V(v('anyio')) >= V('4.15.1'), v('anyio'); \
+               assert V(v('datasets')) >= V('5.0.1'), v('datasets'); \
+               assert V(v('fsspec')) >= V('2026.6.0'), v('fsspec'); \
+               assert V(v('PyJWT')) >= V('2.15.1'), v('PyJWT'); \
+               assert V(v('sentence-transformers')) >= V('5.7.0'), v('sentence-transformers'); \
+               direct = json.loads(d('nltk').read_text('direct_url.json')); expected = '${NLTK_SECURITY_COMMIT}'; \
+               assert direct['vcs_info']['requested_revision'] == expected, direct; \
+               assert direct['vcs_info']['commit_id'] == expected, direct; \
+               assert V(v('starlette')) >= V('1.3.1'), v('starlette'); \
+               assert V(v('setuptools')) >= V('78.1.1'), v('setuptools'); \
+               assert V(v('transformers')) >= V('5.19.0'), v('transformers'); \
+               assert V(v('urllib3')) >= V('2.8.0'), v('urllib3'); \
+               assert V(v('virtualenv')) >= V('21.14.7'), v('virtualenv'); \
+               assert pip.__version__ == '${PIP_SECURITY_VERSION}', pip.__version__; assert v('pip') == '${PIP_SECURITY_VERSION}', v('pip'); \
+               assert pip._vendor.msgpack.__version__ == '${PIP_VENDORED_MSGPACK_VERSION}', pip._vendor.msgpack.__version__; assert pip._vendor.urllib3.__version__ == '${PIP_VENDORED_URLLIB3_VERSION}', pip._vendor.urllib3.__version__; \
+               components = {item['name']: item.get('version') for item in json.loads((Path(pip.__file__).parent / '_vendor/bom.cdx.json').read_text())['components']}; expected_bom = {'msgpack': '${PIP_VENDORED_MSGPACK_VERSION}', 'urllib3': '${PIP_VENDORED_URLLIB3_VERSION}', 'setuptools': '${PIP_VENDORED_SETUPTOOLS_VERSION}'}; assert all(components.get(name) == value for name, value in expected_bom.items()), (components, expected_bom); \
+               print('aiohttp/msgpack/nltk/lxml/starlette/setuptools/pip security floors OK')" && \
+    python -m pip --version | grep -F "pip ${PIP_SECURITY_VERSION}" && \
+    pip --version | grep -F "pip ${PIP_SECURITY_VERSION}" && \
+    python -c "from fastapi import FastAPI; FastAPI(); print('FastAPI/Starlette compatibility OK')" && \
+    python -c "from importlib.metadata import version; from lxml import etree, html; source = '<html><body><p>Revenue <b>rose</b> 12 percent.</p></body></html>'; document = html.fromstring(source); assert document.xpath('string(//p)') == 'Revenue rose 12 percent.'; assert version('lxml') == '6.1.1', version('lxml'); assert etree.LXML_VERSION[:3] == (6, 1, 1), etree.LXML_VERSION; print('lxml compatibility OK:', version('lxml'))" && \
+    python -c "import sys; from importlib.util import find_spec; from pathlib import Path; from packaging.version import Version; thirdparty = Path(find_spec('ray').submodule_search_locations[0]) / '_private/runtime_env/agent/thirdparty_files'; sys.path.insert(0, str(thirdparty)); import aiohappyeyeballs, aiohttp, aiosignal, attr, attrs, frozenlist, idna, multidict, propcache, yarl, ray; modules = (aiohappyeyeballs, aiohttp, aiosignal, attr, attrs, frozenlist, idna, multidict, propcache, yarl); assert all(Path(module.__file__).is_relative_to(thirdparty) for module in modules), [(module.__name__, module.__file__) for module in modules]; assert Version(aiohttp.__version__) >= Version('3.14.3'), aiohttp.__version__; print('Ray private aiohttp closure OK:', ray.__version__, aiohttp.__version__)" && \
+    [ ! -e /usr/local/bin/uv ] && \
+    [ -z "$(find /usr/local/lib/python3*/dist-packages -maxdepth 1 -type d -name 'uv-*.dist-info' 2>/dev/null)" ]
+
+# Check the complete environment. The broad patterns below correspond to
+# resolver overrides already documented in pyproject.toml.
+RUN set -eu; \
+    printf '%s\n' \
+        'leptonai .* requirement httpx' \
+        'leptonai .* requirement anyio' \
+        'leptonai .* requirement prometheus-fastapi-instrumentator' \
+        'torchx .* requirement urllib3' \
+        'sdp .* requirement numpy' \
+        'No broken requirements found' \
+        > /tmp/pipcheck-pattern-allow.txt; \
+    pipcheck_status=0; \
+    python -m pip check > /tmp/pipcheck.txt 2>&1 || pipcheck_status=$?; \
+    test "${pipcheck_status}" -le 1; \
+    if grep -vEf /tmp/pipcheck-pattern-allow.txt /tmp/pipcheck.txt | grep -q '[^[:space:]]'; then \
+        echo "ERROR: unexpected dependency inconsistency:"; cat /tmp/pipcheck.txt; exit 1; \
+    fi; \
+    cat /tmp/pipcheck.txt; \
+    rm -f /tmp/pipcheck.txt /tmp/pipcheck-pattern-allow.txt
+
+# nSpect's global policy flags Git metadata left by uv's source-distribution
+# cache. Ray's Java runtime is not used by the Python jobs in this image, and
+# linux-libc-dev provides build-only headers. Remove all three after builds.
+RUN apt-get purge -y linux-libc-dev && \
+    apt-get update && \
+    apt-get install --only-upgrade -y libssl3 && \
+    rm -rf /usr/local/lib/python3*/dist-packages/ray/jars && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/* && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libssl3)" ge 3.0.2-0ubuntu1.30 && \
+    [ -z "$(find /usr/local/lib/python3*/dist-packages -path '*/ray/jars/*' -type f 2>/dev/null)" ]

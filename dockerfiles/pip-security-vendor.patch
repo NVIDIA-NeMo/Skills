@@ -1,0 +1,127 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 4cedb3e..7db8ea4 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -187,6 +187,9 @@ drop = [
+   "_distutils_hack",
+   "distutils-precedence.pth",
+   "pkg_resources/extern/",
++  # setuptools>=78 includes its own pkg_resources test suite and API test data.
++  "pkg_resources/tests/",
++  "pkg_resources/api_tests.txt",
+   # trim vendored pygments styles, lexers, formatters, and CLI
+   "pygments/styles/[!_]*.py",
+   '^pygments/lexers/(?!python|__init__|_mapping).*\.py$',
+diff --git a/src/pip/__init__.py b/src/pip/__init__.py
+index 451ca2f..b6eb108 100644
+--- a/src/pip/__init__.py
++++ b/src/pip/__init__.py
+@@ -1,6 +1,6 @@
+ from __future__ import annotations
+ 
+-__version__ = "26.2.1"
++__version__ = "26.2.1+nvf.1"
+ 
+ 
+ def main(args: list[str] | None = None) -> int:
+diff --git a/src/pip/_vendor/vendor.txt b/src/pip/_vendor/vendor.txt
+index 75f337a..0495fb8 100644
+--- a/src/pip/_vendor/vendor.txt
++++ b/src/pip/_vendor/vendor.txt
+@@ -1,18 +1,18 @@
+ CacheControl==0.14.4
+ distlib==0.4.2
+ distro==1.9.0
+-msgpack==1.1.2
++msgpack==1.2.1
+ packaging==26.2
+ platformdirs==4.10.0
+ pyproject-hooks==1.2.0
+ requests==2.34.2
+     certifi==2026.6.17
+     idna==3.18
+-    urllib3==2.7.0
++    urllib3==2.8.0
+ rich==14.2.0
+     pygments==2.20.0
+ resolvelib==1.2.1
+-setuptools==70.3.0
++setuptools==80.10.2
+ tomli==2.4.1
+ tomli-w==1.2.0
+ truststore==0.10.4
+diff --git a/tools/vendoring/patches/pkg_resources.patch b/tools/vendoring/patches/pkg_resources.patch
+index 98eb5e4..96e5ddf 100644
+--- a/tools/vendoring/patches/pkg_resources.patch
++++ b/tools/vendoring/patches/pkg_resources.patch
+@@ -1,31 +1,54 @@
+ diff --git a/src/pip/_vendor/pkg_resources/__init__.py b/src/pip/_vendor/pkg_resources/__init__.py
+-index d47df3f3c..415c0c432 100644
+ --- a/src/pip/_vendor/pkg_resources/__init__.py
+ +++ b/src/pip/_vendor/pkg_resources/__init__.py
+-@@ -87,7 +87,7 @@ except ImportError:
++@@ -66,10 +66,6 @@
++     overload,
++ )
++
++-sys.path.extend(((vendor_path := os.path.join(os.path.dirname(os.path.dirname(__file__)), 'setuptools', '_vendor')) not in sys.path) * [vendor_path])  # fmt: skip
++-# workaround for #4476
++-sys.modules.pop('backports', None)
++-
++ # capture these to bypass sandboxing
++ from os import open as os_open, utime  # isort: skip
++ from os.path import isdir, split  # isort: skip
++@@ -82,12 +78,13 @@
+      # no write support, probably under GAE
+      WRITE_SUPPORT = False
+- 
+--from pkg_resources.extern.jaraco.text import (
++
++-import packaging.markers
++-import packaging.requirements
++-import packaging.specifiers
++-import packaging.utils
++-import packaging.version
++-from jaraco.text import drop_comment, join_continuation, yield_lines
+++import packaging
+++from packaging import markers, requirements, specifiers, utils, version
+ +from pip._internal.utils._jaraco_text import (
+-     yield_lines,
+-     drop_comment,
+-     join_continuation,
+-@@ -102,12 +102,11 @@ if TYPE_CHECKING:
+-     from _typeshed import BytesPath, StrPath, StrOrBytesPath
+-     from typing_extensions import Self
+- 
+++    drop_comment,
+++    join_continuation,
+++    yield_lines,
+++)
++ from platformdirs import user_cache_dir as _user_cache_dir
++
++ if TYPE_CHECKING:
++@@ -95,15 +92,10 @@
++     from _typeshed.importlib import LoaderProtocol
++     from typing_extensions import Self, TypeAlias
++
+ -warnings.warn(
+ -    "pkg_resources is deprecated as an API. "
+--    "See https://setuptools.pypa.io/en/latest/pkg_resources.html",
+--    DeprecationWarning,
++-    "See https://setuptools.pypa.io/en/latest/pkg_resources.html. "
++-    "The pkg_resources package is slated for removal as early as "
++-    "2025-11-30. Refrain from using this package or pin to "
++-    "Setuptools<81.",
++-    UserWarning,
+ -    stacklevel=2,
+ -)
+-+
+ +# Patch: Remove deprecation warning from vendored pkg_resources.
+ +# Setting PYTHONWARNINGS=error to verify builds produce no warnings
+ +# causes immediate exceptions.
+ +# See https://github.com/pypa/pip/issues/12243
+- 
+- 
++
+  _T = TypeVar("_T")
++ _DistributionT = TypeVar("_DistributionT", bound="Distribution")
