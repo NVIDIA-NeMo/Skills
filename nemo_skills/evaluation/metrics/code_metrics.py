@@ -60,6 +60,118 @@ class SweBenchMetrics(BaseMetrics):
         self._compute_pass_at_k(predictions=predictions)
 
 
+class ScaleSweMetrics(BaseMetrics):
+    """Aggregate native Scale-SWE's binary F2P/P2P grading results."""
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["swe-bench-metrics"]
+        details = metrics.get("details") if isinstance(metrics.get("details"), dict) else {}
+        error = details.get("error")
+        return {
+            "issues_resolved": metrics.get("resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": (
+                metrics.get("patch_exists") is True and metrics.get("patch_successfully_applied") is False
+            ),
+            "f2p_patch_cant_apply": error == "f2p_patch_failed",
+            "evaluation_error": error in {"evaluation_error", "invalid_report"},
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
+class DeepSweMetrics(BaseMetrics):
+    """Aggregate Harbor reward.json fields produced by DeepSWE verification.
+
+    Uses the same ``swe-bench-metrics`` / ``swe-bench-outputs`` prediction keys as
+    SWE-bench; Harbor-specific fields (reward/f2p/p2p/partial) live inside metrics.
+    """
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["swe-bench-metrics"]
+        # Use `is True` / `is False` so evaluate=False (None metrics) does not
+        # get counted as unresolved / patch_cant_apply.
+        return {
+            "issues_resolved": metrics.get("resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
+            "reward": float(metrics.get("reward") or 0.0),
+            "f2p": float(metrics.get("f2p") or 0.0),
+            "p2p": float(metrics.get("p2p") or 0.0),
+            "partial": float(metrics.get("partial") or 0.0),
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+                "reward": 0,
+                "f2p": 0.0,
+                "p2p": 0.0,
+                "partial": 0.0,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
+class SeniorSweBenchMetrics(BaseMetrics):
+    """Aggregate Harbor reward fields produced by Senior SWE-Bench verification.
+
+    Uses the same ``swe-bench-metrics`` / ``swe-bench-outputs`` prediction keys as
+    SWE-bench. ``issues_resolved`` is the basic solve (verifiers + validation).
+    ``tasteful_issues_resolved`` requires the official tasteful gates as well
+    (rubric / bloat / practice / relative taste). Both participate in pass@k.
+    Invalid trials (empty reward / infra crash) are tracked separately and do
+    not count as solves.
+    """
+
+    def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
+        metrics = prediction["swe-bench-metrics"]
+        return {
+            "issues_resolved": metrics.get("resolved") is True,
+            "tasteful_issues_resolved": metrics.get("tasteful_resolved") is True,
+            "no_patch": metrics.get("patch_exists") is False,
+            "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
+            "reward": float(metrics.get("reward") or 0.0),
+            "invalid_trial": metrics.get("invalid_trial") is True,
+            "verifier_score": float(metrics.get("verifier_score") or 0.0),
+            "rubric_score": float(metrics.get("rubric_score") or 0.0),
+            "validation_score": float(metrics.get("validation_score") or 0.0),
+        }
+
+    def get_incorrect_sample(self, prediction: dict) -> dict:
+        return {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "tasteful_resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": True,
+                "reward": 0,
+                "invalid_trial": False,
+            }
+        }
+
+    def update(self, predictions):
+        super().update(predictions)
+        self._compute_pass_at_k(predictions=predictions)
+
+
 class SciCodeMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
         subtask_status_list = prediction["eval_status"]

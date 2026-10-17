@@ -123,6 +123,9 @@ if __name__ == "__main__":
         )
         dataset = dataset.add_column("language", ["unknown"] * len(dataset))
 
+    if "image" in dataset.column_names:
+        dataset = dataset.rename_column("image", "docker_image")
+
     dataset = dataset.add_column("container_formatter", [container_formatter] * len(dataset))
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
