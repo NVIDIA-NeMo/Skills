@@ -264,28 +264,48 @@ def write_solution_dir(solution_dir: Path, model_patch: str, messages: list[dict
         # Content is either a string or a list of text parts
         return content if isinstance(content, str) else "".join(part["text"] for part in content)
 
-    turn_dir = None
-    num_turns = 0
+    # When creating tool_call_<ID>.json files and tool_output_<ID>.txt files,
+    # use the tool call ids for <ID> if they are present,
+    # otherwise use 1,2,3,... according to the tool call order,
+    # and assume that this order matches between assistant turns and tool outputs.
+    tool_calls_have_ids = True
     for message in messages:
         if message["role"] == "assistant":
-            num_turns += 1
-            turn_dir = solution_dir / "trajectory" / f"turn{num_turns:04d}"
+            for tool_call in message.get("tool_calls") or []:
+                if tool_call.get("id") is None:
+                    tool_calls_have_ids = False
+                    break
+            if not tool_calls_have_ids:
+                break
+        elif message["role"] == "tool":
+            if message.get("tool_call_id") is None:
+                tool_calls_have_ids = False
+                break
+
+    turn_dir = None
+    turn_number = 0
+    tool_msg_number = 0
+    for message in messages:
+        if message["role"] == "assistant":
+            turn_number += 1
+            tool_msg_number = 0
+            turn_dir = solution_dir / "trajectory" / f"turn{turn_number:04d}"
             turn_dir.mkdir()
             if message.get("reasoning_content"):
                 (turn_dir / "reasoning.txt").write_text(message["reasoning_content"])
             if message.get("content"):
                 (turn_dir / "message.txt").write_text(to_text(message["content"]))
-            tool_call_numbers = {}
             for number, tool_call in enumerate(message.get("tool_calls") or [], start=1):
-                tool_call_numbers[tool_call["id"]] = number
-                (turn_dir / f"tool_call_{number}.json").write_text(json.dumps(tool_call["function"], indent=2))
+                tool_call_id = tool_call["id"] if tool_calls_have_ids else number
+                (turn_dir / f"tool_call_{tool_call_id}.json").write_text(json.dumps(tool_call["function"], indent=2))
         elif turn_dir is None:
             # Record the system and user prompts
             with open(solution_dir / f"{message['role']}_prompt.txt", "a") as f:
                 f.write(to_text(message["content"]) + "\n")
         elif message["role"] == "tool":
-            number = tool_call_numbers[message["tool_call_id"]]
-            (turn_dir / f"tool_output_{number}.txt").write_text(to_text(message["content"]))
+            tool_msg_number += 1
+            tool_call_id = message["tool_call_id"] if tool_calls_have_ids else tool_msg_number
+            (turn_dir / f"tool_output_{tool_call_id}.txt").write_text(to_text(message["content"]))
         elif message["role"] == "user":
             with open(turn_dir / "user_message.txt", "a") as f:
                 f.write(to_text(message["content"]) + "\n")
