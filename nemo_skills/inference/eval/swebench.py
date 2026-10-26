@@ -972,7 +972,8 @@ class SweBenchGenerationTask(GenerationTask):
                     self.cfg.agent_framework_commit = "1.2.1"
 
             agent_setup_commands.append(
-                # install python 3.12 with uv
+                # install python 3.12 with uv, ensuring the python3.12 symlink is on PATH for later
+                "export UV_PYTHON_BIN_DIR=/root/.local/bin && "
                 "uv python install 3.12 && "
                 # install poetry in an isolated environment
                 "uv tool install poetry && "

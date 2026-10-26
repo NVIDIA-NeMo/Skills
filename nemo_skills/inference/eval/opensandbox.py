@@ -186,7 +186,7 @@ class OpenSandboxExecutor:
             request_timeout=timedelta(seconds=request_timeout_s),
             use_server_proxy=True,
         )
-        self.resources = {key: str(value) for key, value in (resources or {"cpu": "2", "memory": "8Gi"}).items()}
+        self.resources = {"cpu": "2", "memory": "8Gi"} | {key: str(value) for key, value in (resources or {}).items()}
         self.ready_timeout_s = ready_timeout_s
         self.command_timeout_s = command_timeout_s
         self.repo_setup_timeout_s = repo_setup_timeout_s
@@ -348,6 +348,10 @@ class OpenSandboxExecutor:
         else:
             network_policy = None
 
+        # Format instance_id to fit OpenSandbox metadata constraints:
+        # max 63 characters of [A-Za-z0-9_.-], starting and ending with an alphanumeric
+        osb_instance_id = re.sub(r"[^A-Za-z0-9_.-]", "x", data_point["instance_id"][:63]).strip("-_.")
+
         # A new client transport and a fresh task image for every agent/verifier invocation.
         async with self._connection_config() as connection:
             sandbox = None
@@ -367,7 +371,7 @@ class OpenSandboxExecutor:
                         resource=self.resources,
                         metadata={
                             "benchmark": "swe-bench",
-                            "instance_id": data_point["instance_id"][:63],
+                            "instance_id": osb_instance_id,
                             "mode": mode,
                         },
                         network_policy=network_policy,

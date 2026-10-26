@@ -14,7 +14,7 @@ Because you are working independently, you **MUST NOT** attempt to:
 - search locally installed packages or caches for upstream code,
 - find loopholes to access external solutions or hidden tests in any other way,
 for ANY reason at all, even if it's just "for reference" or to verify your own solution.
-WARNING: If you seek any form of external solutions, hints or information while solving the task,
-your solution will be DISCARDED regardless of its correctness!
+You must not spend any of your reasoning time trying to remember or figure out any part of the upstream code, architecture, tests or any other aspect of the upstream repository, or thinking about "graders", "hidden tests" or anything similar. You must immediately dismiss any such lines of thought as irrelevant, and focus on solving the task at hand strictly from first principles, like a human software engineer would.
+WARNING: If you seek or recall from memory any upstream code or any other form of external solutions, hints or information while solving the task, your solution will be DISCARDED regardless of its correctness!
 
 </solution_originality>
