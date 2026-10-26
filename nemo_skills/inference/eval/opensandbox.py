@@ -143,15 +143,6 @@ def _archive_input_directory(source: Path) -> bytes:
     return buffer.getvalue()
 
 
-def _truncate_instance_id(instance_id: str) -> str:
-    """Truncate the instance_id for OpenSandbox."""
-    instance_id = instance_id[:63]  # max 63 characters
-    chars = [c if c.isalnum() or c in "-_." else "x" for c in instance_id]  # replace disallowed characters with "x"
-    if not chars[-1].isalnum():  # must end with an alphanumeric character
-        chars[-1] = "x"
-    return "".join(chars)
-
-
 class OpenSandboxExecutor:
     def __init__(
         self,
@@ -357,6 +348,10 @@ class OpenSandboxExecutor:
         else:
             network_policy = None
 
+        # Format instance_id to fit OpenSandbox metadata constraints:
+        # max 63 characters of [A-Za-z0-9_.-], starting and ending with an alphanumeric
+        osb_instance_id = re.sub(r"[^A-Za-z0-9_.-]", "x", data_point["instance_id"][:63]).strip("-_.")
+
         # A new client transport and a fresh task image for every agent/verifier invocation.
         async with self._connection_config() as connection:
             sandbox = None
@@ -376,7 +371,7 @@ class OpenSandboxExecutor:
                         resource=self.resources,
                         metadata={
                             "benchmark": "swe-bench",
-                            "instance_id": _truncate_instance_id(data_point["instance_id"]),
+                            "instance_id": osb_instance_id,
                             "mode": mode,
                         },
                         network_policy=network_policy,
