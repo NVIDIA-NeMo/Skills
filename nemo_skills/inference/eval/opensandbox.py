@@ -186,7 +186,7 @@ class OpenSandboxExecutor:
             request_timeout=timedelta(seconds=request_timeout_s),
             use_server_proxy=True,
         )
-        self.resources = {key: str(value) for key, value in (resources or {"cpu": "2", "memory": "8Gi"}).items()}
+        self.resources = {"cpu": "2", "memory": "8Gi"} | {key: str(value) for key, value in (resources or {}).items()}
         self.ready_timeout_s = ready_timeout_s
         self.command_timeout_s = command_timeout_s
         self.repo_setup_timeout_s = repo_setup_timeout_s
