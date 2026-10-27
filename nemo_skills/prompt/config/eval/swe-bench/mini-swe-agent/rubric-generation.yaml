@@ -20,57 +20,67 @@ agent:
     Can you help me write high quality rubrics to grade the solution to the task described in the <pr_description>?
     This means you SHOULDN'T attempt to solve the task yourself, but rather understand the task, go through the codebase, and write rubrics only.
     Follow these steps to write the rubrics:
-    1. As a first step, it might be a good idea to find and read code relevant to the <pr_description> by searching the codebase using search tools.
-    2. Then think of the approach to solve the task (functional requirements, non-functional requirements, etc.)
-    3. Also understand how the codebase is structured and how the code is organized, as well as coding style, etc.
+    1. Find and read code relevant to the <pr_description> by searching the codebase using search tools. Make sure you understand how the codebase is structured and how the code is organized, as well as coding style, etc.
+    2. Work out what any correct solution must achieve (behavior, interfaces, affected code paths). Remember that there may be more than one way of resolving the task, and a good set of rubrics should admit any valid solution. Don't get locked into just one possible solution.
+    3. If you need to, you may run tests or reproduction scripts to better understand the issue at hand. However, you must not attempt to solve the task yourself or test any potential fixes.
     4. Write a list of rubrics that can be used to grade the solution to the task described in the <pr_description>. Your rubrics should be along the axes described below.
     5. Then finally, make a new file in the /testbed directory called `rubrics.yaml` with the rubrics you wrote. It should be a valid YAML file with the structure described later below.
-    6. Also take a turn to ensure the yaml file is parseable by the yaml.safe_load function on the file itself. If it throws an error, fix the yaml file and take another turn to ensure it is parseable.
-    7. This should be the only file you create in the /testbed directory. DO NOT create/modify/delete any other files or directories.
-    8. Finally, submit the task by running this EXACT bash command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/rubrics.yaml`. You MUST use that EXACT command to submit. If the command fails (nonzero exit status), it will not submit.
+    6. Take a turn to ensure the yaml file is parseable by the yaml.safe_load function on the file itself. If it throws an error, fix the yaml file and take another turn to ensure it is parseable.
+    7. Finally, submit the task by running this EXACT bash command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/rubrics.yaml`. You MUST use that EXACT command to submit. If the command fails (nonzero exit status), it will not submit.
 
     Atomicity:
       • Each rubric criterion should evaluate exactly one distinct aspect.
       • Avoid bundling multiple criteria into a single rubric. Most stacked criteria with the word "and" can be broken up into multiple pieces.
-
-    Self-containment & specificity (strict):
-      • Do NOT write generic items; bind each item to exact paths/symbols/tokens seen in this instance.
-      • Never rely on cross-item references; each item stands alone with its own identifiers and patterns.
-      • The judge will only have access to the problem and patch and the current rubric under evaluation, so make sure the rubric can be evaluated without any other information.
+      • Never rely on cross-item references; each item should stand alone with its own identifiers and patterns.
 
     Mutually Exclusive, Collectively Exhaustive (MECE):
-      • The rubric set should be mutually exclusive and collectively exhaustive.
+      • The rubric set should be mutually exclusive and collectively exhaustive. This means that all criteria necessary for grading must be mentioned in your rubric, but YOU MUST NOT RESTATE THE SAME CRITERION ACROSS MULTIPLE RUBRICS, even if you change its wording or phrasing. For each criterion or requirement you come up with, you must classify it as belonging to exactly one axis -- file_change, spec_alignment, integrity, or runtime -- and include it only in that axis and only once.
+
+    No overprescription:
+      • Avoid being overly prescriptive about specific implementation details. Your rubrics should allow for different solutions, as long as they all resolve the original issue in the <pr_description>.
+      • Do not require files or functions to be left untouched unless you are certain that any change to them would actually cause an issue.
+      • Do not invent requirements that the task did not originally have.
+
+    Irrelevant changes:
+      • No rubric should reward OR penalize the agent for adding or editing tests. This is not considered part of the task, and any such changes or lack thereof made by the agent should have no impact on the grading.
+      • No rubric should reward OR penalize the agent for adding or editing documentation, README, changelogs or similar files. This is not considered part of the task, and any such changes or lack thereof made by the agent should have no impact on the grading.
+
+    Rubric count:
+      • The expected amount of rubrics for each axis is stated below. Note that the exact appropriate number of rubrics depends on the complexity and nature of the task. More rubrics is not always better.
+      • Include a rubric only if a plausible but incorrect or incomplete fix could fail it. Do not pad axes with checks that any reasonable patch passes.
+
+    Weighting:
+      • For each rubric, you will be asked to provide a weight -- 1, 2 or 3 -- corresponding to its importance: 1=nice, 2=valuable, 3=must. Pay particular attention to your weight assignments -- items that are important to resolving the issue correctly should have a higher weight, while items that are primarily cosmetic or not directly related to the issue should have a lower weight.
+      • At least half of the total weight should be taken up by rubrics that a patch MUST pass to resolve the issue.
 
     Style constraints (strict):
       • YAML only-no prose outside YAML.
       • Avoid backslash-heavy patterns; if you absolutely must include one, double any backslashes so the YAML stays valid.
       • Each rubric description starts with a third-person singular verb (e.g., Identifies, Implements, Validates, Confirms, Avoids, Cleans up, Plans).
-      • Make descriptions concrete using tokens from PATCH/PR_DESCRIPTION.
-      • Each rubric item includes: id (short), description (verb-first, instance-grounded), weight (int; 1=nice, 2=valuable, 3=must).
+      • Make descriptions concrete using tokens from the <pr_description>.
+      • Each rubric item includes: id (short), description (verb-first, instance-grounded), weight (int; 1-3).
       • Avoid double-counting: do not re-score the same behavior under multiple items.
 
     Pattern-writing guidelines (keep literal YAML-friendly text; no regex required):
       • Use plain path mentions like "diff --git a/path/to/file.py" or "+++ b/path/to/file.py".
       • Refer to symbols with straightforward phrases such as "def my_function(" instead of regex classes.
       • Describe value patterns in words (e.g., "string containing total") instead of complex expressions.
-      • If you need to forbid something, just mention the exact string '@pytest.mark.skip', etc
 
-    Axes (execution-free):
-      • file_change_rubrics (4 - 8 rubrics): Scope, locality, and sufficiency of edits in PATCH (files/symbols/guards/regexes/flags). Penalize unrelated file churn; reward minimal, reversible diffs tied to the stated bug.
-      • spec_alignment_rubrics (3 - 6 rubrics): Alignment of code to PR_DESCRIPTION. Use textual acceptance criteria (required types/conditions/error handling/API contracts) and ensure the patch reflects them.
-      • integrity_rubrics (3 - 6 rubrics): Hygiene and "no-cheating" safeguards - avoid test weakening (if tests appear in PATCH), mass renames, or dependency churn; preserve public API/semantics unless PR_DESCRIPTION requires otherwise.
-      • runtime_rubrics (3 - 6 rubrics): Natural-language criteria describing **intended runtime behavior** (NOT concrete tests), supported by execution-free textual evidence.
-        - **Distinguishability:** Ensures the patch introduces or preserves signals that differentiate correct vs. incorrect behavior under plausible inputs (e.g., specific exception class, sentinel return, boundary guard).
-        - **Regression safety:** Confirms backward-compatibility constraints (e.g., original API signatures/flags remain valid, deprecations gated via warnings).
-        - **Determinism / flake resistance:** Avoids nondeterministic sources at runtime (unseeded randomness, wall-clock sleeps, network I/O) that would make tests flaky.
-        - **Resource & timeout bounds:** Prevents pathological loops or heavy calls; respects existing timeouts/limits.
-        - **Error-surface clarity:** Produces stable, specific messages/exception types that a test could assert against (not vague strings).
-        - **Harness integrity:** Does not bypass or disable the project's runner/verifier hooks (e.g., keeps regression filters, CLI exit codes).
+    Axes:
+      • file_change_rubrics (1 - 4 rubrics): Whether the diff modifies the right files/functions/classes.
+        - Every location where the bug manifests or the requested change must take effect is addressed (e.g. each call site, both sync and async variants, every duplicated code path), whether by editing each site or by routing them through shared code.
+        - Refactors, new helpers and new files that serve the fix are fine.
+        - Do not dictate how the files should be changed or the expected functionality. Behavior checks should go in runtime_rubrics.
+      • spec_alignment_rubrics (1 - 4 rubrics): Alignment of code to the <pr_description>. Use textual acceptance criteria (required types / conditions / error handling / new API contracts).
+        - If the <pr_description> specifies interfaces (names, signatures, defaults, return types, base classes or mixins, file locations), check each one literally.
+      • integrity_rubrics (0 - 3 rubrics): Hygiene and "no-cheating" safeguards - avoid mass renames or dependency churn; preserve existing public API/semantics unless the <pr_description> requires otherwise.
+      • runtime_rubrics (3 - 6 rubrics): Intended runtime behavior: an input or call, and the expected result. The judge may run tests or use execution-free textual evidence to grade these rubrics.
+        - For each behavior the <pr_description> requires, cover every entry point, code path and caller the fix affects (e.g. sync and async APIs, server and offline branches, every consumer of changed shared code), using the examples and edge cases from the <pr_description>.
 
     Return exactly this YAML structure:
     metadata:
-      task_summary: "<one-sentence summary grounded in PR_DESCRIPTION>"
-      underlying_bug: "<precise failure trigger grounded in PR_DESCRIPTION>"
+      task_summary: "<one-sentence summary grounded in <pr_description>>"
+      underlying_bug: "<precise failure trigger grounded in <pr_description>>"
     axes:
       file_change_rubrics:
         - id: "FC1"
