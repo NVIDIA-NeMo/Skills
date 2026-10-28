@@ -1584,6 +1584,13 @@ class SweBenchGenerationTask(GenerationTask):
         instance_id = data_point["instance_id"]
         host_config_path = self.scratch_dir / f"mini_swe_agent_config_{instance_id}.yaml"
         container_config_path = "/mini_swe_agent_config.yaml"
+        agent_timeout_sec = (
+            int(data_point["agent_timeout_sec"])
+            if getattr(self.cfg, "use_agent_timeouts", False) and data_point.get("agent_timeout_sec")
+            else None
+        )
+        if agent_timeout_sec is not None and agent_timeout_sec <= 0:
+            raise ValueError(f"agent_timeout_sec must be positive for {instance_id}.")
 
         extra_mounts = [(host_config_path, container_config_path, True)]
         unix_socket = None
@@ -1610,22 +1617,64 @@ class SweBenchGenerationTask(GenerationTask):
             full_config["model"]["model_kwargs"]["api_base"] = api_base
             self._write_scratch_artifact(host_config_path, yaml.dump(full_config))
 
-            return (
+            setup = (
                 "cp -r /root_mount/mini-swe-agent /root && "
                 "cp -r /root_mount/uv /root && "
                 f"{forwarder_command}"
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_config_path} && "
-                "export MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=3 && "
-                f"/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
+                "export MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=3"
+            )
+            agent_command = (
+                "/root/mini-swe-agent/venv/bin/python -m minisweagent.run.mini "
                 f"--config {container_config_path} "
                 f"--model hosted_vllm/{self.cfg.server.model} "
                 f"--task {shlex.quote(problem_statement)} "
                 f"--output trajectories/{instance_id}.traj.json "
                 f"--yolo "
-                f"--exit-immediately && "
-                "mkdir -p /trajectories_mount/trajectories && cp -r trajectories/* /trajectories_mount/trajectories/"
+                "--exit-immediately"
+            )
+            if agent_timeout_sec is None:
+                return (
+                    f"{setup} && {agent_command} && "
+                    "mkdir -p /trajectories_mount/trajectories && "
+                    "cp -r trajectories/* /trajectories_mount/trajectories/"
+                )
+
+            # Harbor's timeout is enforced inside the task container so the shell can still
+            # capture and return the working-tree patch before the outer sandbox is torn down.
+            mounted_trajectory = f"/trajectories_mount/trajectories/{instance_id}.traj.json"
+            native_trajectory = f"/root/mini-swe-agent/trajectories/{instance_id}.traj.json"
+            partial_patch = f"/tmp/{instance_id}.model.patch"
+            patch_setup, patch_collect = build_clean_patch_commands(partial_patch)
+            fallback_script = (
+                "import json, os; "
+                "from pathlib import Path; "
+                "patch = Path(os.environ['PATCH_PATH']).read_text(); "
+                "output = Path(os.environ['OUTPUT_PATH']); "
+                "output.write_text(json.dumps({'info': {'submission': patch, "
+                "'agent_exit_code': int(os.environ['AGENT_EXIT_CODE'])}}))"
+            )
+            return (
+                "cd /testbed && "
+                f"{patch_setup} && "
+                f"{setup} && "
+                "{ set +e; "
+                f"timeout -k 30s {agent_timeout_sec}s {agent_command}; "
+                "AGENT_EXIT_CODE=$?; "
+                "set -e; "
+                "cd /testbed && "
+                f"{patch_collect} && "
+                f"mkdir -p {shlex.quote(str(Path(mounted_trajectory).parent))} && "
+                f'if [ "$AGENT_EXIT_CODE" -eq 0 ] && [ -s {shlex.quote(native_trajectory)} ]; then '
+                f"cp {shlex.quote(native_trajectory)} {shlex.quote(mounted_trajectory)}; "
+                "else "
+                f"PATCH_PATH={shlex.quote(partial_patch)} "
+                f"OUTPUT_PATH={shlex.quote(mounted_trajectory)} "
+                'AGENT_EXIT_CODE="$AGENT_EXIT_CODE" '
+                f"/root/mini-swe-agent/venv/bin/python -c {shlex.quote(fallback_script)}; "
+                "fi; }"
             )
 
         # Execute mini-swe-agent command

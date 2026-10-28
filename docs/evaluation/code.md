@@ -656,8 +656,8 @@ ns prepare_data swe-bench-pro-v2 \
     --data_dir=<DATA_DIR>
 ```
 
-This creates `default.alpine.jsonl`, `default.ubuntu.jsonl`, `hard.alpine.jsonl`, and `hard.ubuntu.jsonl`. As with
-V1, run Alpine and Ubuntu subsets separately. Pass `--container_formatter` when using locally converted SIF images.
+This creates `default.alpine.jsonl`, `default.ubuntu.jsonl`, `hard.alpine.jsonl`, and `hard.ubuntu.jsonl`. Pass
+`--container_formatter` when using locally converted SIF images.
 
 Evaluation follows the official locked protocol:
 
@@ -670,16 +670,24 @@ Evaluation follows the official locked protocol:
 ns eval \
     --cluster=<CLUSTER_NAME> \
     --data_dir=<DATA_DIR> \
+    --main_container=<PATH_TO_UBUNTU_NS_CONTAINER> \
+    --alpine_container=<PATH_TO_ALPINE_NS_CONTAINER> \
     --model=<MODEL> \
     --server_type=vllm \
     --server_gpus=8 \
     --benchmarks=swe-bench-pro-v2 \
-    --split=default.ubuntu \
+    --split=default.ubuntu,default.alpine \
     --output_dir=<OUTPUT_DIR>
 ```
 
-Use `--split=hard.ubuntu` or `hard.alpine` for HARD-51. The default locked networking mode requires mini-SWE-agent
-with the Apptainer backend, or mini-SWE-agent with OpenSandbox:
+NeMo-Skills allocates chunks proportionally between the subsets, uses the corresponding Ubuntu or Alpine
+NeMo-Skills client container, and merges the outputs before computing one set of metrics. Use
+`--split=hard.ubuntu,hard.alpine` to evaluate all of HARD-51 in the same way. For the default set,
+`--split=default.ubuntu,default.alpine` may be omitted; both subsets are selected automatically.
+
+The default locked networking mode requires mini-SWE-agent with the Apptainer backend, or mini-SWE-agent with
+OpenSandbox. With OpenSandbox, both subsets can share the regular NeMo-Skills coordinator container, so
+`--main_container` and `--alpine_container` are not needed:
 
 ```bash
 ns eval \
@@ -689,7 +697,7 @@ ns eval \
     --server_type=vllm \
     --server_gpus=8 \
     --benchmarks=swe-bench-pro-v2 \
-    --split=default.ubuntu \
+    --split=default.ubuntu,default.alpine \
     --output_dir=<OUTPUT_DIR> \
     ++execution_backend=opensandbox
 ```

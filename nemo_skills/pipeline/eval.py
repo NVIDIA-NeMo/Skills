@@ -40,7 +40,7 @@ from nemo_skills.utils import (
 )
 
 LOG = logging.getLogger(get_logger_name(__file__))
-_MULTI_SPLIT_BENCHMARK = "swe-bench-pro"
+_MULTI_SPLIT_BENCHMARKS = frozenset({"swe-bench-pro", "swe-bench-pro-v2"})
 
 
 class SingleNodeMode(str, enum.Enum):
@@ -291,7 +291,7 @@ def eval(
     alpine_container: str = typer.Option(
         None,
         help=(
-            "Container for Alpine tasks when evaluating swe-bench-pro. "
+            "Container for Alpine tasks when evaluating SWE-bench Pro V1 or V2. "
             "Required for mixed Ubuntu/Alpine Apptainer runs. A single Alpine split may instead use "
             "--main-container for backward compatibility."
         ),
@@ -313,7 +313,7 @@ def eval(
     split: str = typer.Option(
         None,
         help=(
-            "Data split to use for evaluation. For swe-bench-pro, comma-separated splits run in one evaluation. "
+            "Data split to use for evaluation. For SWE-bench Pro V1/V2, comma-separated splits run in one evaluation. "
             "Will use the benchmark-specific default or 'test' if it is not defined."
         ),
     ),
@@ -545,28 +545,32 @@ def eval(
         generation_module=generation_module,
         extra_benchmark_map=extra_benchmark_map,
     )
-    requested_splits = [value.strip() for value in split.split(",") if value.strip()] if split else []
-    if len(requested_splits) != len(set(requested_splits)):
-        raise ValueError("Each swe-bench-pro split may be specified only once.")
     benchmark_names = [spec.split(":", maxsplit=1)[0] for spec in benchmarks.split(",")]
-    is_swe_bench_pro_only = benchmark_names == [_MULTI_SPLIT_BENCHMARK]
-    if len(requested_splits) > 1 and not is_swe_bench_pro_only:
+    multi_split_benchmark = (
+        benchmark_names[0] if len(benchmark_names) == 1 and benchmark_names[0] in _MULTI_SPLIT_BENCHMARKS else None
+    )
+    requested_splits = [value.strip() for value in split.split(",") if value.strip()] if split else []
+    if not requested_splits and multi_split_benchmark is not None:
+        requested_splits = ["default.ubuntu", "default.alpine"]
+    if len(requested_splits) != len(set(requested_splits)):
+        raise ValueError("Each requested split may be specified only once.")
+    if len(requested_splits) > 1 and multi_split_benchmark is None:
         raise ValueError(
-            f"Multiple --split values are supported only when evaluating {_MULTI_SPLIT_BENCHMARK} by itself."
+            "Multiple --split values are supported only when evaluating SWE-bench Pro V1 or V2 by itself."
         )
     requests_alpine = any("alpine" in value.lower() for value in requested_splits)
-    if requests_alpine and not uses_opensandbox:
+    if multi_split_benchmark is not None and requests_alpine and not uses_opensandbox:
         if len(requested_splits) > 1 and not alpine_container:
             raise ValueError(
-                "--alpine-container is required when running multiple swe-bench-pro splits with Apptainer."
+                "--alpine-container is required when running multiple SWE-bench Pro splits with Apptainer."
             )
         if len(requested_splits) == 1 and not (alpine_container or main_container):
             raise ValueError(
-                "An Alpine NeMo-Skills container is required for an Alpine swe-bench-pro split with Apptainer. "
+                "An Alpine NeMo-Skills container is required for an Alpine SWE-bench Pro split with Apptainer. "
                 "Set --alpine-container or --main-container."
             )
     if len(requested_splits) > 1 and chunk_ids:
-        raise ValueError("--chunk-ids is not supported with multiple swe-bench-pro splits.")
+        raise ValueError("--chunk-ids is not supported with multiple SWE-bench Pro splits.")
 
     # A multi-split run remains one logical benchmark for judging and metrics,
     # but has one independently containerized rollout group per split.
@@ -580,7 +584,7 @@ def eval(
                 num_jobs=1,
                 eval_subfolder_suffix=f"splits/{split_name}",
             )
-            provisional_args.append(split_benchmarks[_MULTI_SPLIT_BENCHMARK])
+            provisional_args.append(split_benchmarks[multi_split_benchmark])
 
         split_sizes = [_count_jsonl_rows(cluster_config, args.input_file) for args in provisional_args]
         split_chunks = (
@@ -607,7 +611,7 @@ def eval(
                 num_jobs=split_job_count,
                 eval_subfolder_suffix=f"splits/{split_name}",
             )
-            split_args = split_benchmarks[_MULTI_SPLIT_BENCHMARK]
+            split_args = split_benchmarks[multi_split_benchmark]
             job_id_offset = len(job_batches_units)
             parent_job_ids.extend(job_id_offset + job_id for job_id in split_args.job_ids)
             split_eval_subfolders.append(split_args.eval_subfolder)
@@ -625,7 +629,7 @@ def eval(
         parent_args.job_ids = parent_job_ids
         parent_args.num_chunks = num_chunks
         parent_args.split_eval_subfolders = split_eval_subfolders
-        benchmarks_dict = {_MULTI_SPLIT_BENCHMARK: parent_args}
+        benchmarks_dict = {multi_split_benchmark: parent_args}
     else:
         benchmarks_dict, job_batches_units = prepare_eval_commands(
             **prepare_kwargs,
@@ -634,7 +638,7 @@ def eval(
             num_jobs=num_jobs,
         )
         if (
-            is_swe_bench_pro_only
+            multi_split_benchmark is not None
             and not uses_opensandbox
             and requested_splits
             and "alpine" in requested_splits[0].lower()
@@ -916,13 +920,16 @@ def eval(
                     f"test -f {shlex.quote(path)} && test -f {shlex.quote(path + '.done')}" for path in split_files
                 )
                 temporary_file = f"{final_file}.merge-tmp"
-                merge_commands.append(
-                    f"if [ ! -f {shlex.quote(final_file + '.done')} ]; then "
+                merge_command = (
                     f"{checks} && cat {' '.join(shlex.quote(path) for path in split_files)} "
                     f"> {shlex.quote(temporary_file)} && "
                     f"mv {shlex.quote(temporary_file)} {shlex.quote(final_file)} && "
-                    f"touch {shlex.quote(final_file + '.done')}; fi"
+                    f"touch {shlex.quote(final_file + '.done')}"
                 )
+                if rerun_done:
+                    merge_commands.append(merge_command)
+                else:
+                    merge_commands.append(f"if [ ! -f {shlex.quote(final_file + '.done')} ]; then {merge_command}; fi")
 
             merge_task = pipeline_utils.add_task(
                 exp,

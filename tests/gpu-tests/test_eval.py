@@ -44,6 +44,7 @@ EXCLUDED_DATASETS = {
     "swe-bench-multilingual",
     "swe-rebench",
     "swe-bench-pro",
+    "swe-bench-pro-v2",
     "deep-swe",
     "senior-swe-bench",
     "scale-swe",

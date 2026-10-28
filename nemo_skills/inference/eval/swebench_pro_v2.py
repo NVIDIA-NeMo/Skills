@@ -172,7 +172,7 @@ class SweBenchProV2GenerationTask(SweBenchGenerationTask):
                 timeout=self.cfg.swebench_tests_timeout + 120,
                 extra_mounts=extra_mounts,
             )
-        except ValueError:
+        except (ValueError, RuntimeError):
             if not (eval_out / "reward.json").exists() and not (eval_out / "reward.txt").exists():
                 LOG.error("SWE-bench Pro V2 verifier failed for %s", data_point["instance_id"])
                 return parse_swebench_pro_v2_reward(None, patch_exists=True)

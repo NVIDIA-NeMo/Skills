@@ -293,22 +293,29 @@ def test_eval_judge_sbatch_kwargs_override(monkeypatch, tmp_path):
     ],
     ids=["apptainer", "opensandbox"],
 )
+@pytest.mark.parametrize("benchmark", ["swe-bench-pro", "swe-bench-pro-v2"])
+@pytest.mark.parametrize("split", ["default.ubuntu,default.alpine", None], ids=["explicit-splits", "default-splits"])
+@pytest.mark.parametrize("rerun_done", [False, True], ids=["normal", "rerun-done"])
 def test_eval_expands_swe_bench_pro_splits_and_merges_before_summarizing(
-    monkeypatch, tmp_path, ctx_args, alpine_container, expected_client_containers
+    monkeypatch, tmp_path, ctx_args, alpine_container, expected_client_containers, benchmark, split, rerun_done
 ):
     def benchmark_args(split, suffix):
         return eval_utils.BenchmarkArgs(
-            name="swe-bench-pro",
-            input_file=f"/data/swe-bench-pro/{split}.jsonl",
+            name=benchmark,
+            input_file=f"/data/{benchmark}/{split}.jsonl",
             generation_args=f"++eval_config.split={split}",
             judge_args="",
             judge_pipeline_args={},
             requires_sandbox=False,
             keep_mounts_for_sandbox=False,
-            generation_module="nemo_skills.inference.eval.swe_bench",
+            generation_module=(
+                "nemo_skills.inference.eval.swebench_pro_v2"
+                if benchmark == "swe-bench-pro-v2"
+                else "nemo_skills.inference.eval.swe_bench"
+            ),
             num_samples=0,
             num_chunks=None,
-            eval_subfolder=f"eval-results/swe-bench-pro/{suffix}",
+            eval_subfolder=f"eval-results/{benchmark}/{suffix}",
             metrics_type="swe-bench",
         )
 
@@ -332,9 +339,9 @@ def test_eval_expands_swe_bench_pro_splits_and_merges_before_summarizing(
                 wandb_parameters=None,
                 with_sandbox=False,
             )
-            batches.append(([unit], {"swe-bench-pro"}, False, False, []))
+            batches.append(([unit], {benchmark}, False, False, []))
             args.job_ids.append(chunk_id)
-        return {"swe-bench-pro": args}, batches
+        return {benchmark: args}, batches
 
     monkeypatch.setattr(eval_pipeline, "prepare_eval_commands", fake_prepare_eval_commands)
     monkeypatch.setattr(
@@ -362,9 +369,10 @@ def test_eval_expands_swe_bench_pro_splits_and_merges_before_summarizing(
         ctx=SimpleNamespace(args=ctx_args),
         cluster="test-cluster",
         output_dir=str(tmp_path),
-        benchmarks="swe-bench-pro",
-        split="default.ubuntu,default.alpine",
+        benchmarks=benchmark,
+        split=split,
         num_chunks=10,
+        rerun_done=rerun_done,
         main_container="ubuntu-container",
         alpine_container="alpine-container",
         model="model",
@@ -382,16 +390,18 @@ def test_eval_expands_swe_bench_pro_splits_and_merges_before_summarizing(
     merge_task, summarize_task = added_tasks
     assert "default.ubuntu" in merge_task["cmd"]
     assert "default.alpine" in merge_task["cmd"]
+    assert ("if [ ! -f" in merge_task["cmd"]) is not rerun_done
     assert merge_task["container"] == "ubuntu-container"
     assert merge_task["task_dependencies"] == [f"generation-{idx}" for idx in range(10)]
     assert summarize_task["task_dependencies"] == ["task-1"]
 
 
-def test_eval_requires_alpine_container_for_multi_split_swe_bench_pro(monkeypatch, tmp_path):
+@pytest.mark.parametrize("benchmark", ["swe-bench-pro", "swe-bench-pro-v2"])
+def test_eval_requires_alpine_container_for_multi_split_swe_bench_pro(monkeypatch, tmp_path, benchmark):
     def benchmark_args():
         return eval_utils.BenchmarkArgs(
-            name="swe-bench-pro",
-            input_file="/data/swe-bench-pro/default.alpine.jsonl",
+            name=benchmark,
+            input_file=f"/data/{benchmark}/default.alpine.jsonl",
             generation_args="",
             judge_args="",
             judge_pipeline_args={},
@@ -400,7 +410,7 @@ def test_eval_requires_alpine_container_for_multi_split_swe_bench_pro(monkeypatc
             generation_module="nemo_skills.inference.eval.swe_bench",
             num_samples=0,
             num_chunks=None,
-            eval_subfolder="eval-results/swe-bench-pro",
+            eval_subfolder=f"eval-results/{benchmark}",
         )
 
     _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
@@ -410,7 +420,7 @@ def test_eval_requires_alpine_container_for_multi_split_swe_bench_pro(monkeypatc
             ctx=SimpleNamespace(args=[]),
             cluster="test-cluster",
             output_dir=str(tmp_path),
-            benchmarks="swe-bench-pro",
+            benchmarks=benchmark,
             split="default.ubuntu,default.alpine",
             model="model",
             server_type="openai",
@@ -418,10 +428,11 @@ def test_eval_requires_alpine_container_for_multi_split_swe_bench_pro(monkeypatc
         )
 
 
-def test_eval_requires_container_for_single_alpine_swe_bench_pro(monkeypatch, tmp_path):
+@pytest.mark.parametrize("benchmark", ["swe-bench-pro", "swe-bench-pro-v2"])
+def test_eval_requires_container_for_single_alpine_swe_bench_pro(monkeypatch, tmp_path, benchmark):
     args = eval_utils.BenchmarkArgs(
-        name="swe-bench-pro",
-        input_file="/data/swe-bench-pro/default.alpine.jsonl",
+        name=benchmark,
+        input_file=f"/data/{benchmark}/default.alpine.jsonl",
         generation_args="",
         judge_args="",
         judge_pipeline_args={},
@@ -430,7 +441,7 @@ def test_eval_requires_container_for_single_alpine_swe_bench_pro(monkeypatch, tm
         generation_module="nemo_skills.inference.eval.swe_bench",
         num_samples=0,
         num_chunks=None,
-        eval_subfolder="eval-results/swe-bench-pro",
+        eval_subfolder=f"eval-results/{benchmark}",
     )
     _patch_eval_for_sbatch_tests(monkeypatch, lambda: args)
 
@@ -439,7 +450,7 @@ def test_eval_requires_container_for_single_alpine_swe_bench_pro(monkeypatch, tm
             ctx=SimpleNamespace(args=[]),
             cluster="test-cluster",
             output_dir=str(tmp_path),
-            benchmarks="swe-bench-pro",
+            benchmarks=benchmark,
             split="default.alpine",
             model="model",
             server_type="openai",
@@ -447,10 +458,11 @@ def test_eval_requires_container_for_single_alpine_swe_bench_pro(monkeypatch, tm
         )
 
 
-def test_eval_single_alpine_split_keeps_main_container_compatibility(monkeypatch, tmp_path):
+@pytest.mark.parametrize("benchmark", ["swe-bench-pro", "swe-bench-pro-v2"])
+def test_eval_single_alpine_split_keeps_main_container_compatibility(monkeypatch, tmp_path, benchmark):
     args = eval_utils.BenchmarkArgs(
-        name="swe-bench-pro",
-        input_file="/data/swe-bench-pro/default.alpine.jsonl",
+        name=benchmark,
+        input_file=f"/data/{benchmark}/default.alpine.jsonl",
         generation_args="",
         judge_args="",
         judge_pipeline_args={},
@@ -459,7 +471,7 @@ def test_eval_single_alpine_split_keeps_main_container_compatibility(monkeypatch
         generation_module="nemo_skills.inference.eval.swe_bench",
         num_samples=0,
         num_chunks=None,
-        eval_subfolder="eval-results/swe-bench-pro",
+        eval_subfolder=f"eval-results/{benchmark}",
     )
     _patch_eval_for_sbatch_tests(monkeypatch, lambda: args)
     unit = eval_utils.EvalGenerationUnit(
@@ -478,7 +490,7 @@ def test_eval_single_alpine_split_keeps_main_container_compatibility(monkeypatch
     monkeypatch.setattr(
         eval_pipeline,
         "prepare_eval_commands",
-        lambda **kwargs: ({"swe-bench-pro": args}, [([unit], {"swe-bench-pro"}, False, False, [])]),
+        lambda **kwargs: ({benchmark: args}, [([unit], {benchmark}, False, False, [])]),
     )
     submitted_pipelines = []
     monkeypatch.setattr(
@@ -491,7 +503,7 @@ def test_eval_single_alpine_split_keeps_main_container_compatibility(monkeypatch
         ctx=SimpleNamespace(args=[]),
         cluster="test-cluster",
         output_dir=str(tmp_path),
-        benchmarks="swe-bench-pro",
+        benchmarks=benchmark,
         split="default.alpine",
         main_container="legacy-alpine-container",
         model="model",
@@ -522,7 +534,7 @@ def test_eval_rejects_multiple_splits_for_other_benchmarks(monkeypatch, tmp_path
 
     _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args)
 
-    with pytest.raises(ValueError, match="only when evaluating swe-bench-pro"):
+    with pytest.raises(ValueError, match="only when evaluating SWE-bench Pro V1 or V2"):
         eval_pipeline.eval(
             ctx=SimpleNamespace(args=[]),
             cluster="test-cluster",
