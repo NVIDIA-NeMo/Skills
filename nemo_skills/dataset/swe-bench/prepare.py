@@ -17,6 +17,8 @@ from pathlib import Path
 
 import datasets
 
+from nemo_skills.dataset.utils import get_swe_sanitization_command
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -43,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="princeton-nlp/SWE-bench_Verified",
+        default="SWE-bench/SWE-bench_Verified",
         help="Dataset name to load",
     )
     args = parser.parse_args()
@@ -57,11 +59,14 @@ if __name__ == "__main__":
     output_file = Path(__file__).parent / f"{args.setup}.jsonl"
     dataset = dataset.map(lambda example: {**example, "container_formatter": container_formatter})
     dataset = dataset.map(lambda example: {**example, "repo_formatter": repo_formatter})
+    if "image" in dataset.column_names:
+        dataset = dataset.rename_column("image", "docker_image")
     dataset = dataset.add_column("container_id", list(range(len(dataset))))
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))
+    dataset = dataset.add_column("pre_commands", [get_swe_sanitization_command()] * len(dataset))
 
-    if dataset_name == "princeton-nlp/SWE-bench_Verified":
+    if dataset_name in {"SWE-bench/SWE-bench_Verified"}:
         # Add language column for more convenient use with multilingual pipelines
         dataset = dataset.add_column("language", ["python"] * len(dataset))
 

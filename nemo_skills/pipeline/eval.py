@@ -14,6 +14,7 @@
 import enum
 import logging
 import os
+import shlex
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -39,11 +40,70 @@ from nemo_skills.utils import (
 )
 
 LOG = logging.getLogger(get_logger_name(__file__))
+_MULTI_SPLIT_BENCHMARKS = frozenset({"swe-bench-pro", "swe-bench-pro-v2"})
 
 
 class SingleNodeMode(str, enum.Enum):
     sequential = "sequential"
     parallel = "parallel"
+
+
+def _allocate_split_counts(split_sizes: list[int], total_count: int, label: str) -> list[int]:
+    """Allocate a fixed number of jobs proportionally across non-empty splits."""
+    if not split_sizes or any(size <= 0 for size in split_sizes):
+        raise ValueError("Evaluation splits must contain at least one task.")
+    if total_count < len(split_sizes):
+        raise ValueError(f"{label} must be at least {len(split_sizes)} when running multiple splits.")
+    if total_count > sum(split_sizes):
+        raise ValueError(f"{label} ({total_count}) cannot exceed the total number of tasks ({sum(split_sizes)}).")
+
+    remaining = total_count - len(split_sizes)
+    total_size = sum(split_sizes)
+    scaled = [remaining * size for size in split_sizes]
+    extras = [min(size - 1, value // total_size) for size, value in zip(split_sizes, scaled)]
+    allocations = [1 + extra for extra in extras]
+    remaining -= sum(extras)
+
+    order = sorted(
+        range(len(split_sizes)),
+        key=lambda idx: (scaled[idx] % total_size, split_sizes[idx], -idx),
+        reverse=True,
+    )
+    while remaining:
+        made_progress = False
+        for idx in order:
+            if allocations[idx] >= split_sizes[idx]:
+                continue
+            allocations[idx] += 1
+            remaining -= 1
+            made_progress = True
+            if remaining == 0:
+                break
+        if not made_progress:
+            raise ValueError(f"Unable to allocate {label} across the requested splits.")
+    return allocations
+
+
+def _count_jsonl_rows(cluster_config: dict, input_file: str) -> int:
+    """Count dataset rows locally or through the configured cluster tunnel."""
+    host_path = pipeline_utils.get_unmounted_path(cluster_config, input_file)
+    if cluster_config["executor"] == "none" and host_path.startswith("/nemo_run/code/"):
+        host_path = str(Path(__file__).parents[2] / host_path.removeprefix("/nemo_run/code/"))
+    if Path(host_path).is_file():
+        with open(host_path, encoding="utf-8") as fin:
+            return sum(1 for line in fin if line.strip())
+    if cluster_config["executor"] == "slurm":
+        result = pipeline_utils.get_tunnel(cluster_config).run(
+            f"awk 'NF {{count++}} END {{print count+0}}' {shlex.quote(host_path)}",
+            hide=True,
+        )
+        return int(result.stdout.strip())
+    raise ValueError(f"Cannot count tasks because dataset file {host_path} is not locally accessible.")
+
+
+def _uses_opensandbox(extra_arguments: str) -> bool:
+    """Return whether Hydra overrides select the OpenSandbox execution backend."""
+    return any(argument.lstrip("+") == "execution_backend=opensandbox" for argument in shlex.split(extra_arguments))
 
 
 def _resolve_child_sbatch_kwargs(sbatch_kwargs, child_sbatch_kwargs):
@@ -228,6 +288,14 @@ def eval(
         "CLI: space-separated. Python API: string or list. Single value broadcasts to all models.",
     ),
     main_container: str = typer.Option(None, help="Override container image for the main evaluation client"),
+    alpine_container: str = typer.Option(
+        None,
+        help=(
+            "Container for Alpine tasks when evaluating SWE-bench Pro V1 or V2. "
+            "Required for mixed Ubuntu/Alpine Apptainer runs. A single Alpine split may instead use "
+            "--main-container for backward compatibility."
+        ),
+    ),
     sandbox_container: str = typer.Option(None, help="Override container image for the sandbox"),
     judge_container: str = typer.Option(None, help="Override container image for GPU-based judges (comet, nvembed)"),
     judge_server_container: str = typer.Option(
@@ -244,7 +312,10 @@ def eval(
     starting_seed: int = typer.Option(0, help="Starting seed for random sampling"),
     split: str = typer.Option(
         None,
-        help="Data split to use for evaluation. Will use benchmark-specific default or 'test' if it's not defined.",
+        help=(
+            "Data split to use for evaluation. For SWE-bench Pro V1/V2, comma-separated splits run in one evaluation. "
+            "Will use the benchmark-specific default or 'test' if it is not defined."
+        ),
     ),
     num_jobs: int = typer.Option(
         None, help="Number of jobs to split the evaluation into. By default will run all benchmarks/seeds in parallel."
@@ -369,6 +440,7 @@ def eval(
     """
     setup_logging(disable_hydra_logs=False, use_rich=True)
     extra_arguments = f"{' '.join(ctx.args)}"
+    uses_opensandbox = _uses_opensandbox(extra_arguments)
     LOG.info("Starting evaluation job")
     LOG.info("Extra arguments that will be passed to the underlying script: %s", extra_arguments)
 
@@ -455,16 +527,11 @@ def eval(
     if " " in str(benchmarks):
         raise ValueError("benchmarks should be separated with commas")
 
-    # Use a single shared code path for both single-model and multi-model eval:
-    # build structured "eval units" and run via declarative Pipeline (like ns generate).
-    benchmarks_dict, job_batches_units = prepare_eval_commands(
+    prepare_kwargs = dict(
         cluster_config=cluster_config,
         benchmarks_or_groups=benchmarks,
-        split=split,
-        num_jobs=num_jobs,
         starting_seed=starting_seed,
         output_dir=output_dir,
-        num_chunks=num_chunks,
         chunk_ids=chunk_ids,
         rerun_done=rerun_done,
         extra_arguments=extra_arguments,
@@ -478,6 +545,107 @@ def eval(
         generation_module=generation_module,
         extra_benchmark_map=extra_benchmark_map,
     )
+    benchmark_names = [spec.split(":", maxsplit=1)[0] for spec in benchmarks.split(",")]
+    multi_split_benchmark = (
+        benchmark_names[0] if len(benchmark_names) == 1 and benchmark_names[0] in _MULTI_SPLIT_BENCHMARKS else None
+    )
+    requested_splits = [value.strip() for value in split.split(",") if value.strip()] if split else []
+    if not requested_splits and multi_split_benchmark is not None:
+        requested_splits = ["default.ubuntu", "default.alpine"]
+    if len(requested_splits) != len(set(requested_splits)):
+        raise ValueError("Each requested split may be specified only once.")
+    if len(requested_splits) > 1 and multi_split_benchmark is None:
+        raise ValueError(
+            "Multiple --split values are supported only when evaluating SWE-bench Pro V1 or V2 by itself."
+        )
+    requests_alpine = any("alpine" in value.lower() for value in requested_splits)
+    if multi_split_benchmark is not None and requests_alpine and not uses_opensandbox:
+        if len(requested_splits) > 1 and not alpine_container:
+            raise ValueError(
+                "--alpine-container is required when running multiple SWE-bench Pro splits with Apptainer."
+            )
+        if len(requested_splits) == 1 and not (alpine_container or main_container):
+            raise ValueError(
+                "An Alpine NeMo-Skills container is required for an Alpine SWE-bench Pro split with Apptainer. "
+                "Set --alpine-container or --main-container."
+            )
+    if len(requested_splits) > 1 and chunk_ids:
+        raise ValueError("--chunk-ids is not supported with multiple SWE-bench Pro splits.")
+
+    # A multi-split run remains one logical benchmark for judging and metrics,
+    # but has one independently containerized rollout group per split.
+    if len(requested_splits) > 1:
+        provisional_args = []
+        for split_name in requested_splits:
+            split_benchmarks, _ = prepare_eval_commands(
+                **{**prepare_kwargs, "wandb_parameters": deepcopy(wandb_parameters)},
+                split=split_name,
+                num_chunks=None,
+                num_jobs=1,
+                eval_subfolder_suffix=f"splits/{split_name}",
+            )
+            provisional_args.append(split_benchmarks[multi_split_benchmark])
+
+        split_sizes = [_count_jsonl_rows(cluster_config, args.input_file) for args in provisional_args]
+        split_chunks = (
+            _allocate_split_counts(split_sizes, num_chunks, "--num-chunks")
+            if num_chunks is not None
+            else [None] * len(requested_splits)
+        )
+        if num_jobs == -1:
+            split_num_jobs = [-1] * len(requested_splits)
+        elif num_jobs is not None:
+            split_num_jobs = _allocate_split_counts(split_sizes, num_jobs, "--num-jobs")
+        else:
+            split_num_jobs = [None] * len(requested_splits)
+
+        job_batches_units = []
+        parent_args = None
+        parent_job_ids = []
+        split_eval_subfolders = []
+        for split_name, split_chunk_count, split_job_count in zip(requested_splits, split_chunks, split_num_jobs):
+            split_benchmarks, split_batches = prepare_eval_commands(
+                **{**prepare_kwargs, "wandb_parameters": deepcopy(wandb_parameters)},
+                split=split_name,
+                num_chunks=split_chunk_count,
+                num_jobs=split_job_count,
+                eval_subfolder_suffix=f"splits/{split_name}",
+            )
+            split_args = split_benchmarks[multi_split_benchmark]
+            job_id_offset = len(job_batches_units)
+            parent_job_ids.extend(job_id_offset + job_id for job_id in split_args.job_ids)
+            split_eval_subfolders.append(split_args.eval_subfolder)
+
+            use_alpine_container = not uses_opensandbox and "alpine" in split_name.lower()
+            for batch in split_batches:
+                for unit in batch[0]:
+                    unit.client_container = alpine_container if use_alpine_container else None
+            job_batches_units.extend(split_batches)
+
+            if parent_args is None:
+                parent_args = deepcopy(split_args)
+                parent_args.eval_subfolder = parent_args.eval_subfolder.rsplit("/splits/", maxsplit=1)[0]
+
+        parent_args.job_ids = parent_job_ids
+        parent_args.num_chunks = num_chunks
+        parent_args.split_eval_subfolders = split_eval_subfolders
+        benchmarks_dict = {multi_split_benchmark: parent_args}
+    else:
+        benchmarks_dict, job_batches_units = prepare_eval_commands(
+            **prepare_kwargs,
+            split=split,
+            num_chunks=num_chunks,
+            num_jobs=num_jobs,
+        )
+        if (
+            multi_split_benchmark is not None
+            and not uses_opensandbox
+            and requested_splits
+            and "alpine" in requested_splits[0].lower()
+        ):
+            for batch in job_batches_units:
+                for unit in batch[0]:
+                    unit.client_container = alpine_container
 
     sbatch_kwargs = parse_kwargs(sbatch_kwargs, exclusive=exclusive, qos=qos, time_min=time_min)
     judge_sbatch_kwargs = _resolve_child_sbatch_kwargs(sbatch_kwargs, judge_sbatch_kwargs)
@@ -485,6 +653,7 @@ def eval(
 
     has_tasks = False
     job_id_to_tasks = {}
+    benchmark_to_merge_tasks = {}
     benchmark_to_judge_tasks = {}
     all_tasks = []
     if _task_dependencies is None:
@@ -554,6 +723,19 @@ def eval(
                 # This is critical for multi-node setups where client tasks need local sandbox access
                 sandbox_script.span_group_nodes = True
 
+            client_container_overrides = {
+                unit.client_container
+                for unit in units
+                if isinstance(unit, EvalGenerationUnit) and unit.client_container is not None
+            }
+            if len(client_container_overrides) > 1:
+                raise ValueError("Evaluation units using different client containers cannot share one job.")
+            job_main_container = (
+                next(iter(client_container_overrides))
+                if client_container_overrides
+                else main_container or cluster_config["containers"]["nemo-skills"]
+            )
+
             # Convert units to dict payloads for EvalClientScript
             unit_dicts = []
             for u in units:
@@ -621,7 +803,7 @@ def eval(
             group0_components.append(
                 Command(
                     script=client_script,
-                    container=main_container or cluster_config["containers"]["nemo-skills"],
+                    container=job_main_container,
                     name=f"{task_name}",
                 )
             )
@@ -708,14 +890,81 @@ def eval(
             for job_idx, last_job_name in job_batch_to_last_job_name.items():
                 job_id_to_tasks[job_idx] = [job_name_to_handle[last_job_name]]
                 all_tasks.append(job_name_to_handle[last_job_name])
+
+        # Multi-split rollouts use separate client containers and output folders.
+        # Merge them into the normal benchmark output before judging or summarizing.
+        for benchmark, benchmark_args in benchmarks_dict.items():
+            if not benchmark_args.split_eval_subfolders:
+                continue
+            dependent_tasks = []
+            for job_id in benchmark_args.job_ids:
+                dependent_tasks.extend(job_id_to_tasks[job_id])
+
+            seeds = (
+                [None]
+                if benchmark_args.num_samples == 0
+                else list(range(starting_seed, starting_seed + benchmark_args.num_samples))
+            )
+            merge_commands = []
+            final_output_dir = str(Path(output_dir) / benchmark_args.eval_subfolder)
+            for seed in seeds:
+                final_file = pipeline_utils.get_chunked_rs_filename(final_output_dir, random_seed=seed)
+                split_files = [
+                    pipeline_utils.get_chunked_rs_filename(
+                        str(Path(output_dir) / split_subfolder),
+                        random_seed=seed,
+                    )
+                    for split_subfolder in benchmark_args.split_eval_subfolders
+                ]
+                checks = " && ".join(
+                    f"test -f {shlex.quote(path)} && test -f {shlex.quote(path + '.done')}" for path in split_files
+                )
+                temporary_file = f"{final_file}.merge-tmp"
+                merge_command = (
+                    f"{checks} && cat {' '.join(shlex.quote(path) for path in split_files)} "
+                    f"> {shlex.quote(temporary_file)} && "
+                    f"mv {shlex.quote(temporary_file)} {shlex.quote(final_file)} && "
+                    f"touch {shlex.quote(final_file + '.done')}"
+                )
+                if rerun_done:
+                    merge_commands.append(merge_command)
+                else:
+                    merge_commands.append(f"if [ ! -f {shlex.quote(final_file + '.done')} ]; then {merge_command}; fi")
+
+            merge_task = pipeline_utils.add_task(
+                exp,
+                cmd=f"mkdir -p {shlex.quote(final_output_dir)} && " + " && ".join(merge_commands),
+                task_name=f"{expname}-{benchmark}-merge-splits",
+                log_dir=f"{final_output_dir}/merge-splits",
+                container=main_container or cluster_config["containers"]["nemo-skills"],
+                cluster_config=cluster_config,
+                num_gpus=0,
+                partition=partition,
+                account=account,
+                run_after=run_after,
+                reuse_code_exp=reuse_code_exp,
+                reuse_code=reuse_code,
+                task_dependencies=(
+                    dependent_tasks if cluster_config["executor"] == "slurm" else all_tasks + _task_dependencies
+                ),
+                installation_command=installation_command,
+                skip_hf_home_check=skip_hf_home_check,
+                sbatch_kwargs=sbatch_kwargs,
+            )
+            benchmark_to_merge_tasks[benchmark] = [merge_task]
+            all_tasks.append(merge_task)
+
         # scheduling judge jobs if needed
         for idx, (benchmark, benchmark_args) in enumerate(benchmarks_dict.items()):
             if not eval_requires_judge and not benchmark_args.requires_judge:
                 continue
-            dependent_job_ids = benchmark_args.job_ids
-            dependent_tasks = []
-            for job_id in dependent_job_ids:
-                dependent_tasks.extend(job_id_to_tasks[job_id])
+            if benchmark in benchmark_to_merge_tasks:
+                dependent_tasks = benchmark_to_merge_tasks[benchmark]
+            else:
+                dependent_job_ids = benchmark_args.job_ids
+                dependent_tasks = []
+                for job_id in dependent_job_ids:
+                    dependent_tasks.extend(job_id_to_tasks[job_id])
             judge_wrap_args, judge_pipeline_args = benchmark_args.judge_args, benchmark_args.judge_pipeline_args
 
             benchmark_seeds = benchmark_args.num_samples
@@ -857,6 +1106,8 @@ def eval(
 
                 if benchmark in benchmark_to_judge_tasks:
                     dependent_tasks = benchmark_to_judge_tasks[benchmark]
+                elif benchmark in benchmark_to_merge_tasks:
+                    dependent_tasks = benchmark_to_merge_tasks[benchmark]
                 else:
                     dependent_job_ids = benchmark_args.job_ids
                     dependent_tasks = []

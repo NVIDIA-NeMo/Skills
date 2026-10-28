@@ -50,6 +50,8 @@ class BenchmarkArgs:
     remaining_jobs: list[dict] = field(default_factory=list)
     # Per-benchmark sandbox environment overrides in KEY=VALUE form
     sandbox_env_overrides: list[str] = field(default_factory=list)
+    # Intermediate split folders that must be merged before judging or summarizing.
+    split_eval_subfolders: list[str] = field(default_factory=list)
 
     @property
     def requires_judge(self):
@@ -74,6 +76,8 @@ class EvalGenerationUnit:
     requirements: list[str] | None
     wandb_parameters: dict | None
     with_sandbox: bool
+    # Optional per-unit override for the generation client container.
+    client_container: str | None = None
 
 
 def get_arg_from_module_or_dict(module, arg_name, default_value=None, override_dict=None):
@@ -190,8 +194,8 @@ def get_benchmark_args_from_module(
     # when running locally swe-bench launches apptainer inside docker and this required elevated privileges
     # TODO: is there a better way to handle this?
     # TODO: handle properly without polluting environment for future calls
-    if benchmark == "swe-bench" and cluster_config["executor"] == "local":
-        LOG.info("Swe-bench requires extra docker privileges, setting NEMO_SKILLS_PRIVILEGED_DOCKER=1")
+    if benchmark in {"swe-bench", "scale-swe"} and cluster_config["executor"] == "local":
+        LOG.info("%s requires extra docker privileges, setting NEMO_SKILLS_PRIVILEGED_DOCKER=1", benchmark)
         os.environ["NEMO_SKILLS_PRIVILEGED_DOCKER"] = "1"
 
     metrics_type = get_arg_from_module_or_dict(benchmark_module, "METRICS_TYPE", None, override_dict)
@@ -314,6 +318,7 @@ def prepare_eval_commands(
     generation_type=None,
     generation_module=None,
     extra_benchmark_map=None,
+    eval_subfolder_suffix=None,
 ):
     """
     # TODO: there is a bit too much code duplication here and logic is quite dense, should try to refactor
@@ -355,6 +360,10 @@ def prepare_eval_commands(
         )
         for benchmark_args in cur_benchmarks:
             benchmark = benchmark_args.name
+            if eval_subfolder_suffix:
+                benchmark_args.eval_subfolder = (
+                    f"{benchmark_args.eval_subfolder.rstrip('/')}/{eval_subfolder_suffix.strip('/')}"
+                )
             if benchmark in benchmarks_dict:
                 raise ValueError(
                     f"Benchmark {benchmark} is specified multiple times in the benchmarks list. "

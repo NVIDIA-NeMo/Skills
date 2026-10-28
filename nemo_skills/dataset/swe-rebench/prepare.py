@@ -18,6 +18,8 @@ from pathlib import Path
 
 import datasets
 
+from nemo_skills.dataset.utils import get_swe_sanitization_command
+
 
 def get_date_range(start_str, end_str):
     """Generates a list of YYYY_MM strings between start and end inclusive."""
@@ -86,6 +88,7 @@ if __name__ == "__main__":
                     "container_id": global_id_counter,
                     "dataset_name": dataset_name,
                     "split": split,
+                    "pre_commands": get_swe_sanitization_command(),
                 }
                 all_data.append(processed_item)
                 global_id_counter += 1
