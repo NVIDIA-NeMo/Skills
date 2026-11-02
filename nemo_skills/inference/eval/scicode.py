@@ -81,7 +81,7 @@ class SciCodeGenerationTask(GenerationTask):
                 continue
 
             if out_of_context:
-                task_solutions[f"{problem_id}.{cur_step}"] = "_ran_out_of_context_"
+                task_solutions[f"{problem_id}.{cur_step + 1}"] = "_ran_out_of_context_"
                 continue
 
             problem_steps_str, next_step_str, previous_code_str = process_problem_steps(
