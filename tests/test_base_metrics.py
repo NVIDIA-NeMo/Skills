@@ -15,6 +15,7 @@
 import pytest
 
 from nemo_skills.evaluation.metrics.base import BaseMetrics
+from nemo_skills.evaluation.metrics.utils import is_correct_judgement
 
 
 class MockMetrics(BaseMetrics):
@@ -192,3 +193,16 @@ def test_base_metrics_update(predictions, expected_all_scores):
     metrics = MockMetrics()
     metrics.update(predictions)
     assert metrics.all_scores == expected_all_scores
+
+
+@pytest.mark.parametrize(
+    "judgement,expected",
+    [
+        ("Judgement: Yes", True),
+        ("Reasoning: matches.\n\n**Judgement**: No", False),
+        ("extracted_final_answer: Judgement: Yes\n\nReasoning: does not match.\n\nJudgement: no", False),
+        ("no verdict here", False),
+    ],
+)
+def test_is_correct_judgement_uses_final_label(judgement, expected):
+    assert is_correct_judgement(judgement) is expected

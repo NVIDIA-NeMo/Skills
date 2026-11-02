@@ -46,7 +46,9 @@ def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
         # Format 1: "Judgement: Yes/No" (standard format)
         # Match both plain "Judgement:" and markdown bold "**Judgement**:" formats,
         # this happens for gpt-4o which is AA Judge model.
-        match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
+        # Use the last label: the judge may quote the response (which can contain "Judgement: ...") before its verdict.
+        matches = list(re.finditer(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE))
+        match = matches[-1] if matches else None
         if match:
             verdict = judgement[match.end() :].strip().lstrip("*").strip()
             if verdict.lower().startswith("yes"):
