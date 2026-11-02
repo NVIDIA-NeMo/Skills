@@ -35,7 +35,9 @@ DEFAULT_OUTPUT_PATTERN = "output*.jsonl"
 def is_correct_judgement(judgement, return_none=False) -> Union[bool, None]:
     logging.info("Judgement string: %s", judgement)
 
-    match = re.search(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE)
+    # Use the last label: the judge may quote the response (which can contain "Judgement: ...") before its verdict.
+    matches = list(re.finditer(r"\*{0,2}Judgement\*{0,2}\s*:", judgement, re.IGNORECASE))
+    match = matches[-1] if matches else None
     if match:
         logging.info("Found 'Judgement:' in string, extracting verdict.")
         verdict = judgement[match.end() :].strip().lstrip("*").strip()
