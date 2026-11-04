@@ -171,6 +171,14 @@ def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
 class DeepSweGenerationTask(SweBenchGenerationTask):
     """SWE-bench agents for generation; Harbor ``tests/test.sh`` for grading."""
 
+    def __init__(self, cfg: DeepSweGenerationConfig):
+        if cfg.execution_backend != "opensandbox":
+            raise ValueError(
+                "DeepSWE v1.1 requires ++execution_backend=opensandbox; "
+                "Apptainer container_formatter images are not supported."
+            )
+        super().__init__(cfg)
+
     async def _execute_container_command(
         self,
         data_point,

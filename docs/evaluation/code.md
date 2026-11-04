@@ -450,21 +450,18 @@ DeepSWE requires a Harbor-style tasks folder to operate, so the data needs to be
 ```bash
 ns prepare_data deep-swe \
   --cluster=<CLUSTER> \
-  --data_dir=/workspace/ns-data \
-  --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
+  --data_dir=/workspace/ns-data
 ```
 
 This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) temporarily to
 build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
 `/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
-`NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Note that this does not download the `.sif` images
-themselves, for instructions on that see the SWE-bench docs above. Build or download a fresh
-`.sif` for every v1.1 `docker_image` recorded in `default.jsonl`; the official image tags end in
-`-v1.1`. Reusing v1.0 `.sif` files with v1.1 task metadata is unsupported.
+`NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Each generated row retains
+the official v1.1 OCI `docker_image`; OpenSandbox pulls that image directly. DeepSWE does not
+generate or consume `container_formatter`/Apptainer `.sif` paths.
 
 Useful options:
 
-- `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{docker_image_tag}`, `{ext_id}`
 - `--repo_url` / `--repo_commit` — override the pinned DeepSWE Harbor source/revision
 - `--setup` — output split name (default: `default`)
 
@@ -475,10 +472,15 @@ ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
   --data_dir=/workspace/ns-data \
   --model=... --server_type=vllm --server_gpus=8 \
   --output_dir=/path/out \
+  ++execution_backend=opensandbox \
   ++agent_framework=mini_swe_agent
 ```
 
-Note that `--data_dir` is required, same as for data preparation. DeepSWE v1.1 grades only
+Note that `--data_dir` is required, same as for data preparation. OpenSandbox is the only supported
+execution backend for DeepSWE and is selected by default; configuring Apptainer fails early.
+Set the required OpenSandbox credentials as described above.
+
+DeepSWE v1.1 grades only
 committed work: interactive frameworks collect `git diff --binary <base_commit> HEAD` after the
 agent exits, matching Harbor's `[[verifier.collect]]` hook. Uncommitted changes are deliberately
 excluded. The default mini-SWE-agent prompt therefore asks the model to create a branch and commit

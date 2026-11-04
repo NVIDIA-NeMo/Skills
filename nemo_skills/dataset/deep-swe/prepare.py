@@ -29,8 +29,7 @@ deleted afterward; eval needs ``tasks/`` and the JSONL only. At eval time,
 Example:
     ns prepare_data deep-swe \\
         --cluster=iad \\
-        --data_dir=/workspace/ns-data \\
-        --container_formatter "/swe-bench-images/deepswe/{instance_id}.sif"
+        --data_dir=/workspace/ns-data
 """
 
 from __future__ import annotations
@@ -48,9 +47,6 @@ from nemo_skills.dataset.utils import get_swe_sanitization_command
 
 DEFAULT_REPO = "https://github.com/datacurve-ai/deep-swe.git"
 DEFAULT_REPO_COMMIT = "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea"
-# Default keeps the official ECR image reference. Prefer pointing at pre-built .sif paths
-# on Slurm via --container_formatter, e.g. "/path/{instance_id}.sif".
-DEFAULT_CONTAINER_FORMATTER = "docker://{docker_image}"
 
 
 def _as_dict(value):
@@ -106,18 +102,6 @@ def _clone_or_update_repo(repo_url: str, dest: Path, commit: str | None) -> Path
     return dest
 
 
-def _format_container(formatter: str, *, instance_id: str, docker_image: str, ext_id: str) -> str:
-    return formatter.format(
-        # '__' -> '_1776_' replacement for consistency with swe-bench behavior
-        instance_id=instance_id.replace("__", "_1776_"),
-        task_id=instance_id.replace("__", "_1776_"),
-        docker_image=docker_image,
-        ext_id=ext_id,
-        # Convenience: tag portion after the last ":" for sif naming schemes.
-        docker_image_tag=docker_image.rsplit(":", 1)[-1] if docker_image else "",
-    )
-
-
 def _sync_tasks(source_tasks: Path, dest_tasks: Path) -> Path:
     """Copy Harbor task dirs into dataset/deep-swe/tasks for --data_dir sync."""
     if not source_tasks.is_dir():
@@ -144,8 +128,6 @@ def _sync_tasks(source_tasks: Path, dest_tasks: Path) -> Path:
 
 def _load_task(
     task_dir: Path,
-    container_formatter: str,
-    dataset_dir: Path,
     *,
     source_repo: str = DEFAULT_REPO,
     source_commit: str = DEFAULT_REPO_COMMIT,
@@ -213,12 +195,6 @@ def _load_task(
         "display_title": metadata.get("display_title", ""),
         "ext_id": ext_id,
         "docker_image": docker_image,
-        "container_formatter": _format_container(
-            container_formatter,
-            instance_id=instance_id,
-            docker_image=docker_image,
-            ext_id=ext_id,
-        ),
         # Agent and verifier both run against the task image; tests/ are bind-mounted at grade time.
         "container_repo_dir": "/app",
         "agent_timeout_sec": float(agent.get("timeout_sec", 5400.0)),
@@ -246,16 +222,6 @@ def main():
         type=str,
         default=DEFAULT_REPO_COMMIT,
         help=f"Git commit/tag to checkout after cloning (default: pinned v1.1 {DEFAULT_REPO_COMMIT})",
-    )
-    parser.add_argument(
-        "--container_formatter",
-        type=str,
-        default=DEFAULT_CONTAINER_FORMATTER,
-        help=(
-            "Container path/URI template. Placeholders: {instance_id}, {task_id}, {docker_image}, "
-            "{docker_image_tag}, {ext_id}. Example for Slurm sif images: "
-            "'/swe-bench-images/deepswe/{instance_id}.sif'"
-        ),
     )
     parser.add_argument(
         "--setup",
@@ -286,8 +252,6 @@ def main():
             rows.append(
                 _load_task(
                     task_dir,
-                    args.container_formatter,
-                    dataset_dir,
                     source_repo=args.repo_url,
                     source_commit=source_commit,
                 )

@@ -15,11 +15,13 @@
 
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from nemo_skills.evaluation.metrics.code_metrics import DeepSweMetrics
 from nemo_skills.inference.eval.deepswe import (
+    DeepSweGenerationTask,
     _resolve_tests_dir,
     build_verifier_command,
     parse_deepswe_reward,
@@ -213,8 +215,6 @@ def test_prepare_loads_v11_task_metadata(tmp_path):
 
     row = prepare._load_task(
         task_dir,
-        "docker://{docker_image}",
-        tmp_path,
         source_repo="https://example.test/deep-swe.git",
         source_commit="deadbeef",
     )
@@ -226,6 +226,7 @@ def test_prepare_loads_v11_task_metadata(tmp_path):
     assert row["verifier_timeout_sec"] == 1800.0
     assert row["source_commit"] == "deadbeef"
     assert row["patch_collection"] == "base_commit_to_head"
+    assert "container_formatter" not in row
 
 
 def test_prepare_rejects_v10_task_layout(tmp_path):
@@ -236,7 +237,12 @@ def test_prepare_rejects_v10_task_layout(tmp_path):
     task_toml.write_text(task_toml.read_text().replace('schema_version = "1.3"', 'schema_version = "1.1"'))
 
     with pytest.raises(ValueError, match="not DeepSWE v1.1"):
-        prepare._load_task(task_dir, "docker://{docker_image}", tmp_path)
+        prepare._load_task(task_dir)
+
+
+def test_deepswe_rejects_apptainer_backend():
+    with pytest.raises(ValueError, match="requires .*execution_backend=opensandbox"):
+        DeepSweGenerationTask(SimpleNamespace(execution_backend="apptainer"))
 
 
 def test_deepswe_mini_swe_prompt_requires_commit():
