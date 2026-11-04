@@ -250,15 +250,18 @@ def test_eval_prefers_verifier_docker_image(executor, monkeypatch, tmp_path):
     ]
 
 
-def test_deepswe_eval_requires_verifier_docker_image(executor, monkeypatch, tmp_path):
+@pytest.mark.parametrize("stale_verifier_image", [None, "registry.example/deepswe:task-verifier-v1.1"])
+def test_deepswe_eval_uses_task_image(executor, monkeypatch, tmp_path, stale_verifier_image):
     _, create = _sandbox(executor, monkeypatch, _archive())
     args = _arguments(tmp_path, mode="eval")
     args["data_point"]["dataset_name"] = "datacurve/deep-swe"
 
-    with pytest.raises(RuntimeError, match="requires a verifier_docker_image"):
-        asyncio.run(executor.execute(**args))
+    if stale_verifier_image:
+        args["data_point"]["verifier_docker_image"] = stale_verifier_image
 
-    create.assert_not_called()
+    asyncio.run(executor.execute(**args))
+
+    assert create.call_args.kwargs["image"] == args["data_point"]["docker_image"]
 
 
 def test_eval_can_skip_staging_privileged_dataset_row(executor, monkeypatch, tmp_path):

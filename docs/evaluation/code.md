@@ -457,10 +457,12 @@ This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) te
 build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
 `/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
 `NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Each generated row retains
-the official v1.1 agent `docker_image` and derives its matching `verifier_docker_image` by replacing
-the `-v1.1` tag suffix with `-verifier-v1.1`. OpenSandbox uses the first image for agent rollouts and
-the second for grading. Hidden tests come exclusively from the pinned verifier image; local task
-files are not uploaded to verifier sandboxes. DeepSWE does not generate or consume
+the official v1.1 `docker_image`; no separate verifier image tag is generated. OpenSandbox starts
+a fresh copy of that image for grading and uploads the pinned task `tests/` directory to `/tests`
+along with the submitted patch. This reproduces the upstream verifier Dockerfile without a build
+or registry push. Tests are never uploaded to agent sandboxes. Previously prepared synthetic
+`verifier_docker_image` fields are ignored for DeepSWE; the matching `tasks/` tree must be present
+next to the input JSONL. DeepSWE does not generate or consume
 `container_formatter`/Apptainer `.sif` paths.
 
 Useful options:

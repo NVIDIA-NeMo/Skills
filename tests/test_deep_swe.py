@@ -223,7 +223,7 @@ def test_prepare_loads_v11_task_metadata(tmp_path):
     assert row["instance_id"] == "task-a"
     assert row["base_commit"] == "abc123"
     assert row["docker_image"].endswith("-v1.1")
-    assert row["verifier_docker_image"] == "example/image:task-a-verifier-v1.1"
+    assert "verifier_docker_image" not in row
     assert row["agent_timeout_sec"] == 10800.0
     assert row["verifier_timeout_sec"] == 1800.0
     assert row["source_commit"] == "deadbeef"
@@ -263,16 +263,32 @@ def test_deepswe_mini_swe_prompt_requires_commit():
     assert "Do NOT commit" not in config
 
 
-def test_verifier_uses_baked_tests_and_only_stages_model_patch(tmp_path):
+def test_verifier_stages_pinned_tests_and_model_patch(tmp_path):
     task = object.__new__(DeepSweGenerationTask)
     task.output_dir = tmp_path / "results"
-    task.cfg = SimpleNamespace(execution_backend="opensandbox", swebench_tests_timeout=60)
+    input_file = tmp_path / "data" / "deep-swe" / "default.jsonl"
+    tests_dir = input_file.parent / "tasks" / "task-a" / "tests"
+    _write_v11_task(tests_dir.parent)
+    task.cfg = SimpleNamespace(execution_backend="opensandbox", swebench_tests_timeout=60, input_file=str(input_file))
     task._execute_container_command = AsyncMock()
 
     metrics = asyncio.run(task._run_deepswe_verifier({"instance_id": "task-a"}, "diff --git a/a b/a\n"))
 
     mounts = task._execute_container_command.await_args.kwargs["extra_mounts"]
     assert [(str(source), target, read_only) for source, target, read_only in mounts] == [
-        (str(task.output_dir / "patches" / "task-a.patch"), "/patch_mount/model.patch", True)
+        (str(task.output_dir / "patches" / "task-a.patch"), "/patch_mount/model.patch", True),
+        (str(tests_dir), "/tests", True),
     ]
     assert metrics["verifier_crashed"] is True
+
+
+def test_verifier_rejects_missing_pinned_tests_before_starting_sandbox(tmp_path):
+    task = object.__new__(DeepSweGenerationTask)
+    task.output_dir = tmp_path / "results"
+    task.cfg = SimpleNamespace(input_file=str(tmp_path / "default.jsonl"))
+    task._execute_container_command = AsyncMock()
+
+    with pytest.raises(FileNotFoundError, match="Missing pinned DeepSWE verifier file"):
+        asyncio.run(task._run_deepswe_verifier({"instance_id": "task-a"}, "patch"))
+
+    task._execute_container_command.assert_not_awaited()

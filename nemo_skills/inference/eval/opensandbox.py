@@ -324,12 +324,14 @@ class OpenSandboxExecutor:
                 f"{agent_framework} does not run an agent sandbox; use OpenSandbox only for evaluation."
             )
 
-        requires_verifier_image = mode == "eval" and data_point.get("dataset_name") == "datacurve/deep-swe"
-        image_key = (
-            "verifier_docker_image"
-            if mode == "eval" and (requires_verifier_image or data_point.get("verifier_docker_image"))
-            else "docker_image"
+        # DeepSWE uses the published task image with pinned tests uploaded at
+        # runtime. Ignore synthetic verifier tags in previously prepared rows.
+        use_verifier_image = (
+            mode == "eval"
+            and data_point.get("dataset_name") != "datacurve/deep-swe"
+            and data_point.get("verifier_docker_image")
         )
+        image_key = "verifier_docker_image" if use_verifier_image else "docker_image"
         image = data_point.get(image_key)
         if not image:
             raise RuntimeError(f"OpenSandbox requires a {image_key} in each dataset row.")

@@ -25,6 +25,7 @@ import json
 import logging
 import shutil
 import sys
+from pathlib import Path
 
 import hydra
 
@@ -185,6 +186,11 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
 
     async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
         """Apply model.patch in a pristine task image and run tests/test.sh."""
+        tests_dir = Path(self.cfg.input_file).parent / "tasks" / data_point["instance_id"] / "tests"
+        for filename in ("test.sh", "grader.py", "config.json", "test.patch"):
+            if not (tests_dir / filename).is_file():
+                raise FileNotFoundError(f"Missing pinned DeepSWE verifier file: {tests_dir / filename}")
+
         patches_dir = self.output_dir / "patches"
         patches_dir.mkdir(parents=True, exist_ok=True)
         patch_path = patches_dir / f"{data_point['instance_id']}.patch"
@@ -197,9 +203,12 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             shutil.rmtree(eval_out)
         eval_out.mkdir(parents=True, exist_ok=True)
 
-        # The v1.1 verifier image already contains its pinned tests under /tests.
-        # Only the model patch crosses into the pristine verifier sandbox.
-        extra_mounts = [(patch_path, "/patch_mount/model.patch", True)]
+        # Reproduce tests/Dockerfile without building an image: upload the pinned
+        # tests only to a fresh verifier sandbox, never to the agent sandbox.
+        extra_mounts = [
+            (patch_path, "/patch_mount/model.patch", True),
+            (tests_dir, "/tests", True),
+        ]
         extra_apptainer_args = ""
         if self.cfg.execution_backend == "apptainer" and data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
             # On OpenSandbox, containers never share the same network namespace, so there is no need to isolate.
