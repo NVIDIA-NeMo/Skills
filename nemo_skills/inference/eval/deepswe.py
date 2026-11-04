@@ -53,6 +53,25 @@ def _resolve_tests_dir(data_point: dict, eval_config: dict | None = None, *, tas
     )
 
 
+def build_verifier_command(instance_id: str) -> str:
+    """Build the DeepSWE v1.1 Harbor verifier command."""
+    out_dir = f"/trajectories_mount/eval-outputs/{instance_id}"
+    return (
+        "mkdir -p /logs/artifacts /logs/verifier && "
+        "cp /patch_mount/model.patch /logs/artifacts/model.patch && "
+        "export TESTS_DIR=/tests && "
+        "export VERIFIER_DIR=/logs/verifier && "
+        "export APP_DIR=/app && "
+        "export ARTIFACTS_DIR=/logs/artifacts && "
+        "cd /app && "
+        "bash /tests/test.sh; "
+        f"mkdir -p {out_dir} && "
+        f"cp -r /logs/verifier/. {out_dir}/ && "
+        # DeepSWE's crash sentinel may produce reward.txt=-1 instead of reward.json.
+        f"if [ -f {out_dir}/reward.json ] || [ -f {out_dir}/reward.txt ]; then touch {out_dir}/.eval_done; fi"
+    )
+
+
 # These verifiers use fixed localhost ports (Anko, HTTPX, and Testem) or require isolated IPv6 loopback
 # behavior (Prometheus). Concurrent runs can otherwise collide or hang when they share the host network
 # namespace, so run them with private, network-disabled namespaces.
@@ -109,6 +128,7 @@ def parse_deepswe_reward(reward: dict | None, *, patch_exists: bool) -> dict:
             "f2p": 0.0,
             "p2p": 0.0,
             "partial": 0.0,
+            "verifier_crashed": True,
         }
 
     apply_failed = bool(reward.get("apply_failed"))
@@ -201,22 +221,7 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             # On OpenSandbox, containers never share the same network namespace, so there is no need to isolate.
             extra_apptainer_args = " --net --network none "
 
-        out_dir = f"/trajectories_mount/eval-outputs/{data_point['instance_id']}"
-        verifier_cmd = (
-            "mkdir -p /logs/artifacts /logs/verifier && "
-            "cp /patch_mount/model.patch /logs/artifacts/model.patch && "
-            "export TESTS_DIR=/tests && "
-            "export VERIFIER_DIR=/logs/verifier && "
-            "export APP_DIR=/app && "
-            "export ARTIFACTS_DIR=/logs/artifacts && "
-            "cd /app && "
-            "bash /tests/test.sh; "
-            f"mkdir -p {out_dir} && "
-            f"cp -r /logs/verifier/. {out_dir}/ && "
-            # Create an .eval_done marker to indicate that the evaluation was completed (used as search_path below).
-            # DeepSWE crash sentinel only writes reward.txt=-1, so accept either reward.json or reward.txt existing.
-            f"if [ -f {out_dir}/reward.json ] || [ -f {out_dir}/reward.txt ]; then touch {out_dir}/.eval_done; fi"
-        )
+        verifier_cmd = build_verifier_command(data_point["instance_id"])
 
         search_path = str(eval_out / ".eval_done")
         try:

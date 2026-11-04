@@ -21,6 +21,7 @@ from nemo_skills.inference.eval.swebench import (
     SweBenchGenerationTask,
     append_extra_instructions,
     build_clean_patch_commands,
+    build_committed_patch_commands,
     build_direct_agent_user_prompt,
     build_opencode_config,
     build_opencode_install_command,
@@ -37,6 +38,7 @@ def test_clean_patch_commands_exclude_preexisting_worktree_changes(tmp_path):
     _run(["git", "init"], repo)
     _run(["git", "config", "user.email", "test@example.com"], repo)
     _run(["git", "config", "user.name", "Test"], repo)
+    _run(["git", "config", "commit.gpgsign", "false"], repo)
     (repo / "tracked.py").write_text("before\n")
     (repo / "environment.lock").write_text("original\n")
     _run(["git", "add", "tracked.py", "environment.lock"], repo)
@@ -60,6 +62,61 @@ def test_clean_patch_commands_exclude_preexisting_worktree_changes(tmp_path):
     assert "environment.lock" not in patch
     assert "go.tar.gz" not in patch
     assert _run(["git", "diff", "--cached", "--quiet"], repo).returncode == 0
+
+
+def test_committed_patch_commands_exclude_uncommitted_changes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(["git", "init"], repo)
+    _run(["git", "config", "user.email", "test@example.com"], repo)
+    _run(["git", "config", "user.name", "Test"], repo)
+    _run(["git", "config", "commit.gpgsign", "false"], repo)
+    (repo / "tracked.py").write_text("before\n")
+    _run(["git", "add", "tracked.py"], repo)
+    _run(["git", "commit", "-m", "initial"], repo)
+    base_commit = _run(["git", "rev-parse", "HEAD"], repo).stdout.strip()
+
+    (repo / "tracked.py").write_text("committed\n")
+    (repo / "binary.bin").write_bytes(b"\x00\x01\x02")
+    _run(["git", "add", "tracked.py", "binary.bin"], repo)
+    _run(["git", "commit", "-m", "solution"], repo)
+    (repo / "uncommitted.py").write_text("must not be graded\n")
+
+    patch_path = tmp_path / "model.patch"
+    setup, collect = build_committed_patch_commands(
+        base_commit,
+        str(patch_path),
+        repo_dir=str(repo),
+    )
+    subprocess.run(
+        f"{setup} && {collect}",
+        check=True,
+        executable="/bin/bash",
+        shell=True,
+    )
+
+    patch = patch_path.read_text()
+    assert "tracked.py" in patch
+    assert "binary.bin" in patch
+    assert "GIT binary patch" in patch
+    assert "uncommitted.py" not in patch
+
+
+def test_deepswe_rows_select_committed_collection_without_changing_swebench():
+    task = object.__new__(SweBenchGenerationTask)
+    committed_setup, committed_collect = task._build_agent_patch_commands(
+        {
+            "base_commit": "abc123",
+            "patch_collection": "base_commit_to_head",
+        },
+        "/tmp/committed.patch",
+    )
+    clean_setup, clean_collect = task._build_agent_patch_commands({}, "/tmp/working.patch")
+
+    assert committed_setup == "true"
+    assert "diff --binary abc123 HEAD" in committed_collect
+    assert "PATCH_START_COMMIT" in clean_setup
+    assert "git diff --binary --cached" in clean_collect
 
 
 def test_build_opencode_config_points_at_local_openai_server():

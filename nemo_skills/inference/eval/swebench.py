@@ -385,6 +385,26 @@ def build_clean_patch_commands(patch_path: str) -> tuple[str, str]:
     return setup, collect
 
 
+def build_committed_patch_commands(
+    base_commit: str,
+    patch_path: str,
+    *,
+    repo_dir: str = "/testbed",
+) -> tuple[str, str]:
+    """Build commands that collect only commits after the benchmark base commit.
+
+    DeepSWE v1.1 uses this contract in its Harbor ``[[verifier.collect]]`` hook.
+    The setup is intentionally a no-op: unlike working-tree collection, the
+    benchmark base commit is immutable and uncommitted changes must be ignored.
+    """
+    collect = (
+        f"(cd {shlex.quote(repo_dir)} && "
+        f"git -c safe.directory={shlex.quote(repo_dir)} diff --binary "
+        f"{shlex.quote(base_commit)} HEAD >{shlex.quote(patch_path)})"
+    )
+    return "true", collect
+
+
 def build_opencode_config(
     agent_config: dict,
     api_base: str,
@@ -1397,6 +1417,16 @@ class SweBenchGenerationTask(GenerationTask):
             f"Supported frameworks: {', '.join(f.value for f in SupportedAgentFrameworks)}."
         )
 
+    @staticmethod
+    def _uses_committed_patch_collection(data_point: dict) -> bool:
+        """Whether this row follows the DeepSWE v1.1 committed-patch contract."""
+        return data_point.get("patch_collection") == "base_commit_to_head"
+
+    def _build_agent_patch_commands(self, data_point: dict, patch_path: str) -> tuple[str, str]:
+        if self._uses_committed_patch_collection(data_point):
+            return build_committed_patch_commands(data_point["base_commit"], patch_path)
+        return build_clean_patch_commands(patch_path)
+
     def _get_extra_instructions(self) -> str:
         """Load and concatenate the prompts selected via extra_instructions."""
         prompts = []
@@ -1471,8 +1501,13 @@ class SweBenchGenerationTask(GenerationTask):
             extra_fields["language"] = data_point["language"]
 
         problem_statement = self._get_agent_problem_statement(data_point)
+        committed_patch_path = f"/trajectories_mount/trajectories/{data_point['instance_id']}.model.patch"
 
         def build_swe_agent_command(api_base):
+            committed_patch_collect = ""
+            if self._uses_committed_patch_collection(data_point):
+                _, patch_collect = self._build_agent_patch_commands(data_point, committed_patch_path)
+                committed_patch_collect = f" && {patch_collect}"
             return (
                 # copy installed repo & uv dir from /root_mount
                 "cp -r /root_mount/SWE-agent /root && "
@@ -1498,6 +1533,7 @@ class SweBenchGenerationTask(GenerationTask):
                 f"    --output_dir trajectories/root/{data_point['instance_id']} && "
                 # move trajectories to the mounted directory
                 f"cp -r trajectories /trajectories_mount/"
+                f"{committed_patch_collect}"
             )
 
         # Execute SWE-agent command
@@ -1519,6 +1555,9 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read().strip())
+        if self._uses_committed_patch_collection(data_point):
+            host_patch = self.output_dir / "trajectories" / f"{data_point['instance_id']}.model.patch"
+            trajectory_dict["model_patch"] = host_patch.read_text()
 
         # need to rename .pred to .jsonl
         pred_jsonl_file = pred_file.replace(".pred", ".jsonl")
@@ -1584,6 +1623,7 @@ class SweBenchGenerationTask(GenerationTask):
         instance_id = data_point["instance_id"]
         host_config_path = self.scratch_dir / f"mini_swe_agent_config_{instance_id}.yaml"
         container_config_path = "/mini_swe_agent_config.yaml"
+        committed_patch_path = f"/trajectories_mount/trajectories/{instance_id}.model.patch"
         agent_timeout_sec = (
             int(data_point["agent_timeout_sec"])
             if getattr(self.cfg, "use_agent_timeouts", False) and data_point.get("agent_timeout_sec")
@@ -1636,9 +1676,14 @@ class SweBenchGenerationTask(GenerationTask):
                 "--exit-immediately"
             )
             if agent_timeout_sec is None:
+                committed_patch_collect = ""
+                if self._uses_committed_patch_collection(data_point):
+                    _, patch_collect = self._build_agent_patch_commands(data_point, committed_patch_path)
+                    committed_patch_collect = f"mkdir -p /trajectories_mount/trajectories && {patch_collect} && "
                 return (
                     f"{setup} && {agent_command} && "
                     "mkdir -p /trajectories_mount/trajectories && "
+                    f"{committed_patch_collect}"
                     "cp -r trajectories/* /trajectories_mount/trajectories/"
                 )
 
@@ -1646,8 +1691,12 @@ class SweBenchGenerationTask(GenerationTask):
             # capture and return the working-tree patch before the outer sandbox is torn down.
             mounted_trajectory = f"/trajectories_mount/trajectories/{instance_id}.traj.json"
             native_trajectory = f"/root/mini-swe-agent/trajectories/{instance_id}.traj.json"
-            partial_patch = f"/tmp/{instance_id}.model.patch"
-            patch_setup, patch_collect = build_clean_patch_commands(partial_patch)
+            partial_patch = (
+                committed_patch_path
+                if self._uses_committed_patch_collection(data_point)
+                else f"/tmp/{instance_id}.model.patch"
+            )
+            patch_setup, patch_collect = self._build_agent_patch_commands(data_point, partial_patch)
             fallback_script = (
                 "import json, os; "
                 "from pathlib import Path; "
@@ -1665,8 +1714,8 @@ class SweBenchGenerationTask(GenerationTask):
                 "AGENT_EXIT_CODE=$?; "
                 "set -e; "
                 "cd /testbed && "
-                f"{patch_collect} && "
                 f"mkdir -p {shlex.quote(str(Path(mounted_trajectory).parent))} && "
+                f"{patch_collect} && "
                 f'if [ "$AGENT_EXIT_CODE" -eq 0 ] && [ -s {shlex.quote(native_trajectory)} ]; then '
                 f"cp {shlex.quote(native_trajectory)} {shlex.quote(mounted_trajectory)}; "
                 "else "
@@ -1692,6 +1741,9 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(pred_file, "r") as f:
             trajectory_dict = json.loads(f.read().strip())
+        if self._uses_committed_patch_collection(data_point):
+            host_patch = self.output_dir / "trajectories" / f"{instance_id}.model.patch"
+            trajectory_dict.setdefault("info", {})["submission"] = host_patch.read_text()
 
         pred_jsonl_file = pred_file.replace(".traj.json", ".jsonl")
         with open(pred_jsonl_file, "w") as f:
@@ -1788,10 +1840,15 @@ class SweBenchGenerationTask(GenerationTask):
         instruction_template_setup += (
             f"printf '\\n%s\\n' {shlex.quote(extra_instructions)} | tee -a {' '.join(prompt_files)} >/dev/null && "
         )
+        committed_patch_path = f"/trajectories_mount/trajectories/{data_point['instance_id']}/committed.model.patch"
 
         def build_openhands_command(api_base):
             config["llm"]["model"]["base_url"] = api_base
             config_str = tomlkit.dumps(config)
+            committed_patch_collect = ""
+            if self._uses_committed_patch_collection(data_point):
+                _, patch_collect = self._build_agent_patch_commands(data_point, committed_patch_path)
+                committed_patch_collect = f" && {patch_collect}"
             return (
                 # make sure /workspace isn't mounted as a safety precaution
                 # (mounting it in the nemo-skills cluster config is ok, just not inside of apptainer specifically)
@@ -1833,6 +1890,7 @@ class SweBenchGenerationTask(GenerationTask):
                 # move outputs to the mounted directory
                 f"mkdir -p /trajectories_mount/trajectories/{data_point['instance_id']} && "
                 f"cp -r evaluation/evaluation_outputs/outputs/*/*/*/* /trajectories_mount/trajectories/{data_point['instance_id']}"
+                f"{committed_patch_collect}"
             )
 
         # Execute OpenHands command
@@ -1847,7 +1905,11 @@ class SweBenchGenerationTask(GenerationTask):
         with open(out_file, "r") as f:
             out_dict = json.loads(f.read().strip())
 
-        patch = out_dict["test_result"]["git_patch"]
+        if self._uses_committed_patch_collection(data_point):
+            patch_path = self.output_dir / "trajectories" / data_point["instance_id"] / "committed.model.patch"
+            patch = patch_path.read_text()
+        else:
+            patch = out_dict["test_result"]["git_patch"]
         if not patch:
             patch = None
         elif not patch.endswith("\n"):
@@ -1964,7 +2026,7 @@ class SweBenchGenerationTask(GenerationTask):
                 tokens_to_generate=output_token_max,
             )
             config_json = json.dumps(opencode_config)
-            patch_setup, patch_collect = build_clean_patch_commands(f"{trajectory_dir}/model.patch")
+            patch_setup, patch_collect = self._build_agent_patch_commands(data_point, f"{trajectory_dir}/model.patch")
             return (
                 "export PATH=/root_mount/opencode/bin:/root_mount/node/bin:$PATH && "
                 "if [ -f /root_mount/opencode/.musl ]; then "
@@ -2096,7 +2158,7 @@ class SweBenchGenerationTask(GenerationTask):
                 disable_thinking=disable_thinking,
             )
             settings_json = json.dumps(settings)
-            patch_setup, patch_collect = build_clean_patch_commands(f"{trajectory_dir}/model.patch")
+            patch_setup, patch_collect = self._build_agent_patch_commands(data_point, f"{trajectory_dir}/model.patch")
             return (
                 "export PATH=/root_mount/claude-code/bin:/root_mount/node/bin:$PATH && "
                 "export HOME=/root && "

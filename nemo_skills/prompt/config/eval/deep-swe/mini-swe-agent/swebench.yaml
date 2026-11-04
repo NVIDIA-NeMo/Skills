@@ -1,0 +1,67 @@
+# DeepSWE v1.1 uses Harbor's committed-patch collection contract.
+agent:
+  system_template: |
+    You are a helpful assistant that can interact with a computer shell to solve programming tasks.
+  instance_template: |
+    <pr_description>
+    {{task}}
+    </pr_description>
+
+    <instructions>
+    Work only in /testbed. Inspect the repository, implement the requested change,
+    and run relevant tests. Keep the change focused and do not modify held-out tests.
+
+    Every response must explain your reasoning and include at least one bash tool call.
+    Shell working-directory changes are not persistent, so use `cd /testbed && ...`
+    when necessary.
+
+    Before finishing, create a new branch from main, stage all intended repository
+    changes, and commit them. Only committed changes are submitted for grading.
+    Verify that `git diff HEAD` is empty and that `git diff --stat main..HEAD`
+    contains the intended solution. Do not create patch.txt and do not merely leave
+    changes in the working tree.
+
+    After verifying the commit, finish with this exact command:
+    `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
+    Do not run any further commands after submitting.
+    </instructions>
+  cost_limit: 0.
+
+environment:
+  cwd: "/testbed"
+  timeout: 60
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
+  environment_class: local
+
+model:
+  observation_template: |
+    {% if output.exception_info -%}
+    <exception>{{output.exception_info}}</exception>
+    {% endif -%}
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 10000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    Your command output was too long. Use a more selective command.
+    </warning>
+    <output_head>
+    {{ output.output[:5000] }}
+    </output_head>
+    <elided_chars>{{ output.output | length - 10000 }} characters elided</elided_chars>
+    <output_tail>
+    {{ output.output[-5000:] }}
+    </output_tail>
+    {%- endif %}
+  format_error_template: |
+    Tool call error:
+    <error>{{error}}</error>
+    Respond concisely and include at least one bash tool call.
+  cost_tracking: "ignore_errors"

@@ -105,7 +105,12 @@ class DeepSweMetrics(BaseMetrics):
         return {
             "issues_resolved": metrics.get("resolved") is True,
             "no_patch": metrics.get("patch_exists") is False,
-            "patch_cant_apply": metrics.get("patch_successfully_applied") is False,
+            "patch_cant_apply": (
+                metrics.get("patch_successfully_applied") is False
+                and metrics.get("verifier_crashed") is not True
+                and metrics.get("patch_exists") is not False
+            ),
+            "verifier_crashed": metrics.get("verifier_crashed") is True,
             "reward": float(metrics.get("reward") or 0.0),
             "f2p": float(metrics.get("f2p") or 0.0),
             "p2p": float(metrics.get("p2p") or 0.0),
@@ -118,6 +123,7 @@ class DeepSweMetrics(BaseMetrics):
                 "resolved": False,
                 "patch_exists": True,
                 "patch_successfully_applied": True,
+                "verifier_crashed": False,
                 "reward": 0,
                 "f2p": 0.0,
                 "p2p": 0.0,

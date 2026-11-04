@@ -47,6 +47,7 @@ import tomlkit
 from nemo_skills.dataset.utils import get_swe_sanitization_command
 
 DEFAULT_REPO = "https://github.com/datacurve-ai/deep-swe.git"
+DEFAULT_REPO_COMMIT = "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea"
 # Default keeps the official ECR image reference. Prefer pointing at pre-built .sif paths
 # on Slurm via --container_formatter, e.g. "/path/{instance_id}.sif".
 DEFAULT_CONTAINER_FORMATTER = "docker://{docker_image}"
@@ -141,7 +142,14 @@ def _sync_tasks(source_tasks: Path, dest_tasks: Path) -> Path:
     return dest_tasks
 
 
-def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> dict:
+def _load_task(
+    task_dir: Path,
+    container_formatter: str,
+    dataset_dir: Path,
+    *,
+    source_repo: str = DEFAULT_REPO,
+    source_commit: str = DEFAULT_REPO_COMMIT,
+) -> dict:
     task_toml = tomlkit.parse((task_dir / "task.toml").read_text())
     metadata = _as_dict(task_toml.get("metadata"))
     environment = _as_dict(task_toml.get("environment"))
@@ -153,6 +161,27 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
     ext_id = metadata.get("ext_id", "")
     base_commit = metadata.get("base_commit_hash") or ""
 
+    schema_version = str(task_toml.get("schema_version", ""))
+    artifacts = list(task_toml.get("artifacts") or [])
+    collect_hooks = verifier.get("collect") or []
+    if hasattr(collect_hooks, "unwrap"):
+        collect_hooks = collect_hooks.unwrap()
+    collect_commands = [str(hook.get("command", "")) for hook in collect_hooks]
+    expected_diff = f"git diff --binary {base_commit} HEAD"
+
+    if schema_version != "1.3":
+        raise ValueError(f"{task_dir} is not DeepSWE v1.1 current-main schema 1.3 (found {schema_version!r})")
+    if not base_commit:
+        raise ValueError(f"Missing metadata.base_commit_hash in {task_dir / 'task.toml'}")
+    if not docker_image or not docker_image.endswith("-v1.1"):
+        raise ValueError(f"Expected a DeepSWE v1.1 docker_image ending in '-v1.1' in {task_dir / 'task.toml'}")
+    if verifier.get("environment_mode") != "separate":
+        raise ValueError(f"Expected verifier.environment_mode='separate' in {task_dir / 'task.toml'}")
+    if "/logs/artifacts/model.patch" not in artifacts:
+        raise ValueError(f"Missing model.patch artifact declaration in {task_dir / 'task.toml'}")
+    if not any(expected_diff in command and "/logs/artifacts/model.patch" in command for command in collect_commands):
+        raise ValueError(f"Missing v1.1 committed-patch collect hook in {task_dir / 'task.toml'}")
+
     instruction_path = task_dir / "instruction.md"
     if not instruction_path.exists():
         raise FileNotFoundError(f"Missing instruction.md in {task_dir}")
@@ -162,9 +191,17 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
     if solution_path.exists():
         solution_patch = solution_path.read_text(errors="replace")
 
-    tests_dir = task_dir / "tests"
-    if not (tests_dir / "test.sh").exists():
-        raise FileNotFoundError(f"Missing tests/test.sh in {task_dir}")
+    required_files = (
+        instruction_path,
+        task_dir / "tests" / "test.sh",
+        task_dir / "tests" / "grader.py",
+        task_dir / "tests" / "config.json",
+        task_dir / "tests" / "test.patch",
+        task_dir / "tests" / "Dockerfile",
+    )
+    for required_file in required_files:
+        if not required_file.exists():
+            raise FileNotFoundError(f"Missing DeepSWE v1.1 file: {required_file}")
 
     return {
         "instance_id": instance_id,
@@ -189,6 +226,9 @@ def _load_task(task_dir: Path, container_formatter: str, dataset_dir: Path) -> d
         # Used by ++agent_framework=gold_patch
         "patch": solution_patch,
         "dataset_name": "datacurve/deep-swe",
+        "source_repo": source_repo,
+        "source_commit": source_commit,
+        "patch_collection": "base_commit_to_head",
         "pre_commands": get_swe_sanitization_command(),
     }
 
@@ -204,8 +244,8 @@ def main():
     parser.add_argument(
         "--repo_commit",
         type=str,
-        default=None,
-        help="Optional git commit/tag to checkout after cloning",
+        default=DEFAULT_REPO_COMMIT,
+        help=f"Git commit/tag to checkout after cloning (default: pinned v1.1 {DEFAULT_REPO_COMMIT})",
     )
     parser.add_argument(
         "--container_formatter",
@@ -233,13 +273,25 @@ def main():
     repo_dir = dataset_dir / "deep-swe-repo"
     try:
         _clone_or_update_repo(args.repo_url, repo_dir, args.repo_commit)
+        source_commit = subprocess.check_output(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            text=True,
+        ).strip()
         tasks_root = _sync_tasks(repo_dir / "tasks", local_tasks)
 
         rows = []
         for task_dir in sorted(p for p in tasks_root.iterdir() if p.is_dir()):
             if not (task_dir / "task.toml").exists():
                 continue
-            rows.append(_load_task(task_dir, args.container_formatter, dataset_dir))
+            rows.append(
+                _load_task(
+                    task_dir,
+                    args.container_formatter,
+                    dataset_dir,
+                    source_repo=args.repo_url,
+                    source_commit=source_commit,
+                )
+            )
 
         if not rows:
             raise RuntimeError(f"No DeepSWE tasks found under {tasks_root}")

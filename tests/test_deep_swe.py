@@ -13,10 +13,17 @@
 # limitations under the License.
 
 
+import importlib
+from pathlib import Path
+
 import pytest
 
 from nemo_skills.evaluation.metrics.code_metrics import DeepSweMetrics
-from nemo_skills.inference.eval.deepswe import _resolve_tests_dir, parse_deepswe_reward
+from nemo_skills.inference.eval.deepswe import (
+    _resolve_tests_dir,
+    build_verifier_command,
+    parse_deepswe_reward,
+)
 
 
 def test_parse_deepswe_reward_no_patch():
@@ -65,6 +72,25 @@ def test_parse_deepswe_reward_crash_sentinel():
     assert metrics["patch_successfully_applied"] is False
     assert metrics["reward"] == -1.0
     assert metrics["verifier_crashed"] is True
+
+
+def test_parse_deepswe_reward_missing_marks_verifier_crash():
+    metrics = parse_deepswe_reward(None, patch_exists=True)
+    assert metrics["resolved"] is False
+    assert metrics["patch_successfully_applied"] is False
+    assert metrics["verifier_crashed"] is True
+
+
+def test_verifier_command_uses_v11_artifact_contract():
+    command = build_verifier_command("task-a")
+    assert "cp /patch_mount/model.patch /logs/artifacts/model.patch" in command
+    assert "export TESTS_DIR=/tests" in command
+    assert "export VERIFIER_DIR=/logs/verifier" in command
+    assert "export APP_DIR=/app" in command
+    assert "export ARTIFACTS_DIR=/logs/artifacts" in command
+    assert "bash /tests/test.sh" in command
+    assert "reward.json" in command
+    assert "reward.txt" in command
 
 
 def test_deepswe_metrics_aggregate():
@@ -117,6 +143,22 @@ def test_deepswe_metrics_aggregate():
     assert score["reward"] == 1.0
 
 
+def test_deepswe_metrics_separates_verifier_crash_from_apply_failure():
+    score = DeepSweMetrics()._get_score_dict(
+        {
+            "swe-bench-metrics": {
+                "resolved": False,
+                "patch_exists": True,
+                "patch_successfully_applied": False,
+                "verifier_crashed": True,
+                "reward": -1,
+            }
+        }
+    )
+    assert score["verifier_crashed"] is True
+    assert score["patch_cant_apply"] is False
+
+
 def test_deepswe_metrics_none_when_evaluate_false():
     score = DeepSweMetrics()._get_score_dict(
         {
@@ -134,6 +176,83 @@ def test_deepswe_metrics_none_when_evaluate_false():
     assert score["issues_resolved"] is False
     assert score["no_patch"] is False
     assert score["patch_cant_apply"] is False
+
+
+def _write_v11_task(task_dir: Path):
+    tests_dir = task_dir / "tests"
+    tests_dir.mkdir(parents=True)
+    for filename in ("test.sh", "grader.py", "config.json", "test.patch", "Dockerfile"):
+        (tests_dir / filename).write_text("")
+    (task_dir / "instruction.md").write_text("Fix the issue.\n")
+    (task_dir / "task.toml").write_text(
+        """
+schema_version = "1.3"
+artifacts = ["/logs/artifacts/model.patch"]
+[metadata]
+task_id = "task-a"
+repository_url = "https://github.com/example/repo"
+base_commit_hash = "abc123"
+language = "python"
+[agent]
+timeout_sec = 10800
+[verifier]
+environment_mode = "separate"
+timeout_sec = 1800
+[[verifier.collect]]
+command = "cd /app && git diff --binary abc123 HEAD > /logs/artifacts/model.patch"
+[environment]
+docker_image = "example/image:task-a-v1.1"
+""".strip()
+    )
+
+
+def test_prepare_loads_v11_task_metadata(tmp_path):
+    prepare = importlib.import_module("nemo_skills.dataset.deep-swe.prepare")
+    task_dir = tmp_path / "task-a"
+    _write_v11_task(task_dir)
+
+    row = prepare._load_task(
+        task_dir,
+        "docker://{docker_image}",
+        tmp_path,
+        source_repo="https://example.test/deep-swe.git",
+        source_commit="deadbeef",
+    )
+
+    assert row["instance_id"] == "task-a"
+    assert row["base_commit"] == "abc123"
+    assert row["docker_image"].endswith("-v1.1")
+    assert row["agent_timeout_sec"] == 10800.0
+    assert row["verifier_timeout_sec"] == 1800.0
+    assert row["source_commit"] == "deadbeef"
+    assert row["patch_collection"] == "base_commit_to_head"
+
+
+def test_prepare_rejects_v10_task_layout(tmp_path):
+    prepare = importlib.import_module("nemo_skills.dataset.deep-swe.prepare")
+    task_dir = tmp_path / "task-a"
+    _write_v11_task(task_dir)
+    task_toml = task_dir / "task.toml"
+    task_toml.write_text(task_toml.read_text().replace('schema_version = "1.3"', 'schema_version = "1.1"'))
+
+    with pytest.raises(ValueError, match="not DeepSWE v1.1"):
+        prepare._load_task(task_dir, "docker://{docker_image}", tmp_path)
+
+
+def test_deepswe_mini_swe_prompt_requires_commit():
+    config = (
+        Path(__file__).parents[1]
+        / "nemo_skills"
+        / "prompt"
+        / "config"
+        / "eval"
+        / "deep-swe"
+        / "mini-swe-agent"
+        / "swebench.yaml"
+    ).read_text()
+    assert "Only committed changes are submitted" in config
+    assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in config
+    assert "Do NOT commit" not in config
 
 
 def test_resolve_tests_dir_prefers_data_dir(tmp_path):

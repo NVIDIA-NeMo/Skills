@@ -434,6 +434,12 @@ all you need to do is replace `openhands` with `swe_agent` in the command above.
 
 DeepSWE is a Harbor-format coding-agent benchmark (113 long-horizon tasks). It reuses the SWE-bench agent logic for generation and scores each task with its Harbor verifier (`tests/test.sh` + `grader.py` + F2P/P2P in `tests/config.json`).
 
+NeMo-Skills targets DeepSWE v1.1 current main, pinned at
+`0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea`. DeepSWE v1.0 is not compatible:
+it uses different images and an in-place scalar verifier rather than v1.1's committed patch,
+separate verifier environment, and structured reward. Existing v1.0 data, images, and results
+must not be reused or compared directly with v1.1 runs.
+
 DeepSWE uses mostly the same logic as regular SWE-bench, so most of the [SWE-bench docs](#swe-bench) apply to it as well.
 The differences are described below.
 
@@ -452,12 +458,14 @@ This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) te
 build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
 `/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
 `NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Note that this does not download the `.sif` images
-themselves, for instructions on that see the SWE-bench docs above.
+themselves, for instructions on that see the SWE-bench docs above. Build or download a fresh
+`.sif` for every v1.1 `docker_image` recorded in `default.jsonl`; the official image tags end in
+`-v1.1`. Reusing v1.0 `.sif` files with v1.1 task metadata is unsupported.
 
 Useful options:
 
 - `--container_formatter` placeholders: `{instance_id}`, `{task_id}`, `{docker_image}`, `{docker_image_tag}`, `{ext_id}`
-- `--repo_url` / `--repo_commit` — override the DeepSWE Harbor git source
+- `--repo_url` / `--repo_commit` — override the pinned DeepSWE Harbor source/revision
 - `--setup` — output split name (default: `default`)
 
 #### Evaluation
@@ -470,13 +478,22 @@ ns eval --cluster=<CLUSTER> --benchmarks=deep-swe \
   ++agent_framework=mini_swe_agent
 ```
 
-Note that `--data_dir` is required, same as for data preparation. For `++agent_framework`, prefer `mini_swe_agent`, `swe_agent` or `opencode`; OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows. All other regular SWE-bench options are supported. Additionally, there are some DeepSWE-specific options:
+Note that `--data_dir` is required, same as for data preparation. DeepSWE v1.1 grades only
+committed work: interactive frameworks collect `git diff --binary <base_commit> HEAD` after the
+agent exits, matching Harbor's `[[verifier.collect]]` hook. Uncommitted changes are deliberately
+excluded. The default mini-SWE-agent prompt therefore asks the model to create a branch and commit
+its final solution. `gold_patch` and `model_patch` remain explicit replay/testing modes.
+
+For `++agent_framework`, prefer `mini_swe_agent`, `swe_agent`, `opencode`, or `claude_code`;
+OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows.
+All other regular SWE-bench options are supported. Additionally, there are some DeepSWE-specific options:
 - **++tasks_dir:** custom path to the Harbor tasks root on the cluster. This is used to run tests. Defaults to `{data_dir}/deep-swe/tasks`, which is the expected path after standard data preparation.
-- **++use_agent_timeouts:** if enabled, limit the agent trajectory duration to the timeout embedded in each task. This is disabled by default since trajectory duration is heavily dependent on the hardware setup when hosting LLMs locally.
-- **++use_verifier_timeouts:** if enabled, limit the verifier (evaluation) duration to the timeout embedded in each task. Disabled by default.
+- **++use_agent_timeouts:** limit the agent trajectory to the task's v1.1 timeout (10,800 seconds). Enabled by default.
+- **++use_verifier_timeouts:** limit grading to the task's verifier timeout (1,800 seconds). Enabled by default.
 
 Metrics read Harbor `reward.json` (`resolved` / `reward` / `f2p` / `p2p` / `partial`).
-Verifier crashes that only write the DeepSWE `reward.txt=-1` sentinel are counted as unresolved / not successfully applied.
+Verifier crashes that write `reward.txt=-1`, omit a reward, or produce malformed reward JSON are
+reported separately from patch-application failures.
 
 ### senior-swe-bench
 
