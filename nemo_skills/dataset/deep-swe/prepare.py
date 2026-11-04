@@ -126,6 +126,14 @@ def _sync_tasks(source_tasks: Path, dest_tasks: Path) -> Path:
     return dest_tasks
 
 
+def _get_verifier_docker_image(docker_image: str) -> str:
+    """Return the official DeepSWE v1.1 verifier image for an agent image."""
+    suffix = "-v1.1"
+    if not docker_image.endswith(suffix):
+        raise ValueError(f"Expected a DeepSWE agent image ending in {suffix!r}, found {docker_image!r}")
+    return f"{docker_image.removesuffix(suffix)}-verifier{suffix}"
+
+
 def _load_task(
     task_dir: Path,
     *,
@@ -195,7 +203,8 @@ def _load_task(
         "display_title": metadata.get("display_title", ""),
         "ext_id": ext_id,
         "docker_image": docker_image,
-        # Agent and verifier both run against the task image; tests/ are bind-mounted at grade time.
+        "verifier_docker_image": _get_verifier_docker_image(docker_image),
+        # Both images contain the pristine repository at /app; the verifier image also bakes in tests/.
         "container_repo_dir": "/app",
         "agent_timeout_sec": float(agent.get("timeout_sec", 5400.0)),
         "verifier_timeout_sec": float(verifier.get("timeout_sec", 1800.0)),

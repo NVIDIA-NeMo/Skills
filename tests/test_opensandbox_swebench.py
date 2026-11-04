@@ -234,6 +234,33 @@ def test_agent_and_verifier_use_the_resolved_digest(executor, monkeypatch, tmp_p
     assert sandbox.kill.await_count == 2
 
 
+def test_eval_prefers_verifier_docker_image(executor, monkeypatch, tmp_path):
+    _, create = _sandbox(executor, monkeypatch, _archive())
+    args = _arguments(tmp_path)
+    args["data_point"]["docker_image"] = "registry.example/deepswe:task-v1.1"
+    args["data_point"]["verifier_docker_image"] = "registry.example/deepswe:task-verifier-v1.1"
+
+    asyncio.run(executor.execute(**args))
+    args["mode"] = "eval"
+    asyncio.run(executor.execute(**args))
+
+    assert [call.kwargs["image"] for call in create.call_args_list] == [
+        "registry.example/deepswe:task-v1.1",
+        "registry.example/deepswe:task-verifier-v1.1",
+    ]
+
+
+def test_deepswe_eval_requires_verifier_docker_image(executor, monkeypatch, tmp_path):
+    _, create = _sandbox(executor, monkeypatch, _archive())
+    args = _arguments(tmp_path, mode="eval")
+    args["data_point"]["dataset_name"] = "datacurve/deep-swe"
+
+    with pytest.raises(RuntimeError, match="requires a verifier_docker_image"):
+        asyncio.run(executor.execute(**args))
+
+    create.assert_not_called()
+
+
 def test_resolution_failure_does_not_create_a_sandbox(executor, monkeypatch, tmp_path):
     executor = OpenSandboxExecutor(resolve_image_tags_to_digests=True)
     _, create = _sandbox(executor, monkeypatch)

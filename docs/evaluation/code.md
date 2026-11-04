@@ -457,8 +457,10 @@ This clones [datacurve-ai/deep-swe](https://github.com/datacurve-ai/deep-swe) te
 build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
 `/workspace/ns-data/deep-swe/tasks/`, then deletes the temporary checkout. The pipeline exports
 `NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Each generated row retains
-the official v1.1 OCI `docker_image`; OpenSandbox pulls that image directly. DeepSWE does not
-generate or consume `container_formatter`/Apptainer `.sif` paths.
+the official v1.1 agent `docker_image` and derives its matching `verifier_docker_image` by replacing
+the `-v1.1` tag suffix with `-verifier-v1.1`. OpenSandbox uses the first image for agent rollouts and
+the second for grading. DeepSWE does not generate or consume `container_formatter`/Apptainer `.sif`
+paths.
 
 Useful options:
 

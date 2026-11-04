@@ -222,6 +222,7 @@ def test_prepare_loads_v11_task_metadata(tmp_path):
     assert row["instance_id"] == "task-a"
     assert row["base_commit"] == "abc123"
     assert row["docker_image"].endswith("-v1.1")
+    assert row["verifier_docker_image"] == "example/image:task-a-verifier-v1.1"
     assert row["agent_timeout_sec"] == 10800.0
     assert row["verifier_timeout_sec"] == 1800.0
     assert row["source_commit"] == "deadbeef"

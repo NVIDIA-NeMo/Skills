@@ -323,12 +323,18 @@ class OpenSandboxExecutor:
                 f"{agent_framework} does not run an agent sandbox; use OpenSandbox only for evaluation."
             )
 
-        image = data_point.get("docker_image")
+        requires_verifier_image = mode == "eval" and data_point.get("dataset_name") == "datacurve/deep-swe"
+        image_key = (
+            "verifier_docker_image"
+            if mode == "eval" and (requires_verifier_image or data_point.get("verifier_docker_image"))
+            else "docker_image"
+        )
+        image = data_point.get(image_key)
         if not image:
-            raise RuntimeError("OpenSandbox requires a docker_image in each dataset row.")
+            raise RuntimeError(f"OpenSandbox requires a {image_key} in each dataset row.")
         image = image.removeprefix("docker://")
         if image.startswith("/") or image.endswith(".sif") or "://" in image:
-            raise RuntimeError("OpenSandbox requires docker_image to be an OCI image reference.")
+            raise RuntimeError(f"OpenSandbox requires {image_key} to be an OCI image reference.")
         image = await self._resolve_image(image)
         timeout = min(timeout, self.command_timeout_s)
         logs_dir = output_dir / "opensandbox_logs"
