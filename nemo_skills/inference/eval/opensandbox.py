@@ -317,6 +317,7 @@ class OpenSandboxExecutor:
         proxy_host,
         block_network,
         stage_eval_harness=True,
+        stage_eval_input=True,
     ) -> str:
         if mode == "agent" and agent_framework in {"gold_patch", "model_patch"}:
             raise RuntimeError(
@@ -444,14 +445,14 @@ class OpenSandboxExecutor:
                     else:
                         raise RuntimeError(f"OpenSandbox extra input does not exist or is unsupported: {source}")
 
-                if mode == "eval":
+                if mode == "eval" and stage_eval_input:
                     # Mounts the input dataset row for this instance. Used during evaluation.
                     # DO NOT do this in agent mode, to prevent the agent from accessing privileged info e.g. gold patches.
                     await self._run(sandbox, "mkdir -p /input_mount", 60, log_file)
                     await sandbox.files.write_file(
                         f"/input_mount/{input_file.name}", json.dumps(data_point) + "\n", mode=644
                     )
-                else:
+                elif mode == "agent":
                     # Run pre_commands and copy the repo to /testbed if needed.
                     pre_commands = rewrite_legacy_git_cleanup(data_point.get("pre_commands", "").strip())
                     repo_setup_commands = []

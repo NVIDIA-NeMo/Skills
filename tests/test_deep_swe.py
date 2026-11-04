@@ -13,16 +13,17 @@
 # limitations under the License.
 
 
+import asyncio
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from nemo_skills.evaluation.metrics.code_metrics import DeepSweMetrics
 from nemo_skills.inference.eval.deepswe import (
     DeepSweGenerationTask,
-    _resolve_tests_dir,
     build_verifier_command,
     parse_deepswe_reward,
 )
@@ -262,36 +263,16 @@ def test_deepswe_mini_swe_prompt_requires_commit():
     assert "Do NOT commit" not in config
 
 
-def test_resolve_tests_dir_prefers_data_dir(tmp_path):
-    instance_id = "abs-module-cache-flags"
-    tests = tmp_path / "deep-swe" / "tasks" / instance_id / "tests"
-    tests.mkdir(parents=True)
-    (tests / "test.sh").write_text("#!/bin/bash\n")
+def test_verifier_uses_baked_tests_and_only_stages_model_patch(tmp_path):
+    task = object.__new__(DeepSweGenerationTask)
+    task.output_dir = tmp_path / "results"
+    task.cfg = SimpleNamespace(execution_backend="opensandbox", swebench_tests_timeout=60)
+    task._execute_container_command = AsyncMock()
 
-    resolved = _resolve_tests_dir(
-        {"instance_id": instance_id, "tests_dir": "/nonexistent/stale/path"},
-        {"data_dir": str(tmp_path)},
-    )
-    assert resolved == tests
+    metrics = asyncio.run(task._run_deepswe_verifier({"instance_id": "task-a"}, "diff --git a/a b/a\n"))
 
-
-def test_resolve_tests_dir_explicit_test_dir_wins(tmp_path):
-    instance_id = "task-a"
-    via_test_dir = tmp_path / "custom_tasks" / instance_id / "tests"
-    via_test_dir.mkdir(parents=True)
-    via_data_dir = tmp_path / "deep-swe" / "tasks" / instance_id / "tests"
-    via_data_dir.mkdir(parents=True)
-
-    resolved = _resolve_tests_dir(
-        {"instance_id": instance_id},
-        {"data_dir": str(tmp_path), "test_dir": str(tmp_path / "custom_tasks")},
-    )
-    assert resolved == via_test_dir
-
-
-def test_resolve_tests_dir_missing_raises(tmp_path):
-    with pytest.raises(ValueError, match="tests dir not found"):
-        _resolve_tests_dir(
-            {"instance_id": "missing-task"},
-            {"data_dir": str(tmp_path)},
-        )
+    mounts = task._execute_container_command.await_args.kwargs["extra_mounts"]
+    assert [(str(source), target, read_only) for source, target, read_only in mounts] == [
+        (str(task.output_dir / "patches" / "task-a.patch"), "/patch_mount/model.patch", True)
+    ]
+    assert metrics["verifier_crashed"] is True

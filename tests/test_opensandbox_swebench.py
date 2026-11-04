@@ -261,6 +261,17 @@ def test_deepswe_eval_requires_verifier_docker_image(executor, monkeypatch, tmp_
     create.assert_not_called()
 
 
+def test_eval_can_skip_staging_privileged_dataset_row(executor, monkeypatch, tmp_path):
+    sandbox, _ = _sandbox(executor, monkeypatch, _archive())
+    args = _arguments(tmp_path, mode="eval")
+    args["stage_eval_input"] = False
+
+    asyncio.run(executor.execute(**args))
+
+    written_paths = [call.args[0] for call in sandbox.files.write_file.call_args_list]
+    assert not any(path.startswith("/input_mount/") for path in written_paths)
+
+
 def test_resolution_failure_does_not_create_a_sandbox(executor, monkeypatch, tmp_path):
     executor = OpenSandboxExecutor(resolve_image_tags_to_digests=True)
     _, create = _sandbox(executor, monkeypatch)

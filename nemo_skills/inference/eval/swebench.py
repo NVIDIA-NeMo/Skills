@@ -1167,6 +1167,7 @@ class SweBenchGenerationTask(GenerationTask):
                     SupportedDatasetTypes.swe_bench_pro,
                     SupportedDatasetTypes.swe_rebench_v2,
                 },
+                stage_eval_input=self.cfg.dataset_type != SupportedDatasetTypes.deep_swe,
             )
 
         mounts = self._get_apptainer_mounts(mode, data_point) + list(extra_mounts)

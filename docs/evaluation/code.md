@@ -459,8 +459,9 @@ build the dataset, writes `default.jsonl`, materializes Harbor task dirs under
 `NEMO_SKILLS_DATA_DIR` from `--data_dir` for the preparation process. Each generated row retains
 the official v1.1 agent `docker_image` and derives its matching `verifier_docker_image` by replacing
 the `-v1.1` tag suffix with `-verifier-v1.1`. OpenSandbox uses the first image for agent rollouts and
-the second for grading. DeepSWE does not generate or consume `container_formatter`/Apptainer `.sif`
-paths.
+the second for grading. Hidden tests come exclusively from the pinned verifier image; local task
+files are not uploaded to verifier sandboxes. DeepSWE does not generate or consume
+`container_formatter`/Apptainer `.sif` paths.
 
 Useful options:
 
@@ -491,7 +492,6 @@ its final solution. `gold_patch` and `model_patch` remain explicit replay/testin
 For `++agent_framework`, prefer `mini_swe_agent`, `swe_agent`, `opencode`, or `claude_code`;
 OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows.
 All other regular SWE-bench options are supported. Additionally, there are some DeepSWE-specific options:
-- **++tasks_dir:** custom path to the Harbor tasks root on the cluster. This is used to run tests. Defaults to `{data_dir}/deep-swe/tasks`, which is the expected path after standard data preparation.
 - **++use_agent_timeouts:** limit the agent trajectory to the task's v1.1 timeout (10,800 seconds). Enabled by default.
 - **++use_verifier_timeouts:** limit grading to the task's verifier timeout (1,800 seconds). Enabled by default.
 

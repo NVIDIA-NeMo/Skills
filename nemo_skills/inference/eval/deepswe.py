@@ -25,11 +25,10 @@ import json
 import logging
 import shutil
 import sys
-from pathlib import Path
 
 import hydra
 
-from nemo_skills.inference.eval.harbor_utils import load_verifier_reward, resolve_tests_dir
+from nemo_skills.inference.eval.harbor_utils import load_verifier_reward
 from nemo_skills.inference.eval.swebench import (
     SweBenchGenerationConfig,
     SweBenchGenerationTask,
@@ -41,16 +40,6 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 # Re-export for tests / external callers.
 _load_verifier_reward = load_verifier_reward
-
-
-def _resolve_tests_dir(data_point: dict, eval_config: dict | None = None, *, tasks_dir: str | None = None):
-    """Module-level tests-dir resolver (used by unit tests)."""
-    return resolve_tests_dir(
-        data_point,
-        eval_config,
-        tasks_dir=tasks_dir,
-        benchmark_name="deep-swe",
-    )
 
 
 def build_verifier_command(instance_id: str) -> str:
@@ -92,10 +81,6 @@ class DeepSweGenerationConfig(SweBenchGenerationConfig):
     # Whether to apply timeouts on the agent and verifier (evaluation stage) if they are set in the data point.
     use_agent_timeouts: bool = False
     use_verifier_timeouts: bool = False
-
-    # Custom path to the Harbor tasks root (contains <instance_id>/tests/).
-    # Defaults to <data_dir>/deep-swe/tasks.
-    tasks_dir: str | None = None
 
 
 cs = hydra.core.config_store.ConfigStore.instance()
@@ -198,14 +183,6 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             self, data_point, command, expected_file_pattern, mode, timeout, extra_apptainer_args, extra_mounts
         )
 
-    def _resolve_tests_dir(self, data_point: dict) -> Path:
-        return resolve_tests_dir(
-            data_point,
-            self.cfg.eval_config,
-            tasks_dir=self.cfg.tasks_dir,
-            benchmark_name="deep-swe",
-        )
-
     async def _run_deepswe_verifier(self, data_point, model_patch: str) -> dict:
         """Apply model.patch in a pristine task image and run tests/test.sh."""
         patches_dir = self.output_dir / "patches"
@@ -220,10 +197,9 @@ class DeepSweGenerationTask(SweBenchGenerationTask):
             shutil.rmtree(eval_out)
         eval_out.mkdir(parents=True, exist_ok=True)
 
-        extra_mounts = [
-            (self._resolve_tests_dir(data_point), "/tests", True),
-            (patch_path, "/patch_mount/model.patch", True),
-        ]
+        # The v1.1 verifier image already contains its pinned tests under /tests.
+        # Only the model patch crosses into the pristine verifier sandbox.
+        extra_mounts = [(patch_path, "/patch_mount/model.patch", True)]
         extra_apptainer_args = ""
         if self.cfg.execution_backend == "apptainer" and data_point["instance_id"] in NETWORK_ISOLATED_VERIFIER_TASKS:
             # On OpenSandbox, containers never share the same network namespace, so there is no need to isolate.
