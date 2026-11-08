@@ -36,13 +36,18 @@ The evaluation is executed by the following process:
 
 See example of data preparation command in [main evaluation docs](../evaluation/index.md#using-data-on-cluster).
 
+Preparation delegates to the [SPEED-Bench prepare script in NeMo Gym](https://github.com/NVIDIA-NeMo/Gym/blob/9022d42b1bf3679c3bee568ba7e63306e0e91324/benchmarks/speed-bench/prepare.py),
+downloaded at a pinned commit. It uses Gym's `raw` output format to preserve
+Skills' `messages` schema and `<config>.jsonl` filenames. No Gym installation is required.
+The pinned script prepares SPEED-Bench v1.1, including the `throughput_100k` split.
+
 ```shell
 ns prepare_data speed-bench --data_dir=<output directory for data files> --cluster=<cluster config>
 ```
 
 Other supported options:
 
-  * **config**: select which config to prepare, can be one of the splits in the dataset (e.g., `qualitative`, `throughput_2k`) or `all` to prepare all of the configs.
+  * **config**: select which config to prepare, can be one of the splits in the dataset (e.g., `qualitative`, `throughput_2k`, `throughput_100k`) or `all` to prepare all of the configs (the default).
 
 
 #### Evaluation command
