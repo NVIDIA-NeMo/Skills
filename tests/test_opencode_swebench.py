@@ -231,9 +231,9 @@ def test_extra_instructions_concatenates_prompts_in_order():
     task = object.__new__(SweBenchGenerationTask)
     task.cfg = SimpleNamespace(extra_instructions=["no-test-edits", "eval/swe-bench/common/solution-originality"])
 
-    prompt = task._get_extra_instructions()
+    prompt = task._get_extra_instructions({})
 
     assert prompt.index("Test and Patch Integrity") < prompt.index("Solution Originality")
 
     task.cfg.extra_instructions = []
-    assert task._get_extra_instructions() == ""
+    assert task._get_extra_instructions({}) == ""

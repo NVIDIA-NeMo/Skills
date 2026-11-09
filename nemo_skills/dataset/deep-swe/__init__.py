@@ -20,8 +20,6 @@ METRICS_TYPE = "deep-swe"
 GENERATION_MODULE = "nemo_skills.inference.eval.deepswe"
 GENERATION_ARGS = (
     "++multilingual=True ++dataset_type=deep_swe "
-    "++agent_framework=mini_swe_agent "
-    "++agent_config=eval/deep-swe/mini-swe-agent/swebench "
     "++agent_max_turns=400 ++use_agent_timeouts=True ++use_verifier_timeouts=True "
     "++execution_backend=opensandbox"
 )

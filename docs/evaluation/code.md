@@ -488,8 +488,11 @@ Set the required OpenSandbox credentials as described above.
 DeepSWE v1.1 grades only
 committed work: interactive frameworks collect `git diff --binary <base_commit> HEAD` after the
 agent exits, matching Harbor's `[[verifier.collect]]` hook. Uncommitted changes are deliberately
-excluded. The default mini-SWE-agent prompt therefore asks the model to create a branch and commit
-its final solution. `gold_patch` and `model_patch` remain explicit replay/testing modes.
+excluded. The agent prompt therefore asks the model to commit its final solution: mini-SWE-agent
+uses the dedicated `eval/deep-swe/mini-swe-agent/swebench` config by default, and other frameworks
+get the `commit-changes` prompt appended to `++extra_instructions` automatically. If you pass a
+custom `++agent_config` for mini-SWE-agent, it must include equivalent instructions.
+`gold_patch` and `model_patch` remain explicit replay/testing modes.
 
 For `++agent_framework`, prefer `mini_swe_agent`, `swe_agent`, `opencode`, or `claude_code`;
 OpenHands expects a SWE-bench-shaped local dataset and may not work out of the box on DeepSWE rows.

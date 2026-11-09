@@ -1428,14 +1428,26 @@ class SweBenchGenerationTask(GenerationTask):
             return build_committed_patch_commands(data_point["base_commit"], patch_path)
         return build_clean_patch_commands(patch_path)
 
-    def _get_extra_instructions(self) -> str:
+    def _get_extra_instructions(self, data_point: dict) -> str:
         """Load and concatenate the prompts selected via extra_instructions."""
+        extra_instructions = self.cfg.extra_instructions.copy()
+
+        # Add instruction to commit changes if the benchmark requires it.
+        # For mini-swe-agent, we replace the agent_config entirely. See _run_mini_swe_agent below.
+        if (
+            self._uses_committed_patch_collection(data_point)
+            and self.cfg.agent_framework != SupportedAgentFrameworks.mini_swe_agent
+            and "commit-changes" not in extra_instructions
+        ):
+            extra_instructions.append("commit-changes")
+
         prompts = []
-        for prompt_config in self.cfg.extra_instructions:
+        for prompt_config in extra_instructions:
             if "/" not in prompt_config:
                 prompt_config = f"eval/swe-bench/common/{prompt_config}"
             with open(get_config_path(prompt_config, config_extension="md"), "r") as f:
                 prompts.append(f.read().strip())
+
         return "\n\n".join(prompts)
 
     def _get_terminal_error_metrics(self, error: Exception) -> dict:
@@ -1483,7 +1495,7 @@ class SweBenchGenerationTask(GenerationTask):
             instance_template = swe_agent_config["agent"]["templates"]["instance_template"]
         except (KeyError, TypeError) as error:
             raise ValueError("SWE-agent config must define agent.templates.instance_template.") from error
-        instance_template = append_extra_instructions(instance_template, self._get_extra_instructions())
+        instance_template = append_extra_instructions(instance_template, self._get_extra_instructions(data_point))
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -1576,9 +1588,14 @@ class SweBenchGenerationTask(GenerationTask):
         Runs mini-swe-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
+        # SWE-Zero and DeepSWE use their own default configs for mini-swe-agent.
         if self.cfg.agent_config is None:
             if self.cfg.swe_zero_container is not None:
+                if self.cfg.dataset_type == SupportedDatasetTypes.deep_swe:
+                    raise ValueError("swe-zero + deepswe + mini-swe-agent is not supported")
                 self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swe-zero"
+            elif self.cfg.dataset_type == SupportedDatasetTypes.deep_swe:
+                self.cfg.agent_config = "eval/deep-swe/mini-swe-agent/swebench"
             else:
                 self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swebench"
 
@@ -1603,7 +1620,7 @@ class SweBenchGenerationTask(GenerationTask):
             raise ValueError("mini-SWE-agent config must define agent.instance_template.")
         full_config["agent"]["instance_template"] = append_extra_instructions(
             full_config["agent"]["instance_template"],
-            self._get_extra_instructions(),
+            self._get_extra_instructions(data_point),
         )
         full_config["agent"]["step_limit"] = self.cfg.agent_max_turns
 
@@ -1775,7 +1792,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="toml"), "r") as f:
             config = tomlkit.parse(f.read())
-        extra_instructions = self._get_extra_instructions()
+        extra_instructions = self._get_extra_instructions(data_point)
 
         config["llm"]["model"] |= {
             "model": self.cfg.server.model,
@@ -1985,7 +2002,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        extra_instructions = self._get_extra_instructions()
+        extra_instructions = self._get_extra_instructions(data_point)
 
         output_token_max = (
             self.cfg.inference.tokens_to_generate
@@ -2133,7 +2150,7 @@ class SweBenchGenerationTask(GenerationTask):
 
         with open(get_config_path(self.cfg.agent_config, config_extension="json"), "r") as f:
             agent_config = json.load(f)
-        extra_instructions = self._get_extra_instructions()
+        extra_instructions = self._get_extra_instructions(data_point)
 
         served_model_name = self.cfg.claude_code_model or self.cfg.server.model
         claude_model_name = served_model_name.replace("/", "__")

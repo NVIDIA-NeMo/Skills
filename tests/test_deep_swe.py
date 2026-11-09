@@ -258,7 +258,7 @@ def test_deepswe_mini_swe_prompt_requires_commit():
         / "mini-swe-agent"
         / "swebench.yaml"
     ).read_text()
-    assert "Only committed changes are submitted" in config
+    assert "stage all intended repository changes and commit them" in config
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in config
     assert "Do NOT commit" not in config
 

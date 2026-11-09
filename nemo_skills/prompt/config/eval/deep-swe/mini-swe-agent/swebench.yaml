@@ -9,17 +9,15 @@ agent:
 
     <instructions>
     Work only in /testbed. Inspect the repository, implement the requested change,
-    and run relevant tests. Keep the change focused and do not modify held-out tests.
+    and run relevant tests. Keep the change focused.
 
     Every response must explain your reasoning and include at least one bash tool call.
     Shell working-directory changes are not persistent, so use `cd /testbed && ...`
     when necessary.
 
-    Before finishing, create a new branch from main, stage all intended repository
-    changes, and commit them. Only committed changes are submitted for grading.
-    Verify that `git diff HEAD` is empty and that `git diff --stat main..HEAD`
-    contains the intended solution. Do not create patch.txt and do not merely leave
-    changes in the working tree.
+    Before finishing, stage all intended repository changes and commit them.
+    Verify that `git diff HEAD` is empty and that your commit(s) contain the intended solution.
+    Do not create patch.txt and do not merely leave changes in the working tree.
 
     After verifying the commit, finish with this exact command:
     `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
