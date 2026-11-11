@@ -1588,16 +1588,17 @@ class SweBenchGenerationTask(GenerationTask):
         Runs mini-swe-agent on one instance.
         Returns the absolute (not mounted) path to a .jsonl file in the SWE-bench evaluation format.
         """
-        # SWE-Zero and DeepSWE use their own default configs for mini-swe-agent.
-        if self.cfg.agent_config is None:
+        # SWE-Zero and benchmarks with committed patch collection use their own default configs for mini-swe-agent.
+        agent_config = self.cfg.agent_config
+        if agent_config is None:
             if self.cfg.swe_zero_container is not None:
-                if self.cfg.dataset_type == SupportedDatasetTypes.deep_swe:
-                    raise ValueError("swe-zero + deepswe + mini-swe-agent is not supported")
-                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swe-zero"
-            elif self.cfg.dataset_type == SupportedDatasetTypes.deep_swe:
-                self.cfg.agent_config = "eval/deep-swe/mini-swe-agent/swebench"
+                if self._uses_committed_patch_collection(data_point):
+                    raise ValueError("swe-zero + committed patch collection + mini-swe-agent is not supported")
+                agent_config = "eval/swe-bench/mini-swe-agent/swe-zero"
+            elif self._uses_committed_patch_collection(data_point):
+                agent_config = "eval/deep-swe/mini-swe-agent/swebench"
             else:
-                self.cfg.agent_config = "eval/swe-bench/mini-swe-agent/swebench"
+                agent_config = "eval/swe-bench/mini-swe-agent/swebench"
 
         completion_kwargs = {
             openai_param: getattr(self.cfg.inference, ns_param)
@@ -1610,7 +1611,7 @@ class SweBenchGenerationTask(GenerationTask):
         if "reasoning_effort" in completion_kwargs:
             completion_kwargs["allowed_openai_params"] = ["reasoning_effort"]
 
-        base_config_path = get_config_path(self.cfg.agent_config)
+        base_config_path = get_config_path(agent_config)
         with open(base_config_path, "r") as f:
             full_config = yaml.safe_load(f)
 
