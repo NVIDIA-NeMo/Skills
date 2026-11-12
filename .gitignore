@@ -16,6 +16,8 @@
 !greptile.json
 !tests/data/dummy_external_benchmark/benchmark_map.json
 !nemo_skills/mcp/servers/exclude_domains_hle_opus.json
+!nemo_skills/prompt/config/eval/swe-bench/opencode/default.json
+!nemo_skills/prompt/config/eval/swe-bench/claude-code/default.json
 *.tar.gz
 *.tar
 *.npy
@@ -33,6 +35,12 @@ build
 .coverage
 .venv
 *.lock
+
+# Temporary Harbor checkout (deleted after prepare) and materialized task dirs from
+# ns prepare_data deep-swe. Kept under --data_dir on cluster (REQUIRES_DATA_DIR);
+# not packaged with every job.
+nemo_skills/dataset/deep-swe/deep-swe-repo/
+nemo_skills/dataset/deep-swe/tasks/
 
 __pycache__
 .ipynb_checkpoints
