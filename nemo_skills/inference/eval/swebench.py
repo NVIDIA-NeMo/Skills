@@ -1452,11 +1452,15 @@ class SweBenchGenerationTask(GenerationTask):
 
     def _get_terminal_error_metrics(self, error: Exception) -> dict:
         """Return fail-closed metrics for an agent rollout that raised."""
-        return {
+        metrics = {
             "resolved": False,
             "patch_exists": False,
             "patch_successfully_applied": False,
         }
+        if self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2:
+            metrics["f2p_pass_ratio"] = 0.0
+            metrics["p2p_pass_ratio"] = 0.0
+        return metrics
 
     def get_error_output(self, error: Exception, data_point: dict) -> dict:
         """Persist a stable SWE-bench row when one instance fails terminally."""
@@ -2345,6 +2349,24 @@ class SweBenchGenerationTask(GenerationTask):
         out_file.write_text(json.dumps(output))
         return str(out_file)
 
+    @staticmethod
+    def _add_test_pass_ratios(report, data_point):
+        """Add f2p_pass_ratio / p2p_pass_ratio to a SWE-rebench-V2 report.
+
+        The harness reports the F2P tests that passed (from_fail_to_pass) and the P2P tests that
+        regressed (failed_from_pass_to_pass). Instances without an applied patch get 0.0 for both.
+        """
+        f2p_total = len(data_point.get("FAIL_TO_PASS") or [])
+        p2p_total = len(data_point.get("PASS_TO_PASS") or [])
+        if report.get("patch_exists") is not True or report.get("patch_successfully_applied") is not True:
+            report["f2p_pass_ratio"] = 0.0
+            report["p2p_pass_ratio"] = 0.0
+            return
+        f2p_passed = len(report.get("from_fail_to_pass") or [])
+        p2p_failed = len(report.get("failed_from_pass_to_pass") or [])
+        report["f2p_pass_ratio"] = min(f2p_passed / f2p_total, 1.0) if f2p_total else 1.0
+        report["p2p_pass_ratio"] = max(1.0 - p2p_failed / p2p_total, 0.0) if p2p_total else 1.0
+
     async def process_single_datapoint(self, data_point, data, prompt_format=None):
         """Will do all necessary generations to get a single answer for the data point."""
 
@@ -2462,6 +2484,9 @@ class SweBenchGenerationTask(GenerationTask):
             if report_file is not None:
                 with open(report_file, "r") as f:
                     report_json = json.loads(f.read().strip())
+
+        if self.cfg.dataset_type == SupportedDatasetTypes.swe_rebench_v2:
+            self._add_test_pass_ratios(report_json[data_point["instance_id"]], data_point)
 
         output_dict = {
             "swe-bench-metrics": report_json[data_point["instance_id"]],

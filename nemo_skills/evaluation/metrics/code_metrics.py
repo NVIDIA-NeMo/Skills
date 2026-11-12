@@ -46,11 +46,17 @@ class LiveCodeBenchMetrics(BaseMetrics):
 
 class SweBenchMetrics(BaseMetrics):
     def _get_score_dict(self, prediction: dict) -> dict[str, bool | int | float]:
-        return {
-            "issues_resolved": prediction["swe-bench-metrics"]["resolved"],
-            "no_patch": not prediction["swe-bench-metrics"]["patch_exists"],
-            "patch_cant_apply": not prediction["swe-bench-metrics"]["patch_successfully_applied"],
+        metrics = prediction["swe-bench-metrics"]
+        score_dict = {
+            "issues_resolved": metrics["resolved"],
+            "no_patch": not metrics["patch_exists"],
+            "patch_cant_apply": not metrics["patch_successfully_applied"],
         }
+        # only reported by SWE-rebench-V2
+        for key in ("f2p_pass_ratio", "p2p_pass_ratio"):
+            if key in metrics:
+                score_dict[key] = metrics[key]
+        return score_dict
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
         return {"swe-bench-metrics": {"resolved": False, "patch_exists": True, "patch_successfully_applied": True}}
