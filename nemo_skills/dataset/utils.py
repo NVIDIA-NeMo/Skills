@@ -339,3 +339,30 @@ def filter_by_subset(dataset, subset_ids, question_key="question", options_key=N
     if no_match_ids:
         raise ValueError(f"{len(no_match_ids)}/{len(subset_ids)} subset IDs not found in source split.")
     return [hash_to_entry[h] for h in subset_ids]
+
+
+def get_swe_sanitization_command():
+    """Command to run at startup of a SWE-bench-style task container to remove future Git commits and artifacts."""
+    return (
+        "git checkout -B main && "  # forcibly reset the main branch to the current commit
+        "git config user.email 'user@example.com' && "
+        "git config user.name 'user' && "
+        "( "  # using a subshell to keep pipefail local to the cleanup procedure
+        "set -o pipefail && "
+        # Remove all remotes
+        "git remote | "
+        "while IFS= read -r remote; do "
+        '  git remote remove "$remote" || exit 1; '
+        "done && "
+        # Remove all references other than the main branch
+        "git for-each-ref --format='%(refname)' | "
+        "while IFS= read -r ref; do "
+        '  if [ "$ref" != refs/heads/main ]; then '
+        '    git update-ref --no-deref -d "$ref" || exit 1; '
+        "  fi; "
+        "done "
+        ") && "
+        "rm -f .git/ORIG_HEAD .git/FETCH_HEAD && "
+        "git reflog expire --expire=now --all && "
+        "git gc --prune=now"  # not using --aggressive because it uses much more time and RAM for no benefit
+    )

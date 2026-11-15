@@ -379,6 +379,9 @@ def check_remote_mount_directories(directories: list, cluster_config: dict, exit
         tunnel = get_tunnel(cluster_config)
         missing_source_locations = []
         for directory in directories:
+            # Node-local storage like /raid/scratch doesn't exist on the login node, so it can't be checked
+            if directory.startswith("/raid"):
+                continue
             result = tunnel.run(f'test -e {directory} && echo "Directory Exists"', hide=True, warn=True)
             if "Directory Exists" not in result.stdout:
                 missing_source_locations.append(directory)

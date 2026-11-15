@@ -17,6 +17,8 @@ from pathlib import Path
 
 import datasets
 
+from nemo_skills.dataset.utils import get_swe_sanitization_command
+
 # Convert language codes to the same format as swe-bench-multilingual.
 # This enables correct language-specific prompting and ignoring compilation files in git patches.
 LANGUAGE_MAP = {
@@ -138,6 +140,7 @@ if __name__ == "__main__":
         default="ScaleAI/SWE-bench_Pro",
         help="Dataset name to load",
     )
+    parser.add_argument("--dataset_config", type=str, default="v1", help="Dataset configuration to load")
     parser.add_argument("--split", type=str, default="test", help="Swe-Bench dataset split to use")
     parser.add_argument(
         "--setup",
@@ -148,11 +151,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset_name = args.dataset_name
+    dataset_config = args.dataset_config
     split = args.split
     container_formatter = args.container_formatter
     assert "{docker_image}" in container_formatter, "container_formatter must have {docker_image}"
 
-    dataset = datasets.load_dataset(path=dataset_name, split=split)
+    dataset = datasets.load_dataset(path=dataset_name, name=dataset_config, split=split)
     output_file_alpine = Path(__file__).parent / f"{args.setup}.alpine.jsonl"
     output_file_ubuntu = Path(__file__).parent / f"{args.setup}.ubuntu.jsonl"
 
@@ -168,6 +172,12 @@ if __name__ == "__main__":
         remove_columns=["repo_language", "interface", "requirements"],
     )
 
+    if "docker_image" not in dataset.column_names:
+        dataset = dataset.add_column(
+            "docker_image",
+            [f"jefzda/sweap-images:{row['dockerhub_tag']}" for row in dataset],
+        )
+
     dataset = dataset.add_column(
         "container_formatter",
         [
@@ -181,6 +191,7 @@ if __name__ == "__main__":
     dataset = dataset.add_column("dataset_name", [dataset_name] * len(dataset))
     dataset = dataset.add_column("split", [split] * len(dataset))
     dataset = dataset.add_column("container_repo_dir", ["/app"] * len(dataset))
+    dataset = dataset.add_column("pre_commands", [get_swe_sanitization_command()] * len(dataset))
 
     alpine_dataset = dataset.filter(lambda x: x["instance_id"] in ALPINE_INSTANCE_IDS)
     alpine_dataset.to_json(output_file_alpine, orient="records", lines=True)

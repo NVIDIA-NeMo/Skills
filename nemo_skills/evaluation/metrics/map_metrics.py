@@ -24,10 +24,13 @@ from nemo_skills.evaluation.metrics.ccc_metrics import CCCMetrics
 from nemo_skills.evaluation.metrics.code_metrics import (
     BigCodeBenchMetrics,
     ComputeEvalMetrics,
+    DeepSweMetrics,
     EvalPlusMetrics,
     HumanEvalInfillingMetrics,
     LiveCodeBenchMetrics,
+    ScaleSweMetrics,
     SciCodeMetrics,
+    SeniorSweBenchMetrics,
     SweBenchMetrics,
 )
 from nemo_skills.evaluation.metrics.contextasr_metrics import ContextASRMetrics
@@ -86,6 +89,9 @@ METRICS_MAP = {
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
+    "scale-swe": ScaleSweMetrics,
+    "deep-swe": DeepSweMetrics,
+    "senior-swe-bench": SeniorSweBenchMetrics,
     "scicode": SciCodeMetrics,
     "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,
