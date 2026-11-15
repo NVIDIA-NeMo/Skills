@@ -1704,6 +1704,9 @@ class SweBenchGenerationTask(GenerationTask):
                 "cp -r /root_mount/mini-swe-agent /root && "
                 "cp -r /root_mount/uv /root && "
                 f"{forwarder_command}"
+                # Put the task env on PATH so the agent's local shell commands use it, not the base conda python.
+                # The agent itself is launched via its absolute venv path, so it is unaffected.
+                f"{build_task_env_activation_command()} && "
                 "cd /root/mini-swe-agent && "
                 "export MSWEA_CONFIGURED=true && "
                 f"export MSWEA_MINI_CONFIG_PATH={container_config_path} && "
@@ -2205,6 +2208,8 @@ class SweBenchGenerationTask(GenerationTask):
             settings_json = json.dumps(settings)
             patch_setup, patch_collect = self._build_agent_patch_commands(data_point, f"{trajectory_dir}/model.patch")
             return (
+                # Activate the task env first so the claude-code/node dirs added below stay ahead of it on PATH.
+                f"{build_task_env_activation_command()} && "
                 "export PATH=/root_mount/claude-code/bin:/root_mount/node/bin:$PATH && "
                 "export HOME=/root && "
                 "mkdir -p /root/.claude && "
