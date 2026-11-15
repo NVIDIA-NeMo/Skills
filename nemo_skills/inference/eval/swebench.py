@@ -119,6 +119,26 @@ def _build_musl_node_runtime_command() -> str:
     )
 
 
+def build_task_env_activation_command() -> str:
+    """Shell snippet that puts the task's Python environment first on PATH.
+
+    The image's default PATH resolves a bare ``python`` to the base conda interpreter, which lacks the task's
+    dependencies. Agents that run commands in a plain non-interactive shell (OpenCode) therefore need the
+    environment on PATH explicitly, since ``conda activate`` does not persist into the agent's tool subshells.
+    Handles /opt/miniconda3/envs/testbed (SWE-bench, SWE-Gym, SWE-rebench) and /testbed/.venv (R2E-Gym).
+    Always exits 0, so it is safe in an ``&&`` chain on images with neither environment.
+    """
+    return (
+        "if [ -d /opt/miniconda3/envs/testbed ]; then "
+        "    export PATH=/opt/miniconda3/envs/testbed/bin:$PATH && "
+        "    export CONDA_PREFIX=/opt/miniconda3/envs/testbed CONDA_DEFAULT_ENV=testbed; "
+        "elif [ -x /testbed/.venv/bin/python ]; then "
+        "    export PATH=/testbed/.venv/bin:$PATH && "
+        "    export VIRTUAL_ENV=/testbed/.venv; "
+        "fi"
+    )
+
+
 def build_opencode_install_command(version: str) -> str:
     """Build an OpenCode installer for glibc and Alpine/musl task containers."""
     version = shlex.quote(version)
@@ -2051,6 +2071,8 @@ class SweBenchGenerationTask(GenerationTask):
             config_json = json.dumps(opencode_config)
             patch_setup, patch_collect = self._build_agent_patch_commands(data_point, f"{trajectory_dir}/model.patch")
             return (
+                # Activate the task env first so the opencode/node dirs added below stay ahead of it on PATH.
+                f"{build_task_env_activation_command()} && "
                 "export PATH=/root_mount/opencode/bin:/root_mount/node/bin:$PATH && "
                 "if [ -f /root_mount/opencode/.musl ]; then "
                 '    case "$(uname -m)" in '

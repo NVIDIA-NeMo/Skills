@@ -25,6 +25,7 @@ from nemo_skills.inference.eval.swebench import (
     build_direct_agent_user_prompt,
     build_opencode_config,
     build_opencode_install_command,
+    build_task_env_activation_command,
 )
 
 
@@ -237,3 +238,38 @@ def test_extra_instructions_concatenates_prompts_in_order():
 
     task.cfg.extra_instructions = []
     assert task._get_extra_instructions({}) == ""
+
+
+def _resolved_python(tmp_path, existing_dirs):
+    """Run the activation snippet against a fake filesystem and return which python wins on PATH."""
+    root = tmp_path / "fake"
+    for d in existing_dirs:
+        (root / d.lstrip("/") / "bin").mkdir(parents=True)
+        (root / d.lstrip("/") / "bin" / "python").write_text("#!/bin/sh\n")
+        (root / d.lstrip("/") / "bin" / "python").chmod(0o755)
+    command = build_task_env_activation_command().replace("/opt/miniconda3", str(root / "opt/miniconda3"))
+    command = command.replace("/testbed/.venv", str(root / "testbed/.venv"))
+    out = subprocess.run(
+        f'export PATH=/usr/bin:/bin && {command} && echo "$(command -v python)"',
+        shell=True,
+        executable="/bin/bash",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return out.stdout.strip().replace(str(root), "")
+
+
+def test_task_env_activation_prefers_conda_testbed(tmp_path):
+    assert _resolved_python(tmp_path, ["/opt/miniconda3/envs/testbed", "/testbed/.venv"]) == (
+        "/opt/miniconda3/envs/testbed/bin/python"
+    )
+
+
+def test_task_env_activation_falls_back_to_venv(tmp_path):
+    assert _resolved_python(tmp_path, ["/testbed/.venv"]) == "/testbed/.venv/bin/python"
+
+
+def test_task_env_activation_is_noop_without_env(tmp_path):
+    # Must still succeed so it does not break the && chain on images with no task env.
+    assert _resolved_python(tmp_path, []) in ("", "/usr/bin/python", "/bin/python")
