@@ -41,6 +41,10 @@ from nemo_skills.evaluation.math_grader import math_equal
         ("\$10", "10"),
         ("10%", "10"),
         ("10\\%", "10"),
+        ("$5.3\\%$", "5.3\\%"),  # gaokao2023en wraps percent answers in $...$
+        ("$5.3\\%$", "5.3"),
+        ("8 \\%", "8\\%"),  # olympiadbench has a space before the percent sign
+        ("$10 \\%$", "10"),
         (5 / 2, "\\frac{5}{2}"),
         ("\\frac{1}{3}", "\\dfrac{1}{3}"),
         ("(r+5)(r+5)", "(r+5)^2"),
@@ -68,6 +72,7 @@ def test_correct_examples(output_pair):
         ("odd", "\\text{oddd}"),
         ("E", "\\mathrm{E}*2"),
         ("\\sqrt{67},-\\sqrt{85}", "\\sqrt{67}"),
+        ("$5.3\\%$", "5.4\\%"),
     ],
     ids=str,
 )
