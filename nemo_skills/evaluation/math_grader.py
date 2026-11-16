@@ -24,8 +24,8 @@ LOG = logging.getLogger(get_logger_name(__file__))
 
 
 def _additional_normalization(expr):
-    # Remove % and \\% from the number
-    percentage_pattern = r"^(\d+\.?\d*)(?:\\%|%)$"
+    # Remove % and \\% from the number (also "$5.3\\%$" and "8 \\%")
+    percentage_pattern = r"^\$?(\d+\.?\d*)\s*(?:\\%|%)\$?$"
     match_gt = re.fullmatch(percentage_pattern, expr)
     if match_gt:
         expr = match_gt.group(1)
