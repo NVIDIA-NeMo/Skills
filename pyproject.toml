@@ -63,6 +63,8 @@ tools = { file = ["tools/requirements.txt"] }
 core = { file = ["core/requirements.txt"] }
 # Pipeline: orchestration, cluster management, CLI (adds nemo_run, typer, wandb)
 pipeline = { file = ["requirements/pipeline.txt"] }
+# Remote SWE-Atlas-QnA rollouts in OpenSandbox (optional; Apptainer remains the default)
+opensandbox = { file = ["requirements/opensandbox.txt"] }
 # Dev: development and testing tools
 dev = { file = ["requirements/common-tests.txt", "requirements/common-dev.txt"] }
 

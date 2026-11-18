@@ -51,6 +51,7 @@ from nemo_skills.evaluation.metrics.ruler2_metrics import Ruler2Metrics
 from nemo_skills.evaluation.metrics.ruler_metrics import RulerMetrics
 from nemo_skills.evaluation.metrics.simpleqa_metrics import SimpleQAMetrics
 from nemo_skills.evaluation.metrics.specdec_metrics import SpecdecMetrics
+from nemo_skills.evaluation.metrics.swe_atlas_qna_metrics import SweAtlasQnAMetrics
 from nemo_skills.evaluation.metrics.translation_metrics import TranslationMetrics
 from nemo_skills.evaluation.metrics.ugphysics_metrics import UGPhysicsMetrics
 from nemo_skills.evaluation.metrics.weighted_math_metrics import WeightedMathMetrics
@@ -86,6 +87,7 @@ METRICS_MAP = {
     "livecodebench": LiveCodeBenchMetrics,
     "livecodebench_pro": LiveCodeBenchMetrics,
     "swe-bench": SweBenchMetrics,
+    "swe-atlas-qna": SweAtlasQnAMetrics,
     "scicode": SciCodeMetrics,
     "bigcodebench": BigCodeBenchMetrics,
     "mrcr": MRCRMetrics,

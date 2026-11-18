@@ -1,0 +1,7 @@
+[llm.model]
+# The following parameters are overridden by NeMo-Skills:
+# model, base_url, temperature, top_p.
+# Configure them through NeMo-Skills inference options instead.
+api_key = "EMPTY"
+custom_llm_provider = "openai"
+native_tool_calling = true

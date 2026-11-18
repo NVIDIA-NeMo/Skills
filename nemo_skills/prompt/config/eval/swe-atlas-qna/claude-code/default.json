@@ -1,0 +1,10 @@
+{
+  "env": {},
+  "permissions": {
+    "deny": [
+      "Edit",
+      "Write",
+      "WebFetch"
+    ]
+  }
+}

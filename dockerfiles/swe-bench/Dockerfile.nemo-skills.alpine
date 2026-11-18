@@ -1,10 +1,17 @@
 # using the oldest version of alpine among swe-bench pro containers for maximum compatibility
 FROM alpine:3.17.1
 
-# installs python 3.10
+# libtmux uses a Unicode separator when communicating with tmux.
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# installs python 3.10 and the Node.js/npm and ripgrep tools used by OpenCode
 RUN apk update && apk add --no-cache \
     python3 \
     py3-pip \
+    nodejs \
+    npm \
+    ripgrep \
     curl \
     wget \
     git \
@@ -13,8 +20,25 @@ RUN apk update && apk add --no-cache \
     bash \
     build-base \
     python3-dev \
+    ca-certificates \
+    libffi-dev \
+    openssl-dev \
+    pkgconf \
     linux-headers && \
     ln -sf /usr/bin/python3 /usr/bin/python
+
+# NeMo-Skills and OpenHands native extensions need a newer Rust than Alpine 3.17 ships.
+# Keep the old musl baseline for compatibility with nested task containers.
+ARG RUST_VERSION=1.90.0
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo
+ENV PATH="/opt/cargo/bin:${PATH}"
+RUN curl --fail --show-error --silent --location --retry 3 \
+        https://sh.rustup.rs -o /tmp/rustup-init.sh && \
+    sh /tmp/rustup-init.sh -y --profile minimal --no-modify-path \
+        --default-toolchain "${RUST_VERSION}" && \
+    rm /tmp/rustup-init.sh && \
+    rustc --version && cargo --version
 
 RUN pip install --upgrade pip setuptools uv
 
