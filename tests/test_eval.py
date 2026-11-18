@@ -362,11 +362,17 @@ def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args, executor="slurm"):
 
 
 @pytest.mark.parametrize(
-    ("ctx_args", "alpine_client"),
-    [(["++execution_backend=apptainer"], "alpine-container"), ([], "ubuntu-container")],
-    ids=["apptainer", "opensandbox"],
+    ("ctx_args", "split", "alpine_client"),
+    [
+        (["++execution_backend=apptainer"], "default.ubuntu,default.alpine", "alpine-container"),
+        ([], "default.ubuntu,default.alpine", "ubuntu-container"),
+        ([], None, "ubuntu-container"),
+    ],
+    ids=["apptainer", "opensandbox", "default-splits"],
 )
-def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tmp_path, ctx_args, alpine_client):
+def test_eval_expands_swe_atlas_splits_and_merges_before_judging(
+    monkeypatch, tmp_path, ctx_args, split, alpine_client
+):
     def benchmark_args(split, suffix):
         return eval_utils.BenchmarkArgs(
             name="swe-atlas-qna",
@@ -446,7 +452,7 @@ def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tm
         cluster="test-cluster",
         output_dir=str(tmp_path),
         benchmarks="swe-atlas-qna",
-        split="default.ubuntu,default.alpine",
+        split=split,
         num_chunks=10,
         main_container="ubuntu-container",
         alpine_container="alpine-container",
@@ -574,6 +580,7 @@ def test_eval_skip_judge_omits_judge_and_summarization_for_judge_benchmark(monke
         cluster="test-cluster",
         output_dir=str(tmp_path),
         benchmarks="swe-atlas-qna",
+        split="default.ubuntu",
         model="model",
         server_type="openai",
         server_address="http://server",

@@ -379,7 +379,6 @@ COMMON_ARGS=(
     --server_nodes=1
     --server_gpus=8
     --benchmarks=swe-atlas-qna
-    --split=default.ubuntu,default.alpine
     --expname=<EXPERIMENT_NAME>
     ++inference.temperature=1.0
     ++inference.top_p=0.95
@@ -394,7 +393,7 @@ ns eval "${COMMON_ARGS[@]}" \
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
 
-For multi-split SWE-Atlas-QnA runs, `--num_chunks` is the total across all splits. NeMo-Skills allocates chunks proportionally by task count while guaranteeing at least one chunk per non-empty split. The example above assigns four chunks to the 104 Ubuntu tasks and one chunk to the 20 Alpine tasks. Rollout outputs are merged before a single judge and metrics stage. A single split remains supported, for example `--split=default.ubuntu` or `--split=default.alpine`.
+Without `--split`, SWE-Atlas-QnA evaluates both `default.ubuntu` and `default.alpine`. For multi-split runs, `--num_chunks` is the total across all splits. NeMo-Skills allocates chunks proportionally by task count while guaranteeing at least one chunk per non-empty split. The example above assigns four chunks to the 104 Ubuntu tasks and one chunk to the 20 Alpine tasks. Rollout outputs are merged before a single judge and metrics stage. A single split remains supported, for example `--split=default.ubuntu` or `--split=default.alpine`.
 
 The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent, OpenHands, OpenCode, and Claude Code are also supported:
 

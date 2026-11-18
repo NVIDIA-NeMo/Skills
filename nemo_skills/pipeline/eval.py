@@ -40,6 +40,8 @@ from nemo_skills.utils import (
 )
 
 LOG = logging.getLogger(get_logger_name(__file__))
+# Splits evaluated together when swe-atlas-qna runs without --split.
+_SWE_ATLAS_DEFAULT_SPLITS = ("default.ubuntu", "default.alpine")
 
 
 class SingleNodeMode(str, enum.Enum):
@@ -305,7 +307,8 @@ def eval(
     starting_seed: int = typer.Option(0, help="Starting seed for random sampling"),
     split: str = typer.Option(
         None,
-        help="Data split to use for evaluation. SWE-Atlas-QnA also accepts a comma-separated list of splits. "
+        help="Data split to use for evaluation. SWE-Atlas-QnA also accepts a comma-separated list of splits "
+        "and defaults to 'default.ubuntu,default.alpine'. "
         "Otherwise uses the benchmark-specific default or 'test'.",
     ),
     num_jobs: int = typer.Option(
@@ -599,6 +602,8 @@ def eval(
         raise ValueError("Each SWE-Atlas-QnA split may be specified only once.")
     benchmark_names = [spec.split(":", maxsplit=1)[0] for spec in benchmarks.split(",")]
     is_swe_atlas_only = benchmark_names == ["swe-atlas-qna"]
+    if is_swe_atlas_only and not requested_splits and not evaluate_reference_answer and not chunk_ids:
+        requested_splits = list(_SWE_ATLAS_DEFAULT_SPLITS)
     if len(requested_splits) > 1 and not is_swe_atlas_only:
         raise ValueError("Multiple --split values are supported only when evaluating swe-atlas-qna by itself.")
     if len(requested_splits) > 1 and evaluate_reference_answer:
