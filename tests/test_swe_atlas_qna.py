@@ -572,6 +572,7 @@ def test_swe_atlas_qna_generation_disables_inline_evaluation(monkeypatch, caplog
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.mini_swe_agent,
         agent_config=None,
+        execution_backend="apptainer",
         evaluate=True,
     )
     monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
@@ -587,6 +588,7 @@ def test_swe_atlas_qna_selects_swe_agent_config(monkeypatch):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.swe_agent,
         agent_config=None,
+        execution_backend="apptainer",
         evaluate=False,
     )
     monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
@@ -600,6 +602,7 @@ def test_swe_atlas_qna_selects_opencode_config(monkeypatch):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.opencode,
         agent_config=None,
+        execution_backend="apptainer",
         evaluate=False,
     )
     monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
@@ -613,6 +616,7 @@ def test_swe_atlas_qna_selects_openhands_config(monkeypatch):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.openhands,
         agent_config=None,
+        execution_backend="apptainer",
         evaluate=False,
     )
     monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)
@@ -627,6 +631,7 @@ def test_swe_atlas_qna_selects_claude_code_config(monkeypatch):
     cfg = SimpleNamespace(
         agent_framework=SupportedAgentFrameworks.claude_code,
         agent_config=None,
+        execution_backend="apptainer",
         evaluate=False,
     )
     monkeypatch.setattr(SweBenchGenerationTask, "__init__", lambda self, cfg: None)

@@ -13,8 +13,8 @@
 # limitations under the License.
 
 # settings that define how evaluation should be done by default (all can be changed from cmdline)
-# Debian/Ubuntu containers work with the standard NeMo-Skills image. Run the
-# default.alpine split separately with Dockerfile.nemo-skills.alpine.
+# Rollouts run in OpenSandbox by default, where both splits work with the standard NeMo-Skills image.
+# With ++execution_backend=apptainer, run the default.alpine split with Dockerfile.nemo-skills.alpine.
 EVAL_SPLIT = "default.ubuntu"
 METRICS_TYPE = "swe-atlas-qna"
 REFERENCE_ANSWER_KEY = "reference_answer"

@@ -619,9 +619,7 @@ class SweBenchGenerationTask(GenerationTask):
                 "uv pip install -e ."
             )
 
-        # Run all commands with retries and timeout
-        combined_setup_command = " && ".join(setup_commands)
-        asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
+        self._run_setup(setup_commands)
 
         scratch_root = SCRATCH_DIR
         if not scratch_root.is_dir():
@@ -631,6 +629,15 @@ class SweBenchGenerationTask(GenerationTask):
         self.input_dir = self.scratch_dir / "input"
         self.input_dir.mkdir()
         shutil.copy2(self.cfg.input_file, self.input_dir)
+
+    def _run_setup(self, setup_commands: list[str]) -> None:
+        """Install agent tooling under /root, which task containers mount at /root_mount."""
+        combined_setup_command = " && ".join(setup_commands)
+        asyncio.run(self._execute_local_command(combined_setup_command, timeout=self.cfg.setup_timeout))
+
+    def _get_llm_proxy_host(self) -> str:
+        """Interface the per-instance LLM proxy binds to; it must be reachable from task containers."""
+        return "127.0.0.1"
 
     def generate(self):
         try:
@@ -1270,6 +1277,7 @@ class SweBenchGenerationTask(GenerationTask):
             served_model_name=served_model_name,
             request_transform=request_transform,
             all_requests_dir=all_requests_dir,
+            host=self._get_llm_proxy_host(),
         ) as proxy_api_base:
             return await self._execute_container_command(
                 data_point,

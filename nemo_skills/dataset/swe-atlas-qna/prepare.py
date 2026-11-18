@@ -40,7 +40,8 @@ LANGUAGE_MAP = {
 # ghcr.io/scaleapi/swe-atlas:swe_atlas_QnA_trufflesecurity_trufflehog_1.0 -> 12 debian
 
 # The following instances' dockerfiles are based on Alpine Linux (uses musl, not glibc).
-# They have to be run in a separate eval job where the host Nemo-Skills container is also based on Alpine.
+# With ++execution_backend=apptainer, they have to be run in a separate eval job where the host Nemo-Skills
+# container is also based on Alpine. The default OpenSandbox backend installs the agents inside each task image instead.
 # Dockerfile: https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine
 # This script creates separate dataset files for Alpine and Ubuntu instances.
 ALPINE_INSTANCE_IDS = [

@@ -98,6 +98,11 @@ def _count_jsonl_rows(cluster_config: dict, input_file: str) -> int:
     raise ValueError(f"Cannot count tasks because dataset file {host_path} is not locally accessible.")
 
 
+def _uses_apptainer(extra_arguments: str) -> bool:
+    """Return whether Hydra overrides select the Apptainer backend instead of the default OpenSandbox."""
+    return any(argument.lstrip("+") == "execution_backend=apptainer" for argument in shlex.split(extra_arguments))
+
+
 def _resolve_child_sbatch_kwargs(sbatch_kwargs, child_sbatch_kwargs):
     if child_sbatch_kwargs is None:
         return sbatch_kwargs
@@ -598,8 +603,16 @@ def eval(
         raise ValueError("Multiple --split values are supported only when evaluating swe-atlas-qna by itself.")
     if len(requested_splits) > 1 and evaluate_reference_answer:
         raise ValueError("Multiple SWE-Atlas-QnA splits are not supported with --evaluate-reference-answer.")
-    if is_swe_atlas_only and any("alpine" in value.lower() for value in requested_splits) and not alpine_container:
-        raise ValueError("--alpine-container is required when running a SWE-Atlas-QnA Alpine split.")
+    # With OpenSandbox (the default), Alpine tasks install their tooling inside their own image,
+    # so only the Apptainer backend needs an Alpine client container.
+    use_alpine_client = is_swe_atlas_only and _uses_apptainer(extra_arguments)
+    if use_alpine_client and any("alpine" in value.lower() for value in requested_splits) and not alpine_container:
+        raise ValueError(
+            "--alpine-container is required when running a SWE-Atlas-QnA Alpine split with "
+            "++execution_backend=apptainer."
+        )
+    if is_swe_atlas_only and alpine_container and not use_alpine_client:
+        LOG.warning("Ignoring --alpine-container: it is only used with ++execution_backend=apptainer.")
     if len(requested_splits) > 1 and chunk_ids:
         raise ValueError("--chunk-ids is not supported with multiple SWE-Atlas-QnA splits.")
 
@@ -649,7 +662,7 @@ def eval(
             parent_job_ids.extend(job_id_offset + job_id for job_id in split_args.job_ids)
             split_eval_subfolders.append(split_args.eval_subfolder)
 
-            use_alpine_container = "alpine" in split_name.lower()
+            use_alpine_container = use_alpine_client and "alpine" in split_name.lower()
             for batch in split_batches:
                 for unit in batch[0]:
                     unit.client_container = alpine_container if use_alpine_container else None
@@ -670,7 +683,7 @@ def eval(
             num_chunks=num_chunks,
             num_jobs=num_jobs,
         )
-        if is_swe_atlas_only and requested_splits and "alpine" in requested_splits[0].lower():
+        if use_alpine_client and requested_splits and "alpine" in requested_splits[0].lower():
             for batch in job_batches_units:
                 for unit in batch[0]:
                     unit.client_container = alpine_container

@@ -349,7 +349,7 @@ This creates two files:
 - `nemo_skills/dataset/swe-atlas-qna/default.ubuntu.jsonl` with 104 Debian/Ubuntu-based tasks.
 - `nemo_skills/dataset/swe-atlas-qna/default.alpine.jsonl` with 20 Alpine-based tasks.
 
-By default, task containers are loaded from `docker://` URLs. To avoid downloading them during every evaluation, download the images in SIF format as described in the [SWE-bench data preparation](#data-preparation) section, then prepare the dataset with a mounted image path:
+By default, task containers are loaded from `docker://` URLs, which the default OpenSandbox backend pulls directly. With the Apptainer backend, you can avoid downloading them during every evaluation: download the images in SIF format as described in the [SWE-bench data preparation](#data-preparation) section, then prepare the dataset with a mounted image path:
 
 ```
 ns prepare_data swe-atlas-qna \
@@ -359,15 +359,17 @@ ns prepare_data swe-atlas-qna \
 For local SIF paths, `{docker_image}` is replaced with the image tag from the dataset, such as `swe_atlas_QnA_minio_minio_1.0`.
 
 !!! note
-    Alpine tasks use musl rather than glibc and run in a separate rollout job group using the Alpine NeMo-Skills container built from [`dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine`](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine).
+    Alpine tasks use musl rather than glibc. With the Apptainer backend, they run in a separate rollout job group using the Alpine NeMo-Skills container built from [`dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine`](https://github.com/NVIDIA-NeMo/Skills/tree/main/dockerfiles/swe-bench/Dockerfile.nemo-skills.alpine).
 
 #### Running the evaluation
 
-The following example launches the Ubuntu and Alpine subsets as separate rollout job groups in one evaluation:
+The following example launches the Ubuntu and Alpine subsets as separate rollout job groups in one evaluation. Agent rollouts run in remote [OpenSandbox](https://github.com/alibaba/OpenSandbox) containers by default; see [execution backends](#execution-backends) for the requirements and for the Apptainer alternative.
 
 ```
 #!/bin/bash
 export NVIDIA_API_KEY=<NVIDIA_API_KEY>
+export OPENSANDBOX_DOMAIN=<OPENSANDBOX_DOMAIN>
+export OPENSANDBOX_API_KEY=<OPENSANDBOX_API_KEY>
 
 COMMON_ARGS=(
     --cluster=<CLUSTER_NAME>
@@ -378,7 +380,6 @@ COMMON_ARGS=(
     --server_gpus=8
     --benchmarks=swe-atlas-qna
     --split=default.ubuntu,default.alpine
-    --alpine_container=<PATH_TO_ALPINE_NS_CONTAINER>
     --expname=<EXPERIMENT_NAME>
     ++inference.temperature=1.0
     ++inference.top_p=0.95
@@ -393,7 +394,7 @@ ns eval "${COMMON_ARGS[@]}" \
 
 Replace `<SERVER_ARGS>` with the arguments required by your model server, including its tool-call parser when native tool calling is enabled. The `127.0.0.1` server host is appropriate for the single-node setup above. Do not use loopback when the model server and evaluation client run on different nodes.
 
-For multi-split SWE-Atlas-QnA runs, `--num_chunks` is the total across all splits. NeMo-Skills allocates chunks proportionally by task count while guaranteeing at least one chunk per non-empty split. The example above assigns four chunks to the 104 Ubuntu tasks and one chunk to the 20 Alpine tasks. Rollout outputs are merged before a single judge and metrics stage. `--alpine_container` is required whenever an Alpine split is requested. A single split remains supported, for example `--split=default.ubuntu`, or `--split=default.alpine --alpine_container=<PATH>`.
+For multi-split SWE-Atlas-QnA runs, `--num_chunks` is the total across all splits. NeMo-Skills allocates chunks proportionally by task count while guaranteeing at least one chunk per non-empty split. The example above assigns four chunks to the 104 Ubuntu tasks and one chunk to the 20 Alpine tasks. Rollout outputs are merged before a single judge and metrics stage. A single split remains supported, for example `--split=default.ubuntu` or `--split=default.alpine`.
 
 The benchmark defaults to mini-SWE-agent and 250 agent turns. SWE-agent, OpenHands, OpenCode, and Claude Code are also supported:
 
@@ -412,6 +413,29 @@ Additional Markdown instruction fragments can be appended to the user-facing tas
 Claude Code is pinned to 2.1.259 and uses the server's Anthropic Messages endpoint (`/v1/messages`). The server must support native tool use through that endpoint. Its Atlas configuration exposes only Bash, Read, Glob, and Grep, denies Edit, Write, and WebFetch, and instructs the agent not to modify the repository. Configure its advertised context window with `++claude_code_context_window=<TOKENS>`, select a model alias with `++claude_code_model=<MODEL>`, and set effort with `++claude_code_effort=<LEVEL>`. When `++claude_code_effort` is omitted, `++inference.extra_body.chat_template_kwargs.reasoning_effort` is reused. Setting `enable_thinking=false` in the same `chat_template_kwargs` disables Claude Code thinking.
 
 SWE-Atlas-QnA always disables the inherited SWE-bench inline evaluation because its prose answers are scored by the separate rubric judge. If `++evaluate=True` is supplied, it is overridden with `False` and a warning is logged.
+
+#### Execution backends
+
+By default, each agent rollout runs in a fresh remote [OpenSandbox](https://github.com/alibaba/OpenSandbox) container. The model server and the rubric judge are unaffected by the backend choice. All five harnesses are supported.
+
+OpenSandbox requirements:
+
+- Install `nemo_skills[opensandbox]` in the evaluation client environment. The standard NeMo-Skills image includes it.
+- Export `OPENSANDBOX_DOMAIN` and `OPENSANDBOX_API_KEY`. NeMo-Skills forwards them into the job. For a trusted endpoint with a self-signed certificate, also export `OPENSANDBOX_TLS_VERIFY=false`.
+- Prepare the data with the default `docker://{docker_image}` formatter or keep the `docker_image` column. OpenSandbox pulls OCI images and cannot use local `.sif` files.
+- Sandbox workers must be able to reach the evaluation client on dynamically allocated ports. Each rollout's LLM proxy binds to the client's IPv4 interface, detected from its route to `OPENSANDBOX_DOMAIN`. Override it with `++opensandbox_proxy_host=<CLIENT_IP>`.
+
+Each sandbox installs the selected harness before running the agent, so setup needs download access and counts against `++setup_timeout`. Alpine tasks install their tooling inside their own Alpine image, so no Alpine client container is needed. Sandboxes default to 2 CPUs and 8Gi of memory; override with `++opensandbox.resources.cpu=4` and `++opensandbox.resources.memory=16Gi`. Other executor options are `ready_timeout_s` (1200), `request_timeout_s` (60), `command_timeout_s` (14400), `repo_setup_timeout_s` (300), `poll_interval_s` (5), and `create_retries` (3), all set as `++opensandbox.<option>=<value>`. `++opensandbox.block_network=True` denies outbound traffic except the LLM proxy once setup finishes. Command logs are written to `opensandbox_logs/` in the output directory.
+
+To run rollouts in local Apptainer task containers next to the evaluation client instead, add `++execution_backend=apptainer`. This backend supports the local SIF images described in the data preparation section above, and requires `--alpine_container=<PATH_TO_ALPINE_NS_CONTAINER>` whenever an Alpine split is requested:
+
+```
+ns eval "${COMMON_ARGS[@]}" \
+    --output_dir=<OUTPUT_DIR> \
+    --num_chunks=5 \
+    --alpine_container=<PATH_TO_ALPINE_NS_CONTAINER> \
+    ++execution_backend=apptainer
+```
 
 By default, an unhandled error for one instance fails its generation job. Add `++continue_on_error=True` to record diagnostic details in an `*.errors` sidecar and continue processing the rest of the chunk. After an instance exhausts its retries, a terminal placeholder is also retained in the finalized output, so resumed jobs do not retry it and pass@k files remain aligned. The rubric judge skips LLM calls for these placeholders; metrics retain them in the denominator as unresolved tasks with zero rubric score.
 

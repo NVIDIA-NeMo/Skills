@@ -361,7 +361,12 @@ def _patch_eval_for_sbatch_tests(monkeypatch, benchmark_args, executor="slurm"):
     monkeypatch.setattr(eval_pipeline, "prepare_eval_commands", fake_prepare_eval_commands)
 
 
-def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("ctx_args", "alpine_client"),
+    [(["++execution_backend=apptainer"], "alpine-container"), ([], "ubuntu-container")],
+    ids=["apptainer", "opensandbox"],
+)
+def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tmp_path, ctx_args, alpine_client):
     def benchmark_args(split, suffix):
         return eval_utils.BenchmarkArgs(
             name="swe-atlas-qna",
@@ -437,7 +442,7 @@ def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tm
     monkeypatch.setattr(eval_pipeline, "_generate", fake_generate)
 
     eval_pipeline.eval(
-        ctx=SimpleNamespace(args=[]),
+        ctx=SimpleNamespace(args=ctx_args),
         cluster="test-cluster",
         output_dir=str(tmp_path),
         benchmarks="swe-atlas-qna",
@@ -456,7 +461,7 @@ def test_eval_expands_swe_atlas_splits_and_merges_before_judging(monkeypatch, tm
     jobs = submitted_pipelines[0].jobs
     assert len(jobs) == 10
     client_containers = [job["group"].commands[-1].container for job in jobs]
-    assert client_containers == ["ubuntu-container"] * 6 + ["alpine-container"] * 4
+    assert client_containers == ["ubuntu-container"] * 6 + [alpine_client] * 4
 
     assert len(added_tasks) == 1
     merge_task = added_tasks[0]
@@ -488,7 +493,7 @@ def test_eval_requires_alpine_container_for_atlas_alpine_split(monkeypatch, tmp_
 
     with pytest.raises(ValueError, match="--alpine-container is required"):
         eval_pipeline.eval(
-            ctx=SimpleNamespace(args=[]),
+            ctx=SimpleNamespace(args=["++execution_backend=apptainer"]),
             cluster="test-cluster",
             output_dir=str(tmp_path),
             benchmarks="swe-atlas-qna",
