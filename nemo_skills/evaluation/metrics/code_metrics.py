@@ -23,7 +23,7 @@ class EvalPlusMetrics(BaseMetrics):
         }
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
-        return {"is_correct": False, "is_correct-plus": False}
+        return {**prediction, "is_correct": False, "is_correct-plus": False}
 
     def update(self, predictions):
         super().update(predictions)
@@ -37,7 +37,7 @@ class LiveCodeBenchMetrics(BaseMetrics):
         }
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
-        return {"graded_list": [False]}
+        return {**prediction, "graded_list": [False]}
 
     def update(self, predictions):
         super().update(predictions)
@@ -53,7 +53,10 @@ class SweBenchMetrics(BaseMetrics):
         }
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
-        return {"swe-bench-metrics": {"resolved": False, "patch_exists": True, "patch_successfully_applied": True}}
+        return {
+            **prediction,
+            "swe-bench-metrics": {"resolved": False, "patch_exists": True, "patch_successfully_applied": True},
+        }
 
     def update(self, predictions):
         super().update(predictions)
@@ -104,7 +107,7 @@ class BigCodeBenchMetrics(BaseMetrics):
         }
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
-        return {"status": "fail"}
+        return {**prediction, "status": "fail"}
 
     def update(self, predictions):
         super().update(predictions)
@@ -116,7 +119,7 @@ class HumanEvalInfillingMetrics(BaseMetrics):
         return {"accuracy": prediction["passed"]}
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
-        return {"passed": False}
+        return {**prediction, "passed": False}
 
     def update(self, predictions):
         super().update(predictions)
@@ -128,7 +131,7 @@ class ComputeEvalMetrics(BaseMetrics):
         return {"accuracy": prediction["passed"]}
 
     def get_incorrect_sample(self, prediction: dict) -> dict:
-        return {"passed": False}
+        return {**prediction, "passed": False}
 
     def update(self, predictions):
         super().update(predictions)
