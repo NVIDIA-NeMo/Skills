@@ -71,7 +71,7 @@ commands and their options.
 
 You can find more examples of how to use Nemo-Skills in the [tutorials](https://nvidia-nemo.github.io/Skills/tutorials) page.
 
-We've built and released many popular models and datasets using Nemo-Skills. See all of them in the [Papers & Releases](./releases/index.md) documentation.
+We've built and released many popular models and datasets using Nemo-Skills. See all of them in the [Papers & Releases](./docs/releases/index.md) documentation.
 
 You can find the full documentation [here](https://nvidia-nemo.github.io/Skills/).
 

@@ -39,8 +39,8 @@ Run ASR transcription on a cluster:
 
 There are SLURM tests which you can use to verify your setup. Read the following docs for instructions how to run them:
 
-* [ASR](tests/slurm-tests/asr_nim/README.md)
-* [TTS](tests/slurm-tests/tts_nim/README.md)
+* [ASR](../../tests/slurm-tests/asr_nim/README.md)
+* [TTS](../../tests/slurm-tests/tts_nim/README.md)
 
 
 ## Input File Formats
