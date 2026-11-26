@@ -54,7 +54,7 @@ The command from the 0th point. Starts the server and runs generation in a singl
 
 ## Configuration
 
-If you want to experiment with images or different NIM parameters adjust them in this [configuration file](recipes/asr_tts/nim_configurations.py). Below is the default content.
+If you want to experiment with images or different NIM parameters adjust them in this [configuration file](../../../recipes/asr_tts/nim_configurations.py). Below is the default content.
 
 ``` python
 nim_configurations = {

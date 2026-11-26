@@ -11,5 +11,5 @@ This repository provides all the necessary components to run the data generation
 
 * **Prompts for Data Augmentation**: Templates for generating "similar" and "inspired-by" questions to expand the dataset (for example, [`prompts/mcq_augment_similar.yaml`](prompts/mcq_augment_similar.yaml) and [`prompts/mcq_augment_inspired_by.yaml`](prompts/mcq_augment_inspired_by.yaml)).
 * **Prompts for Question Generation**: Templates for creating multiple-choice questions (MCQs) with either four or ten answer options (see [`prompts/`](prompts/)).
-* **Prompt for Subtopic Expansion**: The template used to generate a list of subtopics (e.g., [`prompts/topics_labeling.yaml`](prompts/topics_labeling.yaml)).
-* **Solution Filtering Script**: A script to filter generated solutions based on majority voting, as discussed in our paper ([`scripts/filter_solutions.py`](scripts/filter_solutions.py)).
+* **Prompt for Subtopic Expansion**: The template used to generate a list of subtopics (e.g., [`prompts/topics_labeling.yaml`](../sdg_pipeline/prompt/configs/topics_labeling.yaml)).
+* **Solution Filtering Script**: A script to filter generated solutions based on majority voting, as discussed in our paper ([`scripts/filter_solutions.py`](../sdg_pipeline/scripts/filter_solutions.py)).
